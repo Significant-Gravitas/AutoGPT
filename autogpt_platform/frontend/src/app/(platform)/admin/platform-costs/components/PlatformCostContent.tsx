@@ -275,7 +275,7 @@ export function PlatformCostContent({ searchParams }: Props) {
 
       {loading ? (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
             {/* 12 skeleton placeholders — one per summary card */}
             {Array.from({ length: 12 }, (_, i) => (
               <Skeleton key={i} className="h-20 rounded-lg" />
