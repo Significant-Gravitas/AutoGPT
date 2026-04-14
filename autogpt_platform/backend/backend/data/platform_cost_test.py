@@ -10,6 +10,8 @@ from backend.util.json import SafeJson
 
 from .platform_cost import (
     PlatformCostEntry,
+    _build_prisma_where,
+    _build_raw_where,
     _build_where,
     _mask_email,
     get_platform_cost_dashboard,
@@ -154,6 +156,84 @@ class TestBuildWhere:
         assert 'p."model" = $1' in sql
         assert 'LOWER(p."blockName") = LOWER($2)' in sql
         assert 'p."trackingType" = $3' in sql
+
+
+class TestBuildPrismaWhere:
+    def test_both_start_and_end(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        where = _build_prisma_where(start, end, None, None)
+        assert where["createdAt"] == {"gte": start, "lte": end}
+
+    def test_end_only(self):
+        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        where = _build_prisma_where(None, end, None, None)
+        assert where["createdAt"] == {"lte": end}
+
+    def test_start_only(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        where = _build_prisma_where(start, None, None, None)
+        assert where["createdAt"] == {"gte": start}
+
+    def test_no_filters(self):
+        where = _build_prisma_where(None, None, None, None)
+        assert "createdAt" not in where
+
+    def test_provider_lowercased(self):
+        where = _build_prisma_where(None, None, "OpenAI", None)
+        assert where["provider"] == "openai"
+
+    def test_model_filter(self):
+        where = _build_prisma_where(None, None, None, None, model="gpt-4")
+        assert where["model"] == "gpt-4"
+
+    def test_block_name_case_insensitive(self):
+        where = _build_prisma_where(None, None, None, None, block_name="LLMBlock")
+        assert where["blockName"] == {"equals": "LLMBlock", "mode": "insensitive"}
+
+    def test_tracking_type(self):
+        where = _build_prisma_where(None, None, None, None, tracking_type="tokens")
+        assert where["trackingType"] == "tokens"
+
+
+class TestBuildRawWhere:
+    def test_end_filter(self):
+        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        sql, params = _build_raw_where(None, end, None, None)
+        assert '"createdAt" <= $2::timestamptz' in sql
+        assert end in params
+
+    def test_model_filter(self):
+        sql, params = _build_raw_where(None, None, None, None, model="gpt-4")
+        assert '"model" = $' in sql
+        assert "gpt-4" in params
+
+    def test_block_name_filter(self):
+        sql, params = _build_raw_where(None, None, None, None, block_name="LLMBlock")
+        assert 'LOWER("blockName") = LOWER($' in sql
+        assert "LLMBlock" in params
+
+    def test_all_filters_combined(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        sql, params = _build_raw_where(
+            start, end, "anthropic", "u1", model="claude-3", block_name="LLM"
+        )
+        # trackingType (default), start, end, provider, user_id, model, block_name
+        assert len(params) == 7
+        assert "anthropic" in params
+        assert "u1" in params
+        assert "claude-3" in params
+        assert "LLM" in params
+
+    def test_default_tracking_type_is_cost_usd(self):
+        sql, params = _build_raw_where(None, None, None, None)
+        assert '"trackingType" = $1' in sql
+        assert params[0] == "cost_usd"
+
+    def test_explicit_tracking_type_overrides_default(self):
+        sql, params = _build_raw_where(None, None, None, None, tracking_type="tokens")
+        assert params[0] == "tokens"
 
 
 def _make_entry(**overrides: object) -> PlatformCostEntry:
