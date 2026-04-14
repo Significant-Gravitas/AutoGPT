@@ -31,9 +31,14 @@ The sandbox_id is stored in Redis.  The same key doubles as a creation lock:
 a ``"creating"`` sentinel value is written with a short TTL while a new sandbox
 is being provisioned, preventing duplicate creation under concurrent requests.
 
-E2B project-level "paused sandbox lifetime" should be set to match
-``_SANDBOX_ID_TTL`` (48 h) so orphaned paused sandboxes are auto-killed before
-the Redis key expires.
+Sandbox lifetime
+----------------
+E2B assigns each sandbox an absolute ``end_at`` timestamp at create time:
+``end_at = now + timeout``.  Pausing does NOT extend ``end_at``; only
+``connect()`` extends it (by ``timeout`` seconds from the moment of reconnect).
+Active sessions therefore stay alive as long as turns arrive within the timeout
+window.  Orphaned sandboxes (e.g. leaked by a failed create retry) are killed by
+E2B when their original ``end_at`` is reached — no external cleanup is required.
 """
 
 import asyncio
@@ -188,11 +193,11 @@ async def get_or_create_sandbox(
             # E2B may complete provisioning server-side after a timeout.
             # Since AsyncSandbox.create() returns no sandbox_id before
             # completion, recovery via connect() is not possible and each
-            # timed-out attempt may leak a sandbox.  Mitigations: E2B's
-            # on_timeout lifecycle action auto-pauses idle sandboxes (free)
-            # and the project-level "paused sandbox lifetime" (48 h) reaps
-            # orphans.  At most _SANDBOX_CREATE_MAX_RETRIES - 1 = 2 sandboxes
-            # can leak per incident.
+            # timed-out attempt may leak a sandbox.  The leak is bounded:
+            # E2B kills every sandbox at its end_at (creation + timeout),
+            # so leaked orphans are auto-reaped within e2b_sandbox_timeout
+            # seconds (default 7 min).  At most _SANDBOX_CREATE_MAX_RETRIES
+            # − 1 = 2 sandboxes can leak per incident.
             last_exc: Exception | None = None
             sandbox: AsyncSandbox | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
