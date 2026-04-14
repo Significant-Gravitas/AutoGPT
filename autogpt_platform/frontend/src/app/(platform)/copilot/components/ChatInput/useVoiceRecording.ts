@@ -12,7 +12,6 @@ const MAX_RECORDING_DURATION = 2 * 60 * 1000; // 2 minutes in ms
 interface Args {
   setValue: React.Dispatch<React.SetStateAction<string>>;
   disabled?: boolean;
-  isStreaming?: boolean;
   value: string;
   inputId?: string;
 }
@@ -20,7 +19,6 @@ interface Args {
 export function useVoiceRecording({
   setValue,
   disabled = false,
-  isStreaming = false,
   value,
   inputId,
 }: Args) {
@@ -242,8 +240,10 @@ export function useVoiceRecording({
 
   const showMicButton = isSupported;
   // Don't include isRecording in disabled state - we need key events to work
-  // Text input is blocked via handleKeyDown instead
-  const isInputDisabled = disabled || isStreaming || isTranscribing;
+  // Text input is blocked via handleKeyDown instead.
+  // isStreaming is intentionally excluded: users can type and queue messages
+  // while a stream is in-flight; the stop button handles the streaming state.
+  const isInputDisabled = disabled || isTranscribing;
 
   // Cleanup on unmount
   useEffect(() => {

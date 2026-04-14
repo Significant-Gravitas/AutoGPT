@@ -256,6 +256,11 @@ export function useCopilotPage() {
         // tool-call rounds by the currently running executor turn.
         try {
           await postV2QueuePendingMessage(sessionId, { message: trimmed });
+          toast({
+            title: "Message queued",
+            description:
+              "Your message will be sent when the current response finishes.",
+          });
         } catch {
           toast({
             title: "Could not queue message",

@@ -92,7 +92,12 @@ export function ChatInput({
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasFiles = files.length > 0;
+  // isBusy disables non-essential interactions (attachment menu, voice recording)
+  // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
+  // The textarea is only truly disabled when the session is unavailable, not
+  // during normal streaming (users can type and queue the next message).
+  const isTextareaDisabled = disabled || isUploadingFiles;
 
   const {
     value,
@@ -105,7 +110,7 @@ export function ChatInput({
       // Only clear files after successful send (onSend throws on failure)
       setFiles([]);
     },
-    disabled: isBusy,
+    disabled: isTextareaDisabled,
     canSendEmpty: hasFiles,
     inputId,
   });
@@ -121,8 +126,7 @@ export function ChatInput({
     audioStream,
   } = useVoiceRecording({
     setValue,
-    disabled: isBusy,
-    isStreaming,
+    disabled: isTextareaDisabled,
     value,
     inputId,
   });
