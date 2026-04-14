@@ -1606,6 +1606,45 @@
       }
     },
     "/api/chat/sessions/{session_id}/messages/pending": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Pending Messages",
+        "description": "Peek at the pending-message buffer without consuming it.\n\nReturns the current contents of the session's pending message buffer\nso the frontend can restore the queued-message indicator after a page\nrefresh and clear it correctly once a turn drains the buffer.",
+        "operationId": "getV2GetPendingMessages",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeekPendingMessagesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Queue Pending Message",
@@ -12776,6 +12815,20 @@
         "required": ["message"],
         "title": "QueuePendingMessageRequest",
         "description": "Request model for queueing a message into an in-flight turn.\n\nUnlike ``StreamChatRequest`` this endpoint does **not** start a new\nturn — the message is appended to a per-session pending buffer that\nthe executor currently processing the turn will drain between tool\nrounds."
+      },
+      "PeekPendingMessagesResponse": {
+        "properties": {
+          "messages": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Messages"
+          },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["messages", "count"],
+        "title": "PeekPendingMessagesResponse",
+        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
       },
       "QueuePendingMessageResponse": {
         "properties": {
