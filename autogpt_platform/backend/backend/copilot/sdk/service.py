@@ -37,6 +37,7 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.pending_messages import (
+    PendingMessage,
     drain_pending_messages,
     format_pending_as_user_message,
 )
@@ -3197,3 +3198,43 @@ async def stream_chat_completion_sdk(
         finally:
             # Release stream lock to allow new streams for this session
             await lock.release()
+
+    # -------------------------------------------------------------------------
+    # Auto-continue: drain any messages the user queued AFTER the turn-start
+    # drain window and process them as a new turn automatically.
+    #
+    # This code only executes on NORMAL turn completion.  GeneratorExit and
+    # BaseException both re-raise inside their except blocks, so the generator
+    # closes before reaching here — messages queued during a cancelled turn are
+    # preserved in Redis for the next manual turn.
+    # -------------------------------------------------------------------------
+    if not ended_with_stream_error:
+        _auto_pending: list[PendingMessage] = []
+        try:
+            _auto_pending = await drain_pending_messages(session_id)
+        except Exception:
+            logger.warning(
+                "%s pending_messages: auto-continue drain failed",
+                log_prefix,
+                exc_info=True,
+            )
+        if _auto_pending:
+            pending_texts = [
+                format_pending_as_user_message(p)["content"] for p in _auto_pending
+            ]
+            auto_message = "\n\n".join(pending_texts)
+            logger.info(
+                "%s Auto-continuing with %d pending message(s) queued after turn start",
+                log_prefix,
+                len(_auto_pending),
+            )
+            async for event in stream_chat_completion_sdk(
+                session_id=session_id,
+                message=auto_message,
+                is_user_message=True,
+                user_id=user_id,
+                file_ids=None,
+                permissions=permissions,
+                mode=mode,
+            ):
+                yield event
