@@ -14,12 +14,14 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import uuid
 from collections.abc import AsyncGenerator, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 import orjson
 from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
@@ -101,6 +103,110 @@ _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
 
 # MIME types that can be embedded as vision content blocks (OpenAI format).
 _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
+# Cache-read discount fractions per provider prefix (relative to input rate).
+# Anthropic: 10%, OpenAI: 50%, Google: not billed separately so 100% (no discount).
+_CACHE_READ_DISCOUNT: dict[str, float] = {
+    "anthropic/": 0.10,
+    "openai/": 0.50,
+}
+
+# OpenRouter model pricing cache: maps model id -> (input_rate, output_rate) per token.
+# Populated lazily by _fetch_openrouter_pricing() and refreshed every hour.
+_OPENROUTER_PRICING_CACHE: dict[str, tuple[float, float]] = {}
+_OPENROUTER_PRICING_CACHE_TTL = 3600  # seconds
+_OPENROUTER_PRICING_CACHE_FETCHED_AT: float = 0.0
+
+
+async def _fetch_openrouter_pricing() -> dict[str, tuple[float, float]]:
+    """Return per-token pricing for all OpenRouter models.
+
+    Fetches https://openrouter.ai/api/v1/models and caches the result for
+    ``_OPENROUTER_PRICING_CACHE_TTL`` seconds (1 hour).  On any network or
+    parse error the previous cache value (possibly empty dict) is returned so
+    that cost estimation gracefully degrades to ``None`` rather than crashing.
+    """
+    global _OPENROUTER_PRICING_CACHE, _OPENROUTER_PRICING_CACHE_FETCHED_AT
+
+    now = time.monotonic()
+    if now - _OPENROUTER_PRICING_CACHE_FETCHED_AT < _OPENROUTER_PRICING_CACHE_TTL:
+        return _OPENROUTER_PRICING_CACHE
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://openrouter.ai/api/v1/models")
+            response.raise_for_status()
+            data = response.json()
+
+        pricing: dict[str, tuple[float, float]] = {}
+        for model in data.get("data", []):
+            model_id = model.get("id")
+            model_pricing = model.get("pricing") or {}
+            prompt_str = model_pricing.get("prompt")
+            completion_str = model_pricing.get("completion")
+            if model_id and prompt_str is not None and completion_str is not None:
+                try:
+                    pricing[model_id] = (float(prompt_str), float(completion_str))
+                except (ValueError, TypeError):
+                    continue
+
+        _OPENROUTER_PRICING_CACHE = pricing
+        _OPENROUTER_PRICING_CACHE_FETCHED_AT = now
+    except Exception:
+        logger.warning(
+            "Failed to fetch OpenRouter model pricing; using cached data (%d models)",
+            len(_OPENROUTER_PRICING_CACHE),
+        )
+
+    return _OPENROUTER_PRICING_CACHE
+
+
+async def _estimate_cost_from_tokens(
+    model: str,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_read_tokens: int = 0,
+) -> float | None:
+    """Estimate USD cost from token counts using live OpenRouter model pricing.
+
+    ``prompt_tokens`` should be the *total* prompt token count as reported by
+    the API (includes both regular and cache-read tokens as a subset).
+    ``cache_read_tokens`` is used to apply a provider-specific discount:
+
+    * Cache reads are billed at a fraction of the normal input rate
+      (Anthropic: 10 %, OpenAI: 50 %).  The regular (non-cached) portion is
+      billed at full price.
+    * Cache writes (creation) appear in
+      ``prompt_tokens_details.cache_creation_input_tokens`` and are billed at
+      a premium by some providers (e.g. Anthropic charges 1.25× the input
+      rate).  This estimator does **not** account for them -- it intentionally
+      ignores cache-creation tokens as an acceptable approximation for a
+      fallback cost estimate.
+
+    Returns None if the model is not found in the OpenRouter pricing response.
+    """
+    pricing_table = await _fetch_openrouter_pricing()
+    pricing = pricing_table.get(model)
+    if pricing is None:
+        return None
+    input_rate, output_rate = pricing
+
+    # Determine the cache-read discount fraction for this provider.
+    cache_read_fraction = next(
+        (v for prefix, v in _CACHE_READ_DISCOUNT.items() if model.startswith(prefix)),
+        1.0,  # no discount for unknown providers
+    )
+
+    # Regular (non-cached) input tokens billed at full price;
+    # cache-read tokens billed at the discounted rate.
+    regular_prompt = max(0, prompt_tokens - cache_read_tokens)
+    cost = (
+        regular_prompt * input_rate
+        + cache_read_tokens * input_rate * cache_read_fraction
+        + completion_tokens * output_rate
+    )
+    return cost
+
 
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
@@ -362,6 +468,12 @@ async def _baseline_llm_caller(
 
     round_text = ""
     response = None  # initialized before try so finally block can access it
+    # Snapshot token counts before this call so we can compute the delta used
+    # for fallback cost estimation.  Must be set before the try so the finally
+    # block can always reference them even when the API call raises.
+    prompt_tokens_before = state.turn_prompt_tokens
+    completion_tokens_before = state.turn_completion_tokens
+    cache_read_tokens_before = state.turn_cache_read_tokens
     try:
         client = _get_openai_client()
         typed_messages = cast(list[ChatCompletionMessageParam], messages)
@@ -453,6 +565,7 @@ async def _baseline_llm_caller(
         # Extract OpenRouter cost from response headers (in finally so we
         # capture cost even when the stream errors mid-way — we already paid).
         # Accumulate across multi-round tool-calling turns.
+        got_header_cost = False
         try:
             # Access undocumented _response attribute — same pattern as
             # extract_openrouter_cost() in blocks/llm.py.
@@ -461,14 +574,37 @@ async def _baseline_llm_caller(
                 cost = float(cost_header)
                 if math.isfinite(cost) and cost >= 0:
                     state.cost_usd = (state.cost_usd or 0.0) + cost
-            else:
-                logger.warning(
-                    "[Baseline] x-total-cost header missing from OpenRouter response"
-                    " — cost_usd will be None for this call (model=%s)",
-                    state.model,
-                )
+                    got_header_cost = True
         except (AttributeError, ValueError):
             pass
+
+        # Fallback: estimate cost from token counts when x-total-cost is
+        # missing (e.g. some OpenRouter models don't report it).
+        # Use the delta for this call only -- the state accumulators grow across
+        # all tool-call turns, so passing the cumulative total would
+        # compound-overestimate costs on the 2nd+ turn.
+        # Separate out cached reads so we can apply provider-specific discounts
+        # (Anthropic: 10 %, OpenAI: 50 %) instead of billing them at full price.
+        call_prompt_tokens = state.turn_prompt_tokens - prompt_tokens_before
+        call_completion_tokens = state.turn_completion_tokens - completion_tokens_before
+        call_cache_read_tokens = state.turn_cache_read_tokens - cache_read_tokens_before
+        if not got_header_cost and (
+            call_prompt_tokens > 0 or call_completion_tokens > 0
+        ):
+            estimated = await _estimate_cost_from_tokens(
+                state.model,
+                call_prompt_tokens,
+                call_completion_tokens,
+                cache_read_tokens=call_cache_read_tokens,
+            )
+            if estimated is not None:
+                state.cost_usd = (state.cost_usd or 0.0) + estimated
+                logger.info(
+                    "[Baseline] x-total-cost header missing; estimated cost "
+                    "from token pricing: $%.6f (model=%s)",
+                    estimated,
+                    state.model,
+                )
 
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
