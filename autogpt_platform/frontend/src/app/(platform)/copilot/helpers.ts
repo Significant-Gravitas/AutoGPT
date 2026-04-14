@@ -154,39 +154,63 @@ export function shouldSuppressDuplicateSend(
 }
 
 /**
- * Deduplicate messages by ID and by consecutive content fingerprint.
+ * Deduplicate messages by ID and by content fingerprint.
  *
  * ID dedup catches exact duplicates within the same source.
- * Content dedup only compares each assistant message to its **immediate
- * predecessor** — this catches hydration/stream boundary duplicates (where
- * the same content appears under different IDs) without accidentally
- * removing legitimately repeated assistant responses that are far apart.
+ * Content dedup uses a composite key of `role + preceding-user-message-id +
+ * content-fingerprint` to detect replayed messages that arrive with new
+ * IDs after an SSE reconnection replays from the beginning of the Redis
+ * stream. Scoping by user message ID (not text) preserves the second
+ * assistant reply when the user asks the same question twice and gets the
+ * same answer — two different user messages produce two different IDs even
+ * when their text is identical.
  */
 export function deduplicateMessages(messages: UIMessage[]): UIMessage[] {
   const seenIds = new Set<string>();
-  let lastAssistantFingerprint = "";
+  const seenFingerprints = new Set<string>();
+  let lastUserMsgID = "";
 
   return messages.filter((msg) => {
     if (seenIds.has(msg.id)) return false;
     seenIds.add(msg.id);
 
+    if (msg.role === "user") {
+      // Track the ID (not text) of the latest user message so we can scope
+      // assistant fingerprints to their conversational turn. Using the ID
+      // means two user messages with identical text are still treated as
+      // distinct turns, preventing false-positive deduplication.
+      lastUserMsgID = msg.id;
+    }
+
     if (msg.role === "assistant") {
-      const fingerprint = msg.parts
-        .map(
+      // JSON.stringify the parts array to avoid separator-collision false
+      // positives: a plain join("|") on ["a|b", "c"] and ["a", "b|c"]
+      // produces the same string. JSON encoding each element is unambiguous.
+      // Fall back to JSON.stringify(p) for parts that carry neither a text nor
+      // a toolCallId (e.g. step-start) so structurally different parts never
+      // collapse to the same empty-string fingerprint element.
+      const contentFingerprint = JSON.stringify(
+        msg.parts.map(
           (p) =>
             ("text" in p && p.text) ||
             ("toolCallId" in p && p.toolCallId) ||
-            "",
-        )
-        .join("|");
+            JSON.stringify(p),
+        ),
+      );
 
-      // Only dedup if this assistant message is identical to the previous one
-      if (fingerprint && fingerprint === lastAssistantFingerprint) return false;
-      if (fingerprint) lastAssistantFingerprint = fingerprint;
-    } else {
-      // Reset on non-assistant messages so that identical assistant responses
-      // separated by a user message (e.g. "Done!" → user → "Done!") are kept.
-      lastAssistantFingerprint = "";
+      if (contentFingerprint !== "[]") {
+        // Scope to the preceding user message turn so that identical assistant
+        // replies to *different* user prompts are preserved.
+        // NOTE: A streaming (in-progress) assistant message has a partial
+        // fingerprint that differs from its final form, so it would not be
+        // caught by this dedup. This is safe because every caller that invokes
+        // resumeStream() first strips the in-progress assistant message —
+        // handleReconnect, the wake-resync path, and the hydration-effect path
+        // all do this. See useCopilotStream.ts.
+        const contextKey = `assistant:${lastUserMsgID}:${contentFingerprint}`;
+        if (seenFingerprints.has(contextKey)) return false;
+        seenFingerprints.add(contextKey);
+      }
     }
 
     return true;

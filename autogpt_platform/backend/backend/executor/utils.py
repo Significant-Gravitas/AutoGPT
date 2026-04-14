@@ -4,7 +4,7 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future
-from typing import Mapping, Optional, cast
+from typing import Literal, Mapping, Optional, cast
 
 from pydantic import BaseModel, JsonValue, ValidationError
 
@@ -249,6 +249,65 @@ def validate_exec(
     return data, node_block.name
 
 
+# ---------------------------------------------------------------------------
+# Credential validation error message templates.
+#
+# These constants are the single source of truth for the error messages
+# emitted by ``_validate_node_input_credentials``.  Both the raise sites
+# below and the public matcher ``is_credential_validation_error_message``
+# reference them, so adding a new credential error means adding a
+# constant here — the matcher and tests stay in sync automatically.
+#
+# If you add a new credential error string, also add its constant to
+# ``_CREDENTIAL_ERROR_MARKERS`` below so the copilot's credential-race
+# fallback continues to recognise it.
+# ---------------------------------------------------------------------------
+CRED_ERR_REQUIRED = "These credentials are required"
+CRED_ERR_INVALID_PREFIX = "Invalid credentials:"
+CRED_ERR_INVALID_TYPE_MISMATCH = "Invalid credentials: type/provider mismatch"
+CRED_ERR_NOT_AVAILABLE_PREFIX = "Credentials not available:"
+CRED_ERR_UNKNOWN_PREFIX = "Unknown credentials #"
+
+# Markers used by ``is_credential_validation_error_message`` to classify a
+# message. Each entry is (match_mode, lowercased_marker) — "exact" means
+# the full message must equal the marker, "prefix" means it must start
+# with the marker.
+_MatchMode = Literal["exact", "prefix"]
+_CREDENTIAL_ERROR_MARKERS: tuple[tuple[_MatchMode, str], ...] = (
+    ("exact", CRED_ERR_REQUIRED.lower()),
+    # NOTE: CRED_ERR_INVALID_TYPE_MISMATCH is intentionally omitted here —
+    # the "prefix" entry for CRED_ERR_INVALID_PREFIX already covers it (since
+    # CRED_ERR_INVALID_TYPE_MISMATCH starts with "Invalid credentials:").
+    ("prefix", CRED_ERR_INVALID_PREFIX.lower()),
+    ("prefix", CRED_ERR_NOT_AVAILABLE_PREFIX.lower()),
+    ("prefix", CRED_ERR_UNKNOWN_PREFIX.lower()),
+)
+
+
+def is_credential_validation_error_message(message: str) -> bool:
+    """Return True if *message* came from the credential gate in
+    :func:`_validate_node_input_credentials`.
+
+    Kept as a public module-level helper so other layers (e.g. the
+    copilot tool that rebuilds the inline credentials setup card on a
+    credential race) can distinguish credential failures from other
+    graph validation errors without redefining the string list.
+
+    Drift prevention: raise sites and this matcher both reference the
+    ``CRED_ERR_*`` constants defined above, and
+    ``test_credential_error_markers_cover_all_raise_sites`` exercises
+    every branch of ``_validate_node_input_credentials`` to assert the
+    emitted messages are recognised.
+    """
+    lower = message.lower()
+    for mode, marker in _CREDENTIAL_ERROR_MARKERS:
+        if mode == "exact" and lower == marker:
+            return True
+        if mode == "prefix" and lower.startswith(marker):
+            return True
+    return False
+
+
 async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
@@ -311,9 +370,7 @@ async def _validate_node_input_credentials(
                     if field_is_optional:
                         continue  # Don't add error, will be marked for skip after loop
                     else:
-                        credential_errors[node.id][
-                            field_name
-                        ] = "These credentials are required"
+                        credential_errors[node.id][field_name] = CRED_ERR_REQUIRED
                         continue
 
                 credentials_meta = credentials_meta_type.model_validate(field_value)
@@ -321,7 +378,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][field_name] = f"Invalid credentials: {e}"
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
                 continue
 
             try:
@@ -334,13 +393,13 @@ async def _validate_node_input_credentials(
                 # If credentials were explicitly configured but unavailable, it's an error
                 credential_errors[node.id][
                     field_name
-                ] = f"Credentials not available: {e}"
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                 continue
 
             if not credentials:
                 credential_errors[node.id][
                     field_name
-                ] = f"Unknown credentials #{credentials_meta.id}"
+                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
                 continue
 
             if (
@@ -353,9 +412,7 @@ async def _validate_node_input_credentials(
                     f"{credentials_meta.type}<>{credentials.type};"
                     f"{credentials_meta.provider}<>{credentials.provider}"
                 )
-                credential_errors[node.id][
-                    field_name
-                ] = "Invalid credentials: type/provider mismatch"
+                credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
                 continue
 
         # If node has optional credentials and any are missing, allow running without.
@@ -476,22 +533,11 @@ async def _construct_starting_node_execution_input(
     # Dry runs simulate every block — missing credentials are irrelevant.
     # Strip credential-only errors so the graph can proceed.
     if dry_run and validation_errors:
-
-        def _is_credential_error(msg: str) -> bool:
-            """Match errors produced by _validate_node_input_credentials."""
-            m = msg.lower()
-            return (
-                m == "these credentials are required"
-                or m.startswith("invalid credentials:")
-                or m.startswith("credentials not available:")
-                or m.startswith("unknown credentials #")
-            )
-
         validation_errors = {
             node_id: {
                 field: msg
                 for field, msg in errors.items()
-                if not _is_credential_error(msg)
+                if not is_credential_validation_error_message(msg)
             }
             for node_id, errors in validation_errors.items()
         }

@@ -196,3 +196,93 @@ def test_sdk_exports_hook_event_type(hook_event: str):
     # HookEvent is a Literal type — check that our events are valid values.
     # We can't easily inspect Literal at runtime, so just verify the type exists.
     assert HookEvent is not None
+
+
+# ---------------------------------------------------------------------------
+# OpenRouter compatibility — bundled CLI version pin
+# ---------------------------------------------------------------------------
+#
+# Newer ``claude-agent-sdk`` versions bundle CLI binaries that send
+# features incompatible with OpenRouter (``tool_reference`` content
+# blocks, ``context-management-2025-06-27`` beta).  We neutralise these
+# at runtime by injecting ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1``
+# into the CLI subprocess env (see ``build_sdk_env()`` in ``env.py``).
+#
+# This test is the cheapest possible regression guard: it pins the
+# bundled CLI to a known-good version.  If anyone bumps
+# ``claude-agent-sdk`` in ``pyproject.toml``, the bundled CLI version in
+# ``_cli_version.py`` will change and this test will fail with a clear
+# message that points the next person at the OpenRouter compat issue
+# instead of letting them silently re-break production.
+
+# CLI versions bisect-verified as OpenRouter-safe.  2.1.63 and 2.1.70 pre-date
+# the context-management beta regression and work without any env var.  2.1.97+
+# requires ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`` (injected by
+# ``build_sdk_env()`` in ``env.py``) to strip the beta header.
+_KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
+    {
+        "2.1.63",  # claude-agent-sdk 0.1.45 -- original pin from PR #12294.
+        "2.1.70",  # claude-agent-sdk 0.1.47 -- first version with the
+        #          tool_reference proxy detection fix; bisect-verified
+        #          OpenRouter-safe in #12742.
+        "2.1.97",  # claude-agent-sdk 0.1.58 -- OpenRouter-safe only with
+        #          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (injected by
+        #          build_sdk_env() in env.py).
+    }
+)
+
+
+def test_bundled_cli_version_is_known_good_against_openrouter():
+    """Pin the bundled CLI version so accidental SDK bumps cause a loud,
+    fast failure with a pointer to the OpenRouter compatibility issue.
+    """
+    from claude_agent_sdk._cli_version import __cli_version__
+
+    assert __cli_version__ in _KNOWN_GOOD_BUNDLED_CLI_VERSIONS, (
+        f"Bundled Claude Code CLI version is {__cli_version__!r}, which is "
+        f"not in the OpenRouter-known-good set "
+        f"({sorted(_KNOWN_GOOD_BUNDLED_CLI_VERSIONS)!r}). "
+        "If you intentionally bumped `claude-agent-sdk`, verify the new "
+        "bundled CLI works with OpenRouter against the reproduction test "
+        "in `cli_openrouter_compat_test.py` (with "
+        "`CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`), then add the new "
+        "CLI version to `_KNOWN_GOOD_BUNDLED_CLI_VERSIONS`. If the env "
+        "var is not sufficient, set `claude_agent_cli_path` to a "
+        "known-good binary instead. See "
+        "https://github.com/anthropics/claude-agent-sdk-python/issues/789 "
+        "and https://github.com/Significant-Gravitas/AutoGPT/pull/12294."
+    )
+
+
+def test_sdk_exposes_cli_path_option():
+    """Sanity-check that the SDK still exposes the `cli_path` option we use
+    for the OpenRouter workaround.  If upstream removes it we need to know."""
+    import inspect
+
+    from claude_agent_sdk import ClaudeAgentOptions
+
+    sig = inspect.signature(ClaudeAgentOptions)
+    assert "cli_path" in sig.parameters, (
+        "ClaudeAgentOptions no longer accepts `cli_path` — our "
+        "claude_agent_cli_path config override would be silently ignored. "
+        "Either find an alternative override mechanism or pin the SDK to a "
+        "version that still exposes it."
+    )
+
+
+def test_sdk_exposes_max_thinking_tokens_option():
+    """Sanity-check that the SDK still exposes the `max_thinking_tokens` option
+    we use to cap extended thinking cost.  If upstream removes or renames it
+    the cap will be silently ignored and Opus thinking tokens will be unbounded."""
+    import inspect
+
+    from claude_agent_sdk import ClaudeAgentOptions
+
+    sig = inspect.signature(ClaudeAgentOptions)
+    assert "max_thinking_tokens" in sig.parameters, (
+        "ClaudeAgentOptions no longer accepts `max_thinking_tokens` — our "
+        "claude_agent_max_thinking_tokens cost cap would be silently ignored, "
+        "allowing Opus extended thinking to generate unbounded tokens at $75/M. "
+        "Find the correct parameter name in the new SDK version and update "
+        "ChatConfig.claude_agent_max_thinking_tokens and service.py accordingly."
+    )
