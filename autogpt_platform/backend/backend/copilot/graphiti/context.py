@@ -109,6 +109,8 @@ def _is_non_global_scope(body: str) -> bool:
 
     try:
         data = json.loads(body)
+        if not isinstance(data, dict):
+            return False
         scope = data.get("scope", "real:global")
         return scope != "real:global"
     except (json.JSONDecodeError, TypeError):

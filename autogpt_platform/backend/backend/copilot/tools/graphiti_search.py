@@ -198,11 +198,13 @@ def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
         raw_body = extract_episode_body_raw(ep)
         try:
             data = json.loads(raw_body)
+            if not isinstance(data, dict):
+                raise TypeError("non-dict JSON")
             ep_scope = data.get("scope", "real:global")
             if ep_scope != scope:
                 continue
         except (json.JSONDecodeError, TypeError):
-            # Not JSON — plain conversation episode, treat as real:global
+            # Not JSON or non-dict JSON — plain conversation episode, treat as real:global
             if scope != "real:global":
                 continue
         display_body = extract_episode_body(ep)

@@ -61,6 +61,22 @@ class TestFetchWarmContextGeneralError:
 # ---------------------------------------------------------------------------
 
 
+class TestIsNonGlobalScopeEdgeCases:
+    """Verify _is_non_global_scope handles non-dict JSON without crashing."""
+
+    def test_list_json_treated_as_global(self) -> None:
+        assert _is_non_global_scope("[1, 2, 3]") is False
+
+    def test_string_json_treated_as_global(self) -> None:
+        assert _is_non_global_scope('"just a string"') is False
+
+    def test_null_json_treated_as_global(self) -> None:
+        assert _is_non_global_scope("null") is False
+
+    def test_plain_text_treated_as_global(self) -> None:
+        assert _is_non_global_scope("plain conversation text") is False
+
+
 class TestIsNonGlobalScopeTruncation:
     """Verify _is_non_global_scope handles long MemoryEnvelope JSON.
 
