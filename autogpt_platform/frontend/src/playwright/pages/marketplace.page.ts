@@ -3,9 +3,7 @@ import { BasePage } from "./base.page";
 import { dismissFeedbackDialog } from "./library.page";
 import { getSelectors } from "../utils/selectors";
 
-const DETERMINISTIC_MARKETPLACE_AGENT_CREATOR = "e2e-marketplace";
-const DETERMINISTIC_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent";
-const DETERMINISTIC_MARKETPLACE_AGENT_PATH = `/marketplace/agent/${DETERMINISTIC_MARKETPLACE_AGENT_CREATOR}/${DETERMINISTIC_MARKETPLACE_AGENT_SLUG}`;
+const DETERMINISTIC_MARKETPLACE_AGENT_SEARCH = "E2E Calculator Agent";
 
 export class MarketplacePage extends BasePage {
   constructor(page: Page) {
@@ -156,18 +154,8 @@ export class MarketplacePage extends BasePage {
   // --- Happy-path flows shared across PR smoke specs ---
 
   async openRunnableAgent(): Promise<{ path: string }> {
-    await this.page.goto(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
-    await expect(this.page).toHaveURL(
-      new RegExp(
-        `${DETERMINISTIC_MARKETPLACE_AGENT_CREATOR}/${DETERMINISTIC_MARKETPLACE_AGENT_SLUG}$`,
-      ),
-      {
-        timeout: 15000,
-      },
-    );
-    await expect(this.page.getByTestId("agent-title")).toBeVisible({
-      timeout: 15000,
-    });
+    await this.searchAndOpenAgent(DETERMINISTIC_MARKETPLACE_AGENT_SEARCH);
+
     await expect(this.page.getByTestId("agent-add-library-button")).toBeVisible(
       {
         timeout: 15000,
@@ -178,17 +166,30 @@ export class MarketplacePage extends BasePage {
   }
 
   async openFeaturedAgent(): Promise<void> {
-    await this.goto(this.page);
-    await expect(
-      this.page.getByRole("heading", { level: 1 }).first(),
-    ).toBeVisible();
+    await this.searchAndOpenAgent(DETERMINISTIC_MARKETPLACE_AGENT_SEARCH);
+    await dismissFeedbackDialog(this.page);
+  }
 
-    await this.page.goto(DETERMINISTIC_MARKETPLACE_AGENT_PATH);
+  private async searchAndOpenAgent(agentName: string): Promise<void> {
+    await this.page.goto("/marketplace");
+    const searchInput = await this.getSearchInput(this.page);
+    await searchInput.fill(agentName);
+    await searchInput.press("Enter");
+    await this.page.waitForURL("**/marketplace/search**", { timeout: 15000 });
+
+    const agentCard = this.page
+      .locator('[data-testid="store-card"]')
+      .filter({ hasText: agentName })
+      .first();
+    await expect(agentCard).toBeVisible({ timeout: 15000 });
+    await agentCard.click();
+
     await expect(this.page).toHaveURL(/\/marketplace\/agent\//, {
       timeout: 15000,
     });
-    await expect(this.page.getByTestId("agent-title")).toBeVisible();
-    await dismissFeedbackDialog(this.page);
+    await expect(this.page.getByTestId("agent-title")).toBeVisible({
+      timeout: 15000,
+    });
   }
 
   async submitAgentForReview(publishableAgentName: string): Promise<{
