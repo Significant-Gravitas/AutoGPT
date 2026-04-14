@@ -310,7 +310,7 @@ export class LibraryPage extends BasePage {
   async hasNoAgentsMessage(): Promise<boolean> {
     const { getText } = getSelectors(this.page);
     const noAgentsText = getText("0 agents");
-    return noAgentsText !== null;
+    return noAgentsText.isVisible();
   }
 
   async scrollToBottom(): Promise<void> {

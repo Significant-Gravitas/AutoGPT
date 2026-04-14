@@ -1,6 +1,7 @@
 import path from "path";
 
-export const SEEDED_TEST_PASSWORD = "testpassword123";
+export const SEEDED_TEST_PASSWORD =
+  process.env.SEEDED_TEST_PASSWORD || "testpassword123";
 export const SEEDED_USER_POOL_VERSION = "2.0.0";
 
 export const SEEDED_TEST_ACCOUNTS = {

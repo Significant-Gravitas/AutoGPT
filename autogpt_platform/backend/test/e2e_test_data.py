@@ -665,22 +665,43 @@ class TestDataCreator:
             deterministic_graph = None
 
             try:
-                deterministic_graph_model = make_graph_model(
-                    load_deterministic_marketplace_graph(),
-                    test_user["id"],
+                existing_graph = await prisma_models.AgentGraph.prisma().find_first(
+                    where={
+                        "userId": test_user["id"],
+                        "name": E2E_MARKETPLACE_AGENT_NAME,
+                        "isActive": True,
+                    },
+                    order={"version": "desc"},
                 )
-                deterministic_graph_model.reassign_ids(
-                    user_id=test_user["id"],
-                    reassign_graph_id=True,
-                )
-                created_deterministic_graph = await create_graph(
-                    deterministic_graph_model,
-                    test_user["id"],
-                )
-                deterministic_graph = created_deterministic_graph.model_dump()
-                deterministic_graph["userId"] = test_user["id"]
-                self.agent_graphs.append(deterministic_graph)
-                print("✅ Created deterministic marketplace graph")
+                if existing_graph:
+                    deterministic_graph = {
+                        "id": existing_graph.id,
+                        "version": existing_graph.version,
+                        "name": existing_graph.name,
+                        "userId": test_user["id"],
+                    }
+                    self.agent_graphs.append(deterministic_graph)
+                    print(
+                        "✅ Reused existing deterministic marketplace graph: "
+                        f"{existing_graph.id}"
+                    )
+                else:
+                    deterministic_graph_model = make_graph_model(
+                        load_deterministic_marketplace_graph(),
+                        test_user["id"],
+                    )
+                    deterministic_graph_model.reassign_ids(
+                        user_id=test_user["id"],
+                        reassign_graph_id=True,
+                    )
+                    created_deterministic_graph = await create_graph(
+                        deterministic_graph_model,
+                        test_user["id"],
+                    )
+                    deterministic_graph = created_deterministic_graph.model_dump()
+                    deterministic_graph["userId"] = test_user["id"]
+                    self.agent_graphs.append(deterministic_graph)
+                    print("✅ Created deterministic marketplace graph")
             except Exception as e:
                 print(f"Error creating deterministic marketplace graph: {e}")
 
