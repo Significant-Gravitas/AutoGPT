@@ -1,13 +1,14 @@
 """Tests for AutoPilotBlock: recursion guard, streaming, validation, and error paths."""
 
 import asyncio
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from backend.blocks.autopilot import (
     AUTOPILOT_BLOCK_ID,
     AutoPilotBlock,
+    SubAgentRecursionError,
     _autopilot_recursion_depth,
     _autopilot_recursion_limit,
     _check_recursion,
@@ -57,7 +58,7 @@ class TestCheckRecursion:
         try:
             t2 = _check_recursion(2)
             try:
-                with pytest.raises(RuntimeError, match="recursion depth limit"):
+                with pytest.raises(SubAgentRecursionError):
                     _check_recursion(2)
             finally:
                 _reset_recursion(t2)
@@ -71,7 +72,7 @@ class TestCheckRecursion:
             t2 = _check_recursion(10)  # inner wants 10, but inherited is 2
             try:
                 # depth is now 2, limit is min(10, 2) = 2 → should raise
-                with pytest.raises(RuntimeError, match="recursion depth limit"):
+                with pytest.raises(SubAgentRecursionError):
                     _check_recursion(10)
             finally:
                 _reset_recursion(t2)
@@ -81,7 +82,7 @@ class TestCheckRecursion:
     def test_limit_of_one_blocks_immediately_on_second_call(self):
         t1 = _check_recursion(1)
         try:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(SubAgentRecursionError):
                 _check_recursion(1)
         finally:
             _reset_recursion(t1)
@@ -244,3 +245,171 @@ class TestBlockRegistration:
         # The field should exist (inherited) but there should be no explicit
         # redefinition. We verify by checking the class __annotations__ directly.
         assert "error" not in AutoPilotBlock.Output.__annotations__
+
+
+# ---------------------------------------------------------------------------
+# Recovery enqueue integration tests
+# ---------------------------------------------------------------------------
+
+
+class TestRecoveryEnqueue:
+    """Tests that run() enqueues orphaned sessions for recovery on failure."""
+
+    @pytest.fixture
+    def block(self):
+        return AutoPilotBlock()
+
+    @pytest.mark.asyncio
+    async def test_recovery_enqueued_on_transient_exception(self, block):
+        """A generic exception should trigger _enqueue_for_recovery."""
+        block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))
+        block.create_session = AsyncMock(return_value="sess-recover")
+
+        input_data = block.Input(prompt="do work", max_recursion_depth=3)
+        ctx = _make_context()
+
+        with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
+            mock_enqueue.return_value = None
+            outputs = {}
+            async for name, value in block.run(input_data, execution_context=ctx):
+                outputs[name] = value
+
+        assert "network error" in outputs.get("error", "")
+        mock_enqueue.assert_awaited_once_with(
+            "sess-recover",
+            ctx.user_id,
+            "do work",
+            False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_recovery_not_enqueued_for_recursion_limit(self, block):
+        """Recursion limit errors are deliberate — no recovery enqueue."""
+        block.execute_copilot = AsyncMock(
+            side_effect=SubAgentRecursionError(
+                "AutoPilot recursion depth limit reached (3). "
+                "The autopilot has called itself too many times."
+            )
+        )
+        block.create_session = AsyncMock(return_value="sess-rec-limit")
+
+        input_data = block.Input(prompt="recurse", max_recursion_depth=3)
+        ctx = _make_context()
+
+        with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
+
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_recovery_not_enqueued_for_dry_run(self, block):
+        """dry_run=True sessions must not be enqueued (no real consumers)."""
+        block.execute_copilot = AsyncMock(side_effect=RuntimeError("transient"))
+        block.create_session = AsyncMock(return_value="sess-dry-fail")
+
+        input_data = block.Input(prompt="test", max_recursion_depth=3, dry_run=True)
+        ctx = _make_context()
+
+        with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
+            mock_enqueue.return_value = None
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
+
+        # _enqueue_for_recovery is called with dry_run=True,
+        # so the inner guard returns early without publishing to the queue.
+        mock_enqueue.assert_awaited_once()
+        positional = mock_enqueue.call_args_list[0][0]
+        assert positional[3] is True  # dry_run=True
+
+    @pytest.mark.asyncio
+    async def test_recovery_enqueue_failure_does_not_mask_original_error(self, block):
+        """If _enqueue_for_recovery itself raises, the original error is still yielded."""
+        block.execute_copilot = AsyncMock(side_effect=ValueError("original"))
+        block.create_session = AsyncMock(return_value="sess-enq-fail")
+
+        input_data = block.Input(prompt="hello", max_recursion_depth=3)
+        ctx = _make_context()
+
+        async def _failing_enqueue(*args, **kwargs):
+            raise OSError("rabbitmq down")
+
+        with patch(
+            "backend.blocks.autopilot._enqueue_for_recovery",
+            side_effect=_failing_enqueue,
+        ):
+            outputs = {}
+            async for name, value in block.run(input_data, execution_context=ctx):
+                outputs[name] = value
+
+        # Original error must still be surfaced despite the enqueue failure
+        assert outputs.get("error") == "original"
+        assert outputs.get("session_id") == "sess-enq-fail"
+
+    @pytest.mark.asyncio
+    async def test_recovery_uses_dry_run_from_context(self, block):
+        """execution_context.dry_run=True is OR-ed into the dry_run arg."""
+        block.execute_copilot = AsyncMock(side_effect=RuntimeError("fail"))
+        block.create_session = AsyncMock(return_value="sess-ctx-dry")
+
+        input_data = block.Input(prompt="test", max_recursion_depth=3, dry_run=False)
+        ctx = _make_context()
+        ctx.dry_run = True  # outer execution is dry_run
+
+        with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
+            mock_enqueue.return_value = None
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
+
+        mock_enqueue.assert_awaited_once()
+        positional = mock_enqueue.call_args_list[0][0]
+        assert positional[3] is True  # dry_run=True
+
+    @pytest.mark.asyncio
+    async def test_recovery_uses_effective_prompt_with_system_context(self, block):
+        """When system_context is set, _enqueue_for_recovery receives the
+        effective_prompt (system_context prepended) so the dedup check in
+        maybe_append_user_message passes on replay."""
+        block.execute_copilot = AsyncMock(side_effect=RuntimeError("e2b timeout"))
+        block.create_session = AsyncMock(return_value="sess-sys-ctx")
+
+        input_data = block.Input(
+            prompt="do work",
+            system_context="Be concise.",
+            max_recursion_depth=3,
+        )
+        ctx = _make_context()
+
+        with patch("backend.blocks.autopilot._enqueue_for_recovery") as mock_enqueue:
+            mock_enqueue.return_value = None
+            async for _ in block.run(input_data, execution_context=ctx):
+                pass
+
+        mock_enqueue.assert_awaited_once()
+        positional = mock_enqueue.call_args_list[0][0]
+        assert positional[2] == "[System Context: Be concise.]\n\ndo work"
+
+    @pytest.mark.asyncio
+    async def test_recovery_cancelled_error_still_yields_error(self, block):
+        """CancelledError during _enqueue_for_recovery still yields the error output."""
+        block.execute_copilot = AsyncMock(side_effect=RuntimeError("e2b stall"))
+        block.create_session = AsyncMock(return_value="sess-cancel")
+
+        async def _cancelled_enqueue(*args, **kwargs):
+            raise asyncio.CancelledError
+
+        outputs = {}
+        with patch(
+            "backend.blocks.autopilot._enqueue_for_recovery",
+            side_effect=_cancelled_enqueue,
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                async for name, value in block.run(
+                    block.Input(prompt="do work", max_recursion_depth=3),
+                    execution_context=_make_context(),
+                ):
+                    outputs[name] = value
+
+        # error must be yielded even when recovery raises CancelledError
+        assert outputs.get("error") == "e2b stall"
+        assert outputs.get("session_id") == "sess-cancel"

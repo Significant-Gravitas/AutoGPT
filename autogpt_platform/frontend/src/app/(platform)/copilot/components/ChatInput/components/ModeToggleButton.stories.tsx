@@ -10,7 +10,7 @@ const meta: Meta<typeof ModeToggleButton> = {
     docs: {
       description: {
         component:
-          "Toggle between Fast and Extended Thinking copilot modes. Disabled while a response is streaming.",
+          "Toggle between Fast and Extended Thinking copilot modes. Hidden while a response is streaming.",
       },
     },
   },
@@ -25,20 +25,11 @@ type Story = StoryObj<typeof meta>;
 export const FastMode: Story = {
   args: {
     mode: "fast",
-    isStreaming: false,
   },
 };
 
 export const ExtendedThinkingMode: Story = {
   args: {
     mode: "extended_thinking",
-    isStreaming: false,
-  },
-};
-
-export const DisabledWhileStreaming: Story = {
-  args: {
-    mode: "fast",
-    isStreaming: true,
   },
 };

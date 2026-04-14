@@ -200,10 +200,9 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
-            {showModeToggle && (
+            {showModeToggle && !isStreaming && (
               <ModeToggleButton
                 mode={copilotMode}
-                isStreaming={isStreaming}
                 onToggle={handleToggleMode}
               />
             )}
