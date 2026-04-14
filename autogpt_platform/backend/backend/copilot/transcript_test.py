@@ -981,6 +981,54 @@ class TestRestoreCliSession:
 
         assert result is False
 
+    def test_returns_true_when_local_file_already_exists(self, tmp_path):
+        """Same-pod reuse: if local file exists, skip storage download and return True."""
+        import asyncio
+        import os
+        import re
+        from pathlib import Path
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import restore_cli_session
+
+        session_id = "12345678-0000-0000-0000-000000000099"
+        sdk_cwd = str(tmp_path)
+
+        # Pre-create the local session file (simulates previous turn on same pod)
+        projects_base = os.path.realpath(str(tmp_path))
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", projects_base)
+        session_dir = Path(projects_base) / encoded_cwd
+        session_dir.mkdir(parents=True, exist_ok=True)
+        existing_content = b'{"type":"user"}\n{"type":"assistant"}\n'
+        (session_dir / f"{session_id}.jsonl").write_bytes(existing_content)
+
+        mock_storage = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.transcript.get_workspace_storage",
+                new_callable=AsyncMock,
+                return_value=mock_storage,
+            ),
+            patch(
+                "backend.copilot.transcript._projects_base",
+                return_value=projects_base,
+            ),
+        ):
+            result = asyncio.run(
+                restore_cli_session(
+                    user_id="user-1",
+                    session_id=session_id,
+                    sdk_cwd=sdk_cwd,
+                )
+            )
+
+        assert result is True
+        # Storage should NOT have been accessed (local file was used as-is)
+        mock_storage.retrieve.assert_not_called()
+        # Local file should be unchanged
+        assert (session_dir / f"{session_id}.jsonl").read_bytes() == existing_content
+
     def test_returns_true_on_success(self, tmp_path):
         """Happy path: storage has the session → file written → returns True."""
         import asyncio
