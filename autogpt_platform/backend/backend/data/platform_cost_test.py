@@ -41,7 +41,6 @@ class TestUsdToMicrodollars:
         assert usd_to_microdollars(1.0) == 1_000_000
 
 
-
 class TestMaskEmail:
     def test_typical_email(self):
         assert _mask_email("user@example.com") == "us***@example.com"
