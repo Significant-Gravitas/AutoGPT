@@ -51,10 +51,28 @@ class TestHardDeleteBasicFlow:
     @pytest.mark.asyncio
     async def test_hard_delete_calls_both_queries(self) -> None:
         driver = AsyncMock()
-        driver.execute_query.return_value = ([], None, None)
+        # First call (delete) returns a matched record, second (cleanup) returns empty
+        driver.execute_query.side_effect = [
+            ([{"uuid": "uuid-1"}], None, None),
+            ([], None, None),
+        ]
 
         deleted, failed = await _hard_delete_edges(driver, ["uuid-1"], "test-user")
         assert deleted == ["uuid-1"]
         assert failed == []
         # Should call: 1) delete edge, 2) clean episode back-refs
         assert driver.execute_query.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_hard_delete_reports_failure_when_no_edge_matched(self) -> None:
+        driver = AsyncMock()
+        # Delete query returns no records — edge not found
+        driver.execute_query.return_value = ([], None, None)
+
+        deleted, failed = await _hard_delete_edges(
+            driver, ["nonexistent-uuid"], "test-user"
+        )
+        assert deleted == []
+        assert failed == ["nonexistent-uuid"]
+        # Only the delete query should run — cleanup skipped
+        assert driver.execute_query.call_count == 1

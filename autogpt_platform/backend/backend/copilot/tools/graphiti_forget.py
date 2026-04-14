@@ -305,10 +305,17 @@ async def _hard_delete_edges(
     for uuid in uuids:
         try:
             # Delete the edge itself (all edge types matching this UUID)
-            await driver.execute_query(
-                "MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->() DELETE e",
+            records, _, _ = await driver.execute_query(
+                """
+                MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
+                DELETE e
+                RETURN e.uuid AS uuid
+                """,
                 uuid=uuid,
             )
+            if not records:
+                failed.append(uuid)
+                continue
             # Clean up episode back-references
             await driver.execute_query(
                 """
