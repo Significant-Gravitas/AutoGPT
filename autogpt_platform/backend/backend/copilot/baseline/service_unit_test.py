@@ -13,7 +13,6 @@ from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _BaselineStreamState,
     _compress_session_messages,
-    _estimate_cost_from_tokens,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.transcript_builder import TranscriptBuilder
@@ -575,120 +574,6 @@ class TestPrepareBaselineAttachments:
         assert blocks == []
 
 
-# Pricing rates matching OpenRouter API format (per-token USD) used in tests.
-# Tuple: (input_rate, output_rate, cache_read_rate | None)
-# Anthropic: cache_read = 10% of input; OpenAI: cache_read = 50% of input;
-# gpt-4o-mini: no cache_read published (None → falls back to full input rate).
-_MOCK_OPENROUTER_PRICING: dict[str, tuple[float, float, float | None]] = {
-    "anthropic/claude-opus-4.6": (15.0 / 1_000_000, 75.0 / 1_000_000, 1.5 / 1_000_000),
-    "anthropic/claude-sonnet-4": (3.0 / 1_000_000, 15.0 / 1_000_000, 0.3 / 1_000_000),
-    "anthropic/claude-3.5-sonnet": (3.0 / 1_000_000, 15.0 / 1_000_000, 0.3 / 1_000_000),
-    "openai/gpt-4o": (2.5 / 1_000_000, 10.0 / 1_000_000, 1.25 / 1_000_000),
-    "openai/gpt-4o-mini": (0.15 / 1_000_000, 0.6 / 1_000_000, None),
-}
-
-
-class TestEstimateCostFromTokens:
-    """Tests for _estimate_cost_from_tokens with dynamic OpenRouter pricing."""
-
-    @pytest.mark.asyncio
-    async def test_known_model_returns_estimated_cost(self):
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens(
-                "anthropic/claude-sonnet-4", 1000, 500
-            )
-        # 1000 * 3.0/1M + 500 * 15.0/1M = 0.003 + 0.0075 = 0.0105
-        assert cost == pytest.approx(0.0105)
-
-    @pytest.mark.asyncio
-    async def test_unknown_model_returns_none(self):
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens("unknown/model", 1000, 500)
-        assert cost is None
-
-    @pytest.mark.asyncio
-    async def test_zero_tokens_returns_zero(self):
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens("openai/gpt-4o", 0, 0)
-        assert cost == pytest.approx(0.0)
-
-    @pytest.mark.asyncio
-    async def test_claude_opus_4_6_in_pricing_table(self):
-        """anthropic/claude-opus-4.6 (default non-fast model) must be priced."""
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens(
-                "anthropic/claude-opus-4.6", 1000, 500
-            )
-        # 1000 * 15.0/1M + 500 * 75.0/1M = 0.015 + 0.0375 = 0.0525
-        assert cost == pytest.approx(0.0525)
-
-    @pytest.mark.asyncio
-    async def test_cache_read_tokens_use_openrouter_cache_rate_anthropic(self):
-        """Cache-read tokens use OpenRouter-published cache_read rate for Anthropic."""
-        # anthropic/claude-sonnet-4: input=3/1M, cache_read=0.3/1M
-        # 200 regular + 800 cache-read prompt tokens, 0 completion
-        # cost = 200 * 3/1M + 800 * 0.3/1M = 0.0006 + 0.00024 = 0.00084
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens(
-                "anthropic/claude-sonnet-4",
-                prompt_tokens=1000,
-                completion_tokens=0,
-                cache_read_tokens=800,
-            )
-        assert cost == pytest.approx(0.00084)
-
-    @pytest.mark.asyncio
-    async def test_cache_read_tokens_use_openrouter_cache_rate_openai(self):
-        """Cache-read tokens use OpenRouter-published cache_read rate for OpenAI."""
-        # openai/gpt-4o: input=2.5/1M, cache_read=1.25/1M
-        # 200 regular + 800 cache-read, 0 completion
-        # cost = 200 * 2.5/1M + 800 * 1.25/1M = 0.0005 + 0.001 = 0.0015
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens(
-                "openai/gpt-4o",
-                prompt_tokens=1000,
-                completion_tokens=0,
-                cache_read_tokens=800,
-            )
-        assert cost == pytest.approx(0.0015)
-
-    @pytest.mark.asyncio
-    async def test_cache_read_falls_back_to_input_rate_when_none(self):
-        """Models without a published cache_read rate fall back to the full input rate."""
-        # openai/gpt-4o-mini: input=0.15/1M, cache_read=None (no discount published)
-        # 200 regular + 800 cache-read, 0 completion
-        # cost = 200 * 0.15/1M + 800 * 0.15/1M = 1000 * 0.15/1M = 0.00015
-        with patch(
-            "backend.copilot.baseline.service._fetch_openrouter_pricing",
-            AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-        ):
-            cost = await _estimate_cost_from_tokens(
-                "openai/gpt-4o-mini",
-                prompt_tokens=1000,
-                completion_tokens=0,
-                cache_read_tokens=800,
-            )
-        assert cost == pytest.approx(0.00015)
-
-
 class TestBaselineCostExtraction:
     """Tests for x-total-cost header extraction in _baseline_llm_caller."""
 
@@ -886,8 +771,8 @@ class TestBaselineCostExtraction:
         assert state.cost_usd is None
 
     @pytest.mark.asyncio
-    async def test_no_cost_when_header_missing_and_pricing_unavailable(self):
-        """cost_usd remains None when x-total-cost is absent and pricing fetch returns empty."""
+    async def test_no_cost_when_header_missing(self):
+        """cost_usd remains None when x-total-cost is absent."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
@@ -915,15 +800,9 @@ class TestBaselineCostExtraction:
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
 
-        with (
-            patch(
-                "backend.copilot.baseline.service._get_openai_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "backend.copilot.baseline.service._fetch_openrouter_pricing",
-                AsyncMock(return_value={}),
-            ),
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1063,15 +942,9 @@ class TestBaselineCostExtraction:
             ]
         )
 
-        with (
-            patch(
-                "backend.copilot.baseline.service._get_openai_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "backend.copilot.baseline.service._fetch_openrouter_pricing",
-                AsyncMock(return_value={}),
-            ),
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1091,8 +964,12 @@ class TestBaselineCostExtraction:
         assert state.turn_completion_tokens == 500
 
     @pytest.mark.asyncio
-    async def test_cost_estimated_from_tokens_when_header_missing(self):
-        """cost_usd is estimated from token counts when x-total-cost is absent."""
+    async def test_cost_usd_remains_none_when_header_missing(self):
+        """cost_usd stays None when x-total-cost header is absent.
+
+        Token counts are still tracked; persist_and_record_usage handles
+        the None cost by falling back to tracking_type='tokens'.
+        """
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
@@ -1120,15 +997,9 @@ class TestBaselineCostExtraction:
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
 
-        with (
-            patch(
-                "backend.copilot.baseline.service._get_openai_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "backend.copilot.baseline.service._fetch_openrouter_pricing",
-                AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-            ),
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1136,77 +1007,6 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # Expected: 1000 * 3.0/1M + 500 * 15.0/1M = 0.003 + 0.0075 = 0.0105
-        assert state.cost_usd == pytest.approx(0.0105)
-
-    @pytest.mark.asyncio
-    async def test_multiturn_fallback_cost_uses_per_call_delta(self):
-        """Fallback cost estimation uses per-call token delta, not session total.
-
-        On the second tool-call turn, the state accumulators already hold
-        tokens from turn 1.  The estimator must charge only for the new tokens
-        reported in the current call, not the running total.
-        """
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
-        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
-
-        def make_stream_2(prompt_tokens: int, completion_tokens: int):
-            mock_raw = MagicMock()
-            mock_raw.headers = {}  # no x-total-cost
-            mock_stream = MagicMock()
-            mock_stream._response = mock_raw
-
-            mock_chunk = MagicMock()
-            mock_chunk.usage = MagicMock()
-            mock_chunk.usage.prompt_tokens = prompt_tokens
-            mock_chunk.usage.completion_tokens = completion_tokens
-            mock_chunk.usage.prompt_tokens_details = None
-            mock_chunk.choices = []
-
-            async def chunk_aiter():
-                yield mock_chunk
-
-            mock_stream.__aiter__ = lambda self: chunk_aiter()
-            return mock_stream
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(
-            side_effect=[
-                make_stream_2(1000, 200),
-                make_stream_2(1100, 300),
-            ]
-        )
-
-        with (
-            patch(
-                "backend.copilot.baseline.service._get_openai_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "backend.copilot.baseline.service._fetch_openrouter_pricing",
-                AsyncMock(return_value=_MOCK_OPENROUTER_PRICING),
-            ),
-        ):
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "hi"}],
-                tools=[],
-                state=state,
-            )
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "follow up"}],
-                tools=[],
-                state=state,
-            )
-
-        # Turn 1: 1000 * 3.0/1M + 200 * 15.0/1M = 0.003 + 0.003 = 0.006
-        # Turn 2: 1100 * 3.0/1M + 300 * 15.0/1M = 0.0033 + 0.0045 = 0.0078
-        # Total: 0.0138 -- NOT 0.006 + cumulative (2100*3/1M + 500*15/1M)
-        expected = pytest.approx(0.006 + 0.0078, rel=1e-5)
-        assert state.cost_usd == expected
-        # Accumulators hold all tokens across both turns
-        assert state.turn_prompt_tokens == 2100
+        assert state.cost_usd is None
+        assert state.turn_prompt_tokens == 1000
         assert state.turn_completion_tokens == 500
