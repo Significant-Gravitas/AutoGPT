@@ -62,6 +62,67 @@ class TestFetchWarmContextGeneralError:
 # ---------------------------------------------------------------------------
 
 
+class TestFormatContextWithContent:
+    """Test _format_context with actual edges and episodes."""
+
+    def test_with_edges_only(self) -> None:
+        edge = SimpleNamespace(
+            fact="user likes coffee",
+            name="preference",
+            valid_at="2025-01-01",
+            invalid_at="present",
+        )
+        result = _format_context(edges=[edge], episodes=[])
+        assert result is not None
+        assert "<FACTS>" in result
+        assert "user likes coffee" in result
+        assert "<temporal_context>" in result
+
+    def test_with_episodes_only(self) -> None:
+        ep = SimpleNamespace(
+            content="plain conversation text",
+            created_at="2025-01-01T00:00:00Z",
+        )
+        result = _format_context(edges=[], episodes=[ep])
+        assert result is not None
+        assert "<RECENT_EPISODES>" in result
+        assert "plain conversation text" in result
+
+    def test_with_both_edges_and_episodes(self) -> None:
+        edge = SimpleNamespace(
+            fact="user likes coffee",
+            valid_at="2025-01-01",
+            invalid_at=None,
+        )
+        ep = SimpleNamespace(
+            content="talked about coffee",
+            created_at="2025-06-01T00:00:00Z",
+        )
+        result = _format_context(edges=[edge], episodes=[ep])
+        assert result is not None
+        assert "<FACTS>" in result
+        assert "<RECENT_EPISODES>" in result
+
+    def test_global_scope_episode_included(self) -> None:
+        envelope = MemoryEnvelope(content="global note", scope="real:global")
+        ep = SimpleNamespace(
+            content=envelope.model_dump_json(),
+            created_at="2025-01-01T00:00:00Z",
+        )
+        result = _format_context(edges=[], episodes=[ep])
+        assert result is not None
+        assert "<RECENT_EPISODES>" in result
+
+    def test_non_global_scope_episode_excluded(self) -> None:
+        envelope = MemoryEnvelope(content="project note", scope="project:crm")
+        ep = SimpleNamespace(
+            content=envelope.model_dump_json(),
+            created_at="2025-01-01T00:00:00Z",
+        )
+        result = _format_context(edges=[], episodes=[ep])
+        assert result is None
+
+
 class TestIsNonGlobalScopeEdgeCases:
     """Verify _is_non_global_scope handles non-dict JSON without crashing."""
 

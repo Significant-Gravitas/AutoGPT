@@ -150,6 +150,130 @@ class TestResolveUserName:
         assert name == "User"
 
 
+class TestEnqueueEpisode:
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_returns_true_on_success(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="test_ep",
+                episode_body="hello",
+                is_json=False,
+            )
+            assert result is True
+            assert not q.empty()
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_returns_false_for_empty_user(self) -> None:
+        result = await ingest.enqueue_episode(
+            user_id="",
+            session_id="sess1",
+            name="test_ep",
+            episode_body="hello",
+        )
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_returns_false_on_invalid_user(self) -> None:
+        with patch.object(ingest, "derive_group_id", side_effect=ValueError("bad id")):
+            result = await ingest.enqueue_episode(
+                user_id="bad",
+                session_id="sess1",
+                name="test_ep",
+                episode_body="hello",
+            )
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_enqueue_episode_json_mode(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            result = await ingest.enqueue_episode(
+                user_id="abc",
+                session_id="sess1",
+                name="test_ep",
+                episode_body='{"content": "hello"}',
+                is_json=True,
+            )
+            assert result is True
+            item = q.get_nowait()
+            from graphiti_core.nodes import EpisodeType
+
+            assert item["source"] == EpisodeType.json
+
+
+class TestDerivedFindingLane:
+    @pytest.mark.asyncio
+    async def test_finding_worthy_message_enqueues_two_episodes(self) -> None:
+        """A substantive assistant message should enqueue both the user
+        episode and a derived-finding episode."""
+        long_msg = "The analysis reveals significant growth patterns " + "x" * 200
+
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+            patch(
+                "backend.copilot.graphiti.ingest._resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            await ingest.enqueue_conversation_turn(
+                user_id="abc",
+                session_id="sess1",
+                user_msg="tell me about growth",
+                assistant_msg=long_msg,
+            )
+            # Should have 2 items: user episode + derived finding
+            assert q.qsize() == 2
+
+    @pytest.mark.asyncio
+    async def test_short_assistant_msg_skips_finding(self) -> None:
+        with (
+            patch.object(ingest, "derive_group_id", return_value="user_abc"),
+            patch.object(
+                ingest, "_ensure_worker", new_callable=AsyncMock
+            ) as mock_worker,
+            patch(
+                "backend.copilot.graphiti.ingest._resolve_user_name",
+                new_callable=AsyncMock,
+                return_value="Alice",
+            ),
+        ):
+            q: asyncio.Queue = asyncio.Queue(maxsize=100)
+            mock_worker.return_value = q
+
+            await ingest.enqueue_conversation_turn(
+                user_id="abc",
+                session_id="sess1",
+                user_msg="hi",
+                assistant_msg="ok",
+            )
+            # Only 1 item: the user episode (no finding for short msg)
+            assert q.qsize() == 1
+
+
 class TestDerivedFindingDistillation:
     """_is_finding_worthy and _distill_finding gate derived-finding creation."""
 
