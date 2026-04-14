@@ -7,8 +7,7 @@ import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
-import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
-import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
+import { resolveForRenderer } from "@/app/(platform)/copilot/tools/ViewAgentOutput/ViewAgentOutput";
 import {
   ContentBadge,
   ContentCard,
@@ -22,23 +21,6 @@ interface Props {
 }
 
 const COLLAPSED_LIMIT = 3;
-
-function resolveForRenderer(value: unknown): {
-  value: unknown;
-  metadata?: OutputMetadata;
-} {
-  if (!isWorkspaceURI(value)) return { value };
-
-  const parsed = parseWorkspaceURI(value);
-  if (!parsed) return { value };
-
-  const metadata: OutputMetadata = {};
-  if (parsed.mimeType) {
-    metadata.mimeType = parsed.mimeType;
-  }
-
-  return { value, metadata };
-}
 
 function RenderOutputValue({ value }: { value: unknown }) {
   const resolved = resolveForRenderer(value);
@@ -54,16 +36,6 @@ function RenderOutputValue({ value }: { value: unknown }) {
         metadata={resolved.metadata}
         renderer={renderer}
       />
-    );
-  }
-
-  // Fallback for audio workspace refs
-  if (
-    isWorkspaceURI(value) &&
-    resolved.metadata?.mimeType?.startsWith("audio/")
-  ) {
-    return (
-      <audio controls src={String(resolved.value)} className="mt-2 w-full" />
     );
   }
 
