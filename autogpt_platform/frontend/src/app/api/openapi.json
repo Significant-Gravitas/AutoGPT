@@ -12112,6 +12112,20 @@
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
+      "PeekPendingMessagesResponse": {
+        "properties": {
+          "messages": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Messages"
+          },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["messages", "count"],
+        "title": "PeekPendingMessagesResponse",
+        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
+      },
       "PendingHumanReviewModel": {
         "properties": {
           "node_exec_id": {
@@ -12875,20 +12889,6 @@
         "required": ["message"],
         "title": "QueuePendingMessageRequest",
         "description": "Request model for queueing a message into an in-flight turn.\n\nUnlike ``StreamChatRequest`` this endpoint does **not** start a new\nturn — the message is appended to a per-session pending buffer that\nthe executor currently processing the turn will drain between tool\nrounds."
-      },
-      "PeekPendingMessagesResponse": {
-        "properties": {
-          "messages": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Messages"
-          },
-          "count": { "type": "integer", "title": "Count" }
-        },
-        "type": "object",
-        "required": ["messages", "count"],
-        "title": "PeekPendingMessagesResponse",
-        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
       },
       "QueuePendingMessageResponse": {
         "properties": {
