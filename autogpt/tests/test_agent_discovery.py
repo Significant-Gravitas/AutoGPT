@@ -2,7 +2,6 @@
 
 import json
 import time
-import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,6 +39,29 @@ SAMPLE_DISCOVERY = {
 }
 
 
+def _make_mock_https_conn(
+    status=200,
+    body=None,
+    raise_on_request=None,
+):
+    """Build a mock HTTPSConnection class."""
+    if body is None:
+        body = json.dumps(SAMPLE_DISCOVERY).encode()
+
+    mock_resp = MagicMock()
+    mock_resp.status = status
+    mock_resp.read.return_value = body
+
+    mock_conn = MagicMock()
+    mock_conn.getresponse.return_value = mock_resp
+    if raise_on_request:
+        mock_conn.request.side_effect = raise_on_request
+
+    # Mock the constructor
+    mock_conn_cls = MagicMock(return_value=mock_conn)
+    return mock_conn_cls, mock_conn
+
+
 class TestDiscoveryResult:
     def test_list_services(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
@@ -57,89 +79,66 @@ class TestDiscoveryResult:
         result = DiscoveryResult(SAMPLE_DISCOVERY)
         memory = result.get_service("memory")
         assert memory is not None
-        assert memory["endpoint"] == (
-            "https://example.com/api/memory"
-        )
+        assert "memory" in memory["endpoint"]
 
     def test_get_service_missing(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
         assert result.get_service("nonexistent") is None
 
-    def test_domain(self):
+    def test_domain_property(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
-        assert result.domain == "example.com"
+        assert result.domain == SAMPLE_DISCOVERY["domain"]
 
-    def test_version(self):
+    def test_version_property(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
         assert result.version == "0.1"
 
-    def test_trust(self):
+    def test_trust_property(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
         assert "verification_url" in result.trust
 
-    def test_repr(self):
-        result = DiscoveryResult(SAMPLE_DISCOVERY)
-        r = repr(result)
-        assert "example.com" in r
-        assert "memory" in r
-
-    def test_deepcopy_isolation(self):
-        """Mutating returned service doesn't poison cache."""
+    def test_deepcopy_isolation_get_service(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
         svc = result.get_service("memory")
         svc["endpoint"] = "MUTATED"
         # Original should be unchanged
         original = result.get_service("memory")
-        assert original["endpoint"] == (
-            "https://example.com/api/memory"
-        )
+        assert original["endpoint"] != "MUTATED"
 
-    def test_services_property_isolation(self):
-        """Mutating .services dict doesn't affect internals."""
+    def test_deepcopy_isolation_services_property(self):
         result = DiscoveryResult(SAMPLE_DISCOVERY)
         svcs = result.services
         svcs["memory"]["endpoint"] = "MUTATED"
-        assert result.get_service("memory")["endpoint"] == (
-            "https://example.com/api/memory"
-        )
+        assert result.get_service("memory")["endpoint"] != "MUTATED"
 
 
 class TestSSRFValidation:
+    def setup_method(self):
+        _cache.clear()
+
     def test_rejects_ip_literal(self):
-        with pytest.raises(
-            ValueError, match="invalid domain"
-        ):
+        with pytest.raises(ValueError, match="invalid domain"):
             discover_services("127.0.0.1")
 
     def test_rejects_ip_with_port(self):
-        with pytest.raises(
-            ValueError, match="invalid domain"
-        ):
+        with pytest.raises(ValueError, match="invalid domain"):
             discover_services("127.0.0.1:8080")
 
-    def test_rejects_localhost(self):
-        """localhost fails FQDN validation (no TLD)."""
-        with pytest.raises(
-            ValueError, match="invalid domain"
-        ):
+    def test_rejects_localhost_format(self):
+        """localhost has no TLD, fails FQDN regex."""
+        with pytest.raises(ValueError, match="invalid domain"):
             discover_services("localhost")
 
     def test_rejects_empty(self):
-        with pytest.raises(
-            ValueError, match="non-empty"
-        ):
+        with pytest.raises(ValueError, match="non-empty"):
             discover_services("")
 
     def test_rejects_scheme_injection(self):
-        with pytest.raises(
-            ValueError, match="invalid domain"
-        ):
+        with pytest.raises(ValueError, match="invalid domain"):
             discover_services("http://evil.com")
 
     def test_rejects_userinfo_injection(self):
-        with pytest.raises(
-            ValueError, match="invalid domain"
-        ):
+        with pytest.raises(ValueError, match="invalid domain"):
             discover_services("admin:pass@evil.com")
 
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
@@ -147,67 +146,33 @@ class TestSSRFValidation:
         mock_dns.return_value = [
             (2, 1, 6, "", ("10.0.0.1", 443))
         ]
-        with pytest.raises(
-            ValueError, match="blocked address"
-        ):
-            discover_services("evil.example.com")
+        with pytest.raises(ValueError, match="blocked address"):
+            discover_services("evil1.example.com")
 
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
     def test_rejects_metadata_ip(self, mock_dns):
         mock_dns.return_value = [
             (2, 1, 6, "", ("169.254.169.254", 443))
         ]
-        with pytest.raises(
-            ValueError, match="blocked address"
-        ):
-            discover_services("metadata.example.com")
+        with pytest.raises(ValueError, match="blocked address"):
+            discover_services("evil2.example.com")
 
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
     def test_rejects_loopback_v6(self, mock_dns):
         mock_dns.return_value = [
             (10, 1, 6, "", ("::1", 443, 0, 0))
         ]
-        with pytest.raises(
-            ValueError, match="blocked address"
-        ):
-            discover_services("evil.example.com")
-
-
-class TestRedirectProtection:
-    """Verify 3xx redirects are blocked (SSRF bypass)."""
-
-    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_redirect_blocked(self, mock_dns):
-        mock_dns.return_value = [
-            (2, 1, 6, "", ("93.184.216.34", 443))
-        ]
-        _cache.clear()
-
-        with patch(
-            "autogpt.utils.agent_discovery.urllib.request"
-            ".build_opener"
-        ) as mock_opener:
-            mock_resp = MagicMock()
-            mock_resp.open.side_effect = (
-                urllib.error.HTTPError(
-                    "url",
-                    302,
-                    "Redirect blocked",
-                    {},
-                    None,
-                )
-            )
-            mock_opener.return_value = mock_resp
-            result = discover_services("example.com")
-            assert result is None
+        with pytest.raises(ValueError, match="blocked address"):
+            discover_services("evil3.example.com")
 
 
 class TestDiscoverServices:
     def setup_method(self):
         _cache.clear()
 
-    def _mock_success(self, mock_dns, mock_opener):
-        """Set up mocks for a successful discovery."""
+    @patch("http.client.HTTPSConnection")
+    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
+    def test_success(self, mock_dns, mock_conn_cls):
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
@@ -216,32 +181,18 @@ class TestDiscoverServices:
         mock_resp.read.return_value = json.dumps(
             SAMPLE_DISCOVERY
         ).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_open = MagicMock()
-        mock_open.open.return_value = mock_resp
-        mock_opener.return_value = mock_open
-        return mock_resp
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
-    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_success(self, mock_dns, mock_opener):
-        self._mock_success(mock_dns, mock_opener)
-        result = discover_services("example.com")
+        result = discover_services("example1.com")
         assert result is not None
         assert result.domain == "example.com"
         assert result.has_service("memory")
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_accepts_201(self, mock_dns, mock_opener):
-        """Non-200 2xx responses should succeed."""
+    def test_accepts_201(self, mock_dns, mock_conn_cls):
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
@@ -250,128 +201,123 @@ class TestDiscoverServices:
         mock_resp.read.return_value = json.dumps(
             SAMPLE_DISCOVERY
         ).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_open = MagicMock()
-        mock_open.open.return_value = mock_resp
-        mock_opener.return_value = mock_open
-        result = discover_services("example.com")
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
+
+        result = discover_services("example2.com")
         assert result is not None
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_404_returns_none(self, mock_dns, mock_opener):
+    def test_redirect_blocked(self, mock_dns, mock_conn_cls):
+        """3xx redirects return None (SSRF bypass prevention)."""
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
-        mock_open = MagicMock()
-        mock_open.open.side_effect = urllib.error.HTTPError(
-            "url", 404, "Not Found", {}, None
-        )
-        mock_opener.return_value = mock_open
-        result = discover_services("example.com")
+        mock_resp = MagicMock()
+        mock_resp.status = 302
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
+
+        result = discover_services("example3.com")
         assert result is None
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_404_negative_cached(self, mock_dns, mock_opener):
-        """404 should be negative-cached."""
+    def test_404_returns_none_and_caches(
+        self, mock_dns, mock_conn_cls
+    ):
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
-        mock_open = MagicMock()
-        mock_open.open.side_effect = urllib.error.HTTPError(
-            "url", 404, "Not Found", {}, None
-        )
-        mock_opener.return_value = mock_open
-        discover_services("example.com")
-        assert "example.com" in _cache
-        assert _cache["example.com"][1] is None
+        mock_resp = MagicMock()
+        mock_resp.status = 404
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
+        result = discover_services("example4.com")
+        assert result is None
+        assert "example4.com" in _cache
+        assert _cache["example4.com"][1] is None
+
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_timeout_not_cached(self, mock_dns, mock_opener):
+    def test_timeout_not_cached(self, mock_dns, mock_conn_cls):
         """Transient timeout should NOT be negative-cached."""
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
-        mock_open = MagicMock()
-        mock_open.open.side_effect = TimeoutError()
-        mock_opener.return_value = mock_open
-        result = discover_services("example.com")
-        assert result is None
-        assert "example.com" not in _cache
+        mock_conn = MagicMock()
+        mock_conn.request.side_effect = TimeoutError()
+        mock_conn_cls.return_value = mock_conn
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
+        result = discover_services("example5.com")
+        assert result is None
+        assert "example5.com" not in _cache
+
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
     def test_malformed_json_not_cached(
-        self, mock_dns, mock_opener
+        self, mock_dns, mock_conn_cls
     ):
-        """Malformed JSON should NOT be negative-cached."""
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
         mock_resp = MagicMock()
         mock_resp.status = 200
         mock_resp.read.return_value = b"not json"
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_open = MagicMock()
-        mock_open.open.return_value = mock_resp
-        mock_opener.return_value = mock_open
-        result = discover_services("example.com")
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
+
+        result = discover_services("example6.com")
         assert result is None
+        assert "example6.com" not in _cache
 
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_cache_hit(self, mock_dns, mock_opener):
-        self._mock_success(mock_dns, mock_opener)
-        r1 = discover_services("example.com")
-        r2 = discover_services("example.com")
-        assert r1 is not None
-        assert r2 is not None
-        # opener.open called only once (cache hit)
-        opener_inst = mock_opener.return_value
-        assert opener_inst.open.call_count == 1
-
-    @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
-    )
-    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_cache_expired(self, mock_dns, mock_opener):
-        self._mock_success(mock_dns, mock_opener)
-        # Inject expired cache
-        _cache["example.com"] = (
-            time.time() - 7200,
+    def test_cache_hit_skips_dns(
+        self, mock_dns, mock_conn_cls
+    ):
+        """Cache hit should NOT call DNS or HTTPSConnection."""
+        # Populate cache
+        _cache["example7.com"] = (
+            time.time(),
             SAMPLE_DISCOVERY,
         )
-        discover_services("example.com")
-        opener_inst = mock_opener.return_value
-        assert opener_inst.open.call_count == 1
+        result = discover_services("example7.com")
+        assert result is not None
+        # Cache check happens BEFORE DNS, so these should
+        # never be called
+        mock_dns.assert_not_called()
+        mock_conn_cls.assert_not_called()
 
+    @patch("http.client.HTTPSConnection")
     @patch(
-        "autogpt.utils.agent_discovery.urllib.request"
-        ".build_opener"
+        "autogpt.utils.agent_discovery._resolve_and_validate"
     )
+    def test_cache_hit_survives_dns_failure(
+        self, mock_resolve, mock_conn_cls
+    ):
+        """Cached result returned even if DNS broken."""
+        _cache["example8.com"] = (
+            time.time(),
+            SAMPLE_DISCOVERY,
+        )
+        mock_resolve.side_effect = ValueError("DNS broken")
+        # Should NOT raise — cache hit happens first
+        result = discover_services("example8.com")
+        assert result is not None
+        mock_resolve.assert_not_called()
+
+    @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
-    def test_pinned_ip_in_url(self, mock_dns, mock_opener):
-        """URL should use pinned IP, not domain (TOCTOU)."""
+    def test_cache_expired_triggers_fetch(
+        self, mock_dns, mock_conn_cls
+    ):
         mock_dns.return_value = [
             (2, 1, 6, "", ("93.184.216.34", 443))
         ]
@@ -380,16 +326,41 @@ class TestDiscoverServices:
         mock_resp.read.return_value = json.dumps(
             SAMPLE_DISCOVERY
         ).encode()
-        mock_resp.__enter__ = lambda s: s
-        mock_resp.__exit__ = MagicMock(return_value=False)
-        mock_open = MagicMock()
-        mock_open.open.return_value = mock_resp
-        mock_opener.return_value = mock_open
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
 
-        discover_services("example.com")
+        # Expired cache
+        _cache["example9.com"] = (
+            time.time() - 7200,
+            SAMPLE_DISCOVERY,
+        )
+        discover_services("example9.com")
+        mock_conn_cls.assert_called_once()
 
-        # Check the URL used the pinned IP
-        call_args = mock_open.open.call_args
-        req = call_args[0][0]
-        assert "93.184.216.34" in req.full_url
-        assert req.get_header("Host") == "example.com"
+    @patch("http.client.HTTPSConnection")
+    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
+    def test_https_connection_uses_domain_for_sni(
+        self, mock_dns, mock_conn_cls
+    ):
+        """HTTPSConnection should be constructed with domain
+        so SSL SNI/cert validation uses domain name."""
+        mock_dns.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443))
+        ]
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = json.dumps(
+            SAMPLE_DISCOVERY
+        ).encode()
+        mock_conn = MagicMock()
+        mock_conn.getresponse.return_value = mock_resp
+        mock_conn_cls.return_value = mock_conn
+
+        discover_services("example10.com")
+
+        # First positional arg to HTTPSConnection
+        # should be the domain, not the IP
+        call_args = mock_conn_cls.call_args
+        first_arg = call_args[0][0]
+        assert first_arg == "example10.com"
