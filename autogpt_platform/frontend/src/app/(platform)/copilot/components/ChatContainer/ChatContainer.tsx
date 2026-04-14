@@ -26,6 +26,10 @@ export interface ChatContainerProps {
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
+  /** Called to enqueue a message while streaming (bypasses normal send flow). */
+  onEnqueue?: (message: string) => void | Promise<void>;
+  /** A pending queued message waiting to be injected, shown at the end of chat. */
+  queuedMessage?: string | null;
   isUploadingFiles?: boolean;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
@@ -50,6 +54,8 @@ export const ChatContainer = ({
   onCreateSession,
   onSend,
   onStop,
+  onEnqueue,
+  queuedMessage,
   isUploadingFiles,
   hasMoreMessages,
   isLoadingMore,
@@ -114,6 +120,7 @@ export const ChatContainer = ({
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 historicalDurations={historicalDurations}
+                queuedMessage={queuedMessage}
               />
               <motion.div
                 initial={{ opacity: 0 }}
@@ -129,6 +136,7 @@ export const ChatContainer = ({
                   isStreaming={isStreaming}
                   isUploadingFiles={isUploadingFiles}
                   onStop={onStop}
+                  onEnqueue={onEnqueue}
                   placeholder="What else can I help with?"
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}

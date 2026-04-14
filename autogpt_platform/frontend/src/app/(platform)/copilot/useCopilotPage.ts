@@ -34,6 +34,7 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
@@ -268,6 +269,7 @@ export function useCopilotPage() {
         // tool-call rounds by the currently running executor turn.
         try {
           await postV2QueuePendingMessage(sessionId, { message: trimmed });
+          setQueuedMessage(trimmed);
           toast({
             title: "Message queued",
             description:
@@ -321,6 +323,13 @@ export function useCopilotPage() {
 
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
+
+  // Clear queued message when the stream ends so the chat UI stays clean.
+  useEffect(() => {
+    if (status === "ready" || status === "error") {
+      setQueuedMessage(null);
+    }
+  }, [status]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
   const titlePollRef = useRef<ReturnType<typeof setInterval>>();
@@ -409,6 +418,10 @@ export function useCopilotPage() {
     }
   }
 
+  async function onEnqueue(message: string) {
+    await onSend(message);
+  }
+
   return {
     sessionId,
     messages,
@@ -425,6 +438,8 @@ export function useCopilotPage() {
     isLoggedIn,
     createSession,
     onSend,
+    onEnqueue,
+    queuedMessage,
     // Pagination
     hasMoreMessages: hasMore,
     isLoadingMore,
