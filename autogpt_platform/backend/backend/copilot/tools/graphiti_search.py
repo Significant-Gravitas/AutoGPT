@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.copilot.graphiti._format import (
     extract_episode_body,
+    extract_episode_body_raw,
     extract_episode_timestamp,
     extract_fact,
     extract_temporal_validity,
@@ -132,12 +133,14 @@ class MemorySearchTool(BaseTool):
             )
 
         facts = _format_edges(edges)
-        recent = _format_episodes(episodes)
 
         # Scope hard-filter: if a scope was requested, filter episodes
         # whose MemoryEnvelope JSON contains a different scope.
+        # Skip redundant _format_episodes() when scope is set.
         if scope:
             recent = _filter_episodes_by_scope(episodes, scope)
+        else:
+            recent = _format_episodes(episodes)
 
         if not facts and not recent:
             return MemorySearchResponse(
@@ -184,14 +187,17 @@ def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
     Episodes that are plain conversation text (not JSON envelopes) are
     included by default since they have no scope metadata and belong
     to the implicit ``real:global`` scope.
+
+    Uses ``extract_episode_body_raw`` (no truncation) for JSON parsing
+    so that long MemoryEnvelope payloads are parsed correctly.
     """
     import json
 
     results = []
     for ep in episodes:
-        body = extract_episode_body(ep)
+        raw_body = extract_episode_body_raw(ep)
         try:
-            data = json.loads(body)
+            data = json.loads(raw_body)
             ep_scope = data.get("scope", "real:global")
             if ep_scope != scope:
                 continue
@@ -199,6 +205,7 @@ def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
             # Not JSON — plain conversation episode, treat as real:global
             if scope != "real:global":
                 continue
+        display_body = extract_episode_body(ep)
         ts = extract_episode_timestamp(ep)
-        results.append(f"[{ts}] {body}")
+        results.append(f"[{ts}] {display_body}")
     return results

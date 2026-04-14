@@ -84,6 +84,21 @@ def _iter_backend_py_files():
         yield path
 
 
+def test_known_offenders_use_posix_separators():
+    """_KNOWN_OFFENDERS must use forward slashes since the comparison key
+    is built from pathlib.Path.relative_to() which uses OS-native separators.
+    On Windows this would be backslashes, causing false positives.
+
+    Ensure the key construction normalises to forward slashes.
+    """
+    for entry in _KNOWN_OFFENDERS:
+        path_part = entry.split()[0]
+        assert "\\" not in path_part, (
+            f"_KNOWN_OFFENDERS entry uses backslash: {entry!r}. "
+            "Use forward slashes — the test should normalise Path separators."
+        )
+
+
 def test_no_process_cached_loop_bound_clients():
     offenders: list[str] = []
     for py in _iter_backend_py_files():
@@ -100,7 +115,7 @@ def test_no_process_cached_loop_bound_clients():
             bound = _annotation_names(node.returns) & LOOP_BOUND_TYPES
             if bound:
                 rel = py.relative_to(BACKEND_ROOT)
-                key = f"{rel} {node.name}"
+                key = f"{rel.as_posix()} {node.name}"
                 if key in _KNOWN_OFFENDERS:
                     continue
                 offenders.append(

@@ -2464,8 +2464,9 @@ async def stream_chat_completion_sdk(
         # Inject Graphiti warm context into the user message (not the system
         # prompt) so the system prompt stays static and cacheable across all
         # users/sessions.  warm_ctx is already wrapped in <temporal_context>.
+        # Appended AFTER user_context so <user_context> stays at the very start.
         if warm_ctx:
-            query_message = f"{warm_ctx}\n\n{query_message}"
+            query_message = f"{query_message}\n\n{warm_ctx}"
 
         tried_compaction = False
 
@@ -2488,6 +2489,7 @@ async def stream_chat_completion_sdk(
         # ---------------------------------------------------------------
         # Retry loop: original → compacted → no transcript
         # ---------------------------------------------------------------
+        pre_attempt_msg_count: int | None = None
         ended_with_stream_error = False
         attempts_exhausted = False
         transient_exhausted = False
@@ -2595,6 +2597,8 @@ async def stream_chat_completion_sdk(
                 )
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
+                if warm_ctx:
+                    state.query_message = f"{state.query_message}\n\n{warm_ctx}"
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
@@ -2998,11 +3002,16 @@ async def stream_chat_completion_sdk(
         if graphiti_enabled and user_id and message and is_user_message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
-            # Extract last assistant message for derived-finding distillation.
+            # Extract last assistant message from THIS TURN only (not all
+            # session history) to avoid distilling stale content from prior
+            # turns when the current turn errors before producing output.
+            _this_turn_msgs = (
+                session.messages[pre_attempt_msg_count:]
+                if session and pre_attempt_msg_count is not None
+                else []
+            )
             _assistant_msgs = [
-                m.content or ""
-                for m in (session.messages if session else [])
-                if m.role == "assistant"
+                m.content or "" for m in _this_turn_msgs if m.role == "assistant"
             ]
             _last_assistant = _assistant_msgs[-1] if _assistant_msgs else ""
 

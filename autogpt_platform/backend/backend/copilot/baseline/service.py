@@ -1013,15 +1013,16 @@ async def stream_chat_completion_baseline(
     # Inject Graphiti warm context into the first user message (not the
     # system prompt) so the system prompt stays static and cacheable.
     # warm_ctx is already wrapped in <temporal_context>.
+    # Appended AFTER user_context so <user_context> stays at the very start.
     if warm_ctx:
         for msg in openai_messages:
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
-                    msg["content"] = f"{warm_ctx}\n\n{existing}"
+                    msg["content"] = f"{existing}\n\n{warm_ctx}"
                 break
         if user_message_for_transcript:
-            user_message_for_transcript = f"{warm_ctx}\n\n{user_message_for_transcript}"
+            user_message_for_transcript = f"{user_message_for_transcript}\n\n{warm_ctx}"
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
@@ -1280,12 +1281,15 @@ async def stream_chat_completion_baseline(
         if graphiti_enabled and user_id and message and is_user_message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
+            # Pass only the final assistant reply (after stripping tool-loop
+            # chatter) so derived-finding distillation sees the substantive
+            # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
                 enqueue_conversation_turn(
                     user_id,
                     session_id,
                     message,
-                    assistant_msg=state.assistant_text if state else "",
+                    assistant_msg=final_text if state else "",
                 )
             )
             _background_tasks.add(_ingest_task)

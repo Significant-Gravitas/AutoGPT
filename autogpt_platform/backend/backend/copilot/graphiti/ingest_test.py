@@ -150,6 +150,25 @@ class TestResolveUserName:
         assert name == "User"
 
 
+class TestDerivedFindingDistillation:
+    """_is_finding_worthy and _distill_finding gate derived-finding creation."""
+
+    def test_short_message_not_finding_worthy(self) -> None:
+        assert ingest._is_finding_worthy("ok") is False
+
+    def test_chatter_prefix_not_finding_worthy(self) -> None:
+        assert ingest._is_finding_worthy("done " + "x" * 200) is False
+
+    def test_long_substantive_message_is_finding_worthy(self) -> None:
+        msg = "The quarterly revenue analysis shows a 15% increase " + "x" * 200
+        assert ingest._is_finding_worthy(msg) is True
+
+    def test_distill_finding_truncates_to_500(self) -> None:
+        result = ingest._distill_finding("x" * 600)
+        assert result is not None
+        assert len(result) == 503  # 500 + "..."
+
+
 class TestWorkerIdleTimeout:
     @pytest.mark.asyncio
     async def test_worker_cleans_up_on_idle(self) -> None:

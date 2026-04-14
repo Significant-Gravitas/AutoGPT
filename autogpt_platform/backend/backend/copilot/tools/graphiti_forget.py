@@ -258,21 +258,27 @@ async def _soft_delete_edges(
 
     Sets ``invalid_at`` and ``expired_at`` to now, which excludes them
     from default search results while preserving history.
+
+    Matches the same edge types as ``_hard_delete_edges`` so that edges of
+    any type (RELATES_TO, MENTIONS, HAS_MEMBER) can be soft-deleted.
     """
     deleted = []
     failed = []
     for uuid in uuids:
         try:
-            await driver.execute_query(
+            records, _, _ = await driver.execute_query(
                 """
-                MATCH ()-[e:RELATES_TO {uuid: $uuid}]->()
+                MATCH ()-[e:MENTIONS|RELATES_TO|HAS_MEMBER {uuid: $uuid}]->()
                 SET e.invalid_at = datetime(),
                     e.expired_at = datetime()
                 RETURN e.uuid AS uuid
                 """,
                 uuid=uuid,
             )
-            deleted.append(uuid)
+            if records:
+                deleted.append(uuid)
+            else:
+                failed.append(uuid)
         except Exception:
             logger.warning(
                 "Failed to soft-delete edge %s for user %s",
