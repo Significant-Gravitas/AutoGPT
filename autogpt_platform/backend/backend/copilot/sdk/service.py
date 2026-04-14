@@ -2172,13 +2172,14 @@ async def stream_chat_completion_sdk(
             + graphiti_supplement
         )
 
-        # Warm context: pre-load relevant facts from Graphiti on first turn
+        # Warm context: pre-load relevant facts from Graphiti on first turn.
+        # Stored here but injected into the user message (not the system prompt)
+        # after query_message is built — keeps system prompt static for caching.
+        warm_ctx: str | None = None
         if graphiti_enabled and user_id and len(session.messages) <= 1:
             from backend.copilot.graphiti.context import fetch_warm_context
 
             warm_ctx = await fetch_warm_context(user_id, message or "")
-            if warm_ctx:
-                system_prompt += f"\n\n{warm_ctx}"
 
         # Process transcript download result and restore CLI native session.
         # The CLI native session file (uploaded after each turn) is the
@@ -2459,6 +2460,12 @@ async def stream_chat_completion_sdk(
         )
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
+
+        # Inject Graphiti warm context into the user message (not the system
+        # prompt) so the system prompt stays static and cacheable across all
+        # users/sessions.  warm_ctx is already wrapped in <temporal_context>.
+        if warm_ctx:
+            query_message = f"{warm_ctx}\n\n{query_message}"
 
         tried_compaction = False
 

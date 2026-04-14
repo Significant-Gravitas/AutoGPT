@@ -953,13 +953,14 @@ async def stream_chat_completion_baseline(
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
 
-    # Warm context: pre-load relevant facts from Graphiti on first turn
+    # Warm context: pre-load relevant facts from Graphiti on first turn.
+    # Stored here but injected into the user message (not the system prompt)
+    # after openai_messages is built — keeps system prompt static for caching.
+    warm_ctx: str | None = None
     if graphiti_enabled and user_id and len(session.messages) <= 1:
         from backend.copilot.graphiti.context import fetch_warm_context
 
         warm_ctx = await fetch_warm_context(user_id, message or "")
-        if warm_ctx:
-            system_prompt += f"\n\n{warm_ctx}"
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(
@@ -1008,6 +1009,19 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # Inject Graphiti warm context into the first user message (not the
+    # system prompt) so the system prompt stays static and cacheable.
+    # warm_ctx is already wrapped in <temporal_context>.
+    if warm_ctx:
+        for msg in openai_messages:
+            if msg["role"] == "user":
+                existing = msg.get("content", "")
+                if isinstance(existing, str):
+                    msg["content"] = f"{warm_ctx}\n\n{existing}"
+                break
+        if user_message_for_transcript:
+            user_message_for_transcript = f"{warm_ctx}\n\n{user_message_for_transcript}"
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
