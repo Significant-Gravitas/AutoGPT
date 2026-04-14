@@ -15,6 +15,9 @@ interface Props {
     end?: string;
     provider?: string;
     user_id?: string;
+    model?: string;
+    block_name?: string;
+    tracking_type?: string;
     page?: string;
     tab?: string;
   };
@@ -37,10 +40,18 @@ export function PlatformCostContent({ searchParams }: Props) {
     setProviderInput,
     userInput,
     setUserInput,
+    modelInput,
+    setModelInput,
+    blockInput,
+    setBlockInput,
+    typeInput,
+    setTypeInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,
     handleFilter,
+    exporting,
+    handleExport,
   } = usePlatformCostContent(searchParams);
 
   return (
@@ -105,6 +116,54 @@ export function PlatformCostContent({ searchParams }: Props) {
             onChange={(e) => setUserInput(e.target.value)}
           />
         </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="model-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Model
+          </label>
+          <input
+            id="model-filter"
+            type="text"
+            placeholder="e.g. gpt-4o"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={modelInput}
+            onChange={(e) => setModelInput(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="block-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Block
+          </label>
+          <input
+            id="block-filter"
+            type="text"
+            placeholder="e.g. LLMBlock"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={blockInput}
+            onChange={(e) => setBlockInput(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="type-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Type
+          </label>
+          <input
+            id="type-filter"
+            type="text"
+            placeholder="e.g. tokens"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={typeInput}
+            onChange={(e) => setTypeInput(e.target.value)}
+          />
+        </div>
         <button
           onClick={handleFilter}
           className="rounded bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
@@ -117,11 +176,17 @@ export function PlatformCostContent({ searchParams }: Props) {
             setEndInput("");
             setProviderInput("");
             setUserInput("");
+            setModelInput("");
+            setBlockInput("");
+            setTypeInput("");
             updateUrl({
               start: "",
               end: "",
               provider: "",
               user_id: "",
+              model: "",
+              block_name: "",
+              tracking_type: "",
               page: "1",
             });
           }}
@@ -224,6 +289,8 @@ export function PlatformCostContent({ searchParams }: Props) {
                 logs={logs}
                 pagination={pagination}
                 onPageChange={(p) => updateUrl({ page: p.toString() })}
+                onExport={handleExport}
+                exporting={exporting}
               />
             </div>
           )}

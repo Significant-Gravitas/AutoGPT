@@ -14,11 +14,33 @@ interface Props {
   logs: CostLogRow[];
   pagination: Pagination | null;
   onPageChange: (page: number) => void;
+  onExport: () => Promise<void>;
+  exporting: boolean;
 }
 
-function LogsTable({ logs, pagination, onPageChange }: Props) {
+function LogsTable({
+  logs,
+  pagination,
+  onPageChange,
+  onExport,
+  exporting,
+}: Props) {
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">
+          {pagination
+            ? `${pagination.total_items.toLocaleString()} total rows`
+            : ""}
+        </span>
+        <button
+          onClick={onExport}
+          disabled={exporting}
+          className="rounded border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+        >
+          {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b text-xs uppercase text-muted-foreground">

@@ -77,3 +77,25 @@ async def test_log_platform_cost_metadata_none(cost_log_user):
     rows = await PrismaLog.prisma().find_many(where={"userId": user_id})
     assert len(rows) == 1
     assert rows[0].metadata == {}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_log_platform_cost_cache_tokens(cost_log_user):
+    """Verify that cache_read_tokens and cache_creation_tokens are persisted."""
+    user_id = cost_log_user
+    entry = PlatformCostEntry(
+        user_id=user_id,
+        block_name="TestBlock",
+        provider="anthropic",
+        input_tokens=200,
+        output_tokens=100,
+        cache_read_tokens=50,
+        cache_creation_tokens=25,
+        model="claude-3-5-sonnet-20241022",
+    )
+    await log_platform_cost(entry)
+
+    rows = await PrismaLog.prisma().find_many(where={"userId": user_id})
+    assert len(rows) == 1
+    assert rows[0].cacheReadTokens == 50
+    assert rows[0].cacheCreationTokens == 25

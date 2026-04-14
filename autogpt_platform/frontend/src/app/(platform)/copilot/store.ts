@@ -131,6 +131,10 @@ interface CopilotUIState {
   copilotMode: CopilotMode;
   setCopilotMode: (mode: CopilotMode) => void;
 
+  /** Developer dry-run mode: sessions created with dry_run=true. */
+  isDryRun: boolean;
+  setIsDryRun: (enabled: boolean) => void;
+
   clearCopilotLocalData: () => void;
 }
 
@@ -280,6 +284,16 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     set({ copilotMode: mode });
   },
 
+  isDryRun: isClient && storage.get(Key.COPILOT_DRY_RUN) === "true",
+  setIsDryRun: (enabled) => {
+    if (enabled) {
+      storage.set(Key.COPILOT_DRY_RUN, "true");
+    } else {
+      storage.clean(Key.COPILOT_DRY_RUN);
+    }
+    set({ isDryRun: enabled });
+  },
+
   clearCopilotLocalData: () => {
     clearContentCache();
     storage.clean(Key.COPILOT_NOTIFICATIONS_ENABLED);
@@ -289,6 +303,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
     storage.clean(Key.COPILOT_ARTIFACT_PANEL_WIDTH);
     storage.clean(Key.COPILOT_MODE);
     storage.clean(Key.COPILOT_COMPLETED_SESSIONS);
+    storage.clean(Key.COPILOT_DRY_RUN);
     set({
       completedSessionIDs: new Set<string>(),
       isNotificationsEnabled: false,
@@ -302,6 +317,7 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         history: [],
       },
       copilotMode: "extended_thinking",
+      isDryRun: false,
     });
     if (isClient) {
       document.title = ORIGINAL_TITLE;
