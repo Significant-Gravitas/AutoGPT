@@ -56,12 +56,12 @@ def test_unknown_tool_allowed():
 # -- Workspace-scoped tools --------------------------------------------------
 
 
-def test_read_within_workspace_allowed():
-    """Read is workspace-scoped — allowed within sdk_cwd for tool-results."""
+def test_read_within_workspace_blocked():
+    """Read of workspace files is denied — workspace reads must use the read_file MCP tool."""
     result = _validate_tool_access(
         "Read", {"file_path": f"{SDK_CWD}/file.txt"}, sdk_cwd=SDK_CWD
     )
-    assert result == {}
+    assert _is_denied(result)
 
 
 def test_read_outside_workspace_blocked():
