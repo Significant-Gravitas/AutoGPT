@@ -8,6 +8,7 @@ import pytest
 from backend.blocks.autopilot import (
     AUTOPILOT_BLOCK_ID,
     AutoPilotBlock,
+    SubAgentRecursionError,
     _autopilot_recursion_depth,
     _autopilot_recursion_limit,
     _check_recursion,
@@ -58,7 +59,7 @@ class TestCheckRecursion:
         try:
             t2 = _check_recursion(2)
             try:
-                with pytest.raises(RuntimeError, match="recursion depth limit"):
+                with pytest.raises(SubAgentRecursionError):
                     _check_recursion(2)
             finally:
                 _reset_recursion(t2)
@@ -72,7 +73,7 @@ class TestCheckRecursion:
             t2 = _check_recursion(10)  # inner wants 10, but inherited is 2
             try:
                 # depth is now 2, limit is min(10, 2) = 2 → should raise
-                with pytest.raises(RuntimeError, match="recursion depth limit"):
+                with pytest.raises(SubAgentRecursionError):
                     _check_recursion(10)
             finally:
                 _reset_recursion(t2)
@@ -82,7 +83,7 @@ class TestCheckRecursion:
     def test_limit_of_one_blocks_immediately_on_second_call(self):
         t1 = _check_recursion(1)
         try:
-            with pytest.raises(RuntimeError):
+            with pytest.raises(SubAgentRecursionError):
                 _check_recursion(1)
         finally:
             _reset_recursion(t1)
@@ -254,7 +255,7 @@ class TestBlockRegistration:
 
 class TestIsDeliberateBlock:
     def test_recursion_limit_error_is_deliberate(self):
-        exc = RuntimeError("AutoPilot recursion depth limit reached (3).")
+        exc = SubAgentRecursionError("AutoPilot recursion depth limit reached (3).")
         assert _is_deliberate_block(exc) is True
 
     def test_generic_runtime_error_is_not_deliberate(self):
@@ -306,7 +307,7 @@ class TestRecoveryEnqueue:
     async def test_recovery_not_enqueued_for_recursion_limit(self, block):
         """Recursion limit errors are deliberate — no recovery enqueue."""
         block.execute_copilot = AsyncMock(
-            side_effect=RuntimeError(
+            side_effect=SubAgentRecursionError(
                 "AutoPilot recursion depth limit reached (3). "
                 "The autopilot has called itself too many times."
             )

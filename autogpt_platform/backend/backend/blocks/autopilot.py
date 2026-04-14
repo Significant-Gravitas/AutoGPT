@@ -33,6 +33,10 @@ logger = logging.getLogger(__name__)
 AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
 
 
+class SubAgentRecursionError(RuntimeError):
+    """Raised when the sub-agent nesting depth limit is exceeded."""
+
+
 class ToolCallEntry(TypedDict):
     """A single tool invocation record from an autopilot execution."""
 
@@ -469,13 +473,13 @@ def _check_recursion(
     when the caller exits to restore the previous depth.
 
     Raises:
-        RuntimeError: If the current depth already meets or exceeds the limit.
+        SubAgentRecursionError: If the current depth already meets or exceeds the limit.
     """
     current = _autopilot_recursion_depth.get()
     inherited = _autopilot_recursion_limit.get()
     limit = max_depth if inherited is None else min(inherited, max_depth)
     if current >= limit:
-        raise RuntimeError(
+        raise SubAgentRecursionError(
             f"AutoPilot recursion depth limit reached ({limit}). "
             "The autopilot has called itself too many times."
         )
@@ -579,7 +583,7 @@ def _is_deliberate_block(exc: Exception) -> bool:
     Recursion-limit errors are deliberate — re-enqueueing would immediately
     hit the limit again, so we skip recovery for those.
     """
-    return isinstance(exc, RuntimeError) and "recursion depth limit" in str(exc)
+    return isinstance(exc, SubAgentRecursionError)
 
 
 async def _enqueue_for_recovery(
