@@ -33,6 +33,7 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    peek_pending_messages,
     push_pending_message,
 )
 from backend.copilot.rate_limit import (
@@ -255,6 +256,19 @@ class QueuePendingMessageResponse(BaseModel):
     buffer_length: int
     max_buffer_length: int
     turn_in_flight: bool
+
+
+class PeekPendingMessagesResponse(BaseModel):
+    """Response for the pending-message peek (GET) endpoint.
+
+    Returns a read-only view of the pending buffer — messages are NOT
+    consumed.  The frontend uses this to restore the queued-message
+    indicator after a page refresh and to decide when to clear it once
+    a turn has ended.
+    """
+
+    messages: list[str]
+    count: int
 
 
 class CreateSessionRequest(BaseModel):
@@ -1137,6 +1151,31 @@ async def stream_chat_post(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
             "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
         },
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/messages/pending",
+    response_model=PeekPendingMessagesResponse,
+    responses={
+        404: {"description": "Session not found or access denied"},
+    },
+)
+async def get_pending_messages(
+    session_id: str,
+    user_id: str = Security(auth.get_user_id),
+):
+    """Peek at the pending-message buffer without consuming it.
+
+    Returns the current contents of the session's pending message buffer
+    so the frontend can restore the queued-message indicator after a page
+    refresh and clear it correctly once a turn drains the buffer.
+    """
+    await _validate_and_get_session(session_id, user_id)
+    pending = await peek_pending_messages(session_id)
+    return PeekPendingMessagesResponse(
+        messages=[m.content for m in pending],
+        count=len(pending),
     )
 
 

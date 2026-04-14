@@ -186,6 +186,32 @@ async def peek_pending_count(session_id: str) -> int:
     return int(length)
 
 
+async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
+    """Return pending messages without consuming them.
+
+    Uses LRANGE 0 -1 to read all items in enqueue order (oldest first)
+    without removing them.  Returns an empty list if the buffer is empty
+    or the session has no pending messages.
+    """
+    redis = await get_redis_async()
+    key = _buffer_key(session_id)
+    items = await cast("Any", redis.lrange(key, 0, -1))
+    if not items:
+        return []
+    messages: list[PendingMessage] = []
+    for item in items:
+        decoded = item.decode("utf-8") if isinstance(item, bytes) else str(item)
+        try:
+            messages.append(PendingMessage.model_validate(json.loads(decoded)))
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
+            logger.warning(
+                "pending_messages: dropping malformed peek entry for %s: %s",
+                session_id,
+                e,
+            )
+    return messages
+
+
 async def clear_pending_messages(session_id: str) -> None:
     """Drop the session's pending buffer.
 

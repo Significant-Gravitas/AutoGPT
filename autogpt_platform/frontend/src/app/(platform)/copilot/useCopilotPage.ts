@@ -1,5 +1,6 @@
 import {
   getGetV2ListSessionsQueryKey,
+  getV2GetPendingMessages,
   postV2QueuePendingMessage,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
@@ -270,11 +271,6 @@ export function useCopilotPage() {
         try {
           await postV2QueuePendingMessage(sessionId, { message: trimmed });
           setQueuedMessage(trimmed);
-          toast({
-            title: "Message queued",
-            description:
-              "Your message will be sent when the current response finishes.",
-          });
         } catch {
           toast({
             title: "Could not queue message",
@@ -324,12 +320,42 @@ export function useCopilotPage() {
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
-  // Clear queued message when the stream ends so the chat UI stays clean.
+  // When a session loads (or changes), restore any queued message from the
+  // backend buffer so the indicator survives a page refresh (Fix 2).
   useEffect(() => {
-    if (status === "ready" || status === "error") {
+    if (!sessionId) {
       setQueuedMessage(null);
+      return;
     }
-  }, [status]);
+    void getV2GetPendingMessages(sessionId).then((res) => {
+      if (res.status === 200 && res.data.count > 0) {
+        setQueuedMessage(
+          res.data.messages[res.data.messages.length - 1] ?? null,
+        );
+      }
+    });
+  }, [sessionId]);
+
+  // When a turn ends, peek the buffer.  Only clear the indicator if the
+  // buffer is empty — on the SDK path pending messages are drained at the
+  // *start* of the next turn, so the buffer may still be non-empty after
+  // Turn 1 finishes (Fix 3).
+  useEffect(() => {
+    if (status !== "ready" && status !== "error") return;
+    if (!sessionId) {
+      setQueuedMessage(null);
+      return;
+    }
+    void getV2GetPendingMessages(sessionId).then((res) => {
+      if (res.status !== 200 || res.data.count === 0) {
+        setQueuedMessage(null);
+      } else {
+        setQueuedMessage(
+          res.data.messages[res.data.messages.length - 1] ?? null,
+        );
+      }
+    });
+  }, [status, sessionId]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
   const titlePollRef = useRef<ReturnType<typeof setInterval>>();
