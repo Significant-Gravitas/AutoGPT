@@ -238,10 +238,11 @@ class TestDiscoverServices:
         mock_conn.getresponse.return_value = mock_resp
         mock_conn_cls.return_value = mock_conn
 
-        result = discover_services("example4.com")
+        test_domain = "example4.com"
+        result = discover_services(test_domain)
         assert result is None
-        assert "example4.com" in _cache
-        assert _cache["example4.com"][1] is None
+        assert test_domain in _cache
+        assert _cache[test_domain][1] is None
 
     @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
@@ -254,9 +255,10 @@ class TestDiscoverServices:
         mock_conn.request.side_effect = TimeoutError()
         mock_conn_cls.return_value = mock_conn
 
-        result = discover_services("example5.com")
+        test_domain = "example5.com"
+        result = discover_services(test_domain)
         assert result is None
-        assert "example5.com" not in _cache
+        assert test_domain not in _cache
 
     @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
@@ -273,9 +275,10 @@ class TestDiscoverServices:
         mock_conn.getresponse.return_value = mock_resp
         mock_conn_cls.return_value = mock_conn
 
-        result = discover_services("example6.com")
+        test_domain = "example6.com"
+        result = discover_services(test_domain)
         assert result is None
-        assert "example6.com" not in _cache
+        assert test_domain not in _cache
 
     @patch("http.client.HTTPSConnection")
     @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
