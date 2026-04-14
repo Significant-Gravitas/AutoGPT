@@ -48,6 +48,7 @@ from backend.copilot.rate_limit import (
     reset_daily_usage,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.service import strip_user_context_prefix
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
@@ -160,6 +161,27 @@ async def _resolve_workspace_files(
 router = APIRouter(
     tags=["chat"],
 )
+
+
+def _strip_injected_context(message: dict) -> dict:
+    """Hide the server-side `<user_context>` prefix from the API response.
+
+    Returns a **shallow copy** of *message* with the prefix removed from
+    ``content`` (if applicable).  The original dict is never mutated, so
+    callers can safely pass live session dicts without risking side-effects.
+
+    The strip is delegated to ``strip_user_context_prefix`` in
+    ``backend.copilot.service`` so the on-the-wire format stays in lockstep
+    with ``inject_user_context`` (the writer).  Only ``user``-role messages
+    with string content are touched; assistant / multimodal blocks pass
+    through unchanged.
+    """
+    if message.get("role") == "user" and isinstance(message.get("content"), str):
+        result = message.copy()
+        result["content"] = strip_user_context_prefix(message["content"])
+        return result
+    return message
+
 
 # ========== Request/Response Models ==========
 
@@ -537,7 +559,9 @@ async def get_session(
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
-    messages = [message.model_dump() for message in page.messages]
+    messages = [
+        _strip_injected_context(message.model_dump()) for message in page.messages
+    ]
 
     # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None

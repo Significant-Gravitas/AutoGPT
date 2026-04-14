@@ -988,7 +988,7 @@ def _make_sdk_patches(
             dict(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock())),
         ),
         (
-            f"{_SVC}._build_cacheable_system_prompt",
+            f"{_SVC}._build_system_prompt",
             dict(new_callable=AsyncMock, return_value=("system prompt", None)),
         ),
         (
