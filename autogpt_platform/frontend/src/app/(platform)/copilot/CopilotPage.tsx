@@ -83,6 +83,8 @@ export function CopilotPage() {
     isSyncing,
     createSession,
     onSend,
+    onEnqueue,
+    queuedMessage,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
@@ -208,6 +210,8 @@ export function CopilotPage() {
               onCreateSession={createSession}
               onSend={onSend}
               onStop={stop}
+              onEnqueue={onEnqueue}
+              queuedMessage={queuedMessage}
               isUploadingFiles={isUploadingFiles}
               hasMoreMessages={hasMoreMessages}
               isLoadingMore={isLoadingMore}
