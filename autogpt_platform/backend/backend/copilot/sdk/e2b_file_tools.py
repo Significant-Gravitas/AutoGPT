@@ -386,7 +386,7 @@ async def _handle_write_file(args: dict[str, Any]) -> dict[str, Any]:
                 f"Failed to write {os.path.basename(remote)}: {exc}", error=True
             )
 
-        msg = f"Successfully wrote to {remote}"
+        msg = f"Successfully wrote to {file_path}"
         if len(content) > _LARGE_CONTENT_WARN_CHARS:
             logger.warning(
                 "[Write] large inline content (%d chars) for %s",
@@ -513,7 +513,9 @@ async def _handle_edit_file(args: dict[str, Any]) -> dict[str, Any]:
                 f"Failed to write {os.path.basename(remote)}: {exc}", error=True
             )
 
-        return _mcp(f"Edited {remote} ({count} replacement{'s' if count > 1 else ''})")
+        return _mcp(
+            f"Edited {file_path} ({count} replacement{'s' if count > 1 else ''})"
+        )
 
     # Non-E2B path — edit in SDK working directory
     sdk_cwd = get_sdk_cwd()
