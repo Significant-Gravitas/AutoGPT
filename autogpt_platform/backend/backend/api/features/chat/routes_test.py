@@ -9,6 +9,7 @@ import pytest
 import pytest_mock
 
 from backend.api.features.chat import routes as chat_routes
+from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot.rate_limit import SubscriptionTier
 
 app = fastapi.FastAPI()
@@ -579,3 +580,100 @@ class TestStreamChatRequestModeValidation:
 
         req = StreamChatRequest(message="hi")
         assert req.mode is None
+
+
+class TestStripInjectedContext:
+    """Unit tests for `_strip_injected_context` — the GET-side helper that
+    hides the server-injected `<user_context>` block from API responses.
+
+    The strip is intentionally exact-match: it only removes the prefix the
+    inject helper writes (`<user_context>...</user_context>\\n\\n` at the very
+    start of the message). Any drift between writer and reader leaves the raw
+    block visible in the chat history, which is the failure mode this suite
+    documents.
+    """
+
+    @staticmethod
+    def _msg(role: str, content):
+        return {"role": role, "content": content}
+
+    def test_strips_well_formed_prefix(self) -> None:
+
+        original = "<user_context>\nbiz ctx\n</user_context>\n\nhello world"
+        result = _strip_injected_context(self._msg("user", original))
+        assert result["content"] == "hello world"
+
+    def test_passes_through_message_without_prefix(self) -> None:
+
+        result = _strip_injected_context(self._msg("user", "just a question"))
+        assert result["content"] == "just a question"
+
+    def test_only_strips_when_prefix_is_at_start(self) -> None:
+        """An embedded `<user_context>` block later in the message must NOT
+        be stripped — only the leading prefix is server-injected."""
+
+        content = (
+            "I copied this from somewhere: <user_context>\nfoo\n</user_context>\n\n"
+        )
+        result = _strip_injected_context(self._msg("user", content))
+        assert result["content"] == content
+
+    def test_does_not_strip_with_only_single_newline_separator(self) -> None:
+        """The strip regex requires `\\n\\n` after the closing tag — a single
+        newline indicates a different format and must not be touched."""
+
+        content = "<user_context>\nfoo\n</user_context>\nhello"
+        result = _strip_injected_context(self._msg("user", content))
+        assert result["content"] == content
+
+    def test_assistant_messages_pass_through(self) -> None:
+
+        original = "<user_context>\nfoo\n</user_context>\n\nhi"
+        result = _strip_injected_context(self._msg("assistant", original))
+        assert result["content"] == original
+
+    def test_non_string_content_passes_through(self) -> None:
+        """Multimodal / structured content (e.g. list of blocks) is not a
+        string and must not be touched by the strip helper."""
+
+        blocks = [{"type": "text", "text": "hello"}]
+        result = _strip_injected_context(self._msg("user", blocks))
+        assert result["content"] is blocks
+
+    def test_strip_with_multiline_understanding(self) -> None:
+        """The understanding payload spans multiple lines (markdown headings,
+        bullet points). `re.DOTALL` must allow the regex to span them."""
+
+        original = (
+            "<user_context>\n"
+            "# User Business Context\n\n"
+            "## User\nName: Alice\n\n"
+            "## Business\nCompany: Acme\n"
+            "</user_context>\n\nactual question"
+        )
+        result = _strip_injected_context(self._msg("user", original))
+        assert result["content"] == "actual question"
+
+    def test_strip_when_message_is_only_the_prefix(self) -> None:
+        """An empty user message gets injected with just the prefix; the
+        strip should yield an empty string."""
+
+        original = "<user_context>\nctx\n</user_context>\n\n"
+        result = _strip_injected_context(self._msg("user", original))
+        assert result["content"] == ""
+
+    def test_does_not_mutate_original_dict(self) -> None:
+        """The helper must return a copy — the original dict stays intact."""
+        original_content = "<user_context>\nctx\n</user_context>\n\nhello"
+        msg = self._msg("user", original_content)
+        result = _strip_injected_context(msg)
+        assert result["content"] == "hello"
+        assert msg["content"] == original_content
+        assert result is not msg
+
+    def test_no_role_field_does_not_crash(self) -> None:
+
+        msg = {"content": "hello"}
+        result = _strip_injected_context(msg)
+        # Without a role, the helper short-circuits without touching content.
+        assert result["content"] == "hello"

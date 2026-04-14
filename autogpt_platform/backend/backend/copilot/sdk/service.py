@@ -13,6 +13,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 if TYPE_CHECKING:
@@ -36,19 +37,20 @@ from pydantic import BaseModel
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
 from backend.copilot.rate_limit import get_user_tier
+from backend.copilot.thinking_stripper import ThinkingStripper
 from backend.copilot.transcript import (
     _run_compression,
     cleanup_stale_project_dirs,
     compact_transcript,
     download_transcript,
     read_compacted_entries,
+    restore_cli_session,
+    upload_cli_session,
     upload_transcript,
     validate_transcript,
-    write_transcript_to_tempfile,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
-from backend.data.understanding import format_understanding_for_prompt
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
@@ -62,7 +64,6 @@ from ..constants import (
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli
-from ..db import update_message_content_by_sequence
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -82,15 +83,18 @@ from ..response_model import (
     StreamStartStep,
     StreamStatus,
     StreamTextDelta,
+    StreamTextEnd,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
 )
 from ..service import (
-    _build_cacheable_system_prompt,
+    _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
+    inject_user_context,
+    strip_user_context_tags,
 )
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
@@ -347,7 +351,11 @@ async def _reduce_context(
     `transcript_lost` is True when the transcript was dropped (caller
     should set `skip_transcript_upload`).
     """
-    # First retry: try compacting
+    # First retry: try compacting our transcript builder state.
+    # Note: the CLI native --resume file is not updated with the compacted
+    # content (it would require emitting CLI-native JSONL format), so the
+    # retry runs without --resume.  The compacted builder state is still
+    # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
         compacted = await compact_transcript(
             transcript_content, model=config.model, log_prefix=log_prefix
@@ -357,15 +365,13 @@ async def _reduce_context(
             and compacted != transcript_content
             and validate_transcript(compacted)
         ):
-            logger.info("%s Using compacted transcript for retry", log_prefix)
+            logger.info(
+                "%s Using compacted transcript for retry (no --resume on this attempt)",
+                log_prefix,
+            )
             tb = TranscriptBuilder()
             tb.load_previous(compacted, log_prefix=log_prefix)
-            resume_file = await asyncio.to_thread(
-                write_transcript_to_tempfile, compacted, session_id, sdk_cwd
-            )
-            if resume_file:
-                return ReducedContext(tb, True, resume_file, False, True)
-            logger.warning("%s Failed to write compacted transcript", log_prefix)
+            return ReducedContext(tb, False, None, False, True)
         logger.warning("%s Compaction failed, dropping transcript", log_prefix)
 
     # Subsequent retry or compaction failed: drop transcript entirely
@@ -1130,6 +1136,9 @@ class _StreamAccumulator:
     has_appended_assistant: bool = False
     has_tool_results: bool = False
     stream_completed: bool = False
+    thinking_stripper: ThinkingStripper = dataclass_field(
+        default_factory=ThinkingStripper,
+    )
 
 
 def _dispatch_response(
@@ -1139,6 +1148,7 @@ def _dispatch_response(
     state: "_RetryState",
     entries_replaced: bool,
     log_prefix: str,
+    skip_strip: bool = False,
 ) -> StreamBaseResponse | None:
     """Process a single adapter response and update session/accumulator state.
 
@@ -1151,6 +1161,10 @@ def _dispatch_response(
     - Accumulating text deltas into `assistant_response`
     - Appending tool input/output to session messages and transcript
     - Detecting `StreamFinish`
+
+    Args:
+        skip_strip: When True, bypass ThinkingStripper.process() for this delta.
+            Used for the flushed tail delta which is already stripped content.
     """
     if isinstance(response, StreamStart):
         return None
@@ -1186,7 +1200,20 @@ def _dispatch_response(
         )
 
     if isinstance(response, StreamTextDelta):
-        delta = response.delta or ""
+        raw_delta = response.delta or ""
+        if skip_strip:
+            # Pre-stripped tail from ThinkingStripper.flush() — bypass process()
+            # to avoid re-suppressing content that looks like a partial tag opener.
+            delta = raw_delta
+        else:
+            # Strip <internal_reasoning> / <thinking> tags that non-extended-
+            # thinking models (e.g. Sonnet) may emit as visible text.
+            delta = acc.thinking_stripper.process(raw_delta)
+            if not delta:
+                # Stripper is buffering a potential tag — suppress this event.
+                return None
+        # Replace the delta with the stripped version for the SSE client.
+        response = StreamTextDelta(id=response.id, delta=delta)
         if acc.has_tool_results and acc.has_appended_assistant:
             acc.assistant_response = ChatMessage(role="assistant", content=delta)
             acc.accumulated_tool_calls = []
@@ -1730,9 +1757,44 @@ async def _run_stream_attempt(
                 break
 
             # --- Dispatch adapter responses ---
-            for response in state.adapter.convert_message(sdk_msg):
+            adapter_responses = state.adapter.convert_message(sdk_msg)
+            # When StreamFinish is in this batch (ResultMessage), flush any
+            # text buffered by the thinking stripper and inject it as a
+            # StreamTextDelta BEFORE the StreamTextEnd so the Vercel AI SDK
+            # receives the tail inside the still-open text block (correct
+            # protocol order: TextDelta → TextEnd → FinishStep → Finish).
+            tail_delta: StreamTextDelta | None = None
+            if any(isinstance(r, StreamFinish) for r in adapter_responses):
+                tail = acc.thinking_stripper.flush()
+                if tail and not ended_with_stream_error:
+                    # Do NOT manually append tail to acc.assistant_response.content
+                    # here — _dispatch_response handles that.  Doing it here would
+                    # double-append because _dispatch_response also updates the
+                    # accumulator.  Instead, mark the delta as pre-stripped so
+                    # _dispatch_response bypasses ThinkingStripper.process() for it
+                    # (re-processing could suppress a tail that looks like a partial
+                    # tag opener, e.g. "Hello <inter" → buffered again → lost).
+                    tail_delta = StreamTextDelta(
+                        id=state.adapter.text_block_id, delta=tail
+                    )
+                    insert_at = next(
+                        (
+                            i
+                            for i, r in enumerate(adapter_responses)
+                            if isinstance(r, (StreamTextEnd, StreamFinish))
+                        ),
+                        len(adapter_responses),
+                    )
+                    adapter_responses.insert(insert_at, tail_delta)
+            for response in adapter_responses:
                 dispatched = _dispatch_response(
-                    response, acc, ctx, state, entries_replaced, ctx.log_prefix
+                    response,
+                    acc,
+                    ctx,
+                    state,
+                    entries_replaced,
+                    ctx.log_prefix,
+                    skip_strip=response is tail_delta,
                 )
                 if dispatched is not None:
                     yield dispatched
@@ -1911,6 +1973,11 @@ async def stream_chat_completion_sdk(
         )
         session.messages.pop()
 
+    # Strip any user-injected <user_context> tags on every turn.
+    # Only the server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
@@ -1977,6 +2044,7 @@ async def stream_chat_completion_sdk(
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
     skip_transcript_upload = False
+    has_history = len(session.messages) > 1
     transcript_content: str = ""
     state: _RetryState | None = None
 
@@ -1995,7 +2063,6 @@ async def stream_chat_completion_sdk(
         # injected into the supplement instead of the generic placeholder.
         # Catch ValueError early so the failure yields a clean StreamError rather
         # than propagating outside the stream error-handling path.
-        has_history = len(session.messages) > 1
         try:
             sdk_cwd = _make_sdk_cwd(session_id)
             os.makedirs(sdk_cwd, exist_ok=True)
@@ -2060,7 +2127,7 @@ async def stream_chat_completion_sdk(
 
         e2b_sandbox, (base_system_prompt, understanding), dl = await asyncio.gather(
             _setup_e2b(),
-            _build_cacheable_system_prompt(user_id if not has_history else None),
+            _build_system_prompt(user_id if not has_history else None),
             _fetch_transcript(),
         )
 
@@ -2084,7 +2151,10 @@ async def stream_chat_completion_sdk(
             if warm_ctx:
                 system_prompt += f"\n\n{warm_ctx}"
 
-        # Process transcript download result
+        # Process transcript download result and restore CLI native session.
+        # The CLI native session file (uploaded after each turn) is the
+        # source of truth for --resume.  Our custom JSONL (TranscriptEntry)
+        # is loaded into the builder for future upload_transcript calls.
         transcript_msg_count = 0
         if dl:
             is_valid = validate_transcript(dl.content)
@@ -2098,59 +2168,59 @@ async def stream_chat_completion_sdk(
                 is_valid,
             )
             if is_valid:
-                # Load previous FULL context into builder
+                # Load previous FULL context into builder for state tracking.
                 transcript_content = dl.content
                 transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
-                resume_file = await asyncio.to_thread(
-                    write_transcript_to_tempfile, dl.content, session_id, sdk_cwd
+                # Restore CLI's native session file so --resume session_id works.
+                # Falls back gracefully if not available (first turn or upload missed).
+                # user_id is guaranteed non-None here: _fetch_transcript only sets dl
+                # when `config.claude_agent_use_resume and user_id` is truthy.
+                cli_restored = user_id is not None and await restore_cli_session(
+                    user_id, session_id, sdk_cwd, log_prefix=log_prefix
                 )
-                if resume_file:
+                if cli_restored:
                     use_resume = True
+                    resume_file = session_id  # CLI --resume expects UUID, not file path
                     transcript_msg_count = dl.message_count
-                    logger.debug(
-                        "%s Using --resume (%dB, msg_count=%d)",
+                    logger.info(
+                        "%s Using --resume %s (%dB transcript, msg_count=%d)",
                         log_prefix,
+                        session_id[:8],
                         len(dl.content),
                         transcript_msg_count,
+                    )
+                else:
+                    # Builder loaded but CLI native session not available.
+                    # --resume will not be used this turn; upload after turn
+                    # will seed the native session for the next turn.
+                    logger.info(
+                        "%s CLI session not restored — running without --resume this turn",
+                        log_prefix,
                     )
             else:
                 logger.warning("%s Transcript downloaded but invalid", log_prefix)
                 transcript_covers_prefix = False
         elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-            # No transcript on disk — try to reconstruct a full JSONL from the
-            # session.messages stored in the DB.  This gives the Claude CLI
-            # proper tool_use/tool_result structural context via --resume
-            # instead of the lossy plain-text injection in _build_query_message
-            # (which caps tool results at 500 chars and drops call/result IDs).
+            # No transcript in storage — reconstruct from DB messages as a
+            # last-resort fallback (e.g., first turn after a crash or transition).
+            # This path loses tool call IDs and structural fidelity but prevents
+            # a completely context-free response for established sessions.
             prior = session.messages[:-1]
             reconstructed = _session_messages_to_transcript(prior)
             if reconstructed:
-                rebuilt_resume = await asyncio.to_thread(
-                    write_transcript_to_tempfile, reconstructed, session_id, sdk_cwd
+                # Populate builder only; no --resume since there is no CLI
+                # native session to restore.  The transcript builder state is
+                # still useful for the upload that seeds future native sessions.
+                transcript_content = reconstructed
+                transcript_builder.load_previous(reconstructed, log_prefix=log_prefix)
+                transcript_msg_count = len(prior)
+                transcript_covers_prefix = True
+                logger.info(
+                    "%s Reconstructed transcript from %d session messages "
+                    "(no CLI native session — running without --resume this turn)",
+                    log_prefix,
+                    len(prior),
                 )
-                if rebuilt_resume:
-                    use_resume = True
-                    resume_file = rebuilt_resume
-                    transcript_msg_count = len(prior)
-                    transcript_content = reconstructed
-                    transcript_builder.load_previous(
-                        reconstructed, log_prefix=log_prefix
-                    )
-                    transcript_covers_prefix = True
-                    logger.info(
-                        "%s Reconstructed transcript from %d session messages "
-                        "for --resume (no previous transcript file)",
-                        log_prefix,
-                        len(prior),
-                    )
-                else:
-                    logger.warning(
-                        "%s Transcript reconstruction failed — write_transcript_to_tempfile"
-                        " returned None (%d messages)",
-                        log_prefix,
-                        len(prior),
-                    )
-                    transcript_covers_prefix = False
             else:
                 logger.warning(
                     "%s No transcript available and reconstruction produced empty"
@@ -2238,13 +2308,42 @@ async def stream_chat_completion_sdk(
             "max_turns": config.claude_agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
+            # max_thinking_tokens: cap extended thinking output per LLM call.
+            # Thinking tokens are billed at output rate ($75/M for Opus) and
+            # account for ~54% of total cost.  8192 is the default.
+            # Intentionally sent for all models including Sonnet — the CLI
+            # silently ignores this field for non-Opus models (those without
+            # native extended thinking), so it is safe to pass unconditionally.
+            "max_thinking_tokens": config.claude_agent_max_thinking_tokens,
         }
+        # effort: only set for models with extended thinking (Opus).
+        # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
+        if config.claude_agent_thinking_effort:
+            sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
+
         if sdk_env:
             sdk_options_kwargs["env"] = sdk_env
         if use_resume and resume_file:
+            # --resume {uuid} implies the session UUID — do NOT also pass
+            # --session-id here.  CLI >=2.1.97 rejects the combination of
+            # --session-id + --resume unless --fork-session is also given.
             sdk_options_kwargs["resume"] = resume_file
+        elif not has_history:
+            # T1 only: write CLI native session to a predictable path so
+            # upload_cli_session() can find it after the turn completes.
+            # On T2+ without --resume the T1 session file already exists at
+            # that path; passing --session-id again would fail with
+            # "Session ID already in use".  The upload guard also skips T2+
+            # no-resume turns, so --session-id provides no benefit there.
+            sdk_options_kwargs["session_id"] = session_id
+        # Optional explicit Claude Code CLI binary path (decouples the
+        # bundled SDK version from the CLI version we run — needed because
+        # the CLI bundled in 0.1.46+ is broken against OpenRouter).  Falls
+        # back to the bundled binary when unset.
+        if config.claude_agent_cli_path:
+            sdk_options_kwargs["cli_path"] = config.claude_agent_cli_path
 
         options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
@@ -2284,6 +2383,28 @@ async def stream_chat_completion_sdk(
             )
             return
 
+        # Strip any user-injected <user_context> tags from current_message.
+        # On --resume, current_message may come from session history which was
+        # already sanitized on the original turn; strip again as defence-in-depth.
+        current_message = strip_user_context_tags(current_message)
+
+        # On the first turn inject user context into the message before building
+        # the query so that _build_query_message sees the full prefixed content.
+        # The system prompt is now static (same for all users) so the LLM can
+        # cache it across sessions.
+        #
+        # On resume (has_history=True) we intentionally skip re-injection: the
+        # transcript already contains the <user_context> prefix from the original
+        # turn (persisted to the DB in inject_user_context), so the SDK replay
+        # carries context continuity without us prepending it again.  Adding it
+        # a second time would duplicate the block and inflate tokens.
+        if not has_history:
+            prefixed_message = await inject_user_context(
+                understanding, current_message, session_id, session.messages
+            )
+            if prefixed_message is not None:
+                current_message = prefixed_message
+
         query_message, was_compacted = await _build_query_message(
             current_message,
             session,
@@ -2291,30 +2412,6 @@ async def stream_chat_completion_sdk(
             transcript_msg_count,
             session_id,
         )
-        # On the first turn inject user context into the message instead of the
-        # system prompt — the system prompt is now static (same for all users)
-        # so the LLM can cache it across sessions.
-        # current_message is updated so the transcript and session.messages also
-        # store the prefixed content, preserving personalisation across turns and
-        # on --resume.
-        if not has_history and understanding:
-            user_ctx = format_understanding_for_prompt(understanding)
-            prefixed_message = (
-                f"<user_context>\n{user_ctx}\n</user_context>\n\n{current_message}"
-            )
-            current_message = prefixed_message
-            query_message = prefixed_message
-            # Persist the prefixed content so resumed sessions retain the context.
-            # The user message was already saved to DB before context injection;
-            # update the DB record so the prefixed content survives page reload
-            # and --resume (the save at line ~1926 used the un-prefixed content).
-            for idx, session_msg in enumerate(session.messages):
-                if session_msg.role == "user":
-                    session_msg.content = prefixed_message
-                    await update_message_content_by_sequence(
-                        session_id, idx, prefixed_message
-                    )
-                    break
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
         attachments = await _prepare_file_attachments(
@@ -2418,8 +2515,19 @@ async def stream_chat_completion_sdk(
                 sdk_options_kwargs_retry = dict(sdk_options_kwargs)
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
-                elif "resume" in sdk_options_kwargs_retry:
-                    del sdk_options_kwargs_retry["resume"]
+                    sdk_options_kwargs_retry.pop("session_id", None)
+                elif not has_history:
+                    # T1 retry: keep session_id so the CLI writes to the
+                    # predictable path for upload_cli_session().
+                    sdk_options_kwargs_retry.pop("resume", None)
+                    sdk_options_kwargs_retry["session_id"] = session_id
+                else:
+                    # T2+ retry without --resume: do not pass --session-id.
+                    # The T1 session file already exists at that path; re-using
+                    # the same ID would fail with "Session ID already in use".
+                    # The upload guard skips T2+ no-resume turns anyway.
+                    sdk_options_kwargs_retry.pop("resume", None)
+                    sdk_options_kwargs_retry.pop("session_id", None)
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 state.query_message, state.was_compacted = await _build_query_message(
                     current_message,
@@ -2899,6 +3007,43 @@ async def stream_chat_completion_sdk(
                     log_prefix,
                     upload_err,
                     exc_info=True,
+                )
+
+        # --- Upload CLI native session file for cross-pod --resume ---
+        # The CLI writes its native session JSONL after each turn completes.
+        # Uploading it here enables --resume on any pod (no pod affinity needed).
+        # Runs after upload_transcript so both are available for the next turn.
+        # asyncio.shield: same pattern as upload_transcript above — if the
+        # outer finally-block coroutine is cancelled while awaiting shield,
+        # the CancelledError propagates (BaseException, not caught by
+        # `except Exception`) letting the caller handle cancellation, while
+        # the shielded inner coroutine continues running to completion so the
+        # upload is not lost.  This is intentional and matches the pattern
+        # used for upload_transcript immediately above.
+        if (
+            config.claude_agent_use_resume
+            and user_id
+            and sdk_cwd
+            and session is not None
+            and state is not None
+            and not ended_with_stream_error
+            and not skip_transcript_upload
+            and (not has_history or state.use_resume)
+        ):
+            try:
+                await asyncio.shield(
+                    upload_cli_session(
+                        user_id=user_id,
+                        session_id=session_id,
+                        sdk_cwd=sdk_cwd,
+                        log_prefix=log_prefix,
+                    )
+                )
+            except Exception as cli_upload_err:
+                logger.warning(
+                    "%s CLI session upload failed in finally: %s",
+                    log_prefix,
+                    cli_upload_err,
                 )
 
         try:

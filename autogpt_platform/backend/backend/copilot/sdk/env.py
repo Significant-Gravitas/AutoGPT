@@ -96,5 +96,26 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Strip Anthropic-specific beta headers that OpenRouter rejects.
+    # NOTE: this disables ALL experimental betas including context-1m-2025-08-07
+    # (1M context window) and context-management-2025-06-27.  This is intentional:
+    # OpenRouter compatibility takes priority, and Anthropic direct mode ignores
+    # this flag harmlessly (those betas are not enabled there either by default).
+    env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+
+    # Trigger context compaction earlier — default is 70% of 200K = 140K.
+    # Set to 50% = 100K to keep context smaller and reduce cache creation costs.
+    # Context >200K accounts for 54% of total cost despite being only 3% of calls.
+    env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "50"
+
+    # Disable gzip on API responses to prevent ZlibError decompression
+    # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
+    # Appended to any existing ANTHROPIC_CUSTOM_HEADERS (OpenRouter mode
+    # already sets trace headers above).
+    accept_encoding = "Accept-Encoding: identity"
+    existing = env.get("ANTHROPIC_CUSTOM_HEADERS", "")
+    env["ANTHROPIC_CUSTOM_HEADERS"] = (
+        f"{existing}\n{accept_encoding}" if existing else accept_encoding
+    )
 
     return env

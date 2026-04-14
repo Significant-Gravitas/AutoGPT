@@ -147,6 +147,15 @@ export function useCopilotStream({
     reconnectTimerRef.current = setTimeout(() => {
       isReconnectScheduledRef.current = false;
       setIsReconnectScheduled(false);
+      // Strip any stale in-progress assistant message before resuming.
+      // The backend replays from "0-0", so the partial message would
+      // otherwise sit alongside the fully-replayed version.
+      setMessages((prev) => {
+        if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
       resumeStream();
     }, delay);
   }
