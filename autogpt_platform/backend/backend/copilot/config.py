@@ -22,8 +22,10 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-opus-4.6",
-        description="Default model for extended thinking mode",
+        default="anthropic/claude-sonnet-4",
+        description="Default model for extended thinking mode. "
+        "Changed from Opus ($15/$75 per M) to Sonnet ($3/$15 per M) — "
+        "5x cheaper. Override via CHAT_MODEL env var for Opus.",
     )
     fast_model: str = Field(
         default="anthropic/claude-sonnet-4",
@@ -152,18 +154,41 @@ class ChatConfig(BaseSettings):
         "overloaded). The SDK automatically retries with this cheaper model.",
     )
     claude_agent_max_turns: int = Field(
-        default=1000,
+        default=50,
         ge=1,
         le=10000,
         description="Maximum number of agentic turns (tool-use loops) per query. "
-        "Prevents runaway tool loops from burning budget.",
+        "Prevents runaway tool loops from burning budget. "
+        "Changed from 1000 to 50 in SDK 0.1.58 upgrade — override via "
+        "CHAT_CLAUDE_AGENT_MAX_TURNS env var if your workflows need more.",
     )
     claude_agent_max_budget_usd: float = Field(
-        default=100.0,
+        default=15.0,
         ge=0.01,
         le=1000.0,
-        description="Maximum spend in USD per SDK query. The CLI aborts the "
-        "request if this budget is exceeded.",
+        description="Maximum spend in USD per SDK query. The CLI attempts "
+        "to wrap up gracefully when this budget is reached. "
+        "Set to $15 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
+        "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
+    )
+    claude_agent_max_thinking_tokens: int = Field(
+        default=8192,
+        ge=1024,
+        le=128000,
+        description="Maximum thinking/reasoning tokens per LLM call. "
+        "Extended thinking on Opus can generate 50k+ tokens at $75/M — "
+        "capping this is the single biggest cost lever. "
+        "8192 is sufficient for most tasks; increase for complex reasoning.",
+    )
+    claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
+        Field(
+            default=None,
+            description="Thinking effort level: 'low', 'medium', 'high', 'max', or None. "
+            "Only applies to models with extended thinking (Opus). "
+            "Sonnet doesn't have extended thinking — setting effort on Sonnet "
+            "can cause <internal_reasoning> tag leaks. "
+            "None = let the model decide. Override via CHAT_CLAUDE_AGENT_THINKING_EFFORT.",
+        )
     )
     claude_agent_max_transient_retries: int = Field(
         default=3,
@@ -171,6 +196,20 @@ class ChatConfig(BaseSettings):
         le=10,
         description="Maximum number of retries for transient API errors "
         "(429, 5xx, ECONNRESET) before surfacing the error to the user.",
+    )
+    claude_agent_cli_path: str | None = Field(
+        default=None,
+        description="Optional explicit path to a Claude Code CLI binary. "
+        "When set, the SDK uses this binary instead of the version bundled "
+        "with the installed `claude-agent-sdk` package — letting us pin "
+        "the Python SDK and the CLI independently. Critical for keeping "
+        "OpenRouter compatibility while still picking up newer SDK API "
+        "features (the bundled CLI version in 0.1.46+ is broken against "
+        "OpenRouter — see PR #12294 and "
+        "anthropics/claude-agent-sdk-python#789). Falls back to the "
+        "bundled binary when unset. Reads from `CHAT_CLAUDE_AGENT_CLI_PATH` "
+        "or the unprefixed `CLAUDE_AGENT_CLI_PATH` environment variable "
+        "(same pattern as `api_key` / `base_url`).",
     )
     use_openrouter: bool = Field(
         default=True,
@@ -292,6 +331,40 @@ class ChatConfig(BaseSettings):
                 v = os.getenv("OPENAI_BASE_URL")
             if not v:
                 v = OPENROUTER_BASE_URL
+        return v
+
+    @field_validator("claude_agent_cli_path", mode="before")
+    @classmethod
+    def get_claude_agent_cli_path(cls, v):
+        """Resolve the Claude Code CLI override path from environment.
+
+        Accepts either the Pydantic-prefixed ``CHAT_CLAUDE_AGENT_CLI_PATH``
+        or the unprefixed ``CLAUDE_AGENT_CLI_PATH`` (matching the same
+        fallback pattern used by ``api_key`` / ``base_url``). Keeping the
+        unprefixed form working is important because the field is
+        primarily an operator escape hatch set via container/host env,
+        and the unprefixed name is what the PR description, the field
+        docstrings, and the reproduction test in
+        ``cli_openrouter_compat_test.py`` refer to.
+        """
+        if not v:
+            v = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH")
+            if not v:
+                v = os.getenv("CLAUDE_AGENT_CLI_PATH")
+        if v:
+            if not os.path.exists(v):
+                raise ValueError(
+                    f"claude_agent_cli_path '{v}' does not exist. "
+                    "Check the path or unset CLAUDE_AGENT_CLI_PATH to use "
+                    "the bundled CLI."
+                )
+            if not os.path.isfile(v):
+                raise ValueError(f"claude_agent_cli_path '{v}' is not a regular file.")
+            if not os.access(v, os.X_OK):
+                raise ValueError(
+                    f"claude_agent_cli_path '{v}' exists but is not executable. "
+                    "Check file permissions."
+                )
         return v
 
     # Prompt paths for different contexts

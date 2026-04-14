@@ -13,6 +13,7 @@ import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ from pydantic import BaseModel
 from backend.copilot.context import get_workspace_manager
 from backend.copilot.permissions import apply_tool_permissions
 from backend.copilot.rate_limit import get_user_tier
+from backend.copilot.thinking_stripper import ThinkingStripper
 from backend.copilot.transcript import (
     _run_compression,
     cleanup_stale_project_dirs,
@@ -48,7 +50,6 @@ from backend.copilot.transcript import (
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
-from backend.data.understanding import format_understanding_for_prompt
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
@@ -62,7 +63,6 @@ from ..constants import (
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli
-from ..db import update_message_content_by_sequence
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -82,15 +82,18 @@ from ..response_model import (
     StreamStartStep,
     StreamStatus,
     StreamTextDelta,
+    StreamTextEnd,
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
 )
 from ..service import (
-    _build_cacheable_system_prompt,
+    _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
+    inject_user_context,
+    strip_user_context_tags,
 )
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
@@ -1130,6 +1133,9 @@ class _StreamAccumulator:
     has_appended_assistant: bool = False
     has_tool_results: bool = False
     stream_completed: bool = False
+    thinking_stripper: ThinkingStripper = dataclass_field(
+        default_factory=ThinkingStripper,
+    )
 
 
 def _dispatch_response(
@@ -1139,6 +1145,7 @@ def _dispatch_response(
     state: "_RetryState",
     entries_replaced: bool,
     log_prefix: str,
+    skip_strip: bool = False,
 ) -> StreamBaseResponse | None:
     """Process a single adapter response and update session/accumulator state.
 
@@ -1151,6 +1158,10 @@ def _dispatch_response(
     - Accumulating text deltas into `assistant_response`
     - Appending tool input/output to session messages and transcript
     - Detecting `StreamFinish`
+
+    Args:
+        skip_strip: When True, bypass ThinkingStripper.process() for this delta.
+            Used for the flushed tail delta which is already stripped content.
     """
     if isinstance(response, StreamStart):
         return None
@@ -1186,7 +1197,20 @@ def _dispatch_response(
         )
 
     if isinstance(response, StreamTextDelta):
-        delta = response.delta or ""
+        raw_delta = response.delta or ""
+        if skip_strip:
+            # Pre-stripped tail from ThinkingStripper.flush() — bypass process()
+            # to avoid re-suppressing content that looks like a partial tag opener.
+            delta = raw_delta
+        else:
+            # Strip <internal_reasoning> / <thinking> tags that non-extended-
+            # thinking models (e.g. Sonnet) may emit as visible text.
+            delta = acc.thinking_stripper.process(raw_delta)
+            if not delta:
+                # Stripper is buffering a potential tag — suppress this event.
+                return None
+        # Replace the delta with the stripped version for the SSE client.
+        response = StreamTextDelta(id=response.id, delta=delta)
         if acc.has_tool_results and acc.has_appended_assistant:
             acc.assistant_response = ChatMessage(role="assistant", content=delta)
             acc.accumulated_tool_calls = []
@@ -1730,9 +1754,44 @@ async def _run_stream_attempt(
                 break
 
             # --- Dispatch adapter responses ---
-            for response in state.adapter.convert_message(sdk_msg):
+            adapter_responses = state.adapter.convert_message(sdk_msg)
+            # When StreamFinish is in this batch (ResultMessage), flush any
+            # text buffered by the thinking stripper and inject it as a
+            # StreamTextDelta BEFORE the StreamTextEnd so the Vercel AI SDK
+            # receives the tail inside the still-open text block (correct
+            # protocol order: TextDelta → TextEnd → FinishStep → Finish).
+            tail_delta: StreamTextDelta | None = None
+            if any(isinstance(r, StreamFinish) for r in adapter_responses):
+                tail = acc.thinking_stripper.flush()
+                if tail and not ended_with_stream_error:
+                    # Do NOT manually append tail to acc.assistant_response.content
+                    # here — _dispatch_response handles that.  Doing it here would
+                    # double-append because _dispatch_response also updates the
+                    # accumulator.  Instead, mark the delta as pre-stripped so
+                    # _dispatch_response bypasses ThinkingStripper.process() for it
+                    # (re-processing could suppress a tail that looks like a partial
+                    # tag opener, e.g. "Hello <inter" → buffered again → lost).
+                    tail_delta = StreamTextDelta(
+                        id=state.adapter.text_block_id, delta=tail
+                    )
+                    insert_at = next(
+                        (
+                            i
+                            for i, r in enumerate(adapter_responses)
+                            if isinstance(r, (StreamTextEnd, StreamFinish))
+                        ),
+                        len(adapter_responses),
+                    )
+                    adapter_responses.insert(insert_at, tail_delta)
+            for response in adapter_responses:
                 dispatched = _dispatch_response(
-                    response, acc, ctx, state, entries_replaced, ctx.log_prefix
+                    response,
+                    acc,
+                    ctx,
+                    state,
+                    entries_replaced,
+                    ctx.log_prefix,
+                    skip_strip=response is tail_delta,
                 )
                 if dispatched is not None:
                     yield dispatched
@@ -1911,6 +1970,11 @@ async def stream_chat_completion_sdk(
         )
         session.messages.pop()
 
+    # Strip any user-injected <user_context> tags on every turn.
+    # Only the server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
@@ -2060,7 +2124,7 @@ async def stream_chat_completion_sdk(
 
         e2b_sandbox, (base_system_prompt, understanding), dl = await asyncio.gather(
             _setup_e2b(),
-            _build_cacheable_system_prompt(user_id if not has_history else None),
+            _build_system_prompt(user_id if not has_history else None),
             _fetch_transcript(),
         )
 
@@ -2238,13 +2302,31 @@ async def stream_chat_completion_sdk(
             "max_turns": config.claude_agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
+            # max_thinking_tokens: cap extended thinking output per LLM call.
+            # Thinking tokens are billed at output rate ($75/M for Opus) and
+            # account for ~54% of total cost.  8192 is the default.
+            # Intentionally sent for all models including Sonnet — the CLI
+            # silently ignores this field for non-Opus models (those without
+            # native extended thinking), so it is safe to pass unconditionally.
+            "max_thinking_tokens": config.claude_agent_max_thinking_tokens,
         }
+        # effort: only set for models with extended thinking (Opus).
+        # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
+        if config.claude_agent_thinking_effort:
+            sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
+
         if sdk_env:
             sdk_options_kwargs["env"] = sdk_env
         if use_resume and resume_file:
             sdk_options_kwargs["resume"] = resume_file
+        # Optional explicit Claude Code CLI binary path (decouples the
+        # bundled SDK version from the CLI version we run — needed because
+        # the CLI bundled in 0.1.46+ is broken against OpenRouter).  Falls
+        # back to the bundled binary when unset.
+        if config.claude_agent_cli_path:
+            sdk_options_kwargs["cli_path"] = config.claude_agent_cli_path
 
         options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
@@ -2284,6 +2366,28 @@ async def stream_chat_completion_sdk(
             )
             return
 
+        # Strip any user-injected <user_context> tags from current_message.
+        # On --resume, current_message may come from session history which was
+        # already sanitized on the original turn; strip again as defence-in-depth.
+        current_message = strip_user_context_tags(current_message)
+
+        # On the first turn inject user context into the message before building
+        # the query so that _build_query_message sees the full prefixed content.
+        # The system prompt is now static (same for all users) so the LLM can
+        # cache it across sessions.
+        #
+        # On resume (has_history=True) we intentionally skip re-injection: the
+        # transcript already contains the <user_context> prefix from the original
+        # turn (persisted to the DB in inject_user_context), so the SDK replay
+        # carries context continuity without us prepending it again.  Adding it
+        # a second time would duplicate the block and inflate tokens.
+        if not has_history:
+            prefixed_message = await inject_user_context(
+                understanding, current_message, session_id, session.messages
+            )
+            if prefixed_message is not None:
+                current_message = prefixed_message
+
         query_message, was_compacted = await _build_query_message(
             current_message,
             session,
@@ -2291,30 +2395,6 @@ async def stream_chat_completion_sdk(
             transcript_msg_count,
             session_id,
         )
-        # On the first turn inject user context into the message instead of the
-        # system prompt — the system prompt is now static (same for all users)
-        # so the LLM can cache it across sessions.
-        # current_message is updated so the transcript and session.messages also
-        # store the prefixed content, preserving personalisation across turns and
-        # on --resume.
-        if not has_history and understanding:
-            user_ctx = format_understanding_for_prompt(understanding)
-            prefixed_message = (
-                f"<user_context>\n{user_ctx}\n</user_context>\n\n{current_message}"
-            )
-            current_message = prefixed_message
-            query_message = prefixed_message
-            # Persist the prefixed content so resumed sessions retain the context.
-            # The user message was already saved to DB before context injection;
-            # update the DB record so the prefixed content survives page reload
-            # and --resume (the save at line ~1926 used the un-prefixed content).
-            for idx, session_msg in enumerate(session.messages):
-                if session_msg.role == "user":
-                    session_msg.content = prefixed_message
-                    await update_message_content_by_sequence(
-                        session_id, idx, prefixed_message
-                    )
-                    break
         # If files are attached, prepare them: images become vision
         # content blocks in the user message, other files go to sdk_cwd.
         attachments = await _prepare_file_attachments(

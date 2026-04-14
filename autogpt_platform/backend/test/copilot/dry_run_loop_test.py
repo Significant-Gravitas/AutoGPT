@@ -45,7 +45,7 @@ from openai.types.chat import ChatCompletionToolParam
 from pydantic import ValidationError
 
 from backend.copilot.prompting import get_sdk_supplement
-from backend.copilot.service import DEFAULT_SYSTEM_PROMPT
+from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.run_agent import RunAgentInput
 
