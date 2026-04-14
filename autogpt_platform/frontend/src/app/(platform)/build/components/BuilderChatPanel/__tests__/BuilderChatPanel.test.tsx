@@ -14,6 +14,7 @@ import {
   buildSeedPrompt,
   extractTextFromParts,
   SEED_PROMPT_PREFIX,
+  MAX_SEED_SUMMARY_CHARS,
 } from "../helpers";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import type { CustomEdge } from "../../FlowEditor/edges/CustomEdge";
@@ -753,6 +754,19 @@ describe("buildSeedPrompt", () => {
   it("ends with the user message appended", () => {
     const result = buildSeedPrompt("", "help me add a search block");
     expect(result).toContain("User request: help me add a search block");
+  });
+
+  it("truncates summary exceeding MAX_SEED_SUMMARY_CHARS and appends a notice", () => {
+    const oversizedSummary = "x".repeat(MAX_SEED_SUMMARY_CHARS + 100);
+    const result = buildSeedPrompt(oversizedSummary, "hello");
+    expect(result).toContain("Graph context truncated");
+    expect(result).not.toContain("x".repeat(MAX_SEED_SUMMARY_CHARS + 1));
+  });
+
+  it("does not truncate summary within MAX_SEED_SUMMARY_CHARS", () => {
+    const summary = "x".repeat(MAX_SEED_SUMMARY_CHARS);
+    const result = buildSeedPrompt(summary, "hello");
+    expect(result).not.toContain("Graph context truncated");
   });
 });
 
