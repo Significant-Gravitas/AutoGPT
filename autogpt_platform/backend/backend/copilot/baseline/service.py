@@ -59,6 +59,7 @@ from backend.copilot.service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
@@ -101,6 +102,7 @@ _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
 
 # MIME types that can be embedded as vision content blocks (OpenAI format).
 _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
 
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
@@ -231,98 +233,6 @@ def _resolve_baseline_model(mode: CopilotMode | None) -> str:
     return config.model
 
 
-# Tag pairs to strip from baseline streaming output.  Different models use
-# different tag names for their internal reasoning (Claude uses <thinking>,
-# Gemini uses <internal_reasoning>, etc.).
-_REASONING_TAG_PAIRS: list[tuple[str, str]] = [
-    ("<thinking>", "</thinking>"),
-    ("<internal_reasoning>", "</internal_reasoning>"),
-]
-
-# Longest opener — used to size the partial-tag buffer.
-_MAX_OPEN_TAG_LEN = max(len(o) for o, _ in _REASONING_TAG_PAIRS)
-
-
-class _ThinkingStripper:
-    """Strip reasoning blocks from a stream of text deltas.
-
-    Handles multiple tag patterns (``<thinking>``, ``<internal_reasoning>``,
-    etc.) so the same stripper works across Claude, Gemini, and other models.
-
-    Buffers just enough characters to detect a tag that may be split
-    across chunks; emits text immediately when no tag is in-flight.
-    Robust to single chunks that open and close a block, multiple
-    blocks per stream, and tags that straddle chunk boundaries.
-    """
-
-    def __init__(self) -> None:
-        self._buffer: str = ""
-        self._in_thinking: bool = False
-        self._close_tag: str = ""  # closing tag for the currently open block
-
-    def _find_open_tag(self) -> tuple[int, str, str]:
-        """Find the earliest opening tag in the buffer.
-
-        Returns (position, open_tag, close_tag) or (-1, "", "") if none.
-        """
-        best_pos = -1
-        best_open = ""
-        best_close = ""
-        for open_tag, close_tag in _REASONING_TAG_PAIRS:
-            pos = self._buffer.find(open_tag)
-            if pos != -1 and (best_pos == -1 or pos < best_pos):
-                best_pos = pos
-                best_open = open_tag
-                best_close = close_tag
-        return best_pos, best_open, best_close
-
-    def process(self, chunk: str) -> str:
-        """Feed a chunk and return the text that is safe to emit now."""
-        self._buffer += chunk
-        out: list[str] = []
-        while self._buffer:
-            if self._in_thinking:
-                end = self._buffer.find(self._close_tag)
-                if end == -1:
-                    keep = len(self._close_tag) - 1
-                    self._buffer = self._buffer[-keep:] if keep else ""
-                    return "".join(out)
-                self._buffer = self._buffer[end + len(self._close_tag) :]
-                self._in_thinking = False
-                self._close_tag = ""
-            else:
-                start, open_tag, close_tag = self._find_open_tag()
-                if start == -1:
-                    # No opening tag; emit everything except a tail that
-                    # could start a partial opener on the next chunk.
-                    safe_end = len(self._buffer)
-                    for keep in range(
-                        min(_MAX_OPEN_TAG_LEN - 1, len(self._buffer)), 0, -1
-                    ):
-                        tail = self._buffer[-keep:]
-                        if any(o[:keep] == tail for o, _ in _REASONING_TAG_PAIRS):
-                            safe_end = len(self._buffer) - keep
-                            break
-                    out.append(self._buffer[:safe_end])
-                    self._buffer = self._buffer[safe_end:]
-                    return "".join(out)
-                out.append(self._buffer[:start])
-                self._buffer = self._buffer[start + len(open_tag) :]
-                self._in_thinking = True
-                self._close_tag = close_tag
-        return "".join(out)
-
-    def flush(self) -> str:
-        """Return any remaining emittable text when the stream ends."""
-        if self._in_thinking:
-            # Unclosed thinking block — discard the buffered reasoning.
-            self._buffer = ""
-            return ""
-        out = self._buffer
-        self._buffer = ""
-        return out
-
-
 @dataclass
 class _BaselineStreamState:
     """Mutable state shared between the tool-call loop callbacks.
@@ -338,6 +248,8 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    turn_cache_read_tokens: int = 0
+    turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
@@ -385,6 +297,18 @@ async def _baseline_llm_caller(
             if chunk.usage:
                 state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                 state.turn_completion_tokens += chunk.usage.completion_tokens or 0
+                # Extract cache token details when available (OpenAI /
+                # OpenRouter include these in prompt_tokens_details).
+                ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                if ptd:
+                    state.turn_cache_read_tokens += (
+                        getattr(ptd, "cached_tokens", 0) or 0
+                    )
+                    # cache_creation_input_tokens is reported by some providers
+                    # (e.g. Anthropic native) but not standard OpenAI streaming.
+                    state.turn_cache_creation_tokens += (
+                        getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                    )
 
             delta = chunk.choices[0].delta if chunk.choices else None
             if not delta:
@@ -978,16 +902,17 @@ async def stream_chat_completion_baseline(
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.
     if user_id and len(session.messages) > 1:
-        transcript_covers_prefix, (base_system_prompt, understanding) = (
-            await asyncio.gather(
-                _load_prior_transcript(
-                    user_id=user_id,
-                    session_id=session_id,
-                    session_msg_count=len(session.messages),
-                    transcript_builder=transcript_builder,
-                ),
-                prompt_task,
-            )
+        (
+            transcript_covers_prefix,
+            (base_system_prompt, understanding),
+        ) = await asyncio.gather(
+            _load_prior_transcript(
+                user_id=user_id,
+                session_id=session_id,
+                session_msg_count=len(session.messages),
+                transcript_builder=transcript_builder,
+            ),
+            prompt_task,
         )
     else:
         base_system_prompt, understanding = await prompt_task
@@ -1098,7 +1023,7 @@ async def stream_chat_completion_baseline(
         content_text = context.get("content", "")
         if content_text:
             context_hint = (
-                f"\n[The user shared a URL: {url}\n" f"Content:\n{content_text[:8000]}]"
+                f"\n[The user shared a URL: {url}\nContent:\n{content_text[:8000]}]"
             )
         else:
             context_hint = f"\n[The user shared a URL: {url}]"
@@ -1280,16 +1205,22 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-
         # Persist token usage to session and record for rate limiting.
-        # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we
-        # cannot break out cache_read/cache_creation weights. Users on the
-        # baseline path may be slightly over-counted vs the SDK path.
+        # When prompt_tokens_details.cached_tokens is reported, subtract
+        # them from prompt_tokens to get the uncached count so the cost
+        # breakdown stays accurate.
+        uncached_prompt = state.turn_prompt_tokens
+        if state.turn_cache_read_tokens > 0:
+            uncached_prompt = max(
+                0, state.turn_prompt_tokens - state.turn_cache_read_tokens
+            )
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=uncached_prompt,
             completion_tokens=state.turn_completion_tokens,
+            cache_read_tokens=state.turn_cache_read_tokens,
+            cache_creation_tokens=state.turn_cache_creation_tokens,
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
@@ -1359,10 +1290,13 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
+        # Report uncached prompt tokens to match what was billed — cached tokens
+        # are excluded so the frontend display is consistent with cost_usd.
+        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
         yield StreamUsage(
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
-            total_tokens=state.turn_prompt_tokens + state.turn_completion_tokens,
+            total_tokens=billed_prompt + state.turn_completion_tokens,
         )
 
     yield StreamFinish()

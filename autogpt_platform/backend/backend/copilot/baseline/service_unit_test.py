@@ -13,7 +13,6 @@ from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _BaselineStreamState,
     _compress_session_messages,
-    _ThinkingStripper,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.transcript_builder import TranscriptBuilder
@@ -367,64 +366,6 @@ class TestCompressSessionMessagesPreservesToolCalls:
         assert out[0].tool_calls is not None
         assert out[0].tool_calls[0]["id"] == "t1"
         assert out[1].tool_call_id == "t1"
-
-
-# ---- _ThinkingStripper tests ---- #
-
-
-def test_thinking_stripper_basic_thinking_tag() -> None:
-    """<thinking>...</thinking> blocks are fully stripped."""
-    s = _ThinkingStripper()
-    assert s.process("<thinking>internal reasoning here</thinking>Hello!") == "Hello!"
-
-
-def test_thinking_stripper_internal_reasoning_tag() -> None:
-    """<internal_reasoning>...</internal_reasoning> blocks (Gemini) are stripped."""
-    s = _ThinkingStripper()
-    assert (
-        s.process("<internal_reasoning>step by step</internal_reasoning>Answer")
-        == "Answer"
-    )
-
-
-def test_thinking_stripper_split_across_chunks() -> None:
-    """Tags split across multiple chunks are handled correctly."""
-    s = _ThinkingStripper()
-    out = s.process("Hello <thin")
-    out += s.process("king>secret</thinking> world")
-    assert out == "Hello  world"
-
-
-def test_thinking_stripper_plain_text_preserved() -> None:
-    """Plain text with the word 'thinking' is not stripped."""
-    s = _ThinkingStripper()
-    assert (
-        s.process("I am thinking about this problem")
-        == "I am thinking about this problem"
-    )
-
-
-def test_thinking_stripper_multiple_blocks() -> None:
-    """Multiple reasoning blocks in one stream are all stripped."""
-    s = _ThinkingStripper()
-    result = s.process(
-        "A<thinking>x</thinking>B<internal_reasoning>y</internal_reasoning>C"
-    )
-    assert result == "ABC"
-
-
-def test_thinking_stripper_flush_discards_unclosed() -> None:
-    """Unclosed reasoning block is discarded on flush."""
-    s = _ThinkingStripper()
-    s.process("Start<thinking>never closed")
-    flushed = s.flush()
-    assert "never closed" not in flushed
-
-
-def test_thinking_stripper_empty_block() -> None:
-    """Empty reasoning blocks are handled gracefully."""
-    s = _ThinkingStripper()
-    assert s.process("Before<thinking></thinking>After") == "BeforeAfter"
 
 
 # ---- _filter_tools_by_permissions tests ---- #
@@ -828,3 +769,244 @@ class TestBaselineCostExtraction:
 
         # response was never assigned so cost extraction must not raise
         assert state.cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_no_cost_when_header_missing(self):
+        """cost_usd remains None when x-total-cost is absent."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+
+        mock_raw = MagicMock()
+        mock_raw.headers = {}  # no x-total-cost
+        mock_stream = MagicMock()
+        mock_stream._response = mock_raw
+
+        mock_chunk = MagicMock()
+        mock_chunk.usage = MagicMock()
+        mock_chunk.usage.prompt_tokens = 1000
+        mock_chunk.usage.completion_tokens = 500
+        mock_chunk.usage.prompt_tokens_details = None
+        mock_chunk.choices = []
+
+        async def chunk_aiter():
+            yield mock_chunk
+
+        mock_stream.__aiter__ = lambda self: chunk_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_cache_tokens_extracted_from_usage_details(self):
+        """cache tokens are extracted from prompt_tokens_details.cached_tokens."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="openai/gpt-4o")
+
+        mock_raw = MagicMock()
+        mock_raw.headers = {"x-total-cost": "0.01"}
+        mock_stream = MagicMock()
+        mock_stream._response = mock_raw
+
+        # Create a chunk with prompt_tokens_details
+        mock_ptd = MagicMock()
+        mock_ptd.cached_tokens = 800
+
+        mock_chunk = MagicMock()
+        mock_chunk.usage = MagicMock()
+        mock_chunk.usage.prompt_tokens = 1000
+        mock_chunk.usage.completion_tokens = 200
+        mock_chunk.usage.prompt_tokens_details = mock_ptd
+        mock_chunk.choices = []
+
+        async def chunk_aiter():
+            yield mock_chunk
+
+        mock_stream.__aiter__ = lambda self: chunk_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.turn_cache_read_tokens == 800
+        assert state.turn_prompt_tokens == 1000
+
+    @pytest.mark.asyncio
+    async def test_cache_creation_tokens_extracted_from_usage_details(self):
+        """cache_creation_tokens are extracted from prompt_tokens_details."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="openai/gpt-4o")
+
+        mock_raw = MagicMock()
+        mock_raw.headers = {"x-total-cost": "0.01"}
+        mock_stream = MagicMock()
+        mock_stream._response = mock_raw
+
+        mock_ptd = MagicMock()
+        mock_ptd.cached_tokens = 0
+        mock_ptd.cache_creation_input_tokens = 500
+
+        mock_chunk = MagicMock()
+        mock_chunk.usage = MagicMock()
+        mock_chunk.usage.prompt_tokens = 1000
+        mock_chunk.usage.completion_tokens = 200
+        mock_chunk.usage.prompt_tokens_details = mock_ptd
+        mock_chunk.choices = []
+
+        async def chunk_aiter():
+            yield mock_chunk
+
+        mock_stream.__aiter__ = lambda self: chunk_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.turn_cache_creation_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_token_accumulators_track_across_multiple_calls(self):
+        """Token accumulators grow correctly across multiple _baseline_llm_caller calls."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+
+        def make_stream(prompt_tokens: int, completion_tokens: int):
+            mock_raw = MagicMock()
+            mock_raw.headers = {}  # no x-total-cost
+            mock_stream = MagicMock()
+            mock_stream._response = mock_raw
+
+            mock_chunk = MagicMock()
+            mock_chunk.usage = MagicMock()
+            mock_chunk.usage.prompt_tokens = prompt_tokens
+            mock_chunk.usage.completion_tokens = completion_tokens
+            mock_chunk.usage.prompt_tokens_details = None
+            mock_chunk.choices = []
+
+            async def chunk_aiter():
+                yield mock_chunk
+
+            mock_stream.__aiter__ = lambda self: chunk_aiter()
+            return mock_stream
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[
+                make_stream(1000, 200),
+                make_stream(1100, 300),
+            ]
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "follow up"}],
+                tools=[],
+                state=state,
+            )
+
+        # No x-total-cost header and empty pricing table -- cost_usd remains None
+        assert state.cost_usd is None
+        # Accumulators hold all tokens across both turns
+        assert state.turn_prompt_tokens == 2100
+        assert state.turn_completion_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_remains_none_when_header_missing(self):
+        """cost_usd stays None when x-total-cost header is absent.
+
+        Token counts are still tracked; persist_and_record_usage handles
+        the None cost by falling back to tracking_type='tokens'.
+        """
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+
+        mock_raw = MagicMock()
+        mock_raw.headers = {}  # no x-total-cost
+        mock_stream = MagicMock()
+        mock_stream._response = mock_raw
+
+        mock_chunk = MagicMock()
+        mock_chunk.usage = MagicMock()
+        mock_chunk.usage.prompt_tokens = 1000
+        mock_chunk.usage.completion_tokens = 500
+        mock_chunk.usage.prompt_tokens_details = None
+        mock_chunk.choices = []
+
+        async def chunk_aiter():
+            yield mock_chunk
+
+        mock_stream.__aiter__ = lambda self: chunk_aiter()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+        assert state.turn_prompt_tokens == 1000
+        assert state.turn_completion_tokens == 500

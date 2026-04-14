@@ -15579,6 +15579,16 @@
             "type": "integer",
             "title": "Total Output Tokens"
           },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
           "request_count": { "type": "integer", "title": "Request Count" }
         },
         "type": "object",

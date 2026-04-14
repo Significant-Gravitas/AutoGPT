@@ -44,6 +44,8 @@ class TestBuildSdkEnvSubscription:
         assert result["ANTHROPIC_API_KEY"] == ""
         assert result["ANTHROPIC_AUTH_TOKEN"] == ""
         assert result["ANTHROPIC_BASE_URL"] == ""
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
         mock_validate.assert_called_once()
 
     @patch(
@@ -78,6 +80,8 @@ class TestBuildSdkEnvDirectAnthropic:
         assert "ANTHROPIC_API_KEY" not in result
         assert "ANTHROPIC_AUTH_TOKEN" not in result
         assert "ANTHROPIC_BASE_URL" not in result
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
     def test_no_anthropic_key_overrides_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
@@ -93,6 +97,8 @@ class TestBuildSdkEnvDirectAnthropic:
         assert "ANTHROPIC_API_KEY" not in result
         assert "ANTHROPIC_AUTH_TOKEN" not in result
         assert "ANTHROPIC_BASE_URL" not in result
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +128,12 @@ class TestBuildSdkEnvOpenRouter:
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
         assert result["ANTHROPIC_AUTH_TOKEN"] == "sk-or-test-key"
         assert result["ANTHROPIC_API_KEY"] == ""
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+        # SDK 0.1.58: Accept-Encoding: identity is always injected
+        assert "ANTHROPIC_CUSTOM_HEADERS" in result
+        assert "Accept-Encoding: identity" in result["ANTHROPIC_CUSTOM_HEADERS"]
+        # OpenRouter compat: env var must always be present
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
     def test_strips_trailing_v1(self):
         """The /v1 suffix is stripped from the base URL."""
@@ -133,6 +144,7 @@ class TestBuildSdkEnvOpenRouter:
             result = build_sdk_env()
 
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
 
     def test_strips_trailing_v1_and_slash(self):
         """Trailing slash before /v1 strip is handled."""
@@ -144,6 +156,7 @@ class TestBuildSdkEnvOpenRouter:
 
         # rstrip("/") first, then remove /v1
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
 
     def test_no_v1_suffix_left_alone(self):
         """A base URL without /v1 is used as-is."""
@@ -154,6 +167,7 @@ class TestBuildSdkEnvOpenRouter:
             result = build_sdk_env()
 
         assert result["ANTHROPIC_BASE_URL"] == "https://custom-proxy.example.com"
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
 
     def test_session_id_header(self):
         cfg = self._openrouter_config()
@@ -209,9 +223,13 @@ class TestBuildSdkEnvOpenRouter:
             long_id = "x" * 200
             result = build_sdk_env(session_id=long_id)
 
-        # The value after "x-session-id: " should be at most 128 chars
-        header_line = result["ANTHROPIC_CUSTOM_HEADERS"]
-        value = header_line.split(": ", 1)[1]
+        # SDK 0.1.58 appends Accept-Encoding: identity on a separate line.
+        # Parse the x-session-id line specifically and check its value length.
+        headers = result["ANTHROPIC_CUSTOM_HEADERS"]
+        session_line = next(
+            line for line in headers.splitlines() if line.startswith("x-session-id: ")
+        )
+        value = session_line.split(": ", 1)[1]
         assert len(value) == 128
 
     @pytest.mark.parametrize(
@@ -267,8 +285,8 @@ class TestBuildSdkEnvModePriority:
         assert result["ANTHROPIC_API_KEY"] == ""
         assert result["ANTHROPIC_AUTH_TOKEN"] == ""
         assert result["ANTHROPIC_BASE_URL"] == ""
-        # OpenRouter-specific key must NOT be present
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+        # SDK 0.1.58: Accept-Encoding: identity is always injected — no trace headers
+        assert result.get("ANTHROPIC_CUSTOM_HEADERS") == "Accept-Encoding: identity"
 
 
 # ---------------------------------------------------------------------------
