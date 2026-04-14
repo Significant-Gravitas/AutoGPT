@@ -8,6 +8,7 @@ from backend.util.cache import cached, thread_cached
 from backend.util.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+NVIDIA_NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
 settings = Settings()
 

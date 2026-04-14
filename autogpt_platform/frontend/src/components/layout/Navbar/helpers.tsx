@@ -26,6 +26,10 @@ export const loggedInLinks: Link[] = [
     name: "Build",
     href: "/build",
   },
+  {
+    name: "Coding Agent",
+    href: "/coding-agent",
+  },
 ];
 
 export const loggedOutLinks: Link[] = [

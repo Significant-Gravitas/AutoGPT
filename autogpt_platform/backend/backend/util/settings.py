@@ -489,6 +489,45 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         "External apps (like Autopilot) must have their callback URLs start with one of these origins.",
     )
 
+    # ── Personal Coding Agent Settings ──────────────────────────────────────
+    auto_model_routing_enabled: bool = Field(
+        default=True,
+        description="Enable automatic model routing (Standard vs Max) based on task complexity.",
+    )
+    max_mode_token_threshold: int = Field(
+        default=2000,
+        description="Token count above which auto-routing prefers Max (NVIDIA NIM) mode.",
+    )
+    default_standard_model: str = Field(
+        default="llama3.3",
+        description="Default local Ollama model for Standard mode (e.g., llama3.3, qwen2.5-coder:14b).",
+    )
+    ollama_duckdns_host: str = Field(
+        default="",
+        description="DuckDNS hostname for remote Ollama access (e.g., myhome.duckdns.org:11434).",
+    )
+    discord_webhook_url: str = Field(
+        default="",
+        description="Discord webhook URL for task completion notifications.",
+    )
+    slack_webhook_url: str = Field(
+        default="",
+        description="Slack webhook URL for task completion notifications.",
+    )
+    task_journal_enabled: bool = Field(
+        default=True,
+        description="Enable personal task journal: auto-log every completed task with a summary.",
+    )
+    auto_git_commit_enabled: bool = Field(
+        default=True,
+        description="Enable automatic git commits with AI-generated commit messages.",
+    )
+    docker_sandbox_image: str = Field(
+        default="python:3.11-slim",
+        description="Docker image to use for isolated code execution sandbox.",
+    )
+    # ────────────────────────────────────────────────────────────────────────
+
     @field_validator("backend_cors_allow_origins")
     @classmethod
     def validate_cors_allow_origins(cls, v: List[str]) -> List[str]:

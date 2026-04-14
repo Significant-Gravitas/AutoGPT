@@ -33,7 +33,7 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
-from backend.util.clients import OPENROUTER_BASE_URL
+from backend.util.clients import NVIDIA_NIM_BASE_URL, OPENROUTER_BASE_URL
 from backend.util.logging import TruncatedLogger
 from backend.util.openai_responses import (
     convert_tools_to_responses_format,
@@ -58,6 +58,7 @@ LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
     ProviderName.GROQ,
+    ProviderName.NVIDIA,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
@@ -229,6 +230,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     V0_1_5_MD = "v0-1.5-md"
     V0_1_5_LG = "v0-1.5-lg"
     V0_1_0_MD = "v0-1.0-md"
+    # NVIDIA NIM models (personal Max mode — Qwen3-Coder-480B via build.nvidia.com)
+    NVIDIA_NIM_QWEN3_CODER_480B = "qwen3-coder-480b-a35b-instruct"
 
     @classmethod
     def __get_pydantic_json_schema__(cls, schema, handler):
@@ -711,6 +714,10 @@ MODEL_METADATA = {
     LlmModel.V0_1_5_MD: ModelMetadata("v0", 128000, 64000, "v0 1.5 MD", "V0", "V0", 1),
     LlmModel.V0_1_5_LG: ModelMetadata("v0", 512000, 64000, "v0 1.5 LG", "V0", "V0", 1),
     LlmModel.V0_1_0_MD: ModelMetadata("v0", 128000, 64000, "v0 1.0 MD", "V0", "V0", 1),
+    # NVIDIA NIM models (personal Max mode)
+    LlmModel.NVIDIA_NIM_QWEN3_CODER_480B: ModelMetadata(
+        "nvidia", 32768, 32768, "Qwen3 Coder 480B A35B (NIM)", "NVIDIA NIM", "Qwen", 3
+    ),
 }
 
 DEFAULT_LLM_MODEL = LlmModel.GPT5_2
@@ -1136,6 +1143,31 @@ async def llm_call(
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
             reasoning=reasoning,
             provider_cost=extract_openrouter_cost(response),
+        )
+    elif provider == "nvidia":
+        # NVIDIA NIM — OpenAI-compatible endpoint for Max mode
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.AsyncOpenAI(
+            base_url=NVIDIA_NIM_BASE_URL,
+            api_key=credentials.api_key.get_secret_value(),
+        )
+        response = await client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+        )
+        if not response.choices:
+            raise ValueError(f"NVIDIA NIM returned empty choices: {response}")
+        tool_calls = extract_openai_tool_calls(response)
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=None,
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
