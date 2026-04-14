@@ -551,6 +551,66 @@ class TestMultiIPFailover:
         assert result is None
         assert mock_conn_cls.call_count == 1
 
+    @patch("http.client.HTTPSConnection")
+    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
+    def test_conn_closed_on_transport_error(
+        self, mock_dns, mock_conn_cls
+    ):
+        """conn.close() must be called even when the request
+        raises, so we don't leak sockets when every call to
+        a flaky domain hits an error."""
+        mock_dns.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443))
+        ]
+        bad = _mock_conn(
+            _mock_response(),
+            raise_on_request=ConnectionRefusedError(),
+        )
+        mock_conn_cls.return_value = bad
+
+        discover_services("leaky.example.com")
+        bad.close.assert_called_once()
+
+    @patch("http.client.HTTPSConnection")
+    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
+    def test_all_failover_attempts_close_their_conn(
+        self, mock_dns, mock_conn_cls
+    ):
+        """Each IP attempted must close its own conn."""
+        mock_dns.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+            (2, 1, 6, "", ("93.184.216.35", 443)),
+            (2, 1, 6, "", ("93.184.216.36", 443)),
+        ]
+        conns = [
+            _mock_conn(
+                _mock_response(),
+                raise_on_request=ConnectionRefusedError(),
+            )
+            for _ in range(3)
+        ]
+        mock_conn_cls.side_effect = conns
+
+        discover_services("allclosed.example.com")
+        for c in conns:
+            c.close.assert_called_once()
+
+    @patch("http.client.HTTPSConnection")
+    @patch("autogpt.utils.agent_discovery.socket.getaddrinfo")
+    def test_conn_closed_on_success(
+        self, mock_dns, mock_conn_cls
+    ):
+        """Success path also closes conn (in finally)."""
+        mock_dns.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443))
+        ]
+        good = _mock_conn(_mock_response())
+        mock_conn_cls.return_value = good
+
+        result = discover_services("success-close.example.com")
+        assert result is not None
+        good.close.assert_called_once()
+
 
 class TestBodySizeCap:
     """Verify the 1 MiB response body cap."""
