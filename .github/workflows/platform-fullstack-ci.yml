@@ -160,6 +160,7 @@ jobs:
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+          echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -288,6 +289,14 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
+      - name: Set up tests - Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Copy source maps from Docker for E2E coverage
         run: |
           FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
@@ -299,8 +308,8 @@ jobs:
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Run Playwright tests
-        run: pnpm test:no-build
+      - name: Run Playwright E2E suite
+        run: pnpm test:e2e:no-build
         continue-on-error: false
 
       - name: Upload E2E coverage to Codecov
