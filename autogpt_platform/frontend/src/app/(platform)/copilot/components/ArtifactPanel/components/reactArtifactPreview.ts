@@ -169,8 +169,8 @@ export function buildReactArtifactSrcDoc(
             return Component;
           }
 
-          return function WrappedArtifactPreview() {
-            let tree = React.createElement(Component);
+          return function WrappedArtifactPreview(props) {
+            let tree = React.createElement(Component, props);
 
             for (let i = providers.length - 1; i >= 0; i -= 1) {
               tree = React.createElement(providers[i], null, tree);
