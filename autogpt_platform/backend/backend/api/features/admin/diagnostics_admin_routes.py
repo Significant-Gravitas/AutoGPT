@@ -8,6 +8,10 @@ from fastapi import APIRouter, HTTPException, Security
 from prisma.enums import AgentExecutionStatus
 from pydantic import BaseModel
 
+from backend.api.features.admin.model import (
+    AgentDiagnosticsResponse,
+    ExecutionDiagnosticsResponse,
+)
 from backend.data.diagnostics import (
     FailedExecutionDetail,
     OrphanedScheduleDetail,
@@ -35,10 +39,6 @@ from backend.data.diagnostics import (
 )
 from backend.data.execution import get_graph_executions
 from backend.executor.utils import add_graph_execution, stop_graph_execution
-from backend.api.features.admin.model import (
-    AgentDiagnosticsResponse,
-    ExecutionDiagnosticsResponse,
-)
 
 logger = logging.getLogger(__name__)
 

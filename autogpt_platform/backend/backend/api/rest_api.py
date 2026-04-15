@@ -17,6 +17,7 @@ from fastapi.routing import APIRoute
 from prisma.errors import PrismaError
 
 import backend.api.features.admin.credit_admin_routes
+import backend.api.features.admin.diagnostics_admin_routes
 import backend.api.features.admin.execution_analytics_routes
 import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
@@ -41,7 +42,6 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.integrations.webhooks.utils
-import backend.api.features.admin.diagnostics_admin_routes
 import backend.util.service
 import backend.util.settings
 from backend.api.features.library.exceptions import (

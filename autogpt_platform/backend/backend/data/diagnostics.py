@@ -13,6 +13,7 @@ from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent
 from pydantic import BaseModel
 
+from backend.data.db import query_raw_with_schema
 from backend.data.execution import get_graph_executions, get_graph_executions_count
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.utils import (
@@ -170,9 +171,37 @@ class OrphanedScheduleDetail(BaseModel):
     next_run_time: str
 
 
+def _to_running_execution_detail(
+    exec: AgentGraphExecution,
+) -> RunningExecutionDetail:
+    """Convert a Prisma AgentGraphExecution (with includes) to RunningExecutionDetail."""
+    return RunningExecutionDetail(
+        execution_id=exec.id,
+        graph_id=exec.agentGraphId,
+        graph_name=(
+            exec.AgentGraph.name
+            if exec.AgentGraph and exec.AgentGraph.name
+            else "Unknown"
+        ),
+        graph_version=exec.agentGraphVersion,
+        user_id=exec.userId,
+        user_email=exec.User.email if exec.User else None,
+        status=exec.executionStatus,
+        created_at=exec.createdAt,
+        started_at=exec.startedAt,
+    )
+
+
+_EXECUTION_ADMIN_INCLUDE = {
+    "AgentGraph": True,
+    "User": True,
+}
+
+
 async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
     """
     Get comprehensive execution diagnostics including database and queue metrics.
+    Uses a single batched SQL query for all count metrics to minimize DB round-trips.
 
     Returns:
         ExecutionDiagnosticsSummary with current execution state
@@ -181,56 +210,98 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
     one_hour_ago = now - timedelta(hours=1)
     twenty_four_hours_ago = now - timedelta(hours=24)
 
-    # Get running executions count
-    running_count = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.RUNNING]
+    # Single SQL query to get all count metrics at once
+    counts = await query_raw_with_schema(
+        """
+        SELECT
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+            ) AS running_count,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+            ) AS queued_db_count,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "createdAt" < $1
+            ) AS orphaned_running,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "createdAt" < $1
+            ) AS orphaned_queued,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'FAILED'
+                AND "updatedAt" >= $2
+            ) AS failed_count_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'FAILED'
+                AND "updatedAt" >= $1
+            ) AS failed_count_24h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "startedAt" IS NOT NULL
+                AND "startedAt" < $1
+            ) AS stuck_running_24h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "startedAt" IS NOT NULL
+                AND "startedAt" < $2
+            ) AS stuck_running_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "createdAt" < $2
+            ) AS stuck_queued_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "startedAt" IS NULL
+            ) AS queued_never_started,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'QUEUED'
+                AND "startedAt" IS NOT NULL
+            ) AS invalid_queued_with_start,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'RUNNING'
+                AND "startedAt" IS NULL
+            ) AS invalid_running_without_start,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'COMPLETED'
+                AND "updatedAt" >= $2
+            ) AS completed_1h,
+            COUNT(*) FILTER (
+                WHERE "executionStatus" = 'COMPLETED'
+                AND "updatedAt" >= $1
+            ) AS completed_24h
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "isDeleted" = false
+        """,
+        twenty_four_hours_ago,
+        one_hour_ago,
     )
 
-    # Get queued executions from database
-    queued_db_count = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.QUEUED]
-    )
+    row = counts[0] if counts else {}
 
-    # Get RabbitMQ queue depths (both execution and cancel queues)
+    running_count = row.get("running_count", 0)
+    queued_db_count = row.get("queued_db_count", 0)
+    orphaned_running = row.get("orphaned_running", 0)
+    orphaned_queued = row.get("orphaned_queued", 0)
+    failed_count_1h = row.get("failed_count_1h", 0)
+    failed_count_24h = row.get("failed_count_24h", 0)
+    stuck_running_24h = row.get("stuck_running_24h", 0)
+    stuck_running_1h = row.get("stuck_running_1h", 0)
+    stuck_queued_1h = row.get("stuck_queued_1h", 0)
+    queued_never_started = row.get("queued_never_started", 0)
+    invalid_queued_with_start = row.get("invalid_queued_with_start", 0)
+    invalid_running_without_start = row.get("invalid_running_without_start", 0)
+    completed_1h = row.get("completed_1h", 0)
+    completed_24h = row.get("completed_24h", 0)
+
+    failure_rate_24h = failed_count_24h / 24.0 if failed_count_24h > 0 else 0.0
+    throughput_per_hour = completed_24h / 24.0 if completed_24h > 0 else 0.0
+
+    # RabbitMQ queue depths (separate connections, not DB queries)
     rabbitmq_queue_depth = get_rabbitmq_queue_depth()
     cancel_queue_depth = get_rabbitmq_cancel_queue_depth()
 
-    # Orphaned execution detection (>24h old, likely not in executor)
-    orphaned_running = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.RUNNING],
-        created_time_lte=twenty_four_hours_ago,
-    )
-
-    orphaned_queued = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.QUEUED],
-        created_time_lte=twenty_four_hours_ago,
-    )
-
-    # Failure metrics - use updated_time filter for "failed within time window"
-    failed_count_1h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.FAILED],
-        updated_time_gte=one_hour_ago,
-    )
-
-    failed_count_24h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.FAILED],
-        updated_time_gte=twenty_four_hours_ago,
-    )
-
-    failure_rate_24h = failed_count_24h / 24.0 if failed_count_24h > 0 else 0.0
-
-    # Long-running detection (started running >24h ago, still running)
-    stuck_running_24h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.RUNNING],
-        started_time_lte=twenty_four_hours_ago,
-    )
-
-    stuck_running_1h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.RUNNING],
-        started_time_lte=one_hour_ago,
-    )
-
-    # Find oldest running execution (by when it started running)
+    # Find oldest running execution (single query)
     oldest_running_list = await get_graph_executions(
         statuses=[AgentExecutionStatus.RUNNING],
         order_by="startedAt",
@@ -242,49 +313,6 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
     if oldest_running_list and oldest_running_list[0].started_at:
         age_seconds = (now - oldest_running_list[0].started_at).total_seconds()
         oldest_running_hours = age_seconds / 3600.0
-
-    # Stuck queued detection
-    stuck_queued_1h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.QUEUED],
-        created_time_lte=one_hour_ago,
-    )
-
-    # These queries need direct Prisma access for null checks which aren't in model functions
-    queued_never_started = await AgentGraphExecution.prisma().count(
-        where={
-            "executionStatus": AgentExecutionStatus.QUEUED,
-            "startedAt": None,
-        }
-    )
-
-    # Invalid state detection (data corruption - requires manual investigation)
-    # QUEUED but has startedAt - use "not None" check
-    invalid_queued_with_start = await AgentGraphExecution.prisma().count(
-        where={
-            "executionStatus": AgentExecutionStatus.QUEUED,
-            "startedAt": {"not": None},
-        }
-    )
-
-    invalid_running_without_start = await AgentGraphExecution.prisma().count(
-        where={
-            "executionStatus": AgentExecutionStatus.RUNNING,
-            "startedAt": None,
-        }
-    )
-
-    # Throughput metrics - use updated_time filter for "completed within time window"
-    completed_1h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.COMPLETED],
-        updated_time_gte=one_hour_ago,
-    )
-
-    completed_24h = await get_graph_executions_count(
-        statuses=[AgentExecutionStatus.COMPLETED],
-        updated_time_gte=twenty_four_hours_ago,
-    )
-
-    throughput_per_hour = completed_24h / 24.0 if completed_24h > 0 else 0.0
 
     return ExecutionDiagnosticsSummary(
         running_count=running_count,
@@ -317,18 +345,20 @@ async def get_agent_diagnostics() -> AgentDiagnosticsSummary:
     Returns:
         AgentDiagnosticsSummary with agent metrics
     """
-    # Get distinct agent graph IDs with active executions
-    executions = await AgentGraphExecution.prisma().find_many(
-        where={
-            "executionStatus": {
-                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
-            }
-        },
-        distinct=["agentGraphId"],
+    # Single query to count distinct agents with active executions
+    result = await query_raw_with_schema(
+        """
+        SELECT COUNT(DISTINCT "agentGraphId") AS active_agents
+        FROM {schema_prefix}"AgentGraphExecution"
+        WHERE "executionStatus" IN ('RUNNING', 'QUEUED')
+        AND "isDeleted" = false
+        """
     )
 
+    active_agents = result[0].get("active_agents", 0) if result else 0
+
     return AgentDiagnosticsSummary(
-        agents_with_active_executions=len(executions),
+        agents_with_active_executions=active_agents,
         timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
@@ -746,37 +776,13 @@ async def get_running_executions_details(
                 "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
             }
         },
-        include={
-            "AgentGraph": True,
-            "User": True,
-        },
+        include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
         order={"createdAt": "desc"},
     )
 
-    results = []
-    for exec in executions:
-        results.append(
-            RunningExecutionDetail(
-                execution_id=exec.id,
-                graph_id=exec.agentGraphId,
-                graph_name=(
-                    exec.AgentGraph.name
-                    if exec.AgentGraph and exec.AgentGraph.name
-                    else "Unknown"
-                ),
-                graph_version=exec.agentGraphVersion,
-                user_id=exec.userId,
-                user_email=exec.User.email if exec.User else None,
-                status=exec.executionStatus,
-                created_at=exec.createdAt,
-                started_at=exec.startedAt,
-                queue_status=None,  # Queue status not available from AgentGraphExecution model
-            )
-        )
-
-    return results
+    return [_to_running_execution_detail(e) for e in executions]
 
 
 async def get_orphaned_executions_details(
@@ -792,7 +798,6 @@ async def get_orphaned_executions_details(
     Returns:
         List of orphaned RunningExecutionDetail objects
     """
-    # Executions older than 24 hours are likely orphaned
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
     executions = await AgentGraphExecution.prisma().find_many(
@@ -802,37 +807,13 @@ async def get_orphaned_executions_details(
             },
             "createdAt": {"lt": cutoff},
         },
-        include={
-            "AgentGraph": True,
-            "User": True,
-        },
+        include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
-        order={"createdAt": "asc"},  # Oldest first for orphaned
+        order={"createdAt": "asc"},
     )
 
-    results = []
-    for exec in executions:
-        results.append(
-            RunningExecutionDetail(
-                execution_id=exec.id,
-                graph_id=exec.agentGraphId,
-                graph_name=(
-                    exec.AgentGraph.name
-                    if exec.AgentGraph and exec.AgentGraph.name
-                    else "Unknown"
-                ),
-                graph_version=exec.agentGraphVersion,
-                user_id=exec.userId,
-                user_email=exec.User.email if exec.User else None,
-                status=exec.executionStatus,
-                created_at=exec.createdAt,
-                started_at=exec.startedAt,
-                queue_status=None,
-            )
-        )
-
-    return results
+    return [_to_running_execution_detail(e) for e in executions]
 
 
 async def get_long_running_executions_details(
@@ -848,7 +829,6 @@ async def get_long_running_executions_details(
     Returns:
         List of long-running RunningExecutionDetail objects
     """
-    # RUNNING executions that started running >24 hours ago
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
     executions = await AgentGraphExecution.prisma().find_many(
@@ -856,37 +836,13 @@ async def get_long_running_executions_details(
             "executionStatus": AgentExecutionStatus.RUNNING,
             "startedAt": {"lt": cutoff},
         },
-        include={
-            "AgentGraph": True,
-            "User": True,
-        },
+        include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
-        order={"startedAt": "asc"},  # Oldest first by start time
+        order={"startedAt": "asc"},
     )
 
-    results = []
-    for exec in executions:
-        results.append(
-            RunningExecutionDetail(
-                execution_id=exec.id,
-                graph_id=exec.agentGraphId,
-                graph_name=(
-                    exec.AgentGraph.name
-                    if exec.AgentGraph and exec.AgentGraph.name
-                    else "Unknown"
-                ),
-                graph_version=exec.agentGraphVersion,
-                user_id=exec.userId,
-                user_email=exec.User.email if exec.User else None,
-                status=exec.executionStatus,
-                created_at=exec.createdAt,
-                started_at=exec.startedAt,
-                queue_status=None,
-            )
-        )
-
-    return results
+    return [_to_running_execution_detail(e) for e in executions]
 
 
 async def get_stuck_queued_executions_details(
@@ -902,7 +858,6 @@ async def get_stuck_queued_executions_details(
     Returns:
         List of stuck queued RunningExecutionDetail objects
     """
-    # QUEUED executions older than 1 hour that never started
     one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
 
     executions = await AgentGraphExecution.prisma().find_many(
@@ -910,37 +865,13 @@ async def get_stuck_queued_executions_details(
             "executionStatus": AgentExecutionStatus.QUEUED,
             "createdAt": {"lt": one_hour_ago},
         },
-        include={
-            "AgentGraph": True,
-            "User": True,
-        },
+        include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
-        order={"createdAt": "asc"},  # Oldest first
+        order={"createdAt": "asc"},
     )
 
-    results = []
-    for exec in executions:
-        results.append(
-            RunningExecutionDetail(
-                execution_id=exec.id,
-                graph_id=exec.agentGraphId,
-                graph_name=(
-                    exec.AgentGraph.name
-                    if exec.AgentGraph and exec.AgentGraph.name
-                    else "Unknown"
-                ),
-                graph_version=exec.agentGraphVersion,
-                user_id=exec.userId,
-                user_email=exec.User.email if exec.User else None,
-                status=exec.executionStatus,
-                created_at=exec.createdAt,
-                started_at=exec.startedAt,
-                queue_status=None,
-            )
-        )
-
-    return results
+    return [_to_running_execution_detail(e) for e in executions]
 
 
 async def get_invalid_executions_details(
@@ -962,53 +893,26 @@ async def get_invalid_executions_details(
     Returns:
         List of invalid RunningExecutionDetail objects
     """
-    # Find both types of invalid states
     executions = await AgentGraphExecution.prisma().find_many(
         where={
             "OR": [  # type: ignore
                 {
-                    # QUEUED but has startedAt
                     "executionStatus": AgentExecutionStatus.QUEUED,
                     "startedAt": {"not": None},  # type: ignore
                 },
                 {
-                    # RUNNING but no startedAt
                     "executionStatus": AgentExecutionStatus.RUNNING,
                     "startedAt": None,
                 },
             ]
         },
-        include={
-            "AgentGraph": True,
-            "User": True,
-        },
+        include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
-        order={"createdAt": "desc"},  # Most recent first
+        order={"createdAt": "desc"},
     )
 
-    results = []
-    for exec in executions:
-        results.append(
-            RunningExecutionDetail(
-                execution_id=exec.id,
-                graph_id=exec.agentGraphId,
-                graph_name=(
-                    exec.AgentGraph.name
-                    if exec.AgentGraph and exec.AgentGraph.name
-                    else "Unknown"
-                ),
-                graph_version=exec.agentGraphVersion,
-                user_id=exec.userId,
-                user_email=exec.User.email if exec.User else None,
-                status=exec.executionStatus,
-                created_at=exec.createdAt,
-                started_at=exec.startedAt,
-                queue_status=None,
-            )
-        )
-
-    return results
+    return [_to_running_execution_detail(e) for e in executions]
 
 
 async def get_failed_executions_count(hours: int = 24) -> int:
@@ -1050,10 +954,7 @@ async def get_failed_executions_details(
             "executionStatus": AgentExecutionStatus.FAILED,
             "updatedAt": {"gte": cutoff},
         },
-        include={
-            "AgentGraph": True,
-            "User": True,
-        },
+        include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
         skip=offset,
         order={"updatedAt": "desc"},  # Most recent failures first
