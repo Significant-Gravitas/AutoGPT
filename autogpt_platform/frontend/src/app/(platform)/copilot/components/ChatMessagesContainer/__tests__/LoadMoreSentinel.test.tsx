@@ -58,6 +58,7 @@ describe("LoadMoreSentinel", () => {
     expect(
       screen.queryByRole("button", { name: /load older messages/i }),
     ).toBeNull();
+    expect(screen.getByTestId("load-more-spinner")).toBeDefined();
   });
 
   it("hides the button when hasMore is false", () => {

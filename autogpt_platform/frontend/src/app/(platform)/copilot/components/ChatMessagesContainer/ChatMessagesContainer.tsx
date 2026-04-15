@@ -194,12 +194,14 @@ export function LoadMoreSentinel({
     if (delta > 0) {
       el.scrollTop = prevTop + delta;
     }
-    if (autoTriggeredRef.current) {
-      if (el.scrollHeight > el.clientHeight) {
-        autoFillRoundsRef.current = 0;
-      } else {
-        autoFillRoundsRef.current += 1;
-      }
+    // Reset the auto-fill backoff whenever the container becomes
+    // scrollable (from any load), so a manual button click can unstick
+    // auto-fill after it has hit the cap. Only count non-scrollable
+    // outcomes against the cap when the load itself was auto-triggered.
+    if (el.scrollHeight > el.clientHeight) {
+      autoFillRoundsRef.current = 0;
+    } else if (autoTriggeredRef.current) {
+      autoFillRoundsRef.current += 1;
     }
     scrollSnapshotRef.current = { scrollHeight: 0, scrollTop: 0 };
     autoTriggeredRef.current = false;
@@ -211,7 +213,10 @@ export function LoadMoreSentinel({
       className="flex flex-col items-center justify-center gap-2 py-1"
     >
       {isLoading ? (
-        <LoadingSpinner className="h-5 w-5 text-neutral-400" />
+        <LoadingSpinner
+          data-testid="load-more-spinner"
+          className="h-5 w-5 text-neutral-400"
+        />
       ) : (
         hasMore && (
           <Button
