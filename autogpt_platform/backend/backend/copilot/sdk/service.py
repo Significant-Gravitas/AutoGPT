@@ -2493,7 +2493,9 @@ async def stream_chat_completion_sdk(
                 # Insert directly — pending messages are atomically-popped from
                 # Redis and are never stale-cache duplicates, so the
                 # maybe_append_user_message dedup is wrong here.
-                session.messages.insert(insert_idx + i, ChatMessage(role="user", content=pt))
+                session.messages.insert(
+                    insert_idx + i, ChatMessage(role="user", content=pt)
+                )
             # Prepend pending texts so the model sees them in chronological
             # order: pending (queued during T1) → current (T2 user message).
             if current_message.strip():
