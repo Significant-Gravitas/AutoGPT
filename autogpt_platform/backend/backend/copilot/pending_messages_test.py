@@ -20,6 +20,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
     peek_pending_count,
+    peek_pending_messages,
     push_pending_message,
 )
 
@@ -67,6 +68,13 @@ class _FakeRedis:
 
     async def llen(self, key: str) -> int:
         return len(self.lists.get(key, []))
+
+    async def lrange(self, key: str, start: int, stop: int) -> list[str | bytes]:
+        lst = self.lists.get(key, [])
+        # Redis LRANGE stop is inclusive; -1 means the last element.
+        if stop == -1:
+            return list(lst[start:])
+        return list(lst[start : stop + 1])
 
     async def delete(self, key: str) -> int:
         if key in self.lists:
@@ -284,3 +292,61 @@ async def test_push_survives_publish_failure(
     drained = await drain_pending_messages("sess_pub_err")
     assert len(drained) == 1
     assert drained[0].content == "ok"
+
+
+# ── peek_pending_messages ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_returns_all_without_consuming(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Peek returns all queued messages and leaves the buffer intact."""
+    await push_pending_message("peek1", PendingMessage(content="first"))
+    await push_pending_message("peek1", PendingMessage(content="second"))
+
+    peeked = await peek_pending_messages("peek1")
+    assert len(peeked) == 2
+    assert peeked[0].content == "first"
+    assert peeked[1].content == "second"
+
+    # Buffer must not be consumed — count still 2
+    assert await peek_pending_count("peek1") == 2
+    drained = await drain_pending_messages("peek1")
+    assert len(drained) == 2
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_empty_buffer(fake_redis: _FakeRedis) -> None:
+    """Peek on a missing key returns an empty list without raising."""
+    result = await peek_pending_messages("no_such_session")
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_decodes_bytes_payloads(
+    fake_redis: _FakeRedis,
+) -> None:
+    """peek_pending_messages decodes bytes entries the same way drain does."""
+    fake_redis.lists["copilot:pending:peek_bytes"] = [
+        json.dumps({"content": "from bytes"}).encode("utf-8"),
+    ]
+    peeked = await peek_pending_messages("peek_bytes")
+    assert len(peeked) == 1
+    assert peeked[0].content == "from bytes"
+
+
+@pytest.mark.asyncio
+async def test_peek_pending_messages_skips_malformed_entries(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Malformed entries are skipped and valid ones are returned."""
+    fake_redis.lists["copilot:pending:peek_bad"] = [
+        json.dumps({"content": "valid peek"}),
+        "{bad json",
+        json.dumps({"content": "also valid peek"}),
+    ]
+    peeked = await peek_pending_messages("peek_bad")
+    assert len(peeked) == 2
+    assert peeked[0].content == "valid peek"
+    assert peeked[1].content == "also valid peek"
