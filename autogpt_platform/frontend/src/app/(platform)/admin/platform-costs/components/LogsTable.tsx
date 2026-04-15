@@ -118,7 +118,23 @@ function LogsTable({
                     ? formatDuration(Number(log.duration))
                     : "-"}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">
+                <td
+                  className={[
+                    "px-3 py-2 text-xs text-muted-foreground",
+                    log.graph_exec_id ? "cursor-pointer" : "",
+                  ].join(" ")}
+                  title={
+                    log.graph_exec_id ? String(log.graph_exec_id) : undefined
+                  }
+                  onClick={
+                    log.graph_exec_id
+                      ? () =>
+                          navigator.clipboard.writeText(
+                            String(log.graph_exec_id),
+                          )
+                      : undefined
+                  }
+                >
                   {log.graph_exec_id
                     ? String(log.graph_exec_id).slice(0, 8)
                     : "-"}
