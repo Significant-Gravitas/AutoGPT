@@ -19,9 +19,7 @@ class TestBuildSystemPrompt:
     @pytest.mark.asyncio
     async def test_no_user_id_returns_static_prompt(self):
         """When user_id is None, no DB lookup happens and the static prompt is returned."""
-        with (
-            patch(f"{_SVC}._is_langfuse_configured", return_value=False),
-        ):
+        with (patch(f"{_SVC}._is_langfuse_configured", return_value=False),):
             from backend.copilot.service import (
                 _CACHEABLE_SYSTEM_PROMPT,
                 _build_system_prompt,
