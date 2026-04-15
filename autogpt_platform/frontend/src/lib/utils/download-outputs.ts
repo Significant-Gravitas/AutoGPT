@@ -183,7 +183,14 @@ export async function downloadOutputs(items: DownloadItem[]) {
             );
           }
         } else {
-          blob = downloadContent.data as Blob;
+          const rawBlob = downloadContent.data as Blob;
+          if (rawBlob.size <= MAX_FILE_SIZE_BYTES) {
+            blob = rawBlob;
+          } else {
+            console.warn(
+              `Skipping ${filename}: blob too large (${(rawBlob.size / 1024 / 1024).toFixed(1)} MB)`,
+            );
+          }
         }
 
         return { blob, filename, sourceUrl };
