@@ -265,19 +265,19 @@ export function useLibraryAgentList({
       return;
     }
 
-    if (agents.length <= prevAgentsLengthRef.current) return;
-    prevAgentsLengthRef.current = agents.length;
+    if (agents.length > prevAgentsLengthRef.current) {
+      const newFilteredCount = filteredAgents.length;
+      const previousCount = prevFilteredLengthRef.current;
 
-    const newFilteredCount = filteredAgents.length;
-    const previousCount = prevFilteredLengthRef.current;
-
-    if (newFilteredCount > previousCount) {
-      setConsecutiveEmptyPages(0);
-    } else {
-      setConsecutiveEmptyPages((prev) => prev + 1);
+      if (newFilteredCount > previousCount) {
+        setConsecutiveEmptyPages(0);
+      } else {
+        setConsecutiveEmptyPages((prev) => prev + 1);
+      }
     }
 
-    prevFilteredLengthRef.current = newFilteredCount;
+    prevAgentsLengthRef.current = agents.length;
+    prevFilteredLengthRef.current = filteredAgents.length;
   }, [agents.length, filteredAgents.length, statusFilter]);
 
   useEffect(() => {
