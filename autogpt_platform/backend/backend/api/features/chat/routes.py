@@ -4,7 +4,7 @@ import asyncio
 import logging
 import re
 from collections.abc import AsyncGenerator
-from typing import Annotated, Any, cast
+from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -28,6 +28,11 @@ from backend.copilot.model import (
     get_chat_session,
     get_user_sessions,
     update_session_title,
+)
+from backend.copilot.pending_message_helpers import (
+    PENDING_CALL_LIMIT,
+    PENDING_CALL_WINDOW_SECONDS,
+    check_pending_call_rate,
 )
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
@@ -91,38 +96,6 @@ config = ChatConfig()
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
 )
-
-# Call-frequency cap for the pending-message endpoint.  The token-budget
-# check in queue_pending_message guards against overspend, but does not
-# prevent rapid-fire pushes from a client with a large budget.  This cap
-# (per user, per 60-second window) limits the rate a caller can hammer the
-# endpoint independently of token consumption.
-_PENDING_CALL_LIMIT = 30  # pushes per minute per user
-_PENDING_CALL_WINDOW_SECONDS = 60
-_PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
-
-# Maximum lengths for pending-message context fields (url: 2 KB, content: 32 KB).
-# Enforced by QueuePendingMessageRequest._validate_context_length.
-_CONTEXT_URL_MAX_LENGTH = 2_000
-_CONTEXT_CONTENT_MAX_LENGTH = 32_000
-
-# Lua script for atomic INCR + conditional EXPIRE.
-# Using a single EVAL ensures the counter never persists without a TTL —
-# a bare INCR followed by a separate EXPIRE can leave the key without
-# an expiry if the process crashes between the two commands.
-#
-# This is a fixed-window counter (not sliding-window): the TTL is set only
-# on the first request in the window, so the window resets every 60 seconds
-# from the first request, not from each request.  A burst at the end of
-# window N and the start of window N+1 can briefly exceed the per-window
-# limit by up to 2×.  This trade-off is acceptable at this call frequency.
-_CALL_INCR_LUA = """
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
-end
-return count
-"""
 
 
 async def _validate_and_get_session(
@@ -220,26 +193,6 @@ class QueuePendingMessageRequest(BaseModel):
         description="Optional page context with 'url' and 'content' fields.",
     )
     file_ids: list[str] | None = Field(default=None, max_length=20)
-
-    @field_validator("context")
-    @classmethod
-    def _validate_context_length(
-        cls, v: PendingMessageContext | None
-    ) -> PendingMessageContext | None:
-        if v is None:
-            return v
-        # Cap context values to prevent LLM context-window stuffing via
-        # large page payloads.  Limits are module-level constants so
-        # they are visible to callers and documentation.
-        if v.url and len(v.url) > _CONTEXT_URL_MAX_LENGTH:
-            raise ValueError(
-                f"context.url exceeds maximum length of {_CONTEXT_URL_MAX_LENGTH} characters"
-            )
-        if v.content and len(v.content) > _CONTEXT_CONTENT_MAX_LENGTH:
-            raise ValueError(
-                f"context.content exceeds maximum length of {_CONTEXT_CONTENT_MAX_LENGTH} characters"
-            )
-        return v
 
 
 class QueuePendingMessageResponse(BaseModel):
@@ -1231,33 +1184,12 @@ async def queue_pending_message(
 
     # Call-frequency cap: prevent rapid-fire pushes that would bypass the
     # token-budget check (which only fires per-turn, not per-push).
-    # Uses an atomic Lua EVAL (INCR + EXPIRE) so the key can never be
-    # orphaned without a TTL; fails open if Redis is down.
-    try:
-        _redis = await get_redis_async()
-        _call_key = f"{_PENDING_CALL_KEY_PREFIX}{user_id}"
-        _call_count = int(
-            await cast(
-                "Any",
-                _redis.eval(
-                    _CALL_INCR_LUA,
-                    1,
-                    _call_key,
-                    str(_PENDING_CALL_WINDOW_SECONDS),
-                ),
-            )
+    call_count = await check_pending_call_rate(user_id)
+    if call_count > PENDING_CALL_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many pending messages: limit is {PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s",
         )
-        if _call_count > _PENDING_CALL_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Too many pending messages: limit is {_PENDING_CALL_LIMIT} per {_PENDING_CALL_WINDOW_SECONDS}s",
-            )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.warning(
-            "queue_pending_message: rate-limit check failed, failing open"
-        )  # non-fatal
 
     # Sanitise file IDs to the user's own workspace so injection doesn't
     # surface other users' files.  _resolve_workspace_files handles UUID
