@@ -935,3 +935,48 @@ def test_stream_chat_dedup_key_released_even_when_redis_delete_raises(
     assert '"finish"' in response.text
     # delete must have been attempted — the except-pass branch silenced the error.
     mock_redis.delete.assert_called_once()
+
+
+# ─── DELETE /sessions/{id}/stream — disconnect listeners ──────────────
+
+
+def test_disconnect_stream_returns_204_and_awaits_registry(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mock_session = MagicMock()
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=mock_session,
+    )
+    mock_disconnect = mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.disconnect_all_listeners",
+        new_callable=AsyncMock,
+        return_value=2,
+    )
+
+    response = client.delete("/sessions/sess-1/stream")
+
+    assert response.status_code == 204
+    mock_disconnect.assert_awaited_once_with("sess-1")
+
+
+def test_disconnect_stream_returns_404_when_session_missing(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mock_disconnect = mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.disconnect_all_listeners",
+        new_callable=AsyncMock,
+    )
+
+    response = client.delete("/sessions/unknown-session/stream")
+
+    assert response.status_code == 404
+    mock_disconnect.assert_not_awaited()
