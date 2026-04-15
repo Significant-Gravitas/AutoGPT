@@ -1994,6 +1994,39 @@ async def _run_stream_attempt(
 
             # --- Dispatch adapter responses ---
             adapter_responses = state.adapter.convert_message(sdk_msg)
+
+            # Pre-create the new assistant message in the session BEFORE
+            # yielding any events so it survives a GeneratorExit (client
+            # disconnect) that interrupts the yield loop at StreamStartStep.
+            #
+            # Without this, the sequence is:
+            #   tool result saved → intermediate flush → StreamStartStep
+            #   yield → GeneratorExit → finally saves session with
+            #   last_role=tool (the text response was generated but never
+            #   appended because _dispatch_response(StreamTextDelta) was
+            #   skipped).
+            #
+            # We only pre-create when:
+            #   1. Tool results were received this turn (has_tool_results).
+            #   2. The prior assistant message is already appended
+            #      (has_appended_assistant) — so this is a post-tool turn.
+            #   3. This batch contains StreamTextDelta — text IS coming, so
+            #      we won't leave a spurious empty message for tool-only turns.
+            #
+            # Subsequent StreamTextDelta dispatches accumulate content into
+            # acc.assistant_response in-place (ChatMessage is mutable), so
+            # the DB record is updated without a second append.
+            if (
+                acc.has_tool_results
+                and acc.has_appended_assistant
+                and any(isinstance(r, StreamTextDelta) for r in adapter_responses)
+            ):
+                acc.assistant_response = ChatMessage(role="assistant", content="")
+                acc.accumulated_tool_calls = []
+                acc.has_tool_results = False
+                ctx.session.messages.append(acc.assistant_response)
+                # acc.has_appended_assistant stays True — placeholder is live
+
             # When StreamFinish is in this batch (ResultMessage), flush any
             # text buffered by the thinking stripper and inject it as a
             # StreamTextDelta BEFORE the StreamTextEnd so the Vercel AI SDK
