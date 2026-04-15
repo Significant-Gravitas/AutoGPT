@@ -2,7 +2,8 @@
 
 import { globalRegistry } from "@/components/contextual/OutputRenderers";
 import { codeRenderer } from "@/components/contextual/OutputRenderers/renderers/CodeRenderer";
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
@@ -63,6 +64,90 @@ function ArtifactContentLoader({
   );
 }
 
+function ArtifactImage({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center gap-3 p-8 text-center"
+      >
+        <p className="text-sm text-zinc-500">Failed to load image</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(false);
+            setLoaded(false);
+          }}
+          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex items-center justify-center p-4">
+      {!loaded && (
+        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className={`max-h-full max-w-full object-contain transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+}
+
+function ArtifactVideo({ src }: { src: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (error) {
+    return (
+      <div
+        role="alert"
+        className="flex flex-col items-center justify-center gap-3 p-8 text-center"
+      >
+        <p className="text-sm text-zinc-500">Failed to load video</p>
+        <button
+          type="button"
+          onClick={() => {
+            setError(false);
+            setLoaded(false);
+          }}
+          className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        >
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative flex items-center justify-center p-4">
+      {!loaded && (
+        <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
+      )}
+      <video
+        src={src}
+        controls
+        preload="metadata"
+        className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
+        onLoadedMetadata={() => setLoaded(true)}
+        onError={() => setError(true)}
+      />
+    </div>
+  );
+}
+
 function ArtifactRenderer({
   artifact,
   content,
@@ -79,15 +164,17 @@ function ArtifactRenderer({
   // Image: render directly from URL (no content fetch)
   if (classification.type === "image") {
     return (
-      <div className="flex items-center justify-center p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={artifact.sourceUrl}
-          alt={artifact.title}
-          className="max-h-full max-w-full object-contain"
-        />
-      </div>
+      <ArtifactImage
+        key={artifact.sourceUrl}
+        src={artifact.sourceUrl}
+        alt={artifact.title}
+      />
     );
+  }
+
+  // Video: render with <video> controls (no content fetch)
+  if (classification.type === "video") {
+    return <ArtifactVideo key={artifact.sourceUrl} src={artifact.sourceUrl} />;
   }
 
   if (classification.type === "pdf" && pdfUrl) {
@@ -164,7 +251,16 @@ function ArtifactRenderer({
 
   // CSV: pass with explicit metadata so CSVRenderer matches
   if (classification.type === "csv") {
-    const csvMeta = { mimeType: "text/csv", filename: artifact.title };
+    const normalizedMime = artifact.mimeType
+      ?.toLowerCase()
+      .split(";")[0]
+      ?.trim();
+    const csvMimeType =
+      normalizedMime === "text/tab-separated-values" ||
+      artifact.title.toLowerCase().endsWith(".tsv")
+        ? "text/tab-separated-values"
+        : "text/csv";
+    const csvMeta = { mimeType: csvMimeType, filename: artifact.title };
     const csvRenderer = globalRegistry.getRenderer(content, csvMeta);
     if (csvRenderer) {
       return <div className="p-4">{csvRenderer.render(content, csvMeta)}</div>;

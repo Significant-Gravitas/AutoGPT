@@ -1,6 +1,7 @@
 import { Key, storage } from "@/services/storage/local-storage";
 import { create } from "zustand";
 import { clearContentCache } from "./components/ArtifactPanel/components/useArtifactContent";
+import { classifyArtifact } from "./components/ArtifactPanel/helpers";
 import { ORIGINAL_TITLE, parseSessionIDs } from "./helpers";
 
 export interface DeleteTarget {
@@ -92,6 +93,10 @@ function persistCompletedSessions(ids: Set<string>) {
   }
 }
 
+function isPreviewableArtifact(ref: ArtifactRef): boolean {
+  return classifyArtifact(ref.mimeType, ref.title, ref.sizeBytes).openable;
+}
+
 interface CopilotUIState {
   /** Prompt extracted from URL hash (e.g. /copilot#prompt=...) for input prefill. */
   initialPrompt: string | null;
@@ -121,6 +126,7 @@ interface CopilotUIState {
   artifactPanel: ArtifactPanelState;
   openArtifact: (ref: ArtifactRef) => void;
   closeArtifactPanel: () => void;
+  resetArtifactPanel: () => void;
   minimizeArtifactPanel: () => void;
   maximizeArtifactPanel: () => void;
   restoreArtifactPanel: () => void;
@@ -203,14 +209,20 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
   },
   openArtifact: (ref) =>
     set((state) => {
+      if (!isPreviewableArtifact(ref)) return state;
+
       const { activeArtifact, history: prevHistory } = state.artifactPanel;
       const topOfHistory = prevHistory[prevHistory.length - 1];
       const isReturningToTop = topOfHistory?.id === ref.id;
+      const shouldPushHistory =
+        state.artifactPanel.isOpen &&
+        activeArtifact != null &&
+        activeArtifact.id !== ref.id;
       const MAX_HISTORY = 25;
       const history = isReturningToTop
         ? prevHistory.slice(0, -1)
-        : activeArtifact && activeArtifact.id !== ref.id
-          ? [...prevHistory, activeArtifact].slice(-MAX_HISTORY)
+        : shouldPushHistory
+          ? [...prevHistory, activeArtifact!].slice(-MAX_HISTORY)
           : prevHistory;
       return {
         artifactPanel: {
@@ -228,6 +240,17 @@ export const useCopilotUIStore = create<CopilotUIState>((set) => ({
         ...state.artifactPanel,
         isOpen: false,
         isMinimized: false,
+        history: [],
+      },
+    })),
+  resetArtifactPanel: () =>
+    set((state) => ({
+      artifactPanel: {
+        ...state.artifactPanel,
+        isOpen: false,
+        isMinimized: false,
+        isMaximized: false,
+        activeArtifact: null,
         history: [],
       },
     })),
