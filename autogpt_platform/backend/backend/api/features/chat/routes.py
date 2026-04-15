@@ -43,7 +43,7 @@ from backend.copilot.rate_limit import (
     reset_daily_usage,
 )
 from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
-from backend.copilot.service import strip_user_context_prefix
+from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
     AgentDetailsResponse,
@@ -104,21 +104,22 @@ router = APIRouter(
 
 
 def _strip_injected_context(message: dict) -> dict:
-    """Hide the server-side `<user_context>` prefix from the API response.
+    """Hide server-injected context blocks from the API response.
 
-    Returns a **shallow copy** of *message* with the prefix removed from
-    ``content`` (if applicable).  The original dict is never mutated, so
-    callers can safely pass live session dicts without risking side-effects.
+    Returns a **shallow copy** of *message* with all server-injected XML
+    blocks removed from ``content`` (if applicable).  The original dict is
+    never mutated, so callers can safely pass live session dicts without
+    risking side-effects.
 
-    The strip is delegated to ``strip_user_context_prefix`` in
-    ``backend.copilot.service`` so the on-the-wire format stays in lockstep
-    with ``inject_user_context`` (the writer).  Only ``user``-role messages
-    with string content are touched; assistant / multimodal blocks pass
-    through unchanged.
+    Handles all three injected block types — ``<memory_context>``,
+    ``<env_context>``, and ``<user_context>`` — regardless of the order they
+    appear at the start of the message.  Only ``user``-role messages with
+    string content are touched; assistant / multimodal blocks pass through
+    unchanged.
     """
     if message.get("role") == "user" and isinstance(message.get("content"), str):
         result = message.copy()
-        result["content"] = strip_user_context_prefix(message["content"])
+        result["content"] = strip_injected_context_for_display(message["content"])
         return result
     return message
 

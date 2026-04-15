@@ -1,5 +1,7 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
+# isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
+
 import asyncio
 import base64
 import json
@@ -14,10 +16,10 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
-    from backend.copilot.permissions import CopilotPermissions
+    from ..permissions import CopilotPermissions
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -35,22 +37,6 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
-from backend.copilot.context import get_workspace_manager
-from backend.copilot.permissions import apply_tool_permissions
-from backend.copilot.rate_limit import get_user_tier
-from backend.copilot.thinking_stripper import ThinkingStripper
-from backend.copilot.transcript import (
-    _run_compression,
-    cleanup_stale_project_dirs,
-    compact_transcript,
-    download_transcript,
-    read_compacted_entries,
-    restore_cli_session,
-    upload_cli_session,
-    upload_transcript,
-    validate_transcript,
-)
-from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -64,7 +50,7 @@ from ..constants import (
     FRIENDLY_TRANSIENT_MSG,
     is_transient_api_error,
 )
-from ..context import encode_cwd_for_cli
+from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -73,7 +59,9 @@ from ..model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..rate_limit import get_user_tier
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -97,10 +85,23 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
+from ..transcript import (
+    _run_compression,
+    cleanup_stale_project_dirs,
+    compact_transcript,
+    download_transcript,
+    read_compacted_entries,
+    restore_cli_session,
+    upload_cli_session,
+    upload_transcript,
+    validate_transcript,
+)
+from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionTracker, filter_compaction_messages
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .response_adapter import SDKResponseAdapter
@@ -117,6 +118,12 @@ from .tool_adapter import (
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+
+
+class _SystemPromptPreset(SystemPromptPreset, total=False):
+    """Extends SystemPromptPreset with fields added in claude-agent-sdk 0.1.59."""
+
+    exclude_dynamic_sections: NotRequired[bool]
 
 
 # On context-size errors the SDK query is retried with progressively
@@ -424,7 +431,7 @@ async def _reduce_context(
     # Subsequent retry or compaction failed: drop transcript entirely.
     # Return retry_target so the caller compresses DB messages to that budget.
     logger.warning(
-        "%s Dropping transcript, rebuilding from DB messages" " (target_tokens=%d)",
+        "%s Dropping transcript, rebuilding from DB messages (target_tokens=%d)",
         log_prefix,
         retry_target,
     )
@@ -817,7 +824,7 @@ def _build_system_prompt_value(
     """
     if cross_user_cache:
         logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        return SystemPromptPreset(
+        return _SystemPromptPreset(
             type="preset",
             preset="claude_code",
             append=system_prompt,
@@ -1208,7 +1215,7 @@ async def _build_query_message(
         history_context = _format_conversation_context(compressed)
         if history_context:
             logger.info(
-                "[SDK] [%s] Fallback context built: compressed=%s," " context_bytes=%d",
+                "[SDK] [%s] Fallback context built: compressed=%s, context_bytes=%d",
                 session_id[:8],
                 was_compressed,
                 len(history_context),
@@ -2418,17 +2425,19 @@ async def stream_chat_completion_sdk(
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         system_prompt = (
             base_system_prompt
-            + get_sdk_supplement(use_e2b=use_e2b, cwd=sdk_cwd)
+            + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
         )
 
-        # Warm context: pre-load relevant facts from Graphiti on first turn
+        # Warm context: pre-load relevant facts from Graphiti on first turn.
+        # Stored here and injected into the first user message (not the system
+        # prompt) so the system prompt stays identical across all users and
+        # sessions, enabling cross-session Anthropic prompt-cache hits.
+        warm_ctx = ""
         if graphiti_enabled and user_id and len(session.messages) <= 1:
-            from backend.copilot.graphiti.context import fetch_warm_context
+            from ..graphiti.context import fetch_warm_context
 
-            warm_ctx = await fetch_warm_context(user_id, message or "")
-            if warm_ctx:
-                system_prompt += f"\n\n{warm_ctx}"
+            warm_ctx = await fetch_warm_context(user_id, message or "") or ""
 
         # Process transcript download result and restore CLI native session.
         # The CLI native session file (uploaded after each turn) is the
@@ -2704,13 +2713,29 @@ async def stream_chat_completion_sdk(
         # cache it across sessions.
         #
         # On resume (has_history=True) we intentionally skip re-injection: the
-        # transcript already contains the <user_context> prefix from the original
-        # turn (persisted to the DB in inject_user_context), so the SDK replay
-        # carries context continuity without us prepending it again.  Adding it
-        # a second time would duplicate the block and inflate tokens.
+        # transcript already contains the <user_context> and <memory_context>
+        # prefixes from the original turn (persisted to the DB via
+        # inject_user_context), so the SDK replay carries context continuity
+        # without us prepending them again.
         if not has_history:
+            # Build env_ctx for the working directory and pass it into
+            # inject_user_context so it is prepended AFTER
+            # sanitize_user_supplied_context runs — preventing the trusted
+            # <env_context> block from being stripped by the sanitizer.
+            env_ctx_content = ""
+            if not use_e2b and sdk_cwd:
+                env_ctx_content = f"working_dir: {sdk_cwd}"
+            # Pass warm_ctx and env_ctx to inject_user_context so they are
+            # prepended AFTER sanitize_user_supplied_context runs — preventing
+            # trusted server-injected blocks from being stripped by the sanitizer.
+            # inject_user_context persists the fully prefixed message to DB.
             prefixed_message = await inject_user_context(
-                understanding, current_message, session_id, session.messages
+                understanding,
+                current_message,
+                session_id,
+                session.messages,
+                warm_ctx=warm_ctx,
+                env_ctx=env_ctx_content,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -3281,7 +3306,7 @@ async def stream_chat_completion_sdk(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+            from ..graphiti.ingest import enqueue_conversation_turn
 
             _ingest_task = asyncio.create_task(
                 enqueue_conversation_turn(user_id, session_id, message)

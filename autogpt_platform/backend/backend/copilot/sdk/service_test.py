@@ -165,8 +165,8 @@ class TestPromptSupplement:
         from backend.copilot.prompting import get_sdk_supplement
 
         # Test both local and E2B modes
-        local_supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
-        e2b_supplement = get_sdk_supplement(use_e2b=True, cwd="")
+        local_supplement = get_sdk_supplement(use_e2b=False)
+        e2b_supplement = get_sdk_supplement(use_e2b=True)
 
         # Should NOT have tool list section
         assert "## AVAILABLE TOOLS" not in local_supplement
