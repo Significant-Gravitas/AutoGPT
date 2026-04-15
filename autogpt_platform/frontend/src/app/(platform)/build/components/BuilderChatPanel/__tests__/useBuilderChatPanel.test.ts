@@ -1607,3 +1607,66 @@ describe("useBuilderChatPanel – prototype pollution blocklist (no-schema nodes
     );
   });
 });
+
+describe("useBuilderChatPanel – sendRawMessage", () => {
+  it("sends a message directly when canSend is true", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-raw" },
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+
+    await openAndFlush(() => result.current.handleToggle());
+    expect(result.current.canSend).toBe(true);
+
+    act(() => {
+      result.current.sendRawMessage("programmatic message");
+    });
+
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      text: "programmatic message",
+    });
+  });
+
+  it("does not send when text is empty string", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-raw-empty" },
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+
+    await openAndFlush(() => result.current.handleToggle());
+
+    act(() => {
+      result.current.sendRawMessage("");
+    });
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not send when canSend is false (no session)", () => {
+    // Panel is closed → sessionId is null → canSend is false
+    const { result } = renderHook(() => useBuilderChatPanel());
+
+    act(() => {
+      result.current.sendRawMessage("should not send");
+    });
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not send when canSend is false (sessionError=true)", async () => {
+    mockPostV2CreateSession.mockRejectedValue(new Error("fail"));
+    const { result } = renderHook(() => useBuilderChatPanel());
+
+    await openAndFlush(() => result.current.handleToggle());
+    expect(result.current.sessionError).toBe(true);
+    expect(result.current.canSend).toBe(false);
+
+    act(() => {
+      result.current.sendRawMessage("blocked");
+    });
+
+    expect(mockSendMessage).not.toHaveBeenCalled();
+  });
+});
