@@ -177,17 +177,15 @@ export function CopilotPage() {
         >
           {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
           <NotificationBanner />
-          {/* Test mode banner:
-              - No session: show global isDryRun pref so the user knows NEW chats will run as simulation.
-              - Existing session: show the session's actual dry_run metadata (immutable once created),
-                NOT the global store — the store may have changed since this session was started.
-              Never show this banner for live sessions that were NOT created as dry_run. */}
-          {(sessionId ? sessionDryRun : isDryRun) && (
+          {/* Test mode banner: only shown when the CURRENT session is confirmed to be
+              a dry_run session via its immutable metadata. Never shown based on the
+              global isDryRun store preference alone — that only predicts future sessions
+              and would mislead users browsing non-dry-run sessions while the toggle is on.
+              The DryRunToggleButton (visible on new chats) already communicates the preference. */}
+          {sessionId && sessionDryRun && (
             <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
               <Flask size={13} weight="bold" />
-              {sessionId
-                ? "Test mode — this session runs agents as simulation"
-                : "Test mode — new sessions use dry_run=true"}
+              Test mode — this session runs agents as simulation
             </div>
           )}
           {/* Drop overlay */}
