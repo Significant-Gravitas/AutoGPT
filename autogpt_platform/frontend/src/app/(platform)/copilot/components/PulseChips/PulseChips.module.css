@@ -48,6 +48,12 @@
   padding-bottom: 0.5rem;
 }
 
+@media (hover: none) {
+  .chip {
+    padding-bottom: 2.25rem;
+  }
+}
+
 .chipActions {
   position: absolute;
   inset-inline: 0;
