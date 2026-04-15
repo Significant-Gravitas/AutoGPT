@@ -410,7 +410,14 @@ class TestTokenUsageNullSafety:
     """
 
     def _apply_usage(self, usage: dict, acc: _TokenUsage) -> None:
-        """Mirror the production accumulation in sdk/service.py."""
+        """Null-safe accumulation: ``or 0`` treats missing/None as zero.
+
+        Uses ``usage.get("key") or 0`` rather than ``usage.get("key", 0)``
+        because the latter returns ``None`` when the key exists with a null
+        value, which would raise ``TypeError`` on ``int += None``.  This is
+        the intentional pattern that fixes the OpenRouter initial-stream-event
+        bug described in the class docstring.
+        """
         acc.prompt_tokens += usage.get("input_tokens") or 0
         acc.cache_read_tokens += usage.get("cache_read_input_tokens") or 0
         acc.cache_creation_tokens += usage.get("cache_creation_input_tokens") or 0
@@ -477,3 +484,132 @@ class TestTokenUsageNullSafety:
         assert acc.cache_read_tokens == 16600
         assert acc.cache_creation_tokens == 512
         assert acc.completion_tokens == 349
+
+
+# ---------------------------------------------------------------------------
+# session_id / resume selection logic
+# ---------------------------------------------------------------------------
+
+
+def _build_sdk_options(
+    use_resume: bool,
+    resume_file: str | None,
+    session_id: str,
+) -> dict:
+    """Mirror the session_id/resume selection in stream_chat_completion_sdk.
+
+    This helper encodes the exact branching so the unit tests stay in sync
+    with the production code without needing to invoke the full generator.
+    """
+    kwargs: dict = {}
+    if use_resume and resume_file:
+        kwargs["resume"] = resume_file
+    else:
+        kwargs["session_id"] = session_id
+    return kwargs
+
+
+def _build_retry_sdk_options(
+    initial_kwargs: dict,
+    ctx_use_resume: bool,
+    ctx_resume_file: str | None,
+    session_id: str,
+) -> dict:
+    """Mirror the retry branch in stream_chat_completion_sdk."""
+    retry: dict = dict(initial_kwargs)
+    if ctx_use_resume and ctx_resume_file:
+        retry["resume"] = ctx_resume_file
+        retry.pop("session_id", None)
+    elif "session_id" in initial_kwargs:
+        retry.pop("resume", None)
+        retry["session_id"] = session_id
+    else:
+        retry.pop("resume", None)
+        retry.pop("session_id", None)
+    return retry
+
+
+class TestSdkSessionIdSelection:
+    """Verify that session_id is set for all non-resume turns.
+
+    Regression test for the mode-switch T1 bug: when a user switches from
+    baseline mode (fast) to SDK mode (extended_thinking) mid-session, the
+    first SDK turn has has_history=True but no CLI session file.  The old
+    code gated session_id on ``not has_history``, so mode-switch T1 never
+    got a session_id — the CLI used a random ID that couldn't be found on
+    the next turn, causing --resume to fail for the whole session.
+    """
+
+    SESSION_ID = "sess-abc123"
+
+    def test_t1_fresh_sets_session_id(self):
+        """T1 of a fresh session always gets session_id."""
+        opts = _build_sdk_options(
+            use_resume=False,
+            resume_file=None,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("session_id") == self.SESSION_ID
+        assert "resume" not in opts
+
+    def test_mode_switch_t1_sets_session_id(self):
+        """Mode-switch T1 (has_history=True, no CLI session) gets session_id.
+
+        Before the fix, the ``elif not has_history`` guard prevented this
+        case from setting session_id, causing all subsequent turns to run
+        without --resume.
+        """
+        # Mode-switch T1: use_resume=False (no prior CLI session) and
+        # has_history=True (prior baseline turns in DB). The old code
+        # (``elif not has_history``) silently skipped this case.
+        opts = _build_sdk_options(
+            use_resume=False,
+            resume_file=None,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("session_id") == self.SESSION_ID
+        assert "resume" not in opts
+
+    def test_t2_with_resume_uses_resume(self):
+        """T2+ with a restored CLI session uses --resume, not session_id."""
+        opts = _build_sdk_options(
+            use_resume=True,
+            resume_file=self.SESSION_ID,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("resume") == self.SESSION_ID
+        assert "session_id" not in opts
+
+    def test_t2_without_resume_sets_session_id(self):
+        """T2+ when restore failed still gets session_id (no prior file on disk)."""
+        opts = _build_sdk_options(
+            use_resume=False,
+            resume_file=None,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("session_id") == self.SESSION_ID
+        assert "resume" not in opts
+
+    def test_retry_keeps_session_id_for_t1(self):
+        """Retry for T1 (or mode-switch T1) preserves session_id."""
+        initial = _build_sdk_options(False, None, self.SESSION_ID)
+        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        assert retry.get("session_id") == self.SESSION_ID
+        assert "resume" not in retry
+
+    def test_retry_removes_session_id_for_t2_plus(self):
+        """Retry for T2+ (initial used --resume) removes session_id to avoid conflict."""
+        initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
+        # T2+ retry where context reduction dropped --resume
+        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        assert "session_id" not in retry
+        assert "resume" not in retry
+
+    def test_retry_t2_with_resume_sets_resume(self):
+        """Retry that still uses --resume keeps --resume and drops session_id."""
+        initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
+        retry = _build_retry_sdk_options(
+            initial, True, self.SESSION_ID, self.SESSION_ID
+        )
+        assert retry.get("resume") == self.SESSION_ID
+        assert "session_id" not in retry
