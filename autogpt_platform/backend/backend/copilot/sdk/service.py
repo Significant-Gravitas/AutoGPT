@@ -2789,12 +2789,8 @@ async def stream_chat_completion_sdk(
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
-        # Inject Graphiti warm context into the user message (not the system
-        # prompt) so the system prompt stays static and cacheable across all
-        # users/sessions.  warm_ctx is already wrapped in <temporal_context>.
-        # Appended AFTER user_context so <user_context> stays at the very start.
-        if warm_ctx:
-            query_message = f"{query_message}\n\n{warm_ctx}"
+        # warm_ctx is injected via inject_user_context above (warm_ctx= kwarg).
+        # No separate injection needed here.
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -2945,8 +2941,8 @@ async def stream_chat_completion_sdk(
                 )
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
-                if warm_ctx:
-                    state.query_message = f"{state.query_message}\n\n{warm_ctx}"
+                # warm_ctx is already baked into current_message via
+                # inject_user_context — no separate injection needed.
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
