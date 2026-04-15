@@ -267,7 +267,15 @@ export function applyConnectNodes(
       e.targetHandle === action.targetHandle,
   );
   if (alreadyExists) {
-    // Edge already present — caller (handleApplyAction) will mark as applied.
+    // Edge already present — push a no-op undo entry so the undo button removes
+    // the "Applied" badge rather than popping a previous (unrelated) action.
+    const existingKey = getActionKey(action);
+    pushUndoEntry(setUndoStack, {
+      actionKey: existingKey,
+      restore: () => {
+        removeAppliedActionKey(setAppliedActionKeys, existingKey);
+      },
+    });
     return true;
   }
   const key = getActionKey(action);

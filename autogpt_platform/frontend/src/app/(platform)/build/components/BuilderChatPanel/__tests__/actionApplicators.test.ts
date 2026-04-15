@@ -614,8 +614,40 @@ describe("applyConnectNodes", () => {
     // No new edge written; caller (handleApplyAction) marks the key.
     expect(mockSetEdges).not.toHaveBeenCalled();
     expect(deps.setAppliedActionKeys).not.toHaveBeenCalled();
-    // No undo entry for a no-op.
-    expect(deps.setUndoStack).not.toHaveBeenCalled();
+    // A no-op undo entry IS pushed so the undo button removes the Applied badge
+    // rather than reverting a previous (unrelated) action.
+    expect(deps.setUndoStack).toHaveBeenCalledTimes(1);
+  });
+
+  it("undo for an already-existing edge removes the Applied badge without changing edges", () => {
+    mockEdges = [
+      {
+        id: "existing",
+        source: "src",
+        target: "dst",
+        sourceHandle: "result",
+        targetHandle: "text",
+        type: "custom",
+      } as unknown as CustomEdge,
+    ];
+    const deps = makeDeps();
+    applyConnectNodes(
+      {
+        type: "connect_nodes",
+        source: "src",
+        sourceHandle: "result",
+        target: "dst",
+        targetHandle: "text",
+      },
+      deps,
+    );
+    const stack = deps.setUndoStack.mock.calls[0][0]([]);
+    expect(stack).toHaveLength(1);
+    // Restore must call setAppliedActionKeys (to remove badge) but NOT setEdges.
+    mockSetEdges.mockClear();
+    stack[0].restore();
+    expect(mockSetEdges).not.toHaveBeenCalled();
+    expect(deps.setAppliedActionKeys).toHaveBeenCalledTimes(1);
   });
 
   it("undo removes only the AI-added edge and preserves later edits", () => {
