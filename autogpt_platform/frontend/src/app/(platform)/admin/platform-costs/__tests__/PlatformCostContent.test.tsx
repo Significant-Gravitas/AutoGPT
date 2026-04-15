@@ -419,6 +419,28 @@ describe("PlatformCostContent", () => {
     expect(input.value).toBe("exec-abc");
   });
 
+  it("copies execution ID to clipboard on cell click in logs tab", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    mockUseGetDashboard.mockReturnValue({
+      data: dashboardWithData,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: logsWithData,
+      isLoading: false,
+    });
+    renderComponent({ tab: "logs" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    // The exec ID cell shows first 8 chars of "gx-123"
+    const execIdCell = screen.getByText("gx-123".slice(0, 8));
+    fireEvent.click(execIdCell);
+    expect(writeText).toHaveBeenCalledWith("gx-123");
+    vi.unstubAllGlobals();
+  });
+
   it("renders by-user tab when specified", async () => {
     mockUseGetDashboard.mockReturnValue({
       data: dashboardWithData,
