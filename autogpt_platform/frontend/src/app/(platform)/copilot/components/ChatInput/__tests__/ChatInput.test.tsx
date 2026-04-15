@@ -22,7 +22,7 @@ const mockSetCopilotLlmModel = vi.fn((model: string) => {
 vi.mock("@/app/(platform)/copilot/store", () => ({
   useCopilotUIStore: () => ({
     copilotMode: mockCopilotMode,
-    setCopilotMode: mockSetCopilotMode,
+    setCopilotMode: mockSetCopilotChatMode,
     copilotChatMode: mockCopilotMode,
     setCopilotChatMode: mockSetCopilotChatMode,
     copilotLlmModel: mockCopilotLlmModel,
