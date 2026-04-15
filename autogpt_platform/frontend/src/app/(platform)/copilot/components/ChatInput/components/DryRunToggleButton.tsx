@@ -45,7 +45,9 @@ export function DryRunToggleButton({
           aria-label={isDryRun ? "Test mode active" : "Enable Test mode"}
         >
           <Flask size={14} />
-          {isDryRun ? "Test mode enabled" : "Enable test mode"}
+          <span className="hidden sm:inline">
+            {isDryRun ? "Test mode enabled" : "Enable test mode"}
+          </span>
         </button>
       </TooltipTrigger>
       {isDryRun && (
