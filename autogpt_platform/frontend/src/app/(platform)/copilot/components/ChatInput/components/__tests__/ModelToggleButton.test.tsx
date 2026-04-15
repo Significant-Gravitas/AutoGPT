@@ -5,8 +5,9 @@ import { ModelToggleButton } from "../ModelToggleButton";
 afterEach(cleanup);
 
 describe("ModelToggleButton", () => {
-  it("shows no label when model is standard", () => {
+  it("shows no text label when model is standard", () => {
     render(<ModelToggleButton model="standard" onToggle={vi.fn()} />);
+    expect(screen.queryByText("Standard")).toBeNull();
     expect(screen.queryByText("Advanced")).toBeNull();
   });
 

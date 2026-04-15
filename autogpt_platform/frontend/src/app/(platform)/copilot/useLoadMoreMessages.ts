@@ -41,7 +41,23 @@ export function useLoadMoreMessages({
   const prevSessionIdRef = useRef(sessionId);
   const prevInitialOldestRef = useRef(initialOldestSequence);
 
-  // Sync initial values from parent when they change
+  // Sync initial values from parent when they change.
+  //
+  // The parent's `initialOldestSequence` drifts forward every time the
+  // session query refetches (e.g. after a stream completes — see
+  // `useCopilotStream` invalidation on `streaming → ready`). If we
+  // wiped `olderRawMessages` every time that happened, users who had
+  // scrolled back would lose their loaded history on each new turn and
+  // subsequent `loadMore` calls would fetch messages that overlap with
+  // the AI SDK's retained state in `currentMessages`, producing visible
+  // duplicates.
+  //
+  // Instead: once any older page is loaded, preserve local state across
+  // refetches. The local cursor (`oldestSequence`) still points to the
+  // oldest message we've explicitly loaded, so the next `loadMore`
+  // fetches cleanly before it. Any messages between the refetched
+  // initial window and the older pages are covered by AI SDK's
+  // retained state in `currentMessages`.
   useEffect(() => {
     if (prevSessionIdRef.current !== sessionId) {
       // Session changed — full reset
@@ -54,23 +70,14 @@ export function useLoadMoreMessages({
       isLoadingMoreRef.current = false;
       consecutiveErrorsRef.current = 0;
       epochRef.current += 1;
-    } else if (
-      prevInitialOldestRef.current !== initialOldestSequence &&
-      olderRawMessages.length > 0
-    ) {
-      // Same session but initial window shifted (e.g. new messages arrived) —
-      // clear paged state to avoid gaps/duplicates
-      prevInitialOldestRef.current = initialOldestSequence;
-      setOlderRawMessages([]);
-      setOldestSequence(initialOldestSequence);
-      setHasMore(initialHasMore);
-      setIsLoadingMore(false);
-      isLoadingMoreRef.current = false;
-      consecutiveErrorsRef.current = 0;
-      epochRef.current += 1;
-    } else {
-      // Update from parent when initial data changes (e.g. refetch)
-      prevInitialOldestRef.current = initialOldestSequence;
+      return;
+    }
+
+    prevInitialOldestRef.current = initialOldestSequence;
+
+    // If we haven't paged back yet, mirror the parent so the first
+    // `loadMore` starts from the correct cursor.
+    if (olderRawMessages.length === 0) {
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
     }
