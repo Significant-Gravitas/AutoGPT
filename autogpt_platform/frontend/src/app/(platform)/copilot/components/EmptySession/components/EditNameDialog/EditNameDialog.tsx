@@ -51,6 +51,8 @@ export function EditNameDialog({ currentName }: Props) {
           description: e instanceof Error ? e.message : "Please reload.",
           variant: "destructive",
         });
+        setIsOpen(false);
+        return;
       }
       setIsOpen(false);
       toast({ title: "Name updated" });

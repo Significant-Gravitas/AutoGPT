@@ -123,9 +123,7 @@ describe("EditNameDialog", () => {
         }),
       );
     });
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith({ title: "Name updated" });
-    });
+    expect(mockToast).not.toHaveBeenCalledWith({ title: "Name updated" });
   });
 
   test("disables Save button while empty input", async () => {

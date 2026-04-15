@@ -14,8 +14,9 @@ interface Props {
 }
 
 export function AgentBriefingPanel({ summary, agents }: Props) {
-  const defaultTab: AgentStatusFilter = summary.running > 0 ? "running" : "all";
-  const [activeTab, setActiveTab] = useState<AgentStatusFilter>(defaultTab);
+  const [userTab, setUserTab] = useState<AgentStatusFilter | null>(null);
+  const activeTab: AgentStatusFilter =
+    userTab ?? (summary.running > 0 ? "running" : "all");
 
   return (
     <div
@@ -26,7 +27,7 @@ export function AgentBriefingPanel({ summary, agents }: Props) {
         <StatsGrid
           summary={summary}
           activeTab={activeTab}
-          onTabChange={setActiveTab}
+          onTabChange={setUserTab}
         />
         <BriefingTabContent activeTab={activeTab} agents={agents} />
       </div>

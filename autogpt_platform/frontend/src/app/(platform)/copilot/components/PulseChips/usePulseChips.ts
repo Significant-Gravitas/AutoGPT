@@ -16,6 +16,7 @@ export function usePulseChips(): PulseChipData[] {
       agentID: item.agentID,
       name: item.agentName,
       status: item.status,
+      priority: item.priority,
       shortMessage: item.message,
     }));
   }, [sitrepItems]);

@@ -59,7 +59,14 @@ function PulseChip({ chip, onAsk }: ChipProps) {
       className={`${styles.chip} relative flex shrink-0 flex-col items-start gap-2 rounded-medium border border-zinc-100 bg-white px-3 py-2`}
     >
       <div className={`${styles.chipContent} w-full text-left`}>
-        <StatusBadge status={chip.status} />
+        {chip.priority === "success" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium text-emerald-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            Completed
+          </span>
+        ) : (
+          <StatusBadge status={chip.status} />
+        )}
         <div className="mt-2 min-w-0">
           <Text variant="small-medium" className="truncate text-zinc-900">
             {chip.name}
@@ -93,6 +100,9 @@ function PulseChip({ chip, onAsk }: ChipProps) {
 }
 
 function buildChipPrompt(chip: PulseChipData): string {
+  if (chip.priority === "success") {
+    return `${chip.name} just finished a run — can you summarize what it did?`;
+  }
   switch (chip.status) {
     case "error":
       return `What happened with ${chip.name}? It has an error — can you check?`;
