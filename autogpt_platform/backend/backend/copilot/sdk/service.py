@@ -35,11 +35,11 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
-from backend.copilot.context import get_workspace_manager
-from backend.copilot.permissions import apply_tool_permissions
-from backend.copilot.rate_limit import get_user_tier
-from backend.copilot.thinking_stripper import ThinkingStripper
-from backend.copilot.transcript import (
+from ..context import get_workspace_manager
+from ..permissions import apply_tool_permissions
+from ..rate_limit import get_user_tier
+from ..thinking_stripper import ThinkingStripper
+from ..transcript import (
     _run_compression,
     cleanup_stale_project_dirs,
     compact_transcript,
@@ -50,7 +50,7 @@ from backend.copilot.transcript import (
     upload_transcript,
     validate_transcript,
 )
-from backend.copilot.transcript_builder import TranscriptBuilder
+from ..transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -817,7 +817,7 @@ def _build_system_prompt_value(
     """
     if cross_user_cache:
         logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        return SystemPromptPreset(
+        return SystemPromptPreset(  # pyright: ignore[reportCallIssue]
             type="preset",
             preset="claude_code",
             append=system_prompt,
