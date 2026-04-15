@@ -11,23 +11,15 @@ import { NextRequest, NextResponse } from "next/server";
 export const maxDuration = 300; // 5 minutes timeout for large uploads
 export const dynamic = "force-dynamic";
 
+import {
+  fetchWorkspaceDownloadWithRetry,
+  getWorkspaceDownloadErrorMessage,
+  isWorkspaceDownloadRequest,
+} from "./route.helpers";
+
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
-}
-
-/**
- * Check if this is a workspace file download request that needs binary response handling.
- */
-function isWorkspaceDownloadRequest(path: string[]): boolean {
-  // Match pattern: api/workspace/files/{id}/download (5 segments)
-  return (
-    path.length == 5 &&
-    path[0] === "api" &&
-    path[1] === "workspace" &&
-    path[2] === "files" &&
-    path[path.length - 1] === "download"
-  );
 }
 
 /**
@@ -44,17 +36,15 @@ async function handleWorkspaceDownload(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(backendUrl, {
-    method: "GET",
+  const response = await fetchWorkspaceDownloadWithRetry(
+    backendUrl,
     headers,
-    redirect: "follow", // Follow redirects to signed URLs
-  });
+    2,
+    500,
+  );
 
   if (!response.ok) {
-    return NextResponse.json(
-      { error: `Failed to download file: ${response.statusText}` },
-      { status: response.status },
-    );
+    return await createWorkspaceDownloadErrorResponse(response);
   }
 
   // Fully buffer the response before forwarding.  Passing response.body as a
@@ -79,6 +69,34 @@ async function handleWorkspaceDownload(
     status: 200,
     headers: responseHeaders,
   });
+}
+
+async function createWorkspaceDownloadErrorResponse(
+  response: Response,
+): Promise<NextResponse> {
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      return NextResponse.json(body, { status: response.status });
+    }
+
+    const text = await response.text();
+    const detail =
+      getWorkspaceDownloadErrorMessage(text) ||
+      response.statusText ||
+      "Failed to download file";
+
+    return NextResponse.json({ detail }, { status: response.status });
+  } catch {
+    return NextResponse.json(
+      {
+        detail: response.statusText || "Failed to download file",
+      },
+      { status: response.status },
+    );
+  }
 }
 
 async function handleJsonRequest(

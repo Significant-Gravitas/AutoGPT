@@ -85,4 +85,35 @@ describe("buildReactArtifactSrcDoc", () => {
     const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
     expect(doc).toContain("box-sizing: border-box");
   });
+
+  it("supports a named previewProps export in the runtime", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("moduleExports.previewProps");
+    expect(doc).toContain("React.createElement(Component, previewProps || {})");
+  });
+
+  it("includes a helpful message for components that expect props", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("This component appears to expect props.");
+    expect(doc).toContain("previewProps");
+  });
+
+  it("checks componentExpectsProps on the raw component before wrapping", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("RawComponent.length > 0");
+    expect(doc).toContain("wrapWithProviders(RawComponent");
+  });
+
+  it("wrapWithProviders forwards props to the wrapped component", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("function WrappedArtifactPreview(props)");
+    expect(doc).toContain("React.createElement(Component, props)");
+  });
+
+  it("supports named exported components and provider wrappers in the runtime", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain('name.endsWith("Provider")');
+    expect(doc).toContain("/^[A-Z]/.test(name)");
+    expect(doc).toContain("wrapWithProviders");
+  });
 });

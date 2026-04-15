@@ -8,6 +8,8 @@ circular import through ``executor`` → ``credit`` → ``block_cost_config``).
 
 from __future__ import annotations
 
+import re
+
 from backend.copilot.config import ChatConfig
 from backend.copilot.sdk.subscription import validate_subscription
 
@@ -15,6 +17,10 @@ from backend.copilot.sdk.subscription import validate_subscription
 # A singleton would require importing service.py which causes the circular dep
 # this module was created to avoid.
 config = ChatConfig()
+
+# RFC 7230 §3.2.6 — keep only printable ASCII; strip control chars and non-ASCII.
+_HEADER_SAFE_RE = re.compile(r"[^\x20-\x7e]")
+_MAX_HEADER_VALUE_LEN = 128
 
 
 def build_sdk_env(
@@ -26,14 +32,14 @@ def build_sdk_env(
 
     Three modes (checked in order):
     1. **Subscription** — clears all keys; CLI uses ``claude login`` auth.
-    2. **Direct Anthropic** — returns ``{}``; subprocess inherits
-       ``ANTHROPIC_API_KEY`` from the parent environment.
+    2. **Direct Anthropic** — subprocess inherits ``ANTHROPIC_API_KEY``
+       from the parent environment (no overrides needed).
     3. **OpenRouter** (default) — overrides base URL and auth token to
        route through the proxy, with Langfuse trace headers.
 
-    When *sdk_cwd* is provided, ``CLAUDE_CODE_TMPDIR`` is set so that
-    the CLI writes temp/sub-agent output inside the per-session workspace
-    directory rather than an inaccessible system temp path.
+    All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
+    security hardening env vars to prevent .claude.md loading, prompt
+    history persistence, auto-memory writes, and non-essential traffic.
     """
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
@@ -43,40 +49,73 @@ def build_sdk_env(
             "ANTHROPIC_AUTH_TOKEN": "",
             "ANTHROPIC_BASE_URL": "",
         }
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        return env
 
     # --- Mode 2: Direct Anthropic (no proxy hop) ---
-    if not config.openrouter_active:
-        env = {}
-        if sdk_cwd:
-            env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
-        return env
+    elif not config.openrouter_active:
+        # Clear OAuth tokens so CLI uses ANTHROPIC_API_KEY from parent env
+        # rather than subscription auth if the container has those tokens set.
+        env = {
+            "CLAUDE_CODE_OAUTH_TOKEN": "",
+            "CLAUDE_CODE_REFRESH_TOKEN": "",
+        }
 
     # --- Mode 3: OpenRouter proxy ---
-    base = (config.base_url or "").rstrip("/")
-    if base.endswith("/v1"):
-        base = base[:-3]
-    env = {
-        "ANTHROPIC_BASE_URL": base,
-        "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
-        "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
-    }
+    else:
+        base = (config.base_url or "").rstrip("/")
+        if base.endswith("/v1"):
+            base = base[:-3]
+        env = {
+            "ANTHROPIC_BASE_URL": base,
+            "ANTHROPIC_AUTH_TOKEN": config.api_key or "",
+            "ANTHROPIC_API_KEY": "",  # force CLI to use AUTH_TOKEN
+            "CLAUDE_CODE_OAUTH_TOKEN": "",  # prevent OAuth override of ANTHROPIC_AUTH_TOKEN
+            "CLAUDE_CODE_REFRESH_TOKEN": "",  # prevent token refresh via subscription
+        }
 
-    # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
-    def _safe(v: str) -> str:
-        return v.replace("\r", "").replace("\n", "").strip()[:128]
+        # Inject broadcast headers so OpenRouter forwards traces to Langfuse.
+        def _safe(v: str) -> str:
+            return _HEADER_SAFE_RE.sub("", v).strip()[:_MAX_HEADER_VALUE_LEN]
 
-    parts = []
-    if session_id:
-        parts.append(f"x-session-id: {_safe(session_id)}")
-    if user_id:
-        parts.append(f"x-user-id: {_safe(user_id)}")
-    if parts:
-        env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
+        parts = []
+        if session_id:
+            parts.append(f"x-session-id: {_safe(session_id)}")
+        if user_id:
+            parts.append(f"x-user-id: {_safe(user_id)}")
+        if parts:
+            env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
 
+    # --- Common: workspace isolation + security hardening (all modes) ---
+    # Route subagent temp files into the per-session workspace so output
+    # files are accessible (fixes /tmp/claude-0/ permission errors in E2B).
     if sdk_cwd:
         env["CLAUDE_CODE_TMPDIR"] = sdk_cwd
+
+    # Harden multi-tenant deployment: prevent loading untrusted workspace
+    # .claude.md files, writing auto-memory, and sending non-essential
+    # telemetry traffic.
+    env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
+    env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Strip Anthropic-specific beta headers that OpenRouter rejects.
+    # NOTE: this disables ALL experimental betas including context-1m-2025-08-07
+    # (1M context window) and context-management-2025-06-27.  This is intentional:
+    # OpenRouter compatibility takes priority, and Anthropic direct mode ignores
+    # this flag harmlessly (those betas are not enabled there either by default).
+    env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+
+    # Trigger context compaction earlier — default is 70% of 200K = 140K.
+    # Set to 50% = 100K to keep context smaller and reduce cache creation costs.
+    # Context >200K accounts for 54% of total cost despite being only 3% of calls.
+    env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "50"
+
+    # Disable gzip on API responses to prevent ZlibError decompression
+    # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
+    # Appended to any existing ANTHROPIC_CUSTOM_HEADERS (OpenRouter mode
+    # already sets trace headers above).
+    accept_encoding = "Accept-Encoding: identity"
+    existing = env.get("ANTHROPIC_CUSTOM_HEADERS", "")
+    env["ANTHROPIC_CUSTOM_HEADERS"] = (
+        f"{existing}\n{accept_encoding}" if existing else accept_encoding
+    )
 
     return env

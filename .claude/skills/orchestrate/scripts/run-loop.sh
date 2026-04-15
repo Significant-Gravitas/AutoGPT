@@ -27,7 +27,11 @@ chmod +x "$STABLE_SCRIPTS_DIR"/*.sh
 SCRIPTS_DIR="$STABLE_SCRIPTS_DIR"
 
 STATE_FILE="${ORCHESTRATOR_STATE_FILE:-$HOME/.claude/orchestrator-state.json}"
+# Adaptive polling: starts at base interval, backs off up to POLL_IDLE_MAX when
+# no agents need attention, resets on any activity or waiting_approval state.
 POLL_INTERVAL="${POLL_INTERVAL:-30}"
+POLL_IDLE_MAX=${POLL_IDLE_MAX:-300}
+POLL_CURRENT=$POLL_INTERVAL
 
 # ---------------------------------------------------------------------------
 # update_state WINDOW FIELD VALUE
@@ -71,6 +75,40 @@ wait_for_prompt() {
 }
 
 # ---------------------------------------------------------------------------
+# wait_for_claude_idle WINDOW — wait up to 30s for Claude to reach idle ❯ prompt
+# (no spinner or busy indicator visible in the last 3 lines of pane output)
+# Returns 0 when idle, 1 on timeout.
+# ---------------------------------------------------------------------------
+wait_for_claude_idle() {
+  local window="$1"
+  local timeout="${2:-30}"
+  local elapsed=0
+  while (( elapsed < timeout )); do
+    local cmd pane pane_tail
+    cmd=$(tmux display-message -t "$window" -p '#{pane_current_command}' 2>/dev/null || echo "")
+    pane=$(tmux capture-pane -t "$window" -p 2>/dev/null || echo "")
+    pane_tail=$(echo "$pane" | tail -3)
+    # Check full pane (not just tail) — 'Enter to confirm' dialog can scroll above last 3 lines.
+    # Do NOT reset elapsed — resetting allows an infinite loop if the dialog never clears.
+    if echo "$pane" | grep -q "Enter to confirm"; then
+      tmux send-keys -t "$window" Down Enter
+      sleep 2; (( elapsed += 2 )); continue
+    fi
+    # Must be running under node (Claude is live)
+    if [[ "$cmd" == "node" ]]; then
+      # Idle: ❯ prompt visible AND no spinner/busy text in last 3 lines
+      if echo "$pane_tail" | grep -q "❯" && \
+         ! echo "$pane_tail" | grep -qE '[✳✽✢✶·✻✼✿❋✤]|Running…|Compacting'; then
+        return 0
+      fi
+    fi
+    sleep 2
+    (( elapsed += 2 ))
+  done
+  return 1  # timed out
+}
+
+# ---------------------------------------------------------------------------
 # handle_kick WINDOW STATE — only for idle (crashed) agents, not stuck
 # ---------------------------------------------------------------------------
 handle_kick() {
@@ -82,6 +120,10 @@ handle_kick() {
   session_id=$(agent_field "$window" "session_id")
 
   echo "[$(date +%H:%M:%S)] KICK restart  $window — agent exited, resuming session"
+
+  # Wait for the shell prompt before typing — avoids sending into a still-draining pane
+  wait_for_claude_idle "$window" 30 \
+    || echo "[$(date +%H:%M:%S)] KICK WARNING  $window — pane still busy before resume, sending anyway"
 
   # Resume the exact session so the agent retains full context — no need to re-send objective
   if [ -n "$session_id" ]; then
@@ -130,7 +172,7 @@ handle_approve() {
 # ---------------------------------------------------------------------------
 # Main loop
 # ---------------------------------------------------------------------------
-echo "[$(date +%H:%M:%S)] run-loop started (mechanical only, poll every ${POLL_INTERVAL}s)"
+echo "[$(date +%H:%M:%S)] run-loop started (mechanical only, poll ${POLL_INTERVAL}s→${POLL_IDLE_MAX}s adaptive)"
 echo "[$(date +%H:%M:%S)] Supervisor: orchestrating Claude session (not a separate window)"
 echo "---"
 
@@ -159,6 +201,15 @@ while true; do
   RUNNING=$(jq '[.agents[] | select(.state | test("running|stuck|waiting_approval|idle"))] | length' \
     "$STATE_FILE" 2>/dev/null || echo 0)
 
-  echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled"
-  sleep "$POLL_INTERVAL"
+  # Adaptive backoff: reset to base on activity or waiting_approval agents; back off when truly idle
+  WAITING=$(jq '[.agents[] | select(.state == "waiting_approval")] | length' "$STATE_FILE" 2>/dev/null || echo 0)
+  if (( KICKED > 0 || DONE > 0 || WAITING > 0 )); then
+    POLL_CURRENT=$POLL_INTERVAL
+  else
+    POLL_CURRENT=$(( POLL_CURRENT + POLL_CURRENT / 2 + 1 ))
+    (( POLL_CURRENT > POLL_IDLE_MAX )) && POLL_CURRENT=$POLL_IDLE_MAX
+  fi
+
+  echo "[$(date +%H:%M:%S)] Poll — ${RUNNING} running  ${KICKED} kicked  ${DONE} recycled  (next in ${POLL_CURRENT}s)"
+  sleep "$POLL_CURRENT"
 done

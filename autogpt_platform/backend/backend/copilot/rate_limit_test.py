@@ -401,66 +401,49 @@ class TestGetUserTier:
         """Clear the get_user_tier cache before each test."""
         get_user_tier.cache_clear()  # type: ignore[attr-defined]
 
+    def _mock_user_db(
+        self, subscription_tier: str | None = None, raises: Exception | None = None
+    ):
+        """Return a patched user_db() whose get_user_by_id behaves as specified."""
+        mock_db = AsyncMock()
+        if raises is not None:
+            mock_db.get_user_by_id = AsyncMock(side_effect=raises)
+        else:
+            mock_user = MagicMock()
+            mock_user.subscription_tier = subscription_tier
+            mock_db.get_user_by_id = AsyncMock(return_value=mock_user)
+        return mock_db
+
     @pytest.mark.asyncio
     async def test_returns_tier_from_db(self):
         """Should return the tier stored in the user record."""
-        mock_user = MagicMock()
-        mock_user.subscriptionTier = "PRO"
-
-        mock_prisma = AsyncMock()
-        mock_prisma.find_unique = AsyncMock(return_value=mock_user)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma,
-        ):
+        mock_db = self._mock_user_db(subscription_tier="PRO")
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
             tier = await get_user_tier(_USER)
-
         assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
     async def test_returns_default_when_user_not_found(self):
         """Should return DEFAULT_TIER when user is not in the DB."""
-        mock_prisma = AsyncMock()
-        mock_prisma.find_unique = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma,
-        ):
+        mock_db = self._mock_user_db(raises=Exception("not found"))
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
             tier = await get_user_tier(_USER)
-
         assert tier == DEFAULT_TIER
 
     @pytest.mark.asyncio
     async def test_returns_default_when_tier_is_none(self):
-        """Should return DEFAULT_TIER when subscriptionTier is None."""
-        mock_user = MagicMock()
-        mock_user.subscriptionTier = None
-
-        mock_prisma = AsyncMock()
-        mock_prisma.find_unique = AsyncMock(return_value=mock_user)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma,
-        ):
+        """Should return DEFAULT_TIER when subscription_tier is None."""
+        mock_db = self._mock_user_db(subscription_tier=None)
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
             tier = await get_user_tier(_USER)
-
         assert tier == DEFAULT_TIER
 
     @pytest.mark.asyncio
     async def test_returns_default_on_db_error(self):
         """Should fall back to DEFAULT_TIER when DB raises."""
-        mock_prisma = AsyncMock()
-        mock_prisma.find_unique = AsyncMock(side_effect=Exception("DB down"))
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma,
-        ):
+        mock_db = self._mock_user_db(raises=Exception("DB down"))
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
             tier = await get_user_tier(_USER)
-
         assert tier == DEFAULT_TIER
 
     @pytest.mark.asyncio
@@ -470,26 +453,14 @@ class TestGetUserTier:
         Regression test: a transient DB failure previously cached DEFAULT_TIER
         for 5 minutes, incorrectly downgrading higher-tier users until expiry.
         """
-        failing_prisma = AsyncMock()
-        failing_prisma.find_unique = AsyncMock(side_effect=Exception("DB down"))
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=failing_prisma,
-        ):
+        failing_db = self._mock_user_db(raises=Exception("DB down"))
+        with patch("backend.copilot.rate_limit.user_db", return_value=failing_db):
             tier1 = await get_user_tier(_USER)
         assert tier1 == DEFAULT_TIER
 
         # Now DB recovers and returns PRO
-        mock_user = MagicMock()
-        mock_user.subscriptionTier = "PRO"
-        ok_prisma = AsyncMock()
-        ok_prisma.find_unique = AsyncMock(return_value=mock_user)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=ok_prisma,
-        ):
+        ok_db = self._mock_user_db(subscription_tier="PRO")
+        with patch("backend.copilot.rate_limit.user_db", return_value=ok_db):
             tier2 = await get_user_tier(_USER)
 
         # Should get PRO now — the error result was not cached
@@ -498,18 +469,9 @@ class TestGetUserTier:
     @pytest.mark.asyncio
     async def test_returns_default_on_invalid_tier_value(self):
         """Should fall back to DEFAULT_TIER when stored value is invalid."""
-        mock_user = MagicMock()
-        mock_user.subscriptionTier = "invalid-tier"
-
-        mock_prisma = AsyncMock()
-        mock_prisma.find_unique = AsyncMock(return_value=mock_user)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma,
-        ):
+        mock_db = self._mock_user_db(subscription_tier="invalid-tier")
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db):
             tier = await get_user_tier(_USER)
-
         assert tier == DEFAULT_TIER
 
     @pytest.mark.asyncio
@@ -522,26 +484,14 @@ class TestGetUserTier:
         stale cached FREE tier for up to 5 minutes.
         """
         # First call: user does not exist yet
-        missing_prisma = AsyncMock()
-        missing_prisma.find_unique = AsyncMock(return_value=None)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=missing_prisma,
-        ):
+        missing_db = self._mock_user_db(raises=Exception("not found"))
+        with patch("backend.copilot.rate_limit.user_db", return_value=missing_db):
             tier1 = await get_user_tier(_USER)
         assert tier1 == DEFAULT_TIER
 
         # Second call: user now exists with PRO tier
-        mock_user = MagicMock()
-        mock_user.subscriptionTier = "PRO"
-        ok_prisma = AsyncMock()
-        ok_prisma.find_unique = AsyncMock(return_value=mock_user)
-
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=ok_prisma,
-        ):
+        ok_db = self._mock_user_db(subscription_tier="PRO")
+        with patch("backend.copilot.rate_limit.user_db", return_value=ok_db):
             tier2 = await get_user_tier(_USER)
 
         # Should get PRO — the not-found result was not cached
@@ -598,20 +548,19 @@ class TestSetUserTier:
     @pytest.mark.asyncio
     async def test_cache_invalidated_after_set(self):
         """After set_user_tier, get_user_tier should query DB again (not cache)."""
-        # First, populate the cache with BUSINESS
+        # First, populate the cache with BUSINESS via user_db() mock
+        mock_db_biz = AsyncMock()
         mock_user_biz = MagicMock()
-        mock_user_biz.subscriptionTier = "BUSINESS"
-        mock_prisma_get = AsyncMock()
-        mock_prisma_get.find_unique = AsyncMock(return_value=mock_user_biz)
+        mock_user_biz.subscription_tier = "BUSINESS"
+        mock_db_biz.get_user_by_id = AsyncMock(return_value=mock_user_biz)
 
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma_get,
-        ):
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db_biz):
             tier_before = await get_user_tier(_USER)
         assert tier_before == SubscriptionTier.BUSINESS
 
-        # Now set tier to ENTERPRISE (this should invalidate the cache)
+        # Now set tier to ENTERPRISE via PrismaUser.prisma (set_user_tier still
+        # uses Prisma directly since it's only called from admin API where Prisma
+        # is connected).
         mock_prisma_set = AsyncMock()
         mock_prisma_set.update = AsyncMock(return_value=None)
 
@@ -622,15 +571,12 @@ class TestSetUserTier:
             await set_user_tier(_USER, SubscriptionTier.ENTERPRISE)
 
         # Now get_user_tier should hit DB again (cache was invalidated)
+        mock_db_ent = AsyncMock()
         mock_user_ent = MagicMock()
-        mock_user_ent.subscriptionTier = "ENTERPRISE"
-        mock_prisma_get2 = AsyncMock()
-        mock_prisma_get2.find_unique = AsyncMock(return_value=mock_user_ent)
+        mock_user_ent.subscription_tier = "ENTERPRISE"
+        mock_db_ent.get_user_by_id = AsyncMock(return_value=mock_user_ent)
 
-        with patch(
-            "backend.copilot.rate_limit.PrismaUser.prisma",
-            return_value=mock_prisma_get2,
-        ):
+        with patch("backend.copilot.rate_limit.user_db", return_value=mock_db_ent):
             tier_after = await get_user_tier(_USER)
 
         assert tier_after == SubscriptionTier.ENTERPRISE

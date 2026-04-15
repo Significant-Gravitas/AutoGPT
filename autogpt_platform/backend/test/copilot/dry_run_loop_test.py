@@ -45,12 +45,12 @@ from openai.types.chat import ChatCompletionToolParam
 from pydantic import ValidationError
 
 from backend.copilot.prompting import get_sdk_supplement
-from backend.copilot.service import DEFAULT_SYSTEM_PROMPT
+from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.run_agent import RunAgentInput
 
 # Resolved once for the whole module so individual tests stay fast.
-_SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
+_SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False)
 
 
 # ---------------------------------------------------------------------------
@@ -73,24 +73,36 @@ class TestSystemPromptBasics:
 
 
 class TestToolDescriptionsDryRunLoop:
-    """Verify tool descriptions and parameters related to the dry-run loop."""
+    """Verify tool descriptions and parameters related to the dry-run loop.
+
+    After the session-level dry_run refactor, dry_run is NOT exposed in any
+    LLM tool schema — it is set at the session level and derived by each tool
+    from session.dry_run.  These tests verify that the schema is clean and that
+    the guide still documents the dry-run workflow.
+    """
 
     def test_get_agent_building_guide_mentions_workflow(self):
         desc = TOOL_REGISTRY["get_agent_building_guide"].description
         assert "dry-run" in desc.lower()
 
-    def test_run_agent_dry_run_param_exists_and_is_boolean(self):
+    def test_run_agent_dry_run_in_llm_schema(self):
+        """dry_run must be in the run_agent LLM schema so the LLM can request
+        per-call dry runs in normal sessions (e.g. "test this agent")."""
         schema = TOOL_REGISTRY["run_agent"].as_openai_tool()
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        assert "dry_run" in params["properties"]
-        assert params["properties"]["dry_run"]["type"] == "boolean"
+        assert "dry_run" in params.get("properties", {}), (
+            "dry_run must be exposed in the run_agent LLM schema so the LLM "
+            "can request per-call dry runs in normal sessions"
+        )
 
-    def test_run_agent_dry_run_param_mentions_simulation(self):
-        """After deduplication the dry_run param description mentions simulation."""
-        schema = TOOL_REGISTRY["run_agent"].as_openai_tool()
+    def test_run_block_dry_run_not_in_llm_schema(self):
+        """dry_run must NOT be in the run_block LLM schema — it is session-level."""
+        schema = TOOL_REGISTRY["run_block"].as_openai_tool()
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        dry_run_desc = params["properties"]["dry_run"]["description"]
-        assert "simulat" in dry_run_desc.lower()
+        assert "dry_run" not in params.get("properties", {}), (
+            "dry_run must not be exposed in the run_block LLM schema; "
+            "it is controlled at the session level"
+        )
 
 
 class TestPromptingSupplementContent:
@@ -156,11 +168,11 @@ class TestAgentBuildingGuideDryRunLoop:
 
 
 class TestRunAgentToolSchema:
-    """Validate the run_agent OpenAI tool schema exposes dry_run correctly.
+    """Validate the run_agent OpenAI tool schema is clean of session-level fields.
 
-    These go beyond substring checks — they verify the full schema structure
-    that the LLM receives, ensuring the parameter is well-formed and will be
-    parsed correctly by OpenAI function-calling.
+    After the session-level dry_run refactor, dry_run is NOT exposed in the LLM
+    schema — it is set at the session level and applied by _execute.  These tests
+    verify the full schema structure that the LLM receives.
     """
 
     @pytest.fixture
@@ -177,36 +189,28 @@ class TestRunAgentToolSchema:
         assert "parameters" in func
         assert func["name"] == "run_agent"
 
-    def test_dry_run_is_required(self, schema: ChatCompletionToolParam):
-        """dry_run must be in 'required' so the LLM always provides it explicitly."""
+    def test_dry_run_in_llm_schema(self, schema: ChatCompletionToolParam):
+        """dry_run must be in the run_agent LLM schema so the LLM can request
+        per-call dry runs in normal sessions."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        required = params.get("required", [])
-        assert "dry_run" in required
+        assert "dry_run" in params.get(
+            "properties", {}
+        ), "dry_run must be exposed in the run_agent LLM schema"
+        assert "dry_run" not in params.get("required", [])
 
-    def test_dry_run_is_boolean_type(self, schema: ChatCompletionToolParam):
-        """dry_run must be typed as boolean so the LLM generates true/false."""
-        params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        assert params["properties"]["dry_run"]["type"] == "boolean"
-
-    def test_dry_run_description_is_nonempty(self, schema: ChatCompletionToolParam):
-        """The description must be present and substantive for LLM guidance."""
-        params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        desc = params["properties"]["dry_run"]["description"]
-        assert isinstance(desc, str)
-        assert len(desc) > 10, "Description too short to guide the LLM"
-
-    def test_wait_for_result_coexists_with_dry_run(
-        self, schema: ChatCompletionToolParam
-    ):
-        """wait_for_result must also be present — the guide instructs the LLM
-        to pass both dry_run=True and wait_for_result=120 together."""
+    def test_wait_for_result_in_schema(self, schema: ChatCompletionToolParam):
+        """wait_for_result must be present — the guide instructs the LLM
+        to pass wait_for_result=120 during dry-run verification."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
         assert "wait_for_result" in params["properties"]
         assert params["properties"]["wait_for_result"]["type"] == "integer"
 
 
 class TestRunBlockToolSchema:
-    """Validate the run_block OpenAI tool schema exposes dry_run correctly."""
+    """Validate the run_block OpenAI tool schema is clean of session-level fields.
+
+    After the session-level dry_run refactor, dry_run is NOT in the LLM schema.
+    """
 
     @pytest.fixture
     def schema(self) -> ChatCompletionToolParam:
@@ -218,29 +222,23 @@ class TestRunBlockToolSchema:
         assert func["name"] == "run_block"
         assert "parameters" in func
 
-    def test_dry_run_exists_and_is_boolean(self, schema: ChatCompletionToolParam):
+    def test_dry_run_not_in_llm_schema(self, schema: ChatCompletionToolParam):
+        """dry_run must NOT be in the run_block LLM schema — it is session-level."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        props = params["properties"]
-        assert "dry_run" in props
-        assert props["dry_run"]["type"] == "boolean"
+        props = params.get("properties", {})
+        assert (
+            "dry_run" not in props
+        ), "dry_run must not be exposed in the run_block LLM schema"
+        assert "dry_run" not in params.get("required", [])
 
-    def test_dry_run_is_required(self, schema: ChatCompletionToolParam):
-        """dry_run must be required — along with block_id and input_data."""
-        params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        required = params.get("required", [])
-        assert "dry_run" in required
-        assert "block_id" in required
-        assert "input_data" in required
-
-    def test_dry_run_description_mentions_preview(
+    def test_block_id_and_input_data_are_required(
         self, schema: ChatCompletionToolParam
     ):
+        """block_id and input_data must be required parameters."""
         params = cast(dict[str, Any], schema["function"].get("parameters", {}))
-        desc = params["properties"]["dry_run"]["description"]
-        assert isinstance(desc, str)
-        assert (
-            "preview mode" in desc.lower()
-        ), "run_block dry_run description should mention preview mode"
+        required = params.get("required", [])
+        assert "block_id" in required
+        assert "input_data" in required
 
 
 # ---------------------------------------------------------------------------
@@ -251,9 +249,25 @@ class TestRunBlockToolSchema:
 class TestRunAgentInputModel:
     """Validate RunAgentInput Pydantic model handles dry_run correctly.
 
-    The executor reads dry_run from this model, so it must parse, default,
-    and validate properly.
+    dry_run is exposed in the LLM schema so the LLM can request per-call
+    dry runs in normal sessions. It defaults to False. Session-level
+    dry_run=True forces all runs dry; normal sessions respect the LLM's choice.
     """
+
+    def test_dry_run_default_false(self):
+        """dry_run defaults to False when not provided."""
+        model = RunAgentInput(username_agent_slug="user/agent")
+        assert model.dry_run is False
+
+    def test_dry_run_in_schema_parameters(self):
+        """dry_run must appear in RunAgentTool.parameters so the LLM can
+        request per-call dry runs in normal sessions."""
+        from backend.copilot.tools.run_agent import RunAgentTool
+
+        tool = RunAgentTool()
+        assert "dry_run" in tool.parameters.get(
+            "properties", {}
+        ), "dry_run must be exposed in the LLM tool schema"
 
     def test_dry_run_accepts_true(self):
         model = RunAgentInput(username_agent_slug="user/agent", dry_run=True)
@@ -290,13 +304,12 @@ class TestRunAgentInputModel:
         with pytest.raises(ValidationError):
             RunAgentInput(
                 username_agent_slug="user/agent",
-                dry_run=True,
                 wait_for_result=301,
             )
 
     def test_string_fields_are_stripped(self):
         """The strip_strings validator should strip whitespace from string fields."""
-        model = RunAgentInput(username_agent_slug="  user/agent  ", dry_run=True)
+        model = RunAgentInput(username_agent_slug="  user/agent  ")
         assert model.username_agent_slug == "user/agent"
 
 
