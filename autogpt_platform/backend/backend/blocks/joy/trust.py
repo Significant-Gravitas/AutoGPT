@@ -84,7 +84,7 @@ class JoyVerifyTrustBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
+            id="d8e9f0a1-2b3c-4d5e-6f7a-8b9c0d1e2f3a",
             description="Verify if an agent meets minimum trust threshold before delegating tasks. Use as a safety gate in multi-agent workflows.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
@@ -168,7 +168,7 @@ class JoyGetTrustScoreBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6ba7b810-9dad-4d2d-80b4-00c04fd430c8",
+            id="e9f0a1b2-3c4d-4e5f-7a8b-9c0d1e2f3a4b",
             description="Get detailed trust profile for an agent including score, verification status, and capabilities.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
