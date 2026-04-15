@@ -84,7 +84,7 @@ class JoyVerifyTrustBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
             description="Verify if an agent meets minimum trust threshold before delegating tasks. Use as a safety gate in multi-agent workflows.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
@@ -119,7 +119,8 @@ class JoyVerifyTrustBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         agent = await get_agent(input_data.agent_id, credentials)
-        trust_score = agent.get("trust_score", 0.0)
+        raw_score = agent.get("trust_score")
+        trust_score = 0.0 if raw_score is None else float(raw_score)
         meets_threshold = trust_score >= input_data.min_trust_score
 
         yield "meets_threshold", meets_threshold
@@ -167,7 +168,7 @@ class JoyGetTrustScoreBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6a7-8901-bcde-f23456789012",
+            id="6ba7b810-9dad-4d2d-80b4-00c04fd430c8",
             description="Get detailed trust profile for an agent including score, verification status, and capabilities.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
@@ -208,7 +209,8 @@ class JoyGetTrustScoreBlock(Block):
 
         yield "agent_id", agent.get("agent_id", input_data.agent_id)
         yield "name", agent.get("name", "Unknown")
-        yield "trust_score", agent.get("trust_score", 0.0)
+        raw_score2 = agent.get("trust_score")
+        yield "trust_score", 0.0 if raw_score2 is None else float(raw_score2)
         yield "verified", agent.get("verified", False)
         yield "vouch_count", agent.get("vouch_count", 0)
         yield "capabilities", agent.get("capabilities", [])

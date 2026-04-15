@@ -95,7 +95,7 @@ class JoyDiscoverAgentsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c3d4e5f6-a7b8-9012-cdef-345678901234",
+            id="a3c1e8d2-7f45-4b9a-8c6d-2e1f3a5b7c9d",
             description="Discover agents by capability or search query. Find trusted agents for specific tasks.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
