@@ -61,6 +61,7 @@ export function useCopilotPage() {
     createSession,
     isCreatingSession,
     refetchSession,
+    sessionDryRun,
   } = useChatSession({ dryRun: isDryRun });
 
   const {
@@ -418,6 +419,11 @@ export function useCopilotPage() {
     rateLimitMessage,
     dismissRateLimit,
     // Dry run dev toggle
+    // isDryRun = global preference for NEW sessions (from localStorage).
+    // sessionDryRun = actual dry_run value of the CURRENT session (from API).
+    // Use isDryRun to configure future sessions; use sessionDryRun to display
+    // the current session's simulation state (banner, indicators).
     isDryRun,
+    sessionDryRun,
   };
 }

@@ -82,6 +82,15 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Tracking Type"
             }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
           }
         ],
         "responses": {
@@ -207,6 +216,15 @@
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Tracking Type"
             }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
           }
         ],
         "responses": {
@@ -308,6 +326,15 @@
             "schema": {
               "anyOf": [{ "type": "string" }, { "type": "null" }],
               "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
             }
           }
         ],

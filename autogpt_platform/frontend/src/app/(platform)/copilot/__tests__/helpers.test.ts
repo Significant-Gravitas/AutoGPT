@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
-import { getCopilotAuthHeaders, getSendSuppressionReason } from "../helpers";
+import {
+  getCopilotAuthHeaders,
+  getSendSuppressionReason,
+  resolveSessionDryRun,
+} from "../helpers";
 import type { UIMessage } from "ai";
 
 vi.mock("@/lib/supabase/actions", () => ({
@@ -16,6 +20,42 @@ import { getSystemHeaders } from "@/lib/impersonation";
 
 const mockGetWebSocketToken = vi.mocked(getWebSocketToken);
 const mockGetSystemHeaders = vi.mocked(getSystemHeaders);
+
+describe("resolveSessionDryRun", () => {
+  it("returns false when queryData is null", () => {
+    expect(resolveSessionDryRun(null)).toBe(false);
+  });
+
+  it("returns false when queryData is undefined", () => {
+    expect(resolveSessionDryRun(undefined)).toBe(false);
+  });
+
+  it("returns false when status is not 200", () => {
+    expect(resolveSessionDryRun({ status: 404 })).toBe(false);
+  });
+
+  it("returns false when status is 200 but metadata.dry_run is false", () => {
+    expect(
+      resolveSessionDryRun({
+        status: 200,
+        data: { metadata: { dry_run: false } },
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when status is 200 but metadata is missing", () => {
+    expect(resolveSessionDryRun({ status: 200, data: {} })).toBe(false);
+  });
+
+  it("returns true when status is 200 and metadata.dry_run is true", () => {
+    expect(
+      resolveSessionDryRun({
+        status: 200,
+        data: { metadata: { dry_run: true } },
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("getCopilotAuthHeaders", () => {
   beforeEach(() => {
