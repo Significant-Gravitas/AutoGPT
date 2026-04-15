@@ -72,49 +72,24 @@ def _notify_channel(session_id: str) -> str:
     return f"{_PENDING_CHANNEL_PREFIX}{session_id}"
 
 
-# Lua script: push-then-trim-then-expire-then-length, atomically.
-# Redis serializes EVAL commands, so a concurrent ``LPOP`` drain
-# observes either the pre-push or post-push state of the list — never
-# a partial state where the RPUSH has landed but LTRIM hasn't run.
-_PUSH_LUA = """
-redis.call('RPUSH', KEYS[1], ARGV[1])
-redis.call('LTRIM', KEYS[1], -tonumber(ARGV[2]), -1)
-redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
-return redis.call('LLEN', KEYS[1])
-"""
-
-
 async def push_pending_message(
     session_id: str,
     message: PendingMessage,
 ) -> int:
-    """Append a pending message to the session's buffer atomically.
+    """Append a pending message to the session's buffer.
 
     Returns the new buffer length.  Enforces ``MAX_PENDING_MESSAGES`` by
     trimming from the left (oldest) — the newest message always wins if
     the user has been typing faster than the copilot can drain.
-
-    The push + trim + expire + llen are wrapped in a single Lua EVAL so
-    concurrent LPOP drains from the executor never observe a partial
-    state.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
 
-    new_length = int(
-        await cast(
-            "Any",
-            redis.eval(
-                _PUSH_LUA,
-                1,
-                key,
-                payload,
-                str(MAX_PENDING_MESSAGES),
-                str(_PENDING_TTL_SECONDS),
-            ),
-        )
-    )
+    await redis.rpush(key, payload)  # type: ignore[misc]
+    await redis.ltrim(key, -MAX_PENDING_MESSAGES, -1)  # type: ignore[misc]
+    await redis.expire(key, _PENDING_TTL_SECONDS)  # type: ignore[misc]
+    new_length = int(await cast("Any", redis.llen(key)))
 
     # Fire-and-forget notify.  Subscribers use this as a wake-up hint;
     # the buffer itself is authoritative so a lost notify is harmless.
