@@ -43,7 +43,15 @@ export function EditNameDialog({ currentName }: Props) {
         return;
       }
 
-      await refreshSession();
+      try {
+        await refreshSession();
+      } catch (e) {
+        toast({
+          title: "Name saved, but session refresh failed",
+          description: e instanceof Error ? e.message : "Please reload.",
+          variant: "destructive",
+        });
+      }
       setIsOpen(false);
       toast({ title: "Name updated" });
     } finally {

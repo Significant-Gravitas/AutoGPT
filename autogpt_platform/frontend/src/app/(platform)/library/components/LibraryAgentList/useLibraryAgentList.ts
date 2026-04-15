@@ -52,6 +52,7 @@ export function useLibraryAgentList({
   const prevSortRef = useRef<LibraryAgentSort | null>(null);
   const [consecutiveEmptyPages, setConsecutiveEmptyPages] = useState(0);
   const prevFilteredLengthRef = useRef(0);
+  const prevAgentsLengthRef = useRef(0);
 
   const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(
     null,
@@ -260,24 +261,29 @@ export function useLibraryAgentList({
     if (statusFilter === "all") {
       setConsecutiveEmptyPages(0);
       prevFilteredLengthRef.current = filteredAgents.length;
+      prevAgentsLengthRef.current = agents.length;
       return;
     }
+
+    if (agents.length <= prevAgentsLengthRef.current) return;
+    prevAgentsLengthRef.current = agents.length;
 
     const newFilteredCount = filteredAgents.length;
     const previousCount = prevFilteredLengthRef.current;
 
     if (newFilteredCount > previousCount) {
       setConsecutiveEmptyPages(0);
-    } else if (!agentsIsFetchingNextPage) {
+    } else {
       setConsecutiveEmptyPages((prev) => prev + 1);
     }
 
     prevFilteredLengthRef.current = newFilteredCount;
-  }, [filteredAgents.length, statusFilter, agentsIsFetchingNextPage]);
+  }, [agents.length, filteredAgents.length, statusFilter]);
 
   useEffect(() => {
     setConsecutiveEmptyPages(0);
     prevFilteredLengthRef.current = 0;
+    prevAgentsLengthRef.current = 0;
   }, [statusFilter]);
 
   const filteredExhausted =
