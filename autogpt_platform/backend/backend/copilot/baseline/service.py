@@ -35,6 +35,11 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.pending_message_helpers import (
+    drain_pending_safe,
+    insert_pending_before_last,
+    persist_session_safe,
+)
 from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
@@ -874,56 +879,19 @@ async def stream_chat_completion_baseline(
 
     # Drain any messages the user queued via POST /messages/pending
     # while this session was idle (or during a previous turn whose
-    # mid-loop drains missed them).  Atomic LPOP guarantees that a
-    # concurrent push lands *after* the drain and stays queued for the
-    # next turn instead of being lost.
-    try:
-        drained_at_start = await drain_pending_messages(session_id)
-    except Exception:
-        logger.warning(
-            "[Baseline] drain_pending_messages failed at turn start, skipping",
-            exc_info=True,
-        )
-        drained_at_start = []
-    # Pre-compute formatted content once per message so we don't call
-    # format_pending_as_user_message twice (once for session.messages and
-    # once for transcript_builder below).
-    drained_at_start_content: list[str] = []
-    if drained_at_start:
+    # mid-loop drains missed them).
+    drained_at_start_content = await drain_pending_safe(session_id, "[Baseline]")
+    if drained_at_start_content:
         logger.info(
             "[Baseline] Draining %d pending message(s) at turn start for session %s",
-            len(drained_at_start),
+            len(drained_at_start_content),
             session_id,
         )
-        # Insert pending messages BEFORE the current user message so
-        # session.messages order matches transcript_builder order:
-        # [...history, pending_1, pending_2, current_user_msg].
-        # maybe_append_user_message already appended the current user message
-        # at line 934, so we insert at len-1 to keep it last.
-        insert_idx = max(0, len(session.messages) - 1)
-        for i, pm in enumerate(drained_at_start):
-            content = format_pending_as_user_message(pm)["content"]
-            drained_at_start_content.append(content)
-            # Insert directly — pending messages are atomically-popped from
-            # Redis and are never stale-cache duplicates, so the
-            # maybe_append_user_message dedup is wrong here.
-            session.messages.insert(
-                insert_idx + i, ChatMessage(role="user", content=content)
-            )
+        # Insert BEFORE the current user message: [...history, pending_1, ..., current_msg].
+        insert_pending_before_last(session, drained_at_start_content)
 
-    # Persist the drained pending messages (if any) plus the current user
-    # message.  Wrap in try/except so a transient DB failure here does not
-    # silently discard messages that were already popped from Redis — the
-    # turn can still proceed using the in-memory session.messages, and a
-    # later resume/replay will backfill from the DB on the next turn.
-    try:
-        session = await upsert_chat_session(session)
-    except Exception as _persist_err:
-        logger.warning(
-            "[Baseline] Failed to persist session at turn start "
-            "(pending drain may not be durable): %s",
-            _persist_err,
-        )
+    # Persist the drained pending messages (if any) plus the current user message.
+    session = await persist_session_safe(session, "[Baseline]")
 
     # Select model based on the per-request mode.  'fast' downgrades to
     # the cheaper/faster model; everything else keeps the default.
@@ -1227,7 +1195,7 @@ async def stream_chat_completion_baseline(
                 pending = await drain_pending_messages(session_id)
             except Exception:
                 logger.warning(
-                    "Mid-loop drain_pending_messages failed for session %s",
+                    "[Baseline] mid-loop drain_pending_messages failed for session %s",
                     session_id,
                     exc_info=True,
                 )
@@ -1268,15 +1236,7 @@ async def stream_chat_completion_baseline(
                     )
                     openai_messages.append(formatted)
                     transcript_builder.append_user(content=content_for_db)
-                try:
-                    await upsert_chat_session(session)
-                except Exception as persist_err:
-                    logger.warning(
-                        "[Baseline] Failed to persist pending messages for "
-                        "session %s: %s",
-                        session_id,
-                        persist_err,
-                    )
+                session = await persist_session_safe(session, "[Baseline]")
                 logger.info(
                     "[Baseline] Injected %d pending message(s) into "
                     "session %s mid-turn",

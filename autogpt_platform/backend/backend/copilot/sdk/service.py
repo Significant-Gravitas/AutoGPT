@@ -36,10 +36,10 @@ from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
 from backend.copilot.context import get_workspace_manager
-from backend.copilot.pending_messages import (
-    PendingMessage,
-    drain_pending_messages,
-    format_pending_as_user_message,
+from backend.copilot.pending_message_helpers import (
+    drain_pending_safe,
+    insert_pending_before_last,
+    persist_session_safe,
 )
 from backend.copilot.permissions import apply_tool_permissions
 from backend.copilot.rate_limit import get_user_tier
@@ -2465,53 +2465,21 @@ async def stream_chat_completion_sdk(
         # immediately after the drain so a crash doesn't lose the messages.
         # The endpoint deliberately does NOT persist to session.messages —
         # Redis is the single source of truth until this drain runs.
-        try:
-            pending_at_start = await drain_pending_messages(session_id)
-        except Exception:
-            logger.warning(
-                "%s drain_pending_messages failed at turn start, skipping",
-                log_prefix,
-                exc_info=True,
-            )
-            pending_at_start = []
-        if pending_at_start:
+        pending_texts = await drain_pending_safe(session_id, log_prefix)
+        if pending_texts:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
                 log_prefix,
-                len(pending_at_start),
+                len(pending_texts),
             )
-            pending_texts: list[str] = [
-                format_pending_as_user_message(pm)["content"] for pm in pending_at_start
-            ]
-            # Insert pending messages BEFORE the current user message so
-            # session.messages order matches chronological order:
-            # [...history, pending_1, pending_2, current_user_msg].
-            # maybe_append_user_message already appended current_message at
-            # the top of stream_chat_completion_sdk, so insert at len-1.
-            insert_idx = max(0, len(session.messages) - 1)
-            for i, pt in enumerate(pending_texts):
-                # Insert directly — pending messages are atomically-popped from
-                # Redis and are never stale-cache duplicates, so the
-                # maybe_append_user_message dedup is wrong here.
-                session.messages.insert(
-                    insert_idx + i, ChatMessage(role="user", content=pt)
-                )
-            # Prepend pending texts so the model sees them in chronological
-            # order: pending (queued during T1) → current (T2 user message).
+            # Insert BEFORE current user message: [...history, pending_1, ..., current_msg].
+            insert_pending_before_last(session, pending_texts)
+            # Prepend so the model sees them in chronological order: pending → current.
             if current_message.strip():
                 current_message = "\n\n".join(pending_texts) + "\n\n" + current_message
             else:
                 current_message = "\n\n".join(pending_texts)
-            # Persist immediately so a crash between here and the finally block
-            # doesn't lose messages that were already drained from Redis.
-            try:
-                session = await upsert_chat_session(session)
-            except Exception as _persist_err:
-                logger.warning(
-                    "%s Failed to persist drained pending messages: %s",
-                    log_prefix,
-                    _persist_err,
-                )
+            session = await persist_session_safe(session, log_prefix)
 
         if not current_message.strip():
             yield StreamError(
@@ -3219,24 +3187,13 @@ async def stream_chat_completion_sdk(
     # preserved in Redis for the next manual turn.
     # -------------------------------------------------------------------------
     if not ended_with_stream_error:
-        _auto_pending: list[PendingMessage] = []
-        try:
-            _auto_pending = await drain_pending_messages(session_id)
-        except Exception:
-            logger.warning(
-                "%s pending_messages: auto-continue drain failed",
-                log_prefix,
-                exc_info=True,
-            )
-        if _auto_pending:
-            pending_texts = [
-                format_pending_as_user_message(p)["content"] for p in _auto_pending
-            ]
-            auto_message = "\n\n".join(pending_texts)
+        _auto_pending_texts = await drain_pending_safe(session_id, log_prefix)
+        if _auto_pending_texts:
+            auto_message = "\n\n".join(_auto_pending_texts)
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",
                 log_prefix,
-                len(_auto_pending),
+                len(_auto_pending_texts),
             )
             async for event in stream_chat_completion_sdk(
                 session_id=session_id,
