@@ -17,10 +17,8 @@ export function ModelToggleButton({ model, onToggle }: Props) {
       aria-pressed={isAdvanced}
       onClick={onToggle}
       className={cn(
-        "inline-flex min-h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-        isAdvanced
-          ? "bg-sky-100 text-sky-900 hover:bg-sky-200"
-          : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700",
+        "inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
+        isAdvanced ? "text-sky-900" : "text-neutral-500 hover:text-neutral-700",
       )}
       aria-label={
         isAdvanced ? "Switch to Standard model" : "Switch to Advanced model"
@@ -32,7 +30,9 @@ export function ModelToggleButton({ model, onToggle }: Props) {
       }
     >
       <Cpu size={14} />
-      {isAdvanced && "Advanced"}
+      <span className="hidden sm:inline">
+        {isAdvanced ? "Advanced" : "Standard"}
+      </span>
     </button>
   );
 }
