@@ -384,14 +384,13 @@ describe("ChatInput model toggle", () => {
     // flag is immutable and shown via the CopilotPage banner, not this button.
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(screen.queryByLabelText(/test mode/i)).toBeNull();
-    expect(screen.queryByLabelText(/enable test mode/i)).toBeNull();
+    expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
   it("shows dry-run toggle when no session", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/test mode|enable test mode/i)).toBeTruthy();
+    expect(screen.getByTestId("dry-run-toggle")).toBeTruthy();
   });
 
   it("shows a toast when switching to advanced", async () => {
