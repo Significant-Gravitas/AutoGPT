@@ -135,7 +135,11 @@ export function LibraryAgentCard({
               <EyeIcon size={14} className="shrink-0" />
               See tasks
             </button>
-            <ContextualActionButton status={statusInfo.status} agentID={id} />
+            <ContextualActionButton
+              status={statusInfo.status}
+              agentID={id}
+              executionID={statusInfo.activeExecutionID ?? undefined}
+            />
             <button
               type="button"
               onClick={() => {

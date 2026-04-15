@@ -26,6 +26,8 @@ export interface AgentStatusInfo {
   totalRuns: number;
   lastRunAt: string | null;
   lastError: string | null;
+  /** ID of the currently active execution (when status is "running"). */
+  activeExecutionID: string | null;
   monthlySpend: number;
   nextScheduledRun: string | null;
   triggerType: string | null;

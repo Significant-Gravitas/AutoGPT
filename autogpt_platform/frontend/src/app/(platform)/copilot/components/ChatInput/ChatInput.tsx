@@ -224,7 +224,6 @@ export function ChatInput({
             {showModeToggle && !isStreaming && (
               <ModeToggleButton
                 mode={copilotChatMode}
-                isStreaming={isStreaming}
                 onToggle={handleToggleMode}
               />
             )}

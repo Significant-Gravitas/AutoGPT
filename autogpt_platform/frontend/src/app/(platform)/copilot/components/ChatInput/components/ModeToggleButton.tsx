@@ -11,18 +11,15 @@ import type { CopilotMode } from "../../../store";
 
 interface Props {
   mode: CopilotMode;
-  isStreaming: boolean;
   onToggle: () => void;
 }
 
-export function ModeToggleButton({ mode, isStreaming, onToggle }: Props) {
+export function ModeToggleButton({ mode, onToggle }: Props) {
   const isExtended = mode === "extended_thinking";
 
-  const tooltipText = isStreaming
-    ? "Mode cannot be changed while streaming"
-    : isExtended
-      ? "Extended Thinking — deeper reasoning (click to switch to Fast)"
-      : "Fast mode — quicker responses (click to switch to Thinking)";
+  const tooltipText = isExtended
+    ? "Extended Thinking — deeper reasoning (click to switch to Fast)"
+    : "Fast mode — quicker responses (click to switch to Thinking)";
 
   return (
     <Tooltip>
@@ -30,12 +27,10 @@ export function ModeToggleButton({ mode, isStreaming, onToggle }: Props) {
         <button
           type="button"
           aria-pressed={isExtended}
-          disabled={isStreaming}
           onClick={onToggle}
           className={cn(
             "ml-2 inline-flex h-9 items-center justify-center gap-1 rounded-full border border-neutral-200 bg-white px-2.5 text-xs font-medium shadow-sm transition-colors hover:bg-neutral-50",
             isExtended ? "text-purple-900" : "text-amber-900",
-            isStreaming && "cursor-not-allowed opacity-50",
           )}
           aria-label={
             isExtended

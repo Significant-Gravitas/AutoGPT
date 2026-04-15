@@ -41,6 +41,7 @@ function computeAgentStatus(
   let status: AgentStatus;
   let lastError: string | null = null;
   let lastRunAt: string | null = null;
+  const activeExecutionID = activeExec?.id ?? null;
 
   if (activeExec) {
     status = "running";
@@ -87,6 +88,7 @@ function computeAgentStatus(
     totalRuns,
     lastRunAt,
     lastError,
+    activeExecutionID,
     monthlySpend: 0,
     nextScheduledRun: null,
     triggerType: agent.has_external_trigger ? "webhook" : null,
@@ -129,6 +131,7 @@ const DEFAULT_STATUS: AgentStatusInfo = {
   totalRuns: 0,
   lastRunAt: null,
   lastError: null,
+  activeExecutionID: null,
   monthlySpend: 0,
   nextScheduledRun: null,
   triggerType: null,

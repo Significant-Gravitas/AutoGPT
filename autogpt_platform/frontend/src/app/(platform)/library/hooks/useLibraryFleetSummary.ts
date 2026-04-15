@@ -99,7 +99,14 @@ export function useLibraryFleetSummary(
       } else {
         summary.idle += 1;
       }
-      if (agentsWithRecentCompletion.has(agent.graph_id)) {
+      // Parallel counter: mutually exclusive with running/error (which match
+      // the sitrep priority order used by the "Recently completed" tab list)
+      // but orthogonal to listening/scheduled/idle.
+      if (
+        !agentsWithActiveExecution.has(agent.graph_id) &&
+        !agentsWithRecentFailure.has(agent.graph_id) &&
+        agentsWithRecentCompletion.has(agent.graph_id)
+      ) {
         summary.completed += 1;
       }
     }

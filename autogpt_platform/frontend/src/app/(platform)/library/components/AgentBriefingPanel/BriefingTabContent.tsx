@@ -14,6 +14,7 @@ import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
+import { useAgentStatusMap } from "../../hooks/useAgentStatus";
 import type { AgentStatusFilter } from "../../types";
 import { Text } from "@/components/atoms/Text/Text";
 import Link from "next/link";
@@ -167,12 +168,13 @@ function AgentListSection({
   agents: LibraryAgent[];
 }) {
   const [showAll, setShowAll] = useState(false);
+  const statusMap = useAgentStatusMap(agents);
 
   const filtered = agents.filter((agent) => {
-    if (activeTab === "listening") return agent.has_external_trigger;
-    if (activeTab === "scheduled") return !!agent.recommended_schedule_cron;
-    if (activeTab === "idle")
-      return !agent.has_external_trigger && !agent.recommended_schedule_cron;
+    const status = statusMap.get(agent.graph_id)?.status;
+    if (activeTab === "listening") return status === "listening";
+    if (activeTab === "scheduled") return status === "scheduled";
+    if (activeTab === "idle") return status === "idle";
     return false;
   });
 
