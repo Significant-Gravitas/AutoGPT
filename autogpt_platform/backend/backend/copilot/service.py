@@ -69,6 +69,11 @@ USER_CONTEXT_TAG = "user_context"
 # must be stripped before the message reaches the LLM.
 MEMORY_CONTEXT_TAG = "memory_context"
 
+# Tag name for the environment context block prepended on first turn.
+# Carries the real working directory so the model always knows where to work
+# without polluting the cacheable system prompt.  Server-injected only.
+ENV_CONTEXT_TAG = "env_context"
+
 # Static system prompt for token caching — identical for all users.
 # User-specific context is injected into the first user message instead,
 # so the system prompt never changes and can be cached across all sessions.
@@ -146,6 +151,14 @@ _MEMORY_CONTEXT_ANYWHERE_RE = re.compile(
 )
 _MEMORY_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{MEMORY_CONTEXT_TAG}>", re.IGNORECASE)
 
+# Same treatment for <env_context> — a server-only tag injected by the SDK
+# service to carry the real session working directory.  User-supplied
+# occurrences must be stripped so they cannot spoof filesystem paths.
+_ENV_CONTEXT_ANYWHERE_RE = re.compile(
+    rf"<{ENV_CONTEXT_TAG}>.*</{ENV_CONTEXT_TAG}>\s*", re.DOTALL
+)
+_ENV_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{ENV_CONTEXT_TAG}>", re.IGNORECASE)
+
 
 def _sanitize_user_context_field(value: str) -> str:
     """Escape any characters that would let user-controlled text break out of
@@ -204,6 +217,27 @@ def sanitize_user_supplied_context(message: str) -> str:
     # Strip <memory_context> blocks and lone tags
     without_mem_ctx = _MEMORY_CONTEXT_ANYWHERE_RE.sub("", without_user_ctx)
     return _MEMORY_CONTEXT_LONE_TAG_RE.sub("", without_mem_ctx)
+
+
+def strip_injected_context_for_display(message: str) -> str:
+    """Remove all server-injected XML context blocks before returning to the user.
+
+    Used by the chat-history GET endpoint to hide server-side prefixes that
+    were stored in the DB alongside the user's message.  Strips all three
+    injected block types — ``<memory_context>``, ``<env_context>``, and
+    ``<user_context>`` — regardless of the order they appear in the stored
+    message.
+
+    Unlike ``sanitize_user_supplied_context`` (which handles untrusted user
+    input and must not strip ``<env_context>`` to avoid interfering with the
+    server-injected env block), this function is only ever called on *already
+    stored* messages to produce a clean display string.
+    """
+    # Start from sanitize_user_supplied_context (strips user_context + memory_context)
+    without_server_ctx = sanitize_user_supplied_context(message)
+    # Also strip <env_context> blocks and lone tags
+    without_env_ctx = _ENV_CONTEXT_ANYWHERE_RE.sub("", without_server_ctx)
+    return _ENV_CONTEXT_LONE_TAG_RE.sub("", without_env_ctx)
 
 
 # Public alias used by the SDK and baseline services to strip user-supplied
