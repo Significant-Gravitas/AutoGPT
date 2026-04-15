@@ -15,11 +15,13 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
+    _RETRY_TARGET_TOKENS,
     ReducedContext,
     _is_prompt_too_long,
     _is_tool_only_message,
     _iter_sdk_messages,
     _reduce_context,
+    _TokenUsage,
 )
 
 # ---------------------------------------------------------------------------
@@ -207,6 +209,24 @@ class TestReduceContext:
 
         assert ctx.transcript_lost is True
 
+    @pytest.mark.asyncio
+    async def test_drop_returns_target_tokens_attempt_1(self) -> None:
+        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=1)
+        assert ctx.transcript_lost is True
+        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[0]
+
+    @pytest.mark.asyncio
+    async def test_drop_returns_target_tokens_attempt_2(self) -> None:
+        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=2)
+        assert ctx.transcript_lost is True
+        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[1]
+
+    @pytest.mark.asyncio
+    async def test_drop_clamps_attempt_beyond_limits(self) -> None:
+        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=99)
+        assert ctx.transcript_lost is True
+        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[-1]
+
 
 # ---------------------------------------------------------------------------
 # _iter_sdk_messages
@@ -331,3 +351,87 @@ class TestIsParallelContinuation:
         msg = MagicMock(spec=AssistantMessage)
         msg.content = [self._make_tool_block()]
         assert _is_tool_only_message(msg) is True
+
+
+# ---------------------------------------------------------------------------
+# _TokenUsage — null-safe accumulation (OpenRouter initial-stream-event bug)
+# ---------------------------------------------------------------------------
+
+
+class TestTokenUsageNullSafety:
+    """Verify that ResultMessage.usage dicts with null-valued cache fields
+    (as emitted by OpenRouter for the initial streaming event before real
+    token counts are available) do not crash the accumulator.
+
+    Before the fix, dict.get("cache_read_input_tokens", 0) returned None
+    when the key existed with a null value, causing 'int += None' TypeError.
+    """
+
+    def _apply_usage(self, usage: dict, acc: _TokenUsage) -> None:
+        """Mirror the production accumulation in sdk/service.py."""
+        acc.prompt_tokens += usage.get("input_tokens") or 0
+        acc.cache_read_tokens += usage.get("cache_read_input_tokens") or 0
+        acc.cache_creation_tokens += usage.get("cache_creation_input_tokens") or 0
+        acc.completion_tokens += usage.get("output_tokens") or 0
+
+    def test_null_cache_tokens_do_not_crash(self):
+        """OpenRouter initial event: cache keys present with null value."""
+        usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_input_tokens": None,
+            "cache_creation_input_tokens": None,
+        }
+        acc = _TokenUsage()
+        self._apply_usage(usage, acc)  # must not raise TypeError
+        assert acc.prompt_tokens == 0
+        assert acc.cache_read_tokens == 0
+        assert acc.cache_creation_tokens == 0
+        assert acc.completion_tokens == 0
+
+    def test_real_cache_tokens_are_accumulated(self):
+        """OpenRouter final event: real cache token counts are captured."""
+        usage = {
+            "input_tokens": 10,
+            "output_tokens": 349,
+            "cache_read_input_tokens": 16600,
+            "cache_creation_input_tokens": 512,
+        }
+        acc = _TokenUsage()
+        self._apply_usage(usage, acc)
+        assert acc.prompt_tokens == 10
+        assert acc.cache_read_tokens == 16600
+        assert acc.cache_creation_tokens == 512
+        assert acc.completion_tokens == 349
+
+    def test_absent_cache_keys_default_to_zero(self):
+        """Minimal usage dict without cache keys defaults correctly."""
+        usage = {"input_tokens": 5, "output_tokens": 20}
+        acc = _TokenUsage()
+        self._apply_usage(usage, acc)
+        assert acc.prompt_tokens == 5
+        assert acc.cache_read_tokens == 0
+        assert acc.cache_creation_tokens == 0
+        assert acc.completion_tokens == 20
+
+    def test_multi_turn_accumulation(self):
+        """Null event followed by real event: only real tokens counted."""
+        null_event = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_input_tokens": None,
+            "cache_creation_input_tokens": None,
+        }
+        real_event = {
+            "input_tokens": 10,
+            "output_tokens": 349,
+            "cache_read_input_tokens": 16600,
+            "cache_creation_input_tokens": 512,
+        }
+        acc = _TokenUsage()
+        self._apply_usage(null_event, acc)
+        self._apply_usage(real_event, acc)
+        assert acc.prompt_tokens == 10
+        assert acc.cache_read_tokens == 16600
+        assert acc.cache_creation_tokens == 512
+        assert acc.completion_tokens == 349

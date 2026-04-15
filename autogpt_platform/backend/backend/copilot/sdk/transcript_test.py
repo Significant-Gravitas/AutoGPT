@@ -960,7 +960,7 @@ class TestRunCompression:
         )
         call_count = [0]
 
-        async def _compress_side_effect(*, messages, model, client):
+        async def _compress_side_effect(*, messages, model, client, target_tokens=None):
             call_count[0] += 1
             if client is not None:
                 # Simulate a hang that exceeds the timeout
