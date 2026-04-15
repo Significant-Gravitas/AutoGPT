@@ -30,12 +30,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import (
-    TEST_CREDENTIALS,
-    TEST_CREDENTIALS_INPUT,
-    get_agent,
-    joy_trust,
-)
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, get_agent, joy_trust
 
 
 class JoyVerifyTrustBlock(Block):
