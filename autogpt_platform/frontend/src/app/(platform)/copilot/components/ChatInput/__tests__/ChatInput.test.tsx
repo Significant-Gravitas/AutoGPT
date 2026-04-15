@@ -168,11 +168,13 @@ describe("ChatInput mode toggle", () => {
     expect(screen.queryByLabelText(/switch to/i)).toBeNull();
   });
 
-  it("hides mode toggle when hasSession is true", () => {
+  it("shows mode toggle when hasSession is true and not streaming", () => {
+    // Mode is per-message — can be changed between turns even in an existing session.
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(screen.queryByLabelText(/switch to fast mode/i)).toBeNull();
-    expect(screen.queryByLabelText(/switch to extended thinking/i)).toBeNull();
+    expect(
+      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
+    ).not.toBeNull();
   });
 
   it("exposes aria-pressed=true in extended_thinking mode", () => {
@@ -244,12 +246,13 @@ describe("ChatInput model toggle", () => {
     ).toBeNull();
   });
 
-  it("hides model toggle when hasSession is true", () => {
+  it("shows model toggle when hasSession is true and not streaming", () => {
+    // Model is per-message — can be changed between turns even in an existing session.
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
     expect(
       screen.queryByLabelText(/switch to (advanced|standard) model/i),
-    ).toBeNull();
+    ).not.toBeNull();
   });
 
   it("hides dry-run toggle when hasSession is true", () => {

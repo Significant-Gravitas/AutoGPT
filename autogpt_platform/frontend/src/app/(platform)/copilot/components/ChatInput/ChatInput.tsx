@@ -218,13 +218,16 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
-            {showModeToggle && !isStreaming && !hasSession && (
+            {/* Mode and model are per-message settings sent with each stream request,
+                so they can be freely changed between turns in an existing session.
+                Hide only while actively streaming (too late to change for that turn). */}
+            {showModeToggle && !isStreaming && (
               <ModeToggleButton
                 mode={copilotChatMode}
                 onToggle={handleToggleMode}
               />
             )}
-            {showModeToggle && !isStreaming && !hasSession && (
+            {showModeToggle && !isStreaming && (
               <ModelToggleButton
                 model={copilotLlmModel}
                 onToggle={handleToggleModel}
