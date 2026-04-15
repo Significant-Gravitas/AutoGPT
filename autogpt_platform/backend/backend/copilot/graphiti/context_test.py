@@ -74,7 +74,10 @@ class TestFetchInternal:
         with (
             patch.object(context, "derive_group_id", return_value="user_abc"),
             patch.object(
-                context, "get_graphiti_client", new_callable=AsyncMock, return_value=mock_client
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
             ),
         ):
             result = await context._fetch("test-user", "hello")
@@ -96,7 +99,10 @@ class TestFetchInternal:
         with (
             patch.object(context, "derive_group_id", return_value="user_abc"),
             patch.object(
-                context, "get_graphiti_client", new_callable=AsyncMock, return_value=mock_client
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
             ),
         ):
             result = await context._fetch("test-user", "hello")
@@ -118,7 +124,10 @@ class TestFetchInternal:
         with (
             patch.object(context, "derive_group_id", return_value="user_abc"),
             patch.object(
-                context, "get_graphiti_client", new_callable=AsyncMock, return_value=mock_client
+                context,
+                "get_graphiti_client",
+                new_callable=AsyncMock,
+                return_value=mock_client,
             ),
         ):
             result = await context._fetch("test-user", "hello")
