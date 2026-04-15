@@ -355,7 +355,9 @@ class TestNormalizeModelName:
     def test_strips_openai_prefix(self):
         assert _normalize_model_name("openai/gpt-4o") == "gpt-4o"
 
-    def test_strips_google_prefix(self):
+    @patch("backend.copilot.sdk.service.config")
+    def test_strips_google_prefix(self, mock_config):
+        mock_config.openrouter_active = True
         assert _normalize_model_name("google/gemini-2.5-flash") == "gemini-2.5-flash"
 
     def test_already_normalized_unchanged(self):
@@ -391,7 +393,14 @@ class TestTokenUsageNullSafety:
     """
 
     def _apply_usage(self, usage: dict, acc: _TokenUsage) -> None:
-        """Mirror the production accumulation in sdk/service.py."""
+        """Null-safe accumulation: ``or 0`` treats missing/None as zero.
+
+        Uses ``usage.get("key") or 0`` rather than ``usage.get("key", 0)``
+        because the latter returns ``None`` when the key exists with a null
+        value, which would raise ``TypeError`` on ``int += None``.  This is
+        the intentional pattern that fixes the OpenRouter initial-stream-event
+        bug described in the class docstring.
+        """
         acc.prompt_tokens += usage.get("input_tokens") or 0
         acc.cache_read_tokens += usage.get("cache_read_input_tokens") or 0
         acc.cache_creation_tokens += usage.get("cache_creation_input_tokens") or 0
