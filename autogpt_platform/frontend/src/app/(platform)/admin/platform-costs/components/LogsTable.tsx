@@ -128,10 +128,11 @@ function LogsTable({
                   }
                   onClick={
                     log.graph_exec_id
-                      ? () =>
-                          navigator.clipboard.writeText(
-                            String(log.graph_exec_id),
-                          )
+                      ? () => {
+                          navigator.clipboard
+                            .writeText(String(log.graph_exec_id))
+                            .catch(() => {});
+                        }
                       : undefined
                   }
                 >
