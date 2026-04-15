@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamTextDelta
-from backend.copilot.sdk.service import _StreamAccumulator, _dispatch_response
+from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -51,11 +51,13 @@ def _make_state() -> MagicMock:
     return state
 
 
-def _simulate_pre_create(
-    acc: _StreamAccumulator, ctx: MagicMock
-) -> None:
+def _simulate_pre_create(acc: _StreamAccumulator, ctx: MagicMock) -> None:
     """Mirror the pre-create block from _run_stream_attempt so tests
-    can verify its effect without invoking the full async generator."""
+    can verify its effect without invoking the full async generator.
+
+    Keep in sync with the block in service.py _run_stream_attempt
+    (search: "Pre-create the new assistant message").
+    """
     acc.assistant_response = ChatMessage(role="assistant", content="")
     acc.accumulated_tool_calls = []
     acc.has_tool_results = False
@@ -98,7 +100,11 @@ class TestPreCreateAssistantMessage:
         assert acc.has_tool_results is False
 
     def test_pre_create_resets_accumulated_tool_calls(self) -> None:
-        existing_call = {"id": "call_1", "type": "function", "function": {"name": "bash"}}
+        existing_call = {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "bash"},
+        }
         acc = _StreamAccumulator(
             assistant_response=ChatMessage(role="assistant", content=""),
             accumulated_tool_calls=[existing_call],
@@ -151,7 +157,9 @@ class TestPreCreateAssistantMessage:
         _simulate_pre_create(acc, ctx)
 
         for word in ["You're ", "right ", "about ", "that."]:
-            _dispatch_response(StreamTextDelta(id="t1", delta=word), acc, ctx, state, False, "[test]")
+            _dispatch_response(
+                StreamTextDelta(id="t1", delta=word), acc, ctx, state, False, "[test]"
+            )
 
         assert len(session.messages) == 1
         assert session.messages[-1].content == "You're right about that."
@@ -183,6 +191,29 @@ class TestPreCreateAssistantMessage:
         ctx = _make_ctx()
 
         if acc.has_tool_results and acc.has_appended_assistant:
+            _simulate_pre_create(acc, ctx)
+
+        assert len(ctx.session.messages) == 0
+
+    def test_pre_create_not_triggered_without_text_delta(self) -> None:
+        """Pre-create is skipped when adapter_responses has no StreamTextDelta
+        (e.g. a tool-only batch). Verifies the third guard condition."""
+        from backend.copilot.response_model import StreamStartStep
+
+        acc = _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+            has_appended_assistant=True,
+            has_tool_results=True,
+        )
+        ctx = _make_ctx()
+        adapter_responses = [StreamStartStep()]  # no StreamTextDelta
+
+        if (
+            acc.has_tool_results
+            and acc.has_appended_assistant
+            and any(isinstance(r, StreamTextDelta) for r in adapter_responses)
+        ):
             _simulate_pre_create(acc, ctx)
 
         assert len(ctx.session.messages) == 0
