@@ -1,5 +1,7 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
+# isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
+
 import asyncio
 import base64
 import json
