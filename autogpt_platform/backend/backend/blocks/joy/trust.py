@@ -30,7 +30,9 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, get_agent, joy_trust
+from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT
+from ._config import get_agent as _get_agent
+from ._config import joy_trust
 
 
 class JoyVerifyTrustBlock(Block):
@@ -106,6 +108,12 @@ class JoyVerifyTrustBlock(Block):
             },
         )
 
+    async def get_agent(
+        self, agent_id: str, credentials: APIKeyCredentials | None
+    ) -> dict:
+        """Mockable wrapper for Joy API get_agent."""
+        return await _get_agent(agent_id, credentials)
+
     async def run(
         self,
         input_data: Input,
@@ -113,7 +121,7 @@ class JoyVerifyTrustBlock(Block):
         credentials: APIKeyCredentials | None = None,
         **kwargs,
     ) -> BlockOutput:
-        agent = await get_agent(input_data.agent_id, credentials)
+        agent = await self.get_agent(input_data.agent_id, credentials)
         raw_score = agent.get("trust_score")
         trust_score = 0.0 if raw_score is None else float(raw_score)
         meets_threshold = trust_score >= input_data.min_trust_score
@@ -193,6 +201,12 @@ class JoyGetTrustScoreBlock(Block):
             },
         )
 
+    async def get_agent(
+        self, agent_id: str, credentials: APIKeyCredentials | None
+    ) -> dict:
+        """Mockable wrapper for Joy API get_agent."""
+        return await _get_agent(agent_id, credentials)
+
     async def run(
         self,
         input_data: Input,
@@ -200,7 +214,7 @@ class JoyGetTrustScoreBlock(Block):
         credentials: APIKeyCredentials | None = None,
         **kwargs,
     ) -> BlockOutput:
-        agent = await get_agent(input_data.agent_id, credentials)
+        agent = await self.get_agent(input_data.agent_id, credentials)
 
         yield "agent_id", agent.get("agent_id", input_data.agent_id)
         yield "name", agent.get("name", "Unknown")
