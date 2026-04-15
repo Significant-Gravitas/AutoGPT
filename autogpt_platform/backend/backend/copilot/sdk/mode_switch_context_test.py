@@ -54,7 +54,6 @@ import pytest
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _build_query_message
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -253,10 +252,7 @@ class TestSdkToFastModeSwitch:
     async def test_scenario_s_baseline_loads_sdk_transcript(self):
         """Scenario S: SDK-written transcript is accepted by baseline's load helper."""
         from backend.copilot.baseline.service import _load_prior_transcript
-        from backend.copilot.transcript import (
-            STOP_REASON_END_TURN,
-            TranscriptDownload,
-        )
+        from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
         from backend.copilot.transcript_builder import TranscriptBuilder
 
         # Build a minimal valid transcript as SDK mode would write it.

@@ -3029,6 +3029,14 @@ async def stream_chat_completion_sdk(
         # the shielded inner coroutine continues running to completion so the
         # upload is not lost.  This is intentional and matches the pattern
         # used for upload_transcript immediately above.
+        #
+        # NOTE: upload is attempted regardless of state.use_resume — even when
+        # this turn ran without --resume (restore failed, first T2+ on a new
+        # pod, or mode-switch T1 where has_history=True), the session file at
+        # the expected path was written by the CLI and must be uploaded so the
+        # next turn can restore and --resume from it.
+        # upload_cli_session silently skips when the file is absent, so this is
+        # always safe.
         if (
             config.claude_agent_use_resume
             and user_id
@@ -3036,8 +3044,6 @@ async def stream_chat_completion_sdk(
             and session is not None
             and state is not None
             and not ended_with_stream_error
-            and not skip_transcript_upload
-            and (not has_history or state.use_resume)
         ):
             try:
                 await asyncio.shield(
