@@ -1,3 +1,8 @@
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
 import NextLink, { type LinkProps } from "next/link";
@@ -10,15 +15,37 @@ export function Button(props: ButtonProps) {
     variant,
     size,
     loading = false,
+    withTooltip = true,
     leftIcon,
     rightIcon,
     children,
     as = "button",
+    asChild: _asChild, // Destructure to prevent passing to DOM
     ...restProps
   } = props;
 
   const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
+
+  // Extract aria-label for tooltip on icon variant
+  const ariaLabel =
+    "aria-label" in restProps ? restProps["aria-label"] : undefined;
+
+  const shouldShowTooltip =
+    variant === "icon" && ariaLabel && !loading && withTooltip;
+
+  // Helper to wrap button with tooltip if needed
+  const wrapWithTooltip = (buttonElement: React.ReactElement) => {
+    if (shouldShowTooltip) {
+      return (
+        <Tooltip>
+          <TooltipTrigger asChild>{buttonElement}</TooltipTrigger>
+          <TooltipContent>{ariaLabel}</TooltipContent>
+        </Tooltip>
+      );
+    }
+    return buttonElement;
+  };
 
   const buttonContent = (
     <>
@@ -38,7 +65,7 @@ export function Button(props: ButtonProps) {
       delete buttonRest.href;
     }
 
-    return (
+    const linkButton = (
       <button
         className={cn(
           extendedButtonVariants({ variant: "link", className }),
@@ -51,6 +78,8 @@ export function Button(props: ButtonProps) {
         {buttonContent}
       </button>
     );
+
+    return wrapWithTooltip(linkButton);
   }
 
   if (loading) {
@@ -65,25 +94,31 @@ export function Button(props: ButtonProps) {
             "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
           );
 
-    return as === "NextLink" ? (
-      <NextLink
-        {...(restProps as LinkProps)}
-        className={loadingClassName}
-        aria-disabled="true"
-      >
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-        {children}
-      </NextLink>
-    ) : (
+    if (as === "NextLink") {
+      return (
+        <NextLink
+          {...(restProps as LinkProps)}
+          className={loadingClassName}
+          aria-disabled="true"
+        >
+          <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+          {children}
+        </NextLink>
+      );
+    }
+
+    const loadingButton = (
       <button className={loadingClassName} disabled>
         <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
         {children}
       </button>
     );
+
+    return wrapWithTooltip(loadingButton);
   }
 
   if (as === "NextLink") {
-    return (
+    const nextLinkButton = (
       <NextLink
         {...(restProps as LinkProps)}
         className={cn(
@@ -96,9 +131,11 @@ export function Button(props: ButtonProps) {
         {buttonContent}
       </NextLink>
     );
+
+    return wrapWithTooltip(nextLinkButton);
   }
 
-  return (
+  const regularButton = (
     <button
       className={cn(
         extendedButtonVariants({ variant, size, className }),
@@ -110,4 +147,6 @@ export function Button(props: ButtonProps) {
       {buttonContent}
     </button>
   );
+
+  return wrapWithTooltip(regularButton);
 }

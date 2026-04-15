@@ -11,7 +11,7 @@ import {
   CarouselIndicator,
 } from "@/components/__legacy__/ui/carousel";
 import { useCallback, useState } from "react";
-import { StoreAgent } from "@/lib/autogpt-server-api";
+import type { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import Link from "next/link";
 
 const BACKGROUND_COLORS = [

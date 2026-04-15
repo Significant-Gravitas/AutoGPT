@@ -2,8 +2,9 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Optional, cast, overload
 
-from backend.data.block import BlockSchema
+from backend.blocks._base import BlockSchema
 from backend.data.graph import set_node_webhook
+from backend.data.integrations import get_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 
 from . import get_webhook_manager, supports_webhooks
@@ -50,6 +51,21 @@ async def _on_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
             if (
                 creds_meta := new_node.input_default.get(creds_field_name)
             ) and not await get_credentials(creds_meta["id"]):
+                # If the credential field is optional (has a default in the
+                # schema, or node metadata marks it optional), clear the stale
+                # reference instead of blocking the save.
+                creds_field_optional = (
+                    new_node.credentials_optional
+                    or creds_field_name not in block_input_schema.get_required_fields()
+                )
+                if creds_field_optional:
+                    new_node.input_default[creds_field_name] = {}
+                    logger.warning(
+                        f"Node #{new_node.id}: cleared stale optional "
+                        f"credentials #{creds_meta['id']} for "
+                        f"'{creds_field_name}'"
+                    )
+                    continue
                 raise ValueError(
                     f"Node #{new_node.id} input '{creds_field_name}' updated with "
                     f"non-existent credentials #{creds_meta['id']}"
@@ -113,31 +129,32 @@ async def on_node_deactivate(
 
     webhooks_manager = get_webhook_manager(provider)
 
-    if node.webhook_id:
-        logger.debug(f"Node #{node.id} has webhook_id {node.webhook_id}")
-        if not node.webhook:
-            logger.error(f"Node #{node.id} has webhook_id but no webhook object")
-            raise ValueError("node.webhook not included")
+    if webhook_id := node.webhook_id:
+        logger.warning(
+            f"Node #{node.id} still attached to webhook #{webhook_id} - "
+            "did migration by `migrate_legacy_triggered_graphs` fail? "
+            "Triggered nodes are deprecated since Significant-Gravitas/AutoGPT#10418."
+        )
+        webhook = await get_webhook(webhook_id)
 
         # Detach webhook from node
         logger.debug(f"Detaching webhook from node #{node.id}")
         updated_node = await set_node_webhook(node.id, None)
 
         # Prune and deregister the webhook if it is no longer used anywhere
-        webhook = node.webhook
         logger.debug(
             f"Pruning{' and deregistering' if credentials else ''} "
-            f"webhook #{webhook.id}"
+            f"webhook #{webhook_id}"
         )
         await webhooks_manager.prune_webhook_if_dangling(
-            user_id, webhook.id, credentials
+            user_id, webhook_id, credentials
         )
         if (
             cast(BlockSchema, block.input_schema).get_credentials_fields()
             and not credentials
         ):
             logger.warning(
-                f"Cannot deregister webhook #{webhook.id}: credentials "
+                f"Cannot deregister webhook #{webhook_id}: credentials "
                 f"#{webhook.credentials_id} not available "
                 f"({webhook.provider.value} webhook ID: {webhook.provider_webhook_id})"
             )

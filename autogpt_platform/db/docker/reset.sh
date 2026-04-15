@@ -10,6 +10,12 @@ then
 fi
 
 echo "Stopping and removing all containers..."
+# Use the platform compose to tear everything down so no orphan containers remain
+# (the platform compose manages supabase containers via `extends`, using the
+# standalone supabase compose here would leave orphans that conflict on next start)
+if [ -f "../../docker-compose.yml" ]; then
+  docker compose -f ../../docker-compose.yml down -v --remove-orphans
+fi
 docker compose -f docker-compose.yml -f ./dev/docker-compose.dev.yml down -v --remove-orphans
 
 echo "Cleaning up bind-mounted directories..."

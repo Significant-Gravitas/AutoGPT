@@ -17,7 +17,7 @@ This module provides:
 from pydantic import BaseModel, Field, SecretStr
 
 # === CORE BLOCK SYSTEM ===
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockManualWebhookConfig,
@@ -65,7 +65,7 @@ except ImportError:
 
 # Cost System
 try:
-    from backend.data.block import BlockCost, BlockCostType
+    from backend.blocks._base import BlockCost, BlockCostType
 except ImportError:
     from backend.data.block_cost_config import BlockCost, BlockCostType
 

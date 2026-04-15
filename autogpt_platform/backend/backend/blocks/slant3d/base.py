@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from backend.data.block import Block
+from backend.blocks._base import Block
 from backend.util.request import Requests
 
 from ._api import Color, CustomerDetails, OrderItem, Profile

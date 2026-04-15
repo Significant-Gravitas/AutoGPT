@@ -1,5 +1,5 @@
+from backend.api.rest_api import AgentServer
 from backend.app import run_processes
-from backend.server.rest_api import AgentServer
 
 
 def main():

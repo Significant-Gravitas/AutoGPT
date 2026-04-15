@@ -18,7 +18,7 @@ function ErrorPageContent() {
     ) {
       window.location.href = "/login";
     } else {
-      window.location.href = "/marketplace";
+      window.document.location.reload();
     }
   }
 

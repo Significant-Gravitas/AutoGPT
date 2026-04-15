@@ -17,12 +17,13 @@ function ExecutionAnalyticsDashboard() {
         </div>
 
         <div className="rounded-lg border bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-xl font-semibold">Analytics Generation</h2>
+          <h2 className="mb-4 text-xl font-semibold">
+            Execution Analytics & Accuracy Monitoring
+          </h2>
           <p className="mb-6 text-gray-600">
-            This tool will identify completed executions missing activity
-            summaries or success scores and generate them using AI. Only
-            executions that meet the criteria and are missing these fields will
-            be processed.
+            Generate missing activity summaries and success scores for agent
+            executions. After generation, accuracy trends and alerts will
+            automatically be displayed to help monitor agent health over time.
           </p>
 
           <Suspense

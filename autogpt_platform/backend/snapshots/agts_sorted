@@ -9,7 +9,8 @@
       "sub_heading": "Top agent subheading",
       "description": "Top agent description",
       "runs": 1000,
-      "rating": 5.0
+      "rating": 5.0,
+      "agent_graph_id": "test-graph-3"
     }
   ],
   "pagination": {

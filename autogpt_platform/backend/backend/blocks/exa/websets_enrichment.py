@@ -202,7 +202,7 @@ class ExaCreateEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_enrichment = aexa.websets.enrichments.create(
+        sdk_enrichment = await aexa.websets.enrichments.create(
             webset_id=input_data.webset_id, params=payload
         )
 
@@ -223,7 +223,7 @@ class ExaCreateEnrichmentBlock(Block):
             items_enriched = 0
 
             while time.time() - poll_start < input_data.polling_timeout:
-                current_enrich = aexa.websets.enrichments.get(
+                current_enrich = await aexa.websets.enrichments.get(
                     webset_id=input_data.webset_id, id=enrichment_id
                 )
                 current_status = (
@@ -234,7 +234,7 @@ class ExaCreateEnrichmentBlock(Block):
 
                 if current_status in ["completed", "failed", "cancelled"]:
                     # Estimate items from webset searches
-                    webset = aexa.websets.get(id=input_data.webset_id)
+                    webset = await aexa.websets.get(id=input_data.webset_id)
                     if webset.searches:
                         for search in webset.searches:
                             if search.progress:
@@ -329,7 +329,7 @@ class ExaGetEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        sdk_enrichment = aexa.websets.enrichments.get(
+        sdk_enrichment = await aexa.websets.enrichments.get(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
 
@@ -474,7 +474,7 @@ class ExaDeleteEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        deleted_enrichment = aexa.websets.enrichments.delete(
+        deleted_enrichment = await aexa.websets.enrichments.delete(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
 
@@ -525,13 +525,13 @@ class ExaCancelEnrichmentBlock(Block):
         # Use AsyncExa SDK
         aexa = AsyncExa(api_key=credentials.api_key.get_secret_value())
 
-        canceled_enrichment = aexa.websets.enrichments.cancel(
+        canceled_enrichment = await aexa.websets.enrichments.cancel(
             webset_id=input_data.webset_id, id=input_data.enrichment_id
         )
 
         # Try to estimate how many items were enriched before cancellation
         items_enriched = 0
-        items_response = aexa.websets.items.list(
+        items_response = await aexa.websets.items.list(
             webset_id=input_data.webset_id, limit=100
         )
 

@@ -34,7 +34,7 @@ export function AgentSelectStep({
 }: Props) {
   const {
     // Data
-    agents,
+    myAgents,
     isLoading,
     error,
     // State
@@ -99,7 +99,7 @@ export function AgentSelectStep({
         description="Select your project that you'd like to publish"
       />
 
-      {agents.length === 0 ? (
+      {myAgents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
           <Text variant="lead" className="text-center">
             Uh-oh.. It seems like you don&apos;t have any agents in your
@@ -130,7 +130,7 @@ export function AgentSelectStep({
               </div>
               <div className="p-2">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {agents.map((agent) => (
+                  {myAgents.map((agent) => (
                     <div
                       key={agent.id}
                       data-testid="agent-card"

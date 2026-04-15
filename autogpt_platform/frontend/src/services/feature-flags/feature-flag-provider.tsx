@@ -1,22 +1,24 @@
 "use client";
 
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import * as Sentry from "@sentry/nextjs";
 import { LDProvider } from "launchdarkly-react-client-sdk";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import * as Sentry from "@sentry/nextjs";
 import { environment } from "../environment";
 
-const clientId = process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
-const envEnabled = process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true";
+const LAUNCHDARKLY_INIT_TIMEOUT_MS = 5000;
 
 export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useSupabase();
-  const isCloud = environment.isCloud();
-  const isLaunchDarklyConfigured = isCloud && envEnabled && clientId;
+  const envEnabled = environment.areFeatureFlagsEnabled();
+  const clientId = environment.getLaunchDarklyClientId();
 
   const context = useMemo(() => {
-    if (isUserLoading || !user) {
+    if (isUserLoading) return;
+
+    if (!user) {
       return {
         kind: "user" as const,
         key: "anonymous",
@@ -24,30 +26,39 @@ export function LaunchDarklyProvider({ children }: { children: ReactNode }) {
       };
     }
 
+    // Mirror the context built by the backend
+    // (feature_flag.py:_fetch_user_context_data) so LaunchDarkly targeting
+    // rules evaluate identically on both sides.
     return {
       kind: "user" as const,
       key: user.id,
-      ...(user.email && { email: user.email }),
       anonymous: false,
+      ...(user.email && {
+        email: user.email,
+        email_domain: user.email.split("@").at(-1),
+      }),
+      ...(user.role && { role: user.role }),
       custom: {
         ...(user.role && { role: user.role }),
       },
     };
   }, [user, isUserLoading]);
 
-  if (!isLaunchDarklyConfigured) {
+  if (!envEnabled) {
     return <>{children}</>;
+  }
+
+  if (isUserLoading) {
+    return <LoadingSpinner size="large" cover />;
   }
 
   return (
     <LDProvider
-      // Add this key prop. It will be 'anonymous' when logged out,
-      key={context.key}
-      clientSideID={clientId}
+      clientSideID={clientId ?? ""}
       context={context}
+      timeout={LAUNCHDARKLY_INIT_TIMEOUT_MS}
       reactOptions={{ useCamelCaseFlagKeys: false }}
       options={{
-        bootstrap: "localStorage",
         inspectors: [Sentry.buildLaunchDarklyFlagUsedHandler()],
       }}
     >

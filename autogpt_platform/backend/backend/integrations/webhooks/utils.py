@@ -9,7 +9,7 @@ from backend.util.settings import Config
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
-    from backend.data.block import AnyBlockSchema
+    from backend.blocks._base import AnyBlockSchema
     from backend.data.integrations import Webhook
     from backend.data.model import Credentials
     from backend.integrations.providers import ProviderName
@@ -42,7 +42,7 @@ async def setup_webhook_for_block(
         Webhook: The created or found webhook object, if successful.
         str: A feedback message, if any required inputs are missing.
     """
-    from backend.data.block import BlockWebhookConfig
+    from backend.blocks._base import BlockWebhookConfig
 
     if not (trigger_base_config := trigger_block.webhook_config):
         raise ValueError(f"Block #{trigger_block.id} does not have a webhook_config")
@@ -149,10 +149,10 @@ async def setup_webhook_for_block(
 async def migrate_legacy_triggered_graphs():
     from prisma.models import AgentGraph
 
+    from backend.api.features.library.db import create_preset
+    from backend.api.features.library.model import LibraryAgentPresetCreatable
     from backend.data.graph import AGENT_GRAPH_INCLUDE, GraphModel, set_node_webhook
     from backend.data.model import is_credentials_field_name
-    from backend.server.v2.library.db import create_preset
-    from backend.server.v2.library.model import LibraryAgentPresetCreatable
 
     triggered_graphs = [
         GraphModel.from_db(_graph)

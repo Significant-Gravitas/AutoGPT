@@ -6,14 +6,15 @@ import Image from "next/image";
 
 import { IconPersonFill } from "@/components/__legacy__/ui/icons";
 import { Separator } from "@/components/__legacy__/ui/separator";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { postV2UpdateUserProfile } from "@/app/api/__generated__/endpoints/store/store";
+import { postV2UploadSubmissionMedia } from "@/app/api/__generated__/endpoints/store/store";
+import { resolveResponse } from "@/app/api/helpers";
+import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 import { Button } from "./Button";
 
 export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState<ProfileDetails>(profile);
-  const api = useBackendAPI();
 
   async function submitForm() {
     try {
@@ -28,8 +29,10 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
       };
 
       if (!isSubmitting) {
-        const returnedProfile = await api.updateStoreProfile(updatedProfile);
-        setProfileData(returnedProfile);
+        const returnedProfile = await resolveResponse(
+          postV2UpdateUserProfile(updatedProfile),
+        );
+        if (returnedProfile) setProfileData(returnedProfile);
       }
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -40,15 +43,20 @@ export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
 
   async function handleImageUpload(file: File) {
     try {
-      const mediaUrl = await api.uploadStoreSubmissionMedia(file);
+      const mediaRes = await resolveResponse(
+        postV2UploadSubmissionMedia({ file }),
+      );
+      const mediaUrl = String(mediaRes ?? "");
 
       const updatedProfile = {
         ...profileData,
         avatar_url: mediaUrl,
       };
 
-      const returnedProfile = await api.updateStoreProfile(updatedProfile);
-      setProfileData(returnedProfile);
+      const returnedProfile = await resolveResponse(
+        postV2UpdateUserProfile(updatedProfile),
+      );
+      if (returnedProfile) setProfileData(returnedProfile);
     } catch (error) {
       console.error("Error uploading image:", error);
     }

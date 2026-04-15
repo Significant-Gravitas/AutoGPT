@@ -1,0 +1,3559 @@
+{
+  "id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+  "version": 58,
+  "is_active": true,
+  "name": "Personal Newsletter",
+  "description": "This Personal Newsletter Agent provides a bespoke daily digest on your favorite topics and tone. Whether you prefer industry insights, lighthearted reads, or breaking news, this agent crafts your own unique newsletter to keep you informed and entertained.\n\n\nHow It Works\n1. Enter your favorite topics, industries, or areas of interest.\n2. Choose your tone\u2014professional, casual, or humorous.\n3. Set your preferred delivery cadence: daily or weekly.\n4. The agent scans top sources and compiles 3\u20135 engaging stories, insights, and fun facts into a conversational newsletter.\n\nSkip the morning scroll and enjoy a thoughtfully curated newsletter designed just for you. Stay ahead of trends, spark creative ideas, and enjoy an effortless, informed start to your day.\n\n\nUse Cases\n\u2022 Executives: Get a daily digest of market updates and leadership insights.\n\u2022 Marketers: Receive curated creative trends and campaign inspiration.\n\u2022 Entrepreneurs: Stay updated on your industry without information overload.",
+  "instructions": "1. Enter your topic and email address.\n2. Connect the Gmail inbox you want to send from. (I just have mine send to myself.)\n3. Choose the time period you want the email to cover \u2014 for example, \u201c3 days.\u201d\n4. Set the agent\u2019s schedule to match that time period. If you want a newsletter every 3 days, set it to run every 3 days.\n\nOnce you\u2019ve got your first schedule set up, you can add more!\nFor example, I have three newsletter schedules running \u2014 each on a different topic \u2014 that land in my inbox on different days.",
+  "recommended_schedule_cron": null,
+  "nodes": [
+    {
+      "id": "35f3a0cc-cc5e-44d0-ad1e-3e24f53975e7",
+      "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+      "input_default": {
+        "name": "Writing Style",
+        "value": " Engaging, witty, and informative",
+        "secret": false,
+        "advanced": false,
+        "description": "How would you like the newsletter to be written? ",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -3529.511189031829,
+          "y": 2727.9041957996333
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "ef01e0bd-f301-4ac5-93d1-cd5f8ddf30cb",
+          "source_id": "35f3a0cc-cc5e-44d0-ad1e-3e24f53975e7",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_style",
+          "is_static": true
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "stories"
+      },
+      "metadata": {
+        "position": {
+          "x": 1926.8656810234534,
+          "y": -32.6452834422966
+        }
+      },
+      "input_links": [
+        {
+          "id": "bdc99d05-b6f8-4b2f-8741-c4ab5d2c188e",
+          "source_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+          "sink_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "81c73012-3747-410c-b17b-fca5bd83bb1c",
+          "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "sink_id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+          "source_name": "output",
+          "sink_name": "items",
+          "is_static": false
+        },
+        {
+          "id": "ffc2ac93-0af5-4b20-a4ab-8bd864294669",
+          "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "sink_id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+          "source_name": "output",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "ce32a0b2-807d-4f6a-8f2d-0f3faec134b7",
+          "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+      "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2487.025692297438,
+          "y": 1882.671360992259
+        }
+      },
+      "input_links": [
+        {
+          "id": "ffc2ac93-0af5-4b20-a4ab-8bd864294669",
+          "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "sink_id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+          "source_name": "output",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "6a255401-9741-4ef5-8a65-0a63b087051b",
+          "source_id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+          "sink_id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+          "source_name": "count",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {
+        "list": [],
+        "entries": []
+      },
+      "metadata": {
+        "position": {
+          "x": 4919.826544870652,
+          "y": -1.8124187368125888
+        }
+      },
+      "input_links": [
+        {
+          "id": "f5763443-3bd7-4a6c-8688-9bc288dc1fed",
+          "source_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "source_name": "updated_dictionary",
+          "sink_name": "entry",
+          "is_static": false
+        },
+        {
+          "id": "f58e953d-9369-4c2a-9e3d-1158542d8867",
+          "source_id": "3f1f1b7a-73b4-4824-882b-7a9bd367866f",
+          "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "source_name": "list",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "64fbb095-9b1b-478c-a581-f10f7ee721ec",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ccfc0124-e44e-413a-8094-9ee0d1e53789",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d74579ef-5171-4178-972e-b5cf0cc90030",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+          "source_name": "updated_list",
+          "sink_name": "collection",
+          "is_static": false
+        },
+        {
+          "id": "e704b15f-835e-48ca-8469-7f06b3217190",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "source_name": "updated_list",
+          "sink_name": "yes_value",
+          "is_static": false
+        },
+        {
+          "id": "64fbb095-9b1b-478c-a581-f10f7ee721ec",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "source_name": "updated_list",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "3f1f1b7a-73b4-4824-882b-7a9bd367866f",
+      "block_id": "a912d5c7-6e00-4542-b2a9-8034136930e4",
+      "input_default": {
+        "values": [
+          "TEMP"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": 4296.522865137839,
+          "y": -1445.0813939163068
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "f58e953d-9369-4c2a-9e3d-1158542d8867",
+          "source_id": "3f1f1b7a-73b4-4824-882b-7a9bd367866f",
+          "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "source_name": "list",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "operator": ">"
+      },
+      "metadata": {
+        "position": {
+          "x": 6543.9519568197675,
+          "y": 14.039317215238228
+        },
+        "customized_name": "Accumulate Images"
+      },
+      "input_links": [
+        {
+          "id": "02215011-eaab-49bf-b461-ec8d3014a3b9",
+          "source_id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+          "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "source_name": "output",
+          "sink_name": "value2",
+          "is_static": true
+        },
+        {
+          "id": "b02c106c-25b4-45ac-a0de-7ed1dfc5f13a",
+          "source_id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+          "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        },
+        {
+          "id": "e704b15f-835e-48ca-8469-7f06b3217190",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "source_name": "updated_list",
+          "sink_name": "yes_value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f9e65c32-1669-477b-a7f9-122150f14e4a",
+          "source_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "sink_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+          "source_name": "yes_output",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+      "block_id": "d93c5a93-ac7e-41c1-ae5c-ef67e6e9b826",
+      "input_default": {
+        "list": [],
+        "value": "TEMP",
+        "return_item": false
+      },
+      "metadata": {
+        "position": {
+          "x": 7164.6756579342355,
+          "y": 22.080807214334925
+        },
+        "customized_name": "Remove TEMP from list"
+      },
+      "input_links": [
+        {
+          "id": "f9e65c32-1669-477b-a7f9-122150f14e4a",
+          "source_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "sink_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+          "source_name": "yes_output",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9a3132bf-98a4-48fc-b70b-636f7df11ded",
+          "source_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "7c7811e1-d220-4e85-82fa-e2a10fa4291a",
+          "source_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+          "sink_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+          "source_name": "updated_list",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c46b730a-16bc-4c55-a619-d74974797d91",
+      "block_id": "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1",
+      "input_default": {
+        "offset": 0,
+        "trigger": "go",
+        "format_type": {
+          "discriminator": "iso8601",
+          "use_user_timezone": true
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": -3523.1264876803534,
+          "y": 2059.162687743904
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "50a2f911-b4b0-4818-a895-1c36b2f54de5",
+          "source_id": "c46b730a-16bc-4c55-a619-d74974797d91",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "date",
+          "sink_name": "prompt_values_#_today",
+          "is_static": false
+        },
+        {
+          "id": "b6e872da-2675-4067-a50d-269ac89d7cf0",
+          "source_id": "c46b730a-16bc-4c55-a619-d74974797d91",
+          "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "source_name": "date",
+          "sink_name": "prompt_values_#_today",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+      "block_id": "f66a3543-28d3-4ab5-8945-9b336371e2ce",
+      "input_default": {
+        "items": [],
+        "items_object": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 2508.865949283632,
+          "y": -22.36800962879755
+        }
+      },
+      "input_links": [
+        {
+          "id": "81c73012-3747-410c-b17b-fca5bd83bb1c",
+          "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "sink_id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+          "source_name": "output",
+          "sink_name": "items",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "e58d50fe-ee19-4442-988f-632640c7e850",
+          "source_id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+          "sink_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "You are a skilled newsletter writer for a popular newsletter, which covers the topic: \"{{topic | safe}}\" \nToday's date is \"{{today | safe}}\"\nYour newsletter gets sent out on the following repeat rate: \"{{recency | safe}}\"\n\nCreate a newsletter using the provided research in the following writing style: {{style | safe}}\n\nFollow the Morning Coffee style: conversational tone, clever headlines, and a mix of serious insights with light-hearted comments. \n\nInclude 3-5 main stories and 2-3 shorter snippets or fun facts. Use emojis sparingly for emphasis. End with a thought-provoking question if appropriate.\nInclude dates for every story (only based on the research below, never assume dates, if not present just omit the date). You don't need to write a formal date, you can say things like \"On Monday\" or \"Yesterday\" when accurate and to do so.\n\nHere is the research for today's letter:\n<research>\n{{research | safe}}\n</research>\n\nDo not cover stories not present in the research or make any assumptions. Base your newsletter on this research.\n\nOutput this edition of the newsletter in the following format: \n\n<title>\nThe title of this edition of the newsletter\n</title>\n\n<body>\nThe content of this edition of the newsletter to be sent out to it's readers (formatted in markdown, no additional commentary, will be auto-sent as-is\n</body>",
+        "sys_prompt": "You are a skilled newsletter writer for Morning Coffee. \n\nCreate an engaging, witty, and informative newsletter using the provided summarized news articles. \n\nFollow the Morning Coffee style: conversational tone, clever headlines, and a mix of serious insights with light-hearted comments. Include 3-5 main stories and 2-3 shorter snippets or fun facts. Use emojis sparingly for emphasis. End with a thought-provoking question or call-to-action.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {
+          "recency": "1 day"
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": -1579.1113129259709,
+          "y": 13.308927171573714
+        },
+        "customized_name": "Write the Newsletter"
+      },
+      "input_links": [
+        {
+          "id": "628cb3f7-ec28-4d7e-a506-6dc14194452b",
+          "source_id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_recency",
+          "is_static": true
+        },
+        {
+          "id": "bf7f2e77-eabd-4019-bedc-39eb2928f996",
+          "source_id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_topic",
+          "is_static": true
+        },
+        {
+          "id": "50a2f911-b4b0-4818-a895-1c36b2f54de5",
+          "source_id": "c46b730a-16bc-4c55-a619-d74974797d91",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "date",
+          "sink_name": "prompt_values_#_today",
+          "is_static": false
+        },
+        {
+          "id": "ef01e0bd-f301-4ac5-93d1-cd5f8ddf30cb",
+          "source_id": "35f3a0cc-cc5e-44d0-ad1e-3e24f53975e7",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_style",
+          "is_static": true
+        },
+        {
+          "id": "68f19410-34fb-4774-8c14-17c1ffb15a79",
+          "source_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_research",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ca49f19b-1a82-411e-b3ed-aaf0d8c8eec8",
+          "source_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "sink_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "ff488394-ee6c-41d2-a525-fca11b32549a",
+          "source_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Topics of Interest",
+        "value": "Space",
+        "secret": false,
+        "advanced": false,
+        "description": "Enter your topics of interest, separated by commas",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -3484.2707482603346,
+          "y": 18.788160761561386
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "bf7f2e77-eabd-4019-bedc-39eb2928f996",
+          "source_id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_topic",
+          "is_static": true
+        },
+        {
+          "id": "a817955f-ec4b-4ad4-9b77-e4e353dbdba4",
+          "source_id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+          "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_topic",
+          "is_static": true
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "bb142109-ea01-4917-b32d-2848716bd154",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Newsletter",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 9002.541850178177,
+          "y": -6.253190173390621
+        }
+      },
+      "input_links": [
+        {
+          "id": "16a4267d-aaf5-4636-95f9-bdb2c5e83385",
+          "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "sink_id": "bb142109-ea01-4917-b32d-2848716bd154",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "Your task is to return a question that will best find me what I'm looking for. \n\nI am interested in the latest news on the following topic:\n\"{{topic | safe}}\"\n\nWithin the following recency range:\n{{recency | safe}}\n\nThe question you generated should be formatted such as: \"Which AI models launched in the past 24 hours?\" for example. This would be for an input like \"New AI Models\" for the topic and \"1 day\" for the recency.\nBe sure to clearly constrain the search range with the recency.\n\ntodays date is {{today | safe}}\n\nReturn only the question. No other text or commentary. ",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {
+          "recency": "1 day"
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": -2729.6035222682317,
+          "y": 10.832130787151357
+        },
+        "customized_name": "Search Query Generator"
+      },
+      "input_links": [
+        {
+          "id": "a8915dbf-6caf-42f7-9cef-8401fcf291ff",
+          "source_id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+          "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_recency",
+          "is_static": true
+        },
+        {
+          "id": "a817955f-ec4b-4ad4-9b77-e4e353dbdba4",
+          "source_id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+          "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_topic",
+          "is_static": true
+        },
+        {
+          "id": "b6e872da-2675-4067-a50d-269ac89d7cf0",
+          "source_id": "c46b730a-16bc-4c55-a619-d74974797d91",
+          "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "source_name": "date",
+          "sink_name": "prompt_values_#_today",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "17c3b57f-ad85-40de-9a6c-388f9060c6b9",
+          "source_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "65169c65-3ca7-4599-94b9-b3bac6248a49",
+          "source_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "sink_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+          "source_name": "response",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "perplexity/sonar-deep-research",
+        "retry": 3,
+        "sys_prompt": "Only ever return results which fall within the specified date range. For reference, \"today\" is {{today | safe}}.\n\nAlways include an explicit date for every story mentioned. \n\nIf a story is outside the timeframe then do not report on it.",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": -2143.8092001237387,
+          "y": 10.500985789126844
+        },
+        "customized_name": "Research the Topic"
+      },
+      "input_links": [
+        {
+          "id": "65169c65-3ca7-4599-94b9-b3bac6248a49",
+          "source_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "sink_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+          "source_name": "response",
+          "sink_name": "prompt",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "68f19410-34fb-4774-8c14-17c1ffb15a79",
+          "source_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "response",
+          "sink_name": "prompt_values_#_research",
+          "is_static": false
+        },
+        {
+          "id": "134406c2-0a8c-4df0-a413-f2e815d21057",
+          "source_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+      "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+      "input_default": {
+        "inputs": {
+          "Report Design Brief": "\n\n## \u2733\ufe0f Design Brief \u2014 \u201cHuman-Crafted Simplicity\u201d\n\n### \ud83c\udfaf **Goal**\n\nCreate an HTML email that feels **designed by hand**, not generated by a template.\nThe visual tone should be **calm, confident, and editorial**, with natural rhythm and whitespace.\nThe layout should read easily on desktop and mobile, maintaining a **friendly, premium newsletter** vibe.\n\n---\n\n### \ud83e\uddf1 **Layout Structure**\n\n* **Width:** 600px fixed, centered (`align=\"center\"`)\n* **Padding:** 24\u201332px inner margin on all sides\n* **Grid:** Single-column layout (no sidebars or multiple columns)\n* **Flow:**\n\n  1. Header area (title or logo text)\n  2. Intro paragraph (optional)\n  3. Content sections stacked vertically\n  4. Optional footer / signature\n\nEach section should feel like a \u201cblock\u201d of thought \u2014 separated by whitespace, not borders.\n\n---\n\n### \ud83c\udfa8 **Color Palette**\n\n* **Background:** Off-white / warm neutral (`#fffaf2`, `#fffefc`, or `#fdfbf7`)\n* **Text:** Soft black (`#1a1a1a`)\n* **Secondary Text:** Muted gray (`#666`)\n* **Accent Color:** One strong, warm tone (e.g. amber `#f5b200` or coral `#ff6b4a`)\n* **Highlight Backgrounds:** Light tint of accent (`#fff4e0` or `#fff2e2`)\n* **Links:** Accent color or slightly darker version\n\nOverall, aim for **soft contrast** \u2014 no harsh blacks or bright whites.\n\n---\n\n### \ud83d\uddda **Typography**\n\n* **Font Family:** `Helvetica, Arial, sans-serif` (system fonts preferred for email)\n* **Base Size:** 16px\n* **Line Height:** 1.6\u20131.8\n* **Hierarchy:**\n\n  * **Main Title:** 28\u201332px, bold, tight spacing, strong top margin\n  * **Section Titles:** 20\u201322px, semibold, margin-bottom 12px\n  * **Body Text:** 16px, normal weight\n  * **Meta Text / Footnotes:** 14px, gray (#777)\n* **Letter Spacing:** Slight positive spacing (0.1\u20130.2px) for a polished feel\n\nAvoid underlines; instead, use color and weight for emphasis.\n\n---\n\n### \u26aa **Spacing and Rhythm**\n\n* **Vertical rhythm** is everything:\n\n  * 48px between major sections\n  * 24px between heading and paragraph\n  * 8\u201312px between lines or inline elements\n* Avoid even repetition \u2014 vary spacing subtly between elements to feel more human.\n* Never use visible borders to divide; use padding and whitespace.\n\n---\n\n### \ud83e\udde9 **Visual Elements**\n\n* Use **colored spans** or **highlight backgrounds** to create visual variety:\n\n  ```html\n  <span style=\"background-color:#fff4e0;padding:2px 4px;border-radius:4px;\">highlight text</span>\n  ```\n* Soft rounded corners on any background block (6\u20138px radius).\n* Occasional use of horizontal rules (`<hr>`) allowed only if light gray (`#eee`) and with generous vertical spacing.\n* Features images clearly grouped with their relevant text, small caption text below the image where available.\n\n---\n\n### \ud83e\udded **Sections**\n\nEach section should feel distinct through typography and whitespace, not hard dividers.\n\nExample section pattern:\n\n* Title \u2192 body \u2192 small callout or quote\n* Use **a single accent element** per section (highlighted text, tinted background block, or colored link).\n* No boxes around \u201cWhy it matters\u201d\u2013style callouts; instead, lightly tinted background or italicized text block.\n\n---\n\n### \ud83d\udcf1 **Responsiveness**\n\n* Ensure readability on mobile:\n\n  * Maintain 16px font minimum\n  * Auto-scale images and block widths\n  * Increase line spacing slightly on mobile (`line-height: 1.8`)\n\n---\n\n### \ud83e\uddfe **Footer**\n\n* Simple and unintrusive.\n* Muted gray text, small font size (14px).\n* Optional subtle top border (`#eee`) or generous top margin (40\u201348px).\n\n---\n\n### \ud83d\udca1 **Design Keywords**\n\n> Warm \u2022 Minimal \u2022 Human \u2022 Editorial \u2022 Spacious \u2022 Typographically-driven \u2022 Confident \u2022 Soft"
+        },
+        "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+        "graph_id": "b29bb8a9-d0ab-4858-adfa-af6baa7a81d9",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "Report Text",
+            "Recipient Email",
+            "Email Subject"
+          ],
+          "properties": {
+            "Report Text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report Text",
+              "secret": false,
+              "advanced": false
+            },
+            "Email Subject": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email Subject",
+              "secret": false,
+              "advanced": false,
+              "description": "The subject line for the email. i.e. \"Your Report\""
+            },
+            "Recipient Email": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recipient Email",
+              "secret": false,
+              "advanced": false,
+              "description": "The Email Address to send the report to. i.e. your@email.com"
+            },
+            "Report Design Brief": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Report Design Brief",
+              "secret": false,
+              "default": "default",
+              "advanced": true,
+              "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\""
+            }
+          }
+        },
+        "graph_version": 6,
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "Error",
+            "Raw HTML",
+            "Email Status"
+          ],
+          "properties": {
+            "Error": {
+              "title": "Error",
+              "secret": false,
+              "advanced": false
+            },
+            "Raw HTML": {
+              "title": "Raw HTML",
+              "secret": false,
+              "advanced": false
+            },
+            "Email Status": {
+              "title": "Email Status",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 9278.160782058398,
+          "y": 2084.7289729862423
+        },
+        "customized_name": "Send Pretty Email"
+      },
+      "input_links": [
+        {
+          "id": "8beb2cbe-4f77-431f-b376-33cfde908629",
+          "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+          "source_name": "response",
+          "sink_name": "Report Text",
+          "is_static": false
+        },
+        {
+          "id": "ab679265-5b24-4a02-af4d-cf12619ec793",
+          "source_id": "2b478887-fbf1-4128-8de8-26028cb7c8e3",
+          "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+          "source_name": "result",
+          "sink_name": "Recipient Email",
+          "is_static": true
+        },
+        {
+          "id": "7b5b9a0d-df5f-4af1-9b8f-38441f299037",
+          "source_id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+          "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+          "source_name": "output",
+          "sink_name": "Email Subject",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -737.8058814655014,
+          "y": 32.186899799402624
+        }
+      },
+      "input_links": [
+        {
+          "id": "ca49f19b-1a82-411e-b3ed-aaf0d8c8eec8",
+          "source_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "sink_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "97d2344e-91e5-4358-8b43-42d278a06996",
+          "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f56853c2-3ccc-467d-9eda-767ee4d7352f",
+          "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "sink_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "e221a5a2-1b51-4c23-8019-e9bee5dc4ea0",
+          "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "sink_id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b3cd6910-8252-4ff2-9983-335279774213",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "body"
+      },
+      "metadata": {
+        "position": {
+          "x": -146.05704448321512,
+          "y": 39.89591730848741
+        }
+      },
+      "input_links": [
+        {
+          "id": "f56853c2-3ccc-467d-9eda-767ee4d7352f",
+          "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "sink_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "635f3112-295b-436e-8b07-6f67ef7cf0e2",
+          "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "sink_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_newsletter",
+          "is_static": false
+        },
+        {
+          "id": "b82e12d4-aef0-4675-a1f5-6ae375e41710",
+          "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "sink_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_newsletter",
+          "is_static": false
+        },
+        {
+          "id": "efb10adb-9a77-4430-bc51-9a8adaf80ef2",
+          "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "title"
+      },
+      "metadata": {
+        "position": {
+          "x": -139.42904518013256,
+          "y": 2235.26145151658
+        }
+      },
+      "input_links": [
+        {
+          "id": "e221a5a2-1b51-4c23-8019-e9bee5dc4ea0",
+          "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "sink_id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "7b5b9a0d-df5f-4af1-9b8f-38441f299037",
+          "source_id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+          "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+          "source_name": "output",
+          "sink_name": "Email Subject",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2b478887-fbf1-4128-8de8-26028cb7c8e3",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Your Email Address",
+        "secret": false,
+        "advanced": false,
+        "description": "Enter the email address at which you would like to receive the newsletter.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -3498.8900990289535,
+          "y": 563.204100068285
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "ab679265-5b24-4a02-af4d-cf12619ec793",
+          "source_id": "2b478887-fbf1-4128-8de8-26028cb7c8e3",
+          "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+          "source_name": "result",
+          "sink_name": "Recipient Email",
+          "is_static": true
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "What time range would you like each newsletter edition to cover?",
+        "secret": false,
+        "advanced": false,
+        "description": "For example, you could say one day to only receive news stories that happened in the past 24 hours before at the time of sending the newsletter, or you could say one week to receive news from that week",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -3504.8879543920716,
+          "y": 1362.1657779029272
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "628cb3f7-ec28-4d7e-a506-6dc14194452b",
+          "source_id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+          "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_recency",
+          "is_static": true
+        },
+        {
+          "id": "a8915dbf-6caf-42f7-9cef-8401fcf291ff",
+          "source_id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+          "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_recency",
+          "is_static": true
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "Extract and list the individual stories mentioned in the following newsletter which you believe would benefit from an accompanying picture.\nWhen making this decision, consider which stories are likely to have the best pictures available online. Do not just select every story. Consider how many images would be appropriate for a newsletter.\nFor each story you choose, output a clear, descriptive title that would make sense as a search query \u2014 not necessarily the original headline.  \n\nOutput the results in XML format as follows:\n\n<stories>\n  <story>Man lands on the moon</story>\n  <story>NASA announces next Mars mission</story>\n</stories>\n\nHere is the newsletter content:\n<newsletter>\n{{newsletter | safe}}\n</newsletter>",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 705.45366413491,
+          "y": -31.198002095433587
+        },
+        "customized_name": "Pick Stories that need Images"
+      },
+      "input_links": [
+        {
+          "id": "635f3112-295b-436e-8b07-6f67ef7cf0e2",
+          "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "sink_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_newsletter",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "115037c7-c122-4895-8598-f5b238d2eb11",
+          "source_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "730b0a8f-91e7-444c-a9e3-2b93df7ab6b1",
+          "source_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+          "sink_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+      "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1325.4881632458146,
+          "y": -30.03409103591575
+        }
+      },
+      "input_links": [
+        {
+          "id": "730b0a8f-91e7-444c-a9e3-2b93df7ab6b1",
+          "source_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+          "sink_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "bdc99d05-b6f8-4b2f-8741-c4ab5d2c188e",
+          "source_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+          "sink_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "source_name": "parsed_xml",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "7d4464f3-87bf-4d58-b16a-232a9123f0c3",
+          "source_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "You are given a newsletter. Each story includes an associated image URL. While not every image needs to be used (as too many may overcrowd the layout), it might also make sense to include them all\u2014use your judgment.\n\nYour task is to reproduce the newsletter **verbatim** in markdown format, inserting the image URLs where they fit best. \n\nDo not alter or reword the newsletter text in any way\u2014this is absolutely critical. Simply return the unedited newsletter text with the image URLs appropriately placed. Include no extra commentary, explanation, or decoration\u2014only the final markdown output.\n\n\nHere is the newsletter and the URLs:\n\n<newsletter>\n{{newsletter | safe}}\n</newsletter>\n\n<image_urls>\n{{image_urls | safe}}\n</image_urls>\n\nNow, respond with the final newsletter text with no additional commentary, explanation, or decoration. ",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 8400.349484389619,
+          "y": -8.39926280284628
+        },
+        "customized_name": "Insert Images into Newsletter"
+      },
+      "input_links": [
+        {
+          "id": "fc9ae566-2a36-4ae9-ac2c-c5fdb7ae7a03",
+          "source_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+          "sink_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_image_urls",
+          "is_static": false
+        },
+        {
+          "id": "b82e12d4-aef0-4675-a1f5-6ae375e41710",
+          "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "sink_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_newsletter",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "8d8ffa53-6012-4d5a-934b-96a732f384f3",
+          "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "16a4267d-aaf5-4636-95f9-bdb2c5e83385",
+          "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "sink_id": "bb142109-ea01-4917-b32d-2848716bd154",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "8beb2cbe-4f77-431f-b376-33cfde908629",
+          "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+          "source_name": "response",
+          "sink_name": "Report Text",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "entries": {},
+        "dictionary": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 4312.272039894743,
+          "y": 13.125548418915074
+        }
+      },
+      "input_links": [
+        {
+          "id": "6ba524c6-3227-43e2-89a8-a2795b21f275",
+          "source_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+          "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "source_name": "output",
+          "sink_name": "key",
+          "is_static": false
+        },
+        {
+          "id": "9daa4f4e-2cf7-4ec6-b57d-cde111b1a596",
+          "source_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+          "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0a0265e8-47be-4a1c-8da0-9e346f2f7787",
+          "source_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+          "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "source_name": "URLs",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f5763443-3bd7-4a6c-8688-9bc288dc1fed",
+          "source_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "source_name": "updated_dictionary",
+          "sink_name": "entry",
+          "is_static": false
+        },
+        {
+          "id": "25e097a1-df65-43c9-bb20-cd73b4fb7cc3",
+          "source_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "string"
+      },
+      "metadata": {
+        "position": {
+          "x": 7756.490203488402,
+          "y": 27.235451847524203
+        },
+        "customized_name": "Convert to String"
+      },
+      "input_links": [
+        {
+          "id": "7c7811e1-d220-4e85-82fa-e2a10fa4291a",
+          "source_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+          "sink_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+          "source_name": "updated_list",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fc9ae566-2a36-4ae9-ac2c-c5fdb7ae7a03",
+          "source_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+          "sink_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_image_urls",
+          "is_static": false
+        },
+        {
+          "id": "0a9ebd00-3aa5-41b4-85f2-e19510f7c1bd",
+          "source_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 3201.5656769329316,
+          "y": -4946.674997979083
+        }
+      },
+      "input_links": [
+        {
+          "id": "8d8ffa53-6012-4d5a-934b-96a732f384f3",
+          "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "115037c7-c122-4895-8598-f5b238d2eb11",
+          "source_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "17c3b57f-ad85-40de-9a6c-388f9060c6b9",
+          "source_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "97d2344e-91e5-4358-8b43-42d278a06996",
+          "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "ccfc0124-e44e-413a-8094-9ee0d1e53789",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "9a3132bf-98a4-48fc-b70b-636f7df11ded",
+          "source_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "ce32a0b2-807d-4f6a-8f2d-0f3faec134b7",
+          "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "efb10adb-9a77-4430-bc51-9a8adaf80ef2",
+          "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "missing",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "ff488394-ee6c-41d2-a525-fca11b32549a",
+          "source_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "7d4464f3-87bf-4d58-b16a-232a9123f0c3",
+          "source_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0a9ebd00-3aa5-41b4-85f2-e19510f7c1bd",
+          "source_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "134406c2-0a8c-4df0-a413-f2e815d21057",
+          "source_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "25e097a1-df65-43c9-bb20-cd73b4fb7cc3",
+          "source_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "story"
+      },
+      "metadata": {
+        "position": {
+          "x": 3170.598532776419,
+          "y": 9.675529042865193
+        }
+      },
+      "input_links": [
+        {
+          "id": "e58d50fe-ee19-4442-988f-632640c7e850",
+          "source_id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+          "sink_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "6ba524c6-3227-43e2-89a8-a2795b21f275",
+          "source_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+          "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "source_name": "output",
+          "sink_name": "key",
+          "is_static": false
+        },
+        {
+          "id": "cbe51c52-0a47-4578-a2af-1824de07e7bb",
+          "source_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+          "sink_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+          "source_name": "output",
+          "sink_name": "Search Query",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+      "block_id": "3c9c2f42-b0c3-435f-ba35-05f7a25c772a",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 5692.954324071057,
+          "y": 16.815914128328018
+        },
+        "customized_name": "Count Images"
+      },
+      "input_links": [
+        {
+          "id": "d74579ef-5171-4178-972e-b5cf0cc90030",
+          "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+          "sink_id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+          "source_name": "updated_list",
+          "sink_name": "collection",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "b02c106c-25b4-45ac-a0de-7ed1dfc5f13a",
+          "source_id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+          "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "source_name": "count",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 5901.56593370303,
+          "y": 1245.5667181466683
+        }
+      },
+      "input_links": [
+        {
+          "id": "6a255401-9741-4ef5-8a65-0a63b087051b",
+          "source_id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+          "sink_id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+          "source_name": "count",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "02215011-eaab-49bf-b461-ec8d3014a3b9",
+          "source_id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+          "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+          "source_name": "output",
+          "sink_name": "value2",
+          "is_static": true
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+      "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+      "input_default": {
+        "inputs": {
+          "Max Results": 1
+        },
+        "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+        "graph_id": "e429bc2a-e4e3-4b5f-b097-6081e94aeba9",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "Search Query",
+            "Max Results"
+          ],
+          "properties": {
+            "Max Results": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Results",
+              "secret": false,
+              "advanced": false
+            },
+            "Search Query": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search Query",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        },
+        "graph_version": 21,
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "URLs",
+            "Error"
+          ],
+          "properties": {
+            "URLs": {
+              "title": "URLs",
+              "secret": false,
+              "advanced": false
+            },
+            "Error": {
+              "title": "Error",
+              "secret": false,
+              "advanced": false
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 3748.327471525148,
+          "y": 12.656659260656184
+        },
+        "customized_name": "Image Search"
+      },
+      "input_links": [
+        {
+          "id": "cbe51c52-0a47-4578-a2af-1824de07e7bb",
+          "source_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+          "sink_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+          "source_name": "output",
+          "sink_name": "Search Query",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "9daa4f4e-2cf7-4ec6-b57d-cde111b1a596",
+          "source_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+          "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "source_name": "Error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0a0265e8-47be-4a1c-8da0-9e346f2f7787",
+          "source_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+          "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+          "source_name": "URLs",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "6cf51c3a-25dd-4189-bd50-5ee05a5f7794",
+      "graph_version": 58,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "0a0265e8-47be-4a1c-8da0-9e346f2f7787",
+      "source_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+      "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+      "source_name": "URLs",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "f9e65c32-1669-477b-a7f9-122150f14e4a",
+      "source_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+      "sink_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+      "source_name": "yes_output",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "b82e12d4-aef0-4675-a1f5-6ae375e41710",
+      "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+      "sink_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+      "source_name": "output",
+      "sink_name": "prompt_values_#_newsletter",
+      "is_static": false
+    },
+    {
+      "id": "25e097a1-df65-43c9-bb20-cd73b4fb7cc3",
+      "source_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "7b5b9a0d-df5f-4af1-9b8f-38441f299037",
+      "source_id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+      "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+      "source_name": "output",
+      "sink_name": "Email Subject",
+      "is_static": false
+    },
+    {
+      "id": "e704b15f-835e-48ca-8469-7f06b3217190",
+      "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+      "source_name": "updated_list",
+      "sink_name": "yes_value",
+      "is_static": false
+    },
+    {
+      "id": "8d8ffa53-6012-4d5a-934b-96a732f384f3",
+      "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "628cb3f7-ec28-4d7e-a506-6dc14194452b",
+      "source_id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+      "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_recency",
+      "is_static": true
+    },
+    {
+      "id": "f56853c2-3ccc-467d-9eda-767ee4d7352f",
+      "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+      "sink_id": "b3cd6910-8252-4ff2-9983-335279774213",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ffc2ac93-0af5-4b20-a4ab-8bd864294669",
+      "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+      "sink_id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+      "source_name": "output",
+      "sink_name": "collection",
+      "is_static": false
+    },
+    {
+      "id": "ff488394-ee6c-41d2-a525-fca11b32549a",
+      "source_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "50a2f911-b4b0-4818-a895-1c36b2f54de5",
+      "source_id": "c46b730a-16bc-4c55-a619-d74974797d91",
+      "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "source_name": "date",
+      "sink_name": "prompt_values_#_today",
+      "is_static": false
+    },
+    {
+      "id": "0a9ebd00-3aa5-41b4-85f2-e19510f7c1bd",
+      "source_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "68f19410-34fb-4774-8c14-17c1ffb15a79",
+      "source_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+      "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "source_name": "response",
+      "sink_name": "prompt_values_#_research",
+      "is_static": false
+    },
+    {
+      "id": "e221a5a2-1b51-4c23-8019-e9bee5dc4ea0",
+      "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+      "sink_id": "8380fb24-95dc-439e-bd42-3454cfffbba7",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "6ba524c6-3227-43e2-89a8-a2795b21f275",
+      "source_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+      "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+      "source_name": "output",
+      "sink_name": "key",
+      "is_static": false
+    },
+    {
+      "id": "97d2344e-91e5-4358-8b43-42d278a06996",
+      "source_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "efb10adb-9a77-4430-bc51-9a8adaf80ef2",
+      "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "6a255401-9741-4ef5-8a65-0a63b087051b",
+      "source_id": "37a4ebc1-d6e1-49f4-a0fb-7769fbdfe9e5",
+      "sink_id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+      "source_name": "count",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "a8915dbf-6caf-42f7-9cef-8401fcf291ff",
+      "source_id": "6c6cff92-b759-41be-a5a1-cd3976e05b24",
+      "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_recency",
+      "is_static": true
+    },
+    {
+      "id": "65169c65-3ca7-4599-94b9-b3bac6248a49",
+      "source_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+      "sink_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+      "source_name": "response",
+      "sink_name": "prompt",
+      "is_static": false
+    },
+    {
+      "id": "134406c2-0a8c-4df0-a413-f2e815d21057",
+      "source_id": "c991c79e-a690-45ab-b9c2-8cb7837c8f8c",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "ef01e0bd-f301-4ac5-93d1-cd5f8ddf30cb",
+      "source_id": "35f3a0cc-cc5e-44d0-ad1e-3e24f53975e7",
+      "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_style",
+      "is_static": true
+    },
+    {
+      "id": "8beb2cbe-4f77-431f-b376-33cfde908629",
+      "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+      "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+      "source_name": "response",
+      "sink_name": "Report Text",
+      "is_static": false
+    },
+    {
+      "id": "d74579ef-5171-4178-972e-b5cf0cc90030",
+      "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "sink_id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+      "source_name": "updated_list",
+      "sink_name": "collection",
+      "is_static": false
+    },
+    {
+      "id": "81c73012-3747-410c-b17b-fca5bd83bb1c",
+      "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+      "sink_id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+      "source_name": "output",
+      "sink_name": "items",
+      "is_static": false
+    },
+    {
+      "id": "f5763443-3bd7-4a6c-8688-9bc288dc1fed",
+      "source_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+      "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "source_name": "updated_dictionary",
+      "sink_name": "entry",
+      "is_static": false
+    },
+    {
+      "id": "ca49f19b-1a82-411e-b3ed-aaf0d8c8eec8",
+      "source_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "sink_id": "65e276b6-18c0-4176-84a0-011d1b20859c",
+      "source_name": "response",
+      "sink_name": "input_xml",
+      "is_static": false
+    },
+    {
+      "id": "bdc99d05-b6f8-4b2f-8741-c4ab5d2c188e",
+      "source_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+      "sink_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+      "source_name": "parsed_xml",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "7d4464f3-87bf-4d58-b16a-232a9123f0c3",
+      "source_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "cbe51c52-0a47-4578-a2af-1824de07e7bb",
+      "source_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+      "sink_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+      "source_name": "output",
+      "sink_name": "Search Query",
+      "is_static": false
+    },
+    {
+      "id": "b6e872da-2675-4067-a50d-269ac89d7cf0",
+      "source_id": "c46b730a-16bc-4c55-a619-d74974797d91",
+      "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+      "source_name": "date",
+      "sink_name": "prompt_values_#_today",
+      "is_static": false
+    },
+    {
+      "id": "ce32a0b2-807d-4f6a-8f2d-0f3faec134b7",
+      "source_id": "58df8a79-a41a-4c83-8adc-6bb517b4eb43",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "missing",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "9a3132bf-98a4-48fc-b70b-636f7df11ded",
+      "source_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "a817955f-ec4b-4ad4-9b77-e4e353dbdba4",
+      "source_id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+      "sink_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_topic",
+      "is_static": true
+    },
+    {
+      "id": "bf7f2e77-eabd-4019-bedc-39eb2928f996",
+      "source_id": "7b9333d9-68db-48e4-a066-3bfca9802a30",
+      "sink_id": "e4eecf3d-fbd0-4095-b844-38794e6b4e7b",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_topic",
+      "is_static": true
+    },
+    {
+      "id": "16a4267d-aaf5-4636-95f9-bdb2c5e83385",
+      "source_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+      "sink_id": "bb142109-ea01-4917-b32d-2848716bd154",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "635f3112-295b-436e-8b07-6f67ef7cf0e2",
+      "source_id": "b3cd6910-8252-4ff2-9983-335279774213",
+      "sink_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+      "source_name": "output",
+      "sink_name": "prompt_values_#_newsletter",
+      "is_static": false
+    },
+    {
+      "id": "730b0a8f-91e7-444c-a9e3-2b93df7ab6b1",
+      "source_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+      "sink_id": "e94bcdb4-67a8-40ea-9bc1-e6672a4bd87a",
+      "source_name": "response",
+      "sink_name": "input_xml",
+      "is_static": false
+    },
+    {
+      "id": "02215011-eaab-49bf-b461-ec8d3014a3b9",
+      "source_id": "56e0a227-fa84-4429-bec6-1b41dfd7fe1d",
+      "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+      "source_name": "output",
+      "sink_name": "value2",
+      "is_static": true
+    },
+    {
+      "id": "7c7811e1-d220-4e85-82fa-e2a10fa4291a",
+      "source_id": "662b0bb1-106b-45c2-ab92-4ddc2640bef5",
+      "sink_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+      "source_name": "updated_list",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "ccfc0124-e44e-413a-8094-9ee0d1e53789",
+      "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "115037c7-c122-4895-8598-f5b238d2eb11",
+      "source_id": "0a54faab-7d56-4826-8408-f1b00042fccd",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "64fbb095-9b1b-478c-a581-f10f7ee721ec",
+      "source_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "source_name": "updated_list",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "e58d50fe-ee19-4442-988f-632640c7e850",
+      "source_id": "7abc71cc-09e1-4113-be01-7b37921d6bed",
+      "sink_id": "5c52e32d-f1c8-4400-a107-85bb4ebb218d",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ab679265-5b24-4a02-af4d-cf12619ec793",
+      "source_id": "2b478887-fbf1-4128-8de8-26028cb7c8e3",
+      "sink_id": "1da0b365-a483-4677-ac3c-ea99270ad92e",
+      "source_name": "result",
+      "sink_name": "Recipient Email",
+      "is_static": true
+    },
+    {
+      "id": "f58e953d-9369-4c2a-9e3d-1158542d8867",
+      "source_id": "3f1f1b7a-73b4-4824-882b-7a9bd367866f",
+      "sink_id": "fb8d7f23-43eb-486e-8fbd-15de021c06d4",
+      "source_name": "list",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "9daa4f4e-2cf7-4ec6-b57d-cde111b1a596",
+      "source_id": "2d0abd00-ca63-4bf7-9a65-730e356eb52a",
+      "sink_id": "a95ad0cb-9644-4fa5-b2d3-4ae80a9f75c0",
+      "source_name": "Error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "b02c106c-25b4-45ac-a0de-7ed1dfc5f13a",
+      "source_id": "d21a61b1-5a1e-4724-9075-9c0a9a49bab7",
+      "sink_id": "0b91fb17-0c3d-48cc-931d-4f115b2cffc4",
+      "source_name": "count",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "fc9ae566-2a36-4ae9-ac2c-c5fdb7ae7a03",
+      "source_id": "131f496c-544c-48e5-ac63-0fa2b6554d1e",
+      "sink_id": "fe3b8cd6-2c09-4d8b-98d3-70e2df92de41",
+      "source_name": "value",
+      "sink_name": "prompt_values_#_image_urls",
+      "is_static": false
+    },
+    {
+      "id": "17c3b57f-ad85-40de-9a6c-388f9060c6b9",
+      "source_id": "68883c29-9a9e-4c97-99ee-945920bfeab7",
+      "sink_id": "a50c18bc-508e-4b89-aa59-e908a7b7db4e",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [
+    {
+      "id": "8b712b87-c350-40de-a1f8-4869b4f40103",
+      "version": 6,
+      "is_active": true,
+      "name": "Text to Email Report",
+      "description": "Input your text, and get a beautifully designed email sent straight to your inbox",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 955.6287333350833,
+              "y": 1415.5500101046268
+            }
+          },
+          "input_links": [
+            {
+              "id": "17cdcfa7-0c24-4991-9798-dd0cad48444c",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "claude-sonnet-4-20250514",
+            "retry": 3,
+            "prompt": "Make this into a high-quality html email report. \n\nThe user made the following design style request:\n```\n{{design | safe}}\n```\nDo not mention or reference this style design request in the rendered html report.\n\n\nHere is the report. do not change any of it's written content, your job is just to present it exactly as written:\n```\n{{report | safe}}\n```\n\nDo not include any functional buttons, animations, or any elements that would be non functional or out of place in a static offline report.\n\nRespond with just the html, no additional commentary or decoration. No code blocks, just the html.\n",
+            "sys_prompt": "",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 347.6321405130907,
+              "y": -554.8904332378107
+            }
+          },
+          "input_links": [
+            {
+              "id": "d95bf708-63ac-4105-ad72-25c49294d3d9",
+              "source_id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_report",
+              "is_static": true
+            },
+            {
+              "id": "0bd1be01-c6b7-4a4e-b294-9d583868e8fa",
+              "source_id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_design",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "17cdcfa7-0c24-4991-9798-dd0cad48444c",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "d4ffb3bc-e397-4a38-a269-7fd4bd6a8bb2",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "d7844d48-631a-4747-a3cc-df18fde200e3",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "response",
+              "sink_name": "body",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Report Text",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -811.4705680247006,
+              "y": -548.7174009963832
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "d95bf708-63ac-4105-ad72-25c49294d3d9",
+              "source_id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_report",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Raw HTML",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 908.7018239625986,
+              "y": -541.959658221456
+            }
+          },
+          "input_links": [
+            {
+              "id": "d4ffb3bc-e397-4a38-a269-7fd4bd6a8bb2",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+              "source_name": "response",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Report Design Brief",
+            "title": null,
+            "value": "default",
+            "secret": false,
+            "advanced": true,
+            "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\"",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -243.38695621119234,
+              "y": -549.2030784531711
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "0bd1be01-c6b7-4a4e-b294-9d583868e8fa",
+              "source_id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+              "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_design",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "block_id": "6c27abc2-e51d-499e-a85f-5a0041ba94f0",
+          "input_default": {
+            "cc": [],
+            "to": [
+              ""
+            ],
+            "bcc": [],
+            "attachments": [],
+            "content_type": null
+          },
+          "metadata": {
+            "position": {
+              "x": 2529.745828367755,
+              "y": -535.7360458512633
+            }
+          },
+          "input_links": [
+            {
+              "id": "93a95de7-4234-4ba8-84c6-24c1ebcb9298",
+              "source_id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "to_$_0",
+              "is_static": true
+            },
+            {
+              "id": "67f30c70-e93e-418f-904a-5efc38e3149d",
+              "source_id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "subject",
+              "is_static": true
+            },
+            {
+              "id": "d7844d48-631a-4747-a3cc-df18fde200e3",
+              "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "response",
+              "sink_name": "body",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "0bf1bb7f-ab0c-4e58-9d9b-3e51c7c0bedd",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "a3f80ad6-5f2d-45e6-a58d-8312cbb62b66",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "result_#_status",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Recipient Email",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": "The Email Address to send the report to. i.e. your@email.com",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 1439.6291079216235,
+              "y": -533.8659891630703
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "93a95de7-4234-4ba8-84c6-24c1ebcb9298",
+              "source_id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "to_$_0",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Email Status",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null
+          },
+          "metadata": {
+            "position": {
+              "x": 3123.908492421893,
+              "y": 119.90445391424203
+            }
+          },
+          "input_links": [
+            {
+              "id": "0bf1bb7f-ab0c-4e58-9d9b-3e51c7c0bedd",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "a3f80ad6-5f2d-45e6-a58d-8312cbb62b66",
+              "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+              "source_name": "result_#_status",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Email Subject",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": "The subject line for the email. i.e. \"Your Report\"",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 1974.0298117846444,
+              "y": -540.8747751530805
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "67f30c70-e93e-418f-904a-5efc38e3149d",
+              "source_id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+              "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+              "source_name": "result",
+              "sink_name": "subject",
+              "is_static": true
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "a3f80ad6-5f2d-45e6-a58d-8312cbb62b66",
+          "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+          "source_name": "result_#_status",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "93a95de7-4234-4ba8-84c6-24c1ebcb9298",
+          "source_id": "93e1b359-9b03-41be-b1b6-97bc49cef269",
+          "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "source_name": "result",
+          "sink_name": "to_$_0",
+          "is_static": true
+        },
+        {
+          "id": "d95bf708-63ac-4105-ad72-25c49294d3d9",
+          "source_id": "22f239e3-69bc-47b7-9e7e-0a4457439fee",
+          "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_report",
+          "is_static": true
+        },
+        {
+          "id": "67f30c70-e93e-418f-904a-5efc38e3149d",
+          "source_id": "8f27e2de-eb93-4f52-b214-aac616bbf9fd",
+          "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "source_name": "result",
+          "sink_name": "subject",
+          "is_static": true
+        },
+        {
+          "id": "d4ffb3bc-e397-4a38-a269-7fd4bd6a8bb2",
+          "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "sink_id": "0b3ef64f-7c87-4773-bfef-71710ea7c1d9",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0bd1be01-c6b7-4a4e-b294-9d583868e8fa",
+          "source_id": "b845d0d3-db13-48ff-8257-4bb63be9e5a4",
+          "sink_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_design",
+          "is_static": true
+        },
+        {
+          "id": "17cdcfa7-0c24-4991-9798-dd0cad48444c",
+          "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "sink_id": "b2074e3b-6f46-47a1-a105-7f80b00af064",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "0bf1bb7f-ab0c-4e58-9d9b-3e51c7c0bedd",
+          "source_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "sink_id": "03f800f3-c59d-484b-bafd-d2307e644f92",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "d7844d48-631a-4747-a3cc-df18fde200e3",
+          "source_id": "87e23432-e584-4418-ad9a-a42dafd72f28",
+          "sink_id": "c05f2dec-50d1-4bea-82bd-faeb08cdf18b",
+          "source_name": "response",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Report Text": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Report Text"
+          },
+          "Report Design Brief": {
+            "advanced": true,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Report Design Brief",
+            "description": "(optional) Briefly describe how you would like your report to look.\n\nFor example \"Style this like a Stripe documentation page\" or \"Make it look like a high-end medical journal\"",
+            "default": "default"
+          },
+          "Recipient Email": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Recipient Email",
+            "description": "The Email Address to send the report to. i.e. your@email.com"
+          },
+          "Email Subject": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Email Subject",
+            "description": "The subject line for the email. i.e. \"Your Report\""
+          }
+        },
+        "required": [
+          "Report Text",
+          "Recipient Email",
+          "Email Subject"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          },
+          "Raw HTML": {
+            "advanced": false,
+            "secret": false,
+            "title": "Raw HTML"
+          },
+          "Email Status": {
+            "advanced": false,
+            "secret": false,
+            "title": "Email Status"
+          }
+        },
+        "required": [
+          "Error",
+          "Raw HTML",
+          "Email Status"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    },
+    {
+      "id": "2fc911f6-09ea-4503-b36a-fda31beffe63",
+      "version": 21,
+      "is_active": true,
+      "name": "Image Search",
+      "description": "Search the web for images, get back image urls.",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+          "block_id": "87840993-2053-44b7-8da4-187ad4ee518c",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": 1413.5001262690541,
+              "y": 546.0000441621792
+            }
+          },
+          "input_links": [
+            {
+              "id": "99c9a905-3bf4-418c-86e4-442c71ac28e9",
+              "source_id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+              "sink_id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+              "source_name": "result",
+              "sink_name": "query",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "17af5ed9-d1a6-4461-81a2-cf66bb6e759c",
+              "source_id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+              "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "source_name": "results",
+              "sink_name": "prompt_values_#_results",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+          "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+          "input_default": {
+            "model": "gpt-5-mini-2025-08-07",
+            "retry": 3,
+            "prompt": "Extract the most relevant image URL(s) that represent the following query from the text below. \nDo not return more than {{max_results}} images under any circumstances.\n\n<query>\n{{query | safe}}\n</query>\n\n<raw_text>\n{{results | safe}}\n</raw_text>\n\nRespond using the following XML structure:\n- Wrap all images in a single <images> tag (even if there is only one image).\n- For each image, include:\n  - The full image URL inside <url> ... </url>\n  - A short image description inside <image_description> ... </image_description>\n- Wrap each image\u2019s data in an <image> ... </image> block.\n\nExample:\n<images>\n  <image>\n    <url>https://example.com/image1.png</url>\n    <image_description>The image depicts a sunrise over the mountains.</image_description>\n  </image>\n  <image>\n    <url>https://example.com/image2.jpg</url>\n    <image_description>A close-up of a person hiking on a rocky trail.</image_description>\n  </image>\n</images>\n\nTry to return up to {{max_results}} relevant images, but exclude any that are not relevant.\n",
+            "sys_prompt": "",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {
+              "query": "",
+              "results": "",
+              "max_results": ""
+            }
+          },
+          "metadata": {
+            "position": {
+              "x": 1982.0954315766367,
+              "y": 547.6003508667025
+            }
+          },
+          "input_links": [
+            {
+              "id": "ebb9ade8-cf2b-4baf-88cc-9ff77d88ffe8",
+              "source_id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+              "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_query",
+              "is_static": true
+            },
+            {
+              "id": "15182d9b-235f-43a8-ada5-9a4961f61362",
+              "source_id": "42288c2f-2737-4bfd-b7b7-a2d7b95d19da",
+              "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_max_results",
+              "is_static": true
+            },
+            {
+              "id": "17af5ed9-d1a6-4461-81a2-cf66bb6e759c",
+              "source_id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+              "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "source_name": "results",
+              "sink_name": "prompt_values_#_results",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "4f5b682d-13a1-4bc4-99d4-fd8c979a8d4b",
+              "source_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "sink_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+              "source_name": "response",
+              "sink_name": "input_xml",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Search Query",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 799.2065101737418,
+              "y": 535.4934391928202
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "ebb9ade8-cf2b-4baf-88cc-9ff77d88ffe8",
+              "source_id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+              "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_query",
+              "is_static": true
+            },
+            {
+              "id": "99c9a905-3bf4-418c-86e4-442c71ac28e9",
+              "source_id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+              "sink_id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+              "source_name": "result",
+              "sink_name": "query",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "42288c2f-2737-4bfd-b7b7-a2d7b95d19da",
+          "block_id": "96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
+          "input_default": {
+            "name": "Max Results",
+            "title": null,
+            "value": null,
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 772.4815894022927,
+              "y": 1517.0242518700538
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "15182d9b-235f-43a8-ada5-9a4961f61362",
+              "source_id": "42288c2f-2737-4bfd-b7b7-a2d7b95d19da",
+              "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "source_name": "result",
+              "sink_name": "prompt_values_#_max_results",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "9988df52-8b32-40ac-a1dd-824f68a753b4",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "URLs",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "escape_html": false
+          },
+          "metadata": {
+            "position": {
+              "x": 3251.0726844642595,
+              "y": 568.0389731566472
+            }
+          },
+          "input_links": [
+            {
+              "id": "dd5b8bb3-3f3f-4eb0-8183-95c55ab0fec2",
+              "source_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+              "sink_id": "9988df52-8b32-40ac-a1dd-824f68a753b4",
+              "source_name": "parsed_xml",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+          "block_id": "286380af-9529-4b55-8be0-1d7c854abdb5",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": 2635.8455314360563,
+              "y": 550.2528550156364
+            }
+          },
+          "input_links": [
+            {
+              "id": "4f5b682d-13a1-4bc4-99d4-fd8c979a8d4b",
+              "source_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+              "sink_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+              "source_name": "response",
+              "sink_name": "input_xml",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "2c493706-4911-48bc-9322-7828ffc8fbdc",
+              "source_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+              "sink_id": "c487e2f1-ac64-4006-8448-2012d15f839b",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "dd5b8bb3-3f3f-4eb0-8183-95c55ab0fec2",
+              "source_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+              "sink_id": "9988df52-8b32-40ac-a1dd-824f68a753b4",
+              "source_name": "parsed_xml",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "c487e2f1-ac64-4006-8448-2012d15f839b",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Error",
+            "title": null,
+            "value": null,
+            "format": "",
+            "secret": false,
+            "advanced": false,
+            "description": null,
+            "escape_html": false
+          },
+          "metadata": {
+            "position": {
+              "x": 3248.5693093186587,
+              "y": 1538.1199069708057
+            }
+          },
+          "input_links": [
+            {
+              "id": "2c493706-4911-48bc-9322-7828ffc8fbdc",
+              "source_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+              "sink_id": "c487e2f1-ac64-4006-8448-2012d15f839b",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        }
+      ],
+      "links": [
+        {
+          "id": "ebb9ade8-cf2b-4baf-88cc-9ff77d88ffe8",
+          "source_id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+          "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_query",
+          "is_static": true
+        },
+        {
+          "id": "15182d9b-235f-43a8-ada5-9a4961f61362",
+          "source_id": "42288c2f-2737-4bfd-b7b7-a2d7b95d19da",
+          "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_max_results",
+          "is_static": true
+        },
+        {
+          "id": "4f5b682d-13a1-4bc4-99d4-fd8c979a8d4b",
+          "source_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+          "sink_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+          "source_name": "response",
+          "sink_name": "input_xml",
+          "is_static": false
+        },
+        {
+          "id": "99c9a905-3bf4-418c-86e4-442c71ac28e9",
+          "source_id": "e4727d6e-c50f-4dcf-9a5a-2bd3d432d6ee",
+          "sink_id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+          "source_name": "result",
+          "sink_name": "query",
+          "is_static": true
+        },
+        {
+          "id": "17af5ed9-d1a6-4461-81a2-cf66bb6e759c",
+          "source_id": "d6de58a7-daeb-4f03-b65a-197f330caf99",
+          "sink_id": "cc3dd52e-9f27-407a-8577-7db36b5394eb",
+          "source_name": "results",
+          "sink_name": "prompt_values_#_results",
+          "is_static": false
+        },
+        {
+          "id": "dd5b8bb3-3f3f-4eb0-8183-95c55ab0fec2",
+          "source_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+          "sink_id": "9988df52-8b32-40ac-a1dd-824f68a753b4",
+          "source_name": "parsed_xml",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "2c493706-4911-48bc-9322-7828ffc8fbdc",
+          "source_id": "9f55068b-9638-4c80-b82b-7847c75c0cf6",
+          "sink_id": "c487e2f1-ac64-4006-8448-2012d15f839b",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Search Query": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Search Query"
+          },
+          "Max Results": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Max Results"
+          }
+        },
+        "required": [
+          "Search Query",
+          "Max Results"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "URLs": {
+            "advanced": false,
+            "secret": false,
+            "title": "URLs"
+          },
+          "Error": {
+            "advanced": false,
+            "secret": false,
+            "title": "Error"
+          }
+        },
+        "required": [
+          "URLs",
+          "Error"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    }
+  ],
+  "user_id": "",
+  "created_at": "2025-10-18T11:19:17.072Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Writing Style": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "long-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Writing Style",
+        "description": "How would you like the newsletter to be written? ",
+        "default": " Engaging, witty, and informative"
+      },
+      "Topics of Interest": {
+        "advanced": false,
+        "secret": false,
+        "title": "Topics of Interest",
+        "description": "Enter your topics of interest, separated by commas",
+        "default": "Space"
+      },
+      "Your Email Address": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Your Email Address",
+        "description": "Enter the email address at which you would like to receive the newsletter."
+      },
+      "What time range would you like each newsletter edition to cover?": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "What time range would you like each newsletter edition to cover?",
+        "description": "For example, you could say one day to only receive news stories that happened in the past 24 hours before at the time of sending the newsletter, or you could say one week to receive news from that week"
+      }
+    },
+    "required": [
+      "Your Email Address",
+      "What time range would you like each newsletter edition to cover?"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Newsletter": {
+        "advanced": false,
+        "secret": false,
+        "title": "Newsletter"
+      },
+      "Error": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error"
+      }
+    },
+    "required": [
+      "Newsletter",
+      "Error"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-5-mini-2025-08-07",
+          "gpt-5-2025-08-07"
+        ]
+      },
+      "open_router_api_key_credentials": {
+        "credentials_provider": [
+          "open_router"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "open_router",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPEN_ROUTER: 'open_router'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "perplexity/sonar-deep-research"
+        ]
+      },
+      "anthropic_api_key_credentials": {
+        "credentials_provider": [
+          "anthropic"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "anthropic",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.ANTHROPIC: 'anthropic'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "claude-sonnet-4-20250514"
+        ]
+      },
+      "google_oauth2_credentials": {
+        "credentials_provider": [
+          "google"
+        ],
+        "credentials_types": [
+          "oauth2"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "google",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "oauth2",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE: 'google'>], Literal['oauth2']]",
+        "type": "object",
+        "credentials_scopes": [
+          "https://www.googleapis.com/auth/gmail.send"
+        ],
+        "discriminator_values": []
+      },
+      "jina_api_key_credentials": {
+        "credentials_provider": [
+          "jina"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "jina",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.JINA: 'jina'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      }
+    },
+    "required": [
+      "openai_api_key_credentials",
+      "open_router_api_key_credentials",
+      "anthropic_api_key_credentials",
+      "google_oauth2_credentials",
+      "jina_api_key_credentials"
+    ],
+    "title": "PersonalNewsletterCredentialsInputSchema",
+    "type": "object"
+  }
+}

@@ -19,7 +19,6 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
 from backend.integrations.webhooks.utils import webhook_ingress_url
-from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
@@ -62,6 +61,15 @@ class Webhook(BaseDbModel):
         )
 
 
+# LibraryAgentPreset import must be after Webhook definition to avoid
+# broken circular import:
+# integrations.py → library/model.py → integrations.py (for Webhook)
+from backend.api.features.library.model import LibraryAgentPreset  # noqa: E402
+
+# Resolve forward refs
+LibraryAgentPreset.model_rebuild()
+
+
 class WebhookWithRelations(Webhook):
     triggered_nodes: list[NodeModel]
     triggered_presets: list[LibraryAgentPreset]
@@ -73,6 +81,7 @@ class WebhookWithRelations(Webhook):
                 "AgentNodes and AgentPresets must be included in "
                 "IntegrationWebhook query with relations"
             )
+
         return WebhookWithRelations(
             **Webhook.from_db(webhook).model_dump(),
             triggered_nodes=[NodeModel.from_db(node) for node in webhook.AgentNodes],
@@ -175,17 +184,17 @@ async def find_webhook_by_credentials_and_props(
     credentials_id: str,
     webhook_type: str,
     resource: str,
-    events: list[str],
+    events: list[str] | None = None,
 ) -> Webhook | None:
-    webhook = await IntegrationWebhook.prisma().find_first(
-        where={
-            "userId": user_id,
-            "credentialsId": credentials_id,
-            "webhookType": webhook_type,
-            "resource": resource,
-            "events": {"has_every": events},
-        },
-    )
+    where: IntegrationWebhookWhereInput = {
+        "userId": user_id,
+        "credentialsId": credentials_id,
+        "webhookType": webhook_type,
+        "resource": resource,
+    }
+    if events is not None:
+        where["events"] = {"has_every": events}
+    webhook = await IntegrationWebhook.prisma().find_first(where=where)
     return Webhook.from_db(webhook) if webhook else None
 
 
@@ -277,8 +286,8 @@ async def unlink_webhook_from_graph(
         user_id: The ID of the user (for authorization)
     """
     # Avoid circular imports
+    from backend.api.features.library.db import set_preset_webhook
     from backend.data.graph import set_node_webhook
-    from backend.server.v2.library.db import set_preset_webhook
 
     # Find all nodes in this graph that use this webhook
     nodes = await AgentNode.prisma().find_many(

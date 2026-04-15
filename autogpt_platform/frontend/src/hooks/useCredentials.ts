@@ -100,6 +100,11 @@ export default function useCredentials(
       return false;
     }
 
+    // Filter MCP OAuth2 credentials by server URL matching
+    if (c.type === "oauth2" && c.provider === "mcp") {
+      return discriminatorValue != null && c.host === discriminatorValue;
+    }
+
     // Filter by OAuth credentials that have sufficient scopes for this block
     if (c.type === "oauth2") {
       const requiredScopes = credsInputSchema.credentials_scopes;

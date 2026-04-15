@@ -101,6 +101,7 @@ export const BlockMenuSidebar = () => {
           key={item.type}
           name={item.name}
           number={item.number}
+          menuItemType={item.type}
           selected={defaultState === item.type}
           onClick={() => setDefaultState(item.type as DefaultStateType)}
         />
@@ -111,6 +112,7 @@ export const BlockMenuSidebar = () => {
             key={item.type}
             name={item.name}
             number={item.number}
+            menuItemType={item.type}
             className="max-w-[11.5339rem]"
             selected={defaultState === item.type}
             onClick={() => setDefaultState(item.type as DefaultStateType)}
@@ -122,6 +124,7 @@ export const BlockMenuSidebar = () => {
           key={item.type}
           name={item.name}
           number={item.number}
+          menuItemType={item.type}
           selected={defaultState === item.type}
           onClick={
             item.onClick ||

@@ -15,8 +15,8 @@ class TestAgentApprovalData:
         """Test creating valid AgentApprovalData."""
         data = AgentApprovalData(
             agent_name="Test Agent",
-            agent_id="test-agent-123",
-            agent_version=1,
+            graph_id="test-agent-123",
+            graph_version=1,
             reviewer_name="John Doe",
             reviewer_email="john@example.com",
             comments="Great agent, approved!",
@@ -25,8 +25,8 @@ class TestAgentApprovalData:
         )
 
         assert data.agent_name == "Test Agent"
-        assert data.agent_id == "test-agent-123"
-        assert data.agent_version == 1
+        assert data.graph_id == "test-agent-123"
+        assert data.graph_version == 1
         assert data.reviewer_name == "John Doe"
         assert data.reviewer_email == "john@example.com"
         assert data.comments == "Great agent, approved!"
@@ -40,8 +40,8 @@ class TestAgentApprovalData:
         ):
             AgentApprovalData(
                 agent_name="Test Agent",
-                agent_id="test-agent-123",
-                agent_version=1,
+                graph_id="test-agent-123",
+                graph_version=1,
                 reviewer_name="John Doe",
                 reviewer_email="john@example.com",
                 comments="Great agent, approved!",
@@ -53,8 +53,8 @@ class TestAgentApprovalData:
         """Test AgentApprovalData with empty comments."""
         data = AgentApprovalData(
             agent_name="Test Agent",
-            agent_id="test-agent-123",
-            agent_version=1,
+            graph_id="test-agent-123",
+            graph_version=1,
             reviewer_name="John Doe",
             reviewer_email="john@example.com",
             comments="",  # Empty comments
@@ -72,8 +72,8 @@ class TestAgentRejectionData:
         """Test creating valid AgentRejectionData."""
         data = AgentRejectionData(
             agent_name="Test Agent",
-            agent_id="test-agent-123",
-            agent_version=1,
+            graph_id="test-agent-123",
+            graph_version=1,
             reviewer_name="Jane Doe",
             reviewer_email="jane@example.com",
             comments="Please fix the security issues before resubmitting.",
@@ -82,8 +82,8 @@ class TestAgentRejectionData:
         )
 
         assert data.agent_name == "Test Agent"
-        assert data.agent_id == "test-agent-123"
-        assert data.agent_version == 1
+        assert data.graph_id == "test-agent-123"
+        assert data.graph_version == 1
         assert data.reviewer_name == "Jane Doe"
         assert data.reviewer_email == "jane@example.com"
         assert data.comments == "Please fix the security issues before resubmitting."
@@ -97,8 +97,8 @@ class TestAgentRejectionData:
         ):
             AgentRejectionData(
                 agent_name="Test Agent",
-                agent_id="test-agent-123",
-                agent_version=1,
+                graph_id="test-agent-123",
+                graph_version=1,
                 reviewer_name="Jane Doe",
                 reviewer_email="jane@example.com",
                 comments="Please fix the security issues.",
@@ -111,8 +111,8 @@ class TestAgentRejectionData:
         long_comment = "A" * 1000  # Very long comment
         data = AgentRejectionData(
             agent_name="Test Agent",
-            agent_id="test-agent-123",
-            agent_version=1,
+            graph_id="test-agent-123",
+            graph_version=1,
             reviewer_name="Jane Doe",
             reviewer_email="jane@example.com",
             comments=long_comment,
@@ -126,8 +126,8 @@ class TestAgentRejectionData:
         """Test that models can be serialized and deserialized."""
         original_data = AgentRejectionData(
             agent_name="Test Agent",
-            agent_id="test-agent-123",
-            agent_version=1,
+            graph_id="test-agent-123",
+            graph_version=1,
             reviewer_name="Jane Doe",
             reviewer_email="jane@example.com",
             comments="Please fix the issues.",
@@ -142,8 +142,8 @@ class TestAgentRejectionData:
         restored_data = AgentRejectionData.model_validate(data_dict)
 
         assert restored_data.agent_name == original_data.agent_name
-        assert restored_data.agent_id == original_data.agent_id
-        assert restored_data.agent_version == original_data.agent_version
+        assert restored_data.graph_id == original_data.graph_id
+        assert restored_data.graph_version == original_data.graph_version
         assert restored_data.reviewer_name == original_data.reviewer_name
         assert restored_data.reviewer_email == original_data.reviewer_email
         assert restored_data.comments == original_data.comments

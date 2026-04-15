@@ -18,21 +18,29 @@ images: {
 """
 
 import asyncio
+import json
 import random
+from pathlib import Path
 from typing import Any, Dict, List
 
+import prisma.enums as prisma_enums
+import prisma.models as prisma_models
 from faker import Faker
 
-from backend.data.api_key import create_api_key
+# Import API functions from the backend
+from backend.api.features.library.db import create_library_agent, create_preset
+from backend.api.features.library.model import LibraryAgentPresetCreatable
+from backend.api.features.store.db import (
+    create_store_submission,
+    review_store_submission,
+)
+from backend.api.features.store.model import StoreSubmission
+from backend.blocks.io import AgentInputBlock
+from backend.data.auth.api_key import create_api_key
 from backend.data.credit import get_user_credit_model
 from backend.data.db import prisma
-from backend.data.graph import Graph, Link, Node, create_graph
-
-# Import API functions from the backend
+from backend.data.graph import Graph, Link, Node, create_graph, make_graph_model
 from backend.data.user import get_or_create_user
-from backend.server.v2.library.db import create_library_agent, create_preset
-from backend.server.v2.library.model import LibraryAgentPresetCreatable
-from backend.server.v2.store.db import create_store_submission, review_store_submission
 from backend.util.clients import get_supabase
 
 faker = Faker()
@@ -41,18 +49,48 @@ faker = Faker()
 # Constants for data generation limits (reduced for E2E tests)
 NUM_USERS = 15
 NUM_AGENT_BLOCKS = 30
-MIN_GRAPHS_PER_USER = 15
-MAX_GRAPHS_PER_USER = 15
+MIN_GRAPHS_PER_USER = 25
+MAX_GRAPHS_PER_USER = 25
 MIN_NODES_PER_GRAPH = 3
 MAX_NODES_PER_GRAPH = 6
 MIN_PRESETS_PER_USER = 2
 MAX_PRESETS_PER_USER = 3
-MIN_AGENTS_PER_USER = 15
-MAX_AGENTS_PER_USER = 15
+MIN_AGENTS_PER_USER = 25
+MAX_AGENTS_PER_USER = 25
 MIN_EXECUTIONS_PER_GRAPH = 2
 MAX_EXECUTIONS_PER_GRAPH = 8
 MIN_REVIEWS_PER_VERSION = 2
 MAX_REVIEWS_PER_VERSION = 5
+
+# Guaranteed minimums for marketplace tests (deterministic)
+GUARANTEED_FEATURED_AGENTS = 8
+GUARANTEED_FEATURED_CREATORS = 5
+GUARANTEED_TOP_AGENTS = 10
+E2E_MARKETPLACE_CREATOR_EMAIL = "test123@example.com"
+E2E_MARKETPLACE_CREATOR_USERNAME = "e2e-marketplace"
+E2E_MARKETPLACE_AGENT_SLUG = "e2e-calculator-agent"
+E2E_MARKETPLACE_AGENT_NAME = "E2E Calculator Agent"
+E2E_MARKETPLACE_AGENT_INPUT_VALUE = 8
+E2E_MARKETPLACE_AGENT_OUTPUT_VALUE = 42
+_LOCAL_TEMPLATE_PATH = (
+    Path(__file__).resolve().parents[1] / "agents" / "calculator-agent.json"
+)
+_DOCKER_TEMPLATE_PATH = Path(
+    "/app/autogpt_platform/backend/agents/calculator-agent.json"
+)
+E2E_MARKETPLACE_AGENT_TEMPLATE_PATH = (
+    _LOCAL_TEMPLATE_PATH if _LOCAL_TEMPLATE_PATH.exists() else _DOCKER_TEMPLATE_PATH
+)
+SEEDED_TEST_EMAILS = [
+    "test123@example.com",
+    "e2e.qa.auth@example.com",
+    "e2e.qa.builder@example.com",
+    "e2e.qa.library@example.com",
+    "e2e.qa.marketplace@example.com",
+    "e2e.qa.settings@example.com",
+    "e2e.qa.parallel.a@example.com",
+    "e2e.qa.parallel.b@example.com",
+]
 
 
 def get_image():
@@ -93,6 +131,25 @@ def get_category():
     return random.choice(categories)
 
 
+def load_deterministic_marketplace_graph() -> Graph:
+    graph = Graph.model_validate(
+        json.loads(E2E_MARKETPLACE_AGENT_TEMPLATE_PATH.read_text())
+    )
+    graph.name = E2E_MARKETPLACE_AGENT_NAME
+    graph.description = (
+        "Deterministic marketplace calculator graph for Playwright PR E2E coverage."
+    )
+
+    for node in graph.nodes:
+        if (
+            node.block_id == AgentInputBlock().id
+            and node.input_default.get("value") is None
+        ):
+            node.input_default["value"] = E2E_MARKETPLACE_AGENT_INPUT_VALUE
+
+    return graph
+
+
 class TestDataCreator:
     """Creates test data using API functions for E2E tests."""
 
@@ -116,12 +173,12 @@ class TestDataCreator:
         for i in range(NUM_USERS):
             try:
                 # Generate test user data
-                if i == 0:
-                    # First user should have test123@gmail.com email for testing
-                    email = "test123@gmail.com"
+                if i < len(SEEDED_TEST_EMAILS):
+                    # Keep a deterministic pool for Playwright global setup and PR smoke flows
+                    email = SEEDED_TEST_EMAILS[i]
                 else:
                     email = faker.unique.email()
-                password = "testpassword123"  # Standard test password
+                password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa
                 user_id = f"test-user-{i}-{faker.uuid4()}"
 
                 # Create user in Supabase Auth (if needed)
@@ -247,7 +304,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1012, "y": 674}},
                     )
@@ -267,7 +323,6 @@ class TestDataCreator:
                             "value": "",
                             "advanced": False,
                             "description": None,
-                            "placeholder_values": [],
                         },
                         metadata={"position": {"x": -1117, "y": 78}},
                     )
@@ -383,7 +438,7 @@ class TestDataCreator:
 
         library_agents = []
         for user in self.users:
-            num_agents = 10  # Create exactly 10 agents per user
+            num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
 
             # Get available graphs for this user
             user_graphs = [
@@ -464,7 +519,7 @@ class TestDataCreator:
 
         api_keys = []
         for user in self.users:
-            from backend.data.api_key import APIKeyPermission
+            from backend.data.auth.api_key import APIKeyPermission
 
             try:
                 # Use the API function to create API key
@@ -505,13 +560,16 @@ class TestDataCreator:
             existing_profiles, min(num_creators, len(existing_profiles))
         )
 
-        # Mark about 50% of creators as featured (more for testing)
-        num_featured = max(2, int(num_creators * 0.5))
+        # Guarantee at least GUARANTEED_FEATURED_CREATORS featured creators
+        num_featured = max(GUARANTEED_FEATURED_CREATORS, int(num_creators * 0.5))
         num_featured = min(
             num_featured, len(selected_profiles)
         )  # Don't exceed available profiles
         featured_profile_ids = set(
             random.sample([p.id for p in selected_profiles], num_featured)
+        )
+        print(
+            f"🎯 Creating {num_featured} featured creators (min: {GUARANTEED_FEATURED_CREATORS})"
         )
 
         for profile in selected_profiles:
@@ -539,86 +597,242 @@ class TestDataCreator:
                 print(f"Error updating profile {profile.id}: {e}")
                 continue
 
+        deterministic_creator = next(
+            (
+                user
+                for user in self.users
+                if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL
+            ),
+            None,
+        )
+        if deterministic_creator:
+            deterministic_profile = next(
+                (
+                    profile
+                    for profile in existing_profiles
+                    if profile.userId == deterministic_creator["id"]
+                ),
+                None,
+            )
+            if deterministic_profile:
+                try:
+                    updated_profile = await prisma.profile.update(
+                        where={"id": deterministic_profile.id},
+                        data={
+                            "name": "E2E Marketplace Creator",
+                            "username": E2E_MARKETPLACE_CREATOR_USERNAME,
+                            "description": "Deterministic marketplace creator for Playwright PR E2E coverage.",
+                            "links": ["https://example.com/e2e-marketplace"],
+                            "avatarUrl": get_image(),
+                            "isFeatured": True,
+                        },
+                    )
+                    profiles = [
+                        profile
+                        for profile in profiles
+                        if profile.get("id") != deterministic_profile.id
+                    ]
+                    if updated_profile is not None:
+                        profiles.append(updated_profile.model_dump())
+                except Exception as e:
+                    print(f"Error updating deterministic E2E creator profile: {e}")
+
         self.profiles = profiles
         return profiles
 
     async def create_test_store_submissions(self) -> List[Dict[str, Any]]:
-        """Create test store submissions using the API function."""
+        """Create test store submissions using the API function.
+
+        DETERMINISTIC: Guarantees minimum featured agents for E2E tests.
+        """
         print("Creating test store submissions...")
 
         submissions = []
         approved_submissions = []
+        featured_count = 0
+        submission_counter = 0
 
-        # Create a special test submission for test123@gmail.com
+        # Create a deterministic calculator marketplace agent for PR E2E coverage
         test_user = next(
-            (user for user in self.users if user["email"] == "test123@gmail.com"), None
+            (
+                user
+                for user in self.users
+                if user["email"] == E2E_MARKETPLACE_CREATOR_EMAIL
+            ),
+            None,
         )
         if test_user:
-            # Special test data for consistent testing
-            test_submission_data = {
-                "user_id": test_user["id"],
-                "agent_id": self.agent_graphs[0]["id"],  # Use first available graph
-                "agent_version": 1,
-                "slug": "test-agent-submission",
-                "name": "Test Agent Submission",
-                "sub_heading": "A test agent for frontend testing",
-                "video_url": "https://www.youtube.com/watch?v=test123",
-                "image_urls": [
-                    "https://picsum.photos/200/300",
-                    "https://picsum.photos/200/301",
-                    "https://picsum.photos/200/302",
-                ],
-                "description": "This is a test agent submission specifically created for frontend testing purposes.",
-                "categories": ["test", "demo", "frontend"],
-                "changes_summary": "Initial test submission",
-            }
+            deterministic_graph = None
 
             try:
-                test_submission = await create_store_submission(**test_submission_data)
-                submissions.append(test_submission.model_dump())
-                print("✅ Created special test store submission for test123@gmail.com")
-
-                # Randomly approve, reject, or leave pending the test submission
-                if test_submission.store_listing_version_id:
-                    random_value = random.random()
-                    if random_value < 0.4:  # 40% chance to approve
-                        approved_submission = await review_store_submission(
-                            store_listing_version_id=test_submission.store_listing_version_id,
-                            is_approved=True,
-                            external_comments="Test submission approved",
-                            internal_comments="Auto-approved test submission",
-                            reviewer_id=test_user["id"],
-                        )
-                        approved_submissions.append(approved_submission.model_dump())
-                        print("✅ Approved test store submission")
-
-                        # Mark approved submission as featured
-                        await prisma.storelistingversion.update(
-                            where={"id": test_submission.store_listing_version_id},
-                            data={"isFeatured": True},
-                        )
-                        print("🌟 Marked test agent as FEATURED")
-                    elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
-                        await review_store_submission(
-                            store_listing_version_id=test_submission.store_listing_version_id,
-                            is_approved=False,
-                            external_comments="Test submission rejected - needs improvements",
-                            internal_comments="Auto-rejected test submission for E2E testing",
-                            reviewer_id=test_user["id"],
-                        )
-                        print("❌ Rejected test store submission")
-                    else:  # 30% chance to leave pending (70% to 100%)
-                        print("⏳ Left test submission pending for review")
-
+                existing_graph = await prisma_models.AgentGraph.prisma().find_first(
+                    where={
+                        "userId": test_user["id"],
+                        "name": E2E_MARKETPLACE_AGENT_NAME,
+                        "isActive": True,
+                    },
+                    order={"version": "desc"},
+                )
+                if existing_graph:
+                    deterministic_graph = {
+                        "id": existing_graph.id,
+                        "version": existing_graph.version,
+                        "name": existing_graph.name,
+                        "userId": test_user["id"],
+                    }
+                    self.agent_graphs.append(deterministic_graph)
+                    print(
+                        "✅ Reused existing deterministic marketplace graph: "
+                        f"{existing_graph.id}"
+                    )
+                else:
+                    deterministic_graph_model = make_graph_model(
+                        load_deterministic_marketplace_graph(),
+                        test_user["id"],
+                    )
+                    deterministic_graph_model.reassign_ids(
+                        user_id=test_user["id"],
+                        reassign_graph_id=True,
+                    )
+                    created_deterministic_graph = await create_graph(
+                        deterministic_graph_model,
+                        test_user["id"],
+                    )
+                    deterministic_graph = created_deterministic_graph.model_dump()
+                    deterministic_graph["userId"] = test_user["id"]
+                    self.agent_graphs.append(deterministic_graph)
+                    print("✅ Created deterministic marketplace graph")
             except Exception as e:
-                print(f"Error creating test store submission: {e}")
-                import traceback
+                print(f"Error creating deterministic marketplace graph: {e}")
 
-                traceback.print_exc()
+            if deterministic_graph is None and self.agent_graphs:
+                test_user_graphs = [
+                    graph
+                    for graph in self.agent_graphs
+                    if graph.get("userId") == test_user["id"]
+                ]
+                deterministic_graph = next(
+                    (
+                        graph
+                        for graph in test_user_graphs
+                        if not graph.get("name", "").startswith("DummyInput ")
+                    ),
+                    test_user_graphs[0] if test_user_graphs else None,
+                )
+
+            if deterministic_graph:
+                test_submission_data = {
+                    "user_id": test_user["id"],
+                    "graph_id": deterministic_graph["id"],
+                    "graph_version": deterministic_graph.get("version", 1),
+                    "slug": E2E_MARKETPLACE_AGENT_SLUG,
+                    "name": E2E_MARKETPLACE_AGENT_NAME,
+                    "sub_heading": "A deterministic calculator agent for PR E2E coverage",
+                    "video_url": "https://www.youtube.com/watch?v=test123",
+                    "image_urls": [
+                        "https://picsum.photos/seed/e2e-marketplace-1/200/300",
+                        "https://picsum.photos/seed/e2e-marketplace-2/200/301",
+                        "https://picsum.photos/seed/e2e-marketplace-3/200/302",
+                    ],
+                    "description": (
+                        "A deterministic marketplace calculator agent that adds "
+                        f"{E2E_MARKETPLACE_AGENT_INPUT_VALUE} and 34 to produce "
+                        f"{E2E_MARKETPLACE_AGENT_OUTPUT_VALUE} for frontend E2E coverage."
+                    ),
+                    "categories": ["test", "demo", "frontend"],
+                    "changes_summary": (
+                        "Initial deterministic calculator submission seeded from "
+                        "backend/agents/calculator-agent.json"
+                    ),
+                }
+
+                try:
+                    existing_deterministic_submission = (
+                        await prisma_models.StoreListingVersion.prisma().find_first(
+                            where={
+                                "isDeleted": False,
+                                "StoreListing": {
+                                    "is": {
+                                        "owningUserId": test_user["id"],
+                                        "slug": E2E_MARKETPLACE_AGENT_SLUG,
+                                        "isDeleted": False,
+                                    }
+                                },
+                            },
+                            include={"StoreListing": True},
+                            order={"version": "desc"},
+                        )
+                    )
+
+                    if existing_deterministic_submission:
+                        test_submission = StoreSubmission.from_listing_version(
+                            existing_deterministic_submission
+                        )
+                        submissions.append(test_submission.model_dump())
+                        print(
+                            "✅ Reused deterministic marketplace submission: "
+                            f"{E2E_MARKETPLACE_AGENT_NAME}"
+                        )
+                    else:
+                        test_submission = await create_store_submission(
+                            **test_submission_data
+                        )
+                        submissions.append(test_submission.model_dump())
+                        print(
+                            "✅ Created deterministic marketplace submission: "
+                            f"{E2E_MARKETPLACE_AGENT_NAME}"
+                        )
+
+                    current_status = (
+                        existing_deterministic_submission.submissionStatus
+                        if existing_deterministic_submission
+                        else test_submission.status
+                    )
+                    is_featured = bool(
+                        existing_deterministic_submission
+                        and existing_deterministic_submission.isFeatured
+                    )
+
+                    if test_submission.listing_version_id:
+                        if current_status != prisma_enums.SubmissionStatus.APPROVED:
+                            approved_submission = await review_store_submission(
+                                store_listing_version_id=test_submission.listing_version_id,
+                                is_approved=True,
+                                external_comments="Deterministic calculator submission approved",
+                                internal_comments="Auto-approved PR E2E marketplace submission",
+                                reviewer_id=test_user["id"],
+                            )
+                            approved_submissions.append(
+                                approved_submission.model_dump()
+                            )
+                            print("✅ Approved deterministic marketplace submission")
+                        else:
+                            approved_submissions.append(test_submission.model_dump())
+                            print(
+                                "✅ Deterministic marketplace submission already approved"
+                            )
+
+                        if is_featured:
+                            featured_count += 1
+                            print("🌟 Deterministic marketplace agent already FEATURED")
+                        else:
+                            await prisma.storelistingversion.update(
+                                where={"id": test_submission.listing_version_id},
+                                data={"isFeatured": True},
+                            )
+                            featured_count += 1
+                            print(
+                                "🌟 Marked deterministic marketplace agent as FEATURED"
+                            )
+
+                except Exception as e:
+                    print(f"Error creating deterministic marketplace submission: {e}")
+                    import traceback
+
+                    traceback.print_exc()
 
         # Create regular submissions for all users
         for user in self.users:
-            # Get available graphs for this specific user
             user_graphs = [
                 g for g in self.agent_graphs if g.get("userId") == user["id"]
             ]
@@ -629,44 +843,45 @@ class TestDataCreator:
                 )
                 continue
 
-            # Create exactly 4 store submissions per user
             for submission_index in range(4):
                 graph = random.choice(user_graphs)
+                submission_counter += 1
 
                 try:
                     print(
-                        f"Creating store submission for user {user['id']} with graph {graph['id']} (owner: {graph.get('userId')})"
+                        f"Creating store submission for user {user['id']} with graph {graph['id']}"
                     )
 
-                    # Use the API function to create store submission with correct parameters
                     submission = await create_store_submission(
-                        user_id=user["id"],  # Must match graph's userId
-                        agent_id=graph["id"],
-                        agent_version=graph.get("version", 1),
+                        user_id=user["id"],
+                        graph_id=graph["id"],
+                        graph_version=graph.get("version", 1),
                         slug=faker.slug(),
                         name=graph.get("name", faker.sentence(nb_words=3)),
                         sub_heading=faker.sentence(),
                         video_url=get_video_url() if random.random() < 0.3 else None,
                         image_urls=[get_image() for _ in range(3)],
                         description=faker.text(),
-                        categories=[
-                            get_category()
-                        ],  # Single category from predefined list
+                        categories=[get_category()],
                         changes_summary="Initial E2E test submission",
                     )
                     submissions.append(submission.model_dump())
                     print(f"✅ Created store submission: {submission.name}")
 
-                    # Randomly approve, reject, or leave pending the submission
-                    if submission.store_listing_version_id:
-                        random_value = random.random()
-                        if random_value < 0.4:  # 40% chance to approve
-                            try:
-                                # Pick a random user as the reviewer (admin)
-                                reviewer_id = random.choice(self.users)["id"]
+                    if submission.listing_version_id:
+                        # DETERMINISTIC: First N submissions are always approved
+                        # First GUARANTEED_FEATURED_AGENTS of those are always featured
+                        should_approve = (
+                            submission_counter <= GUARANTEED_TOP_AGENTS
+                            or random.random() < 0.4
+                        )
+                        should_feature = featured_count < GUARANTEED_FEATURED_AGENTS
 
+                        if should_approve:
+                            try:
+                                reviewer_id = random.choice(self.users)["id"]
                                 approved_submission = await review_store_submission(
-                                    store_listing_version_id=submission.store_listing_version_id,
+                                    store_listing_version_id=submission.listing_version_id,
                                     is_approved=True,
                                     external_comments="Auto-approved for E2E testing",
                                     internal_comments="Automatically approved by E2E test data script",
@@ -679,25 +894,29 @@ class TestDataCreator:
                                     f"✅ Approved store submission: {submission.name}"
                                 )
 
-                                # Mark some agents as featured during creation (30% chance)
-                                # More likely for creators and first submissions
-                                is_creator = user["id"] in [
-                                    p.get("userId") for p in self.profiles
-                                ]
-                                feature_chance = (
-                                    0.5 if is_creator else 0.2
-                                )  # 50% for creators, 20% for others
-
-                                if random.random() < feature_chance:
+                                if should_feature:
                                     try:
                                         await prisma.storelistingversion.update(
-                                            where={
-                                                "id": submission.store_listing_version_id
-                                            },
+                                            where={"id": submission.listing_version_id},
                                             data={"isFeatured": True},
                                         )
+                                        featured_count += 1
                                         print(
-                                            f"🌟 Marked agent as FEATURED: {submission.name}"
+                                            f"🌟 Marked agent as FEATURED ({featured_count}/{GUARANTEED_FEATURED_AGENTS}): {submission.name}"
+                                        )
+                                    except Exception as e:
+                                        print(
+                                            f"Warning: Could not mark submission as featured: {e}"
+                                        )
+                                elif random.random() < 0.2:
+                                    try:
+                                        await prisma.storelistingversion.update(
+                                            where={"id": submission.listing_version_id},
+                                            data={"isFeatured": True},
+                                        )
+                                        featured_count += 1
+                                        print(
+                                            f"🌟 Marked agent as FEATURED (bonus): {submission.name}"
                                         )
                                     except Exception as e:
                                         print(
@@ -708,13 +927,11 @@ class TestDataCreator:
                                 print(
                                     f"Warning: Could not approve submission {submission.name}: {e}"
                                 )
-                        elif random_value < 0.7:  # 30% chance to reject (40% to 70%)
+                        elif random.random() < 0.5:
                             try:
-                                # Pick a random user as the reviewer (admin)
                                 reviewer_id = random.choice(self.users)["id"]
-
                                 await review_store_submission(
-                                    store_listing_version_id=submission.store_listing_version_id,
+                                    store_listing_version_id=submission.listing_version_id,
                                     is_approved=False,
                                     external_comments="Submission rejected - needs improvements",
                                     internal_comments="Automatically rejected by E2E test data script",
@@ -727,7 +944,7 @@ class TestDataCreator:
                                 print(
                                     f"Warning: Could not reject submission {submission.name}: {e}"
                                 )
-                        else:  # 30% chance to leave pending (70% to 100%)
+                        else:
                             print(
                                 f"⏳ Left submission pending for review: {submission.name}"
                             )
@@ -741,9 +958,13 @@ class TestDataCreator:
                     traceback.print_exc()
                     continue
 
+        print("\n📊 Store Submissions Summary:")
+        print(f"   Created: {len(submissions)}")
+        print(f"   Approved: {len(approved_submissions)}")
         print(
-            f"Created {len(submissions)} store submissions, approved {len(approved_submissions)}"
+            f"   Featured: {featured_count} (guaranteed min: {GUARANTEED_FEATURED_AGENTS})"
         )
+
         self.store_submissions = submissions
         return submissions
 
@@ -823,12 +1044,15 @@ class TestDataCreator:
         print(f"✅ Agent blocks available: {len(self.agent_blocks)}")
         print(f"✅ Agent graphs created: {len(self.agent_graphs)}")
         print(f"✅ Library agents created: {len(self.library_agents)}")
-        print(f"✅ Creator profiles updated: {len(self.profiles)} (some featured)")
-        print(
-            f"✅ Store submissions created: {len(self.store_submissions)} (some marked as featured during creation)"
-        )
+        print(f"✅ Creator profiles updated: {len(self.profiles)}")
+        print(f"✅ Store submissions created: {len(self.store_submissions)}")
         print(f"✅ API keys created: {len(self.api_keys)}")
         print(f"✅ Presets created: {len(self.presets)}")
+        print("\n🎯 Deterministic Guarantees:")
+        print(f"   • Featured agents: >= {GUARANTEED_FEATURED_AGENTS}")
+        print(f"   • Featured creators: >= {GUARANTEED_FEATURED_CREATORS}")
+        print(f"   • Top agents (approved): >= {GUARANTEED_TOP_AGENTS}")
+        print(f"   • Library agents per user: >= {MIN_AGENTS_PER_USER}")
         print("\n🚀 Your E2E test database is ready to use!")
 
 

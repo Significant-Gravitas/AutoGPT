@@ -4,12 +4,9 @@ import {
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 
-import { transformDates } from "./date-transformer";
+import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
-import {
-  IMPERSONATION_HEADER_NAME,
-  IMPERSONATION_STORAGE_KEY,
-} from "@/lib/constants";
+import { transformDates } from "./date-transformer";
 
 const FRONTEND_BASE_URL =
   process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
@@ -41,11 +38,9 @@ export const customMutator = async <
   T extends { data: any; status: number; headers: Headers },
 >(
   url: string,
-  options: RequestInit & {
-    params?: any;
-  } = {},
+  options: RequestInit,
 ): Promise<T> => {
-  const { params, ...requestOptions } = options;
+  const requestOptions = options;
   const method = (requestOptions.method || "GET") as
     | "GET"
     | "POST"
@@ -58,19 +53,7 @@ export const customMutator = async <
   };
 
   if (environment.isClientSide()) {
-    try {
-      const impersonatedUserId = sessionStorage.getItem(
-        IMPERSONATION_STORAGE_KEY,
-      );
-      if (impersonatedUserId) {
-        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
-      }
-    } catch (error) {
-      console.error(
-        "Admin impersonation: Failed to access sessionStorage:",
-        error,
-      );
-    }
+    Object.assign(headers, getSystemHeaders());
   }
 
   const isFormData = data instanceof FormData;
@@ -87,14 +70,11 @@ export const customMutator = async <
     headers["Content-Type"] = "application/json";
   }
 
-  const queryString = params
-    ? "?" + new URLSearchParams(params).toString()
-    : "";
-
   const baseUrl = getBaseUrl();
 
   // The caching in React Query in our system depends on the url, so the base_url could be different for the server and client sides.
-  const fullUrl = `${baseUrl}${url}${queryString}`;
+  // here url also contains encoded query params
+  const fullUrl = `${baseUrl}${url}`;
 
   if (environment.isServerSide()) {
     try {
@@ -112,6 +92,19 @@ export const customMutator = async <
     headers,
     body: data,
   });
+
+  // Check if response is a redirect (3xx) and redirect is allowed
+  const allowRedirect = requestOptions.redirect !== "error";
+  const isRedirect = response.status >= 300 && response.status < 400;
+
+  // For redirect responses, return early without trying to parse body
+  if (allowRedirect && isRedirect) {
+    return {
+      status: response.status,
+      data: null,
+      headers: response.headers,
+    } as T;
+  }
 
   if (!response.ok) {
     let responseData: any = null;

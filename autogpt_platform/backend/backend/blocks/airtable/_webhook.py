@@ -6,6 +6,9 @@ import hashlib
 import hmac
 import logging
 from enum import Enum
+from typing import cast
+
+from prisma.types import Serializable
 
 from backend.sdk import (
     BaseWebhooksManager,
@@ -84,7 +87,9 @@ class AirtableWebhookManager(BaseWebhooksManager):
         # update webhook config
         await update_webhook(
             webhook.id,
-            config={"base_id": base_id, "cursor": response.cursor},
+            config=cast(
+                dict[str, Serializable], {"base_id": base_id, "cursor": response.cursor}
+            ),
         )
 
         event_type = "notification"

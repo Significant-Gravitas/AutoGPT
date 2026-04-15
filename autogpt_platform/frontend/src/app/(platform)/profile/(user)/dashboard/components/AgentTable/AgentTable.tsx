@@ -3,33 +3,23 @@
 import * as React from "react";
 import { AgentTableCard } from "../AgentTableCard/AgentTableCard";
 import { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
-import {
-  AgentTableRow,
-  AgentTableRowProps,
-} from "../AgentTableRow/AgentTableRow";
+import { AgentTableRow } from "../AgentTableRow/AgentTableRow";
 import { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 
 export interface AgentTableProps {
-  agents: Omit<
-    AgentTableRowProps,
-    | "setSelectedAgents"
-    | "selectedAgents"
-    | "onViewSubmission"
-    | "onDeleteSubmission"
-    | "onEditSubmission"
-  >[];
+  storeAgentSubmissions: StoreSubmission[];
   onViewSubmission: (submission: StoreSubmission) => void;
   onDeleteSubmission: (submission_id: string) => void;
   onEditSubmission: (
     submission: StoreSubmissionEditRequest & {
       store_listing_version_id: string | undefined;
-      agent_id: string;
+      graph_id: string;
     },
   ) => void;
 }
 
 export const AgentTable: React.FC<AgentTableProps> = ({
-  agents,
+  storeAgentSubmissions,
   onViewSubmission,
   onDeleteSubmission,
   onEditSubmission,
@@ -63,19 +53,19 @@ export const AgentTable: React.FC<AgentTableProps> = ({
       </div>
 
       {/* Table body */}
-      {agents.length > 0 ? (
+      {storeAgentSubmissions.length > 0 ? (
         <div className="flex flex-col">
-          {agents.map((agent) => (
-            <div key={agent.id} className="md:block">
+          {storeAgentSubmissions.map((agentSubmission) => (
+            <div key={agentSubmission.listing_version_id} className="md:block">
               <AgentTableRow
-                {...agent}
+                storeAgentSubmission={agentSubmission}
                 onViewSubmission={onViewSubmission}
                 onDeleteSubmission={onDeleteSubmission}
                 onEditSubmission={onEditSubmission}
               />
               <div className="block md:hidden">
                 <AgentTableCard
-                  {...agent}
+                  storeAgentSubmission={agentSubmission}
                   onViewSubmission={onViewSubmission}
                 />
               </div>

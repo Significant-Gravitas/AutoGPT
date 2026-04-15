@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDownNarrowWideIcon } from "lucide-react";
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import {
   Select,
   SelectContent,
@@ -8,16 +8,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
-import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import { ArrowDownNarrowWideIcon } from "lucide-react";
 import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
-export default function LibrarySortMenu(): React.ReactNode {
-  const { handleSortChange } = useLibrarySortMenu();
+interface Props {
+  setLibrarySort: (value: LibraryAgentSort) => void;
+}
+
+export function LibrarySortMenu({ setLibrarySort }: Props) {
+  const { handleSortChange } = useLibrarySortMenu({ setLibrarySort });
   return (
     <div className="flex items-center" data-testid="sort-by-dropdown">
-      <span className="hidden whitespace-nowrap sm:inline">sort by</span>
+      <span className="hidden whitespace-nowrap text-sm sm:inline">
+        sort by
+      </span>
       <Select onValueChange={handleSortChange}>
-        <SelectTrigger className="ml-1 w-fit space-x-1 border-none px-0 text-base underline underline-offset-4 shadow-none">
+        <SelectTrigger className="ml-1 w-fit space-x-1 border-none px-0 text-sm underline underline-offset-4 shadow-none">
           <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
           <SelectValue placeholder="Last Modified" />
         </SelectTrigger>

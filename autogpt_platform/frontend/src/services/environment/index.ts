@@ -76,6 +76,17 @@ function getPreviewStealingDev() {
   return branch;
 }
 
+function getPostHogCredentials() {
+  return {
+    key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+  };
+}
+
+function getLaunchDarklyClientId() {
+  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID;
+}
+
 function isProductionBuild() {
   return process.env.NODE_ENV === "production";
 }
@@ -113,7 +124,17 @@ function isVercelPreview() {
 }
 
 function areFeatureFlagsEnabled() {
-  return process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "enabled";
+  return (
+    process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
+    Boolean(process.env.NEXT_PUBLIC_LAUNCHDARKLY_CLIENT_ID)
+  );
+}
+
+function isPostHogEnabled() {
+  const inCloud = isCloud();
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const host = process.env.NEXT_PUBLIC_POSTHOG_HOST;
+  return inCloud && key && host;
 }
 
 export const environment = {
@@ -128,6 +149,8 @@ export const environment = {
   getSupabaseUrl,
   getSupabaseAnonKey,
   getPreviewStealingDev,
+  getPostHogCredentials,
+  getLaunchDarklyClientId,
   // Assertions
   isServerSide,
   isClientSide,
@@ -138,5 +161,6 @@ export const environment = {
   isCloud,
   isLocal,
   isVercelPreview,
+  isPostHogEnabled,
   areFeatureFlagsEnabled,
 };

@@ -1,7 +1,7 @@
 import logging
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockInput,
@@ -9,12 +9,14 @@ from backend.data.block import (
     BlockSchema,
     BlockSchemaInput,
     BlockType,
-    get_block,
 )
-from backend.data.execution import ExecutionStatus, NodesInputMasks
+from backend.data.execution import ExecutionContext, ExecutionStatus, NodesInputMasks
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util.json import validate_with_jsonschema
 from backend.util.retry import func_retry
+
+if TYPE_CHECKING:
+    from backend.executor.utils import LogMetadata
 
 _logger = logging.getLogger(__name__)
 
@@ -47,11 +49,17 @@ class AgentExecutorBlock(Block):
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
             required_fields = cls.get_input_schema(data).get("required", [])
-            return set(required_fields) - set(data)
+            # Check against the nested `inputs` dict, not the top-level node
+            # data — required fields like "topic" live inside data["inputs"],
+            # not at data["topic"].
+            provided = data.get("inputs", {})
+            return set(required_fields) - set(provided)
 
         @classmethod
         def get_mismatch_error(cls, data: BlockInput) -> str | None:
-            return validate_with_jsonschema(cls.get_input_schema(data), data)
+            return validate_with_jsonschema(
+                cls.get_input_schema(data), data.get("inputs", {})
+            )
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field that could clash with graph outputs
@@ -72,9 +80,9 @@ class AgentExecutorBlock(Block):
         input_data: Input,
         *,
         graph_exec_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
-
         from backend.executor import utils as execution_utils
 
         graph_exec = await execution_utils.add_graph_execution(
@@ -83,8 +91,10 @@ class AgentExecutorBlock(Block):
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             nodes_input_masks=input_data.nodes_input_masks,
-            parent_graph_exec_id=graph_exec_id,
-            is_sub_graph=True,  # AgentExecutorBlock executions are always sub-graphs
+            execution_context=execution_context.model_copy(
+                update={"parent_execution_id": graph_exec_id},
+            ),
+            dry_run=execution_context.dry_run,
         )
 
         logger = execution_utils.LogMetadata(
@@ -123,9 +133,10 @@ class AgentExecutorBlock(Block):
         graph_version: int,
         graph_exec_id: str,
         user_id: str,
-        logger,
+        logger: "LogMetadata",
     ) -> BlockOutput:
 
+        from backend.blocks import get_block
         from backend.data.execution import ExecutionEventType
         from backend.executor import utils as execution_utils
 
@@ -145,14 +156,19 @@ class AgentExecutorBlock(Block):
                 ExecutionStatus.TERMINATED,
                 ExecutionStatus.FAILED,
             ]:
-                logger.debug(
-                    f"Execution {log_id} received event {event.event_type} with status {event.status}"
+                logger.info(
+                    f"Execution {log_id} skipping event {event.event_type} status={event.status} "
+                    f"node={getattr(event, 'node_exec_id', '?')}"
                 )
                 continue
 
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 # If the graph execution is COMPLETED, TERMINATED, or FAILED,
                 # we can stop listening for further events.
+                logger.info(
+                    f"Execution {log_id} graph completed with status {event.status}, "
+                    f"yielded {len(yielded_node_exec_ids)} outputs"
+                )
                 self.merge_stats(
                     NodeExecutionStats(
                         extra_cost=event.stats.cost if event.stats else 0,
@@ -197,7 +213,7 @@ class AgentExecutorBlock(Block):
         self,
         graph_exec_id: str,
         user_id: str,
-        logger,
+        logger: "LogMetadata",
     ) -> None:
         from backend.executor import utils as execution_utils
 

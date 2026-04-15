@@ -1,0 +1,5032 @@
+{
+  "id": "ef561358-b8a2-407f-935f-18b25975b00e",
+  "version": 369,
+  "is_active": true,
+  "name": "Automated Support Agent",
+  "description": "Overview:\nSupport teams spend countless hours on basic tickets. This agent automates repetitive customer support tasks. It reads incoming requests, researches your knowledge base, and responds automatically when confident. When unsure, it escalates to a human for final resolution.\n\nHow it Works:\nNew support emails are routed to the agent.\nThe agent checks internal documentation for answers.\nIt measures confidence in the answer found and either replies directly or escalates to a human.\n\nBusiness Value:\nAutomating the easy 80 percent of support tickets allows your team to focus on high-value, complex customer issues, improving efficiency and response times.",
+  "instructions": null,
+  "recommended_schedule_cron": "*/15 * * * *",
+  "nodes": [
+    {
+      "id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+      "block_id": "25310c70-b89b-43ba-b25c-4dfa7e2a481c",
+      "input_default": {
+        "query": "is:unread -label:agent-processed in:inbox newer_than:1d",
+        "max_results": 10
+      },
+      "metadata": {
+        "position": {
+          "x": -4377.036473228495,
+          "y": 217.00872154737638
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "fd4efd81-1307-4ff0-8f95-b5ab56a123c0",
+          "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+          "sink_id": "10ad5631-6678-4912-93ee-78f9c118c695",
+          "source_name": "emails",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "cf384d57-86bf-4489-b341-bb9150eff615",
+          "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+          "sink_id": "fc75b556-8fab-424c-a4d5-e9755f658d73",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "f9e1a8ca-f81b-46ea-9fc8-6b9adcc95c6f",
+          "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+          "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "source_name": "emails",
+          "sink_name": "yes_value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "fc75b556-8fab-424c-a4d5-e9755f658d73",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error Reading Emails",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": -3684.3197478553593,
+          "y": 7064.355577971482
+        }
+      },
+      "input_links": [
+        {
+          "id": "cf384d57-86bf-4489-b341-bb9150eff615",
+          "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+          "sink_id": "fc75b556-8fab-424c-a4d5-e9755f658d73",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "10ad5631-6678-4912-93ee-78f9c118c695",
+      "block_id": "896ed73b-27d0-41be-813c-c1c1dc856c03",
+      "input_default": {
+        "list": []
+      },
+      "metadata": {
+        "position": {
+          "x": -3656.9920633640163,
+          "y": 1183.6701728155692
+        }
+      },
+      "input_links": [
+        {
+          "id": "fd4efd81-1307-4ff0-8f95-b5ab56a123c0",
+          "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+          "sink_id": "10ad5631-6678-4912-93ee-78f9c118c695",
+          "source_name": "emails",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "c47b1fae-8a85-491f-aaae-bc7be41f0b7a",
+          "source_id": "10ad5631-6678-4912-93ee-78f9c118c695",
+          "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "source_name": "is_empty",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "881de375-cc67-4776-8323-80b32a4e3e20",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "true",
+        "no_value": "No support tickets",
+        "operator": "!=",
+        "yes_value": "true"
+      },
+      "metadata": {
+        "position": {
+          "x": -2968.4493212008188,
+          "y": 360.8576799085441
+        }
+      },
+      "input_links": [
+        {
+          "id": "c47b1fae-8a85-491f-aaae-bc7be41f0b7a",
+          "source_id": "10ad5631-6678-4912-93ee-78f9c118c695",
+          "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "source_name": "is_empty",
+          "sink_name": "value1",
+          "is_static": false
+        },
+        {
+          "id": "f9e1a8ca-f81b-46ea-9fc8-6b9adcc95c6f",
+          "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+          "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "source_name": "emails",
+          "sink_name": "yes_value",
+          "is_static": false
+        },
+        {
+          "id": "ab6e1ed4-a063-4b51-8387-962485e8d025",
+          "source_id": "b014ffc4-8b61-4893-a6fd-1b8ee26a3417",
+          "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "source_name": "value",
+          "sink_name": "value2",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "4f17205a-0241-4f16-aeb3-fae33cf92fe9",
+          "source_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "sink_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "source_name": "yes_output",
+          "sink_name": "list",
+          "is_static": false
+        },
+        {
+          "id": "055d3b60-1956-4185-8b5c-a09d375b81c7",
+          "source_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "sink_id": "1d9be004-1d01-446d-b692-09bd20c74d08",
+          "source_name": "no_output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "1d9be004-1d01-446d-b692-09bd20c74d08",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "No New Support Tickets",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": -2483.577891425824,
+          "y": 7093.927637075307
+        }
+      },
+      "input_links": [
+        {
+          "id": "055d3b60-1956-4185-8b5c-a09d375b81c7",
+          "source_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "sink_id": "1d9be004-1d01-446d-b692-09bd20c74d08",
+          "source_name": "no_output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "body"
+      },
+      "metadata": {
+        "position": {
+          "x": 4809.42894262303,
+          "y": 369.2029335908554
+        }
+      },
+      "input_links": [
+        {
+          "id": "4774f0a4-63b4-4bfe-9be0-b0b434f9301c",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d7e9f888-f634-47f4-8142-33855d2dc32b",
+          "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "source_name": "output",
+          "sink_name": "Question",
+          "is_static": false
+        },
+        {
+          "id": "79555ba8-df15-4927-84e7-81edef6a66df",
+          "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_customer_email_body",
+          "is_static": false
+        },
+        {
+          "id": "9d40b3f6-529a-47ba-ae66-eddfd76456c1",
+          "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "sink_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_SUPPORT_EMAIL",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "d28447e7-5d86-4a02-8dec-2ee625426591",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Documentation URL",
+        "title": null,
+        "value": "",
+        "advanced": false,
+        "description": null,
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": 5537.586792212602,
+          "y": -96.0776608443798
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "8daee585-cde1-476c-a649-76e376582026",
+          "source_id": "d28447e7-5d86-4a02-8dec-2ee625426591",
+          "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "source_name": "result",
+          "sink_name": "Documentation URL",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "3ecbe89e-cb1e-497f-9056-75d6e082d414",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error Crawling Documentation",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 8880.517064277346,
+          "y": 6808.114651414224
+        }
+      },
+      "input_links": [
+        {
+          "id": "61c54e69-2605-4379-874b-ef630a97c3e9",
+          "source_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "sink_id": "3ecbe89e-cb1e-497f-9056-75d6e082d414",
+          "source_name": "ERROR",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "block_id": "ed55ac19-356e-4243-a6cb-bc599e9b716f",
+      "input_default": {
+        "model": "gpt-5-2025-08-07",
+        "retry": 3,
+        "prompt": "CUSTOMER EMAIL:\n{{customer_email_body | safe}}\n\nDOCUMENTATION RESEARCH FINDINGS (XML FORMAT):\n{{relevant_information | safe}}\n\nAnalyze the XML research findings above to determine if you can provide a complete, accurate answer to this customer's question. The XML contains:\n- Research confidence score\n- Verbatim documentation quotes with sources  \n- Pre-drafted answer based on documentation\n- Source URLs\n\nUse a {{company_tone}} tone and only auto-reply if confidence is {{confidence_threshold}}% or higher.\n\nStart your email response with \"Hello,\" followed by two line breaks, then provide the email body content. Do not include a signature or closing.\n\nRespond in this JSON format:\n{\n  \"confidence_score\": [number 0-100],\n  \"should_auto_reply\": [string \"true\" or \"false\" with quotes],\n  \"email_response\": \"[start with 'Hello,' two enter characters, then email body content - no signature]\",\n  \"reasoning\": \"[brief explanation of your confidence assessment and decision]\"\n}\n\n\u2705 CORRECT Adaptation to Threshold 70%:\n{\n  \"confidence_score\": 75,\n  \"should_auto_reply\": \"true\",\n  \"email_response\": \"Hello,\\n\\nBased on our documentation, PandaDoc API has rate limiting in place, though specific limits may vary by endpoint. For detailed rate limit information specific to your use case, I recommend checking the headers in API responses or contacting our technical team.\",\n  \"reasoning\": \"Documentation mentions rate limiting exists but lacks specific numbers. At 70% threshold, I can provide helpful guidance even with partial information.\"\n}\n\n\u2705 CORRECT Adaptation to Threshold 90%:\n{\n  \"confidence_score\": 75,\n  \"should_auto_reply\": \"false\",\n  \"email_response\": \"Hello,\\n\\nYour question about API rate limits requires specific technical details that would benefit from personalized assistance. I'm escalating this to our technical support team who can provide you with exact rate limit specifications.\",\n  \"reasoning\": \"Documentation provides partial information about rate limiting, but at 90% threshold, I need more complete details to auto-reply confidently.\"\n}\n\n\u274c WRONG Examples (Ignoring Threshold):\nWrong - Same Response Regardless of Threshold:\n// At 70% threshold - WRONG\n{\n  \"confidence_score\": 75,\n  \"should_auto_reply\": \"false\",  // \u2190 Should be true at 70%\n  \"email_response\": \"drafted email response (best try) goes here\"\n  \"reasoning\": \"Not confident enough\" // \u2190 Ignoring 70% threshold\n}\n// At 90% threshold - WRONG  \n{\n  \"confidence_score\": 75,\n  \"should_auto_reply\": \"true\",   // \u2190 Should be false at 90%\n  \"email_response\": \"Hello,\\n\\nHere's partial information...\",\n  \"reasoning\": \"Providing available info\" // \u2190 Ignoring 90% threshold\n}\n\nDo not ask people to contact human support on their own, as they have already contacted support, and setting should_auto_reply to false results in this ticket being escalated to a human.",
+        "sys_prompt": "You are a professional and intelligent customer support agent. Your job is to help customers with their questions using our documentation research findings. You must be helpful, accurate, and professional.\n\nThe relevant information will be provided in XML format containing:\n- Confidence score from documentation research\n- Verbatim quotes from documentation with sources\n- Pre-drafted answer based on documentation findings\n- Source URLs for reference\n\nUse a {{company_tone}} tone in your responses. Analyze if you can provide a complete, accurate answer to the customer's question using the available documentation research. Only auto-reply if you are confident ({{confidence_threshold}}%+) that you can fully address their question. If not confident enough, recommend escalation to human support.\n\nProvide just the greeting and email body content - do not include closings like \"Best regards, Support Team\"",
+        "list_result": false,
+        "ollama_host": "localhost:11434",
+        "prompt_values": {},
+        "expected_format": {
+          "reasoning": "String (explanation of decision)",
+          "email_response": "String (email body content only, no greeting/signature)",
+          "confidence_score": "Number (0-100)",
+          "should_auto_reply": "String \"true\" or \"false\" - always use quotes"
+        },
+        "conversation_history": [],
+        "compress_prompt_to_fit": true
+      },
+      "metadata": {
+        "position": {
+          "x": 8950.116678128301,
+          "y": 219.86991069037902
+        }
+      },
+      "input_links": [
+        {
+          "id": "56fe28df-b2b8-4f3b-8528-90d5f16c6069",
+          "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_confidence_threshold",
+          "is_static": true
+        },
+        {
+          "id": "79555ba8-df15-4927-84e7-81edef6a66df",
+          "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_customer_email_body",
+          "is_static": false
+        },
+        {
+          "id": "a9b03ff1-e567-4622-892d-a9003f2269a7",
+          "source_id": "dc400c79-dc17-4bac-81ae-cdcbcc69d90b",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_company_tone",
+          "is_static": true
+        },
+        {
+          "id": "a7864344-1be9-4ee2-88a8-575bbd851643",
+          "source_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "Answer",
+          "sink_name": "prompt_values_#_relevant_information",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "48b7ebe9-c3d9-4dd1-a70e-9b6043e0a14e",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "source_name": "response",
+          "sink_name": "no_value",
+          "is_static": false
+        },
+        {
+          "id": "8176c88c-d42f-4266-9749-e28de468e07d",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "494f9e25-9d86-4635-b395-ee948ab2751e",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "2a273dc3-041d-44bd-babe-4131a55fccc6",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "2dcdbdb1-8c60-4b1c-bcc8-c69f159c0126",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "88269a97-5378-4ea7-9a5b-45878a290752",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "should_auto_reply"
+      },
+      "metadata": {
+        "position": {
+          "x": 10059.8313825174,
+          "y": 233.51346374787636
+        }
+      },
+      "input_links": [
+        {
+          "id": "2a273dc3-041d-44bd-babe-4131a55fccc6",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "afbaed62-c6e9-4876-a927-081a9a076215",
+          "source_id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+          "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "source_name": "output",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "true",
+        "no_value": null,
+        "operator": "==",
+        "yes_value": null
+      },
+      "metadata": {
+        "position": {
+          "x": 10827.351694272655,
+          "y": 532.492316800443
+        }
+      },
+      "input_links": [
+        {
+          "id": "afbaed62-c6e9-4876-a927-081a9a076215",
+          "source_id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+          "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "source_name": "output",
+          "sink_name": "value1",
+          "is_static": false
+        },
+        {
+          "id": "48b7ebe9-c3d9-4dd1-a70e-9b6043e0a14e",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "source_name": "response",
+          "sink_name": "no_value",
+          "is_static": false
+        },
+        {
+          "id": "1c72921e-805d-4edb-9a47-239609ecf3da",
+          "source_id": "88269a97-5378-4ea7-9a5b-45878a290752",
+          "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "source_name": "output",
+          "sink_name": "yes_value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "2c7a281e-57d9-46a7-9823-fc76b37b5cd4",
+          "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "sink_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "source_name": "no_output",
+          "sink_name": "prompt_values_#_AI_ANALYSIS",
+          "is_static": false
+        },
+        {
+          "id": "9810c154-dda6-4e84-85c5-b432251e2c38",
+          "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "sink_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+          "source_name": "yes_output",
+          "sink_name": "input_$_0",
+          "is_static": false
+        },
+        {
+          "id": "313227ff-5500-4dee-9621-3f1858979029",
+          "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "sink_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "88269a97-5378-4ea7-9a5b-45878a290752",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "email_response"
+      },
+      "metadata": {
+        "position": {
+          "x": 10059.491152442875,
+          "y": 1022.4886105087694
+        }
+      },
+      "input_links": [
+        {
+          "id": "2dcdbdb1-8c60-4b1c-bcc8-c69f159c0126",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "88269a97-5378-4ea7-9a5b-45878a290752",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "1c72921e-805d-4edb-9a47-239609ecf3da",
+          "source_id": "88269a97-5378-4ea7-9a5b-45878a290752",
+          "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "source_name": "output",
+          "sink_name": "yes_value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "dc400c79-dc17-4bac-81ae-cdcbcc69d90b",
+      "block_id": "655d6fdf-a334-421c-b733-520549c07cd1",
+      "input_default": {
+        "name": "Company Tone",
+        "title": null,
+        "value": "",
+        "advanced": false,
+        "description": null,
+        "placeholder_values": [
+          "Professional",
+          "Friendly",
+          "Casual",
+          "Technical"
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": 7244.420431667231,
+          "y": -75.86923121349153
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "a9b03ff1-e567-4622-892d-a9003f2269a7",
+          "source_id": "dc400c79-dc17-4bac-81ae-cdcbcc69d90b",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_company_tone",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Confidence Threshold",
+        "title": "Auto-Reply Confidence Threshold",
+        "value": "",
+        "advanced": false,
+        "description": "Minimum confidence score (0-100) required for automatic responses",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": 7800.965353330381,
+          "y": -79.6138784743564
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "56fe28df-b2b8-4f3b-8528-90d5f16c6069",
+          "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "result",
+          "sink_name": "prompt_values_#_confidence_threshold",
+          "is_static": true
+        },
+        {
+          "id": "e4eea37c-032e-45af-83b2-58ded4b6b0e2",
+          "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+          "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "source_name": "result",
+          "sink_name": "Confidence Threshold",
+          "is_static": true
+        },
+        {
+          "id": "de9c6cc7-3e9c-4ef1-9d0c-67dcc34ce309",
+          "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+          "sink_id": "e6390819-6c64-49e4-a414-7969d05c099e",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "from_"
+      },
+      "metadata": {
+        "position": {
+          "x": 10140.619289492886,
+          "y": -2330.431807974878
+        }
+      },
+      "input_links": [
+        {
+          "id": "d662d709-54bd-4c4d-ac8b-8a5e24c8eb65",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "e850b133-a458-46e2-886c-82743a1a8bcd",
+          "source_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "to",
+          "is_static": false
+        },
+        {
+          "id": "cd6f5657-085c-40dc-89f8-4cb849692017",
+          "source_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Sender",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+      "block_id": "e30a4d42-7b7d-4e6a-b36e-1f9b8e3b7d85",
+      "input_default": {
+        "input": [
+          "",
+          ""
+        ],
+        "delimiter": "\n\n"
+      },
+      "metadata": {
+        "position": {
+          "x": 15784.293277139936,
+          "y": -2624.6877021448286
+        }
+      },
+      "input_links": [
+        {
+          "id": "9810c154-dda6-4e84-85c5-b432251e2c38",
+          "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "sink_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+          "source_name": "yes_output",
+          "sink_name": "input_$_0",
+          "is_static": false
+        },
+        {
+          "id": "884103aa-a984-4715-a0f2-ab93bf641aa1",
+          "source_id": "b69fd82c-f602-4655-b208-e3c9785bc37f",
+          "sink_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+          "source_name": "result",
+          "sink_name": "input_$_1",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "40d7e87b-802e-49c8-9653-8cf9ccccd275",
+          "source_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "body",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "subject"
+      },
+      "metadata": {
+        "position": {
+          "x": 10106.409863397323,
+          "y": -5029.043156200651
+        }
+      },
+      "input_links": [
+        {
+          "id": "8b58d74a-9028-4257-864b-b5e1ef137541",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "0c90d29b-158d-4806-b1d4-f65dc449b3d0",
+          "source_id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Subject",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "27bc4042-6f70-4f36-8834-e2bd639c6b4b",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error Gmail Auto-Reply",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 17891.79841778554,
+          "y": -2474.981748545754
+        }
+      },
+      "input_links": [
+        {
+          "id": "0cc2a91c-6330-483e-88ea-65936d9671e3",
+          "source_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "sink_id": "27bc4042-6f70-4f36-8834-e2bd639c6b4b",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6516c017-1d49-466f-bdb4-002802ae13f9",
+      "block_id": "f884b2fb-04f4-4265-9658-14f433926ac9",
+      "input_default": {
+        "label_name": "agent-processed"
+      },
+      "metadata": {
+        "position": {
+          "x": 10790.509936804032,
+          "y": -3215.4666077875036
+        }
+      },
+      "input_links": [
+        {
+          "id": "e8ae929b-92eb-43aa-a913-b436ac938bf9",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "6516c017-1d49-466f-bdb4-002802ae13f9",
+          "source_name": "output",
+          "sink_name": "message_id",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "id"
+      },
+      "metadata": {
+        "position": {
+          "x": 9589.754074815959,
+          "y": -3372.212683050522
+        }
+      },
+      "input_links": [
+        {
+          "id": "c6c7095f-2953-4550-bdad-1c899b95a68c",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "2738b173-49ff-4db6-997e-0ac3d6cb6cac",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "parentMessageId",
+          "is_static": false
+        },
+        {
+          "id": "e8ae929b-92eb-43aa-a913-b436ac938bf9",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "6516c017-1d49-466f-bdb4-002802ae13f9",
+          "source_name": "output",
+          "sink_name": "message_id",
+          "is_static": false
+        },
+        {
+          "id": "99e13790-2ac2-420d-97aa-00cfef148fcd",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Email ID",
+          "is_static": false
+        },
+        {
+          "id": "7eafdff8-3401-4ead-8d44-37bfc650e082",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "source_name": "output",
+          "sink_name": "messageId",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "block_id": "b924ddf4-de4f-4b56-9a85-358930dcbc91",
+      "input_default": {
+        "values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 20813.931194689907,
+          "y": -998.3299549638214
+        }
+      },
+      "input_links": [
+        {
+          "id": "0c90d29b-158d-4806-b1d4-f65dc449b3d0",
+          "source_id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Subject",
+          "is_static": false
+        },
+        {
+          "id": "f9fb44ad-ce32-421a-a717-8e6cf4c894da",
+          "source_id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "value",
+          "sink_name": "values_#_Confidence Score",
+          "is_static": false
+        },
+        {
+          "id": "d3405fa9-d81f-4be2-925c-2739863bd2c8",
+          "source_id": "e6390819-6c64-49e4-a414-7969d05c099e",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "value",
+          "sink_name": "values_#_Confidence Threshold",
+          "is_static": false
+        },
+        {
+          "id": "a4e9ac5e-ddc2-4260-ae2f-9740575857ba",
+          "source_id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Email Received",
+          "is_static": false
+        },
+        {
+          "id": "f8b6e637-a7f1-4933-9f70-3f4d980187bc",
+          "source_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "yes_output",
+          "sink_name": "values_#_Status",
+          "is_static": false
+        },
+        {
+          "id": "99e13790-2ac2-420d-97aa-00cfef148fcd",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Email ID",
+          "is_static": false
+        },
+        {
+          "id": "ad3963d4-05b4-41d7-924b-176216497fa6",
+          "source_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "no_output",
+          "sink_name": "values_#_Status",
+          "is_static": false
+        },
+        {
+          "id": "cd6f5657-085c-40dc-89f8-4cb849692017",
+          "source_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Sender",
+          "is_static": false
+        },
+        {
+          "id": "174a6e58-b69e-448a-8d00-d0e763e58cbb",
+          "source_id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Reasoning",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "bf5877d9-85bc-48d6-a6a5-2337ed938837",
+          "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "sink_id": "916095c0-99f2-4778-b988-a15e1857456e",
+          "source_name": "dictionary",
+          "sink_name": "trigger",
+          "is_static": false
+        },
+        {
+          "id": "e9ca04e6-ac35-415a-9d0e-f9710258e320",
+          "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "sink_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "source_name": "dictionary",
+          "sink_name": "dictionary",
+          "is_static": false
+        },
+        {
+          "id": "6309d780-4b93-42cd-a163-07aaf89e63d9",
+          "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "sink_id": "541121c0-1631-4acf-8e1e-5c61a8051c0f",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "541121c0-1631-4acf-8e1e-5c61a8051c0f",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Dictionary Creation Failed",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 22344.143138017123,
+          "y": 6329.340165898824
+        }
+      },
+      "input_links": [
+        {
+          "id": "6309d780-4b93-42cd-a163-07aaf89e63d9",
+          "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "sink_id": "541121c0-1631-4acf-8e1e-5c61a8051c0f",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "04dced50-40cf-40f6-bf87-6e3c1ddb746a",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Adding to List Process Failed",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 23650.8757176323,
+          "y": 6337.7771719329885
+        }
+      },
+      "input_links": [
+        {
+          "id": "5a5b9d6b-73c0-4bb0-a953-6502c54c4684",
+          "source_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+          "sink_id": "04dced50-40cf-40f6-bf87-6e3c1ddb746a",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "aa470a71-9f1b-49ce-8f20-4b1d34f6b093",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Success",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 25063.734638194343,
+          "y": -1145.3101308595953
+        }
+      },
+      "input_links": [
+        {
+          "id": "fdea35df-93c6-4b20-8672-a5c2e67d0a84",
+          "source_id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+          "sink_id": "aa470a71-9f1b-49ce-8f20-4b1d34f6b093",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {
+        "list": [
+          ""
+        ],
+        "entry": null,
+        "entries": [],
+        "position": null
+      },
+      "metadata": {
+        "position": {
+          "x": 22590.882048183783,
+          "y": -1003.9751813069879
+        }
+      },
+      "input_links": [
+        {
+          "id": "093f5c0b-79a7-435f-9a49-d742df68da6f",
+          "source_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "sink_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+          "source_name": "updated_dictionary",
+          "sink_name": "list_$_0",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5a5b9d6b-73c0-4bb0-a953-6502c54c4684",
+          "source_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+          "sink_id": "04dced50-40cf-40f6-bf87-6e3c1ddb746a",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "a090a603-1fcf-4e17-ba2f-f1affcfc1c34",
+          "source_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "updated_list",
+          "sink_name": "records",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "confidence_score"
+      },
+      "metadata": {
+        "position": {
+          "x": 10061.11286699683,
+          "y": 1978.064996400531
+        }
+      },
+      "input_links": [
+        {
+          "id": "494f9e25-9d86-4635-b395-ee948ab2751e",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d1dc9a21-6804-447d-a8ca-652bbbf32f2a",
+          "source_id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+          "sink_id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "date"
+      },
+      "metadata": {
+        "position": {
+          "x": 10119.944318670057,
+          "y": -647.9166854102735
+        }
+      },
+      "input_links": [
+        {
+          "id": "fcdf10ff-97cb-4277-aa34-25e52f8b03f9",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "a4e9ac5e-ddc2-4260-ae2f-9740575857ba",
+          "source_id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Email Received",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e6390819-6c64-49e4-a414-7969d05c099e",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "number"
+      },
+      "metadata": {
+        "position": {
+          "x": 10128.92050805434,
+          "y": -1385.601365457166
+        }
+      },
+      "input_links": [
+        {
+          "id": "de9c6cc7-3e9c-4ef1-9d0c-67dcc34ce309",
+          "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+          "sink_id": "e6390819-6c64-49e4-a414-7969d05c099e",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "d3405fa9-d81f-4be2-925c-2739863bd2c8",
+          "source_id": "e6390819-6c64-49e4-a414-7969d05c099e",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "value",
+          "sink_name": "values_#_Confidence Threshold",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error in Gmail Escalation Process",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 18348.59654909178,
+          "y": 5824.027615074887
+        }
+      },
+      "input_links": [
+        {
+          "id": "da802c48-c8bd-4452-814d-89c3cafa64c0",
+          "source_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "sink_id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "8c7b0442-ce83-44cf-891b-43e71637a320",
+          "source_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "sink_id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "6b443996-b026-4422-bf7c-99d1174fd4fd",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Escalation Email",
+        "title": "Human Escalation Email Address",
+        "value": "",
+        "advanced": false,
+        "description": "Email address where complex support requests that require human attention will be forwarded",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": 15477.8947349296,
+          "y": 1485.943583344358
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "65ce669e-8224-44de-b797-1be31b104170",
+          "source_id": "6b443996-b026-4422-bf7c-99d1174fd4fd",
+          "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "source_name": "result",
+          "sink_name": "to",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "reasoning"
+      },
+      "metadata": {
+        "position": {
+          "x": 10083.343823760459,
+          "y": 2848.538600865504
+        }
+      },
+      "input_links": [
+        {
+          "id": "8176c88c-d42f-4266-9749-e28de468e07d",
+          "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "sink_id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+          "source_name": "response",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "174a6e58-b69e-448a-8d00-d0e763e58cbb",
+          "source_id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "output",
+          "sink_name": "values_#_Reasoning",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "916095c0-99f2-4778-b988-a15e1857456e",
+      "block_id": "716a67b3-6760-42e7-86dc-18645c6e00fc",
+      "input_default": {
+        "format_type": {
+          "format": "%Y-%m-%d %H:%M:%S",
+          "timezone": "UTC",
+          "discriminator": "strftime"
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 21440.42170327138,
+          "y": -1009.9581348960743
+        }
+      },
+      "input_links": [
+        {
+          "id": "bf5877d9-85bc-48d6-a6a5-2337ed938837",
+          "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "sink_id": "916095c0-99f2-4778-b988-a15e1857456e",
+          "source_name": "dictionary",
+          "sink_name": "trigger",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "30925949-b897-4ace-a9f8-9cb5cb792ec6",
+          "source_id": "916095c0-99f2-4778-b988-a15e1857456e",
+          "sink_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "source_name": "date_time",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "Timestamp",
+        "value": null,
+        "entries": {},
+        "dictionary": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 22028.3509182162,
+          "y": -1012.617793657085
+        }
+      },
+      "input_links": [
+        {
+          "id": "e9ca04e6-ac35-415a-9d0e-f9710258e320",
+          "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "sink_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "source_name": "dictionary",
+          "sink_name": "dictionary",
+          "is_static": false
+        },
+        {
+          "id": "30925949-b897-4ace-a9f8-9cb5cb792ec6",
+          "source_id": "916095c0-99f2-4778-b988-a15e1857456e",
+          "sink_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "source_name": "date_time",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "1e5c56ed-58ca-4346-93ae-62520ca7acef",
+          "source_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "sink_id": "551eba5c-6f98-437a-a6bd-06fb74af9bf5",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "093f5c0b-79a7-435f-9a49-d742df68da6f",
+          "source_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "sink_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+          "source_name": "updated_dictionary",
+          "sink_name": "list_$_0",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "551eba5c-6f98-437a-a6bd-06fb74af9bf5",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error adding to Airtable Write payload",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 22998.910025310455,
+          "y": 6336.245524799465
+        }
+      },
+      "input_links": [
+        {
+          "id": "1e5c56ed-58ca-4346-93ae-62520ca7acef",
+          "source_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+          "sink_id": "551eba5c-6f98-437a-a6bd-06fb74af9bf5",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "true",
+        "no_value": "Escalated",
+        "operator": "==",
+        "yes_value": "Auto-replied"
+      },
+      "metadata": {
+        "position": {
+          "x": 12239.520123451122,
+          "y": 1001.8327291456504
+        }
+      },
+      "input_links": [
+        {
+          "id": "aeff641a-5a4d-4839-9971-8b60f408136c",
+          "source_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+          "sink_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+          "source_name": "value",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f8b6e637-a7f1-4933-9f70-3f4d980187bc",
+          "source_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "yes_output",
+          "sink_name": "values_#_Status",
+          "is_static": false
+        },
+        {
+          "id": "ad3963d4-05b4-41d7-924b-176216497fa6",
+          "source_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "no_output",
+          "sink_name": "values_#_Status",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "string"
+      },
+      "metadata": {
+        "position": {
+          "x": 11576.631416001415,
+          "y": 1021.3723440115053
+        }
+      },
+      "input_links": [
+        {
+          "id": "313227ff-5500-4dee-9621-3f1858979029",
+          "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "sink_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "7e82bed8-34e4-46ee-bc7e-61b731cbffda",
+          "source_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+          "sink_id": "04d04750-c575-4252-a7c5-4732ffb1ab11",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "aeff641a-5a4d-4839-9971-8b60f408136c",
+          "source_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+          "sink_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+          "source_name": "value",
+          "sink_name": "value1",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "04d04750-c575-4252-a7c5-4732ffb1ab11",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Error Type Conversion",
+        "title": null,
+        "value": null,
+        "format": "",
+        "advanced": false,
+        "description": null
+      },
+      "metadata": {
+        "position": {
+          "x": 12108.616167023609,
+          "y": 6335.446040316887
+        }
+      },
+      "input_links": [
+        {
+          "id": "7e82bed8-34e4-46ee-bc7e-61b731cbffda",
+          "source_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+          "sink_id": "04d04750-c575-4252-a7c5-4732ffb1ab11",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "block_id": "262ca24c-1025-43cf-a578-534e23234e97",
+      "input_default": {
+        "list": [],
+        "index": 0
+      },
+      "metadata": {
+        "position": {
+          "x": -2318.4819333134533,
+          "y": 185.68971703440786
+        }
+      },
+      "input_links": [
+        {
+          "id": "4f17205a-0241-4f16-aeb3-fae33cf92fe9",
+          "source_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "sink_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "source_name": "yes_output",
+          "sink_name": "list",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fcdf10ff-97cb-4277-aa34-25e52f8b03f9",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "bd6efba6-419e-4317-a820-17ef2801b2c9",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "c6c7095f-2953-4550-bdad-1c899b95a68c",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "4774f0a4-63b4-4bfe-9be0-b0b434f9301c",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "d662d709-54bd-4c4d-ac8b-8a5e24c8eb65",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "8b58d74a-9028-4257-864b-b5e1ef137541",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b014ffc4-8b61-4893-a6fd-1b8ee26a3417",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "boolean",
+        "value": "true"
+      },
+      "metadata": {
+        "position": {
+          "x": -3727.3387428181913,
+          "y": 60.132298707885866
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "ab6e1ed4-a063-4b51-8387-962485e8d025",
+          "source_id": "b014ffc4-8b61-4893-a6fd-1b8ee26a3417",
+          "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+          "source_name": "value",
+          "sink_name": "value2",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4eaa8717-fef1-4792-8444-3f397830964a",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Option 2:\n== ESCALATE TO HUMAN =="
+      },
+      "metadata": {
+        "position": {
+          "x": 15623.254838255332,
+          "y": -395.47746668079077
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b0aeb8e2-75d6-44e7-ae59-476c23c11a0e",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Option 1:\n== AI REPLY =="
+      },
+      "metadata": {
+        "position": {
+          "x": 15669.172950633385,
+          "y": -3349.135928920478
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2324fbde-baac-4cef-ae10-6e5fb859b88e",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "= Research Documentation ="
+      },
+      "metadata": {
+        "position": {
+          "x": 6179.405102578336,
+          "y": -502.1749222877834
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4049a1ce-91f3-4851-a5e6-8efbcbec1729",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "== Log to Airtable =="
+      },
+      "metadata": {
+        "position": {
+          "x": 22603.352272532335,
+          "y": -1460.949491315006
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "f3ad60e4-48f7-4758-af84-ab6a0d0ec457",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Read Email, check if inbox is empty"
+      },
+      "metadata": {
+        "position": {
+          "x": -2810.4847179418566,
+          "y": -467.50154184598614
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "gpt-4.1-2025-04-14",
+        "retry": 3,
+        "prompt": "You are an AI assistant tasked with escalating a customer support ticket to human support via email forwarding. You will be provided with an AI analysis of the customer request.\n\nHere is the AI analysis of the request:\n<ai_analysis>\n{{AI_ANALYSIS | safe}}\n</ai_analysis>\n\nCompose a clear, well-formatted escalation email to human support. Follow these guidelines:\n\n1. Address the email to \"Human Support Team\"\n2. Include the AI analysis with proper formatting and line breaks\n3. Use clear paragraph breaks and formatting for readability\n4. Keep the message concise but complete - the original email thread is already preserved in the forward\n\nYour email should follow this structure:\n- Brief greeting\n- Clear explanation of why this requires human attention\n- Well-formatted AI analysis with proper line breaks\n- Professional closing\n\n**IMPORTANT FORMATTING:**\n- Use proper line breaks (\\n\\n) between paragraphs\n- Format lists and bullet points clearly\n- Ensure the email is easy to read when forwarded\n\nWrite your email inside <email_body> tags.",
+        "sys_prompt": "",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 15241.174623909594,
+          "y": -79.26315426453732
+        }
+      },
+      "input_links": [
+        {
+          "id": "2c7a281e-57d9-46a7-9823-fc76b37b5cd4",
+          "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+          "sink_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "source_name": "no_output",
+          "sink_name": "prompt_values_#_AI_ANALYSIS",
+          "is_static": false
+        },
+        {
+          "id": "9d40b3f6-529a-47ba-ae66-eddfd76456c1",
+          "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "sink_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "source_name": "output",
+          "sink_name": "prompt_values_#_SUPPORT_EMAIL",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "ef1796d4-d291-4547-b74c-ad9d402c2a41",
+          "source_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "source_name": "response",
+          "sink_name": "forwardMessage",
+          "is_static": false
+        },
+        {
+          "id": "8c7b0442-ce83-44cf-891b-43e71637a320",
+          "source_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "sink_id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "block_id": "42527e98-47b6-44ce-ac0e-86b4883721d3",
+      "input_default": {
+        "records": [],
+        "typecast": false,
+        "return_fields_by_field_id": null
+      },
+      "metadata": {
+        "position": {
+          "x": 23238.33408276495,
+          "y": -1152.3392111246394
+        }
+      },
+      "input_links": [
+        {
+          "id": "91a93af1-7663-4560-8fcb-7cd41eb4f312",
+          "source_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "positive",
+          "sink_name": "base_id",
+          "is_static": false
+        },
+        {
+          "id": "4ea3f29f-51fa-4435-9807-35e665d8728f",
+          "source_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "positive",
+          "sink_name": "table_id_or_name",
+          "is_static": false
+        },
+        {
+          "id": "a090a603-1fcf-4e17-ba2f-f1affcfc1c34",
+          "source_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "updated_list",
+          "sink_name": "records",
+          "is_static": false
+        },
+        {
+          "id": "13cc3a42-f363-4e86-92e7-b33c4afc00e1",
+          "source_id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "value",
+          "sink_name": "table_id_or_name",
+          "is_static": false
+        },
+        {
+          "id": "e45f100c-c364-4f36-a235-bd8f90aa4530",
+          "source_id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "value",
+          "sink_name": "base_id",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5643f208-2f9b-40c2-8aac-e09445071b7e",
+          "source_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "sink_id": "87521271-8efa-4177-a320-4ef68572fafe",
+          "source_name": "records",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "dc116bb0-1d68-4b3a-aa46-8826f5d36efa",
+          "source_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "sink_id": "87521271-8efa-4177-a320-4ef68572fafe",
+          "source_name": "details",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "b69fd82c-f602-4655-b208-e3c9785bc37f",
+      "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+      "input_default": {
+        "name": "Email Signature",
+        "title": null,
+        "value": "",
+        "advanced": false,
+        "description": null,
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": 15106.407323571713,
+          "y": -2827.9020135426836
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "884103aa-a984-4715-a0f2-ab93bf641aa1",
+          "source_id": "b69fd82c-f602-4655-b208-e3c9785bc37f",
+          "sink_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+          "source_name": "result",
+          "sink_name": "input_$_1",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "number"
+      },
+      "metadata": {
+        "position": {
+          "x": 10961.223256335805,
+          "y": 1892.1933521811452
+        }
+      },
+      "input_links": [
+        {
+          "id": "d1dc9a21-6804-447d-a8ca-652bbbf32f2a",
+          "source_id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+          "sink_id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "f9fb44ad-ce32-421a-a717-8e6cf4c894da",
+          "source_id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+          "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+          "source_name": "value",
+          "sink_name": "values_#_Confidence Score",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+      "block_id": "d8710fc9-6e29-481e-a7d5-165eb16f8471",
+      "input_default": {
+        "key": "airtable_base_id",
+        "scope": "within_agent",
+        "default_value": "\"no base\""
+      },
+      "metadata": {
+        "position": {
+          "x": -3221.9622839864496,
+          "y": -3931.8274474696573
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "e6475fc2-a119-483a-9f39-952c97c8e0f5",
+          "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+          "sink_id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+          "source_name": "value",
+          "sink_name": "value1",
+          "is_static": true
+        },
+        {
+          "id": "c07cbe40-08c0-4c71-b352-3c3002477d3b",
+          "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+          "sink_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+          "source_name": "value",
+          "sink_name": "text",
+          "is_static": true
+        },
+        {
+          "id": "d79ae92e-092b-4c81-b007-5cccee7db054",
+          "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+          "sink_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "249d0bd7-0c1b-4669-bd7e-cf319f30db82",
+      "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+      "input_default": {
+        "text": "Check airtable exists or create a new table"
+      },
+      "metadata": {
+        "position": {
+          "x": -813.5937267932889,
+          "y": -5091.993650936468
+        }
+      },
+      "input_links": [],
+      "output_links": [],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+      "block_id": "715696a0-e1da-45c8-b209-c2fa9c3b0be6",
+      "input_default": {
+        "value2": "\"no base\"",
+        "no_value": null,
+        "operator": "==",
+        "yes_value": null
+      },
+      "metadata": {
+        "position": {
+          "x": -756.7079259057305,
+          "y": -4470.959327044515
+        }
+      },
+      "input_links": [
+        {
+          "id": "e6475fc2-a119-483a-9f39-952c97c8e0f5",
+          "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+          "sink_id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+          "source_name": "value",
+          "sink_name": "value1",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "c71a0e91-6429-4c30-ab69-7ee393f761f3",
+          "source_id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+          "sink_id": "40597163-b473-4e62-9eb1-e633cf98c774",
+          "source_name": "yes_output",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "40597163-b473-4e62-9eb1-e633cf98c774",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "AutoGPT - Customer Support Agent"
+      },
+      "metadata": {
+        "position": {
+          "x": 29.437117138455676,
+          "y": -3818.072750653035
+        }
+      },
+      "input_links": [
+        {
+          "id": "c71a0e91-6429-4c30-ab69-7ee393f761f3",
+          "source_id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+          "sink_id": "40597163-b473-4e62-9eb1-e633cf98c774",
+          "source_name": "yes_output",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "29630e00-3eeb-4240-860b-3f0531ac57b6",
+          "source_id": "40597163-b473-4e62-9eb1-e633cf98c774",
+          "sink_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "source_name": "output",
+          "sink_name": "name",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "ee8e3c4a-92f4-4c69-b3ec-9c7405f33d22",
+      "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+      "input_default": {
+        "name": "Airtable Workspace ID",
+        "title": null,
+        "value": "",
+        "advanced": false,
+        "description": "To get your Airtable workspace ID is to open Airtable in a browser, select your workspace, and check the URL in your browser\u2019s address bar. The workspace ID is the string that starts with \"wsp\" in the URL (for example,\u00a0https://airtable.com/workspaces/wspsqMNxxxxxxxxxxxxx). Do not include the trailing question mark if present.",
+        "placeholder_values": []
+      },
+      "metadata": {
+        "position": {
+          "x": -25.06951093488192,
+          "y": -4808.956221583233
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "4b6076ee-f741-4aff-908f-83bf0013c3a8",
+          "source_id": "ee8e3c4a-92f4-4c69-b3ec-9c7405f33d22",
+          "sink_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "source_name": "result",
+          "sink_name": "workspace_id",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+      "block_id": "f59b88a8-54ce-4676-a508-fd614b4e8dce",
+      "input_default": {
+        "tables": [
+          {
+            "name": "Default table",
+            "fields": [
+              {
+                "name": "Email ID",
+                "type": "singleLineText"
+              },
+              {
+                "name": "Email Received",
+                "type": "dateTime",
+                "options": {
+                  "timeZone": "utc",
+                  "dateFormat": {
+                    "name": "iso"
+                  },
+                  "timeFormat": {
+                    "name": "24hour"
+                  }
+                }
+              },
+              {
+                "name": "Sender",
+                "type": "email"
+              },
+              {
+                "name": "Subject",
+                "type": "singleLineText"
+              },
+              {
+                "name": "Confidence Score",
+                "type": "number",
+                "options": {
+                  "precision": 0
+                }
+              },
+              {
+                "name": "Confidence Threshold",
+                "type": "number",
+                "options": {
+                  "precision": 0
+                }
+              },
+              {
+                "name": "Status",
+                "type": "singleSelect",
+                "options": {
+                  "choices": [
+                    {
+                      "name": "Auto-replied",
+                      "color": "greenBright"
+                    },
+                    {
+                      "name": "Escalated",
+                      "color": "orangeBright"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "Reasoning",
+                "type": "multilineText"
+              },
+              {
+                "name": "Timestamp",
+                "type": "dateTime",
+                "options": {
+                  "timeZone": "utc",
+                  "dateFormat": {
+                    "name": "iso"
+                  },
+                  "timeFormat": {
+                    "name": "24hour"
+                  }
+                }
+              }
+            ],
+            "description": "Default table"
+          }
+        ]
+      },
+      "metadata": {
+        "position": {
+          "x": 810.8016749879614,
+          "y": -4299.437787912821
+        }
+      },
+      "input_links": [
+        {
+          "id": "4b6076ee-f741-4aff-908f-83bf0013c3a8",
+          "source_id": "ee8e3c4a-92f4-4c69-b3ec-9c7405f33d22",
+          "sink_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "source_name": "result",
+          "sink_name": "workspace_id",
+          "is_static": true
+        },
+        {
+          "id": "29630e00-3eeb-4240-860b-3f0531ac57b6",
+          "source_id": "40597163-b473-4e62-9eb1-e633cf98c774",
+          "sink_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "source_name": "output",
+          "sink_name": "name",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "2a92a7b0-3fb4-4a77-9e60-57f5885c9968",
+          "source_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "sink_id": "cd060293-584c-4265-bc24-afd141ac57a3",
+          "source_name": "table",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "4ec94486-f5ee-4481-b5e9-393a721b8d61",
+          "source_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "sink_id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+          "source_name": "base_id",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+      "block_id": "1d055e55-a2b9-4547-8311-907d05b0304d",
+      "input_default": {
+        "key": "airtable_base_id",
+        "scope": "within_agent"
+      },
+      "metadata": {
+        "position": {
+          "x": 1687.1341506441627,
+          "y": -4407.308561781573
+        }
+      },
+      "input_links": [
+        {
+          "id": "4ec94486-f5ee-4481-b5e9-393a721b8d61",
+          "source_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "sink_id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+          "source_name": "base_id",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "e45f100c-c364-4f36-a235-bd8f90aa4530",
+          "source_id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "value",
+          "sink_name": "base_id",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "cd060293-584c-4265-bc24-afd141ac57a3",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "id",
+        "input": "id"
+      },
+      "metadata": {
+        "position": {
+          "x": 1678.28350336602,
+          "y": -3429.956467741783
+        }
+      },
+      "input_links": [
+        {
+          "id": "2a92a7b0-3fb4-4a77-9e60-57f5885c9968",
+          "source_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+          "sink_id": "cd060293-584c-4265-bc24-afd141ac57a3",
+          "source_name": "table",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "245482e9-6c54-4cd5-8e18-d7f20e68901a",
+          "source_id": "cd060293-584c-4265-bc24-afd141ac57a3",
+          "sink_id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+      "block_id": "1d055e55-a2b9-4547-8311-907d05b0304d",
+      "input_default": {
+        "key": "airtable_table_id",
+        "scope": "within_agent"
+      },
+      "metadata": {
+        "position": {
+          "x": 2426.725598733371,
+          "y": -3408.9295586269513
+        }
+      },
+      "input_links": [
+        {
+          "id": "245482e9-6c54-4cd5-8e18-d7f20e68901a",
+          "source_id": "cd060293-584c-4265-bc24-afd141ac57a3",
+          "sink_id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+          "source_name": "output",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "13cc3a42-f363-4e86-92e7-b33c4afc00e1",
+          "source_id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "value",
+          "sink_name": "table_id_or_name",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+      "block_id": "d8710fc9-6e29-481e-a7d5-165eb16f8471",
+      "input_default": {
+        "key": "airtable_table_id",
+        "scope": "within_agent",
+        "default_value": null
+      },
+      "metadata": {
+        "position": {
+          "x": -3224.904869058506,
+          "y": -2872.282904679654
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "672bf51d-9db4-4bde-a189-60ac948b58f6",
+          "source_id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+          "sink_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+          "source_name": "value",
+          "sink_name": "text",
+          "is_static": true
+        },
+        {
+          "id": "c9b30d0a-3a32-4a59-a381-e56f131b174a",
+          "source_id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+          "sink_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": true
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+      "block_id": "0e50422c-6dee-4145-83d6-3a5a392f65de",
+      "input_default": {
+        "key": "threadId"
+      },
+      "metadata": {
+        "position": {
+          "x": 10229.8899989352,
+          "y": -3952.5560860773867
+        }
+      },
+      "input_links": [
+        {
+          "id": "bd6efba6-419e-4317-a820-17ef2801b2c9",
+          "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+          "sink_id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+          "source_name": "item",
+          "sink_name": "input",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "2f38fd4d-4a91-4c0d-ae31-517e9fe8f5d1",
+          "source_id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "threadId",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+      "block_id": "12bf5a24-9b90-4f40-9090-4e86e6995e60",
+      "input_default": {
+        "cc": [],
+        "to": [],
+        "bcc": [],
+        "subject": "",
+        "replyAll": false,
+        "attachments": [],
+        "content_type": null
+      },
+      "metadata": {
+        "position": {
+          "x": 17136.158668653152,
+          "y": -3233.1313109289067
+        }
+      },
+      "input_links": [
+        {
+          "id": "2f38fd4d-4a91-4c0d-ae31-517e9fe8f5d1",
+          "source_id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "threadId",
+          "is_static": false
+        },
+        {
+          "id": "e850b133-a458-46e2-886c-82743a1a8bcd",
+          "source_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "to",
+          "is_static": false
+        },
+        {
+          "id": "40d7e87b-802e-49c8-9653-8cf9ccccd275",
+          "source_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "body",
+          "is_static": false
+        },
+        {
+          "id": "2738b173-49ff-4db6-997e-0ac3d6cb6cac",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "source_name": "output",
+          "sink_name": "parentMessageId",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "0cc2a91c-6330-483e-88ea-65936d9671e3",
+          "source_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+          "sink_id": "27bc4042-6f70-4f36-8834-e2bd639c6b4b",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+      "block_id": "64d2301c-b3f5-4174-8ac0-111ca1e1a7c0",
+      "input_default": {
+        "cc": [],
+        "to": [],
+        "bcc": [],
+        "subject": "",
+        "content_type": null,
+        "forwardMessage": "",
+        "includeAttachments": true,
+        "additionalAttachments": []
+      },
+      "metadata": {
+        "position": {
+          "x": 17336.98838098029,
+          "y": 675.8669215100489
+        }
+      },
+      "input_links": [
+        {
+          "id": "ef1796d4-d291-4547-b74c-ad9d402c2a41",
+          "source_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+          "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "source_name": "response",
+          "sink_name": "forwardMessage",
+          "is_static": false
+        },
+        {
+          "id": "7eafdff8-3401-4ead-8d44-37bfc650e082",
+          "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+          "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "source_name": "output",
+          "sink_name": "messageId",
+          "is_static": false
+        },
+        {
+          "id": "65ce669e-8224-44de-b797-1be31b104170",
+          "source_id": "6b443996-b026-4422-bf7c-99d1174fd4fd",
+          "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "source_name": "result",
+          "sink_name": "to",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "da802c48-c8bd-4452-814d-89c3cafa64c0",
+          "source_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+          "sink_id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+      "block_id": "3060088f-6ed9-4928-9ba7-9c92823a7ccd",
+      "input_default": {
+        "match": "^app",
+        "dot_all": false,
+        "case_sensitive": true
+      },
+      "metadata": {
+        "position": {
+          "x": -2579.875244856158,
+          "y": -3955.522593643197
+        }
+      },
+      "input_links": [
+        {
+          "id": "c07cbe40-08c0-4c71-b352-3c3002477d3b",
+          "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+          "sink_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+          "source_name": "value",
+          "sink_name": "text",
+          "is_static": true
+        },
+        {
+          "id": "d79ae92e-092b-4c81-b007-5cccee7db054",
+          "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+          "sink_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "91a93af1-7663-4560-8fcb-7cd41eb4f312",
+          "source_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "positive",
+          "sink_name": "base_id",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+      "block_id": "3060088f-6ed9-4928-9ba7-9c92823a7ccd",
+      "input_default": {
+        "match": "^tbl",
+        "dot_all": false,
+        "case_sensitive": true
+      },
+      "metadata": {
+        "position": {
+          "x": -2620.9001532453476,
+          "y": -2868.9564795486635
+        }
+      },
+      "input_links": [
+        {
+          "id": "672bf51d-9db4-4bde-a189-60ac948b58f6",
+          "source_id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+          "sink_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+          "source_name": "value",
+          "sink_name": "text",
+          "is_static": true
+        },
+        {
+          "id": "c9b30d0a-3a32-4a59-a381-e56f131b174a",
+          "source_id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+          "sink_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+          "source_name": "value",
+          "sink_name": "data",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "4ea3f29f-51fa-4435-9807-35e665d8728f",
+          "source_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+          "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "source_name": "positive",
+          "sink_name": "table_id_or_name",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+      "block_id": "1f292d4a-41a4-4977-9684-7c8d560b9f91",
+      "input_default": {
+        "model": "claude-sonnet-4-20250514",
+        "retry": 3,
+        "prompt": "Format this object in nice, human readable markdown, without changing any of the content at all.\n\n```\n{{data | safe}}\n```\n\nRules:\n- Do not include the \"## Basic Information\" section.\n- Convert all timestamps to human readable formats\n- Rename the \"Processing information\" Timestamp to \"Reply Sent:\"\n- Rename \"Email ID\" to \"Airtable Email ID\"\n\nMost importantly:\nRespond with just the markdown, with no additional commentary, formatting or decoration.",
+        "sys_prompt": "",
+        "ollama_host": "localhost:11434",
+        "prompt_values": {}
+      },
+      "metadata": {
+        "position": {
+          "x": 24453.96538518012,
+          "y": -1148.4255266128644
+        }
+      },
+      "input_links": [
+        {
+          "id": "5d73f06f-4bbc-4e3f-b61b-1e0656aa73a5",
+          "source_id": "87521271-8efa-4177-a320-4ef68572fafe",
+          "sink_id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_data",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "fdea35df-93c6-4b20-8672-a5c2e67d0a84",
+          "source_id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+          "sink_id": "aa470a71-9f1b-49ce-8f20-4b1d34f6b093",
+          "source_name": "response",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "87521271-8efa-4177-a320-4ef68572fafe",
+      "block_id": "95d1b990-ce13-4d88-9737-ba5c2070c97b",
+      "input_default": {
+        "type": "string"
+      },
+      "metadata": {
+        "position": {
+          "x": 23895.90419815295,
+          "y": -1147.808785662202
+        }
+      },
+      "input_links": [
+        {
+          "id": "5643f208-2f9b-40c2-8aac-e09445071b7e",
+          "source_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "sink_id": "87521271-8efa-4177-a320-4ef68572fafe",
+          "source_name": "records",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "dc116bb0-1d68-4b3a-aa46-8826f5d36efa",
+          "source_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+          "sink_id": "87521271-8efa-4177-a320-4ef68572fafe",
+          "source_name": "details",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [
+        {
+          "id": "5d73f06f-4bbc-4e3f-b61b-1e0656aa73a5",
+          "source_id": "87521271-8efa-4177-a320-4ef68572fafe",
+          "sink_id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+          "source_name": "value",
+          "sink_name": "prompt_values_#_data",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    },
+    {
+      "id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+      "block_id": "e189baac-8c20-45a1-94a7-55177ea42565",
+      "input_default": {
+        "inputs": {},
+        "user_id": "b3e41ea4-2f4c-4964-927c-fe682d857bad",
+        "graph_id": "5981ea5d-f57f-42f6-8b5c-e09ce7e1b3c0",
+        "input_schema": {
+          "type": "object",
+          "required": [
+            "Documentation URL",
+            "Question",
+            "Confidence Threshold"
+          ],
+          "properties": {
+            "Question": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "long-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Question",
+              "advanced": false
+            },
+            "Documentation URL": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "short-text"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Documentation URL",
+              "advanced": false
+            },
+            "Confidence Threshold": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Auto-Reply Confidence Threshold",
+              "advanced": false,
+              "description": "Minimum confidence score (0-100) required for automatic responses"
+            }
+          }
+        },
+        "graph_version": 38,
+        "output_schema": {
+          "type": "object",
+          "required": [
+            "ERROR",
+            "Answer"
+          ],
+          "properties": {
+            "ERROR": {
+              "title": "ERROR",
+              "advanced": false
+            },
+            "Answer": {
+              "title": "Answer",
+              "advanced": false
+            }
+          }
+        }
+      },
+      "metadata": {
+        "position": {
+          "x": 7230.977824744452,
+          "y": 1565.234385573906
+        }
+      },
+      "input_links": [
+        {
+          "id": "d7e9f888-f634-47f4-8142-33855d2dc32b",
+          "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+          "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "source_name": "output",
+          "sink_name": "Question",
+          "is_static": false
+        },
+        {
+          "id": "8daee585-cde1-476c-a649-76e376582026",
+          "source_id": "d28447e7-5d86-4a02-8dec-2ee625426591",
+          "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "source_name": "result",
+          "sink_name": "Documentation URL",
+          "is_static": true
+        },
+        {
+          "id": "e4eea37c-032e-45af-83b2-58ded4b6b0e2",
+          "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+          "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "source_name": "result",
+          "sink_name": "Confidence Threshold",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "61c54e69-2605-4379-874b-ef630a97c3e9",
+          "source_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "sink_id": "3ecbe89e-cb1e-497f-9056-75d6e082d414",
+          "source_name": "ERROR",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "a7864344-1be9-4ee2-88a8-575bbd851643",
+          "source_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+          "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+          "source_name": "Answer",
+          "sink_name": "prompt_values_#_relevant_information",
+          "is_static": false
+        }
+      ],
+      "graph_id": "ef561358-b8a2-407f-935f-18b25975b00e",
+      "graph_version": 369,
+      "webhook_id": null,
+      "webhook": null
+    }
+  ],
+  "links": [
+    {
+      "id": "8b58d74a-9028-4257-864b-b5e1ef137541",
+      "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "sink_id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "c6c7095f-2953-4550-bdad-1c899b95a68c",
+      "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "sink_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "d662d709-54bd-4c4d-ac8b-8a5e24c8eb65",
+      "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "sink_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "9d40b3f6-529a-47ba-ae66-eddfd76456c1",
+      "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+      "sink_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+      "source_name": "output",
+      "sink_name": "prompt_values_#_SUPPORT_EMAIL",
+      "is_static": false
+    },
+    {
+      "id": "2738b173-49ff-4db6-997e-0ac3d6cb6cac",
+      "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+      "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+      "source_name": "output",
+      "sink_name": "parentMessageId",
+      "is_static": false
+    },
+    {
+      "id": "4f17205a-0241-4f16-aeb3-fae33cf92fe9",
+      "source_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+      "sink_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "source_name": "yes_output",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "13cc3a42-f363-4e86-92e7-b33c4afc00e1",
+      "source_id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+      "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "source_name": "value",
+      "sink_name": "table_id_or_name",
+      "is_static": false
+    },
+    {
+      "id": "c71a0e91-6429-4c30-ab69-7ee393f761f3",
+      "source_id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+      "sink_id": "40597163-b473-4e62-9eb1-e633cf98c774",
+      "source_name": "yes_output",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "7e82bed8-34e4-46ee-bc7e-61b731cbffda",
+      "source_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+      "sink_id": "04d04750-c575-4252-a7c5-4732ffb1ab11",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "e850b133-a458-46e2-886c-82743a1a8bcd",
+      "source_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+      "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+      "source_name": "output",
+      "sink_name": "to",
+      "is_static": false
+    },
+    {
+      "id": "29630e00-3eeb-4240-860b-3f0531ac57b6",
+      "source_id": "40597163-b473-4e62-9eb1-e633cf98c774",
+      "sink_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+      "source_name": "output",
+      "sink_name": "name",
+      "is_static": true
+    },
+    {
+      "id": "d79ae92e-092b-4c81-b007-5cccee7db054",
+      "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+      "sink_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+      "source_name": "value",
+      "sink_name": "data",
+      "is_static": true
+    },
+    {
+      "id": "8c7b0442-ce83-44cf-891b-43e71637a320",
+      "source_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+      "sink_id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "4ea3f29f-51fa-4435-9807-35e665d8728f",
+      "source_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+      "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "source_name": "positive",
+      "sink_name": "table_id_or_name",
+      "is_static": false
+    },
+    {
+      "id": "e45f100c-c364-4f36-a235-bd8f90aa4530",
+      "source_id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+      "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "source_name": "value",
+      "sink_name": "base_id",
+      "is_static": false
+    },
+    {
+      "id": "5a5b9d6b-73c0-4bb0-a953-6502c54c4684",
+      "source_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+      "sink_id": "04dced50-40cf-40f6-bf87-6e3c1ddb746a",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "79555ba8-df15-4927-84e7-81edef6a66df",
+      "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+      "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "source_name": "output",
+      "sink_name": "prompt_values_#_customer_email_body",
+      "is_static": false
+    },
+    {
+      "id": "56fe28df-b2b8-4f3b-8528-90d5f16c6069",
+      "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+      "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_confidence_threshold",
+      "is_static": true
+    },
+    {
+      "id": "494f9e25-9d86-4635-b395-ee948ab2751e",
+      "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "sink_id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+      "source_name": "response",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "91a93af1-7663-4560-8fcb-7cd41eb4f312",
+      "source_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+      "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "source_name": "positive",
+      "sink_name": "base_id",
+      "is_static": false
+    },
+    {
+      "id": "cf384d57-86bf-4489-b341-bb9150eff615",
+      "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+      "sink_id": "fc75b556-8fab-424c-a4d5-e9755f658d73",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "fcdf10ff-97cb-4277-aa34-25e52f8b03f9",
+      "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "sink_id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "f9fb44ad-ce32-421a-a717-8e6cf4c894da",
+      "source_id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "value",
+      "sink_name": "values_#_Confidence Score",
+      "is_static": false
+    },
+    {
+      "id": "f8b6e637-a7f1-4933-9f70-3f4d980187bc",
+      "source_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "yes_output",
+      "sink_name": "values_#_Status",
+      "is_static": false
+    },
+    {
+      "id": "2f38fd4d-4a91-4c0d-ae31-517e9fe8f5d1",
+      "source_id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+      "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+      "source_name": "output",
+      "sink_name": "threadId",
+      "is_static": false
+    },
+    {
+      "id": "48b7ebe9-c3d9-4dd1-a70e-9b6043e0a14e",
+      "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "source_name": "response",
+      "sink_name": "no_value",
+      "is_static": false
+    },
+    {
+      "id": "6309d780-4b93-42cd-a163-07aaf89e63d9",
+      "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "sink_id": "541121c0-1631-4acf-8e1e-5c61a8051c0f",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "dc116bb0-1d68-4b3a-aa46-8826f5d36efa",
+      "source_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "sink_id": "87521271-8efa-4177-a320-4ef68572fafe",
+      "source_name": "details",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "de9c6cc7-3e9c-4ef1-9d0c-67dcc34ce309",
+      "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+      "sink_id": "e6390819-6c64-49e4-a414-7969d05c099e",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": true
+    },
+    {
+      "id": "a7864344-1be9-4ee2-88a8-575bbd851643",
+      "source_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+      "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "source_name": "Answer",
+      "sink_name": "prompt_values_#_relevant_information",
+      "is_static": false
+    },
+    {
+      "id": "bf5877d9-85bc-48d6-a6a5-2337ed938837",
+      "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "sink_id": "916095c0-99f2-4778-b988-a15e1857456e",
+      "source_name": "dictionary",
+      "sink_name": "trigger",
+      "is_static": false
+    },
+    {
+      "id": "afbaed62-c6e9-4876-a927-081a9a076215",
+      "source_id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+      "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "source_name": "output",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "2a273dc3-041d-44bd-babe-4131a55fccc6",
+      "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "sink_id": "a67dde5f-182e-47e4-a811-a03cd7383f92",
+      "source_name": "response",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "313227ff-5500-4dee-9621-3f1858979029",
+      "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "sink_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c07cbe40-08c0-4c71-b352-3c3002477d3b",
+      "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+      "sink_id": "df31ccd5-ebc2-48bb-8cd9-02fb15847a25",
+      "source_name": "value",
+      "sink_name": "text",
+      "is_static": true
+    },
+    {
+      "id": "5d73f06f-4bbc-4e3f-b61b-1e0656aa73a5",
+      "source_id": "87521271-8efa-4177-a320-4ef68572fafe",
+      "sink_id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+      "source_name": "value",
+      "sink_name": "prompt_values_#_data",
+      "is_static": false
+    },
+    {
+      "id": "2dcdbdb1-8c60-4b1c-bcc8-c69f159c0126",
+      "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "sink_id": "88269a97-5378-4ea7-9a5b-45878a290752",
+      "source_name": "response",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "8176c88c-d42f-4266-9749-e28de468e07d",
+      "source_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "sink_id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+      "source_name": "response",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "055d3b60-1956-4185-8b5c-a09d375b81c7",
+      "source_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+      "sink_id": "1d9be004-1d01-446d-b692-09bd20c74d08",
+      "source_name": "no_output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c9b30d0a-3a32-4a59-a381-e56f131b174a",
+      "source_id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+      "sink_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+      "source_name": "value",
+      "sink_name": "data",
+      "is_static": true
+    },
+    {
+      "id": "5643f208-2f9b-40c2-8aac-e09445071b7e",
+      "source_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "sink_id": "87521271-8efa-4177-a320-4ef68572fafe",
+      "source_name": "records",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "c47b1fae-8a85-491f-aaae-bc7be41f0b7a",
+      "source_id": "10ad5631-6678-4912-93ee-78f9c118c695",
+      "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+      "source_name": "is_empty",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "0cc2a91c-6330-483e-88ea-65936d9671e3",
+      "source_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+      "sink_id": "27bc4042-6f70-4f36-8834-e2bd639c6b4b",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "1e5c56ed-58ca-4346-93ae-62520ca7acef",
+      "source_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+      "sink_id": "551eba5c-6f98-437a-a6bd-06fb74af9bf5",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "245482e9-6c54-4cd5-8e18-d7f20e68901a",
+      "source_id": "cd060293-584c-4265-bc24-afd141ac57a3",
+      "sink_id": "11ff0653-85cb-4096-a4ee-70e4326d3579",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "e4eea37c-032e-45af-83b2-58ded4b6b0e2",
+      "source_id": "3ce011b7-40b5-4bb0-880b-203e52b23a3c",
+      "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+      "source_name": "result",
+      "sink_name": "Confidence Threshold",
+      "is_static": true
+    },
+    {
+      "id": "d1dc9a21-6804-447d-a8ca-652bbbf32f2a",
+      "source_id": "64efc204-0d77-4f50-85f5-4e80e7bb9940",
+      "sink_id": "4b4c3539-4051-42d3-8777-2d1dc5ac6897",
+      "source_name": "output",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "a090a603-1fcf-4e17-ba2f-f1affcfc1c34",
+      "source_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+      "sink_id": "8af604e1-68d7-416f-84fe-41b1ffc3749e",
+      "source_name": "updated_list",
+      "sink_name": "records",
+      "is_static": false
+    },
+    {
+      "id": "aeff641a-5a4d-4839-9971-8b60f408136c",
+      "source_id": "b30555a2-d3d9-47cb-9174-6197591625a0",
+      "sink_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+      "source_name": "value",
+      "sink_name": "value1",
+      "is_static": false
+    },
+    {
+      "id": "4b6076ee-f741-4aff-908f-83bf0013c3a8",
+      "source_id": "ee8e3c4a-92f4-4c69-b3ec-9c7405f33d22",
+      "sink_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+      "source_name": "result",
+      "sink_name": "workspace_id",
+      "is_static": true
+    },
+    {
+      "id": "884103aa-a984-4715-a0f2-ab93bf641aa1",
+      "source_id": "b69fd82c-f602-4655-b208-e3c9785bc37f",
+      "sink_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+      "source_name": "result",
+      "sink_name": "input_$_1",
+      "is_static": true
+    },
+    {
+      "id": "fdea35df-93c6-4b20-8672-a5c2e67d0a84",
+      "source_id": "47679fdf-d4fd-42b8-9d28-548ddddc496e",
+      "sink_id": "aa470a71-9f1b-49ce-8f20-4b1d34f6b093",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "61c54e69-2605-4379-874b-ef630a97c3e9",
+      "source_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+      "sink_id": "3ecbe89e-cb1e-497f-9056-75d6e082d414",
+      "source_name": "ERROR",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "bd6efba6-419e-4317-a820-17ef2801b2c9",
+      "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "sink_id": "58a4593a-44cc-4c68-85fa-af97815ac94e",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ad3963d4-05b4-41d7-924b-176216497fa6",
+      "source_id": "2c22b40e-db53-4a91-bb76-9a45e427ada1",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "no_output",
+      "sink_name": "values_#_Status",
+      "is_static": false
+    },
+    {
+      "id": "672bf51d-9db4-4bde-a189-60ac948b58f6",
+      "source_id": "5b1f1d9f-8c55-4569-beec-dc71c83183a6",
+      "sink_id": "4de3a835-ce7d-4503-af97-b947a31c3285",
+      "source_name": "value",
+      "sink_name": "text",
+      "is_static": true
+    },
+    {
+      "id": "1c72921e-805d-4edb-9a47-239609ecf3da",
+      "source_id": "88269a97-5378-4ea7-9a5b-45878a290752",
+      "sink_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "source_name": "output",
+      "sink_name": "yes_value",
+      "is_static": false
+    },
+    {
+      "id": "e8ae929b-92eb-43aa-a913-b436ac938bf9",
+      "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+      "sink_id": "6516c017-1d49-466f-bdb4-002802ae13f9",
+      "source_name": "output",
+      "sink_name": "message_id",
+      "is_static": false
+    },
+    {
+      "id": "cd6f5657-085c-40dc-89f8-4cb849692017",
+      "source_id": "68be5e28-53eb-46ef-a40c-1cdc9d1d3459",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "output",
+      "sink_name": "values_#_Sender",
+      "is_static": false
+    },
+    {
+      "id": "65ce669e-8224-44de-b797-1be31b104170",
+      "source_id": "6b443996-b026-4422-bf7c-99d1174fd4fd",
+      "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+      "source_name": "result",
+      "sink_name": "to",
+      "is_static": true
+    },
+    {
+      "id": "da802c48-c8bd-4452-814d-89c3cafa64c0",
+      "source_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+      "sink_id": "f3681bf4-67ca-418f-8185-50818078d8d1",
+      "source_name": "error",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "7eafdff8-3401-4ead-8d44-37bfc650e082",
+      "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+      "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+      "source_name": "output",
+      "sink_name": "messageId",
+      "is_static": false
+    },
+    {
+      "id": "174a6e58-b69e-448a-8d00-d0e763e58cbb",
+      "source_id": "98cd104e-fa1a-421f-9572-b4234ea55416",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "output",
+      "sink_name": "values_#_Reasoning",
+      "is_static": false
+    },
+    {
+      "id": "e9ca04e6-ac35-415a-9d0e-f9710258e320",
+      "source_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "sink_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+      "source_name": "dictionary",
+      "sink_name": "dictionary",
+      "is_static": false
+    },
+    {
+      "id": "a4e9ac5e-ddc2-4260-ae2f-9740575857ba",
+      "source_id": "ef730afa-4de7-47d9-bcb7-11af07f2088b",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "output",
+      "sink_name": "values_#_Email Received",
+      "is_static": false
+    },
+    {
+      "id": "fd4efd81-1307-4ff0-8f95-b5ab56a123c0",
+      "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+      "sink_id": "10ad5631-6678-4912-93ee-78f9c118c695",
+      "source_name": "emails",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "99e13790-2ac2-420d-97aa-00cfef148fcd",
+      "source_id": "783c0eba-35e1-44d2-8734-ca398c65e82e",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "output",
+      "sink_name": "values_#_Email ID",
+      "is_static": false
+    },
+    {
+      "id": "30925949-b897-4ace-a9f8-9cb5cb792ec6",
+      "source_id": "916095c0-99f2-4778-b988-a15e1857456e",
+      "sink_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+      "source_name": "date_time",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "e6475fc2-a119-483a-9f39-952c97c8e0f5",
+      "source_id": "eee15323-2b62-42f9-8dc0-3cfaa4e191b7",
+      "sink_id": "a04f4e4b-c45d-4e43-a35a-092e0ab8df95",
+      "source_name": "value",
+      "sink_name": "value1",
+      "is_static": true
+    },
+    {
+      "id": "40d7e87b-802e-49c8-9653-8cf9ccccd275",
+      "source_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+      "sink_id": "e69c4fcb-ce36-411a-a205-7a07bdd08413",
+      "source_name": "output",
+      "sink_name": "body",
+      "is_static": false
+    },
+    {
+      "id": "2a92a7b0-3fb4-4a77-9e60-57f5885c9968",
+      "source_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+      "sink_id": "cd060293-584c-4265-bc24-afd141ac57a3",
+      "source_name": "table",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "093f5c0b-79a7-435f-9a49-d742df68da6f",
+      "source_id": "81c7afae-69bd-4916-9024-a0c6da636d5d",
+      "sink_id": "72a1d15e-7711-4c82-bdae-b2fd243563ee",
+      "source_name": "updated_dictionary",
+      "sink_name": "list_$_0",
+      "is_static": false
+    },
+    {
+      "id": "4ec94486-f5ee-4481-b5e9-393a721b8d61",
+      "source_id": "e061a66b-3e5f-475f-bfa3-ba364f662f7c",
+      "sink_id": "e48f04c5-d6b9-442a-aba1-8258f9aee729",
+      "source_name": "base_id",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "2c7a281e-57d9-46a7-9823-fc76b37b5cd4",
+      "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "sink_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+      "source_name": "no_output",
+      "sink_name": "prompt_values_#_AI_ANALYSIS",
+      "is_static": false
+    },
+    {
+      "id": "d7e9f888-f634-47f4-8142-33855d2dc32b",
+      "source_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+      "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+      "source_name": "output",
+      "sink_name": "Question",
+      "is_static": false
+    },
+    {
+      "id": "9810c154-dda6-4e84-85c5-b432251e2c38",
+      "source_id": "19757868-f240-4e39-b484-fe3f84d3d237",
+      "sink_id": "5cd84e14-97f6-408f-bd9b-017f1301fed8",
+      "source_name": "yes_output",
+      "sink_name": "input_$_0",
+      "is_static": false
+    },
+    {
+      "id": "8daee585-cde1-476c-a649-76e376582026",
+      "source_id": "d28447e7-5d86-4a02-8dec-2ee625426591",
+      "sink_id": "21fa5920-eff4-4641-a598-0f90f73dce61",
+      "source_name": "result",
+      "sink_name": "Documentation URL",
+      "is_static": true
+    },
+    {
+      "id": "ef1796d4-d291-4547-b74c-ad9d402c2a41",
+      "source_id": "f064e18f-2363-488b-ab47-dab1d85e55b7",
+      "sink_id": "2bea668b-a6b5-467e-9bc6-787be7f21cf7",
+      "source_name": "response",
+      "sink_name": "forwardMessage",
+      "is_static": false
+    },
+    {
+      "id": "f9e1a8ca-f81b-46ea-9fc8-6b9adcc95c6f",
+      "source_id": "c5a1791f-92c0-4dbd-8c6c-732db2be6225",
+      "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+      "source_name": "emails",
+      "sink_name": "yes_value",
+      "is_static": false
+    },
+    {
+      "id": "d3405fa9-d81f-4be2-925c-2739863bd2c8",
+      "source_id": "e6390819-6c64-49e4-a414-7969d05c099e",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "value",
+      "sink_name": "values_#_Confidence Threshold",
+      "is_static": false
+    },
+    {
+      "id": "4774f0a4-63b4-4bfe-9be0-b0b434f9301c",
+      "source_id": "423e8b8c-ac1a-4d6a-9c70-1c778645d938",
+      "sink_id": "cc7c1334-f7eb-43c1-8ac2-15a84cadd2d7",
+      "source_name": "item",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "ab6e1ed4-a063-4b51-8387-962485e8d025",
+      "source_id": "b014ffc4-8b61-4893-a6fd-1b8ee26a3417",
+      "sink_id": "881de375-cc67-4776-8323-80b32a4e3e20",
+      "source_name": "value",
+      "sink_name": "value2",
+      "is_static": false
+    },
+    {
+      "id": "a9b03ff1-e567-4622-892d-a9003f2269a7",
+      "source_id": "dc400c79-dc17-4bac-81ae-cdcbcc69d90b",
+      "sink_id": "6b2e19b1-5bb8-49bc-939c-8220d17e9dee",
+      "source_name": "result",
+      "sink_name": "prompt_values_#_company_tone",
+      "is_static": true
+    },
+    {
+      "id": "0c90d29b-158d-4806-b1d4-f65dc449b3d0",
+      "source_id": "62628a43-7b56-4746-b996-9f9aecda8aa5",
+      "sink_id": "0ba27931-43c0-4cc2-952c-14394fc0a10d",
+      "source_name": "output",
+      "sink_name": "values_#_Subject",
+      "is_static": false
+    }
+  ],
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "sub_graphs": [
+    {
+      "id": "6e0b8d36-3e03-4292-8b2d-9202e2d0c5e5",
+      "version": 38,
+      "is_active": true,
+      "name": "Product Knowledge Agent",
+      "description": "Overview\nFinding the right detail in technical documentation and FAQs can be overwhelming. This agent solves that problem by exploring product manuals and guides on your behalf, giving you quick, accurate answers every time.\n\nHow It Works\n1. You ask a product-related question.\n2. The agent reviews docs,\u00a0 manuals, guides, and FAQs.\n3. It verifies accuracy and compiles the best answer.\n4. You receive a concise explanation with direct references to the docs.\n\n\nBusiness Value\n Accelerate onboarding, reduce support wait times, and empower teams with instant knowledge. By automating product Q&A, companies can improve customer satisfaction by cutting down on repetitive support tickets.",
+      "instructions": null,
+      "recommended_schedule_cron": null,
+      "nodes": [
+        {
+          "id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+          "block_id": "7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
+          "input_default": {
+            "name": "Documentation URL",
+            "advanced": false,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": 48.620022798759834,
+              "y": 214.4951509877074
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "0601d9e3-086d-41c6-b2fe-1fe1f7166fd5",
+              "source_id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+              "sink_id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+              "source_name": "result",
+              "sink_name": "url",
+              "is_static": true
+            },
+            {
+              "id": "85507b2c-4eca-4d66-a414-486e65d5382f",
+              "source_id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "result",
+              "sink_name": "values_#_DOCUMENTATION_URL",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "8a0577e3-315a-4bd8-99d9-da082316b729",
+          "block_id": "90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
+          "input_default": {
+            "name": "Question",
+            "advanced": false,
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -1199.8907386673427,
+              "y": 215.28637177848216
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "de329c54-737a-4a44-85ee-44b23ac7f683",
+              "source_id": "8a0577e3-315a-4bd8-99d9-da082316b729",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "result",
+              "sink_name": "values_#_QUESTION",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "block_id": "3b191d9f-356f-482d-8238-ba04b6d18381",
+          "input_default": {
+            "model": "gpt-5-2025-08-07",
+            "retry": 3,
+            "prompt": "**Current Task:**\nDocumentation Base URL: {{documentation_base_url}}\nCustomer Question: {{question}}\nRequired Confidence Threshold: {{confidence_threshold}}%\nSitemap: {{sitemap}}\n\n**Your Available Tools:**\n1. **FireCrawl Crawl** - Pass in a base URL to crawl through multiple related pages agentically\n2. **FireCrawl Extract** - Pass in a list of specific URLs and a custom prompt for targeted extraction\n\n**Search Process:**\n1. Analyze the sitemap and customer's question to identify key concepts and requirements\n2. Choose the optimal tool strategy:\n   - Use **FireCrawl Crawl** when you need to explore multiple related pages in a section\n   - Use **FireCrawl Extract** when you know specific URLs and want targeted information with custom prompts\n3. For each search result, perform documentation analysis:\n   - Extract relevant quotes from documentation, cited verbatim\n   - Identify specific instructions, troubleshooting steps, or policies\n   - Note any limitations that might prevent a complete answer\n   - Consider edge cases or limitations in potential answers\n4. Assess confidence level (0-100%) based on completeness and accuracy of found information\n5. Continue searching if below {{confidence_threshold}}% threshold using different tools/strategies\n6. Only include information explicitly stated in the documentation\n\n**Tool Usage Guidelines:**\n- **FireCrawl Crawl:** When sitemap shows related pages that need exploration (e.g., API section with multiple endpoints)\n- **FireCrawl Extract:** When sitemap reveals specific relevant pages and you need precise information with targeted prompts\n\n**Stop Conditions:**\n- Confidence reaches {{confidence_threshold}}% or higher\n- Documentation has been thoroughly searched with appropriate tools\n- No additional relevant information can be found\n\n**Final Output Format:**\n{\n  \"confidence_score\": [X]%,\n  \"relevant_information\": \"Exact text copied verbatim from documentation\",\n  \"answer\": \"Complete response based solely on documentation findings\",\n  \"source_urls\": [\"exact page URLs relevant to this answer\"],\n  \"reasoning\": \"Why this confidence level was reached and which tools were used\"\n}\n\n**Important:** \n- Never make assumptions or include information not present in documentation\n- If insufficient information found, clearly state limitations\n- Ensure responses are accurate, professional, and solution-oriented\n\nBegin searching for: \"{{question}}\" in documentation at {{documentation_base_url}}",
+            "sys_prompt": "You are a documentation search agent that uses FireCrawl tools to find accurate answers to customer questions. Your goal is to thoroughly search documentation until you reach the specified confidence threshold or exhaust available sources.\n\n**Available Functions:**\n1. firecrawl_crawl(url, limit, only_main_content) - Explore multiple pages from a base URL\n2. firecrawl_extract(urls, prompt) - Extract specific information from known URLs with targeted prompts\n\n**Search Strategy:**\n- Analyze the sitemap to identify relevant documentation areas\n- Use firecrawl_extract when you know specific URLs contain the answer\n- Use firecrawl_crawl when you need to explore and discover relevant pages\n- Continue searching until your confidence reaches the specified confidence threshold OR you've exhausted relevant sources\n- Always provide complete function arguments matching the required schema\n\n**MANDATORY STOP CONDITIONS:**\nYou MUST stop searching and provide your final answer when ANY of these conditions are met:\n- You have made 5 tool calls total (hard limit)\n- Your confidence reaches the confidence threshold ({{CONFIDENCE_THRESHOLD}}%) or higher\n- You find no new relevant information in your last 2 consecutive searches\n- You are about to crawl/extract from URLs you've already processed\n- No more relevant URLs are available to search\n\n**Goal:** Raise your confidence level as high as possible through thorough documentation search.\n\n**Confidence Assessment:**\n- Evaluate how completely and accurately you can answer the customer's question\n- Consider: completeness of information, clarity of documentation, presence of contradictions\n- You must explicitly state your confidence percentage (0-100%)\n- Continue searching if below the confidence threshold ({{CONFIDENCE_THRESHOLD}}%) AND more sources are available AND stop conditions not met\n\n**Output Requirements:**\n- Extract verbatim quotes from documentation sources\n- Provide comprehensive answers based solely on documentation\n- Include relevant source URLs (limit to 2-3 most important)\n- Assess your final confidence level objectively\n\n**Tool Call Tracking:**\n- Keep count of your tool calls (1/5, 2/5, etc.)\n- After each tool call, evaluate if stop conditions are met\n- If stop conditions are met, immediately provide final output in XML format\n\nAlways choose a function call from the available tools and provide complete arguments. When finished, output your findings in the specified XML format.",
+            "ollama_host": "localhost:11434",
+            "prompt_values": {},
+            "multiple_tool_calls": true,
+            "conversation_history": []
+          },
+          "metadata": {
+            "position": {
+              "x": 2693.3732369945164,
+              "y": 208.8074862369709
+            }
+          },
+          "input_links": [
+            {
+              "id": "5f17f7fe-6990-4513-8a56-c58c349ba933",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "source_name": "conversations",
+              "sink_name": "conversation_history",
+              "is_static": false
+            },
+            {
+              "id": "ebbd1614-a4cc-4fdb-b5a7-8e09345675b6",
+              "source_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+              "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "source_name": "output_message",
+              "sink_name": "last_tool_output",
+              "is_static": false
+            },
+            {
+              "id": "aa80e27a-4dd3-41b4-9d4a-aab33c0dd88d",
+              "source_id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+              "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "source_name": "output",
+              "sink_name": "prompt",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "5f17f7fe-6990-4513-8a56-c58c349ba933",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "source_name": "conversations",
+              "sink_name": "conversation_history",
+              "is_static": false
+            },
+            {
+              "id": "a68a6096-56e2-4ee3-9c3d-3d6ed8d3e3d4",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+              "source_name": "finished",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "206be745-3a31-4b63-ae95-29a7a5822266",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+              "source_name": "tools_^_agentoutputblock_~_value",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "50c8dfdf-edd4-4ac0-9859-c4eee9737661",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+              "source_name": "tools_^_firecrawlextractblock_~_urls",
+              "sink_name": "urls",
+              "is_static": false
+            },
+            {
+              "id": "43b50d09-91ad-4195-9282-143c5c074b85",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+              "source_name": "tools_^_firecrawlextractblock_~_prompt",
+              "sink_name": "prompt",
+              "is_static": false
+            },
+            {
+              "id": "77e077d9-b442-4a0f-95da-fb878a8fe624",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "16fbae22-b2ed-42c7-890c-c8554fe74656",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "e6441aea-26d9-4292-80be-54ecdab260ae",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+              "source_name": "tools_^_firecrawlcrawlblock_~_url",
+              "sink_name": "url",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "a15a19b5-d771-4e30-bb76-2c368468df23",
+          "block_id": "96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
+          "input_default": {
+            "name": "Confidence Threshold",
+            "title": "Auto-Reply Confidence Threshold",
+            "advanced": false,
+            "description": "Minimum confidence score (0-100) required for automatic responses",
+            "placeholder_values": []
+          },
+          "metadata": {
+            "position": {
+              "x": -573.5612071210447,
+              "y": 214.50574812392034
+            }
+          },
+          "input_links": [],
+          "output_links": [
+            {
+              "id": "f96fd53d-c66d-437a-84a4-222abf018bde",
+              "source_id": "a15a19b5-d771-4e30-bb76-2c368468df23",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "result",
+              "sink_name": "values_#_CONFIDENCE_THRESHOLD",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+          "block_id": "bdbbaba0-03b7-4971-970e-699e2de6015e",
+          "input_default": {
+            "limit": 10,
+            "formats": [
+              "markdown"
+            ],
+            "max_age": 3600000,
+            "wait_for": 0,
+            "only_main_content": true
+          },
+          "metadata": {
+            "position": {
+              "x": 3635.6678690822937,
+              "y": -525.4558779233904
+            }
+          },
+          "input_links": [
+            {
+              "id": "e6441aea-26d9-4292-80be-54ecdab260ae",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+              "source_name": "tools_^_firecrawlcrawlblock_~_url",
+              "sink_name": "url",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "3a1f2995-6ea7-41e4-a10c-295febd1892a",
+              "source_id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+              "sink_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+              "source_name": "markdown",
+              "sink_name": "input_message",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "16fbae22-b2ed-42c7-890c-c8554fe74656",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "ERROR",
+            "advanced": false
+          },
+          "metadata": {
+            "position": {
+              "x": 3318.7470205644167,
+              "y": 2347.415524537313
+            }
+          },
+          "input_links": [
+            {
+              "id": "77e077d9-b442-4a0f-95da-fb878a8fe624",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "16fbae22-b2ed-42c7-890c-c8554fe74656",
+              "source_name": "error",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+          "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+          "input_default": {
+            "name": "Answer",
+            "advanced": false
+          },
+          "metadata": {
+            "position": {
+              "x": 4740.84460411233,
+              "y": 1254.0475468406855
+            }
+          },
+          "input_links": [
+            {
+              "id": "a68a6096-56e2-4ee3-9c3d-3d6ed8d3e3d4",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+              "source_name": "finished",
+              "sink_name": "value",
+              "is_static": false
+            },
+            {
+              "id": "206be745-3a31-4b63-ae95-29a7a5822266",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+              "source_name": "tools_^_agentoutputblock_~_value",
+              "sink_name": "value",
+              "is_static": false
+            }
+          ],
+          "output_links": []
+        },
+        {
+          "id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+          "block_id": "d1774756-4d9e-40e6-bab1-47ec0ccd81b2",
+          "input_default": {
+            "urls": [],
+            "enable_web_search": false
+          },
+          "metadata": {
+            "position": {
+              "x": 4262.589888165149,
+              "y": -538.1522431063202
+            }
+          },
+          "input_links": [
+            {
+              "id": "50c8dfdf-edd4-4ac0-9859-c4eee9737661",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+              "source_name": "tools_^_firecrawlextractblock_~_urls",
+              "sink_name": "urls",
+              "is_static": false
+            },
+            {
+              "id": "43b50d09-91ad-4195-9282-143c5c074b85",
+              "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "sink_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+              "source_name": "tools_^_firecrawlextractblock_~_prompt",
+              "sink_name": "prompt",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "5b904c69-fb0c-4bf7-b4c1-4429d5c2f17c",
+              "source_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+              "sink_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+              "source_name": "data",
+              "sink_name": "input_message",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+          "block_id": "f0f43e2b-c943-48a0-a7f1-40136ca4d3b9",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": 700.7848438430577,
+              "y": 219.16232116733937
+            }
+          },
+          "input_links": [
+            {
+              "id": "0601d9e3-086d-41c6-b2fe-1fe1f7166fd5",
+              "source_id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+              "sink_id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+              "source_name": "result",
+              "sink_name": "url",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "bdfce016-b3ec-4a81-a343-a5f2c063168d",
+              "source_id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "links",
+              "sink_name": "values_#_SITEMAP_URL_LIST",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+          "block_id": "db7d8f02-2f44-4c55-ab7a-eae0941f0c30",
+          "input_default": {
+            "format": "<task_parameters>\nDocumentation Base URL: {{DOCUMENTATION_URL}}\nCustomer Question: {{QUESTION}}\nRequired Confidence Threshold: {{CONFIDENCE_THRESHOLD}}%\nAvailable Pages (Sitemap): {{SITEMAP_URL_LIST}}\n</task_parameters>\n\n<goal>\nContinue searching and extracting information until you raise your confidence level as high as possible. Don't stop until you reach {{CONFIDENCE_THRESHOLD}}% confidence OR exhaust all relevant documentation sources.\n</goal>\n\n<context_gathering>\nMethod:\n- Start with sitemap analysis from the sitemap url list\n- Use FireCrawl Extract for known specific URLs, FireCrawl Crawl for exploration\n- Keep searching to raise confidence - don't settle for partial answers\n- Extract as much relevant information as possible\n</context_gathering>\n\n<firecrawl_limits>\nCRITICAL: FireCrawl Extract accepts maximum 10 URLs per request. Be highly selective and choose only the most comprehensive, relevant pages for extraction.\n</firecrawl_limits>\n\n<tool_strategy>\n- Use FireCrawl Crawl for broader exploration when you need to discover relevant content\n- Use FireCrawl Extract for up to 10 most critical URLs when you know exactly what pages contain the answer\n- If you identify more than 10 relevant URLs, prioritize: overview pages > specific subsections > examples\n</tool_strategy>\n\n<output_format>\n<relevant_information>\n  <confidence_score>[X]</confidence_score>\n  <quotes>\n    <quote source=\"[URL]\">[Exact text from documentation]</quote>\n    <!-- Add all relevant quotes with their sources -->\n  </quotes>\n  <answer>[Complete response based solely on documentation findings]</answer>\n  <source_urls>\n    <!-- Include all relevant URLs found during search -->\n    <url>[URL1]</url>\n    <url>[URL2]</url>\n    <url>[URL3]</url>\n...\n  </source_urls>\n</relevant_information>\n</output_format>\n\nFind the most comprehensive documentation-based answer for: \"{{QUESTION}}\"\n\nBegin by analyzing the sitemap url list and planning your search strategy to achieve the highest possible confidence level.",
+            "values": {}
+          },
+          "metadata": {
+            "position": {
+              "x": 1366.0592785137596,
+              "y": 214.32942114785305
+            }
+          },
+          "input_links": [
+            {
+              "id": "85507b2c-4eca-4d66-a414-486e65d5382f",
+              "source_id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "result",
+              "sink_name": "values_#_DOCUMENTATION_URL",
+              "is_static": true
+            },
+            {
+              "id": "bdfce016-b3ec-4a81-a343-a5f2c063168d",
+              "source_id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "links",
+              "sink_name": "values_#_SITEMAP_URL_LIST",
+              "is_static": false
+            },
+            {
+              "id": "f96fd53d-c66d-437a-84a4-222abf018bde",
+              "source_id": "a15a19b5-d771-4e30-bb76-2c368468df23",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "result",
+              "sink_name": "values_#_CONFIDENCE_THRESHOLD",
+              "is_static": true
+            },
+            {
+              "id": "de329c54-737a-4a44-85ee-44b23ac7f683",
+              "source_id": "8a0577e3-315a-4bd8-99d9-da082316b729",
+              "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "source_name": "result",
+              "sink_name": "values_#_QUESTION",
+              "is_static": true
+            }
+          ],
+          "output_links": [
+            {
+              "id": "535b347d-fa2d-4461-8ade-f093cf73dde2",
+              "source_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "sink_id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+              "source_name": "output",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ]
+        },
+        {
+          "id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+          "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+          "input_default": {},
+          "metadata": {
+            "position": {
+              "x": 2009.3858195835292,
+              "y": 219.61895555965955
+            }
+          },
+          "input_links": [
+            {
+              "id": "535b347d-fa2d-4461-8ade-f093cf73dde2",
+              "source_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+              "sink_id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+              "source_name": "output",
+              "sink_name": "input",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "aa80e27a-4dd3-41b4-9d4a-aab33c0dd88d",
+              "source_id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+              "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "source_name": "output",
+              "sink_name": "prompt",
+              "is_static": true
+            }
+          ]
+        },
+        {
+          "id": "c6b1017c-a82e-401f-ae59-3a36b993a5c1",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "Inputs"
+          },
+          "metadata": {
+            "position": {
+              "x": -1195.91298968421,
+              "y": -189.12681492578457
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "235155a9-e4f6-4a6d-90df-a3ba5bd31bbc",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "Toolbox"
+          },
+          "metadata": {
+            "position": {
+              "x": 3629.7459544349654,
+              "y": -902.1151785811265
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "57e269dc-75d9-46cc-85be-85e693759c94",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "Core: Smart Decision Maker and prompt"
+          },
+          "metadata": {
+            "position": {
+              "x": 1361.3560589479616,
+              "y": -181.6344386113369
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "68c9962e-c3b6-4483-a262-08fb93348698",
+          "block_id": "cc10ff7b-7753-4ff2-9af6-9399b1a7eddc",
+          "input_default": {
+            "text": "Output"
+          },
+          "metadata": {
+            "position": {
+              "x": 4745.12015746418,
+              "y": 869.4735488177469
+            }
+          },
+          "input_links": [],
+          "output_links": []
+        },
+        {
+          "id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+          "block_id": "d67a9c52-5e4e-11e2-bcfd-0800200c9a71",
+          "input_default": {
+            "days": 0,
+            "hours": 0,
+            "repeat": 1,
+            "minutes": 0,
+            "seconds": "15",
+            "input_message": "timer finished"
+          },
+          "metadata": {
+            "position": {
+              "x": 4908.496986570356,
+              "y": -532.4058692534887
+            }
+          },
+          "input_links": [
+            {
+              "id": "5b904c69-fb0c-4bf7-b4c1-4429d5c2f17c",
+              "source_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+              "sink_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+              "source_name": "data",
+              "sink_name": "input_message",
+              "is_static": false
+            },
+            {
+              "id": "3a1f2995-6ea7-41e4-a10c-295febd1892a",
+              "source_id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+              "sink_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+              "source_name": "markdown",
+              "sink_name": "input_message",
+              "is_static": false
+            }
+          ],
+          "output_links": [
+            {
+              "id": "ebbd1614-a4cc-4fdb-b5a7-8e09345675b6",
+              "source_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+              "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+              "source_name": "output_message",
+              "sink_name": "last_tool_output",
+              "is_static": false
+            }
+          ]
+        }
+      ],
+      "links": [
+        {
+          "id": "43b50d09-91ad-4195-9282-143c5c074b85",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+          "source_name": "tools_^_firecrawlextractblock_~_prompt",
+          "sink_name": "prompt",
+          "is_static": false
+        },
+        {
+          "id": "77e077d9-b442-4a0f-95da-fb878a8fe624",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "16fbae22-b2ed-42c7-890c-c8554fe74656",
+          "source_name": "error",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "3a1f2995-6ea7-41e4-a10c-295febd1892a",
+          "source_id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+          "sink_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+          "source_name": "markdown",
+          "sink_name": "input_message",
+          "is_static": false
+        },
+        {
+          "id": "e6441aea-26d9-4292-80be-54ecdab260ae",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "8a2766d8-94c3-40f2-8e60-66cc63f6425e",
+          "source_name": "tools_^_firecrawlcrawlblock_~_url",
+          "sink_name": "url",
+          "is_static": false
+        },
+        {
+          "id": "aa80e27a-4dd3-41b4-9d4a-aab33c0dd88d",
+          "source_id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+          "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "source_name": "output",
+          "sink_name": "prompt",
+          "is_static": true
+        },
+        {
+          "id": "5b904c69-fb0c-4bf7-b4c1-4429d5c2f17c",
+          "source_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+          "sink_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+          "source_name": "data",
+          "sink_name": "input_message",
+          "is_static": false
+        },
+        {
+          "id": "535b347d-fa2d-4461-8ade-f093cf73dde2",
+          "source_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+          "sink_id": "8d5f6594-d865-4aa7-8479-7f36b4c083df",
+          "source_name": "output",
+          "sink_name": "input",
+          "is_static": false
+        },
+        {
+          "id": "de329c54-737a-4a44-85ee-44b23ac7f683",
+          "source_id": "8a0577e3-315a-4bd8-99d9-da082316b729",
+          "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+          "source_name": "result",
+          "sink_name": "values_#_QUESTION",
+          "is_static": true
+        },
+        {
+          "id": "bdfce016-b3ec-4a81-a343-a5f2c063168d",
+          "source_id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+          "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+          "source_name": "links",
+          "sink_name": "values_#_SITEMAP_URL_LIST",
+          "is_static": false
+        },
+        {
+          "id": "a68a6096-56e2-4ee3-9c3d-3d6ed8d3e3d4",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+          "source_name": "finished",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "206be745-3a31-4b63-ae95-29a7a5822266",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "c9f24972-04a3-472e-a545-6cdd5e0201e1",
+          "source_name": "tools_^_agentoutputblock_~_value",
+          "sink_name": "value",
+          "is_static": false
+        },
+        {
+          "id": "85507b2c-4eca-4d66-a414-486e65d5382f",
+          "source_id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+          "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+          "source_name": "result",
+          "sink_name": "values_#_DOCUMENTATION_URL",
+          "is_static": true
+        },
+        {
+          "id": "5f17f7fe-6990-4513-8a56-c58c349ba933",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "source_name": "conversations",
+          "sink_name": "conversation_history",
+          "is_static": false
+        },
+        {
+          "id": "ebbd1614-a4cc-4fdb-b5a7-8e09345675b6",
+          "source_id": "94c831ec-ecf0-477c-8d77-45dec19457d5",
+          "sink_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "source_name": "output_message",
+          "sink_name": "last_tool_output",
+          "is_static": false
+        },
+        {
+          "id": "f96fd53d-c66d-437a-84a4-222abf018bde",
+          "source_id": "a15a19b5-d771-4e30-bb76-2c368468df23",
+          "sink_id": "12c4366e-81e7-4e65-b2b5-eb5fc8c65230",
+          "source_name": "result",
+          "sink_name": "values_#_CONFIDENCE_THRESHOLD",
+          "is_static": true
+        },
+        {
+          "id": "50c8dfdf-edd4-4ac0-9859-c4eee9737661",
+          "source_id": "29c894cd-e453-4159-b2da-ebbafdaac2fe",
+          "sink_id": "5f122699-682a-43de-b45e-2b2933f0f5ad",
+          "source_name": "tools_^_firecrawlextractblock_~_urls",
+          "sink_name": "urls",
+          "is_static": false
+        },
+        {
+          "id": "0601d9e3-086d-41c6-b2fe-1fe1f7166fd5",
+          "source_id": "263a6854-5aed-4b9d-9d18-41b25e5002d0",
+          "sink_id": "e4d24a93-2107-41a2-b853-69b7b3603153",
+          "source_name": "result",
+          "sink_name": "url",
+          "is_static": true
+        }
+      ],
+      "forked_from_id": null,
+      "forked_from_version": null,
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "Documentation URL": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "short-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Documentation URL"
+          },
+          "Question": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "format": "long-text",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Question"
+          },
+          "Confidence Threshold": {
+            "advanced": false,
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "secret": false,
+            "title": "Auto-Reply Confidence Threshold",
+            "description": "Minimum confidence score (0-100) required for automatic responses"
+          }
+        },
+        "required": [
+          "Documentation URL",
+          "Question",
+          "Confidence Threshold"
+        ]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "ERROR": {
+            "advanced": false,
+            "secret": false,
+            "title": "ERROR"
+          },
+          "Answer": {
+            "advanced": false,
+            "secret": false,
+            "title": "Answer"
+          }
+        },
+        "required": [
+          "ERROR",
+          "Answer"
+        ]
+      },
+      "has_external_trigger": false,
+      "has_human_in_the_loop": false,
+      "trigger_setup_info": null
+    }
+  ],
+  "user_id": "",
+  "created_at": "2025-09-16T19:11:44.836Z",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Documentation URL": {
+        "advanced": false,
+        "secret": false,
+        "title": "Documentation URL",
+        "default": ""
+      },
+      "Company Tone": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Company Tone",
+        "enum": [
+          "Professional",
+          "Friendly",
+          "Casual",
+          "Technical"
+        ],
+        "default": ""
+      },
+      "Confidence Threshold": {
+        "advanced": false,
+        "secret": false,
+        "title": "Auto-Reply Confidence Threshold",
+        "description": "Minimum confidence score (0-100) required for automatic responses",
+        "default": ""
+      },
+      "Escalation Email": {
+        "advanced": false,
+        "secret": false,
+        "title": "Human Escalation Email Address",
+        "description": "Email address where complex support requests that require human attention will be forwarded",
+        "default": ""
+      },
+      "Email Signature": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "long-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Email Signature",
+        "default": ""
+      },
+      "Airtable Workspace ID": {
+        "advanced": false,
+        "anyOf": [
+          {
+            "format": "short-text",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "secret": false,
+        "title": "Airtable Workspace ID",
+        "description": "To get your Airtable workspace ID is to open Airtable in a browser, select your workspace, and check the URL in your browser\u2019s address bar. The workspace ID is the string that starts with \"wsp\" in the URL (for example,\u00a0https://airtable.com/workspaces/wspsqMNxxxxxxxxxxxxx). Do not include the trailing question mark if present.",
+        "default": ""
+      }
+    },
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Error Reading Emails": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error Reading Emails"
+      },
+      "No New Support Tickets": {
+        "advanced": false,
+        "secret": false,
+        "title": "No New Support Tickets"
+      },
+      "Error Crawling Documentation": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error Crawling Documentation"
+      },
+      "Error Gmail Auto-Reply": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error Gmail Auto-Reply"
+      },
+      "Dictionary Creation Failed": {
+        "advanced": false,
+        "secret": false,
+        "title": "Dictionary Creation Failed"
+      },
+      "Adding to List Process Failed": {
+        "advanced": false,
+        "secret": false,
+        "title": "Adding to List Process Failed"
+      },
+      "Success": {
+        "advanced": false,
+        "secret": false,
+        "title": "Success"
+      },
+      "Error in Gmail Escalation Process": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error in Gmail Escalation Process"
+      },
+      "Error adding to Airtable Write payload": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error adding to Airtable Write payload"
+      },
+      "Error Type Conversion": {
+        "advanced": false,
+        "secret": false,
+        "title": "Error Type Conversion"
+      }
+    },
+    "required": [
+      "Error Reading Emails",
+      "No New Support Tickets",
+      "Error Crawling Documentation",
+      "Error Gmail Auto-Reply",
+      "Dictionary Creation Failed",
+      "Adding to List Process Failed",
+      "Success",
+      "Error in Gmail Escalation Process",
+      "Error adding to Airtable Write payload",
+      "Error Type Conversion"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "properties": {
+      "google_oauth2_credentials": {
+        "credentials_provider": [
+          "google"
+        ],
+        "credentials_types": [
+          "oauth2"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "google",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "oauth2",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.GOOGLE: 'google'>], Literal['oauth2']]",
+        "type": "object",
+        "credentials_scopes": [
+          "https://www.googleapis.com/auth/gmail.send",
+          "https://www.googleapis.com/auth/gmail.modify",
+          "https://www.googleapis.com/auth/gmail.readonly"
+        ],
+        "discriminator_values": []
+      },
+      "openai_api_key_credentials": {
+        "credentials_provider": [
+          "openai"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "openai",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.OPENAI: 'openai'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "gpt-4.1-2025-04-14",
+          "gpt-5-2025-08-07"
+        ]
+      },
+      "airtable_api_key-oauth2_credentials": {
+        "credentials_provider": [
+          "airtable"
+        ],
+        "credentials_types": [
+          "api_key",
+          "oauth2"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "airtable",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "api_key",
+              "oauth2"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.AIRTABLE: 'airtable'>], Literal['api_key', 'oauth2']]",
+        "type": "object",
+        "discriminator_values": []
+      },
+      "anthropic_api_key_credentials": {
+        "credentials_provider": [
+          "anthropic"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "anthropic",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.ANTHROPIC: 'anthropic'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator": "model",
+        "discriminator_mapping": {
+          "Llama-3.3-70B-Instruct": "llama_api",
+          "Llama-3.3-8B-Instruct": "llama_api",
+          "Llama-4-Maverick-17B-128E-Instruct-FP8": "llama_api",
+          "Llama-4-Scout-17B-16E-Instruct-FP8": "llama_api",
+          "Qwen/Qwen2.5-72B-Instruct-Turbo": "aiml_api",
+          "amazon/nova-lite-v1": "open_router",
+          "amazon/nova-micro-v1": "open_router",
+          "amazon/nova-pro-v1": "open_router",
+          "claude-3-7-sonnet-20250219": "anthropic",
+          "claude-3-haiku-20240307": "anthropic",
+          "claude-haiku-4-5-20251001": "anthropic",
+          "claude-opus-4-1-20250805": "anthropic",
+          "claude-opus-4-20250514": "anthropic",
+          "claude-opus-4-5-20251101": "anthropic",
+          "claude-sonnet-4-20250514": "anthropic",
+          "claude-sonnet-4-5-20250929": "anthropic",
+          "cohere/command-r-08-2024": "open_router",
+          "cohere/command-r-plus-08-2024": "open_router",
+          "deepseek/deepseek-chat": "open_router",
+          "deepseek/deepseek-r1-0528": "open_router",
+          "dolphin-mistral:latest": "ollama",
+          "google/gemini-2.0-flash-001": "open_router",
+          "google/gemini-2.0-flash-lite-001": "open_router",
+          "google/gemini-2.5-flash": "open_router",
+          "google/gemini-2.5-flash-lite-preview-06-17": "open_router",
+          "google/gemini-2.5-pro-preview-03-25": "open_router",
+          "google/gemini-3-pro-preview": "open_router",
+          "gpt-3.5-turbo": "openai",
+          "gpt-4-turbo": "openai",
+          "gpt-4.1-2025-04-14": "openai",
+          "gpt-4.1-mini-2025-04-14": "openai",
+          "gpt-4o": "openai",
+          "gpt-4o-mini": "openai",
+          "gpt-5-2025-08-07": "openai",
+          "gpt-5-chat-latest": "openai",
+          "gpt-5-mini-2025-08-07": "openai",
+          "gpt-5-nano-2025-08-07": "openai",
+          "gpt-5.1-2025-11-13": "openai",
+          "gryphe/mythomax-l2-13b": "open_router",
+          "llama-3.1-8b-instant": "groq",
+          "llama-3.3-70b-versatile": "groq",
+          "llama3": "ollama",
+          "llama3.1:405b": "ollama",
+          "llama3.2": "ollama",
+          "llama3.3": "ollama",
+          "meta-llama/Llama-3.2-3B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Llama-3.3-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": "aiml_api",
+          "meta-llama/llama-4-maverick": "open_router",
+          "meta-llama/llama-4-scout": "open_router",
+          "microsoft/wizardlm-2-8x22b": "open_router",
+          "mistralai/mistral-nemo": "open_router",
+          "moonshotai/kimi-k2": "open_router",
+          "nousresearch/hermes-3-llama-3.1-405b": "open_router",
+          "nousresearch/hermes-3-llama-3.1-70b": "open_router",
+          "nvidia/llama-3.1-nemotron-70b-instruct": "aiml_api",
+          "o1": "openai",
+          "o1-mini": "openai",
+          "o3-2025-04-16": "openai",
+          "o3-mini": "openai",
+          "openai/gpt-oss-120b": "open_router",
+          "openai/gpt-oss-20b": "open_router",
+          "perplexity/sonar": "open_router",
+          "perplexity/sonar-deep-research": "open_router",
+          "perplexity/sonar-pro": "open_router",
+          "qwen/qwen3-235b-a22b-thinking-2507": "open_router",
+          "qwen/qwen3-coder": "open_router",
+          "v0-1.0-md": "v0",
+          "v0-1.5-lg": "v0",
+          "v0-1.5-md": "v0",
+          "x-ai/grok-4": "open_router",
+          "x-ai/grok-4-fast": "open_router",
+          "x-ai/grok-4.1-fast": "open_router",
+          "x-ai/grok-code-fast-1": "open_router"
+        },
+        "discriminator_values": [
+          "claude-sonnet-4-20250514"
+        ]
+      },
+      "firecrawl_api_key_credentials": {
+        "credentials_provider": [
+          "firecrawl"
+        ],
+        "credentials_types": [
+          "api_key"
+        ],
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Title"
+          },
+          "provider": {
+            "const": "firecrawl",
+            "title": "Provider",
+            "type": "string"
+          },
+          "type": {
+            "const": "api_key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider",
+          "type"
+        ],
+        "title": "CredentialsMetaInput[Literal[<ProviderName.FIRECRAWL: 'firecrawl'>], Literal['api_key']]",
+        "type": "object",
+        "discriminator_values": []
+      }
+    },
+    "required": [
+      "google_oauth2_credentials",
+      "openai_api_key_credentials",
+      "airtable_api_key-oauth2_credentials",
+      "anthropic_api_key_credentials",
+      "firecrawl_api_key_credentials"
+    ],
+    "title": "AutomatedSupportAgentCredentialsInputSchema",
+    "type": "object"
+  }
+}

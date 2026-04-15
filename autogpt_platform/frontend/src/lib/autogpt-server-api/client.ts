@@ -16,8 +16,6 @@ import type {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
-  CreatorDetails,
-  CreatorsResponse,
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
@@ -43,36 +41,35 @@ import type {
   LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
-  MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
   NotificationPreferenceDTO,
   OttoQuery,
   OttoResponse,
-  ProfileDetails,
   RefundRequest,
-  ReviewSubmissionRequest,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
-  StoreAgentDetails,
-  StoreAgentsResponse,
-  StoreListingsWithVersionsResponse,
-  StoreReview,
-  StoreReviewCreate,
-  StoreSubmission,
-  StoreSubmissionRequest,
-  StoreSubmissionsResponse,
-  SubmissionStatus,
   TransactionHistory,
   User,
-  UserOnboarding,
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
   WebSocketNotification,
 } from "./types";
 
 const isClient = environment.isClientSide();
+
+/**
+ * Thrown when a request fails because the user is logging out.
+ * Callers can catch this specifically to silently ignore logout-related failures,
+ * rather than receiving null and crashing on property access.
+ */
+export class LogoutInterruptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "LogoutInterruptError";
+  }
+}
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -130,11 +127,15 @@ export default class BackendAPI {
   /////////////// CREDITS ////////////////
   ////////////////////////////////////////
 
-  getUserCredit(): Promise<{ credits: number }> {
+  async getUserCredit(): Promise<{ credits: number }> {
     try {
-      return this._get("/credits");
-    } catch {
-      return Promise.resolve({ credits: 0 });
+      const response = await this._get("/credits");
+      return response ?? { credits: 0 };
+    } catch (error) {
+      if (!(error instanceof LogoutInterruptError)) {
+        Sentry.captureException(error);
+      }
+      return { credits: 0 };
     }
   }
 
@@ -193,27 +194,24 @@ export default class BackendAPI {
     return this._request("PATCH", "/credits");
   }
 
-  ////////////////////////////////////////
-  ////////////// ONBOARDING //////////////
-  ////////////////////////////////////////
-
-  getUserOnboarding(): Promise<UserOnboarding> {
-    return this._get("/onboarding");
+  getSubscription(): Promise<{
+    tier: string;
+    monthly_cost: number;
+    tier_costs: Record<string, number>;
+  }> {
+    return this._get("/credits/subscription");
   }
 
-  updateUserOnboarding(
-    onboarding: Omit<Partial<UserOnboarding>, "rewardedFor">,
-  ): Promise<void> {
-    return this._request("PATCH", "/onboarding", onboarding);
-  }
-
-  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
-    return this._get("/onboarding/agents");
-  }
-
-  /** Check if onboarding is enabled not if user finished it or not. */
-  isOnboardingEnabled(): Promise<boolean> {
-    return this._get("/onboarding/enabled");
+  setSubscriptionTier(
+    tier: string,
+    successUrl?: string,
+    cancelUrl?: string,
+  ): Promise<{ url: string }> {
+    return this._request("POST", "/credits/subscription", {
+      tier,
+      success_url: successUrl ?? "",
+      cancel_url: cancelUrl ?? "",
+    });
   }
 
   ////////////////////////////////////////
@@ -249,8 +247,14 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}/versions`);
   }
 
-  createGraph(graph: GraphCreatable): Promise<Graph> {
-    const requestBody = { graph } as GraphCreateRequestBody;
+  createGraph(
+    graph: GraphCreatable,
+    source?: GraphCreationSource,
+  ): Promise<Graph> {
+    const requestBody: GraphCreateRequestBody = { graph };
+    if (source) {
+      requestBody.source = source;
+    }
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -274,11 +278,13 @@ export default class BackendAPI {
     version: number,
     inputs: { [key: string]: any } = {},
     credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
+    source?: GraphExecutionSource,
   ): Promise<GraphExecutionMeta> {
-    return this._request("POST", `/graphs/${id}/execute/${version}`, {
-      inputs,
-      credentials_inputs,
-    });
+    const body: GraphExecuteRequestBody = { inputs, credentials_inputs };
+    if (source) {
+      body.source = source;
+    }
+    return this._request("POST", `/graphs/${id}/execute/${version}`, body);
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
@@ -369,6 +375,10 @@ export default class BackendAPI {
     return this._get("/integrations/providers");
   }
 
+  listSystemProviders(): Promise<string[]> {
+    return this._get("/integrations/providers/system");
+  }
+
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
     return this._get(
       provider
@@ -442,102 +452,8 @@ export default class BackendAPI {
     return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
-  ////////////////////////////////////////
-  ///////////// V2 STORE API /////////////
-  ////////////////////////////////////////
-
-  getStoreProfile(): Promise<ProfileDetails | null> {
-    try {
-      const result = this._get("/store/profile");
-      return result;
-    } catch (error) {
-      console.error("Error fetching store profile:", error);
-      return Promise.resolve(null);
-    }
-  }
-
-  getStoreAgents(params?: {
-    featured?: boolean;
-    creator?: string;
-    sorted_by?: string;
-    search_query?: string;
-    category?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreAgentsResponse> {
-    return this._get("/store/agents", params);
-  }
-
-  getStoreAgent(
-    username: string,
-    agentName: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}`,
-    );
-  }
-
-  getGraphMetaByStoreListingVersionID(
-    storeListingVersionID: string,
-  ): Promise<GraphMeta> {
-    return this._get(`/store/graph/${storeListingVersionID}`);
-  }
-
-  getStoreAgentByVersionId(
-    storeListingVersionID: string,
-  ): Promise<StoreAgentDetails> {
-    return this._get(`/store/agents/${storeListingVersionID}`);
-  }
-
-  getStoreCreators(params?: {
-    featured?: boolean;
-    search_query?: string;
-    sorted_by?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<CreatorsResponse> {
-    return this._get("/store/creators", params);
-  }
-
-  getStoreCreator(username: string): Promise<CreatorDetails> {
-    return this._get(`/store/creator/${encodeURIComponent(username)}`);
-  }
-
-  getStoreSubmissions(params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreSubmissionsResponse> {
-    return this._get("/store/submissions", params);
-  }
-
-  createStoreSubmission(
-    submission: StoreSubmissionRequest,
-  ): Promise<StoreSubmission> {
-    return this._request("POST", "/store/submissions", submission);
-  }
-
-  generateStoreSubmissionImage(
-    agent_id: string,
-  ): Promise<{ image_url: string }> {
-    return this._request(
-      "POST",
-      "/store/submissions/generate_image?agent_id=" + agent_id,
-    );
-  }
-
-  deleteStoreSubmission(submission_id: string): Promise<boolean> {
-    return this._request("DELETE", `/store/submissions/${submission_id}`);
-  }
-
-  uploadStoreSubmissionMedia(file: File): Promise<string> {
-    return this._uploadFile("/store/submissions/media", file);
-  }
-
-  uploadFile(
+  async uploadFile(
     file: File,
-    provider: string = "gcs",
     expiration_hours: number = 24,
     onProgress?: (progress: number) => void,
   ): Promise<{
@@ -547,81 +463,21 @@ export default class BackendAPI {
     content_type: string;
     expires_in_hours: number;
   }> {
-    return this._uploadFileWithProgress(
+    const response = await this._uploadFileWithProgress(
       "/files/upload",
       file,
-      {
-        provider,
-        expiration_hours,
-      },
+      { expiration_hours },
       onProgress,
-    ).then((response) => {
-      if (typeof response === "string") {
-        return JSON.parse(response);
-      }
-      return response;
-    });
-  }
-
-  updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
-    return this._request("POST", "/store/profile", profile);
-  }
-
-  reviewAgent(
-    username: string,
-    agentName: string,
-    review: StoreReviewCreate,
-  ): Promise<StoreReview> {
-    return this._request(
-      "POST",
-      `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
-        agentName,
-      )}/review`,
-      review,
     );
-  }
-
-  getMyAgents(params?: {
-    page?: number;
-    page_size?: number;
-  }): Promise<MyAgentsResponse> {
-    return this._get("/store/myagents", params);
-  }
-
-  downloadStoreAgent(
-    storeListingVersionId: string,
-    version?: number,
-  ): Promise<BlobPart> {
-    const url = version
-      ? `/store/download/agents/${storeListingVersionId}?version=${version}`
-      : `/store/download/agents/${storeListingVersionId}`;
-
-    return this._get(url);
+    if (typeof response === "string") {
+      return JSON.parse(response);
+    }
+    return response;
   }
 
   /////////////////////////////////////////
   /////////// Admin API ///////////////////
   /////////////////////////////////////////
-
-  getAdminListingsWithVersions(params?: {
-    status?: SubmissionStatus;
-    search?: string;
-    page?: number;
-    page_size?: number;
-  }): Promise<StoreListingsWithVersionsResponse> {
-    return this._get("/store/admin/listings", params);
-  }
-
-  reviewSubmissionAdmin(
-    storeListingVersionId: string,
-    review: ReviewSubmissionRequest,
-  ): Promise<StoreSubmission> {
-    return this._request(
-      "POST",
-      `/store/admin/submissions/${storeListingVersionId}/review`,
-      review,
-    );
-  }
 
   addUserCredits(
     user_id: string,
@@ -642,12 +498,6 @@ export default class BackendAPI {
     transaction_filter?: string;
   }): Promise<UsersBalanceHistoryResponse> {
     return this._get("/credits/admin/users_history", params);
-  }
-
-  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
-    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
-
-    return this._get(url);
   }
 
   ////////////////////////////////////////
@@ -686,14 +536,6 @@ export default class BackendAPI {
   ): Promise<LibraryAgent> {
     return this._get(`/library/agents/by-graph/${graphID}`, {
       version: graphVersion,
-    });
-  }
-
-  addMarketplaceAgentToLibrary(
-    storeListingVersionID: string,
-  ): Promise<LibraryAgent> {
-    return this._request("POST", "/library/agents", {
-      store_listing_version_id: storeListingVersionID,
     });
   }
 
@@ -952,7 +794,37 @@ export default class BackendAPI {
             reject(new Error("Invalid JSON response"));
           }
         } else {
-          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+          // Handle file size errors with user-friendly message
+          if (xhr.status === 413) {
+            reject(new Error("File is too large — max size is 256MB"));
+            return;
+          }
+
+          // Try to parse error response for better messages
+          let errorMessage = `Upload failed (${xhr.status})`;
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            if (errorData.detail) {
+              if (
+                typeof errorData.detail === "string" &&
+                errorData.detail.includes("exceeds the maximum")
+              ) {
+                const match = errorData.detail.match(
+                  /maximum allowed size of (\d+)MB/,
+                );
+                const maxSize = match ? match[1] : "256";
+                errorMessage = `File is too large — max size is ${maxSize}MB`;
+              } else if (typeof errorData.detail === "string") {
+                errorMessage = errorData.detail;
+              }
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch {
+            // Keep default message if parsing fails
+          }
+
+          reject(new Error(errorMessage));
         }
       });
 
@@ -1048,7 +920,7 @@ export default class BackendAPI {
           "Authentication request failed during logout, ignoring:",
           error.message,
         );
-        return null;
+        throw new LogoutInterruptError("Request cancelled: logout in progress");
       }
       throw error;
     }
@@ -1356,8 +1228,18 @@ declare global {
 
 /* *** UTILITY TYPES *** */
 
+type GraphCreationSource = "builder" | "upload";
+type GraphExecutionSource = "builder" | "library" | "onboarding";
+
 type GraphCreateRequestBody = {
   graph: GraphCreatable;
+  source?: GraphCreationSource;
+};
+
+type GraphExecuteRequestBody = {
+  inputs: { [key: string]: any };
+  credentials_inputs: { [key: string]: CredentialsMetaInput };
+  source?: GraphExecutionSource;
 };
 
 type WebsocketMessageTypeMap = {

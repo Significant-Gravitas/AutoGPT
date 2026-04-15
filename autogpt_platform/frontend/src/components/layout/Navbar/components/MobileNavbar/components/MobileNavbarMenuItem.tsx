@@ -19,7 +19,7 @@ export function MobileNavbarMenuItem({
   onClick,
 }: Props) {
   const content = (
-    <div className="inline-flex w-full items-center justify-start gap-4 hover:rounded hover:bg-[#e0e0e0]">
+    <div className="inline-flex w-full items-center justify-start gap-4 py-2 hover:rounded hover:bg-[#e0e0e0]">
       {getAccountMenuOptionIcon(icon)}
       <div className="relative">
         <div

@@ -1,19 +1,18 @@
 "use client";
 
-import { IconLaptop } from "@/components/__legacy__/ui/icons";
 import { cn } from "@/lib/utils";
-import {
-  ChatsIcon,
-  CubeIcon,
-  HouseIcon,
-  StorefrontIcon,
-} from "@phosphor-icons/react/dist/ssr";
+import { Laptop, ListChecksIcon } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import {
+  BuilderIcon,
+  HomepageIcon,
+  MarketplaceIcon,
+} from "./MenuIcon/MenuIcon";
 
-const iconWidthClass = "h-5 w-5";
+const iconBaseClass = "h-4 w-4 shrink-0";
+const iconNudgedClass = "relative bottom-[2px] h-4 w-4 shrink-0";
 
 interface Props {
   name: string;
@@ -22,62 +21,71 @@ interface Props {
 
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
-  const isActive = pathname.includes(href);
-  const chat_enabled = useGetFlag(Flag.CHAT);
+
+  const isActive =
+    href === "/copilot"
+      ? pathname === "/" || pathname.startsWith("/copilot")
+      : pathname.includes(href);
 
   return (
     <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={cn(
-          "flex items-center justify-start gap-1 p-1 md:p-2",
+          "flex items-center justify-start gap-2.5 p-1 md:p-2",
           isActive &&
-            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 dark:bg-neutral-200 md:py-2 md:pl-2 md:pr-3",
+            "rounded-small bg-neutral-800 py-1 pl-1 pr-1.5 transition-all duration-300 md:py-[0.7rem] md:pl-2 md:pr-3",
         )}
       >
         {href === "/marketplace" && (
-          <StorefrontIcon
+          <div
             className={cn(
-              iconWidthClass,
+              iconNudgedClass,
               isActive && "text-white dark:text-black",
             )}
-          />
+          >
+            <MarketplaceIcon />
+          </div>
         )}
         {href === "/build" && (
-          <CubeIcon
+          <div
             className={cn(
-              iconWidthClass,
+              iconNudgedClass,
               isActive && "text-white dark:text-black",
             )}
-          />
+          >
+            <BuilderIcon />
+          </div>
         )}
         {href === "/monitor" && (
-          <IconLaptop
+          <Laptop
             className={cn(
-              iconWidthClass,
+              iconBaseClass,
               isActive && "text-white dark:text-black",
             )}
           />
+        )}
+        {href === "/copilot" && (
+          <div
+            className={cn(
+              iconNudgedClass,
+              isActive && "text-white dark:text-black",
+            )}
+          >
+            <HomepageIcon />
+          </div>
         )}
         {href === "/library" && (
-          <HouseIcon
+          <ListChecksIcon
             className={cn(
-              iconWidthClass,
-              isActive && "text-white dark:text-black",
-            )}
-          />
-        )}
-        {chat_enabled && href === "/chat" && (
-          <ChatsIcon
-            className={cn(
-              iconWidthClass,
+              "h-5 w-5 shrink-0",
               isActive && "text-white dark:text-black",
             )}
           />
         )}
         <Text
-          variant="h4"
+          variant="h5"
           className={cn(
-            "hidden !font-poppins lg:block",
+            "hidden !font-poppins leading-none xl:block",
             isActive ? "!text-white" : "!text-black",
           )}
         >

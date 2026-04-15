@@ -1,14 +1,102 @@
 import {
   ApiError,
+  getServerAuthToken,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
+// Increase body size limit to 256MB to match backend file upload limit
+export const maxDuration = 300; // 5 minutes timeout for large uploads
+export const dynamic = "force-dynamic";
+
+import {
+  fetchWorkspaceDownloadWithRetry,
+  getWorkspaceDownloadErrorMessage,
+  isWorkspaceDownloadRequest,
+} from "./route.helpers";
+
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${environment.getAGPTServerBaseUrl()}/${backendPath}${queryString}`;
+}
+
+/**
+ * Handle workspace file download requests with proper binary response streaming.
+ */
+async function handleWorkspaceDownload(
+  req: NextRequest,
+  backendUrl: string,
+): Promise<NextResponse> {
+  const token = await getServerAuthToken();
+
+  const headers: Record<string, string> = {};
+  if (token && token !== "no-token-found") {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const response = await fetchWorkspaceDownloadWithRetry(
+    backendUrl,
+    headers,
+    2,
+    500,
+  );
+
+  if (!response.ok) {
+    return await createWorkspaceDownloadErrorResponse(response);
+  }
+
+  // Fully buffer the response before forwarding.  Passing response.body as a
+  // ReadableStream causes silent truncation in Next.js / Vercel — the last
+  // ~10 KB of larger files are dropped, corrupting PNGs and truncating CSVs.
+  const buffer = await response.arrayBuffer();
+
+  const contentType =
+    response.headers.get("Content-Type") || "application/octet-stream";
+  const contentDisposition = response.headers.get("Content-Disposition");
+
+  const responseHeaders: Record<string, string> = {
+    "Content-Type": contentType,
+    "Content-Length": String(buffer.byteLength),
+  };
+
+  if (contentDisposition) {
+    responseHeaders["Content-Disposition"] = contentDisposition;
+  }
+
+  return new NextResponse(buffer, {
+    status: 200,
+    headers: responseHeaders,
+  });
+}
+
+async function createWorkspaceDownloadErrorResponse(
+  response: Response,
+): Promise<NextResponse> {
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const body = await response.json();
+      return NextResponse.json(body, { status: response.status });
+    }
+
+    const text = await response.text();
+    const detail =
+      getWorkspaceDownloadErrorMessage(text) ||
+      response.statusText ||
+      "Failed to download file";
+
+    return NextResponse.json({ detail }, { status: response.status });
+  } catch {
+    return NextResponse.json(
+      {
+        detail: response.statusText || "Failed to download file",
+      },
+      { status: response.status },
+    );
+  }
 }
 
 async function handleJsonRequest(
@@ -176,13 +264,17 @@ async function handler(
   };
 
   try {
+    // Handle workspace file downloads separately (binary response)
+    if (method === "GET" && isWorkspaceDownloadRequest(path)) {
+      return await handleWorkspaceDownload(req, backendUrl);
+    }
+
     if (method === "GET" || method === "DELETE") {
       responseBody = await handleGetDeleteRequest(method, backendUrl, req);
     } else if (contentType?.includes("application/json")) {
       responseBody = await handleJsonRequest(req, method, backendUrl);
     } else if (contentType?.includes("multipart/form-data")) {
       responseBody = await handleFormDataRequest(req, backendUrl);
-      responseHeaders["Content-Type"] = "text/plain";
     } else if (contentType?.includes("application/x-www-form-urlencoded")) {
       responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
     } else {

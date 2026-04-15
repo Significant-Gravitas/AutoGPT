@@ -1,5 +1,6 @@
 import contextlib
 import logging
+import os
 from enum import Enum
 from functools import wraps
 from typing import Any, Awaitable, Callable, TypeVar
@@ -38,6 +39,13 @@ class Flag(str, Enum):
     AGENT_ACTIVITY = "agent-activity"
     ENABLE_PLATFORM_PAYMENT = "enable-platform-payment"
     CHAT = "chat"
+    CHAT_MODE_OPTION = "chat-mode-option"
+    COPILOT_SDK = "copilot-sdk"
+    COPILOT_DAILY_TOKEN_LIMIT = "copilot-daily-token-limit"
+    COPILOT_WEEKLY_TOKEN_LIMIT = "copilot-weekly-token-limit"
+    STRIPE_PRICE_PRO = "stripe-price-id-pro"
+    STRIPE_PRICE_BUSINESS = "stripe-price-id-business"
+    GRAPHITI_MEMORY = "graphiti-memory"
 
 
 def is_configured() -> bool:
@@ -162,6 +170,30 @@ async def get_feature_flag_value(
         return default
 
 
+def _env_flag_override(flag_key: Flag) -> bool | None:
+    """Return a local override for ``flag_key`` from the environment.
+
+    Set ``FORCE_FLAG_<NAME>=true|false`` (``NAME`` = flag value with
+    ``-`` → ``_``, upper-cased) to bypass LaunchDarkly for a single
+    flag in local dev or tests.  Returns ``None`` when no override
+    is configured so the caller falls through to LaunchDarkly.
+
+    The ``NEXT_PUBLIC_FORCE_FLAG_<NAME>`` prefix is also accepted so a
+    single shared env var can toggle a flag across backend and
+    frontend (the frontend requires the ``NEXT_PUBLIC_`` prefix to
+    expose the value to the browser bundle).
+
+    Example: ``FORCE_FLAG_CHAT_MODE_OPTION=true`` forces
+    ``Flag.CHAT_MODE_OPTION`` on regardless of LaunchDarkly.
+    """
+    suffix = flag_key.value.upper().replace("-", "_")
+    for prefix in ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_"):
+        raw = os.environ.get(prefix + suffix)
+        if raw is not None:
+            return raw.strip().lower() in ("1", "true", "yes", "on")
+    return None
+
+
 async def is_feature_enabled(
     flag_key: Flag,
     user_id: str,
@@ -178,6 +210,11 @@ async def is_feature_enabled(
     Returns:
         True if feature is enabled, False otherwise
     """
+    override = _env_flag_override(flag_key)
+    if override is not None:
+        logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
+        return override
+
     result = await get_feature_flag_value(flag_key.value, user_id, default)
 
     # If the result is already a boolean, return it

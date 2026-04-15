@@ -1,5 +1,12 @@
 import asyncio
 
+from backend.blocks._base import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchemaInput,
+    BlockSchemaOutput,
+)
 from backend.blocks.apollo._api import ApolloClient
 from backend.blocks.apollo._auth import (
     TEST_CREDENTIALS,
@@ -14,14 +21,7 @@ from backend.blocks.apollo.models import (
     SearchPeopleRequest,
     SenorityLevels,
 )
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchemaInput,
-    BlockSchemaOutput,
-)
-from backend.data.model import CredentialsField, SchemaField
+from backend.data.model import CredentialsField, NodeExecutionStats, SchemaField
 
 
 class SearchPeopleBlock(Block):
@@ -366,4 +366,9 @@ class SearchPeopleBlock(Block):
                 *(enrich_or_fallback(person) for person in people)
             )
 
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(people)), provider_cost_type="items"
+            )
+        )
         yield "people", people

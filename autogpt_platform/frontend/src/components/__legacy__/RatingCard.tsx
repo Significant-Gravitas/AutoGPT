@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Cross1Icon } from "@radix-ui/react-icons";
 import { IconStar, IconStarFilled } from "@/components/__legacy__/ui/icons";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { postV2CreateAgentReview } from "@/app/api/__generated__/endpoints/store/store";
 
 interface RatingCardProps {
   agentName: string;
@@ -17,7 +17,6 @@ export const RatingCard: React.FC<RatingCardProps> = ({
   const [rating, setRating] = React.useState<number>(0);
   const [hoveredRating, setHoveredRating] = React.useState<number>(0);
   const [isVisible, setIsVisible] = React.useState(true);
-  const api = useBackendAPI();
 
   const handleClose = () => {
     setIsVisible(false);
@@ -28,7 +27,7 @@ export const RatingCard: React.FC<RatingCardProps> = ({
   const handleSubmit = async (rating: number) => {
     if (rating > 0) {
       console.log(`Rating submitted for ${agentName}:`, rating);
-      await api.reviewAgent("--", agentName, {
+      await postV2CreateAgentReview("--", agentName, {
         store_listing_version_id: storeListingVersionId,
         score: rating,
       });

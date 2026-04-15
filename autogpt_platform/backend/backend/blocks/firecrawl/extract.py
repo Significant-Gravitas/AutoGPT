@@ -15,6 +15,7 @@ from backend.sdk import (
     SchemaField,
     cost,
 )
+from backend.util.exceptions import BlockExecutionError
 
 from ._config import firecrawl
 
@@ -59,11 +60,18 @@ class FirecrawlExtractBlock(Block):
     ) -> BlockOutput:
         app = FirecrawlApp(api_key=credentials.api_key.get_secret_value())
 
-        extract_result = app.extract(
-            urls=input_data.urls,
-            prompt=input_data.prompt,
-            schema=input_data.output_schema,
-            enable_web_search=input_data.enable_web_search,
-        )
+        try:
+            extract_result = app.extract(
+                urls=input_data.urls,
+                prompt=input_data.prompt,
+                schema=input_data.output_schema,
+                enable_web_search=input_data.enable_web_search,
+            )
+        except Exception as e:
+            raise BlockExecutionError(
+                message=f"Extract failed: {e}",
+                block_name=self.name,
+                block_id=self.id,
+            ) from e
 
         yield "data", extract_result.data

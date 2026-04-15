@@ -78,7 +78,7 @@ export function Input({
     "font-normal text-black",
     "placeholder:font-normal placeholder:text-zinc-400",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
     className,
   );
 
@@ -92,7 +92,7 @@ export function Input({
           className={cn(
             baseStyles,
             errorStyles,
-            "-mb-1 h-auto min-h-[2.875rem]",
+            "-mb-1 h-auto min-h-[2.875rem] rounded-xl",
             // Size variants for textarea
             size === "small" && [
               "min-h-[2.25rem]", // 36px minimum
@@ -107,6 +107,11 @@ export function Input({
           )}
           placeholder={placeholder || label}
           onChange={handleTextareaChange}
+          onKeyDown={
+            props.onKeyDown as
+              | React.KeyboardEventHandler<HTMLTextAreaElement>
+              | undefined
+          }
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
           id={props.id}
@@ -220,9 +225,9 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={props.id} className="flex flex-col gap-2">
+    <label htmlFor={props.id} className="flex w-full flex-col gap-2">
       <div className="flex items-center justify-between">
-        <Text variant="body-medium" as="span" className="text-black">
+        <Text variant="large-medium" as="span" className="text-black">
           {label}
         </Text>
         {hint ? (

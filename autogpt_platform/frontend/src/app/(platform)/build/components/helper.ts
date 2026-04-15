@@ -61,12 +61,18 @@ export const convertNodesPlusBlockInfoIntoCustomNodes = (
   return customNode;
 };
 
+const isToolSourceName = (sourceName: string): boolean =>
+  sourceName.startsWith("tools_^_");
+
+const cleanupSourceName = (sourceName: string): string =>
+  isToolSourceName(sourceName) ? "tools" : sourceName;
+
 export const linkToCustomEdge = (link: Link): CustomEdge => ({
   id: link.id ?? "",
   type: "custom" as const,
   source: link.source_id,
   target: link.sink_id,
-  sourceHandle: link.source_name,
+  sourceHandle: cleanupSourceName(link.source_name),
   targetHandle: link.sink_name,
   data: {
     isStatic: link.is_static,

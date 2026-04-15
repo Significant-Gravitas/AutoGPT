@@ -4,12 +4,14 @@ import { type CookieOptions } from "@supabase/ssr";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 export const PROTECTED_PAGES = [
+  "/auth/authorize",
+  "/auth/integrations",
+  "/copilot",
   "/monitor",
   "/build",
   "/onboarding",
   "/profile",
   "/library",
-  "/monitoring",
 ] as const;
 
 export const ADMIN_PAGES = ["/admin"] as const;
@@ -59,15 +61,16 @@ export function hasWebSocketDisconnectIntent(): boolean {
 
 // Redirect utilities
 export function getRedirectPath(
-  pathname: string,
+  path: string, // including query strings
   userRole?: string,
 ): string | null {
-  if (shouldRedirectOnLogout(pathname)) {
-    return "/login";
+  if (shouldRedirectOnLogout(path)) {
+    // Preserve the original path as a 'next' parameter so user can return after login
+    return `/login?next=${encodeURIComponent(path)}`;
   }
 
-  if (isAdminPage(pathname) && userRole !== "admin") {
-    return "/marketplace";
+  if (isAdminPage(path) && userRole !== "admin") {
+    return "/";
   }
 
   return null;

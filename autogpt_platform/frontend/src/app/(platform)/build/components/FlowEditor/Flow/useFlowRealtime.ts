@@ -10,17 +10,20 @@ import { NodeExecutionResult } from "@/app/api/__generated__/models/nodeExecutio
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { useGraphStore } from "../../../stores/graphStore";
 import { useEdgeStore } from "../../../stores/edgeStore";
+import { useQueryClient } from "@tanstack/react-query";
+import { getGetV1GetExecutionDetailsQueryKey } from "@/app/api/__generated__/endpoints/graphs/graphs";
 
 export const useFlowRealtime = () => {
   const api = useBackendAPI();
+  const queryClient = useQueryClient();
   const updateNodeExecutionResult = useNodeStore(
     useShallow((state) => state.updateNodeExecutionResult),
   );
   const updateStatus = useNodeStore(
     useShallow((state) => state.updateNodeStatus),
   );
-  const setIsGraphRunning = useGraphStore(
-    useShallow((state) => state.setIsGraphRunning),
+  const setGraphExecutionStatus = useGraphStore(
+    useShallow((state) => state.setGraphExecutionStatus),
   );
   const updateEdgeBeads = useEdgeStore(
     useShallow((state) => state.updateEdgeBeads),
@@ -57,11 +60,7 @@ export const useFlowRealtime = () => {
           return;
         }
 
-        const isRunning =
-          graphExecution.status === AgentExecutionStatus.RUNNING ||
-          graphExecution.status === AgentExecutionStatus.QUEUED;
-
-        setIsGraphRunning(isRunning);
+        setGraphExecutionStatus(graphExecution.status as AgentExecutionStatus);
       },
     );
 
@@ -75,6 +74,16 @@ export const useFlowRealtime = () => {
                 console.debug(
                   `Subscribed to updates for execution #${flowExecutionID}`,
                 );
+                // Refetch execution details to catch any events that were
+                // published before the WebSocket subscription was established.
+                // This closes the race-condition window for fast-completing
+                // executions like dry-runs / simulations.
+                void queryClient.invalidateQueries({
+                  queryKey: getGetV1GetExecutionDetailsQueryKey(
+                    flowID!,
+                    flowExecutionID,
+                  ),
+                });
               })
               .catch((error) =>
                 console.error(
@@ -91,7 +100,7 @@ export const useFlowRealtime = () => {
       deregisterGraphExecutionStatusEvent();
       resetEdgeBeads();
     };
-  }, [api, flowExecutionID, resetEdgeBeads]);
+  }, [api, flowExecutionID, resetEdgeBeads, queryClient, flowID]);
 
   return {};
 };

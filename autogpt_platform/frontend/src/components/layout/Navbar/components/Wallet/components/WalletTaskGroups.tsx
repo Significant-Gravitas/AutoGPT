@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { BadgeQuestionMark, Check, ChevronDown } from "lucide-react";
-import * as party from "party-js";
+import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
+import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Task, TaskGroup } from "../Wallet";
 
@@ -16,7 +17,10 @@ export function TaskGroups({ groups }: Props) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initialState: Record<string, boolean> = {};
     groups.forEach((group) => {
-      initialState[group.name] = true;
+      const completed = group.tasks.every((task) =>
+        state?.completedSteps?.includes(task.id),
+      );
+      initialState[group.name] = !completed;
     });
     return initialState;
   });
@@ -62,7 +66,7 @@ export function TaskGroups({ groups }: Props) {
         {} as Record<string, boolean>,
       ),
     );
-  }, [state?.completedSteps, isGroupCompleted]);
+  }, [state?.completedSteps, isGroupCompleted, groups]);
 
   const setRef = (name: string) => (el: HTMLDivElement | null) => {
     if (el) {
@@ -81,29 +85,34 @@ export function TaskGroups({ groups }: Props) {
   const delayConfetti = useCallback((el: HTMLDivElement, count: number) => {
     setTimeout(() => {
       if (!el) return;
-      party.confetti(el, {
-        count,
-        spread: 90,
-        shapes: ["square", "circle"],
-        size: party.variation.range(1, 1.5),
-        speed: party.variation.range(250, 350),
-        modules: [
-          new party.ModuleBuilder()
-            .drive("opacity")
-            .by((t) => 1.4 - t)
-            .through("lifetime")
-            .build(),
-        ],
-      });
+      const rect = el.getBoundingClientRect();
+      const shared: ConfettiOptions = {
+        particleCount: count,
+        spread: 60,
+        shapes: ["square"],
+        scalar: 1.2,
+        startVelocity: 22,
+        gravity: 0.5,
+        decay: 0.93,
+        ticks: 120,
+        colors: AGPT_CONFETTI_COLORS,
+        origin: {
+          x: (rect.left + rect.width / 2) / window.innerWidth,
+          y: (rect.top + rect.height / 2) / window.innerHeight,
+        },
+      };
+      confetti({ ...shared, angle: 45 });
+      confetti({ ...shared, angle: 135 });
     }, 300);
   }, []);
 
   useEffect(() => {
     groups.forEach((group) => {
       const groupCompleted = isGroupCompleted(group);
-      // Check if the last task in the group is completed
-      const alreadyCelebrated = state?.notified.includes(
-        group.tasks[group.tasks.length - 1].id,
+      // Check if all tasks in the group were already celebrated
+      // last task completed triggers group completion
+      const alreadyCelebrated = group.tasks.every((task) =>
+        (state?.notified ?? []).includes(task.id),
       );
 
       if (groupCompleted) {
@@ -123,7 +132,11 @@ export function TaskGroups({ groups }: Props) {
 
       group.tasks.forEach((task) => {
         const el = refs.current[task.id];
-        if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
+        if (
+          el &&
+          isTaskCompleted(task) &&
+          !(state?.notified ?? []).includes(task.id)
+        ) {
           scrollIntoViewCentered(el);
           delayConfetti(el, 400);
           // Update the state to include the task as notified

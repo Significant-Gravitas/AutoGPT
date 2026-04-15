@@ -1,3 +1,5 @@
+# ============================ DEPENDENCY BUILDER ============================ #
+
 FROM debian:13-slim AS builder
 
 # Set environment variables
@@ -48,59 +50,111 @@ RUN poetry install --no-ansi --no-root
 # Generate Prisma client
 COPY autogpt_platform/backend/schema.prisma ./
 COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
-RUN poetry run prisma generate
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
+RUN poetry run prisma generate && poetry run gen-prisma-stub
 
-FROM debian:13-slim AS server_dependencies
+# =============================== DB MIGRATOR =============================== #
 
-WORKDIR /app
-
-ENV POETRY_HOME=/opt/poetry \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_CREATE=true \
-    POETRY_VIRTUALENVS_IN_PROJECT=true \
-    DEBIAN_FRONTEND=noninteractive
-ENV PATH=/opt/poetry/bin:$PATH
-
-# Install Python without upgrading system-managed packages
-RUN apt-get update && apt-get install -y \
-    python3.13 \
-    python3-pip \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy only necessary files from builder
-COPY --from=builder /app /app
-COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
-COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
-# Copy Node.js installation for Prisma
-COPY --from=builder /usr/bin/node /usr/bin/node
-COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
-COPY --from=builder /usr/bin/npm /usr/bin/npm
-COPY --from=builder /usr/bin/npx /usr/bin/npx
-COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
-
-ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
-
-RUN mkdir -p /app/autogpt_platform/autogpt_libs
-RUN mkdir -p /app/autogpt_platform/backend
-
-COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
-
-COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml /app/autogpt_platform/backend/
+# Lightweight migrate stage - only needs Prisma CLI, not full Python environment
+FROM debian:13-slim AS migrate
 
 WORKDIR /app/autogpt_platform/backend
 
-FROM server_dependencies AS migrate
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Migration stage only needs schema and migrations - much lighter than full backend
-COPY autogpt_platform/backend/schema.prisma /app/autogpt_platform/backend/
-COPY autogpt_platform/backend/backend/data/partial_types.py /app/autogpt_platform/backend/backend/data/partial_types.py
-COPY autogpt_platform/backend/migrations /app/autogpt_platform/backend/migrations
+# Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.13 \
+    python3-pip \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-FROM server_dependencies AS server
+# Copy Node.js from builder (needed for Prisma CLI)
+COPY --from=builder /usr/bin/node /usr/bin/node
+COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
+COPY --from=builder /usr/bin/npm /usr/bin/npm
 
-COPY autogpt_platform/backend /app/autogpt_platform/backend
-RUN poetry install --no-ansi --only-root
+# Copy Prisma binaries
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install prisma-client-py directly (much smaller than copying full venv)
+RUN pip3 install prisma>=0.15.0 --break-system-packages
+
+COPY autogpt_platform/backend/schema.prisma ./
+COPY autogpt_platform/backend/backend/data/partial_types.py ./backend/data/partial_types.py
+COPY autogpt_platform/backend/scripts/gen_prisma_types_stub.py ./scripts/
+COPY autogpt_platform/backend/migrations ./migrations
+
+# ============================== BACKEND SERVER ============================== #
+
+FROM debian:13-slim AS server
+
+WORKDIR /app
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
+# bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
+# for the bash_exec MCP tool (fallback when E2B is not configured).
+# Using --no-install-recommends saves ~650MB by skipping unnecessary deps like llvm, mesa, etc.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.13 \
+    python3-pip \
+    ffmpeg \
+    imagemagick \
+    jq \
+    ripgrep \
+    tree \
+    bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy poetry (build-time only, for `poetry install --only-root` to create entry points)
+COPY --from=builder /usr/local/lib/python3* /usr/local/lib/python3*
+COPY --from=builder /usr/local/bin/poetry /usr/local/bin/poetry
+# Copy Node.js installation for Prisma and agent-browser.
+# npm/npx are symlinks in the builder (-> ../lib/node_modules/npm/bin/*-cli.js);
+# COPY resolves them to regular files, breaking require() paths.  Recreate as
+# proper symlinks so npm/npx can find their modules.
+COPY --from=builder /usr/bin/node /usr/bin/node
+COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/bin/npx
+COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-python/binaries
+
+# Install agent-browser (Copilot browser tool) using the system chromium package.
+# Chrome for Testing (the binary agent-browser downloads via `agent-browser install`)
+# has no ARM64 builds, so we use the distro-packaged chromium instead — verified to
+# work with agent-browser via Docker tests on arm64; amd64 is validated in CI.
+# Note: system chromium tracks the Debian package schedule rather than a pinned
+# Chrome for Testing release. If agent-browser requires a specific Chrome version,
+# verify compatibility against the chromium package version in the base image.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium fonts-liberation \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g agent-browser \
+    && rm -rf /tmp/* /root/.npm
+
+ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+
+WORKDIR /app/autogpt_platform/backend
+
+# Copy only the .venv from builder (not the entire /app directory)
+# The .venv includes the generated Prisma client
+COPY --from=builder /app/autogpt_platform/backend/.venv ./.venv
+ENV PATH="/app/autogpt_platform/backend/.venv/bin:$PATH"
+
+# Copy dependency files + autogpt_libs (path dependency)
+COPY autogpt_platform/autogpt_libs /app/autogpt_platform/autogpt_libs
+COPY autogpt_platform/backend/poetry.lock autogpt_platform/backend/pyproject.toml ./
+
+# Copy backend code + docs (for Copilot docs search)
+COPY autogpt_platform/backend ./
+COPY docs /app/docs
+# Install the project package to create entry point scripts in .venv/bin/
+# (e.g., rest, executor, ws, db, scheduler, notification - see [tool.poetry.scripts])
+RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
+    poetry install --no-ansi --only-root
 
 ENV PORT=8000
 
-CMD ["poetry", "run", "rest"]
+CMD ["rest"]

@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from backend.api.features.store.db import StoreAgentsSortOptions
 from backend.blocks.system.library_operations import (
     AddToLibraryFromStoreBlock,
     LibraryAgent,
@@ -121,7 +122,10 @@ async def test_search_store_agents_block(mocker):
     )
 
     input_data = block.Input(
-        query="test", category="productivity", sort_by="rating", limit=10
+        query="test",
+        category="productivity",
+        sort_by=StoreAgentsSortOptions.RATING,  # type: ignore[reportArgumentType]
+        limit=10,
     )
 
     outputs = {}

@@ -77,7 +77,7 @@ export async function fetchUser(): Promise<FetchUserResult> {
 }
 
 interface ValidateSessionParams {
-  pathname: string;
+  path: string;
   currentUser: User | null;
 }
 
@@ -92,7 +92,7 @@ export async function validateSession(
   params: ValidateSessionParams,
 ): Promise<ValidateSessionResult> {
   try {
-    const result = await validateSessionAction(params.pathname);
+    const result = await validateSessionAction(params.path);
 
     if (!result.isValid) {
       return {
@@ -118,7 +118,7 @@ export async function validateSession(
     };
   } catch (error) {
     console.error("Session validation error:", error);
-    const redirectPath = getRedirectPath(params.pathname);
+    const redirectPath = getRedirectPath(params.path);
     return {
       isValid: false,
       redirectPath,
@@ -146,7 +146,7 @@ interface StorageEventHandlerParams {
   event: StorageEvent;
   api: BackendAPI | null;
   router: AppRouterInstance | null;
-  pathname: string;
+  path: string;
 }
 
 interface StorageEventHandlerResult {
@@ -167,7 +167,7 @@ export function handleStorageEvent(
     params.api.disconnectWebSocket();
   }
 
-  const redirectPath = getRedirectPath(params.pathname);
+  const redirectPath = getRedirectPath(params.path);
 
   return {
     shouldLogout: true,

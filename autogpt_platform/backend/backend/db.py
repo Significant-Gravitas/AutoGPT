@@ -1,5 +1,5 @@
 from backend.app import run_processes
-from backend.executor import DatabaseManager
+from backend.data.db_manager import DatabaseManager
 
 
 def main():

@@ -21,6 +21,10 @@ function makeQueryClient() {
 
 let browserQueryClient: QueryClient | undefined = undefined;
 
+/** Only for use *outside client component context*
+ *  (so in server components, API helpers, etc.).
+ *
+ * In the context of client components, you should always use `useQueryClient()`. */
 export function getQueryClient() {
   if (isServer) {
     // Server: create new client every time (so one user's data doesn't leak to another)

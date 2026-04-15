@@ -1,40 +1,37 @@
 "use client";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Search, X } from "lucide-react";
+
+import { Input } from "@/components/atoms/Input/Input";
+import { MagnifyingGlassIcon } from "@phosphor-icons/react";
 import { useLibrarySearchbar } from "./useLibrarySearchbar";
 
-export default function LibrarySearchBar(): React.ReactNode {
-  const { handleSearchInput, handleClear, setIsFocused, isFocused, inputRef } =
-    useLibrarySearchbar();
+interface Props {
+  setSearchTerm: (value: string) => void;
+}
+
+export function LibrarySearchBar({ setSearchTerm }: Props) {
+  const { handleSearchInput } = useLibrarySearchbar({ setSearchTerm });
+
   return (
     <div
       data-testid="search-bar"
-      onClick={() => inputRef.current?.focus()}
-      className="relative z-[21] mx-auto flex h-[50px] w-full max-w-[500px] flex-1 cursor-pointer items-center rounded-[45px] bg-[#EDEDED] px-[24px] py-[10px]"
+      className="relative z-[21] -mb-6 flex w-full items-center md:w-auto"
     >
-      <Search
-        className="mr-2 h-[29px] w-[29px] text-neutral-900"
-        strokeWidth={1.25}
+      <MagnifyingGlassIcon
+        width={18}
+        height={18}
+        className="absolute left-4 top-[34%] z-20 -translate-y-1/2 text-zinc-800"
       />
 
       <Input
-        ref={inputRef}
-        onFocus={() => setIsFocused(true)}
-        onBlur={() => !inputRef.current?.value && setIsFocused(false)}
+        label="Search agents"
+        id="library-search-bar"
+        hideLabel
         onChange={handleSearchInput}
-        className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none focus:ring-0"
+        className="min-w-[18rem] pl-12 lg:min-w-[30rem]"
         type="text"
         data-testid="library-textbox"
         placeholder="Search agents"
       />
-
-      {isFocused && inputRef.current?.value && (
-        <X
-          className="ml-2 h-[29px] w-[29px] cursor-pointer text-neutral-900"
-          strokeWidth={1.25}
-          onClick={handleClear}
-        />
-      )}
     </div>
   );
 }

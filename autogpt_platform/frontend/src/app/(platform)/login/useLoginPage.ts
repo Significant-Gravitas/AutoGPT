@@ -3,7 +3,7 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
@@ -13,6 +13,7 @@ export function useLoginPage() {
   const { supabase, user, isUserLoading, isLoggedIn } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -20,11 +21,20 @@ export function useLoginPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = environment.isCloud();
 
+  // Get redirect destination from 'next' query parameter.
+  // Only allow relative paths to prevent open redirect attacks
+  // (e.g., /login?next=https://phishing.site).
+  const rawNext = searchParams.get("next");
+  const nextUrl =
+    rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//")
+      ? rawNext
+      : null;
+
   useEffect(() => {
     if (isLoggedIn && !isLoggingIn) {
-      router.push("/marketplace");
+      router.push(nextUrl || "/");
     }
-  }, [isLoggedIn, isLoggingIn]);
+  }, [isLoggedIn, isLoggingIn, nextUrl, router]);
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -39,10 +49,16 @@ export function useLoginPage() {
     setIsLoggingIn(true);
 
     try {
+      // Include next URL in OAuth flow if present
+      const callbackUrl = nextUrl
+        ? `/auth/callback?next=${encodeURIComponent(nextUrl)}`
+        : `/auth/callback`;
+      const fullCallbackUrl = `${window.location.origin}${callbackUrl}`;
+
       const response = await fetch("/api/auth/provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider }),
+        body: JSON.stringify({ provider, redirectTo: fullCallbackUrl }),
       });
 
       if (!response.ok) {
@@ -83,11 +99,11 @@ export function useLoginPage() {
         throw new Error(result.error || "Login failed");
       }
 
-      if (result.onboarding) {
-        router.replace("/onboarding");
-      } else {
-        router.replace("/marketplace");
-      }
+      // Use full page navigation to ensure middleware processes the new auth cookies.
+      // router.replace() does a soft navigation where the cookie store may not
+      // immediately reflect cookies set by the server action, causing a blank page.
+      // This matches the OAuth flow which also uses window.location.href.
+      window.location.href = nextUrl || result.next || "/";
     } catch (error) {
       toast({
         title:
@@ -96,6 +112,7 @@ export function useLoginPage() {
             : "Unexpected error during login",
         variant: "destructive",
       });
+
       setIsLoading(false);
       setIsLoggingIn(false);
     }

@@ -3,7 +3,7 @@ from enum import Enum
 
 from pydantic import BaseModel
 
-from backend.data.block import BlockSchemaInput
+from backend.blocks._base import BlockSchemaInput
 from backend.data.model import SchemaField
 
 # -------------- Tweets -----------------
@@ -408,7 +408,7 @@ class ListExpansionInputs(BlockSchemaInput):
 
 class TweetTimeWindowInputs(BlockSchemaInput):
     start_time: datetime | None = SchemaField(
-        description="Start time in YYYY-MM-DDTHH:mm:ssZ format",
+        description="Start time in YYYY-MM-DDTHH:mm:ssZ format. If set to a time less than 10 seconds ago, it will be automatically adjusted to 10 seconds ago (Twitter API requirement).",
         placeholder="Enter start time",
         default=None,
         advanced=False,

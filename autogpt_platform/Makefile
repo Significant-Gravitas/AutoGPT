@@ -1,4 +1,4 @@
-.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend
+.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend load-store-agents
 
 # Run just Supabase + Redis + RabbitMQ
 start-core:
@@ -6,12 +6,14 @@ start-core:
 
 # Stop core services
 stop-core:
-	docker compose stop deps
+	docker compose stop 
 
 reset-db:
+	docker compose stop db
 	rm -rf db/docker/volumes/db/data
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
+	cd backend && poetry run gen-prisma-stub
 	
 # View logs for core services
 logs-core:
@@ -33,6 +35,7 @@ init-env:
 migrate:
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
+	cd backend && poetry run gen-prisma-stub
 
 run-backend:
 	cd backend && poetry run app
@@ -42,7 +45,10 @@ run-frontend:
 
 test-data:
 	cd backend && poetry run python test/test_data_creator.py
-	
+
+load-store-agents:
+	cd backend && poetry run load-store-agents
+
 help:
 	@echo "Usage: make <target>"
 	@echo "Targets:"
@@ -55,3 +61,4 @@ help:
 	@echo "  run-backend - Run the backend FastAPI server"
 	@echo "  run-frontend - Run the frontend Next.js development server"
 	@echo "  test-data - Run the test data creator"
+	@echo "  load-store-agents - Load store agents from agents/ folder into test database"

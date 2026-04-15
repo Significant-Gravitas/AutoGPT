@@ -19,7 +19,7 @@ export function LoginButton() {
     <Button
       onClick={handleLogin}
       size="small"
-      leftIcon={<SignInIcon className="h-5 w-5" />}
+      leftIcon={<SignInIcon className="size-4" />}
       variant="secondary"
     >
       Log In

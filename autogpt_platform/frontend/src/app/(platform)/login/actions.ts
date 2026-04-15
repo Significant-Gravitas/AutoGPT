@@ -4,7 +4,7 @@ import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { loginFormSchema } from "@/types/auth";
 import * as Sentry from "@sentry/nextjs";
-import { shouldShowOnboarding } from "../../api/helpers";
+import { getOnboardingStatus } from "../../api/helpers";
 
 export async function login(email: string, password: string) {
   try {
@@ -36,11 +36,11 @@ export async function login(email: string, password: string) {
     const api = new BackendAPI();
     await api.createUser();
 
-    const onboarding = await shouldShowOnboarding();
+    const { shouldShowOnboarding } = await getOnboardingStatus();
 
     return {
       success: true,
-      onboarding,
+      next: shouldShowOnboarding ? "/onboarding" : "/copilot",
     };
   } catch (err) {
     Sentry.captureException(err);

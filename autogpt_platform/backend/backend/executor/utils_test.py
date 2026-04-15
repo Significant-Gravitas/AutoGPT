@@ -1,9 +1,21 @@
+from datetime import datetime, timezone
 from typing import cast
 
 import pytest
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
+from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.model import User
+from backend.executor.utils import (
+    CRED_ERR_INVALID_PREFIX,
+    CRED_ERR_INVALID_TYPE_MISMATCH,
+    CRED_ERR_NOT_AVAILABLE_PREFIX,
+    CRED_ERR_REQUIRED,
+    CRED_ERR_UNKNOWN_PREFIX,
+    add_graph_execution,
+    is_credential_validation_error_message,
+)
 from backend.util.mock import MockObject
 
 
@@ -346,10 +358,9 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec.id = "execution-id-123"
     mock_graph_exec.node_executions = []  # Add this to avoid AttributeError
+    mock_graph_exec.status = ExecutionStatus.QUEUED  # Required for race condition check
+    mock_graph_exec.graph_version = graph_version
     mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
-
-    # Mock user context
-    mock_user_context = {"user_id": user_id, "context": "test_context"}
 
     # Mock the queue and event bus
     mock_queue = mocker.AsyncMock()
@@ -362,17 +373,25 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     )
     mock_edb = mocker.patch("backend.executor.utils.execution_db")
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
-    mock_get_user_context = mocker.patch("backend.executor.utils.get_user_context")
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
     mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
     mock_get_event_bus = mocker.patch(
         "backend.executor.utils.get_async_execution_event_bus"
     )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "test-workspace-id"
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
 
     # Setup mock returns
+    # The function returns (graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip)
+    nodes_to_skip: set[str] = set()
     mock_validate.return_value = (
         mock_graph,
         starting_nodes_input,
         compiled_nodes_input_masks,
+        nodes_to_skip,
     )
     mock_prisma.is_connected.return_value = True
     mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
@@ -380,7 +399,15 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         return_value=mock_graph_exec
     )
     mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
-    mock_get_user_context.return_value = mock_user_context
+    # Mock user and settings data
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_settings = mocker.MagicMock()
+    mock_settings.human_in_the_loop_safe_mode = True
+    mock_settings.sensitive_action_safe_mode = False
+
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
     mock_get_queue.return_value = mock_queue
     mock_get_event_bus.return_value = mock_event_bus
 
@@ -409,6 +436,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         starting_nodes_input=starting_nodes_input,
         preset_id=preset_id,
         parent_graph_exec_id=None,
+        is_dry_run=False,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -423,6 +451,9 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Create a second mock execution for the sanity check
     mock_graph_exec_2 = mocker.MagicMock(spec=GraphExecutionWithNodes)
     mock_graph_exec_2.id = "execution-id-456"
+    mock_graph_exec_2.node_executions = []
+    mock_graph_exec_2.status = ExecutionStatus.QUEUED
+    mock_graph_exec_2.graph_version = graph_version
     mock_graph_exec_2.to_graph_execution_entry.return_value = mocker.MagicMock()
 
     # Reset mocks and set up for second call
@@ -453,64 +484,88 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     assert result2 == mock_graph_exec_2
 
 
+# ============================================================================
+# Regression test: RPC layer returns typed User model, not raw dict
+# ============================================================================
+
+
 @pytest.mark.asyncio
-async def test_add_graph_execution_requeue_mode(mocker: MockerFixture):
-    """Test that add_graph_execution with graph_exec_id requeues instead of creating"""
-    from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
-    from backend.executor.utils import add_graph_execution
+async def test_add_graph_execution_via_rpc_returns_typed_user(
+    mocker: MockerFixture,
+):
+    """
+    Regression test: `add_graph_execution` accesses `user.timezone` on the User
+    returned by `get_user_by_id`. This test verifies the downstream code path
+    completes without AttributeError when `get_user_by_id` returns a proper typed
+    User model. Note: the mock returns a User directly — _get_return deserialization
+    is not exercised here; see TestGetReturn in util/service_test.py for that.
+    """
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
 
-    existing_exec_id = "existing-exec-123"
-    graph_id = "graph-456"
-    user_id = "user-789"
-    graph_version = 1
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
 
-    # Mock existing execution (QUEUED, ready to requeue)
-    mock_existing_exec_meta = mocker.MagicMock()
-    mock_existing_exec_meta.id = existing_exec_id
-    mock_existing_exec_meta.user_id = user_id
-    mock_existing_exec_meta.graph_id = graph_id
-    mock_existing_exec_meta.graph_version = graph_version
-    mock_existing_exec_meta.status = ExecutionStatus.QUEUED
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "exec-id-rpc"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
 
-    mock_existing_exec_full = mocker.MagicMock(spec=GraphExecutionWithNodes)
-    mock_existing_exec_full.id = existing_exec_id
-    mock_existing_exec_full.user_id = user_id
-    mock_existing_exec_full.graph_id = graph_id
-    mock_existing_exec_full.graph_version = graph_version
-    mock_existing_exec_full.status = ExecutionStatus.QUEUED
-    mock_existing_exec_full.nodes_input_masks = {"node1": {"input1": "value1"}}
-    mock_existing_exec_full.node_executions = []
-    mock_existing_exec_full.to_graph_execution_entry.return_value = mocker.MagicMock()
-    mock_existing_exec_full.to_graph_execution_entry.return_value.model_dump_json.return_value = (
-        "{}"
-    )
-
-    # Mock database manager
-    mock_edb = mocker.patch("backend.executor.utils.execution_db")
-    mock_edb.get_graph_execution_meta = mocker.AsyncMock(
-        return_value=mock_existing_exec_meta
-    )
-    mock_edb.get_graph_execution = mocker.AsyncMock(
-        return_value=mock_existing_exec_full
-    )
-    mock_edb.create_graph_execution = mocker.AsyncMock()  # Should NOT be called
-    mock_edb.update_graph_execution_stats = mocker.AsyncMock()
-
-    # Mock prisma
-    mock_prisma = mocker.patch("backend.executor.utils.prisma")
-    mock_prisma.is_connected.return_value = True
-
-    # Mock queue
     mock_queue = mocker.AsyncMock()
-    mock_queue.publish_message = mocker.AsyncMock()
-
-    # Mock event bus
     mock_event_bus = mocker.MagicMock()
     mock_event_bus.publish = mocker.AsyncMock()
 
-    # Mock user context
-    mock_user_context = mocker.MagicMock()
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_validate.return_value = (mock_graph, [], {}, set())
 
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = (
+        False  # prisma not connected: uses RPC path instead
+    )
+
+    # The RPC layer (_get_return) deserializes JSON dicts into typed Pydantic models.
+    # The mock simulates what add_graph_execution receives after that deserialization:
+    # a proper User model, not a raw dict.
+    mock_user = User(
+        id=user_id,
+        email="test@example.com",
+        name=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        stripe_customer_id=None,
+        top_up_config=None,
+        timezone="UTC",
+    )
+
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_db_client.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+    )
+    mock_db_client.create_graph_execution = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "ws-id"
+    mock_db_client.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mock_workspace
+    )
+    mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
     mocker.patch(
         "backend.executor.utils.get_async_execution_queue", return_value=mock_queue
     )
@@ -518,77 +573,530 @@ async def test_add_graph_execution_requeue_mode(mocker: MockerFixture):
         "backend.executor.utils.get_async_execution_event_bus",
         return_value=mock_event_bus,
     )
-    mocker.patch(
-        "backend.executor.utils.get_user_context", return_value=mock_user_context
+
+    # Must not raise AttributeError: 'dict' object has no attribute 'timezone'
+    result = await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+    )
+    assert result == mock_graph_exec
+
+
+# ============================================================================
+# Tests for Optional Credentials Feature
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_returns_nodes_to_skip(
+    mocker: MockerFixture,
+):
+    """
+    Test that _validate_node_input_credentials returns nodes_to_skip set
+    for nodes with credentials_optional=True and missing credentials.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    # Create a mock node with credentials_optional=True
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-optional-creds"
+    mock_node.credentials_optional = True
+    mock_node.input_default = {}  # No credentials configured
+
+    # Create a mock block with credentials field
+    mock_block = mocker.MagicMock()
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type
+    }
+    mock_block.input_schema.get_required_fields.return_value = {"credentials"}
+    mock_node.block = mock_block
+
+    # Create mock graph
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Call the function
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
     )
 
-    # Call add_graph_execution in REQUEUE mode
+    # Node should NOT be in nodes_to_skip (runs without credentials) and not in errors
+    assert mock_node.id not in nodes_to_skip
+    assert mock_node.id not in errors
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_required_missing_creds_error(
+    mocker: MockerFixture,
+):
+    """
+    Test that _validate_node_input_credentials returns errors
+    for nodes with credentials_optional=False and missing credentials.
+    """
+    from backend.executor.utils import _validate_node_input_credentials
+
+    # Create a mock node with credentials_optional=False (required)
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-with-required-creds"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {}  # No credentials configured
+
+    # Create a mock block with credentials field
+    mock_block = mocker.MagicMock()
+    mock_credentials_field_type = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {
+        "credentials": mock_credentials_field_type
+    }
+    mock_block.input_schema.get_required_fields.return_value = {"credentials"}
+    mock_node.block = mock_block
+
+    # Create mock graph
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    # Call the function
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    # Node should be in errors, not in nodes_to_skip
+    assert mock_node.id in errors
+    assert "credentials" in errors[mock_node.id]
+    assert "required" in errors[mock_node.id]["credentials"].lower()
+    assert mock_node.id not in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_graph_with_credentials_returns_nodes_to_skip(
+    mocker: MockerFixture,
+):
+    """
+    Test that validate_graph_with_credentials returns nodes_to_skip set
+    from _validate_node_input_credentials.
+    """
+    from backend.executor.utils import validate_graph_with_credentials
+
+    # Mock _validate_node_input_credentials to return specific values
+    mock_validate = mocker.patch(
+        "backend.executor.utils._validate_node_input_credentials"
+    )
+    expected_errors = {"node1": {"field": "error"}}
+    expected_nodes_to_skip = {"node2", "node3"}
+    mock_validate.return_value = (expected_errors, expected_nodes_to_skip)
+
+    # Mock GraphModel with validate_graph_get_errors method
+    mock_graph = mocker.MagicMock()
+    mock_graph.validate_graph_get_errors.return_value = {}
+
+    # Call the function
+    errors, nodes_to_skip = await validate_graph_with_credentials(
+        graph=mock_graph,
+        user_id="test-user-id",
+        nodes_input_masks=None,
+    )
+
+    # Verify nodes_to_skip is passed through
+    assert nodes_to_skip == expected_nodes_to_skip
+    assert "node1" in errors
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_with_nodes_to_skip(mocker: MockerFixture):
+    """
+    Test that add_graph_execution properly passes nodes_to_skip
+    to the graph execution entry.
+    """
+    from backend.data.execution import GraphExecutionWithNodes
+    from backend.executor.utils import add_graph_execution
+
+    # Mock data
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
+    inputs = {"test_input": "test_value"}
+    graph_version = 1
+
+    # Mock the graph object
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = graph_version
+
+    # Starting nodes and masks
+    starting_nodes_input = [("node1", {"input1": "value1"})]
+    compiled_nodes_input_masks = {}
+    nodes_to_skip = {"skipped-node-1", "skipped-node-2"}
+
+    # Mock the graph execution object
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "execution-id-123"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED  # Required for race condition check
+    mock_graph_exec.graph_version = graph_version
+
+    # Track what's passed to to_graph_execution_entry
+    captured_kwargs = {}
+
+    def capture_to_entry(**kwargs):
+        captured_kwargs.update(kwargs)
+        return mocker.MagicMock()
+
+    mock_graph_exec.to_graph_execution_entry.side_effect = capture_to_entry
+
+    # Setup mocks
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_edb = mocker.patch("backend.executor.utils.execution_db")
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_udb = mocker.patch("backend.executor.utils.user_db")
+    mock_gdb = mocker.patch("backend.executor.utils.graph_db")
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+    mock_wdb = mocker.patch("backend.executor.utils.workspace_db")
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "test-workspace-id"
+    mock_wdb.get_or_create_workspace = mocker.AsyncMock(return_value=mock_workspace)
+
+    # Setup returns - include nodes_to_skip in the tuple
+    mock_validate.return_value = (
+        mock_graph,
+        starting_nodes_input,
+        compiled_nodes_input_masks,
+        nodes_to_skip,  # This should be passed through
+    )
+    mock_prisma.is_connected.return_value = True
+    mock_edb.create_graph_execution = mocker.AsyncMock(return_value=mock_graph_exec)
+    mock_edb.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_edb.update_node_execution_status_batch = mocker.AsyncMock()
+
+    mock_user = mocker.MagicMock()
+    mock_user.timezone = "UTC"
+    mock_settings = mocker.MagicMock()
+    mock_settings.human_in_the_loop_safe_mode = True
+    mock_settings.sensitive_action_safe_mode = False
+
+    mock_udb.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_gdb.get_graph_settings = mocker.AsyncMock(return_value=mock_settings)
+    mock_get_queue.return_value = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mocker.MagicMock(publish=mocker.AsyncMock())
+
+    # Call the function
     await add_graph_execution(
         graph_id=graph_id,
         user_id=user_id,
+        inputs=inputs,
         graph_version=graph_version,
-        graph_exec_id=existing_exec_id,  # This triggers REQUEUE mode
     )
 
-    # Verify: Should NOT create new execution
-    mock_edb.create_graph_execution.assert_not_called()
+    # Verify nodes_to_skip was passed to to_graph_execution_entry
+    assert "nodes_to_skip" in captured_kwargs
+    assert captured_kwargs["nodes_to_skip"] == nodes_to_skip
 
-    # Verify: Should fetch existing execution
-    mock_edb.get_graph_execution_meta.assert_called_once()
-    mock_edb.get_graph_execution.assert_called_once()
-
-    # Verify: Should publish to queue (same as create mode)
-    mock_queue.publish_message.assert_called_once()
-
-    # Verify: Should update status to QUEUED
-    mock_edb.update_graph_execution_stats.assert_called_once()
+    # Verify workspace_id is set in the execution context
+    assert "execution_context" in captured_kwargs
+    assert captured_kwargs["execution_context"].workspace_id == "test-workspace-id"
 
 
 @pytest.mark.asyncio
-async def test_add_graph_execution_requeue_fails_if_not_queued(mocker: MockerFixture):
-    """Test that requeue mode fails if execution is not in QUEUED status"""
-    from backend.data.execution import ExecutionStatus
-    from backend.executor.utils import add_graph_execution
+async def test_stop_graph_execution_in_review_status_cancels_pending_reviews(
+    mocker: MockerFixture,
+):
+    """Test that stopping an execution in REVIEW status cancels pending reviews."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor.utils import stop_graph_execution
 
-    # Mock execution that's RUNNING (not QUEUED)
-    mock_exec_meta = mocker.MagicMock()
-    mock_exec_meta.id = "exec-running-123"
-    mock_exec_meta.user_id = "user-123"
-    mock_exec_meta.graph_id = "graph-456"
-    mock_exec_meta.graph_version = 1
-    mock_exec_meta.status = ExecutionStatus.RUNNING  # Wrong status!
+    user_id = "test-user"
+    graph_exec_id = "test-exec-123"
 
-    mock_edb = mocker.patch("backend.executor.utils.execution_db")
-    mock_edb.get_graph_execution_meta = mocker.AsyncMock(return_value=mock_exec_meta)
+    # Mock graph execution in REVIEW status
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_graph_exec.id = graph_exec_id
+    mock_graph_exec.status = ExecutionStatus.REVIEW
+
+    # Mock dependencies
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_queue_client = mocker.AsyncMock()
+    mock_get_queue.return_value = mock_queue_client
 
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
     mock_prisma.is_connected.return_value = True
 
-    # Should raise ValueError
-    with pytest.raises(ValueError, match="Can only requeue QUEUED executions"):
-        await add_graph_execution(
-            graph_id="graph-456",
-            user_id="user-123",
-            graph_exec_id="exec-running-123",  # Requeue mode
-        )
+    mock_human_review_db = mocker.patch("backend.executor.utils.human_review_db")
+    mock_human_review_db.cancel_pending_reviews_for_execution = mocker.AsyncMock(
+        return_value=2  # 2 reviews cancelled
+    )
+
+    mock_execution_db = mocker.patch("backend.executor.utils.execution_db")
+    mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_execution_db.update_graph_execution_stats = mocker.AsyncMock()
+
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mock_event_bus
+
+    mock_get_child_executions = mocker.patch(
+        "backend.executor.utils._get_child_executions"
+    )
+    mock_get_child_executions.return_value = []  # No children
+
+    # Call stop_graph_execution with timeout to allow status check
+    await stop_graph_execution(
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+        wait_timeout=1.0,  # Wait to allow status check
+        cascade=True,
+    )
+
+    # Verify pending reviews were cancelled
+    mock_human_review_db.cancel_pending_reviews_for_execution.assert_called_once_with(
+        graph_exec_id, user_id
+    )
+
+    # Verify execution status was updated to TERMINATED
+    mock_execution_db.update_graph_execution_stats.assert_called_once()
+    call_kwargs = mock_execution_db.update_graph_execution_stats.call_args[1]
+    assert call_kwargs["graph_exec_id"] == graph_exec_id
+    assert call_kwargs["status"] == ExecutionStatus.TERMINATED
 
 
 @pytest.mark.asyncio
-async def test_add_graph_execution_requeue_fails_if_not_found(mocker: MockerFixture):
-    """Test that requeue mode fails if execution doesn't exist"""
-    from backend.executor.utils import add_graph_execution
+async def test_stop_graph_execution_with_database_manager_when_prisma_disconnected(
+    mocker: MockerFixture,
+):
+    """Test that stop uses database manager when Prisma is not connected."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor.utils import stop_graph_execution
 
-    # Mock execution not found
-    mock_edb = mocker.patch("backend.executor.utils.execution_db")
-    mock_edb.get_graph_execution_meta = mocker.AsyncMock(return_value=None)
+    user_id = "test-user"
+    graph_exec_id = "test-exec-456"
+
+    # Mock graph execution in REVIEW status
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_graph_exec.id = graph_exec_id
+    mock_graph_exec.status = ExecutionStatus.REVIEW
+
+    # Mock dependencies
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_queue_client = mocker.AsyncMock()
+    mock_get_queue.return_value = mock_queue_client
+
+    # Prisma is NOT connected
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = False
+
+    # Mock database manager client
+    mock_get_db_manager = mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client"
+    )
+    mock_db_manager = mocker.AsyncMock()
+    mock_db_manager.get_graph_execution_meta = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_manager.cancel_pending_reviews_for_execution = mocker.AsyncMock(
+        return_value=3  # 3 reviews cancelled
+    )
+    mock_db_manager.update_graph_execution_stats = mocker.AsyncMock()
+    mock_get_db_manager.return_value = mock_db_manager
+
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mock_event_bus
+
+    mock_get_child_executions = mocker.patch(
+        "backend.executor.utils._get_child_executions"
+    )
+    mock_get_child_executions.return_value = []  # No children
+
+    # Call stop_graph_execution with timeout
+    await stop_graph_execution(
+        user_id=user_id,
+        graph_exec_id=graph_exec_id,
+        wait_timeout=1.0,
+        cascade=True,
+    )
+
+    # Verify database manager was used for cancel_pending_reviews
+    mock_db_manager.cancel_pending_reviews_for_execution.assert_called_once_with(
+        graph_exec_id, user_id
+    )
+
+    # Verify execution status was updated via database manager
+    mock_db_manager.update_graph_execution_stats.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_stop_graph_execution_cascades_to_child_with_reviews(
+    mocker: MockerFixture,
+):
+    """Test that stopping parent execution cascades to children and cancels their reviews."""
+    from backend.data.execution import ExecutionStatus, GraphExecutionMeta
+    from backend.executor.utils import stop_graph_execution
+
+    user_id = "test-user"
+    parent_exec_id = "parent-exec"
+    child_exec_id = "child-exec"
+
+    # Mock parent execution in RUNNING status
+    mock_parent_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_parent_exec.id = parent_exec_id
+    mock_parent_exec.status = ExecutionStatus.RUNNING
+
+    # Mock child execution in REVIEW status
+    mock_child_exec = mocker.MagicMock(spec=GraphExecutionMeta)
+    mock_child_exec.id = child_exec_id
+    mock_child_exec.status = ExecutionStatus.REVIEW
+
+    # Mock dependencies
+    mock_get_queue = mocker.patch("backend.executor.utils.get_async_execution_queue")
+    mock_queue_client = mocker.AsyncMock()
+    mock_get_queue.return_value = mock_queue_client
 
     mock_prisma = mocker.patch("backend.executor.utils.prisma")
     mock_prisma.is_connected.return_value = True
 
-    # Should raise ValueError
-    with pytest.raises(ValueError, match="Execution .* not found"):
-        await add_graph_execution(
-            graph_id="graph-456",
-            user_id="user-123",
-            graph_exec_id="nonexistent-exec",  # Requeue mode
-        )
+    mock_human_review_db = mocker.patch("backend.executor.utils.human_review_db")
+    mock_human_review_db.cancel_pending_reviews_for_execution = mocker.AsyncMock(
+        return_value=1  # 1 child review cancelled
+    )
+
+    # Mock execution_db to return different status based on which execution is queried
+    mock_execution_db = mocker.patch("backend.executor.utils.execution_db")
+
+    # Track call count to simulate status transition
+    call_count = {"count": 0}
+
+    async def get_exec_meta_side_effect(execution_id, user_id):
+        call_count["count"] += 1
+        if execution_id == parent_exec_id:
+            # After a few calls (child processing happens), transition parent to TERMINATED
+            # This simulates the executor service processing the stop request
+            if call_count["count"] > 3:
+                mock_parent_exec.status = ExecutionStatus.TERMINATED
+            return mock_parent_exec
+        elif execution_id == child_exec_id:
+            return mock_child_exec
+        return None
+
+    mock_execution_db.get_graph_execution_meta = mocker.AsyncMock(
+        side_effect=get_exec_meta_side_effect
+    )
+    mock_execution_db.update_graph_execution_stats = mocker.AsyncMock()
+
+    mock_get_event_bus = mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus"
+    )
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+    mock_get_event_bus.return_value = mock_event_bus
+
+    # Mock _get_child_executions to return the child
+    mock_get_child_executions = mocker.patch(
+        "backend.executor.utils._get_child_executions"
+    )
+
+    def get_children_side_effect(parent_id):
+        if parent_id == parent_exec_id:
+            return [mock_child_exec]
+        return []
+
+    mock_get_child_executions.side_effect = get_children_side_effect
+
+    # Call stop_graph_execution on parent with cascade=True
+    await stop_graph_execution(
+        user_id=user_id,
+        graph_exec_id=parent_exec_id,
+        wait_timeout=1.0,
+        cascade=True,
+    )
+
+    # Verify child reviews were cancelled
+    mock_human_review_db.cancel_pending_reviews_for_execution.assert_called_once_with(
+        child_exec_id, user_id
+    )
+
+    # Verify both parent and child status updates
+    assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# Credential validation error marker parity.
+#
+# ``is_credential_validation_error_message`` is shared by the executor
+# dry-run path and the copilot credential-race fallback.  Adding a new
+# credential error string in ``_validate_node_input_credentials`` without
+# updating the matcher would silently regress the copilot UX to a plain
+# text error.  These tests pin the contract:
+#
+# 1. Every ``CRED_ERR_*`` constant emitted by the raise sites is
+#    recognised by the public matcher (including reasonable formatted
+#    variants with runtime suffixes from ``f"{PREFIX} {e}"``).
+# 2. The matcher is case-insensitive and unaffected by trailing detail.
+# 3. Non-credential messages fall through.
+# ---------------------------------------------------------------------------
+
+
+def test_credential_error_markers_cover_all_raise_sites():
+    """Each credential error string emitted by
+    ``_validate_node_input_credentials`` must be recognised by
+    ``is_credential_validation_error_message``. This guards against
+    drift when a new credential error is introduced without updating
+    the matcher."""
+    # Exact-match raise sites
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED)
+    assert is_credential_validation_error_message(CRED_ERR_INVALID_TYPE_MISMATCH)
+
+    # Prefix raise sites with typical runtime suffixes (matching the
+    # f-strings inside ``_validate_node_input_credentials``)
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_INVALID_PREFIX} 1 validation error for ApiKeyCredentials"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} connection refused"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_UNKNOWN_PREFIX}abc-123-def"
+    )
+
+
+def test_credential_error_marker_matching_is_case_insensitive():
+    """The matcher lowercases inputs before comparing — ensure that
+    stays true for each marker so log-normalised copies still match."""
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED.upper())
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED.lower())
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_INVALID_PREFIX.upper()} BAD FIELD"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_UNKNOWN_PREFIX.upper()}XYZ"
+    )
+
+
+def test_non_credential_errors_are_not_matched():
+    """Unrelated graph validation errors must not hit the credential
+    branch — otherwise the copilot would hide structural errors behind
+    the credential setup card."""
+    assert not is_credential_validation_error_message("")
+    assert not is_credential_validation_error_message(
+        "missing input {'required_field'}"
+    )
+    assert not is_credential_validation_error_message("Input field 'url' is required")
+    # A message that happens to contain "credentials" somewhere but
+    # doesn't start with any known prefix must not match.
+    assert not is_credential_validation_error_message(
+        "Block configuration says credentials are fine"
+    )

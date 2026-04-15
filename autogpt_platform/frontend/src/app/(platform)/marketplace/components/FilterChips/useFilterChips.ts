@@ -1,37 +1,41 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface useFilterChipsProps {
   onFilterChange?: (selectedFilters: string[]) => void;
   multiSelect?: boolean;
 }
 
-export const useFilterChips = ({
+export function useFilterChips({
   onFilterChange,
   multiSelect,
-}: useFilterChipsProps) => {
+}: useFilterChipsProps) {
   const [selectedFilters, setSelectedFilters] = useState<string[]>([]);
+  const pendingFilters = useRef<string[] | null>(null);
 
-  const handleBadgeClick = (badge: string) => {
-    setSelectedFilters((prevFilters) => {
-      let newFilters;
-      if (multiSelect) {
-        newFilters = prevFilters.includes(badge)
-          ? prevFilters.filter((filter) => filter !== badge)
-          : [...prevFilters, badge];
-      } else {
-        newFilters = prevFilters.includes(badge) ? [] : [badge];
-      }
+  useEffect(() => {
+    if (pendingFilters.current !== null) {
+      onFilterChange?.(pendingFilters.current);
+      pendingFilters.current = null;
+    }
+  }, [selectedFilters, onFilterChange]);
 
-      if (onFilterChange) {
-        onFilterChange(newFilters);
-      }
+  const handleBadgeClick = useCallback(
+    (badge: string) => {
+      setSelectedFilters((prev) => {
+        let next;
+        if (multiSelect) {
+          next = prev.includes(badge)
+            ? prev.filter((f) => f !== badge)
+            : [...prev, badge];
+        } else {
+          next = prev.includes(badge) ? [] : [badge];
+        }
+        pendingFilters.current = next;
+        return next;
+      });
+    },
+    [multiSelect],
+  );
 
-      return newFilters;
-    });
-  };
-
-  return {
-    selectedFilters,
-    handleBadgeClick,
-  };
-};
+  return { selectedFilters, handleBadgeClick };
+}

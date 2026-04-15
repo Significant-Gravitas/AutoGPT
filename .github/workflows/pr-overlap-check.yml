@@ -1,0 +1,39 @@
+name: PR Overlap Detection
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - dev
+      - master
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check-overlaps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for merge testing
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Configure git
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: Run overlap detection
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Always succeed - this check informs contributors, it shouldn't block merging
+        continue-on-error: true
+        run: |
+          python .github/scripts/detect_overlaps.py ${{ github.event.pull_request.number }}

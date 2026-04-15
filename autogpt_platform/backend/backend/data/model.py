@@ -19,10 +19,9 @@ from typing import (
     cast,
     get_args,
 )
-from urllib.parse import urlparse
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType
+from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -30,6 +29,7 @@ from pydantic import (
     GetCoreSchemaHandler,
     SecretStr,
     field_serializer,
+    model_validator,
 )
 from pydantic_core import (
     CoreSchema,
@@ -42,17 +42,18 @@ from typing_extensions import TypedDict
 
 from backend.integrations.providers import ProviderName
 from backend.util.json import loads as json_loads
+from backend.util.request import parse_url
 from backend.util.settings import Secrets
 
 # Type alias for any provider name (including custom ones)
 AnyProviderName = str  # Will be validated as ProviderName at runtime
+USER_TIMEZONE_NOT_SET = "not-set"
 
 
 class User(BaseModel):
     """Application-layer User model with snake_case convention."""
 
     model_config = ConfigDict(
-        extra="forbid",
         str_strip_whitespace=True,
     )
 
@@ -69,6 +70,9 @@ class User(BaseModel):
     stripe_customer_id: Optional[str] = Field(None, description="Stripe customer ID")
     top_up_config: Optional["AutoTopUpConfig"] = Field(
         None, description="Top up configuration"
+    )
+    subscription_tier: SubscriptionTier = Field(
+        default=SubscriptionTier.FREE, description="User subscription tier"
     )
 
     # Notification preferences
@@ -98,7 +102,7 @@ class User(BaseModel):
 
     # User timezone for scheduling and time display
     timezone: str = Field(
-        default="not-set",
+        default=USER_TIMEZONE_NOT_SET,
         description="User timezone (IANA timezone identifier or 'not-set')",
     )
 
@@ -144,6 +148,7 @@ class User(BaseModel):
             integrations=prisma_user.integrations or "",
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
+            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.FREE,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
@@ -155,17 +160,19 @@ class User(BaseModel):
             notify_on_daily_summary=prisma_user.notifyOnDailySummary or True,
             notify_on_weekly_summary=prisma_user.notifyOnWeeklySummary or True,
             notify_on_monthly_summary=prisma_user.notifyOnMonthlySummary or True,
-            timezone=prisma_user.timezone or "not-set",
+            timezone=prisma_user.timezone or USER_TIMEZONE_NOT_SET,
         )
 
 
 if TYPE_CHECKING:
     from prisma.models import User as PrismaUser
 
-    from backend.data.block import BlockSchema
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
+
+
+GraphInput = dict[str, Any]
 
 
 class BlockSecret:
@@ -308,10 +315,21 @@ def SchemaField(
     )  # type: ignore
 
 
+# SDK default credentials use IDs like "{provider}-default" (set in sdk/builder.py).
+# They must never be exposed to users via the API.
+SDK_DEFAULT_SUFFIX = "-default"
+
+
+def is_sdk_default(cred_id: str) -> bool:
+    return cred_id.endswith(SDK_DEFAULT_SUFFIX)
+
+
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
     title: Optional[str] = None
+    is_managed: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):
@@ -331,7 +349,6 @@ class OAuth2Credentials(_BaseCredentials):
     refresh_token_expires_at: Optional[int] = None
     """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
     scopes: list[str]
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
@@ -396,19 +413,25 @@ class HostScopedCredentials(_BaseCredentials):
     def matches_url(self, url: str) -> bool:
         """Check if this credential should be applied to the given URL."""
 
-        parsed_url = urlparse(url)
-        # Extract hostname without port
-        request_host = parsed_url.hostname
+        request_host, request_port = _extract_host_from_url(url)
+        cred_scope_host, cred_scope_port = _extract_host_from_url(self.host)
         if not request_host:
             return False
 
-        # Simple host matching - exact match or wildcard subdomain match
-        if self.host == request_host:
+        # If a port is specified in credential host, the request host port must match
+        if cred_scope_port is not None and request_port != cred_scope_port:
+            return False
+        # Non-standard ports are only allowed if explicitly specified in credential host
+        elif cred_scope_port is None and request_port not in (80, 443, None):
+            return False
+
+        # Simple host matching
+        if cred_scope_host == request_host:
             return True
 
         # Support wildcard matching (e.g., "*.example.com" matches "api.example.com")
-        if self.host.startswith("*."):
-            domain = self.host[2:]  # Remove "*."
+        if cred_scope_host.startswith("*."):
+            domain = cred_scope_host[2:]  # Remove "*."
             return request_host.endswith(f".{domain}") or request_host == domain
 
         return False
@@ -433,6 +456,18 @@ class OAuthState(BaseModel):
     code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
+    # Fields for external API OAuth flows
+    callback_url: Optional[str] = None
+    """External app's callback URL for OAuth redirect"""
+    state_metadata: dict[str, Any] = Field(default_factory=dict)
+    """Metadata to echo back to external app on completion"""
+    initiated_by_api_key_id: Optional[str] = None
+    """ID of the API key that initiated this OAuth flow"""
+
+    @property
+    def is_external(self) -> bool:
+        """Whether this OAuth flow was initiated via external API."""
+        return self.callback_url is not None
 
 
 class UserMetadata(BaseModel):
@@ -481,6 +516,25 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     provider: CP
     type: CT
 
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_provider(cls, data: Any) -> Any:
+        """Fix ``ProviderName.X`` format from Python 3.13 ``str(Enum)`` bug.
+
+        Python 3.13 changed ``str(StrEnum)`` to return ``"ClassName.MEMBER"``
+        instead of the plain value.  Old stored credential references may have
+        ``provider: "ProviderName.MCP"`` instead of ``"mcp"``.
+        """
+        if isinstance(data, dict):
+            prov = data.get("provider", "")
+            if isinstance(prov, str) and prov.startswith("ProviderName."):
+                member = prov.removeprefix("ProviderName.")
+                try:
+                    data = {**data, "provider": ProviderName[member].value}
+                except KeyError:
+                    pass
+        return data
+
     @classmethod
     def allowed_providers(cls) -> tuple[ProviderName, ...] | None:
         return get_args(cls.model_fields["provider"].annotation)
@@ -489,15 +543,13 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
         return get_args(cls.model_fields["type"].annotation)
 
-    @classmethod
-    def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
+    @staticmethod
+    def validate_credentials_field_schema(
+        field_schema: dict[str, Any], field_name: str
+    ):
         """Validates the schema of a credentials input field"""
-        field_name = next(
-            name for name, type in model.get_credentials_fields().items() if type is cls
-        )
-        field_schema = model.jsonschema()["properties"][field_name]
         try:
-            schema_extra = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
+            field_info = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
         except ValidationError as e:
             if "Field required [type=missing" not in str(e):
                 raise
@@ -507,11 +559,11 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        providers = cls.allowed_providers()
+        providers = field_info.provider
         if (
             providers is not None
             and len(providers) > 1
-            and not schema_extra.discriminator
+            and not field_info.discriminator
         ):
             raise TypeError(
                 f"Multi-provider CredentialsField '{field_name}' "
@@ -538,13 +590,13 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     )
 
 
-def _extract_host_from_url(url: str) -> str:
-    """Extract host from URL for grouping host-scoped credentials."""
+def _extract_host_from_url(url: str) -> tuple[str, int | None]:
+    """Extract host and port from URL for grouping host-scoped credentials."""
     try:
-        parsed = urlparse(url)
-        return parsed.hostname or url
+        parsed = parse_url(url)
+        return parsed.hostname or url, parsed.port
     except Exception:
-        return ""
+        return "", None
 
 
 class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
@@ -587,13 +639,20 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         ] = defaultdict(list)
 
         for field, key in fields:
-            if field.provider == frozenset([ProviderName.HTTP]):
-                # HTTP host-scoped credentials can have different hosts that reqires different credential sets.
-                # Group by host extracted from the URL
+            if (
+                field.discriminator
+                and not field.discriminator_mapping
+                and field.discriminator_values
+            ):
+                # URL-based discrimination (e.g. HTTP host-scoped, MCP server URL):
+                # Each unique host gets its own credential entry.
+                provider_prefix = next(iter(field.provider))
+                # Use .value for enum types to get the plain string (e.g. "mcp" not "ProviderName.MCP")
+                prefix_str = getattr(provider_prefix, "value", str(provider_prefix))
                 providers = frozenset(
-                    [cast(CP, "http")]
+                    [cast(CP, prefix_str)]
                     + [
-                        cast(CP, _extract_host_from_url(str(value)))
+                        cast(CP, parse_url(str(value)).netloc)
                         for value in field.discriminator_values
                     ]
                 )
@@ -653,15 +712,21 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         if not (self.discriminator and self.discriminator_mapping):
             return self
 
+        try:
+            provider = self.discriminator_mapping[discriminator_value]
+        except KeyError:
+            raise ValueError(
+                f"Model '{discriminator_value}' is not supported. "
+                "It may have been deprecated. Please update your agent configuration."
+            )
+
         return CredentialsFieldInfo(
-            credentials_provider=frozenset(
-                [self.discriminator_mapping[discriminator_value]]
-            ),
+            credentials_provider=frozenset([provider]),
             credentials_types=self.supported_types,
             credentials_scopes=self.required_scopes,
             discriminator=self.discriminator,
             discriminator_mapping=self.discriminator_mapping,
-            discriminator_values=self.discriminator_values,
+            discriminator_values=set(self.discriminator_values),  # defensive copy
         )
 
 
@@ -757,6 +822,17 @@ class RefundRequest(BaseModel):
     updated_at: datetime
 
 
+ProviderCostType = Literal[
+    "cost_usd",  # Actual USD cost reported by the provider
+    "tokens",  # LLM token counts (sum of input + output)
+    "characters",  # Per-character billing (TTS providers)
+    "sandbox_seconds",  # Per-second compute billing (e.g. E2B)
+    "walltime_seconds",  # Per-second billing incl. queue/polling
+    "per_run",  # Per-API-call billing with fixed cost
+    "items",  # Per-item billing (lead/organization/result count)
+]
+
+
 class NodeExecutionStats(BaseModel):
     """Execution statistics for a node execution."""
 
@@ -774,34 +850,44 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
+    cache_read_token_count: int = 0
+    cache_creation_token_count: int = 0
+    cost: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
+    provider_cost: float | None = None
+    # Type of the provider-reported cost/usage captured above. When set
+    # by a block, resolve_tracking honors this directly instead of
+    # guessing from provider name.
+    provider_cost_type: Optional[ProviderCostType] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
     cleared_outputs: Optional[dict[str, list[str]]] = None
 
     def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
-        """Mutate this instance by adding another NodeExecutionStats."""
+        """Mutate this instance by adding another NodeExecutionStats.
+
+        Avoids calling model_dump() twice per merge (called on every
+        merge_stats() from ~20+ blocks); reads via getattr/vars instead.
+        """
         if not isinstance(other, NodeExecutionStats):
             return NotImplemented
 
-        stats_dict = other.model_dump()
-        current_stats = self.model_dump()
-
-        for key, value in stats_dict.items():
-            if key not in current_stats:
-                # Field doesn't exist yet, just set it
+        for key in type(other).model_fields:
+            value = getattr(other, key)
+            if value is None:
+                # Never overwrite an existing value with None
+                continue
+            current = getattr(self, key, None)
+            if current is None:
+                # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
-            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
-                current_stats[key].update(value)
-                setattr(self, key, current_stats[key])
-            elif isinstance(value, (int, float)) and isinstance(
-                current_stats[key], (int, float)
-            ):
-                setattr(self, key, current_stats[key] + value)
-            elif isinstance(value, list) and isinstance(current_stats[key], list):
-                current_stats[key].extend(value)
-                setattr(self, key, current_stats[key])
+            elif isinstance(value, dict) and isinstance(current, dict):
+                current.update(value)
+            elif isinstance(value, (int, float)) and isinstance(current, (int, float)):
+                setattr(self, key, current + value)
+            elif isinstance(value, list) and isinstance(current, list):
+                current.extend(value)
             else:
                 setattr(self, key, value)
 
@@ -837,6 +923,10 @@ class GraphExecutionStats(BaseModel):
         default=None,
         description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
     )
+    is_dry_run: bool = Field(
+        default=False,
+        description="Whether this execution was a dry-run simulation",
+    )
 
 
 class UserExecutionSummaryStats(BaseModel):
@@ -855,3 +945,20 @@ class UserExecutionSummaryStats(BaseModel):
     total_execution_time: float = Field(default=0)
     average_execution_time: float = Field(default=0)
     cost_breakdown: dict[str, float] = Field(default_factory=dict)
+
+
+class UserOnboarding(BaseModel):
+    userId: str
+    completedSteps: list[OnboardingStep]
+    walletShown: bool
+    notified: list[OnboardingStep]
+    rewardedFor: list[OnboardingStep]
+    usageReason: Optional[str]
+    integrations: list[str]
+    otherIntegrations: Optional[str]
+    selectedStoreListingVersionId: Optional[str]
+    agentInput: Optional[dict[str, Any]]
+    onboardingAgentExecutionId: Optional[str]
+    agentRuns: int
+    lastRunAt: Optional[datetime]
+    consecutiveRunDays: int

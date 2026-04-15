@@ -21,9 +21,19 @@ class BlockOutputError(BlockError, ValueError):
 class BlockExecutionError(BlockError, ValueError):
     """The block failed to execute at runtime, resulting in a handled error"""
 
+    def __init__(self, message: str | None, block_name: str, block_id: str) -> None:
+        if message is None:
+            message = "Output error was None"
+        super().__init__(message, block_name, block_id)
+
 
 class BlockUnknownError(BlockError):
     """Critical unknown error with block handling"""
+
+    def __init__(self, message: str | None, block_name: str, block_id: str) -> None:
+        if not message:
+            message = "Unknown error occurred"
+        super().__init__(message, block_name, block_id)
 
 
 class MissingConfigError(Exception):
@@ -52,6 +62,10 @@ class GraphNotAccessibleError(NotAuthorizedError):
 
 class GraphNotInLibraryError(GraphNotAccessibleError):
     """Raised when attempting to execute a graph that is not / no longer in the user's library."""
+
+
+class PreconditionFailed(Exception):
+    """The user must do something else first before trying the current operation"""
 
 
 class InsufficientBalanceError(ValueError):
@@ -123,6 +137,12 @@ class GraphValidationError(ValueError):
                 for node_id, errors in self.node_errors.items()
             ]
         )
+
+
+class InvalidInputError(ValueError):
+    """Raised when user input validation fails (e.g., search term too long)"""
+
+    pass
 
 
 class DatabaseError(Exception):

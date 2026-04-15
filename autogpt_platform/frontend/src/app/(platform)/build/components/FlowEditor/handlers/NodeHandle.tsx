@@ -1,31 +1,83 @@
 import { CircleIcon } from "@phosphor-icons/react";
 import { Handle, Position } from "@xyflow/react";
+import { useEdgeStore } from "../../../stores/edgeStore";
+import { cleanUpHandleId } from "@/components/renderers/InputRenderer/helpers";
+import { cn } from "@/lib/utils";
+import { useNodeStore } from "../../../stores/nodeStore";
 
-const NodeHandle = ({
+const InputNodeHandle = ({
   handleId,
-  isConnected,
-  side,
+  nodeId,
 }: {
   handleId: string;
-  isConnected: boolean;
-  side: "left" | "right";
+  nodeId: string;
 }) => {
+  const cleanedHandleId = cleanUpHandleId(handleId);
+  const isInputConnected = useEdgeStore((state) =>
+    state.isInputConnected(nodeId ?? "", cleanedHandleId),
+  );
+  const isInputBroken = useNodeStore((state) =>
+    state.isInputBroken(nodeId, cleanedHandleId),
+  );
+
   return (
     <Handle
-      type={side === "left" ? "target" : "source"}
-      position={side === "left" ? Position.Left : Position.Right}
-      id={handleId}
-      className={side === "left" ? "-ml-4 mr-2" : "-mr-2 ml-2"}
+      type={"target"}
+      position={Position.Left}
+      id={cleanedHandleId}
+      className={"-ml-6 mr-2"}
+      data-tutorial-id={`input-handler-${nodeId}-${cleanedHandleId}`}
     >
       <div className="pointer-events-none">
         <CircleIcon
           size={16}
-          weight={isConnected ? "fill" : "duotone"}
-          className={"text-gray-400 opacity-100"}
+          weight={isInputConnected ? "fill" : "duotone"}
+          className={cn(
+            "text-gray-400 opacity-100",
+            isInputBroken && "text-red-500",
+          )}
         />
       </div>
     </Handle>
   );
 };
 
-export default NodeHandle;
+const OutputNodeHandle = ({
+  field_name,
+  nodeId,
+  hexColor,
+  isBroken,
+}: {
+  field_name: string;
+  nodeId: string;
+  hexColor: string;
+  isBroken: boolean;
+}) => {
+  const isOutputConnected = useEdgeStore((state) =>
+    state.isOutputConnected(nodeId, field_name),
+  );
+
+  return (
+    <Handle
+      type={"source"}
+      position={Position.Right}
+      id={field_name}
+      className={"-mr-2 ml-2"}
+      data-tutorial-id={`output-handler-${nodeId}-${field_name}`}
+    >
+      <div className="pointer-events-none">
+        <CircleIcon
+          size={16}
+          weight={"duotone"}
+          color={isOutputConnected ? hexColor : "gray"}
+          className={cn(
+            "text-gray-400 opacity-100",
+            isBroken && "text-red-500",
+          )}
+        />
+      </div>
+    </Handle>
+  );
+};
+
+export { InputNodeHandle, OutputNodeHandle };

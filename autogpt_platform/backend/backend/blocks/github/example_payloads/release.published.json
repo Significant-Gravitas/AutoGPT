@@ -1,0 +1,97 @@
+{
+  "action": "published",
+  "release": {
+    "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/releases/123456789",
+    "assets_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/releases/123456789/assets",
+    "upload_url": "https://uploads.github.com/repos/Significant-Gravitas/AutoGPT/releases/123456789/assets{?name,label}",
+    "html_url": "https://github.com/Significant-Gravitas/AutoGPT/releases/tag/v1.0.0",
+    "id": 123456789,
+    "author": {
+      "login": "ntindle",
+      "id": 12345678,
+      "node_id": "MDQ6VXNlcjEyMzQ1Njc4",
+      "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/ntindle",
+      "html_url": "https://github.com/ntindle",
+      "type": "User",
+      "site_admin": false
+    },
+    "node_id": "RE_kwDOJKSTjM4HWwAA",
+    "tag_name": "v1.0.0",
+    "target_commitish": "master",
+    "name": "AutoGPT Platform v1.0.0",
+    "draft": false,
+    "prerelease": false,
+    "created_at": "2024-12-01T10:00:00Z",
+    "published_at": "2024-12-01T12:00:00Z",
+    "assets": [
+      {
+        "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/releases/assets/987654321",
+        "id": 987654321,
+        "node_id": "RA_kwDOJKSTjM4HWwBB",
+        "name": "autogpt-v1.0.0.zip",
+        "label": "Release Package",
+        "content_type": "application/zip",
+        "state": "uploaded",
+        "size": 52428800,
+        "download_count": 0,
+        "created_at": "2024-12-01T11:30:00Z",
+        "updated_at": "2024-12-01T11:35:00Z",
+        "browser_download_url": "https://github.com/Significant-Gravitas/AutoGPT/releases/download/v1.0.0/autogpt-v1.0.0.zip"
+      }
+    ],
+    "tarball_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/tarball/v1.0.0",
+    "zipball_url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT/zipball/v1.0.0",
+    "body": "## What's New\n\n- Feature 1: Amazing new capability\n- Feature 2: Performance improvements\n- Bug fixes and stability improvements\n\n## Breaking Changes\n\nNone\n\n## Contributors\n\nThanks to all our contributors!"
+  },
+  "repository": {
+    "id": 614765452,
+    "node_id": "R_kgDOJKSTjA",
+    "name": "AutoGPT",
+    "full_name": "Significant-Gravitas/AutoGPT",
+    "private": false,
+    "owner": {
+      "login": "Significant-Gravitas",
+      "id": 130738209,
+      "node_id": "O_kgDOB8roIQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/130738209?v=4",
+      "url": "https://api.github.com/users/Significant-Gravitas",
+      "html_url": "https://github.com/Significant-Gravitas",
+      "type": "Organization",
+      "site_admin": false
+    },
+    "html_url": "https://github.com/Significant-Gravitas/AutoGPT",
+    "description": "AutoGPT is the vision of accessible AI for everyone, to use and to build on.",
+    "fork": false,
+    "url": "https://api.github.com/repos/Significant-Gravitas/AutoGPT",
+    "created_at": "2023-03-16T09:21:07Z",
+    "updated_at": "2024-12-01T12:00:00Z",
+    "pushed_at": "2024-12-01T12:00:00Z",
+    "stargazers_count": 170000,
+    "watchers_count": 170000,
+    "language": "Python",
+    "forks_count": 45000,
+    "visibility": "public",
+    "default_branch": "master"
+  },
+  "organization": {
+    "login": "Significant-Gravitas",
+    "id": 130738209,
+    "node_id": "O_kgDOB8roIQ",
+    "url": "https://api.github.com/orgs/Significant-Gravitas",
+    "avatar_url": "https://avatars.githubusercontent.com/u/130738209?v=4",
+    "description": ""
+  },
+  "sender": {
+    "login": "ntindle",
+    "id": 12345678,
+    "node_id": "MDQ6VXNlcjEyMzQ1Njc4",
+    "avatar_url": "https://avatars.githubusercontent.com/u/12345678?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/ntindle",
+    "html_url": "https://github.com/ntindle",
+    "type": "User",
+    "site_admin": false
+  }
+}

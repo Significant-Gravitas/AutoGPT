@@ -1,29 +1,25 @@
 from fastapi import FastAPI
-from fastapi.openapi.utils import get_openapi
 
 from .jwt_utils import bearer_jwt_auth
 
 
 def add_auth_responses_to_openapi(app: FastAPI) -> None:
     """
-    Set up custom OpenAPI schema generation that adds 401 responses
+    Patch a FastAPI instance's `openapi()` method to add 401 responses
     to all authenticated endpoints.
 
     This is needed when using HTTPBearer with auto_error=False to get proper
     401 responses instead of 403, but FastAPI only automatically adds security
     responses when auto_error=True.
     """
+    # Wrap current method to allow stacking OpenAPI schema modifiers like this
+    wrapped_openapi = app.openapi
 
     def custom_openapi():
         if app.openapi_schema:
             return app.openapi_schema
 
-        openapi_schema = get_openapi(
-            title=app.title,
-            version=app.version,
-            description=app.description,
-            routes=app.routes,
-        )
+        openapi_schema = wrapped_openapi()
 
         # Add 401 response to all endpoints that have security requirements
         for path, methods in openapi_schema["paths"].items():

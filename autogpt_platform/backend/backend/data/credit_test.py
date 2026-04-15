@@ -4,10 +4,10 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, UserBalance
 
+from backend.blocks import get_block
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.data.block import get_block
 from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
-from backend.data.execution import NodeExecutionEntry, UserContext
+from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
@@ -73,6 +73,7 @@ async def test_block_credit_usage(server: SpinTestServer):
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
+            graph_version=1,
             node_id="test_node",
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
@@ -85,7 +86,7 @@ async def test_block_credit_usage(server: SpinTestServer):
                     "type": openai_credentials.type,
                 },
             },
-            user_context=UserContext(timezone="UTC"),
+            execution_context=ExecutionContext(user_timezone="UTC"),
         ),
     )
     assert spending_amount_1 > 0
@@ -94,12 +95,13 @@ async def test_block_credit_usage(server: SpinTestServer):
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
+            graph_version=1,
             node_id="test_node",
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
             inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
-            user_context=UserContext(timezone="UTC"),
+            execution_context=ExecutionContext(user_timezone="UTC"),
         ),
     )
     assert spending_amount_2 == 0
@@ -131,6 +133,16 @@ async def test_block_credit_reset(server: SpinTestServer):
         # Test month 1 behavior
         month1 = datetime.now(timezone.utc).replace(month=1, day=1)
         user_credit.time_now = lambda: month1
+
+        # IMPORTANT: Set updatedAt to December of previous year to ensure it's
+        # in a different month than month1 (January). This fixes a timing bug
+        # where if the test runs in early February, 35 days ago would be January,
+        # matching the mocked month1 and preventing the refill from triggering.
+        dec_previous_year = month1.replace(year=month1.year - 1, month=12, day=15)
+        await UserBalance.prisma().update(
+            where={"userId": DEFAULT_USER_ID},
+            data={"updatedAt": dec_previous_year},
+        )
 
         # First call in month 1 should trigger refill
         balance = await user_credit.get_credits(DEFAULT_USER_ID)
@@ -166,9 +178,13 @@ async def test_block_credit_reset(server: SpinTestServer):
         assert month2_balance == 1100  # Balance persists, no reset
 
         # Now test the refill behavior when balance is low
-        # Set balance below refill threshold
+        # Set balance below refill threshold and backdate updatedAt to month2 so
+        # the month3 refill check sees a different (month2 → month3) transition.
+        # Without the explicit updatedAt, Prisma sets it to real-world NOW which
+        # may share the same calendar month as the mocked month3, suppressing refill.
         await UserBalance.prisma().update(
-            where={"userId": DEFAULT_USER_ID}, data={"balance": 400}
+            where={"userId": DEFAULT_USER_ID},
+            data={"balance": 400, "updatedAt": month2},
         )
 
         # Create a month 2 transaction to update the last transaction time

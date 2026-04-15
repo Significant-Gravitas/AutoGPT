@@ -1,16 +1,15 @@
 "use client";
 
-import * as Sentry from "@sentry/nextjs";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
-export default function GlobalError({
-  error,
-  reset,
-}: {
+interface Props {
   error: Error & { digest?: string };
   reset: () => void;
-}) {
+}
+
+export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
     Sentry.captureException(error);
   }, [error]);

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -15,11 +16,35 @@ from backend.data.model import (
     OAuth2Credentials,
     OAuthState,
     UserIntegrations,
+    UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import thread_cached
 from backend.util.settings import Settings
 
 settings = Settings()
+logger = logging.getLogger(__name__)
+
+
+def provider_matches(stored: str, expected: str) -> bool:
+    """Compare provider strings, handling Python 3.13 ``str(StrEnum)`` bug.
+
+    On Python 3.13, ``str(ProviderName.MCP)`` returns ``"ProviderName.MCP"``
+    instead of ``"mcp"``.  OAuth states persisted with the buggy format need
+    to match when ``expected`` is the canonical value (e.g. ``"mcp"``).
+    """
+    if stored == expected:
+        return True
+    if stored.startswith("ProviderName."):
+        member = stored.removeprefix("ProviderName.")
+        from backend.integrations.providers import ProviderName
+
+        try:
+            return ProviderName[member].value == expected
+        except KeyError:
+            pass
+    return False
+
 
 # This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
 ollama_credentials = APIKeyCredentials(
@@ -95,9 +120,9 @@ jina_credentials = APIKeyCredentials(
 )
 unreal_credentials = APIKeyCredentials(
     id="66f20754-1b81-48e4-91d0-f4f0dd82145f",
-    provider="unreal",
+    provider="unreal_speech",
     api_key=SecretStr(settings.secrets.unreal_speech_api_key),
-    title="Use Credits for Unreal",
+    title="Use Credits for Unreal Speech",
     expires_at=None,
 )
 open_router_credentials = APIKeyCredentials(
@@ -207,6 +232,30 @@ v0_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+webshare_proxy_credentials = UserPasswordCredentials(
+    id="a5b3c7d9-2e4f-4a6b-8c1d-9e0f1a2b3c4d",
+    provider="webshare_proxy",
+    username=SecretStr(settings.secrets.webshare_proxy_username),
+    password=SecretStr(settings.secrets.webshare_proxy_password),
+    title="Use Credits for Webshare Proxy",
+)
+
+openweathermap_credentials = APIKeyCredentials(
+    id="8b3d4e5f-6a7b-8c9d-0e1f-2a3b4c5d6e7f",
+    provider="openweathermap",
+    api_key=SecretStr(settings.secrets.openweathermap_api_key),
+    title="Use Credits for OpenWeatherMap",
+    expires_at=None,
+)
+
+elevenlabs_credentials = APIKeyCredentials(
+    id="f4a8b6c2-3d1e-4f5a-9b8c-7d6e5f4a3b2c",
+    provider="elevenlabs",
+    api_key=SecretStr(settings.secrets.elevenlabs_api_key),
+    title="Use Credits for ElevenLabs",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -233,19 +282,35 @@ DEFAULT_CREDENTIALS = [
     google_maps_credentials,
     llama_api_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
+    openweathermap_credentials,
+    elevenlabs_credentials,
 ]
 
 
+SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
+
+# Set of providers that have system credentials available
+SYSTEM_PROVIDERS = {cred.provider for cred in DEFAULT_CREDENTIALS}
+
+
+def is_system_credential(credential_id: str) -> bool:
+    """Check if a credential ID belongs to a system-managed credential."""
+    return credential_id in SYSTEM_CREDENTIAL_IDS
+
+
+def is_system_provider(provider: str) -> bool:
+    """Check if a provider has system-managed credentials available."""
+    return provider in SYSTEM_PROVIDERS
+
+
 class IntegrationCredentialsStore:
-    def __init__(self):
-        self._locks = None
-
+    @thread_cached
     async def locks(self) -> AsyncRedisKeyedMutex:
-        if self._locks:
-            return self._locks
-
-        self._locks = AsyncRedisKeyedMutex(await get_redis_async())
-        return self._locks
+        # Per-thread: copilot executor runs worker threads with separate event
+        # loops; AsyncRedisKeyedMutex's internal asyncio.Lock is bound to the
+        # loop it was created on.
+        return AsyncRedisKeyedMutex(await get_redis_async())
 
     @property
     def db_manager(self):
@@ -259,20 +324,45 @@ class IntegrationCredentialsStore:
             return get_database_manager_async_client()
 
     # =============== USER-MANAGED CREDENTIALS =============== #
+
+    async def _get_persisted_user_creds_unlocked(
+        self, user_id: str
+    ) -> list[Credentials]:
+        """Return only the persisted (user-stored) credentials — no side effects.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        return list((await self._get_user_integrations(user_id)).credentials)
+
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
-            if await self.get_creds_by_id(user_id, credentials.id):
+            # Check system/managed IDs without triggering provisioning
+            if credentials.id in SYSTEM_CREDENTIAL_IDS:
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
-            await self._set_user_integration_creds(
-                user_id, [*(await self.get_all_creds(user_id)), credentials]
-            )
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            if any(c.id == credentials.id for c in persisted):
+                raise ValueError(
+                    f"Can not re-create existing credentials #{credentials.id} "
+                    f"for user #{user_id}"
+                )
+            await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        users_credentials = (await self._get_user_integrations(user_id)).credentials
-        all_credentials = users_credentials
+        """Public entry point — acquires lock, then delegates."""
+        async with await self.locked_user_integrations(user_id):
+            return await self._get_all_creds_unlocked(user_id)
+
+    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
+        """Return all credentials for *user_id*.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        user_integrations = await self._get_user_integrations(user_id)
+        all_credentials = list(user_integrations.credentials)
+
         # These will always be added
         all_credentials.append(ollama_credentials)
 
@@ -321,6 +411,19 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if settings.secrets.llama_api_key:
+            all_credentials.append(llama_api_credentials)
+        if settings.secrets.v0_api_key:
+            all_credentials.append(v0_credentials)
+        if (
+            settings.secrets.webshare_proxy_username
+            and settings.secrets.webshare_proxy_password
+        ):
+            all_credentials.append(webshare_proxy_credentials)
+        if settings.secrets.openweathermap_api_key:
+            all_credentials.append(openweathermap_credentials)
+        if settings.secrets.elevenlabs_api_key:
+            all_credentials.append(elevenlabs_credentials)
         return all_credentials
 
     async def get_creds_by_id(
@@ -333,19 +436,28 @@ class IntegrationCredentialsStore:
         self, user_id: str, provider: str
     ) -> list[Credentials]:
         credentials = await self.get_all_creds(user_id)
-        return [c for c in credentials if c.provider == provider]
+        return [c for c in credentials if provider_matches(c.provider, provider)]
 
     async def get_authorized_providers(self, user_id: str) -> list[str]:
         credentials = await self.get_all_creds(user_id)
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
+        if updated.id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(
+                f"System credential #{updated.id} cannot be updated directly"
+            )
         async with await self.locked_user_integrations(user_id):
-            current = await self.get_creds_by_id(user_id, updated.id)
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            current = next((c for c in persisted if c.id == updated.id), None)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
                     f"for user with ID {user_id} not found"
+                )
+            if current.is_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{updated.id} cannot be updated"
                 )
             if type(current) is not type(updated):
                 raise TypeError(
@@ -366,21 +478,52 @@ class IntegrationCredentialsStore:
                     f"to more restrictive set of scopes {updated.scopes}"
                 )
 
-            # Update the credentials
+            # Update only persisted credentials — no side-effectful provisioning
             updated_credentials_list = [
-                updated if c.id == updated.id else c
-                for c in await self.get_all_creds(user_id)
+                updated if c.id == updated.id else c for c in persisted
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
+        if credentials_id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(f"System credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
-            filtered_credentials = [
-                c for c in await self.get_all_creds(user_id) if c.id != credentials_id
-            ]
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            target = next((c for c in persisted if c.id == credentials_id), None)
+            if target and target.is_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{credentials_id} cannot be deleted"
+                )
+            filtered_credentials = [c for c in persisted if c.id != credentials_id]
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    async def has_managed_credential(self, user_id: str, provider: str) -> bool:
+        """Check if a managed credential exists for *provider*."""
+        user_integrations = await self._get_user_integrations(user_id)
+        return any(
+            c.provider == provider and c.is_managed
+            for c in user_integrations.credentials
+        )
+
+    async def add_managed_credential(
+        self, user_id: str, credential: Credentials
+    ) -> None:
+        """Upsert a managed credential.
+
+        Removes any existing managed credential for the same provider,
+        then appends the new one. The credential MUST have is_managed=True.
+        """
+        if not credential.is_managed:
+            raise ValueError("credential.is_managed must be True")
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.credentials = [
+                c
+                for c in user_integrations.credentials
+                if not (c.provider == credential.provider and c.is_managed)
+            ]
+            user_integrations.credentials.append(credential)
 
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         """Set the Ayrshare profile key for a user.
@@ -399,7 +542,15 @@ class IntegrationCredentialsStore:
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(
-        self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
+        self,
+        user_id: str,
+        provider: str,
+        scopes: list[str],
+        use_pkce: bool = False,
+        # New parameters for external API OAuth flows
+        callback_url: Optional[str] = None,
+        state_metadata: Optional[dict] = None,
+        initiated_by_api_key_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -412,21 +563,14 @@ class IntegrationCredentialsStore:
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
+            # External API OAuth flow fields
+            callback_url=callback_url,
+            state_metadata=state_metadata or {},
+            initiated_by_api_key_id=initiated_by_api_key_id,
         )
 
         async with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.oauth_states.append(state)
-
-        async with await self.locked_user_integrations(user_id):
-
-            user_integrations = await self._get_user_integrations(user_id)
-            oauth_states = user_integrations.oauth_states
-            oauth_states.append(state)
-            user_integrations.oauth_states = oauth_states
-
-            await self.db_manager.update_user_integrations(
-                user_id=user_id, data=user_integrations
-            )
 
         return token, code_challenge
 
@@ -453,7 +597,7 @@ class IntegrationCredentialsStore:
                     state
                     for state in oauth_states
                     if secrets.compare_digest(state.token, token)
-                    and state.provider == provider
+                    and provider_matches(state.provider, provider)
                     and state.expires_at > now.timestamp()
                 ),
                 None,

@@ -23,10 +23,6 @@ export const loggedInLinks: Link[] = [
     href: "/marketplace",
   },
   {
-    name: "Library",
-    href: "/library",
-  },
-  {
     name: "Build",
     href: "/build",
   },
@@ -155,7 +151,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
 }
 
 export function getAccountMenuOptionIcon(icon: IconType) {
-  const iconClass = "w-5 h-5";
+  const iconClass = "size-4";
   switch (icon) {
     case IconType.LayoutDashboard:
       return <StorefrontIcon className={iconClass} />;

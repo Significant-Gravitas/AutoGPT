@@ -3,8 +3,7 @@ const commonStyles = {
   title: "font-poppins text-md md:text-lg leading-none",
   overlay:
     "fixed inset-0 z-50 bg-stone-500/20 dark:bg-black/50 backdrop-blur-md animate-fade-in",
-  content:
-    "overflow-y-hidden bg-white p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
+  content: "bg-white p-6 fixed rounded-2xlarge flex flex-col z-50 w-full",
 };
 
 // Modal specific styles
@@ -19,5 +18,5 @@ export const modalStyles = {
 // Drawer specific styles
 export const drawerStyles = {
   ...commonStyles,
-  content: `${commonStyles.content} max-h-[90vh] w-full bottom-0 rounded-br-none rounded-bl-none`,
+  content: `${commonStyles.content} max-h-[90vh] w-full bottom-0 rounded-br-none rounded-bl-none min-h-0`,
 };

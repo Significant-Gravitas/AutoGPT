@@ -119,3 +119,14 @@ export function getCredentialsSchema(scopes: string[]) {
     secret: true,
   } satisfies BlockIOCredentialsSubSchema;
 }
+
+export function isValidFile(
+  file: unknown,
+): file is { id?: string; name?: string } {
+  return (
+    typeof file === "object" &&
+    file !== null &&
+    (typeof (file as { id?: unknown }).id === "string" ||
+      typeof (file as { name?: unknown }).name === "string")
+  );
+}

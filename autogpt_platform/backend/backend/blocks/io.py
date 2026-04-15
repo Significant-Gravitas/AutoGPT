@@ -2,7 +2,9 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
-from backend.data.block import (
+from pydantic import AliasChoices, Field
+
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -10,6 +12,10 @@ from backend.data.block import (
     BlockSchemaInput,
     BlockType,
 )
+
+# Import for Google Drive file input block
+from backend.blocks.google._drive import AttachmentView, GoogleDriveFile
+from backend.data.execution import ExecutionContext
 from backend.data.model import SchemaField
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
@@ -24,9 +30,9 @@ class AgentInputBlock(Block):
     """
     This block is used to provide input to the graph.
 
-    It takes in a value, name, description, default values list and bool to limit selection to default values.
+    It takes in a value, name, and description.
 
-    It Outputs the value passed as input.
+    It outputs the value passed as input.
     """
 
     class Input(BlockSchemaInput):
@@ -43,12 +49,6 @@ class AgentInputBlock(Block):
             default=None,
             advanced=True,
         )
-        placeholder_values: list = SchemaField(
-            description="The placeholder values to be passed as input.",
-            default_factory=list,
-            advanced=True,
-            hidden=True,
-        )
         advanced: bool = SchemaField(
             description="Whether to show the input in the advanced section, if the field is not required.",
             default=False,
@@ -61,10 +61,7 @@ class AgentInputBlock(Block):
         )
 
         def generate_schema(self):
-            schema = copy.deepcopy(self.get_field_schema("value"))
-            if possible_values := self.placeholder_values:
-                schema["enum"] = possible_values
-            return schema
+            return copy.deepcopy(self.get_field_schema("value"))
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field for interface definition
@@ -74,7 +71,7 @@ class AgentInputBlock(Block):
         super().__init__(
             **{
                 "id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-                "description": "Base block for user inputs.",
+                "description": "A block that accepts and processes user input values within a workflow, supporting various input types and validation.",
                 "input_schema": AgentInputBlock.Input,
                 "output_schema": AgentInputBlock.Output,
                 "test_input": [
@@ -82,18 +79,16 @@ class AgentInputBlock(Block):
                         "value": "Hello, World!",
                         "name": "input_1",
                         "description": "Example test input.",
-                        "placeholder_values": [],
                     },
                     {
-                        "value": "Hello, World!",
+                        "value": 42,
                         "name": "input_2",
-                        "description": "Example test input with placeholders.",
-                        "placeholder_values": ["Hello, World!"],
+                        "description": "Example numeric input.",
                     },
                 ],
                 "test_output": [
                     ("result", "Hello, World!"),
-                    ("result", "Hello, World!"),
+                    ("result", 42),
                 ],
                 "categories": {BlockCategory.INPUT, BlockCategory.BASIC},
                 "block_type": BlockType.INPUT,
@@ -166,7 +161,7 @@ class AgentOutputBlock(Block):
     def __init__(self):
         super().__init__(
             id="363ae599-353e-4804-937e-b2ee3cef3da4",
-            description="Stores the output of the graph for users to see.",
+            description="A block that records and formats workflow results for display to users, with optional Jinja2 template formatting support.",
             input_schema=AgentOutputBlock.Input,
             output_schema=AgentOutputBlock.Output,
             test_input=[
@@ -207,7 +202,7 @@ class AgentOutputBlock(Block):
         if input_data.format:
             try:
                 formatter = TextFormatter(autoescape=input_data.escape_html)
-                yield "output", formatter.format_string(
+                yield "output", await formatter.format_string(
                     input_data.format, {input_data.name: input_data.value}
                 )
             except Exception as e:
@@ -241,13 +236,11 @@ class AgentShortTextInputBlock(AgentInputBlock):
                     "value": "Hello",
                     "name": "short_text_1",
                     "description": "Short text example 1",
-                    "placeholder_values": [],
                 },
                 {
                     "value": "Quick test",
                     "name": "short_text_2",
                     "description": "Short text example 2",
-                    "placeholder_values": ["Quick test", "Another option"],
                 },
             ],
             test_output=[
@@ -281,13 +274,11 @@ class AgentLongTextInputBlock(AgentInputBlock):
                     "value": "Lorem ipsum dolor sit amet...",
                     "name": "long_text_1",
                     "description": "Long text example 1",
-                    "placeholder_values": [],
                 },
                 {
                     "value": "Another multiline text input.",
                     "name": "long_text_2",
                     "description": "Long text example 2",
-                    "placeholder_values": ["Another multiline text input."],
                 },
             ],
             test_output=[
@@ -321,13 +312,11 @@ class AgentNumberInputBlock(AgentInputBlock):
                     "value": 42,
                     "name": "number_input_1",
                     "description": "Number example 1",
-                    "placeholder_values": [],
                 },
                 {
                     "value": 314,
                     "name": "number_input_2",
                     "description": "Number example 2",
-                    "placeholder_values": [314, 2718],
                 },
             ],
             test_output=[
@@ -460,24 +449,28 @@ class AgentFileInputBlock(AgentInputBlock):
         self,
         input_data: Input,
         *,
-        graph_exec_id: str,
-        user_id: str,
+        execution_context: ExecutionContext,
         **kwargs,
     ) -> BlockOutput:
         if not input_data.value:
             return
 
+        # Determine return format based on user preference
+        # for_external_api: always returns data URI (base64) - honors "Produce Base64 Output"
+        # for_block_output: smart format - workspace:// in CoPilot, data URI in graphs
+        return_format = "for_external_api" if input_data.base_64 else "for_block_output"
+
         yield "result", await store_media_file(
-            graph_exec_id=graph_exec_id,
             file=input_data.value,
-            user_id=user_id,
-            return_content=input_data.base_64,
+            execution_context=execution_context,
+            return_format=return_format,
         )
 
 
 class AgentDropdownInputBlock(AgentInputBlock):
     """
-    A specialized text input block that relies on placeholder_values to present a dropdown.
+    A specialized text input block that presents a dropdown selector
+    restricted to a fixed set of values.
     """
 
     class Input(AgentInputBlock.Input):
@@ -487,12 +480,25 @@ class AgentDropdownInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
-        placeholder_values: list = SchemaField(
-            description="Possible values for the dropdown.",
+        # Use Field() directly (not SchemaField) to pass validation_alias,
+        # which handles backward compat for legacy "placeholder_values" across
+        # all construction paths (model_construct, __init__, model_validate).
+        options: list = Field(
             default_factory=list,
-            advanced=False,
             title="Dropdown Options",
+            description=(
+                "If provided, renders the input as a dropdown selector "
+                "restricted to these values. Leave empty for free-text input."
+            ),
+            validation_alias=AliasChoices("options", "placeholder_values"),
+            json_schema_extra={"advanced": False, "secret": False},
         )
+
+        def generate_schema(self):
+            schema = super().generate_schema()
+            if possible_values := self.options:
+                schema["enum"] = possible_values
+            return schema
 
     class Output(AgentInputBlock.Output):
         result: str = SchemaField(description="Selected dropdown value.")
@@ -508,13 +514,13 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 {
                     "value": "Option A",
                     "name": "dropdown_1",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 1",
                 },
                 {
                     "value": "Option C",
                     "name": "dropdown_2",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 2",
                 },
             ],
@@ -646,6 +652,119 @@ class AgentTableInputBlock(AgentInputBlock):
         yield "result", input_data.value if input_data.value is not None else []
 
 
+class AgentGoogleDriveFileInputBlock(AgentInputBlock):
+    """
+    This block allows users to select a file from Google Drive.
+
+    It provides a Google Drive file picker UI that handles both authentication
+    and file selection. The selected file information (ID, name, URL, etc.)
+    is output for use by other blocks like Google Sheets Read.
+    """
+
+    class Input(AgentInputBlock.Input):
+        value: Optional[GoogleDriveFile] = SchemaField(
+            description="The selected Google Drive file.",
+            default=None,
+            advanced=False,
+            title="Selected File",
+        )
+        allowed_views: list[AttachmentView] = SchemaField(
+            description="Which views to show in the file picker (DOCS, SPREADSHEETS, PRESENTATIONS, etc.).",
+            default_factory=lambda: ["DOCS", "SPREADSHEETS", "PRESENTATIONS"],
+            advanced=False,
+            title="Allowed Views",
+        )
+        allow_folder_selection: bool = SchemaField(
+            description="Whether to allow selecting folders.",
+            default=False,
+            advanced=True,
+            title="Allow Folder Selection",
+        )
+
+        def generate_schema(self):
+            """Generate schema for the value field with Google Drive picker format."""
+            schema = super().generate_schema()
+
+            # Default scopes for drive.file access
+            scopes = ["https://www.googleapis.com/auth/drive.file"]
+
+            # Build picker configuration
+            picker_config = {
+                "multiselect": False,  # Single file selection only for now
+                "allow_folder_selection": self.allow_folder_selection,
+                "allowed_views": (
+                    list(self.allowed_views) if self.allowed_views else ["DOCS"]
+                ),
+                "scopes": scopes,
+                # Auto-credentials config tells frontend to include _credentials_id in output
+                "auto_credentials": {
+                    "provider": "google",
+                    "type": "oauth2",
+                    "scopes": scopes,
+                    "kwarg_name": "credentials",
+                },
+            }
+
+            # Set format and config for frontend to render Google Drive picker
+            schema["format"] = "google-drive-picker"
+            schema["google_drive_picker_config"] = picker_config
+            # Also keep auto_credentials at top level for backend detection
+            schema["auto_credentials"] = {
+                "provider": "google",
+                "type": "oauth2",
+                "scopes": scopes,
+                "kwarg_name": "credentials",
+            }
+
+            if self.value is not None:
+                schema["default"] = self.value.model_dump()
+
+            return schema
+
+    class Output(AgentInputBlock.Output):
+        result: GoogleDriveFile = SchemaField(
+            description="The selected Google Drive file with ID, name, URL, and other metadata."
+        )
+
+    def __init__(self):
+        test_file = GoogleDriveFile.model_validate(
+            {
+                "id": "test-file-id",
+                "name": "Test Spreadsheet",
+                "mimeType": "application/vnd.google-apps.spreadsheet",
+                "url": "https://docs.google.com/spreadsheets/d/test-file-id",
+            }
+        )
+        super().__init__(
+            id="d3b32f15-6fd7-40e3-be52-e083f51b19a2",
+            description="Block for selecting a file from Google Drive.",
+            disabled=not config.enable_agent_input_subtype_blocks,
+            input_schema=AgentGoogleDriveFileInputBlock.Input,
+            output_schema=AgentGoogleDriveFileInputBlock.Output,
+            test_input=[
+                {
+                    "name": "spreadsheet_input",
+                    "description": "Select a spreadsheet from Google Drive",
+                    "allowed_views": ["SPREADSHEETS"],
+                    "value": {
+                        "id": "test-file-id",
+                        "name": "Test Spreadsheet",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                        "url": "https://docs.google.com/spreadsheets/d/test-file-id",
+                    },
+                }
+            ],
+            test_output=[("result", test_file)],
+        )
+
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+        """
+        Yields the selected Google Drive file.
+        """
+        if input_data.value is not None:
+            yield "result", input_data.value
+
+
 IO_BLOCK_IDs = [
     AgentInputBlock().id,
     AgentOutputBlock().id,
@@ -658,4 +777,5 @@ IO_BLOCK_IDs = [
     AgentDropdownInputBlock().id,
     AgentToggleInputBlock().id,
     AgentTableInputBlock().id,
+    AgentGoogleDriveFileInputBlock().id,
 ]

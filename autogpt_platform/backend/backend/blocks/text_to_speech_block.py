@@ -2,7 +2,7 @@ from typing import Any, Literal
 
 from pydantic import SecretStr
 
-from backend.data.block import (
+from backend.blocks._base import (
     Block,
     BlockCategory,
     BlockOutput,
@@ -13,6 +13,7 @@ from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
@@ -103,5 +104,11 @@ class UnrealTextToSpeechBlock(Block):
             credentials.api_key,
             input_data.text,
             input_data.voice_id,
+        )
+        self.merge_stats(
+            NodeExecutionStats(
+                provider_cost=float(len(input_data.text)),
+                provider_cost_type="characters",
+            )
         )
         yield "mp3_url", api_response["OutputUri"]
