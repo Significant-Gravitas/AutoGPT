@@ -35,24 +35,22 @@ class _FakeRedis:
         self.lists: dict[str, list[str | bytes]] = {}
         self.published: list[tuple[str, str]] = []
 
-    async def eval(self, script: str, num_keys: int, *args: Any) -> Any:
-        """Emulate the push Lua script.
-
-        The real Lua script runs atomically in Redis; the fake
-        implementation just runs the equivalent list operations in
-        order and returns the final LLEN.  That's enough to exercise
-        the cap + ordering invariants the tests care about.
-        """
-        key = args[0]
-        payload = args[1]
-        max_len = int(args[2])
-        # ARGV[3] is TTL — fake doesn't enforce expiry
+    async def rpush(self, key: str, *values: Any) -> int:
         lst = self.lists.setdefault(key, [])
-        lst.append(payload)
-        if len(lst) > max_len:
-            # RPUSH + LTRIM(-N, -1) = keep only last N
-            self.lists[key] = lst[-max_len:]
-        return len(self.lists[key])
+        lst.extend(values)
+        return len(lst)
+
+    async def ltrim(self, key: str, start: int, stop: int) -> None:
+        lst = self.lists.get(key, [])
+        # Redis LTRIM stop is inclusive; -1 means the last element.
+        if stop == -1:
+            self.lists[key] = lst[start:]
+        else:
+            self.lists[key] = lst[start : stop + 1]
+
+    async def expire(self, key: str, seconds: int) -> int:
+        # Fake doesn't enforce TTL — just acknowledge.
+        return 1
 
     async def publish(self, channel: str, payload: str) -> int:
         self.published.append((channel, payload))
