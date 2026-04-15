@@ -845,7 +845,10 @@ def test_delete_session_success(mocker: pytest_mock.MockerFixture) -> None:
         new_callable=AsyncMock,
         return_value=True,
     )
-    mocker.patch.object(chat_routes.ChatConfig(), "e2b_active", False)
+    # Patch use_e2b_sandbox env-var to disable E2B so the route skips sandbox cleanup.
+    # Patching the Pydantic property directly doesn't work (Pydantic v2 intercepts
+    # attribute setting on BaseSettings instances and raises AttributeError).
+    mocker.patch.dict("os.environ", {"USE_E2B_SANDBOX": "false"})
 
     response = client.delete("/sessions/sess-1")
 
@@ -1331,7 +1334,14 @@ def test_reset_usage_returns_402_when_insufficient_credits(
     from backend.util.exceptions import InsufficientBalanceError
 
     mock_credit = _mock_reset_internals(mocker)
-    mock_credit.spend_credits = AsyncMock(side_effect=InsufficientBalanceError("broke"))
+    mock_credit.spend_credits = AsyncMock(
+        side_effect=InsufficientBalanceError(
+            message="Insufficient balance",
+            user_id=TEST_USER_ID,
+            balance=0.0,
+            amount=100.0,
+        )
+    )
     mocker.patch(
         "backend.api.features.chat.routes.release_reset_lock",
         new_callable=AsyncMock,
