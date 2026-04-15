@@ -211,9 +211,15 @@ export function useBuilderChatPanel({
   // Sends an arbitrary text message directly, bypassing the input field.
   // Used by CopilotChatActionsProvider so tool components (e.g. EditAgentTool)
   // can programmatically send "try again" prompts without touching the textarea.
+  // Silently truncates to the backend's 64,000-character limit to avoid a 422.
   function sendRawMessage(text: string) {
     if (!text || !canSend) return;
-    sendMessage({ text });
+    const MAX_RAW_MESSAGE_CHARS = 64_000;
+    const safeText =
+      text.length > MAX_RAW_MESSAGE_CHARS
+        ? text.slice(0, MAX_RAW_MESSAGE_CHARS)
+        : text;
+    sendMessage({ text: safeText });
   }
 
   return {

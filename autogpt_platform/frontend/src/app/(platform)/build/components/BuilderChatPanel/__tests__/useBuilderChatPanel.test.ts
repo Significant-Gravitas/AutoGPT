@@ -1669,4 +1669,23 @@ describe("useBuilderChatPanel – sendRawMessage", () => {
 
     expect(mockSendMessage).not.toHaveBeenCalled();
   });
+
+  it("truncates messages that exceed the 64,000-character backend limit", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-truncate" },
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await openAndFlush(() => result.current.handleToggle());
+    expect(result.current.canSend).toBe(true);
+
+    const overLimitText = "x".repeat(65_000);
+    act(() => {
+      result.current.sendRawMessage(overLimitText);
+    });
+
+    expect(mockSendMessage).toHaveBeenCalledWith({
+      text: "x".repeat(64_000),
+    });
+  });
 });
