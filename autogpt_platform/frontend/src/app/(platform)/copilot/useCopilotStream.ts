@@ -497,7 +497,12 @@ export function useCopilotStream({
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;
         hasShownDisconnectToast.current = false;
-        lastSubmittedMsgRef.current = null;
+        // Intentionally NOT clearing lastSubmittedMsgRef here: keeping the last
+        // submitted text prevents getSendSuppressionReason from allowing a
+        // duplicate POST of the same message immediately after a successful turn
+        // (the "duplicate" branch checks both the ref and the visible last user
+        // message, so legitimate re-sends after a different reply are still
+        // allowed).
         setReconnectExhausted(false);
       }
     }
