@@ -2915,9 +2915,10 @@ async def stream_chat_completion_sdk(
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry["session_id"] = session_id
                 else:
-                    # T2+ retry without --resume: do not pass --session-id.
-                    # The T1 session file already exists at that path; re-using
-                    # the same ID would fail with "Session ID already in use".
+                    # T2+ retry without --resume: initial invocation used
+                    # --resume, which restored the T1 session file to local
+                    # storage.  Re-using session_id without --resume would
+                    # fail with "Session ID already in use".
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry.pop("session_id", None)
                 # Recompute system_prompt for retry — ctx.use_resume may have
