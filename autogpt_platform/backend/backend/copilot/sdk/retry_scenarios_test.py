@@ -1042,7 +1042,7 @@ def _make_sdk_patches(
         # Stub pending-message drain so retry tests don't hit Redis.
         # Returns an empty list → no mid-turn injection happens.
         (
-            f"{_SVC}.drain_pending_messages",
+            f"{_SVC}.drain_pending_safe",
             dict(new_callable=AsyncMock, return_value=[]),
         ),
     ]
