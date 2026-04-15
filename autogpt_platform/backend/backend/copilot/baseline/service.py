@@ -307,56 +307,69 @@ async def _baseline_llm_caller(
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
-        async for chunk in response:
-            if chunk.usage:
-                state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-                # Extract cache token details when available (OpenAI /
-                # OpenRouter include these in prompt_tokens_details).
-                ptd = getattr(chunk.usage, "prompt_tokens_details", None)
-                if ptd:
-                    state.turn_cache_read_tokens += (
-                        getattr(ptd, "cached_tokens", 0) or 0
-                    )
-                    # cache_creation_input_tokens is reported by some providers
-                    # (e.g. Anthropic native) but not standard OpenAI streaming.
-                    state.turn_cache_creation_tokens += (
-                        getattr(ptd, "cache_creation_input_tokens", 0) or 0
-                    )
-
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if not delta:
-                continue
-
-            if delta.content:
-                emit = state.thinking_stripper.process(delta.content)
-                if emit:
-                    if not state.text_started:
-                        state.pending_events.append(
-                            StreamTextStart(id=state.text_block_id)
+        # Iterate under an inner try/finally so early exits (cancel, tool-call
+        # break, exception) always release the underlying httpx connection.
+        # Without this, openai.AsyncStream leaks the streaming response and
+        # the TCP socket ends up in CLOSE_WAIT until the process exits.
+        try:
+            async for chunk in response:
+                if chunk.usage:
+                    state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    state.turn_completion_tokens += chunk.usage.completion_tokens or 0
+                    # Extract cache token details when available (OpenAI /
+                    # OpenRouter include these in prompt_tokens_details).
+                    ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                    if ptd:
+                        state.turn_cache_read_tokens += (
+                            getattr(ptd, "cached_tokens", 0) or 0
                         )
-                        state.text_started = True
-                    round_text += emit
-                    state.pending_events.append(
-                        StreamTextDelta(id=state.text_block_id, delta=emit)
-                    )
+                        # cache_creation_input_tokens is reported by some providers
+                        # (e.g. Anthropic native) but not standard OpenAI streaming.
+                        state.turn_cache_creation_tokens += (
+                            getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                        )
 
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_calls_by_index:
-                        tool_calls_by_index[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-                    entry = tool_calls_by_index[idx]
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        entry["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        entry["arguments"] += tc.function.arguments
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+
+                if delta.content:
+                    emit = state.thinking_stripper.process(delta.content)
+                    if emit:
+                        if not state.text_started:
+                            state.pending_events.append(
+                                StreamTextStart(id=state.text_block_id)
+                            )
+                            state.text_started = True
+                        round_text += emit
+                        state.pending_events.append(
+                            StreamTextDelta(id=state.text_block_id, delta=emit)
+                        )
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_by_index:
+                            tool_calls_by_index[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+                        entry = tool_calls_by_index[idx]
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+        finally:
+            # Release the streaming httpx connection back to the pool on every
+            # exit path (normal completion, break, exception). openai.AsyncStream
+            # does not auto-close when the async-for loop exits early.
+            try:
+                await response.close()
+            except Exception:
+                pass
 
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
@@ -989,12 +1002,13 @@ async def stream_chat_completion_baseline(
     # Warm context: pre-load relevant facts from Graphiti on first turn.
     # Use the pre-drain count so pending messages drained at turn start
     # don't prevent warm context injection on an actual first turn.
+    # Stored here but injected into the user message (not the system prompt)
+    # after openai_messages is built — keeps system prompt static for caching.
+    warm_ctx: str | None = None
     if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         from backend.copilot.graphiti.context import fetch_warm_context
 
         warm_ctx = await fetch_warm_context(user_id, message or "")
-        if warm_ctx:
-            system_prompt += f"\n\n{warm_ctx}"
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(
@@ -1045,6 +1059,20 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # Inject Graphiti warm context into the first user message (not the
+    # system prompt) so the system prompt stays static and cacheable.
+    # warm_ctx is already wrapped in <temporal_context>.
+    # Appended AFTER user_context so <user_context> stays at the very start.
+    if warm_ctx:
+        for msg in openai_messages:
+            if msg["role"] == "user":
+                existing = msg.get("content", "")
+                if isinstance(existing, str):
+                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                break
+        # Do NOT append warm_ctx to user_message_for_transcript — it would
+        # persist stale temporal context into the transcript for future turns.
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
@@ -1387,8 +1415,16 @@ async def stream_chat_completion_baseline(
         if graphiti_enabled and user_id and message and is_user_message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
+            # Pass only the final assistant reply (after stripping tool-loop
+            # chatter) so derived-finding distillation sees the substantive
+            # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(user_id, session_id, message)
+                enqueue_conversation_turn(
+                    user_id,
+                    session_id,
+                    message,
+                    assistant_msg=final_text if state else "",
+                )
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
