@@ -115,6 +115,7 @@ export function CopilotPage() {
     dismissRateLimit,
     // Dry run dev toggle
     isDryRun,
+    sessionDryRun,
   } = useCopilotPage();
 
   const {
@@ -176,10 +177,17 @@ export function CopilotPage() {
         >
           {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
           <NotificationBanner />
-          {isDryRun && (
+          {/* Test mode banner:
+              - No session: show global isDryRun pref so the user knows NEW chats will run as simulation.
+              - Existing session: show the session's actual dry_run metadata (immutable once created),
+                NOT the global store — the store may have changed since this session was started.
+              Never show this banner for live sessions that were NOT created as dry_run. */}
+          {(sessionId ? sessionDryRun : isDryRun) && (
             <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
               <Flask size={13} weight="bold" />
-              Test mode — new sessions use dry_run=true
+              {sessionId
+                ? "Test mode — this session runs agents as simulation"
+                : "Test mode — new sessions use dry_run=true"}
             </div>
           )}
           {/* Drop overlay */}

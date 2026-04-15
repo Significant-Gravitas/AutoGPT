@@ -163,6 +163,18 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
       ? ((sessionQuery.data.data.messages ?? []) as unknown[])
       : [];
 
+  // The actual dry_run value stored in the session's metadata, read directly
+  // from the API response. This reflects what the session was ACTUALLY created
+  // with — not the user's current UI preference (isDryRun store).
+  //
+  // Design intent: the global isDryRun store is only used when creating NEW
+  // sessions. Once a session exists, its dry_run flag is immutable and should
+  // be read from here rather than from the store, which may have changed.
+  const sessionDryRun = useMemo(() => {
+    if (sessionQuery.data?.status !== 200) return false;
+    return sessionQuery.data.data.metadata?.dry_run === true;
+  }, [sessionQuery.data]);
+
   return {
     sessionId,
     setSessionId,
@@ -177,5 +189,6 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
+    sessionDryRun,
   };
 }

@@ -23,6 +23,8 @@ vi.mock("@/app/(platform)/copilot/store", () => ({
     setCopilotChatMode: mockSetCopilotChatMode,
     copilotLlmModel: mockCopilotLlmModel,
     setCopilotLlmModel: mockSetCopilotLlmModel,
+    isDryRun: false,
+    setIsDryRun: vi.fn(),
     initialPrompt: null,
     setInitialPrompt: vi.fn(),
   }),
@@ -248,6 +250,21 @@ describe("ChatInput model toggle", () => {
     expect(
       screen.queryByLabelText(/switch to (advanced|standard) model/i),
     ).toBeNull();
+  });
+
+  it("hides dry-run toggle when hasSession is true", () => {
+    // DryRun button is only for new chats — once a session exists its dry_run
+    // flag is immutable and shown via the CopilotPage banner, not this button.
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} hasSession />);
+    expect(screen.queryByLabelText(/test mode/i)).toBeNull();
+    expect(screen.queryByLabelText(/enable test mode/i)).toBeNull();
+  });
+
+  it("shows dry-run toggle when no session", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} />);
+    expect(screen.getByLabelText(/test mode|enable test mode/i)).toBeTruthy();
   });
 
   it("shows a toast when switching to advanced", async () => {

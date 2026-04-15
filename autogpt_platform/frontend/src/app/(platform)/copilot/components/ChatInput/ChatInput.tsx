@@ -230,11 +230,13 @@ export function ChatInput({
                 onToggle={handleToggleModel}
               />
             )}
-            {showDryRunToggle && (
+            {/* DryRun button only on new chats: once a session exists its
+                dry_run flag is locked and should be read from session metadata
+                (sessionDryRun in useCopilotPage), not toggled here. The banner
+                in CopilotPage.tsx reflects the actual session state. */}
+            {showDryRunToggle && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
-                isStreaming={isStreaming}
-                readOnly={hasSession}
                 onToggle={handleToggleDryRun}
               />
             )}
