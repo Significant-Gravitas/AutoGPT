@@ -142,6 +142,8 @@ export function ChatInput({
     inputId,
   });
 
+  const [isEnqueueing, setIsEnqueueing] = useState(false);
+
   const {
     isRecording,
     isTranscribing,
@@ -156,6 +158,7 @@ export function ChatInput({
     disabled: isTextareaDisabled,
     value,
     inputId,
+    isStreaming,
   });
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -268,11 +271,18 @@ export function ChatInput({
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
+                disabled={isEnqueueing}
                 onClick={async () => {
+                  if (isEnqueueing) return;
                   const trimmed = value.trim();
                   if (trimmed) {
-                    await onEnqueue(trimmed);
-                    setValue("");
+                    setIsEnqueueing(true);
+                    try {
+                      await onEnqueue(trimmed);
+                      setValue("");
+                    } finally {
+                      setIsEnqueueing(false);
+                    }
                   }
                 }}
                 className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900"
