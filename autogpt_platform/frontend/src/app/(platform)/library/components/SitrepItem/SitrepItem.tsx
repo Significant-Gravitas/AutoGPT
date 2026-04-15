@@ -81,44 +81,49 @@ export function SitrepItem({ item }: Props) {
   return (
     <div
       className={cn(
-        "flex items-center gap-3 rounded-medium border border-zinc-200/50 bg-transparent p-2",
+        "flex flex-col gap-2 rounded-medium border border-zinc-200/50 bg-transparent p-2 sm:flex-row sm:items-center sm:gap-3",
       )}
     >
-      {item.agentImageUrl ? (
-        <img
-          src={item.agentImageUrl}
-          alt={item.agentName}
-          className="h-6 w-6 flex-shrink-0 rounded-full object-cover"
-        />
-      ) : (
-        <div
-          className={cn(
-            "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
-            config.bg,
-          )}
-        >
-          {config.cssSpinner ? (
-            <div
-              className={cn(styles.spinner, "h-[21px] w-[21px] text-zinc-800")}
-            />
-          ) : (
-            config.icon && (
-              <config.icon size={14} className={config.color} weight="fill" />
-            )
-          )}
-        </div>
-      )}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {item.agentImageUrl ? (
+          <img
+            src={item.agentImageUrl}
+            alt={item.agentName}
+            className="h-6 w-6 flex-shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div
+            className={cn(
+              "flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full",
+              config.bg,
+            )}
+          >
+            {config.cssSpinner ? (
+              <div
+                className={cn(
+                  styles.spinner,
+                  "h-[21px] w-[21px] text-zinc-800",
+                )}
+              />
+            ) : (
+              config.icon && (
+                <config.icon size={14} className={config.color} weight="fill" />
+              )
+            )}
+          </div>
+        )}
 
-      <div className="min-w-0 flex-1">
-        <Text variant="body-medium" className="leading-tight text-zinc-900">
-          {item.agentName}
-        </Text>
-        <Text variant="small" className="leading-tight text-zinc-500">
-          {item.message}
-        </Text>
+        <div className="min-w-0 flex-1">
+          <Text variant="body-medium" className="leading-tight text-zinc-900">
+            {item.agentName}
+          </Text>
+          <Text variant="small" className="leading-tight text-zinc-500">
+            {item.message}
+          </Text>
+        </div>
       </div>
 
-      <div className="flex flex-shrink-0 items-center gap-1.5">
+      <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5 pl-9 sm:flex-nowrap sm:pl-0">
         {item.priority === "success" ? (
           <NextLink
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}

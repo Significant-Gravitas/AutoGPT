@@ -66,7 +66,7 @@ const TILES: {
 
 export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-1 gap-3 min-[450px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
       {TILES.map((tile) => {
         const rawValue = summary[tile.key];
         const value = tile.format ? tile.format(rawValue) : rawValue;
