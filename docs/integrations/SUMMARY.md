@@ -9,6 +9,13 @@
 
 ## Block Integrations
 
+* [Agent Mail Attachments](block-integrations/agent_mail/attachments.md)
+* [Agent Mail Drafts](block-integrations/agent_mail/drafts.md)
+* [Agent Mail Inbox](block-integrations/agent_mail/inbox.md)
+* [Agent Mail Lists](block-integrations/agent_mail/lists.md)
+* [Agent Mail Messages](block-integrations/agent_mail/messages.md)
+* [Agent Mail Pods](block-integrations/agent_mail/pods.md)
+* [Agent Mail Threads](block-integrations/agent_mail/threads.md)
 * [Airtable Bases](block-integrations/airtable/bases.md)
 * [Airtable Records](block-integrations/airtable/records.md)
 * [Airtable Schema](block-integrations/airtable/schema.md)
@@ -62,9 +69,12 @@
 * [Generic Webhook Triggers](block-integrations/generic_webhook/triggers.md)
 * [GitHub Checks](block-integrations/github/checks.md)
 * [GitHub CI](block-integrations/github/ci.md)
+* [GitHub Commits](block-integrations/github/commits.md)
 * [GitHub Issues](block-integrations/github/issues.md)
 * [GitHub Pull Requests](block-integrations/github/pull_requests.md)
 * [GitHub Repo](block-integrations/github/repo.md)
+* [GitHub Repo Branches](block-integrations/github/repo_branches.md)
+* [GitHub Repo Files](block-integrations/github/repo_files.md)
 * [GitHub Reviews](block-integrations/github/reviews.md)
 * [GitHub Statuses](block-integrations/github/statuses.md)
 * [GitHub Triggers](block-integrations/github/triggers.md)

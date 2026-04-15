@@ -1,8 +1,8 @@
 "use client";
 
-import { use } from "react";
-import { MainSearchResultPage } from "../components/MainSearchResultPage/MainSearchResultPage";
 import { GetV2ListStoreAgentsParams } from "@/app/api/__generated__/models/getV2ListStoreAgentsParams";
+import { use } from "react";
+import { MainSearchResultPage } from "./components/MainSearchResultPage/MainSearchResultPage";
 
 type MarketplaceSearchSort = GetV2ListStoreAgentsParams["sorted_by"];
 type MarketplaceSearchPageSearchParams = {

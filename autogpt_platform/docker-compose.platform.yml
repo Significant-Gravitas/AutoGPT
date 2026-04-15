@@ -6,7 +6,8 @@
 # 5. CLI arguments - docker compose run -e VAR=value
 
 # Common backend environment - Docker service names
-x-backend-env: &backend-env # Docker internal service hostnames (override localhost defaults)
+x-backend-env:
+  &backend-env # Docker internal service hostnames (override localhost defaults)
   PYRO_HOST: "0.0.0.0"
   AGENTSERVER_HOST: rest_server
   SCHEDULER_HOST: scheduler_server
@@ -17,6 +18,8 @@ x-backend-env: &backend-env # Docker internal service hostnames (override localh
   DB_HOST: db
   REDIS_HOST: redis
   RABBITMQ_HOST: rabbitmq
+  GRAPHITI_FALKORDB_HOST: falkordb
+  GRAPHITI_FALKORDB_PORT: "6379"
   # Override Supabase URL for Docker network
   SUPABASE_URL: http://kong:8000
   # Database connection string for Docker network
@@ -37,7 +40,12 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: migrate
-    command: ["sh", "-c", "prisma generate && python3 gen_prisma_types_stub.py && prisma migrate deploy"]
+    command:
+      [
+        "sh",
+        "-c",
+        "prisma generate && python3 scripts/gen_prisma_types_stub.py && prisma migrate deploy",
+      ]
     develop:
       watch:
         - path: ./
@@ -74,6 +82,27 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  falkordb:
+    image: falkordb/falkordb:latest
+    ports:
+      - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
+      - "3001:3000" # FalkorDB web UI
+    environment:
+      - REDIS_ARGS=--requirepass ${GRAPHITI_FALKORDB_PASSWORD:-}
+    volumes:
+      - falkordb_data:/data
+    networks:
+      - app-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'redis-cli -p 6379 -a "${GRAPHITI_FALKORDB_PASSWORD:-}" --no-auth-warning ping && wget --spider -q http://localhost:3000 || exit 1',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   rabbitmq:
     image: rabbitmq:4.1.4
     container_name: rabbitmq
@@ -114,6 +143,8 @@ services:
       <<: *backend-env
     ports:
       - "8006:8006"
+    volumes:
+      - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
       - app-network
     logging:
@@ -185,6 +216,8 @@ services:
       PYTHONUNBUFFERED: "1"
     ports:
       - "8008:8008"
+    volumes:
+      - workspace-data:/app/autogpt_platform/backend/workspaces
     networks:
       - app-network
     logging:
@@ -277,19 +310,6 @@ services:
         condition: service_completed_successfully
       database_manager:
         condition: service_started
-    # healthcheck:
-    #   test:
-    #     [
-    #       "CMD",
-    #       "curl",
-    #       "-f",
-    #       "-X",
-    #       "POST",
-    #       "http://localhost:8003/health_check",
-    #     ]
-    #   interval: 10s
-    #   timeout: 10s
-    #   retries: 5
     <<: *backend-env-files
     environment:
       <<: *backend-env
@@ -368,6 +388,10 @@ services:
       SUPABASE_URL: http://kong:8000
       AGPT_SERVER_URL: http://rest_server:8006/api
       AGPT_WS_SERVER_URL: ws://websocket_server:8001/ws
+volumes:
+  workspace-data:
+  falkordb_data:
+
 networks:
   app-network:
     driver: bridge

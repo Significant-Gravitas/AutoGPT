@@ -115,6 +115,7 @@ class ImageGenModel(str, Enum):
     RECRAFT = "Recraft v3"
     SD3_5 = "Stable Diffusion 3.5 Medium"
     NANO_BANANA_PRO = "Nano Banana Pro"
+    NANO_BANANA_2 = "Nano Banana 2"
 
 
 class AIImageGeneratorBlock(Block):
@@ -131,7 +132,7 @@ class AIImageGeneratorBlock(Block):
         )
         model: ImageGenModel = SchemaField(
             description="The AI model to use for image generation",
-            default=ImageGenModel.SD3_5,
+            default=ImageGenModel.NANO_BANANA_2,
             title="Model",
         )
         size: ImageSize = SchemaField(
@@ -165,7 +166,7 @@ class AIImageGeneratorBlock(Block):
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "prompt": "An octopus using a laptop in a snowy forest with 'AutoGPT' clearly visible on the screen",
-                "model": ImageGenModel.RECRAFT,
+                "model": ImageGenModel.NANO_BANANA_2,
                 "size": ImageSize.SQUARE,
                 "style": ImageStyle.REALISTIC,
             },
@@ -179,7 +180,9 @@ class AIImageGeneratorBlock(Block):
             ],
             test_mock={
                 # Return a data URI directly so store_media_file doesn't need to download
-                "_run_client": lambda *args, **kwargs: "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
+                "_run_client": lambda *args, **kwargs: (
+                    "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
+                )
             },
         )
 
@@ -280,17 +283,24 @@ class AIImageGeneratorBlock(Block):
                 )
                 return output
 
-            elif input_data.model == ImageGenModel.NANO_BANANA_PRO:
-                # Use Nano Banana Pro (Google Gemini 3 Pro Image)
+            elif input_data.model in (
+                ImageGenModel.NANO_BANANA_PRO,
+                ImageGenModel.NANO_BANANA_2,
+            ):
+                # Use Nano Banana models (Google Gemini image variants)
+                model_map = {
+                    ImageGenModel.NANO_BANANA_PRO: "google/nano-banana-pro",
+                    ImageGenModel.NANO_BANANA_2: "google/nano-banana-2",
+                }
                 input_params = {
                     "prompt": modified_prompt,
                     "aspect_ratio": SIZE_TO_NANO_BANANA_RATIO[input_data.size],
-                    "resolution": "2K",  # Default to 2K for good quality/cost balance
+                    "resolution": "2K",
                     "output_format": "jpg",
-                    "safety_filter_level": "block_only_high",  # Most permissive
+                    "safety_filter_level": "block_only_high",
                 }
                 output = await self._run_client(
-                    credentials, "google/nano-banana-pro", input_params
+                    credentials, model_map[input_data.model], input_params
                 )
                 return output
 

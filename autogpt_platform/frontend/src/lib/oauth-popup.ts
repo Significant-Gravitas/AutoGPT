@@ -8,6 +8,10 @@
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
+export const OAUTH_ERROR_WINDOW_CLOSED = "Sign-in window was closed";
+export const OAUTH_ERROR_FLOW_CANCELED = "OAuth flow was canceled";
+export const OAUTH_ERROR_FLOW_TIMED_OUT = "OAuth flow timed out";
+
 export type OAuthPopupResult = {
   code: string;
   state: string;
@@ -156,11 +160,34 @@ export function openOAuthPopup(
       );
     }
 
+    // Detect popup closed by user (without completing sign-in)
+    if (popup) {
+      const closedPollInterval = setInterval(() => {
+        if (popup.closed && !handled) {
+          clearInterval(closedPollInterval);
+          handled = true;
+          reject(new Error(OAUTH_ERROR_WINDOW_CLOSED));
+          controller.abort("popup_closed");
+        }
+      }, 500);
+      controller.signal.addEventListener("abort", () =>
+        clearInterval(closedPollInterval),
+      );
+    }
+
+    // Reject on abort (e.g. from cancel button in the waiting modal)
+    controller.signal.addEventListener("abort", () => {
+      if (!handled) {
+        handled = true;
+        reject(new Error(OAUTH_ERROR_FLOW_CANCELED));
+      }
+    });
+
     // Timeout
     const timeoutId = setTimeout(() => {
       if (!handled) {
         handled = true;
-        reject(new Error("OAuth flow timed out"));
+        reject(new Error(OAUTH_ERROR_FLOW_TIMED_OUT));
         controller.abort("timeout");
       }
     }, timeout);

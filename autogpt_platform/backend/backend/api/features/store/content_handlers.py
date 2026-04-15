@@ -5,16 +5,26 @@ Pluggable system for different content sources (store agents, blocks, docs).
 Each handler knows how to fetch and process its content type for embedding.
 """
 
+from __future__ import annotations
+
+import asyncio
+import functools
+import itertools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, get_args, get_origin
+from typing import TYPE_CHECKING, Any, get_args, get_origin
 
 from prisma.enums import ContentType
 
+from backend.blocks import get_blocks
 from backend.blocks.llm import LlmModel
 from backend.data.db import query_raw_with_schema
+from backend.util.text import split_camelcase
+
+if TYPE_CHECKING:
+    from backend.blocks._base import AnyBlockSchema
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +164,28 @@ class StoreAgentHandler(ContentHandler):
         }
 
 
+@functools.lru_cache(maxsize=1)
+def _get_enabled_blocks() -> dict[str, AnyBlockSchema]:
+    """Return ``{block_id: block_instance}`` for all enabled, instantiable blocks.
+
+    Disabled blocks and blocks that fail to instantiate are silently skipped
+    (with a warning log), so callers never need their own try/except loop.
+
+    Results are cached for the process lifetime via ``lru_cache`` because
+    blocks are registered at import time and never change while running.
+    """
+    enabled: dict[str, AnyBlockSchema] = {}
+    for block_id, block_cls in get_blocks().items():
+        try:
+            instance = block_cls()
+        except Exception as e:
+            logger.warning(f"Skipping block {block_id}: init failed: {e}")
+            continue
+        if not instance.disabled:
+            enabled[block_id] = instance
+    return enabled
+
+
 class BlockHandler(ContentHandler):
     """Handler for block definitions (Python classes)."""
 
@@ -163,16 +195,14 @@ class BlockHandler(ContentHandler):
 
     async def get_missing_items(self, batch_size: int) -> list[ContentItem]:
         """Fetch blocks without embeddings."""
-        from backend.blocks import get_blocks
-
-        # Get all available blocks
-        all_blocks = get_blocks()
-
-        # Check which ones have embeddings
-        if not all_blocks:
+        # to_thread keeps the first (heavy) call off the event loop.  On
+        # subsequent calls the lru_cache makes this a dict lookup, so the
+        # thread-pool overhead is negligible compared to the DB queries below.
+        enabled = await asyncio.to_thread(_get_enabled_blocks)
+        if not enabled:
             return []
 
-        block_ids = list(all_blocks.keys())
+        block_ids = list(enabled.keys())
 
         # Query for existing embeddings
         placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
@@ -187,52 +217,42 @@ class BlockHandler(ContentHandler):
         )
 
         existing_ids = {row["contentId"] for row in existing_result}
-        missing_blocks = [
-            (block_id, block_cls)
-            for block_id, block_cls in all_blocks.items()
-            if block_id not in existing_ids
-        ]
 
-        # Convert to ContentItem
+        # Convert to ContentItem — disabled filtering already done by
+        # _get_enabled_blocks so batch_size won't be exhausted by disabled blocks.
+        missing = ((bid, b) for bid, b in enabled.items() if bid not in existing_ids)
         items = []
-        for block_id, block_cls in missing_blocks[:batch_size]:
+        for block_id, block in itertools.islice(missing, batch_size):
             try:
-                block_instance = block_cls()
-
-                if block_instance.disabled:
-                    continue
-
                 # Build searchable text from block metadata
-                parts = []
-                if block_instance.name:
-                    parts.append(block_instance.name)
-                if block_instance.description:
-                    parts.append(block_instance.description)
-                if block_instance.categories:
-                    parts.append(
-                        " ".join(str(cat.value) for cat in block_instance.categories)
+                if not block.name:
+                    logger.warning(
+                        f"Block {block_id} has no name — using block_id as fallback"
                     )
+                display_name = split_camelcase(block.name) if block.name else ""
+                parts = []
+                if display_name:
+                    parts.append(display_name)
+                if block.description:
+                    parts.append(block.description)
+                if block.categories:
+                    parts.append(" ".join(str(cat.value) for cat in block.categories))
 
                 # Add input schema field descriptions
-                block_input_fields = block_instance.input_schema.model_fields
                 parts += [
                     f"{field_name}: {field_info.description}"
-                    for field_name, field_info in block_input_fields.items()
+                    for field_name, field_info in block.input_schema.model_fields.items()
                     if field_info.description
                 ]
 
                 searchable_text = " ".join(parts)
 
                 categories_list = (
-                    [cat.value for cat in block_instance.categories]
-                    if block_instance.categories
-                    else []
+                    [cat.value for cat in block.categories] if block.categories else []
                 )
 
                 # Extract provider names from credentials fields
-                credentials_info = (
-                    block_instance.input_schema.get_credentials_fields_info()
-                )
+                credentials_info = block.input_schema.get_credentials_fields_info()
                 is_integration = len(credentials_info) > 0
                 provider_names = [
                     provider.value.lower()
@@ -243,7 +263,7 @@ class BlockHandler(ContentHandler):
                 # Check if block has LlmModel field in input schema
                 has_llm_model_field = any(
                     _contains_type(field.annotation, LlmModel)
-                    for field in block_instance.input_schema.model_fields.values()
+                    for field in block.input_schema.model_fields.values()
                 )
 
                 items.append(
@@ -252,13 +272,13 @@ class BlockHandler(ContentHandler):
                         content_type=ContentType.BLOCK,
                         searchable_text=searchable_text,
                         metadata={
-                            "name": block_instance.name,
+                            "name": display_name or block.name or block_id,
                             "categories": categories_list,
                             "providers": provider_names,
                             "has_llm_model_field": has_llm_model_field,
                             "is_integration": is_integration,
                         },
-                        user_id=None,  # Blocks are public
+                        user_id=None,
                     )
                 )
             except Exception as e:
@@ -269,22 +289,13 @@ class BlockHandler(ContentHandler):
 
     async def get_stats(self) -> dict[str, int]:
         """Get statistics about block embedding coverage."""
-        from backend.blocks import get_blocks
-
-        all_blocks = get_blocks()
-
-        # Filter out disabled blocks - they're not indexed
-        enabled_block_ids = [
-            block_id
-            for block_id, block_cls in all_blocks.items()
-            if not block_cls().disabled
-        ]
-        total_blocks = len(enabled_block_ids)
+        enabled = await asyncio.to_thread(_get_enabled_blocks)
+        total_blocks = len(enabled)
 
         if total_blocks == 0:
             return {"total": 0, "with_embeddings": 0, "without_embeddings": 0}
 
-        block_ids = enabled_block_ids
+        block_ids = list(enabled.keys())
         placeholders = ",".join([f"${i+1}" for i in range(len(block_ids))])
 
         embedded_result = await query_raw_with_schema(

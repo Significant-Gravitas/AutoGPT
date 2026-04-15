@@ -15,6 +15,7 @@ from prisma.enums import ContentType
 from tiktoken import encoding_for_model
 
 from backend.api.features.store.content_handlers import CONTENT_HANDLERS
+from backend.blocks import get_blocks
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.clients import get_openai_client
 from backend.util.json import dumps
@@ -662,8 +663,6 @@ async def cleanup_orphaned_embeddings() -> dict[str, Any]:
                 )
                 current_ids = {row["id"] for row in valid_agents}
             elif content_type == ContentType.BLOCK:
-                from backend.blocks import get_blocks
-
                 current_ids = set(get_blocks().keys())
             elif content_type == ContentType.DOCUMENTATION:
                 # Use DocumentationHandler to get section-based content IDs

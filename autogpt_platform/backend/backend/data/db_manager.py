@@ -39,6 +39,10 @@ from backend.data.analytics import (
     get_marketplace_graphs_for_monitoring,
 )
 from backend.data.auth.oauth import cleanup_expired_oauth_tokens
+from backend.data.block import (
+    get_blocks_needing_optimization,
+    update_block_optimized_description,
+)
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
@@ -75,7 +79,10 @@ from backend.data.graph import (
 from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     check_approval,
+    delete_review_by_node_exec_id,
     get_or_create_human_review,
+    get_pending_reviews_for_execution,
+    get_reviews_by_node_exec_ids,
     has_pending_reviews_for_graph_exec,
     update_review_processed_status,
 )
@@ -89,6 +96,7 @@ from backend.data.notifications import (
     remove_notifications_from_batch,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.platform_cost import log_platform_cost
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -139,6 +147,11 @@ async def _spend_credits(
 async def _get_credits(user_id: str) -> int:
     user_credit_model = await get_user_credit_model(user_id)
     return await user_credit_model.get_credits(user_id)
+
+
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_credits = _get_credits
+spend_credits = _spend_credits
 
 
 class DatabaseManager(AppService):
@@ -242,7 +255,10 @@ class DatabaseManager(AppService):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = _(cancel_pending_reviews_for_execution)
     check_approval = _(check_approval)
+    delete_review_by_node_exec_id = _(delete_review_by_node_exec_id)
     get_or_create_human_review = _(get_or_create_human_review)
+    get_pending_reviews_for_execution = _(get_pending_reviews_for_execution)
+    get_reviews_by_node_exec_ids = _(get_reviews_by_node_exec_ids)
     has_pending_reviews_for_graph_exec = _(has_pending_reviews_for_graph_exec)
     update_review_processed_status = _(update_review_processed_status)
 
@@ -313,6 +329,13 @@ class DatabaseManager(AppService):
     get_business_understanding = _(get_business_understanding)
     upsert_business_understanding = _(upsert_business_understanding)
 
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = _(get_blocks_needing_optimization)
+    update_block_optimized_description = _(update_block_optimized_description)
+
+    # ============ Platform Cost Tracking ============ #
+    log_platform_cost = _(log_platform_cost)
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = _(chat_db.get_chat_session)
     create_chat_session = _(chat_db.create_chat_session)
@@ -324,7 +347,9 @@ class DatabaseManager(AppService):
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
+    update_message_content_by_sequence = _(chat_db.update_message_content_by_sequence)
     update_chat_session_title = _(chat_db.update_chat_session_title)
+    set_turn_duration = _(chat_db.set_turn_duration)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -379,6 +404,10 @@ class DatabaseManagerClient(AppServiceClient):
     backfill_missing_embeddings = _(d.backfill_missing_embeddings)
     cleanup_orphaned_embeddings = _(d.cleanup_orphaned_embeddings)
 
+    # Block Descriptions
+    get_blocks_needing_optimization = _(d.get_blocks_needing_optimization)
+    update_block_optimized_description = _(d.update_block_optimized_description)
+
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
@@ -421,7 +450,10 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     # ============ Human In The Loop ============ #
     cancel_pending_reviews_for_execution = d.cancel_pending_reviews_for_execution
     check_approval = d.check_approval
+    delete_review_by_node_exec_id = d.delete_review_by_node_exec_id
     get_or_create_human_review = d.get_or_create_human_review
+    get_pending_reviews_for_execution = d.get_pending_reviews_for_execution
+    get_reviews_by_node_exec_ids = d.get_reviews_by_node_exec_ids
     update_review_processed_status = d.update_review_processed_status
 
     # ============ User Comms ============ #
@@ -491,9 +523,19 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
 
+    # ============ Credits ============ #
+    spend_credits = d.spend_credits
+    get_credits = d.get_credits
+
     # ============ Understanding ============ #
     get_business_understanding = d.get_business_understanding
     upsert_business_understanding = d.upsert_business_understanding
+
+    # ============ Block Descriptions ============ #
+    get_blocks_needing_optimization = d.get_blocks_needing_optimization
+
+    # ============ Platform Cost Tracking ============ #
+    log_platform_cost = d.log_platform_cost
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = d.get_chat_session
@@ -506,4 +548,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content
+    update_message_content_by_sequence = d.update_message_content_by_sequence
     update_chat_session_title = d.update_chat_session_title
+    set_turn_duration = d.set_turn_duration

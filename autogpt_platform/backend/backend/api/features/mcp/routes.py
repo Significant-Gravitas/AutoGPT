@@ -24,7 +24,7 @@ from backend.blocks.mcp.oauth import MCPOAuthHandler
 from backend.data.model import OAuth2Credentials
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
-from backend.util.request import HTTPClientError, Requests, validate_url
+from backend.util.request import HTTPClientError, Requests, validate_url_host
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ async def discover_tools(
     """
     # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
     try:
-        await validate_url(request.server_url, trusted_origins=[])
+        await validate_url_host(request.server_url)
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
@@ -167,7 +167,7 @@ async def mcp_oauth_login(
     """
     # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
     try:
-        await validate_url(request.server_url, trusted_origins=[])
+        await validate_url_host(request.server_url)
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 
@@ -187,7 +187,7 @@ async def mcp_oauth_login(
 
         # Validate the auth server URL from metadata to prevent SSRF.
         try:
-            await validate_url(auth_server_url, trusted_origins=[])
+            await validate_url_host(auth_server_url)
         except ValueError as e:
             raise fastapi.HTTPException(
                 status_code=400,
@@ -234,7 +234,7 @@ async def mcp_oauth_login(
     if registration_endpoint:
         # Validate the registration endpoint to prevent SSRF via metadata.
         try:
-            await validate_url(registration_endpoint, trusted_origins=[])
+            await validate_url_host(registration_endpoint)
         except ValueError:
             pass  # Skip registration, fall back to default client_id
         else:
@@ -429,7 +429,7 @@ async def mcp_store_token(
 
     # Validate URL to prevent SSRF — blocks loopback and private IP ranges.
     try:
-        await validate_url(request.server_url, trusted_origins=[])
+        await validate_url_host(request.server_url)
     except ValueError as e:
         raise fastapi.HTTPException(status_code=400, detail=f"Invalid server URL: {e}")
 

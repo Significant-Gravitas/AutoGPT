@@ -116,3 +116,42 @@ def workspace_db():
         workspace_db = get_database_manager_async_client()
 
     return workspace_db
+
+
+def review_db():
+    if db.is_connected():
+        from backend.data import human_review as _review_db
+
+        review_db = _review_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        review_db = get_database_manager_async_client()
+
+    return review_db
+
+
+def credit_db():
+    if db.is_connected():
+        from backend.data import db_manager as _credit_db
+
+        credit_db = _credit_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        credit_db = get_database_manager_async_client()
+
+    return credit_db
+
+
+def platform_cost_db():
+    if db.is_connected():
+        from backend.data import platform_cost as _platform_cost_db
+
+        platform_cost_db = _platform_cost_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        platform_cost_db = get_database_manager_async_client()
+
+    return platform_cost_db

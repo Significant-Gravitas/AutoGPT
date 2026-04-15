@@ -14,6 +14,7 @@ from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
 )
+from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -38,6 +39,9 @@ _MAX_PAGES = 100
 
 # LLM extraction timeout (seconds)
 _LLM_TIMEOUT = 30
+
+SUGGESTION_THEMES = ["Learn", "Create", "Automate", "Organize"]
+PROMPTS_PER_THEME = 5
 
 
 def _mask_email(email: str) -> str:
@@ -331,6 +335,11 @@ Fields:
 - current_software (list of strings): software/tools currently used
 - existing_automation (list of strings): existing automations
 - additional_notes (string): any additional context
+- suggested_prompts (object with keys "Learn", "Create", "Automate", "Organize"): for each key, \
+provide a list of 5 short action prompts (each under 20 words) that would help this person. \
+"Learn" = questions about AutoGPT features; "Create" = content/document generation tasks; \
+"Automate" = recurring workflow automation ideas; "Organize" = structuring/prioritizing tasks. \
+Should be specific to their industry, role, and pain points; actionable and conversational in tone.
 
 Form data:
 """
@@ -347,7 +356,7 @@ async def extract_business_understanding(
     """
     settings = Settings()
     api_key = settings.secrets.open_router_api_key
-    client = AsyncOpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
+    client = AsyncOpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL)
 
     try:
         response = await asyncio.wait_for(
@@ -377,6 +386,29 @@ async def extract_business_understanding(
 
     # Filter out null values before constructing
     cleaned = {k: v for k, v in data.items() if v is not None}
+
+    # Validate suggested_prompts: themed dict, filter >20 words, cap at 5 per theme
+    raw_prompts = cleaned.get("suggested_prompts", {})
+    if isinstance(raw_prompts, dict):
+        themed: dict[str, list[str]] = {}
+        for theme in SUGGESTION_THEMES:
+            theme_prompts = raw_prompts.get(theme, [])
+            if not isinstance(theme_prompts, list):
+                continue
+            valid = [
+                s
+                for p in theme_prompts
+                if isinstance(p, str) and (s := p.strip()) and len(s.split()) <= 20
+            ]
+            if valid:
+                themed[theme] = valid[:PROMPTS_PER_THEME]
+        if themed:
+            cleaned["suggested_prompts"] = themed
+        else:
+            cleaned.pop("suggested_prompts", None)
+    else:
+        cleaned.pop("suggested_prompts", None)
+
     return BusinessUnderstandingInput(**cleaned)
 
 
@@ -394,15 +426,18 @@ async def populate_understanding_from_tally(user_id: str, email: str) -> None:
             )
             return
 
-        # Check API key is configured
+        # Check required config is present
         settings = Settings()
-        if not settings.secrets.tally_api_key:
-            logger.debug("Tally: no API key configured, skipping")
+        if not settings.secrets.tally_api_key or not settings.secrets.tally_form_id:
+            logger.debug("Tally: Tally config incomplete, skipping")
+            return
+        if not settings.secrets.open_router_api_key:
+            logger.debug("Tally: no OpenRouter API key configured, skipping")
             return
 
         # Look up submission by email
         masked = _mask_email(email)
-        result = await find_submission_by_email(TALLY_FORM_ID, email)
+        result = await find_submission_by_email(settings.secrets.tally_form_id, email)
         if result is None:
             logger.debug(f"Tally: no submission found for {masked}")
             return

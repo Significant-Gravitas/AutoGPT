@@ -91,10 +91,16 @@ async def _persist_and_summarize(
         f"\nFull output ({total:,} chars) saved to workspace. "
         f"Use read_workspace_file("
         f'path="{file_path}", offset=<char_offset>, length=50000) '
-        f"to read any section."
+        f"to read any section. "
+        f"To process the file in the sandbox/working dir, use "
+        f"read_workspace_file("
+        f'path="{file_path}", save_to_path="<working_dir>/{tool_call_id}.json") '
+        f"first, then use bash_exec to work with the local copy."
     )
+    # Use workspace:// prefix so the model doesn't confuse the workspace path
+    # with a local filesystem path (e.g. ~/.claude/projects/.../tool-outputs/).
     return (
-        f'<tool-output-truncated total_chars={total} path="{file_path}">\n'
+        f'<tool-output-truncated total_chars={total} workspace_path="{file_path}">\n'
         f"{preview}\n"
         f"{retrieval}\n"
         f"</tool-output-truncated>"
@@ -164,8 +170,9 @@ class BaseTool:
 
         """
         if self.requires_auth and not user_id:
-            logger.error(
-                f"Attempted tool call for {self.name} but user not authenticated"
+            logger.warning(
+                "Attempted tool call for %s but user not authenticated",
+                self.name,
             )
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
@@ -179,7 +186,7 @@ class BaseTool:
 
         try:
             result = await self._execute(user_id, session, **kwargs)
-            raw_output = result.model_dump_json()
+            raw_output = result.model_dump_json(exclude_none=True)
 
             if (
                 len(raw_output) > _LARGE_OUTPUT_THRESHOLD
@@ -196,7 +203,7 @@ class BaseTool:
                 output=raw_output,
             )
         except Exception as e:
-            logger.error(f"Error in {self.name}: {e}", exc_info=True)
+            logger.warning("Error in %s", self.name, exc_info=True)
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,

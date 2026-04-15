@@ -32,9 +32,9 @@ async def client():
 
 @pytest.fixture(autouse=True)
 def _bypass_ssrf_validation():
-    """Bypass validate_url in all route tests (test URLs don't resolve)."""
+    """Bypass validate_url_host in all route tests (test URLs don't resolve)."""
     with patch(
-        "backend.api.features.mcp.routes.validate_url",
+        "backend.api.features.mcp.routes.validate_url_host",
         new_callable=AsyncMock,
     ):
         yield
@@ -521,12 +521,12 @@ class TestStoreToken:
 
 
 class TestSSRFValidation:
-    """Verify that validate_url is enforced on all endpoints."""
+    """Verify that validate_url_host is enforced on all endpoints."""
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_discover_tools_ssrf_blocked(self, client):
         with patch(
-            "backend.api.features.mcp.routes.validate_url",
+            "backend.api.features.mcp.routes.validate_url_host",
             new_callable=AsyncMock,
             side_effect=ValueError("blocked loopback"),
         ):
@@ -541,7 +541,7 @@ class TestSSRFValidation:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_oauth_login_ssrf_blocked(self, client):
         with patch(
-            "backend.api.features.mcp.routes.validate_url",
+            "backend.api.features.mcp.routes.validate_url_host",
             new_callable=AsyncMock,
             side_effect=ValueError("blocked private IP"),
         ):
@@ -556,7 +556,7 @@ class TestSSRFValidation:
     @pytest.mark.asyncio(loop_scope="session")
     async def test_store_token_ssrf_blocked(self, client):
         with patch(
-            "backend.api.features.mcp.routes.validate_url",
+            "backend.api.features.mcp.routes.validate_url_host",
             new_callable=AsyncMock,
             side_effect=ValueError("blocked loopback"),
         ):

@@ -3,16 +3,14 @@
 Blocks for uploading videos to YouTube using the Ayrshare social media management API.
 <!-- END MANUAL -->
 
-## Post To You Tube
+## Post To YouTube
 
 ### What it is
 Post to YouTube using Ayrshare
 
 ### How it works
 <!-- MANUAL: how_it_works -->
-This block uses Ayrshare's API to upload videos to YouTube. It handles video uploads with extensive metadata including titles, descriptions, tags, custom thumbnails, playlist assignment, category selection, and visibility controls (public, private, unlisted).
-
-The block supports YouTube Shorts (up to 3 minutes), geographic targeting to allow or block specific countries, subtitle files (SRT/SBV format), synthetic/AI content disclosure, kids content labeling, and subscriber notification controls. Videos can be scheduled for specific publish times.
+_Add technical explanation here._
 <!-- END MANUAL -->
 
 ### Inputs
@@ -57,11 +55,7 @@ The block supports YouTube Shorts (up to 3 minutes), geographic targeting to all
 
 ### Possible use case
 <!-- MANUAL: use_case -->
-**Video Publishing Pipeline**: Automate video uploads with thumbnails, descriptions, and playlist organization for content creators.
-
-**YouTube Shorts Automation**: Publish short-form vertical videos to YouTube Shorts with proper metadata and hashtags.
-
-**Multi-Region Content**: Upload videos with geographic restrictions for region-specific content licensing or compliance.
+_Add practical use case examples here._
 <!-- END MANUAL -->
 
 ---

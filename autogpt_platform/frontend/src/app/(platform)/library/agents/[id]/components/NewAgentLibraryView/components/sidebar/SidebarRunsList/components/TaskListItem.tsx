@@ -6,6 +6,7 @@ import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import {
   CheckCircleIcon,
   ClockIcon,
+  FlaskIcon,
   PauseCircleIcon,
   StopCircleIcon,
   WarningCircleIcon,
@@ -72,10 +73,18 @@ export function TaskListItem({
   onClick,
   onDeleted,
 }: Props) {
+  const icon = run.is_dry_run ? (
+    <IconWrapper className="border-amber-50 bg-amber-50">
+      <FlaskIcon size={16} className="text-amber-700" weight="fill" />
+    </IconWrapper>
+  ) : (
+    statusIconMap[run.status]
+  );
+
   return (
     <SidebarItemCard
-      icon={statusIconMap[run.status]}
-      title={title}
+      icon={icon}
+      title={run.is_dry_run ? `${title} (Simulated)` : title}
       description={
         run.started_at
           ? formatDistanceToNow(run.started_at, { addSuffix: true })

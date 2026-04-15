@@ -14,7 +14,7 @@ from backend.blocks.mcp.helpers import (
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.utils import build_missing_credentials_from_field_info
-from backend.util.request import HTTPClientError, validate_url
+from backend.util.request import HTTPClientError, validate_url_host
 
 from .base import BaseTool
 from .models import (
@@ -32,6 +32,11 @@ logger = logging.getLogger(__name__)
 
 # HTTP status codes that indicate authentication is required
 _AUTH_STATUS_CODES = {401, 403}
+
+
+def _service_name(host: str) -> str:
+    """Strip the 'mcp.' prefix from an MCP hostname: 'mcp.sentry.dev' → 'sentry.dev'"""
+    return host[4:] if host.startswith("mcp.") else host
 
 
 class RunMCPToolTool(BaseTool):
@@ -52,16 +57,9 @@ class RunMCPToolTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Connect to an MCP (Model Context Protocol) server to discover and execute its tools. "
-            "Two-step workflow: (1) Call with just `server_url` to discover available tools. "
-            "(2) Call again with `server_url`, `tool_name`, and `tool_arguments` to execute. "
-            "Known hosted servers (use directly): Notion (https://mcp.notion.com/mcp), "
-            "Linear (https://mcp.linear.app/mcp), Stripe (https://mcp.stripe.com), "
-            "Intercom (https://mcp.intercom.com/mcp), Cloudflare (https://mcp.cloudflare.com/mcp), "
-            "Atlassian/Jira (https://mcp.atlassian.com/mcp). "
-            "For other services, search the MCP registry at https://registry.modelcontextprotocol.io/. "
-            "Authentication: If the server requires credentials, user will be prompted to complete the MCP credential setup flow."
-            "Once connected and user confirms, retry the same call immediately."
+            "Discover and execute MCP server tools. "
+            "Call with server_url only to list tools, then with tool_name + tool_arguments to execute. "
+            "Call get_mcp_guide first for server URLs and auth."
         )
 
     @property
@@ -71,24 +69,15 @@ class RunMCPToolTool(BaseTool):
             "properties": {
                 "server_url": {
                     "type": "string",
-                    "description": (
-                        "URL of the MCP server (Streamable HTTP endpoint), "
-                        "e.g. https://mcp.example.com/mcp"
-                    ),
+                    "description": "MCP server URL (Streamable HTTP endpoint).",
                 },
                 "tool_name": {
                     "type": "string",
-                    "description": (
-                        "Name of the MCP tool to execute. "
-                        "Omit on first call to discover available tools."
-                    ),
+                    "description": "Tool to execute. Omit to discover available tools.",
                 },
                 "tool_arguments": {
                     "type": "object",
-                    "description": (
-                        "Arguments to pass to the selected tool. "
-                        "Must match the tool's input schema returned during discovery."
-                    ),
+                    "description": "Arguments matching the tool's input schema.",
                 },
             },
             "required": ["server_url"],
@@ -102,21 +91,40 @@ class RunMCPToolTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        server_url: str = "",
+        tool_name: str = "",
+        tool_arguments: dict[str, Any] | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        server_url: str = (kwargs.get("server_url") or "").strip()
-        tool_name: str = (kwargs.get("tool_name") or "").strip()
-        raw_tool_arguments = kwargs.get("tool_arguments")
-        tool_arguments: dict[str, Any] = (
-            raw_tool_arguments if isinstance(raw_tool_arguments, dict) else {}
-        )
+        server_url = server_url.strip()
+        tool_name = tool_name.strip()
         session_id = session.session_id
 
-        if raw_tool_arguments is not None and not isinstance(raw_tool_arguments, dict):
+        # Session-level dry_run prevents real MCP tool execution.
+        # Discovery (no tool_name) is still allowed so the agent can inspect
+        # available tools, but actual execution is blocked.
+        if session.dry_run and tool_name:
+            return MCPToolOutputResponse(
+                message=(
+                    f"[dry-run] MCP tool '{tool_name}' on "
+                    f"{server_host(server_url)} was not executed "
+                    "because the session is in dry-run mode."
+                ),
+                server_url=server_url,
+                tool_name=tool_name,
+                result=None,
+                success=True,
+                session_id=session_id,
+            )
+
+        if tool_arguments is not None and not isinstance(tool_arguments, dict):
             return ErrorResponse(
                 message="tool_arguments must be a JSON object.",
                 session_id=session_id,
             )
+        resolved_tool_arguments: dict[str, Any] = (
+            tool_arguments if isinstance(tool_arguments, dict) else {}
+        )
 
         if not server_url:
             return ErrorResponse(
@@ -150,7 +158,7 @@ class RunMCPToolTool(BaseTool):
 
         # Validate URL to prevent SSRF — blocks loopback and private IP ranges
         try:
-            await validate_url(server_url, trusted_origins=[])
+            await validate_url_host(server_url)
         except ValueError as e:
             msg = str(e)
             if "Unable to resolve" in msg or "No IP addresses" in msg:
@@ -178,17 +186,19 @@ class RunMCPToolTool(BaseTool):
             else:
                 # Stage 2: Execute the selected tool
                 return await self._execute_tool(
-                    client, server_url, tool_name, tool_arguments, session_id
+                    client, server_url, tool_name, resolved_tool_arguments, session_id
                 )
 
         except HTTPClientError as e:
             if e.status_code in _AUTH_STATUS_CODES and not creds:
                 # Server requires auth and user has no stored credentials
                 return self._build_setup_requirements(server_url, session_id)
-            logger.warning("MCP HTTP error for %s: %s", server_host(server_url), e)
+            host = server_host(server_url)
+            logger.warning("MCP HTTP error for %s: status=%s", host, e.status_code)
             return ErrorResponse(
-                message=f"MCP server returned HTTP {e.status_code}: {e}",
+                message=(f"MCP request to {host} failed with HTTP {e.status_code}."),
                 session_id=session_id,
+                error=f"HTTP {e.status_code}: {str(e)[:300]}",
             )
 
         except MCPClientError as e:
@@ -309,8 +319,8 @@ class RunMCPToolTool(BaseTool):
             )
             return ErrorResponse(
                 message=(
-                    f"The MCP server at {server_host(server_url)} requires authentication, "
-                    "but no credential configuration was found."
+                    f"Unable to connect to {_service_name(server_host(server_url))} "
+                    "— no credentials configured."
                 ),
                 session_id=session_id,
             )
@@ -318,15 +328,13 @@ class RunMCPToolTool(BaseTool):
         missing_creds_list = list(missing_creds_dict.values())
 
         host = server_host(server_url)
+        service = _service_name(host)
         return SetupRequirementsResponse(
-            message=(
-                f"The MCP server at {host} requires authentication. "
-                "Please connect your credentials to continue."
-            ),
+            message=(f"To continue, sign in to {service} and approve access."),
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=server_url,
-                agent_name=f"MCP: {host}",
+                agent_name=service,
                 user_readiness=UserReadiness(
                     has_all_credentials=False,
                     missing_credentials=missing_creds_dict,

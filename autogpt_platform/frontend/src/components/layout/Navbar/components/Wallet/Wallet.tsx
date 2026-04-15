@@ -18,7 +18,8 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { WalletIcon } from "@phosphor-icons/react";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { X } from "lucide-react";
-import * as party from "party-js";
+import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
+import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
@@ -206,16 +207,6 @@ export function Wallet() {
     fetchCredits();
   }, [state?.walletShown, updateState, fetchCredits]);
 
-  const fadeOut = useMemo(
-    () =>
-      new party.ModuleBuilder()
-        .drive("opacity")
-        .by((t) => 1 - t)
-        .through("lifetime")
-        .build(),
-    [],
-  );
-
   // React to onboarding notifications emitted by the provider
   const handleNotification = useCallback(
     (notification: WebSocketNotification) => {
@@ -245,16 +236,26 @@ export function Wallet() {
         return;
       }
 
-      party.confetti(walletRef.current, {
-        count: 30,
-        spread: 120,
-        shapes: ["square", "circle"],
-        size: party.variation.range(1, 2),
-        speed: party.variation.range(200, 300),
-        modules: [fadeOut],
-      });
+      const origin = {
+        x: (rect.left + rect.width / 2) / window.innerWidth,
+        y: (rect.top + rect.height / 2) / window.innerHeight,
+      };
+      const shared: ConfettiOptions = {
+        particleCount: 50,
+        spread: 70,
+        shapes: ["square"],
+        scalar: 1.2,
+        startVelocity: 20,
+        gravity: 0.6,
+        decay: 0.92,
+        ticks: 100,
+        colors: AGPT_CONFETTI_COLORS,
+        origin,
+      };
+      confetti({ ...shared, angle: 45 });
+      confetti({ ...shared, angle: 135 });
     },
-    [fetchCredits, fadeOut, groups],
+    [fetchCredits, groups],
   );
 
   // WebSocket setup for onboarding notifications
@@ -298,9 +299,9 @@ export function Wallet() {
             className="group relative flex flex-nowrap items-center gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm"
             onClick={onWalletOpen}
           >
-            <WalletIcon size={20} className="inline-block md:hidden" />
+            <WalletIcon size={20} className="inline-block xl:hidden" />
             <div>
-              <span className="mr-1 hidden md:inline-block">Earn credits </span>
+              <span className="mr-1 hidden xl:inline-block">Earn credits </span>
               <span className="text-sm font-semibold">
                 {formatCredits(credits)}
               </span>

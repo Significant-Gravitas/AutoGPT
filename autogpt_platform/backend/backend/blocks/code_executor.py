@@ -142,7 +142,7 @@ class BaseE2BExecutorMixin:
                 start_timestamp = ts_result.stdout.strip() if ts_result.stdout else None
 
             # Execute the code
-            execution = await sandbox.run_code(
+            execution = await sandbox.run_code(  # type: ignore[attr-defined]
                 code,
                 language=language.value,
                 on_error=lambda e: sandbox.kill(),  # Kill the sandbox on error

@@ -1,15 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { Button } from "@/components/atoms/Button/Button";
 import type { BlockOutputResponse } from "@/app/api/__generated__/models/blockOutputResponse";
 import {
   globalRegistry,
   OutputItem,
 } from "@/components/contextual/OutputRenderers";
-import type { OutputMetadata } from "@/components/contextual/OutputRenderers";
-import { isWorkspaceURI, parseWorkspaceURI } from "@/lib/workspace-uri";
+import { resolveForRenderer } from "@/app/(platform)/copilot/tools/ViewAgentOutput/ViewAgentOutput";
 import {
   ContentBadge,
   ContentCard,
@@ -23,28 +21,6 @@ interface Props {
 }
 
 const COLLAPSED_LIMIT = 3;
-
-function resolveForRenderer(value: unknown): {
-  value: unknown;
-  metadata?: OutputMetadata;
-} {
-  if (!isWorkspaceURI(value)) return { value };
-
-  const parsed = parseWorkspaceURI(value);
-  if (!parsed) return { value };
-
-  const apiPath = getGetWorkspaceDownloadFileByIdUrl(parsed.fileID);
-  const url = `/api/proxy${apiPath}`;
-
-  const metadata: OutputMetadata = {};
-  if (parsed.mimeType) {
-    metadata.mimeType = parsed.mimeType;
-    if (parsed.mimeType.startsWith("image/")) metadata.type = "image";
-    else if (parsed.mimeType.startsWith("video/")) metadata.type = "video";
-  }
-
-  return { value: url, metadata };
-}
 
 function RenderOutputValue({ value }: { value: unknown }) {
   const resolved = resolveForRenderer(value);
@@ -60,16 +36,6 @@ function RenderOutputValue({ value }: { value: unknown }) {
         metadata={resolved.metadata}
         renderer={renderer}
       />
-    );
-  }
-
-  // Fallback for audio workspace refs
-  if (
-    isWorkspaceURI(value) &&
-    resolved.metadata?.mimeType?.startsWith("audio/")
-  ) {
-    return (
-      <audio controls src={String(resolved.value)} className="mt-2 w-full" />
     );
   }
 
@@ -117,6 +83,12 @@ function OutputKeySection({
 export function BlockOutputCard({ output }: Props) {
   return (
     <ContentGrid>
+      {output.is_dry_run && (
+        <div className="flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          <span>⚡</span>
+          <span>Simulated — no real execution occurred</span>
+        </div>
+      )}
       <ContentMessage>{output.message}</ContentMessage>
 
       {Object.entries(output.outputs ?? {}).map(([key, items]) => (

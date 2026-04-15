@@ -89,6 +89,7 @@ class ExecutionContext(BaseModel):
     # Safety settings
     human_in_the_loop_safe_mode: bool = True
     sensitive_action_safe_mode: bool = False
+    dry_run: bool = False  # When True, blocks are LLM-simulated, no real execution
 
     # User settings
     user_timezone: str = "UTC"
@@ -178,6 +179,7 @@ class GraphExecutionMeta(BaseDbModel):
     )
     is_shared: bool = False
     share_token: Optional[str] = None
+    is_dry_run: bool = False
 
     class Stats(BaseModel):
         model_config = ConfigDict(
@@ -306,6 +308,7 @@ class GraphExecutionMeta(BaseDbModel):
             ),
             is_shared=_graph_exec.isShared,
             share_token=_graph_exec.shareToken,
+            is_dry_run=stats.is_dry_run if stats else False,
         )
 
 
@@ -339,6 +342,7 @@ class GraphExecution(GraphExecutionMeta):
                     if (
                         (block := get_block(exec.block_id))
                         and block.block_type == BlockType.INPUT
+                        and "name" in exec.input_data
                     )
                 }
             ),
@@ -357,8 +361,10 @@ class GraphExecution(GraphExecutionMeta):
         outputs: CompletedBlockOutput = defaultdict(list)
         for exec in complete_node_executions:
             if (
-                block := get_block(exec.block_id)
-            ) and block.block_type == BlockType.OUTPUT:
+                (block := get_block(exec.block_id))
+                and block.block_type == BlockType.OUTPUT
+                and "name" in exec.input_data
+            ):
                 outputs[exec.input_data["name"]].append(exec.input_data.get("value"))
 
         return GraphExecution(
@@ -718,11 +724,12 @@ async def create_graph_execution(
     graph_version: int,
     starting_nodes_input: list[tuple[str, BlockInput]],  # list[(node_id, BlockInput)]
     inputs: Mapping[str, JsonValue],
-    user_id: str,
+    user_id: str,  # Validated by callers (API auth layer / service-level checks)
     preset_id: Optional[str] = None,
     credential_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     parent_graph_exec_id: Optional[str] = None,
+    is_dry_run: bool = False,
 ) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
@@ -760,6 +767,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
             "parentGraphExecutionId": parent_graph_exec_id,
+            **({"stats": Json({"is_dry_run": True})} if is_dry_run else {}),
         },
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
@@ -877,12 +885,12 @@ async def get_execution_outputs_by_node_exec_id(
         where={"referencedByOutputExecId": node_exec_id}
     )
 
-    result = {}
+    result: CompletedBlockOutput = defaultdict(list)
     for output in outputs:
         if output.data is not None:
-            result[output.name] = type_utils.convert(output.data, JsonValue)
+            result[output.name].append(type_utils.convert(output.data, JsonValue))
 
-    return result
+    return dict(result)
 
 
 async def update_graph_execution_start_time(

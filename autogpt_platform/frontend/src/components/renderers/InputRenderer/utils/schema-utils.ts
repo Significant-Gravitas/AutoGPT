@@ -8,6 +8,14 @@ export function isAnyOfSchema(schema: RJSFSchema | undefined): boolean {
   );
 }
 
+export function isOneOfSchema(schema: RJSFSchema | undefined): boolean {
+  return (
+    Array.isArray(schema?.oneOf) &&
+    schema!.oneOf.length > 0 &&
+    schema?.enum === undefined
+  );
+}
+
 export const isAnyOfChild = (
   uiSchema: UiSchema<any, RJSFSchema, any> | undefined,
 ): boolean => {

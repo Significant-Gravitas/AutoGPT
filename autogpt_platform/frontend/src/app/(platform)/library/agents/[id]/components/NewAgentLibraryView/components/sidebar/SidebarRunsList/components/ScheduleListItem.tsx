@@ -14,6 +14,7 @@ interface Props {
   selected?: boolean;
   onClick?: () => void;
   onDeleted?: () => void;
+  onRunCreated?: (runID: string) => void;
 }
 
 export function ScheduleListItem({
@@ -22,6 +23,7 @@ export function ScheduleListItem({
   selected,
   onClick,
   onDeleted,
+  onRunCreated,
 }: Props) {
   return (
     <SidebarItemCard
@@ -46,6 +48,7 @@ export function ScheduleListItem({
           agent={agent}
           schedule={schedule}
           onDeleted={onDeleted}
+          onRunCreated={onRunCreated}
         />
       }
     />

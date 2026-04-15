@@ -333,26 +333,29 @@ class BaseGraph(GraphBaseMeta):
             except Exception as e:
                 logger.error(f"Invalid {type_class}: {input_default}, {e}")
 
-        return {
-            "type": "object",
-            "properties": {
-                p.name: {
-                    **{
-                        k: v
-                        for k, v in p.generate_schema().items()
-                        if k not in ["description", "default"]
-                    },
-                    "secret": p.secret,
-                    # Default value has to be set for advanced fields.
-                    "advanced": p.advanced and p.value is not None,
-                    "title": p.title or p.name,
-                    **({"description": p.description} if p.description else {}),
-                    **({"default": p.value} if p.value is not None else {}),
-                }
-                for p in schema_fields
-            },
-            "required": [p.name for p in schema_fields if p.value is None],
-        }
+        try:
+            return {
+                "type": "object",
+                "properties": {
+                    p.name: {
+                        **{
+                            k: v
+                            for k, v in p.generate_schema().items()
+                            if k not in ["description", "default"]
+                        },
+                        "secret": p.secret,
+                        # Default value has to be set for advanced fields.
+                        "advanced": p.advanced and p.value is not None,
+                        "title": p.title or p.name,
+                        **({"description": p.description} if p.description else {}),
+                        **({"default": p.value} if p.value is not None else {}),
+                    }
+                    for p in schema_fields
+                },
+                "required": [p.name for p in schema_fields if p.value is None],
+            }
+        except AttributeError as e:
+            raise ValueError(str(e)) from e
 
 
 class GraphTriggerInfo(BaseModel):
@@ -581,7 +584,6 @@ class GraphModel(Graph, GraphMeta):
                     field_name,
                     field_info,
                 ) in node.block.input_schema.get_credentials_fields_info().items():
-
                     discriminator = field_info.discriminator
                     if not discriminator:
                         node_credential_data.append((field_info, (node.id, field_name)))
@@ -737,7 +739,7 @@ class GraphModel(Graph, GraphMeta):
         # Collect errors per node
         node_errors: dict[str, dict[str, str]] = defaultdict(dict)
 
-        # Validate smart decision maker nodes
+        # Validate tool orchestrator nodes
         nodes_block = {
             node.id: block
             for node in graph.nodes
@@ -1096,6 +1098,9 @@ async def get_graph(
     Retrieves a graph from the DB.
     Defaults to the version with `is_active` if `version` is not passed.
 
+    See also: `get_graph_as_admin()` which bypasses ownership and marketplace
+    checks for admin-only routes.
+
     Returns `None` if the record is not found.
     """
     graph = None
@@ -1132,6 +1137,27 @@ async def get_graph(
             include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
         ):
             graph = store_listing.AgentGraph
+
+    # Fall back to library membership: if the user has the agent in their
+    # library (non-deleted, non-archived), grant access even if the agent is
+    # no longer published. "You added it, you keep it."
+    if graph is None and user_id is not None:
+        library_where: dict[str, object] = {
+            "userId": user_id,
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "isArchived": False,
+        }
+        if version is not None:
+            library_where["agentGraphVersion"] = version
+
+        library_agent = await LibraryAgent.prisma().find_first(
+            where=library_where,
+            include={"AgentGraph": {"include": AGENT_GRAPH_INCLUDE}},
+            order={"agentGraphVersion": "desc"},
+        )
+        if library_agent and library_agent.AgentGraph:
+            graph = library_agent.AgentGraph
 
     if graph is None:
         return None
@@ -1207,13 +1233,9 @@ async def get_graph_as_admin(
         order={"version": "desc"},
     )
 
-    # For access, the graph must be owned by the user or listed in the store
-    if graph is None or (
-        graph.userId != user_id
-        and not await is_graph_published_in_marketplace(
-            graph_id, version or graph.version
-        )
-    ):
+    # Admin access bypasses ownership and marketplace checks — route-level
+    # auth already ensures only admins can call this function.
+    if graph is None:
         return None
 
     if for_export:
@@ -1372,8 +1394,9 @@ async def validate_graph_execution_permissions(
     ## Logic
     A user can execute a graph if any of these is true:
     1. They own the graph and some version of it is still listed in their library
-    2. The graph is published in the marketplace and listed in their library
-    3. The graph is published in the marketplace and is being executed as a sub-agent
+    2. The graph is in the user's library (non-deleted, non-archived)
+    3. The graph is published in the marketplace and listed in their library
+    4. The graph is published in the marketplace and is being executed as a sub-agent
 
     Args:
         graph_id: The ID of the graph to check
@@ -1395,6 +1418,7 @@ async def validate_graph_execution_permissions(
             where={
                 "userId": user_id,
                 "agentGraphId": graph_id,
+                "agentGraphVersion": graph_version,
                 "isDeleted": False,
                 "isArchived": False,
             }
@@ -1404,19 +1428,39 @@ async def validate_graph_execution_permissions(
     # Step 1: Check if user owns this graph
     user_owns_graph = graph and graph.userId == user_id
 
-    # Step 2: Check if agent is in the library *and not deleted*
+    # Step 2: Check if the exact graph version is in the library.
     user_has_in_library = library_agent is not None
+    owner_has_live_library_entry = user_has_in_library
+    if user_owns_graph and not user_has_in_library:
+        # Owners are allowed to execute a new version as long as some live
+        # library entry still exists for the graph. Non-owners stay
+        # version-specific.
+        owner_has_live_library_entry = (
+            await LibraryAgent.prisma().find_first(
+                where={
+                    "userId": user_id,
+                    "agentGraphId": graph_id,
+                    "isDeleted": False,
+                    "isArchived": False,
+                }
+            )
+            is not None
+        )
 
     # Step 3: Apply permission logic
+    # Access is granted if the user owns it, it's in the marketplace, OR
+    # it's in the user's library ("you added it, you keep it").
     if not (
         user_owns_graph
+        or user_has_in_library
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
             f"You do not have access to graph #{graph_id} v{graph_version}: "
-            "it is not owned by you and not available in the Marketplace"
+            "it is not owned by you, not in your library, "
+            "and not available in the Marketplace"
         )
-    elif not (user_has_in_library or is_sub_graph):
+    elif not (user_has_in_library or owner_has_live_library_entry or is_sub_graph):
         raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
 
     # Step 6: Check execution-specific permissions (raises generic NotAuthorizedError)
@@ -1486,6 +1530,28 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
 
 async def __create_graph(tx, graph: Graph, user_id: str):
     graphs = [graph] + graph.sub_graphs
+
+    # Auto-increment version for any graph entry (parent or sub-graph) whose
+    # (id, version) already exists.  This prevents UniqueViolationError when
+    # the copilot re-saves an agent that already exists at the requested version.
+    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
+    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
+    for g in graphs:
+        existing = await AgentGraph.prisma(tx).find_first(
+            where={"id": g.id},
+            order={"version": "desc"},
+        )
+        if existing and existing.version >= g.version:
+            old_version = g.version
+            g.version = existing.version + 1
+            logger.warning(
+                "Auto-incremented graph %s version from %d to %d "
+                "(version %d already exists)",
+                g.id,
+                old_version,
+                g.version,
+                existing.version,
+            )
 
     await AgentGraph.prisma(tx).create_many(
         data=[

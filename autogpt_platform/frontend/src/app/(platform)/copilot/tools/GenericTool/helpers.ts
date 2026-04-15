@@ -1,6 +1,14 @@
 import type { ToolUIPart } from "ai";
 
 /* ------------------------------------------------------------------ */
+/*  Sub-agent tool name constants                                      */
+/* ------------------------------------------------------------------ */
+
+export const TOOL_AGENT = "Agent";
+export const TOOL_TASK = "Task";
+export const TOOL_TASK_OUTPUT = "TaskOutput";
+
+/* ------------------------------------------------------------------ */
 /*  Tool name helpers                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -28,6 +36,7 @@ export type ToolCategory =
   | "edit"
   | "todo"
   | "compaction"
+  | "agent"
   | "other";
 
 export function getToolCategory(toolName: string): ToolCategory {
@@ -66,6 +75,10 @@ export function getToolCategory(toolName: string): ToolCategory {
       return "todo";
     case "context_compaction":
       return "compaction";
+    case TOOL_AGENT:
+    case TOOL_TASK:
+    case TOOL_TASK_OUTPUT:
+      return "agent";
     default:
       return "other";
   }
@@ -134,6 +147,15 @@ function getInputSummary(toolName: string, input: unknown): string | null {
       if (active && typeof active.content === "string") return active.content;
       return null;
     }
+    case TOOL_AGENT:
+    case TOOL_TASK:
+      return typeof inp.description === "string"
+        ? inp.description
+        : typeof inp.prompt === "string"
+          ? truncate(inp.prompt, 60)
+          : null;
+    case TOOL_TASK_OUTPUT:
+      return typeof inp.agentId === "string" ? inp.agentId : null;
     default:
       return null;
   }
@@ -142,6 +164,23 @@ function getInputSummary(toolName: string, input: unknown): string | null {
 export function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen).trimEnd() + "\u2026";
+}
+
+const STRIPPABLE_EXTENSIONS =
+  /\.(md|csv|json|txt|yaml|yml|xml|html|js|ts|py|sh|toml|cfg|ini|log|pdf|png|jpg|jpeg|gif|svg|mp4|mp3|wav|zip|tar|gz)$/i;
+
+export function humanizeFileName(filePath: string): string {
+  const fileName = filePath.split("/").pop() ?? filePath;
+  const stem = fileName.replace(STRIPPABLE_EXTENSIONS, "");
+  const words = stem
+    .replace(/[_-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => {
+      if (w === w.toUpperCase()) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    });
+  return `"${words.join(" ")}"`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -191,16 +230,16 @@ export function getAnimationText(
             ? `Browsing ${shortSummary}`
             : "Interacting with browser\u2026";
         case "file-read":
-          return shortSummary
-            ? `Reading ${shortSummary}`
+          return summary
+            ? `Reading ${humanizeFileName(summary)}`
             : "Reading file\u2026";
         case "file-write":
-          return shortSummary
-            ? `Writing ${shortSummary}`
+          return summary
+            ? `Writing ${humanizeFileName(summary)}`
             : "Writing file\u2026";
         case "file-delete":
-          return shortSummary
-            ? `Deleting ${shortSummary}`
+          return summary
+            ? `Deleting ${humanizeFileName(summary)}`
             : "Deleting file\u2026";
         case "file-list":
           return shortSummary
@@ -211,13 +250,21 @@ export function getAnimationText(
             ? `Searching for "${shortSummary}"`
             : "Searching\u2026";
         case "edit":
-          return shortSummary
-            ? `Editing ${shortSummary}`
+          return summary
+            ? `Editing ${humanizeFileName(summary)}`
             : "Editing file\u2026";
         case "todo":
           return shortSummary ? `${shortSummary}` : "Updating task list\u2026";
         case "compaction":
           return "Summarizing earlier messages\u2026";
+        case "agent":
+          if (toolName === TOOL_TASK_OUTPUT)
+            return shortSummary
+              ? `Checking agent ${shortSummary}\u2026`
+              : "Checking agent result\u2026";
+          return shortSummary
+            ? `Running agent: ${shortSummary}`
+            : "Starting agent\u2026";
         default:
           return `Running ${formatToolName(toolName)}\u2026`;
       }
@@ -246,11 +293,17 @@ export function getAnimationText(
             ? `Browsed ${shortSummary}`
             : "Browser action completed";
         case "file-read":
-          return shortSummary ? `Read ${shortSummary}` : "File read completed";
+          return summary
+            ? `Read ${humanizeFileName(summary)}`
+            : "File read completed";
         case "file-write":
-          return shortSummary ? `Wrote ${shortSummary}` : "File written";
+          return summary
+            ? `Wrote ${humanizeFileName(summary)}`
+            : "File written";
         case "file-delete":
-          return shortSummary ? `Deleted ${shortSummary}` : "File deleted";
+          return summary
+            ? `Deleted ${humanizeFileName(summary)}`
+            : "File deleted";
         case "file-list":
           return "Listed files";
         case "search":
@@ -258,11 +311,35 @@ export function getAnimationText(
             ? `Searched for "${shortSummary}"`
             : "Search completed";
         case "edit":
-          return shortSummary ? `Edited ${shortSummary}` : "Edit completed";
+          return summary
+            ? `Edited ${humanizeFileName(summary)}`
+            : "Edit completed";
         case "todo":
           return "Updated task list";
         case "compaction":
           return "Earlier messages were summarized";
+        case "agent": {
+          if (toolName === TOOL_TASK_OUTPUT) {
+            const taskOut =
+              part.output && typeof part.output === "object"
+                ? (part.output as Record<string, unknown>)
+                : null;
+            if (taskOut?.retrieval_status === "timeout")
+              return "Agent still running\u2026";
+            return "Agent result received";
+          }
+          const agentOut =
+            part.output && typeof part.output === "object"
+              ? (part.output as Record<string, unknown>)
+              : null;
+          if (agentOut?.isAsync || agentOut?.status === "async_launched")
+            return shortSummary
+              ? `Agent started (background): ${shortSummary}`
+              : "Agent started in background";
+          return shortSummary
+            ? `Agent completed: ${shortSummary}`
+            : "Agent completed";
+        }
         default:
           return `${formatToolName(toolName)} completed`;
       }

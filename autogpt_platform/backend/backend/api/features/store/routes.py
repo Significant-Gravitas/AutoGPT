@@ -1,5 +1,4 @@
 import logging
-import tempfile
 import urllib.parse
 
 import autogpt_libs.auth
@@ -259,21 +258,18 @@ async def get_graph_meta_by_store_listing_version_id(
 )
 async def download_agent_file(
     store_listing_version_id: str,
-) -> fastapi.responses.FileResponse:
+) -> fastapi.responses.Response:
     """Download agent graph file for a specific marketplace listing version"""
     graph_data = await store_db.get_agent(store_listing_version_id)
     file_name = f"agent_{graph_data.id}_v{graph_data.version or 'latest'}.json"
 
-    # Sending graph as a stream (similar to marketplace v1)
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
-        tmp_file.write(backend.util.json.dumps(graph_data))
-        tmp_file.flush()
-
-        return fastapi.responses.FileResponse(
-            tmp_file.name, filename=file_name, media_type="application/json"
-        )
+    return fastapi.responses.Response(
+        content=backend.util.json.dumps(graph_data),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{file_name}"',
+        },
+    )
 
 
 ##############################################

@@ -28,6 +28,7 @@ export async function uploadFileDirect(
   if (sessionID) {
     url.searchParams.set("session_id", sessionID);
   }
+  url.searchParams.set("overwrite", "true");
 
   const formData = new FormData();
   formData.append("file", file);

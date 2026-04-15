@@ -7,6 +7,8 @@ networks:
 volumes:
   supabase-config:
   clamav-data:
+  workspace-data:
+  falkordb_data:
 
 x-agpt-services:
   &agpt-services
@@ -34,6 +36,12 @@ services:
     extends:
       file: ./docker-compose.platform.yml
       service: redis
+
+  falkordb:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: falkordb
 
   rabbitmq:
     <<: *agpt-services
@@ -97,6 +105,7 @@ services:
       - CLAMD_CONF_MaxScanSize=100M
       - CLAMD_CONF_MaxThreads=12
       - CLAMD_CONF_ReadTimeout=300
+      - CLAMD_CONF_TCPAddr=0.0.0.0
     healthcheck:
       test: ["CMD-SHELL", "clamdscan --version || exit 1"]
       interval: 30s
@@ -168,6 +177,7 @@ services:
       - redis
       - rabbitmq
       - clamav
+      - falkordb
       - migrate
 
   deps_backend:
@@ -183,3 +193,4 @@ services:
       - copilot_executor
       - websocket_server
       - database_manager
+      - scheduler_server

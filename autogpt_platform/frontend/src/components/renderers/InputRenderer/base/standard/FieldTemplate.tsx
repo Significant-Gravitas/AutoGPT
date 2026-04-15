@@ -6,7 +6,11 @@ import {
   titleId,
 } from "@rjsf/utils";
 
-import { isAnyOfChild, isAnyOfSchema } from "../../utils/schema-utils";
+import {
+  isAnyOfChild,
+  isAnyOfSchema,
+  isOneOfSchema,
+} from "../../utils/schema-utils";
 import {
   cleanUpHandleId,
   getHandleId,
@@ -82,12 +86,13 @@ export default function FieldTemplate(props: FieldTemplateProps) {
   const shouldDisplayLabel =
     displayLabel ||
     (schema.type === "boolean" && !isAnyOfChild(uiSchema as any));
-  const shouldShowTitleSection = !isAnyOfSchema(schema) && !additional;
+  const isUnionSchema = isAnyOfSchema(schema) || isOneOfSchema(schema);
+  const shouldShowTitleSection = !isUnionSchema && !additional;
 
   const shouldShowChildren =
     schema.type === "object" ||
     schema.type === "array" ||
-    isAnyOfSchema(schema) ||
+    isUnionSchema ||
     !isHandleConnected;
 
   const isAdvancedField = (schema as any).advanced === true;
@@ -95,8 +100,7 @@ export default function FieldTemplate(props: FieldTemplateProps) {
     return null;
   }
 
-  const marginBottom =
-    isPartOfAnyOf({ uiOptions }) || isAnyOfSchema(schema) ? 0 : 16;
+  const marginBottom = isPartOfAnyOf({ uiOptions }) || isUnionSchema ? 0 : 16;
 
   return (
     <WrapIfAdditionalTemplate

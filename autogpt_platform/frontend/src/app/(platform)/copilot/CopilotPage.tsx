@@ -1,22 +1,33 @@
 "use client";
 
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/molecules/DropdownMenu/DropdownMenu";
+import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
+import { toast } from "@/components/molecules/Toast/use-toast";
+import useCredits from "@/hooks/useCredits";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { DotsThree, UploadSimple } from "@phosphor-icons/react";
-import { useCallback, useRef, useState } from "react";
+import { Flask, UploadSimple } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
+import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
+import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
+import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
+
+const ArtifactPanel = dynamic(
+  () =>
+    import("./components/ArtifactPanel/ArtifactPanel").then(
+      (m) => m.ArtifactPanel,
+    ),
+  { ssr: false },
+);
 
 export function CopilotPage() {
   const [isDragging, setIsDragging] = useState(false);
@@ -69,6 +80,7 @@ export function CopilotPage() {
     error,
     stop,
     isReconnecting,
+    isSyncing,
     createSession,
     onSend,
     isLoadingSession,
@@ -77,6 +89,10 @@ export function CopilotPage() {
     isUploadingFiles,
     isUserLoading,
     isLoggedIn,
+    // Pagination
+    hasMoreMessages,
+    isLoadingMore,
+    loadMore,
     // Mobile drawer
     isMobile,
     isDrawerOpen,
@@ -87,13 +103,54 @@ export function CopilotPage() {
     handleDrawerOpenChange,
     handleSelectSession,
     handleNewChat,
-    // Delete functionality
+    // Delete functionality (available via ChatSidebar context menu on all viewports)
     sessionToDelete,
     isDeleting,
-    handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
+    // Historical durations for persisted timer stats
+    historicalDurations,
+    // Rate limit reset
+    rateLimitMessage,
+    dismissRateLimit,
+    // Dry run session state
+    sessionDryRun,
   } = useCopilotPage();
+
+  const {
+    data: usage,
+    isSuccess: hasUsage,
+    isError: usageError,
+  } = useGetV2GetCopilotUsage({
+    query: {
+      select: (res) => res.data as CoPilotUsageStatus,
+      refetchInterval: 30000,
+      staleTime: 10000,
+    },
+  });
+  const resetCost = usage?.reset_cost;
+
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
+  const hasInsufficientCredits =
+    credits !== null && resetCost != null && credits < resetCost;
+
+  // Fall back to a toast when the credit-based reset feature is disabled or
+  // when the usage query fails (so the user still gets feedback).
+  useEffect(() => {
+    if (
+      rateLimitMessage &&
+      (usageError || (hasUsage && (resetCost ?? 0) <= 0))
+    ) {
+      toast({
+        title: "Usage limit reached",
+        description: rateLimitMessage,
+        variant: "destructive",
+      });
+      dismissRateLimit();
+    }
+  }, [rateLimitMessage, resetCost, hasUsage, usageError, dismissRateLimit]);
 
   if (isUserLoading || !isLoggedIn) {
     return (
@@ -109,77 +166,66 @@ export function CopilotPage() {
       className="h-[calc(100vh-72px)] min-h-0"
     >
       {!isMobile && <ChatSidebar />}
-      <div
-        className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
-        {/* Drop overlay */}
+      <div className="flex h-full w-full flex-row overflow-hidden">
         <div
-          className={cn(
-            "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0",
-          )}
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9] px-0"
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
-          <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
-          <span className="text-lg font-medium text-violet-600">
-            Drop files here
-          </span>
+          {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+          <NotificationBanner />
+          {/* Test mode banner: only shown when the CURRENT session is confirmed to be
+              a dry_run session via its immutable metadata. Never shown based on the
+              global isDryRun store preference alone — that only predicts future sessions
+              and would mislead users browsing non-dry-run sessions while the toggle is on.
+              The DryRunToggleButton (visible on new chats) already communicates the preference. */}
+          {sessionId && sessionDryRun && (
+            <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+              <Flask size={13} weight="bold" />
+              Test mode — this session runs agents as simulation
+            </div>
+          )}
+          {/* Drop overlay */}
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
+              isDragging ? "opacity-100" : "opacity-0",
+            )}
+          >
+            <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
+            <span className="text-lg font-medium text-violet-600">
+              Drop files here
+            </span>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ChatContainer
+              messages={messages}
+              status={status}
+              error={error}
+              sessionId={sessionId}
+              isLoadingSession={isLoadingSession}
+              isSessionError={isSessionError}
+              isCreatingSession={isCreatingSession}
+              isReconnecting={isReconnecting}
+              isSyncing={isSyncing}
+              onCreateSession={createSession}
+              onSend={onSend}
+              onStop={stop}
+              isUploadingFiles={isUploadingFiles}
+              hasMoreMessages={hasMoreMessages}
+              isLoadingMore={isLoadingMore}
+              onLoadMore={loadMore}
+              droppedFiles={droppedFiles}
+              onDroppedFilesConsumed={handleDroppedFilesConsumed}
+              historicalDurations={historicalDurations}
+            />
+          </div>
         </div>
-        <div className="flex-1 overflow-hidden">
-          <ChatContainer
-            messages={messages}
-            status={status}
-            error={error}
-            sessionId={sessionId}
-            isLoadingSession={isLoadingSession}
-            isSessionError={isSessionError}
-            isCreatingSession={isCreatingSession}
-            isReconnecting={isReconnecting}
-            onCreateSession={createSession}
-            onSend={onSend}
-            onStop={stop}
-            isUploadingFiles={isUploadingFiles}
-            droppedFiles={droppedFiles}
-            onDroppedFilesConsumed={handleDroppedFilesConsumed}
-            headerSlot={
-              isMobile && sessionId ? (
-                <div className="flex justify-end">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        className="rounded p-1.5 hover:bg-neutral-100"
-                        aria-label="More actions"
-                      >
-                        <DotsThree className="h-5 w-5 text-neutral-600" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => {
-                          const session = sessions.find(
-                            (s) => s.id === sessionId,
-                          );
-                          if (session) {
-                            handleDeleteClick(session.id, session.title);
-                          }
-                        }}
-                        disabled={isDeleting}
-                        className="text-red-600 focus:bg-red-50 focus:text-red-600"
-                      >
-                        Delete chat
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ) : undefined
-            }
-          />
-        </div>
+        {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
       </div>
+      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && (
         <MobileDrawer
           isOpen={isDrawerOpen}
@@ -201,6 +247,21 @@ export function CopilotPage() {
           onCancel={handleCancelDelete}
         />
       )}
+      <NotificationDialog />
+      <RateLimitResetDialog
+        isOpen={!!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0}
+        onClose={dismissRateLimit}
+        resetCost={resetCost ?? 0}
+        resetMessage={rateLimitMessage ?? ""}
+        isWeeklyExhausted={
+          hasUsage &&
+          usage.weekly.limit > 0 &&
+          usage.weekly.used >= usage.weekly.limit
+        }
+        hasInsufficientCredits={hasInsufficientCredits}
+        isBillingEnabled={isBillingEnabled}
+        onCreditChange={fetchCredits}
+      />
     </SidebarProvider>
   );
 }

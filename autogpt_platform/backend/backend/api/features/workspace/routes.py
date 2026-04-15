@@ -12,7 +12,7 @@ import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.workspace import (
     WorkspaceFile,
@@ -131,9 +131,26 @@ class StorageUsageResponse(BaseModel):
     file_count: int
 
 
+class WorkspaceFileItem(BaseModel):
+    id: str
+    name: str
+    path: str
+    mime_type: str
+    size_bytes: int
+    metadata: dict = Field(default_factory=dict)
+    created_at: str
+
+
+class ListFilesResponse(BaseModel):
+    files: list[WorkspaceFileItem]
+    offset: int = 0
+    has_more: bool = False
+
+
 @router.get(
     "/files/{file_id}/download",
     summary="Download file by ID",
+    operation_id="getWorkspaceDownloadFileById",
 )
 async def download_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -158,6 +175,7 @@ async def download_file(
 @router.delete(
     "/files/{file_id}",
     summary="Delete a workspace file",
+    operation_id="deleteWorkspaceFile",
 )
 async def delete_workspace_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -183,11 +201,13 @@ async def delete_workspace_file(
 @router.post(
     "/files/upload",
     summary="Upload file to workspace",
+    operation_id="uploadWorkspaceFile",
 )
 async def upload_file(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
     file: UploadFile,
     session_id: str | None = Query(default=None),
+    overwrite: bool = Query(default=False),
 ) -> UploadFileResponse:
     """
     Upload a file to the user's workspace.
@@ -195,6 +215,9 @@ async def upload_file(
     Files are stored in session-scoped paths when session_id is provided,
     so the agent's session-scoped tools can discover them automatically.
     """
+    # Empty-string session_id drops session scoping; normalize to None.
+    session_id = session_id or None
+
     config = Config()
 
     # Sanitize filename — strip any directory components
@@ -248,15 +271,28 @@ async def upload_file(
     # Write file via WorkspaceManager
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     try:
-        workspace_file = await manager.write_file(content, filename)
+        workspace_file = await manager.write_file(
+            content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
+        )
     except ValueError as e:
-        raise fastapi.HTTPException(status_code=409, detail=str(e)) from e
+        # write_file raises ValueError for both path-conflict and size-limit
+        # cases; map each to its correct HTTP status.
+        message = str(e)
+        if message.startswith("File too large"):
+            raise fastapi.HTTPException(status_code=413, detail=message) from e
+        raise fastapi.HTTPException(status_code=409, detail=message) from e
 
     # Post-write storage check — eliminates TOCTOU race on the quota.
     # If a concurrent upload pushed us over the limit, undo this write.
     new_total = await get_workspace_total_size(workspace.id)
     if storage_limit_bytes and new_total > storage_limit_bytes:
-        await soft_delete_workspace_file(workspace_file.id, workspace.id)
+        try:
+            await soft_delete_workspace_file(workspace_file.id, workspace.id)
+        except Exception as e:
+            logger.warning(
+                f"Failed to soft-delete over-quota file {workspace_file.id} "
+                f"in workspace {workspace.id}: {e}"
+            )
         raise fastapi.HTTPException(
             status_code=413,
             detail={
@@ -278,6 +314,7 @@ async def upload_file(
 @router.get(
     "/storage/usage",
     summary="Get workspace storage usage",
+    operation_id="getWorkspaceStorageUsage",
 )
 async def get_storage_usage(
     user_id: Annotated[str, fastapi.Security(get_user_id)],
@@ -297,4 +334,58 @@ async def get_storage_usage(
         limit_bytes=limit_bytes,
         used_percent=round((used_bytes / limit_bytes) * 100, 1) if limit_bytes else 0,
         file_count=file_count,
+    )
+
+
+@router.get(
+    "/files",
+    summary="List workspace files",
+    operation_id="listWorkspaceFiles",
+)
+async def list_workspace_files(
+    user_id: Annotated[str, fastapi.Security(get_user_id)],
+    session_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+) -> ListFilesResponse:
+    """
+    List files in the user's workspace.
+
+    When session_id is provided, only files for that session are returned.
+    Otherwise, all files across sessions are listed. Results are paginated
+    via `limit`/`offset`; `has_more` indicates whether additional pages exist.
+    """
+    workspace = await get_or_create_workspace(user_id)
+
+    # Treat empty-string session_id the same as omitted — an empty value
+    # would otherwise silently list files across every session instead of
+    # scoping to one.
+    session_id = session_id or None
+
+    manager = WorkspaceManager(user_id, workspace.id, session_id)
+    include_all = session_id is None
+    # Fetch one extra to compute has_more without a separate count query.
+    files = await manager.list_files(
+        limit=limit + 1,
+        offset=offset,
+        include_all_sessions=include_all,
+    )
+    has_more = len(files) > limit
+    page = files[:limit]
+
+    return ListFilesResponse(
+        files=[
+            WorkspaceFileItem(
+                id=f.id,
+                name=f.name,
+                path=f.path,
+                mime_type=f.mime_type,
+                size_bytes=f.size_bytes,
+                metadata=f.metadata or {},
+                created_at=f.created_at.isoformat(),
+            )
+            for f in page
+        ],
+        offset=offset,
+        has_more=has_more,
     )

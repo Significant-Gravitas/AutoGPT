@@ -38,6 +38,54 @@ Input and output schemas define the expected data structure for communication be
 
 ---
 
+## AutoPilot
+
+### What it is
+Execute tasks using AutoGPT AutoPilot with full access to platform tools (agent management, workspace files, web fetch, block execution, and more). Enables sub-agent patterns and scheduled autopilot execution.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+This block invokes the platform's copilot system directly via `stream_chat_completion_sdk`. It creates (or resumes) a chat session, streams the autopilot's response collecting text deltas, tool call details, and token usage, then returns the aggregated results. A recursion depth guard prevents infinite loops when the autopilot calls this block as a sub-agent.
+
+Tool and block identifiers provided in `tools` and `blocks` are validated at run time before any execution begins — unknown names or UUIDs produce an error output immediately. When valid, the permissions object is passed into the SDK layer, which narrows the `allowed_tools` list sent to Claude; blocks are enforced at the `run_block` tool call site so the copilot cannot circumvent the filter by calling `run_block` directly. For sub-agent patterns (where an autopilot invokes another AutoPilot block), permissions are inherited: the child's effective allowed set is intersected with the parent's, so a sub-agent can only be *more* restrictive than its parent, never more permissive.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| prompt | The task or instruction for the autopilot to execute. The autopilot has access to platform tools like agent management, workspace files, web fetch, block execution, and more. | str | Yes |
+| system_context | Optional additional context prepended to the prompt. Use this to constrain autopilot behavior, provide domain context, or set output format requirements. | str | No |
+| session_id | Session ID to continue an existing autopilot conversation. Leave empty to start a new session. Use the session_id output from a previous run to continue. | str | No |
+| max_recursion_depth | Maximum nesting depth when the autopilot calls this block recursively (sub-agent pattern). Prevents infinite loops. | int | No |
+| tools | Tool names to filter. Works with tools_exclude to form an allow-list or deny-list. Leave empty to apply no tool filter. | List["add_understanding" \| "ask_question" \| "bash_exec" \| "browser_act" \| "browser_navigate" \| "browser_screenshot" \| "connect_integration" \| "continue_run_block" \| "create_agent" \| "create_feature_request" \| "create_folder" \| "customize_agent" \| "delete_folder" \| "delete_workspace_file" \| "edit_agent" \| "find_agent" \| "find_block" \| "find_library_agent" \| "fix_agent_graph" \| "get_agent_building_guide" \| "get_doc_page" \| "get_mcp_guide" \| "list_folders" \| "list_workspace_files" \| "memory_search" \| "memory_store" \| "move_agents_to_folder" \| "move_folder" \| "read_workspace_file" \| "run_agent" \| "run_block" \| "run_mcp_tool" \| "search_docs" \| "search_feature_requests" \| "update_folder" \| "validate_agent_graph" \| "view_agent_output" \| "web_fetch" \| "write_workspace_file" \| "Agent" \| "Edit" \| "Glob" \| "Grep" \| "Read" \| "Task" \| "TodoWrite" \| "WebSearch" \| "Write"] | No |
+| tools_exclude | Controls how the 'tools' list is interpreted. True (default): 'tools' is a deny-list — listed tools are blocked, all others are allowed. An empty 'tools' list means allow everything. False: 'tools' is an allow-list — only listed tools are permitted. | bool | No |
+| blocks | Block identifiers to filter when the copilot uses run_block. Each entry can be: a block name (e.g. 'HTTP Request'), a full block UUID, or the first 8 hex characters of the UUID (e.g. 'c069dc6b'). Works with blocks_exclude. Leave empty to apply no block filter. | List[str] | No |
+| blocks_exclude | Controls how the 'blocks' list is interpreted. True (default): 'blocks' is a deny-list — listed blocks are blocked, all others are allowed. An empty 'blocks' list means allow everything. False: 'blocks' is an allow-list — only listed blocks are permitted. | bool | No |
+| dry_run | When enabled, run_block and run_agent tool calls in this autopilot session are forced to use dry-run simulation mode. No real API calls, side effects, or credits are consumed by those tools. Useful for testing agent wiring and previewing outputs. Only applies when creating a new session (session_id is empty). When reusing an existing session_id, the session's original dry_run setting is preserved. | bool | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| response | The final text response from the autopilot. | str |
+| tool_calls | List of tools called during execution. Each entry has tool_call_id, tool_name, input, output, and success fields. | List[ToolCallEntry] |
+| conversation_history | Current turn messages (user prompt + assistant reply) as JSON. It can be used for logging or analysis. | str |
+| session_id | Session ID for this conversation. Pass this back to continue the conversation in a future run. | str |
+| token_usage | Token usage statistics: prompt_tokens, completion_tokens, total_tokens. | TokenUsage |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+**Scheduled Reports**: Schedule an autopilot to run daily that checks workspace files, summarizes recent agent activity, and posts a report.
+
+**Multi-Step AI Workflows**: Chain autopilot blocks where one gathers data and another analyzes it, enabling complex AI pipelines within the graph editor.
+
+**Sub-Agent Delegation**: Delegate a research or formatting task to a sub-autopilot while the parent agent handles orchestration.
+<!-- END MANUAL -->
+
+---
+
 ## Create Reddit Post
 
 ### What it is

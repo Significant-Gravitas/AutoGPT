@@ -1,10 +1,21 @@
+from datetime import datetime, timezone
 from typing import cast
 
 import pytest
 from pytest_mock import MockerFixture
 
 from backend.data.dynamic_fields import merge_execution_input, parse_execution_output
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
+from backend.data.model import User
+from backend.executor.utils import (
+    CRED_ERR_INVALID_PREFIX,
+    CRED_ERR_INVALID_TYPE_MISMATCH,
+    CRED_ERR_NOT_AVAILABLE_PREFIX,
+    CRED_ERR_REQUIRED,
+    CRED_ERR_UNKNOWN_PREFIX,
+    add_graph_execution,
+    is_credential_validation_error_message,
+)
 from backend.util.mock import MockObject
 
 
@@ -425,6 +436,7 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
         starting_nodes_input=starting_nodes_input,
         preset_id=preset_id,
         parent_graph_exec_id=None,
+        is_dry_run=False,
     )
 
     # Set up the graph execution mock to have properties we can extract
@@ -470,6 +482,104 @@ async def test_add_graph_execution_is_repeatable(mocker: MockerFixture):
     # Both executions should succeed (though they create different objects)
     assert result1 == mock_graph_exec
     assert result2 == mock_graph_exec_2
+
+
+# ============================================================================
+# Regression test: RPC layer returns typed User model, not raw dict
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_add_graph_execution_via_rpc_returns_typed_user(
+    mocker: MockerFixture,
+):
+    """
+    Regression test: `add_graph_execution` accesses `user.timezone` on the User
+    returned by `get_user_by_id`. This test verifies the downstream code path
+    completes without AttributeError when `get_user_by_id` returns a proper typed
+    User model. Note: the mock returns a User directly — _get_return deserialization
+    is not exercised here; see TestGetReturn in util/service_test.py for that.
+    """
+    graph_id = "test-graph-id"
+    user_id = "test-user-id"
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.version = 1
+
+    mock_graph_exec = mocker.MagicMock(spec=GraphExecutionWithNodes)
+    mock_graph_exec.id = "exec-id-rpc"
+    mock_graph_exec.node_executions = []
+    mock_graph_exec.status = ExecutionStatus.QUEUED
+    mock_graph_exec.graph_version = 1
+    mock_graph_exec.to_graph_execution_entry.return_value = mocker.MagicMock()
+
+    mock_queue = mocker.AsyncMock()
+    mock_event_bus = mocker.MagicMock()
+    mock_event_bus.publish = mocker.AsyncMock()
+
+    mock_validate = mocker.patch(
+        "backend.executor.utils.validate_and_construct_node_execution_input"
+    )
+    mock_validate.return_value = (mock_graph, [], {}, set())
+
+    mock_prisma = mocker.patch("backend.executor.utils.prisma")
+    mock_prisma.is_connected.return_value = (
+        False  # prisma not connected: uses RPC path instead
+    )
+
+    # The RPC layer (_get_return) deserializes JSON dicts into typed Pydantic models.
+    # The mock simulates what add_graph_execution receives after that deserialization:
+    # a proper User model, not a raw dict.
+    mock_user = User(
+        id=user_id,
+        email="test@example.com",
+        name=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        stripe_customer_id=None,
+        top_up_config=None,
+        timezone="UTC",
+    )
+
+    mock_db_client = mocker.MagicMock()
+    mock_db_client.get_user_by_id = mocker.AsyncMock(return_value=mock_user)
+    mock_db_client.get_graph_settings = mocker.AsyncMock(
+        return_value=mocker.MagicMock(
+            human_in_the_loop_safe_mode=False, sensitive_action_safe_mode=False
+        )
+    )
+    mock_db_client.create_graph_execution = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_graph_execution_stats = mocker.AsyncMock(
+        return_value=mock_graph_exec
+    )
+    mock_db_client.update_node_execution_status_batch = mocker.AsyncMock()
+    mock_workspace = mocker.MagicMock()
+    mock_workspace.id = "ws-id"
+    mock_db_client.get_or_create_workspace = mocker.AsyncMock(
+        return_value=mock_workspace
+    )
+    mock_db_client.increment_onboarding_runs = mocker.AsyncMock()
+
+    mocker.patch(
+        "backend.executor.utils.get_database_manager_async_client",
+        return_value=mock_db_client,
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_queue", return_value=mock_queue
+    )
+    mocker.patch(
+        "backend.executor.utils.get_async_execution_event_bus",
+        return_value=mock_event_bus,
+    )
+
+    # Must not raise AttributeError: 'dict' object has no attribute 'timezone'
+    result = await add_graph_execution(
+        graph_id=graph_id,
+        user_id=user_id,
+    )
+    assert result == mock_graph_exec
 
 
 # ============================================================================
@@ -921,3 +1031,72 @@ async def test_stop_graph_execution_cascades_to_child_with_reviews(
 
     # Verify both parent and child status updates
     assert mock_execution_db.update_graph_execution_stats.call_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# Credential validation error marker parity.
+#
+# ``is_credential_validation_error_message`` is shared by the executor
+# dry-run path and the copilot credential-race fallback.  Adding a new
+# credential error string in ``_validate_node_input_credentials`` without
+# updating the matcher would silently regress the copilot UX to a plain
+# text error.  These tests pin the contract:
+#
+# 1. Every ``CRED_ERR_*`` constant emitted by the raise sites is
+#    recognised by the public matcher (including reasonable formatted
+#    variants with runtime suffixes from ``f"{PREFIX} {e}"``).
+# 2. The matcher is case-insensitive and unaffected by trailing detail.
+# 3. Non-credential messages fall through.
+# ---------------------------------------------------------------------------
+
+
+def test_credential_error_markers_cover_all_raise_sites():
+    """Each credential error string emitted by
+    ``_validate_node_input_credentials`` must be recognised by
+    ``is_credential_validation_error_message``. This guards against
+    drift when a new credential error is introduced without updating
+    the matcher."""
+    # Exact-match raise sites
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED)
+    assert is_credential_validation_error_message(CRED_ERR_INVALID_TYPE_MISMATCH)
+
+    # Prefix raise sites with typical runtime suffixes (matching the
+    # f-strings inside ``_validate_node_input_credentials``)
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_INVALID_PREFIX} 1 validation error for ApiKeyCredentials"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} connection refused"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_UNKNOWN_PREFIX}abc-123-def"
+    )
+
+
+def test_credential_error_marker_matching_is_case_insensitive():
+    """The matcher lowercases inputs before comparing — ensure that
+    stays true for each marker so log-normalised copies still match."""
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED.upper())
+    assert is_credential_validation_error_message(CRED_ERR_REQUIRED.lower())
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_INVALID_PREFIX.upper()} BAD FIELD"
+    )
+    assert is_credential_validation_error_message(
+        f"{CRED_ERR_UNKNOWN_PREFIX.upper()}XYZ"
+    )
+
+
+def test_non_credential_errors_are_not_matched():
+    """Unrelated graph validation errors must not hit the credential
+    branch — otherwise the copilot would hide structural errors behind
+    the credential setup card."""
+    assert not is_credential_validation_error_message("")
+    assert not is_credential_validation_error_message(
+        "missing input {'required_field'}"
+    )
+    assert not is_credential_validation_error_message("Input field 'url' is required")
+    # A message that happens to contain "credentials" somewhere but
+    # doesn't start with any known prefix must not match.
+    assert not is_credential_validation_error_message(
+        "Block configuration says credentials are fine"
+    )

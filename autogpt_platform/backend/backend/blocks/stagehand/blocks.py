@@ -1,13 +1,8 @@
 import logging
-import signal
-import threading
-import warnings
-from contextlib import contextmanager
 from enum import Enum
 
-# Monkey patch Stagehands to prevent signal handling in worker threads
-import stagehand.main
-from stagehand import Stagehand
+from stagehand import AsyncStagehand
+from stagehand.types.session_act_params import Options as ActOptions
 
 from backend.blocks.llm import (
     MODEL_METADATA,
@@ -27,46 +22,6 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
-
-# Suppress false positive cleanup warning of litellm (a dependency of stagehand)
-warnings.filterwarnings("ignore", module="litellm.llms.custom_httpx")
-
-# Store the original method
-original_register_signal_handlers = stagehand.main.Stagehand._register_signal_handlers
-
-
-def safe_register_signal_handlers(self):
-    """Only register signal handlers in the main thread"""
-    if threading.current_thread() is threading.main_thread():
-        original_register_signal_handlers(self)
-    else:
-        # Skip signal handling in worker threads
-        pass
-
-
-# Replace the method
-stagehand.main.Stagehand._register_signal_handlers = safe_register_signal_handlers
-
-
-@contextmanager
-def disable_signal_handling():
-    """Context manager to temporarily disable signal handling"""
-    if threading.current_thread() is not threading.main_thread():
-        # In worker threads, temporarily replace signal.signal with a no-op
-        original_signal = signal.signal
-
-        def noop_signal(*args, **kwargs):
-            pass
-
-        signal.signal = noop_signal
-        try:
-            yield
-        finally:
-            signal.signal = original_signal
-    else:
-        # In main thread, don't modify anything
-        yield
-
 
 logger = logging.getLogger(__name__)
 
@@ -148,13 +103,10 @@ class StagehandObserveBlock(Block):
         instruction: str = SchemaField(
             description="Natural language description of elements or actions to discover.",
         )
-        iframes: bool = SchemaField(
-            description="Whether to search within iframes. If True, Stagehand will search for actions within iframes.",
-            default=True,
-        )
-        domSettleTimeoutMs: int = SchemaField(
-            description="Timeout in milliseconds for DOM settlement.Wait longer for dynamic content",
-            default=45000,
+        dom_settle_timeout_ms: int = SchemaField(
+            description="Timeout in ms to wait for the DOM to settle after navigation.",
+            default=30000,
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -185,32 +137,28 @@ class StagehandObserveBlock(Block):
 
         logger.debug(f"OBSERVE: Using model provider {model_credentials.provider}")
 
-        with disable_signal_handling():
-            stagehand = Stagehand(
-                api_key=stagehand_credentials.api_key.get_secret_value(),
-                project_id=input_data.browserbase_project_id,
+        async with AsyncStagehand(
+            browserbase_api_key=stagehand_credentials.api_key.get_secret_value(),
+            browserbase_project_id=input_data.browserbase_project_id,
+            model_api_key=model_credentials.api_key.get_secret_value(),
+        ) as client:
+            session = await client.sessions.start(
                 model_name=input_data.model.provider_name,
-                model_api_key=model_credentials.api_key.get_secret_value(),
+                dom_settle_timeout_ms=input_data.dom_settle_timeout_ms,
             )
+            try:
+                await session.navigate(url=input_data.url)
 
-            await stagehand.init()
-
-        page = stagehand.page
-
-        assert page is not None, "Stagehand page is not initialized"
-
-        await page.goto(input_data.url)
-
-        observe_results = await page.observe(
-            input_data.instruction,
-            iframes=input_data.iframes,
-            domSettleTimeoutMs=input_data.domSettleTimeoutMs,
-        )
-        for result in observe_results:
-            yield "selector", result.selector
-            yield "description", result.description
-            yield "method", result.method
-            yield "arguments", result.arguments
+                observe_response = await session.observe(
+                    instruction=input_data.instruction,
+                )
+                for result in observe_response.data.result:
+                    yield "selector", result.selector
+                    yield "description", result.description
+                    yield "method", result.method
+                    yield "arguments", result.arguments
+            finally:
+                await session.end()
 
 
 class StagehandActBlock(Block):
@@ -242,24 +190,22 @@ class StagehandActBlock(Block):
             description="Variables to use in the action. Variables contains data you want the action to use.",
             default_factory=dict,
         )
-        iframes: bool = SchemaField(
-            description="Whether to search within iframes. If True, Stagehand will search for actions within iframes.",
-            default=True,
+        dom_settle_timeout_ms: int = SchemaField(
+            description="Timeout in ms to wait for the DOM to settle after navigation.",
+            default=30000,
+            advanced=True,
         )
-        domSettleTimeoutMs: int = SchemaField(
-            description="Timeout in milliseconds for DOM settlement.Wait longer for dynamic content",
-            default=45000,
-        )
-        timeoutMs: int = SchemaField(
-            description="Timeout in milliseconds for DOM ready. Extended timeout for slow-loading forms",
-            default=60000,
+        timeout_ms: int = SchemaField(
+            description="Timeout in ms for each action.",
+            default=30000,
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
         success: bool = SchemaField(
             description="Whether the action was completed successfully"
         )
-        message: str = SchemaField(description="Details about the action’s execution.")
+        message: str = SchemaField(description="Details about the action's execution.")
         action: str = SchemaField(description="Action performed")
 
     def __init__(self):
@@ -282,32 +228,33 @@ class StagehandActBlock(Block):
 
         logger.debug(f"ACT: Using model provider {model_credentials.provider}")
 
-        with disable_signal_handling():
-            stagehand = Stagehand(
-                api_key=stagehand_credentials.api_key.get_secret_value(),
-                project_id=input_data.browserbase_project_id,
+        async with AsyncStagehand(
+            browserbase_api_key=stagehand_credentials.api_key.get_secret_value(),
+            browserbase_project_id=input_data.browserbase_project_id,
+            model_api_key=model_credentials.api_key.get_secret_value(),
+        ) as client:
+            session = await client.sessions.start(
                 model_name=input_data.model.provider_name,
-                model_api_key=model_credentials.api_key.get_secret_value(),
+                dom_settle_timeout_ms=input_data.dom_settle_timeout_ms,
             )
+            try:
+                await session.navigate(url=input_data.url)
 
-            await stagehand.init()
-
-        page = stagehand.page
-
-        assert page is not None, "Stagehand page is not initialized"
-
-        await page.goto(input_data.url)
-        for action in input_data.action:
-            action_results = await page.act(
-                action,
-                variables=input_data.variables,
-                iframes=input_data.iframes,
-                domSettleTimeoutMs=input_data.domSettleTimeoutMs,
-                timeoutMs=input_data.timeoutMs,
-            )
-            yield "success", action_results.success
-            yield "message", action_results.message
-            yield "action", action_results.action
+                for action in input_data.action:
+                    act_options = ActOptions(
+                        variables={k: v for k, v in input_data.variables.items()},
+                        timeout=input_data.timeout_ms,
+                    )
+                    act_response = await session.act(
+                        input=action,
+                        options=act_options,
+                    )
+                    result = act_response.data.result
+                    yield "success", result.success
+                    yield "message", result.message
+                    yield "action", result.action_description
+            finally:
+                await session.end()
 
 
 class StagehandExtractBlock(Block):
@@ -335,13 +282,10 @@ class StagehandExtractBlock(Block):
         instruction: str = SchemaField(
             description="Natural language description of elements or actions to discover.",
         )
-        iframes: bool = SchemaField(
-            description="Whether to search within iframes. If True, Stagehand will search for actions within iframes.",
-            default=True,
-        )
-        domSettleTimeoutMs: int = SchemaField(
-            description="Timeout in milliseconds for DOM settlement.Wait longer for dynamic content",
-            default=45000,
+        dom_settle_timeout_ms: int = SchemaField(
+            description="Timeout in ms to wait for the DOM to settle after navigation.",
+            default=30000,
+            advanced=True,
         )
 
     class Output(BlockSchemaOutput):
@@ -367,24 +311,21 @@ class StagehandExtractBlock(Block):
 
         logger.debug(f"EXTRACT: Using model provider {model_credentials.provider}")
 
-        with disable_signal_handling():
-            stagehand = Stagehand(
-                api_key=stagehand_credentials.api_key.get_secret_value(),
-                project_id=input_data.browserbase_project_id,
+        async with AsyncStagehand(
+            browserbase_api_key=stagehand_credentials.api_key.get_secret_value(),
+            browserbase_project_id=input_data.browserbase_project_id,
+            model_api_key=model_credentials.api_key.get_secret_value(),
+        ) as client:
+            session = await client.sessions.start(
                 model_name=input_data.model.provider_name,
-                model_api_key=model_credentials.api_key.get_secret_value(),
+                dom_settle_timeout_ms=input_data.dom_settle_timeout_ms,
             )
+            try:
+                await session.navigate(url=input_data.url)
 
-            await stagehand.init()
-
-        page = stagehand.page
-
-        assert page is not None, "Stagehand page is not initialized"
-
-        await page.goto(input_data.url)
-        extraction = await page.extract(
-            input_data.instruction,
-            iframes=input_data.iframes,
-            domSettleTimeoutMs=input_data.domSettleTimeoutMs,
-        )
-        yield "extraction", str(extraction.model_dump()["extraction"])
+                extract_response = await session.extract(
+                    instruction=input_data.instruction,
+                )
+                yield "extraction", str(extract_response.data.result)
+            finally:
+                await session.end()

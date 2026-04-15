@@ -4,10 +4,7 @@ import {
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
 
-import {
-  IMPERSONATION_HEADER_NAME,
-  IMPERSONATION_STORAGE_KEY,
-} from "@/lib/constants";
+import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
 
@@ -56,19 +53,7 @@ export const customMutator = async <
   };
 
   if (environment.isClientSide()) {
-    try {
-      const impersonatedUserId = sessionStorage.getItem(
-        IMPERSONATION_STORAGE_KEY,
-      );
-      if (impersonatedUserId) {
-        headers[IMPERSONATION_HEADER_NAME] = impersonatedUserId;
-      }
-    } catch (error) {
-      console.error(
-        "Admin impersonation: Failed to access sessionStorage:",
-        error,
-      );
-    }
+    Object.assign(headers, getSystemHeaders());
   }
 
   const isFormData = data instanceof FormData;

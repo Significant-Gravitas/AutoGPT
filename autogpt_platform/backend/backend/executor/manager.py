@@ -10,20 +10,20 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
-import sentry_sdk
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 from redis.asyncio.lock import Lock as AsyncRedisLock
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
+from sentry_sdk.api import get_current_scope as _sentry_get_current_scope
 
 from backend.blocks import get_block
 from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.io import AgentOutputBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
-from backend.data.credit import UsageTransactionMetadata
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
     ExecutionContext,
@@ -37,23 +37,18 @@ from backend.data.execution import (
 )
 from backend.data.graph import Link, Node
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
-from backend.data.notifications import (
-    AgentRunData,
-    LowBalanceData,
-    NotificationEventModel,
-    NotificationType,
-    ZeroBalanceData,
-)
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.cost_tracking import (
+    drain_pending_cost_logs,
+    log_system_credential_cost,
+)
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.notifications.notifications import queue_notification
 from backend.util import json
 from backend.util.clients import (
     get_async_execution_event_bus,
     get_database_manager_async_client,
     get_database_manager_client,
     get_execution_event_bus,
-    get_notification_manager_client,
 )
 from backend.util.decorator import (
     async_error_logged,
@@ -61,10 +56,14 @@ from backend.util.decorator import (
     error_logged,
     time_measured,
 )
-from backend.util.exceptions import InsufficientBalanceError, ModerationError
+from backend.util.exceptions import (
+    GraphNotFoundError,
+    InsufficientBalanceError,
+    ModerationError,
+    NotFoundError,
+)
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
-from backend.util.metrics import DiscordChannel
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import (
     continuous_retry,
@@ -73,9 +72,11 @@ from backend.util.retry import (
 )
 from backend.util.settings import Settings
 
+from . import billing
 from .activity_status_generator import generate_activity_status_for_execution
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
+from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -86,9 +87,7 @@ from .utils import (
     ExecutionOutputEntry,
     LogMetadata,
     NodeExecutionProgress,
-    block_usage_cost,
     create_execution_queue_config,
-    execution_usage_cost,
     validate_exec,
 )
 
@@ -113,40 +112,6 @@ utilization_gauge = Gauge(
     "execution_manager_utilization_ratio",
     "Ratio of active graph runs to max graph workers",
 )
-
-# Redis key prefix for tracking insufficient funds Discord notifications.
-# We only send one notification per user per agent until they top up credits.
-INSUFFICIENT_FUNDS_NOTIFIED_PREFIX = "insufficient_funds_discord_notified"
-# TTL for the notification flag (30 days) - acts as a fallback cleanup
-INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS = 30 * 24 * 60 * 60
-
-
-async def clear_insufficient_funds_notifications(user_id: str) -> int:
-    """
-    Clear all insufficient funds notification flags for a user.
-
-    This should be called when a user tops up their credits, allowing
-    Discord notifications to be sent again if they run out of funds.
-
-    Args:
-        user_id: The user ID to clear notifications for.
-
-    Returns:
-        The number of keys that were deleted.
-    """
-    try:
-        redis_client = await redis.get_redis_async()
-        pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
-        keys = [key async for key in redis_client.scan_iter(match=pattern)]
-        if keys:
-            return await redis_client.delete(*keys)
-        return 0
-    except Exception as e:
-        logger.warning(
-            f"Failed to clear insufficient funds notification flags for user "
-            f"{user_id}: {e}"
-        )
-        return 0
 
 
 # Thread-local storage for ExecutionProcessor instances
@@ -217,9 +182,11 @@ async def execute_node(
         raise ValueError(f"Block {node_block.id} is disabled and cannot be executed")
 
     # Sanity check: validate the execution input.
-    input_data, error = validate_exec(node, data.inputs, resolve_input=False)
+    input_data, error = validate_exec(
+        node, data.inputs, resolve_input=False, dry_run=execution_context.dry_run
+    )
     if input_data is None:
-        log_metadata.error(f"Skip execution, input validation error: {error}")
+        log_metadata.warning(f"Skip execution, input validation error: {error}")
         yield "error", error
         return
 
@@ -271,6 +238,21 @@ async def execute_node(
         "nodes_to_skip": nodes_to_skip or set(),
     }
 
+    # For special blocks in dry-run, prepare_dry_run returns a (possibly
+    # modified) copy of input_data so the block executes for real.  For all
+    # other blocks it returns None -> use LLM simulator.
+    # OrchestratorBlock uses the platform's simulation model + OpenRouter key
+    # so no user credentials are needed.
+    _dry_run_input: dict[str, Any] | None = None
+    if execution_context.dry_run:
+        _dry_run_input = prepare_dry_run(node_block, input_data)
+    if _dry_run_input is not None:
+        input_data = _dry_run_input
+
+    # Check for dry-run platform credentials (OrchestratorBlock uses the
+    # platform's OpenRouter key instead of user credentials).
+    _dry_run_creds = get_dry_run_credentials(input_data) if _dry_run_input else None
+
     # Last-minute fetch credentials + acquire a system-wide read-write lock to prevent
     # changes during execution. ⚠️ This means a set of credentials can only be used by
     # one (running) block at a time; simultaneous execution of blocks using same
@@ -280,6 +262,21 @@ async def execute_node(
 
     # Handle regular credentials fields
     for field_name, input_type in input_model.get_credentials_fields().items():
+        # Dry-run platform credentials bypass the credential store.
+        # Keep the existing credential metadata so _execute's input_schema(**...)
+        # doesn't fail on the required field.  If no metadata is present,
+        # synthesize a minimal placeholder from the platform credentials.
+        if _dry_run_creds is not None:
+            if input_data.get(field_name) is None:
+                input_data[field_name] = {
+                    "id": _dry_run_creds.id,
+                    "provider": _dry_run_creds.provider,
+                    "type": _dry_run_creds.type,
+                    "title": _dry_run_creds.title,
+                }
+            extra_exec_kwargs[field_name] = _dry_run_creds
+            continue
+
         field_value = input_data.get(field_name)
         if not field_value or (
             isinstance(field_value, dict) and not field_value.get("id")
@@ -351,7 +348,7 @@ async def execute_node(
     output_size = 0
 
     # sentry tracking nonsense to get user counts for blocks because isolation scopes don't work :(
-    scope = sentry_sdk.get_current_scope()
+    scope = _sentry_get_current_scope()
 
     # save the tags
     original_user = scope._user
@@ -367,17 +364,27 @@ async def execute_node(
         scope.set_tag(f"execution_context.{k}", v)
 
     try:
-        async for output_name, output_data in node_block.execute(
-            input_data, **extra_exec_kwargs
-        ):
+        if execution_context.dry_run and _dry_run_input is None:
+            block_iter = simulate_block(node_block, input_data)
+        else:
+            block_iter = node_block.execute(input_data, **extra_exec_kwargs)
+
+        async for output_name, output_data in block_iter:
             output_data = json.to_dict(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
             yield output_name, output_data
     except Exception as ex:
-        # Capture exception WITH context still set before restoring scope
-        sentry_sdk.capture_exception(error=ex, scope=scope)
-        sentry_sdk.flush()  # Ensure it's sent before we restore scope
+        # Only capture unexpected errors to Sentry, not user-caused ones.
+        # Most ValueError subclasses here are expected (BlockExecutionError,
+        # InsufficientBalanceError, plain ValueError for auth/disabled blocks, etc.)
+        # but NotFoundError/GraphNotFoundError could indicate real platform issues.
+        is_expected = isinstance(ex, ValueError) and not isinstance(
+            ex, (NotFoundError, GraphNotFoundError)
+        )
+        if not is_expected:
+            _sentry_capture_exception(error=ex, scope=scope)
+            _sentry_flush()
         # Re-raise to maintain normal error flow
         raise
     finally:
@@ -494,7 +501,9 @@ async def _enqueue_next_nodes(
                 next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            next_node_input, validation_msg = validate_exec(
+                next_node, next_node_input, dry_run=execution_context.dry_run
+            )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
             # Incomplete input data, skip queueing the execution.
@@ -539,7 +548,9 @@ async def _enqueue_next_nodes(
                 if node_input_mask:
                     idata.update(node_input_mask)
 
-                idata, msg = validate_exec(next_node, idata)
+                idata, msg = validate_exec(
+                    next_node, idata, dry_run=execution_context.dry_run
+                )
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
@@ -623,12 +634,16 @@ class ExecutionProcessor:
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
+        await billing.handle_post_execution_billing(
+            node, node_exec, execution_stats, status, log_metadata
+        )
+
         graph_stats, graph_stats_lock = graph_stats_pair
         with graph_stats_lock:
             graph_stats.node_count += 1 + execution_stats.extra_steps
             graph_stats.nodes_cputime += execution_stats.cputime
             graph_stats.nodes_walltime += execution_stats.walltime
-            graph_stats.cost += execution_stats.extra_cost
+            graph_stats.cost += execution_stats.cost + execution_stats.extra_cost
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
 
@@ -648,6 +663,27 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
+
+        # Log platform cost if system credentials were used (only on success)
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+                db_client=db_client,
+            )
+
+        # If the node failed because a nested tool charge raised IBE,
+        # send the user notification so they understand why the run stopped.
+        if status == ExecutionStatus.FAILED and isinstance(
+            execution_stats.error, InsufficientBalanceError
+        ):
+            await billing.try_send_insufficient_funds_notif(
+                node_exec.user_id,
+                node_exec.graph_id,
+                execution_stats.error,
+                log_metadata,
+            )
 
         return execution_stats
 
@@ -817,9 +853,12 @@ class ExecutionProcessor:
             return
 
         if exec_meta.stats is None:
-            exec_stats = GraphExecutionStats()
+            exec_stats = GraphExecutionStats(
+                is_dry_run=graph_exec.execution_context.dry_run,
+            )
         else:
             exec_stats = exec_meta.stats.to_db()
+            exec_stats.is_dry_run = graph_exec.execution_context.dry_run
 
         timing_info, status = self._on_graph_execution(
             graph_exec=graph_exec,
@@ -865,7 +904,7 @@ class ExecutionProcessor:
                 )
         finally:
             # Communication handling
-            self._handle_agent_run_notif(db_client, graph_exec, exec_stats)
+            billing.handle_agent_run_notif(db_client, graph_exec, exec_stats)
 
             update_graph_execution_state(
                 db_client=db_client,
@@ -874,57 +913,18 @@ class ExecutionProcessor:
                 stats=exec_stats,
             )
 
-    def _charge_usage(
+    async def charge_node_usage(
         self,
         node_exec: NodeExecutionEntry,
-        execution_count: int,
     ) -> tuple[int, int]:
-        total_cost = 0
-        remaining_balance = 0
-        db_client = get_db_client()
-        block = get_block(node_exec.block_id)
-        if not block:
-            logger.error(f"Block {node_exec.block_id} not found.")
-            return total_cost, 0
+        return await billing.charge_node_usage(node_exec)
 
-        cost, matching_filter = block_usage_cost(
-            block=block, input_data=node_exec.inputs
-        )
-        if cost > 0:
-            remaining_balance = db_client.spend_credits(
-                user_id=node_exec.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    node_exec_id=node_exec.node_exec_id,
-                    node_id=node_exec.node_id,
-                    block_id=node_exec.block_id,
-                    block=block.name,
-                    input=matching_filter,
-                    reason=f"Ran block {node_exec.block_id} {block.name}",
-                ),
-            )
-            total_cost += cost
-
-        cost, usage_count = execution_usage_cost(execution_count)
-        if cost > 0:
-            remaining_balance = db_client.spend_credits(
-                user_id=node_exec.user_id,
-                cost=cost,
-                metadata=UsageTransactionMetadata(
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    input={
-                        "execution_count": usage_count,
-                        "charge": "Execution Cost",
-                    },
-                    reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
-                ),
-            )
-            total_cost += cost
-
-        return total_cost, remaining_balance
+    async def charge_extra_runtime_cost(
+        self,
+        node_exec: NodeExecutionEntry,
+        extra_count: int,
+    ) -> tuple[int, int]:
+        return await billing.charge_extra_runtime_cost(node_exec, extra_count)
 
     @time_measured
     def _on_graph_execution(
@@ -959,7 +959,10 @@ class ExecutionProcessor:
         running_node_evaluation = self.running_node_evaluation
 
         try:
-            if db_client.get_credits(graph_exec.user_id) <= 0:
+            if (
+                not graph_exec.execution_context.dry_run
+                and db_client.get_credits(graph_exec.user_id) <= 0
+            ):
                 raise InsufficientBalanceError(
                     user_id=graph_exec.user_id,
                     message="You have no credits left to run an agent.",
@@ -1030,21 +1033,24 @@ class ExecutionProcessor:
                     f"for node {queued_node_exec.node_id}",
                 )
 
-                # Charge usage (may raise) ------------------------------
+                # Charge usage (may raise) — skipped for dry runs
                 try:
-                    cost, remaining_balance = self._charge_usage(
-                        node_exec=queued_node_exec,
-                        execution_count=increment_execution_count(graph_exec.user_id),
-                    )
-                    with execution_stats_lock:
-                        execution_stats.cost += cost
-                    # Check if we crossed the low balance threshold
-                    self._handle_low_balance(
-                        db_client=db_client,
-                        user_id=graph_exec.user_id,
-                        current_balance=remaining_balance,
-                        transaction_cost=cost,
-                    )
+                    if not graph_exec.execution_context.dry_run:
+                        cost, remaining_balance = billing.charge_usage(
+                            node_exec=queued_node_exec,
+                            execution_count=increment_execution_count(
+                                graph_exec.user_id
+                            ),
+                        )
+                        with execution_stats_lock:
+                            execution_stats.cost += cost
+                        # Check if we crossed the low balance threshold
+                        billing.handle_low_balance(
+                            db_client=db_client,
+                            user_id=graph_exec.user_id,
+                            current_balance=remaining_balance,
+                            transaction_cost=cost,
+                        )
                 except InsufficientBalanceError as balance_error:
                     error = balance_error  # Set error to trigger FAILED status
                     node_exec_id = queued_node_exec.node_exec_id
@@ -1059,7 +1065,7 @@ class ExecutionProcessor:
                         status=ExecutionStatus.FAILED,
                     )
 
-                    self._handle_insufficient_funds_notif(
+                    billing.handle_insufficient_funds_notif(
                         db_client,
                         graph_exec.user_id,
                         graph_exec.graph_id,
@@ -1320,165 +1326,6 @@ class ExecutionProcessor:
             execution_context=graph_exec.execution_context,
         ):
             execution_queue.add(next_execution)
-
-    def _handle_agent_run_notif(
-        self,
-        db_client: "DatabaseManagerClient",
-        graph_exec: GraphExecutionEntry,
-        exec_stats: GraphExecutionStats,
-    ):
-        metadata = db_client.get_graph_metadata(
-            graph_exec.graph_id, graph_exec.graph_version
-        )
-        outputs = db_client.get_node_executions(
-            graph_exec.graph_exec_id,
-            block_ids=[AgentOutputBlock().id],
-        )
-
-        named_outputs = [
-            {
-                key: value[0] if key == "name" else value
-                for key, value in output.output_data.items()
-            }
-            for output in outputs
-        ]
-
-        queue_notification(
-            NotificationEventModel(
-                user_id=graph_exec.user_id,
-                type=NotificationType.AGENT_RUN,
-                data=AgentRunData(
-                    outputs=named_outputs,
-                    agent_name=metadata.name if metadata else "Unknown Agent",
-                    credits_used=exec_stats.cost,
-                    execution_time=exec_stats.walltime,
-                    graph_id=graph_exec.graph_id,
-                    node_count=exec_stats.node_count,
-                ),
-            )
-        )
-
-    def _handle_insufficient_funds_notif(
-        self,
-        db_client: "DatabaseManagerClient",
-        user_id: str,
-        graph_id: str,
-        e: InsufficientBalanceError,
-    ):
-        # Check if we've already sent a notification for this user+agent combo.
-        # We only send one notification per user per agent until they top up credits.
-        redis_key = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:{graph_id}"
-        try:
-            redis_client = redis.get_redis()
-            # SET NX returns True only if the key was newly set (didn't exist)
-            is_new_notification = redis_client.set(
-                redis_key,
-                "1",
-                nx=True,
-                ex=INSUFFICIENT_FUNDS_NOTIFIED_TTL_SECONDS,
-            )
-            if not is_new_notification:
-                # Already notified for this user+agent, skip all notifications
-                logger.debug(
-                    f"Skipping duplicate insufficient funds notification for "
-                    f"user={user_id}, graph={graph_id}"
-                )
-                return
-        except Exception as redis_error:
-            # If Redis fails, log and continue to send the notification
-            # (better to occasionally duplicate than to never notify)
-            logger.warning(
-                f"Failed to check/set insufficient funds notification flag in Redis: "
-                f"{redis_error}"
-            )
-
-        shortfall = abs(e.amount) - e.balance
-        metadata = db_client.get_graph_metadata(graph_id)
-        base_url = (
-            settings.config.frontend_base_url or settings.config.platform_base_url
-        )
-
-        # Queue user email notification
-        queue_notification(
-            NotificationEventModel(
-                user_id=user_id,
-                type=NotificationType.ZERO_BALANCE,
-                data=ZeroBalanceData(
-                    current_balance=e.balance,
-                    billing_page_link=f"{base_url}/profile/credits",
-                    shortfall=shortfall,
-                    agent_name=metadata.name if metadata else "Unknown Agent",
-                ),
-            )
-        )
-
-        # Send Discord system alert
-        try:
-            user_email = db_client.get_user_email_by_id(user_id)
-
-            alert_message = (
-                f"❌ **Insufficient Funds Alert**\n"
-                f"User: {user_email or user_id}\n"
-                f"Agent: {metadata.name if metadata else 'Unknown Agent'}\n"
-                f"Current balance: ${e.balance / 100:.2f}\n"
-                f"Attempted cost: ${abs(e.amount) / 100:.2f}\n"
-                f"Shortfall: ${abs(shortfall) / 100:.2f}\n"
-                f"[View User Details]({base_url}/admin/spending?search={user_email})"
-            )
-
-            get_notification_manager_client().discord_system_alert(
-                alert_message, DiscordChannel.PRODUCT
-            )
-        except Exception as alert_error:
-            logger.error(
-                f"Failed to send insufficient funds Discord alert: {alert_error}"
-            )
-
-    def _handle_low_balance(
-        self,
-        db_client: "DatabaseManagerClient",
-        user_id: str,
-        current_balance: int,
-        transaction_cost: int,
-    ):
-        """Check and handle low balance scenarios after a transaction"""
-        LOW_BALANCE_THRESHOLD = settings.config.low_balance_threshold
-
-        balance_before = current_balance + transaction_cost
-
-        if (
-            current_balance < LOW_BALANCE_THRESHOLD
-            and balance_before >= LOW_BALANCE_THRESHOLD
-        ):
-            base_url = (
-                settings.config.frontend_base_url or settings.config.platform_base_url
-            )
-            queue_notification(
-                NotificationEventModel(
-                    user_id=user_id,
-                    type=NotificationType.LOW_BALANCE,
-                    data=LowBalanceData(
-                        current_balance=current_balance,
-                        billing_page_link=f"{base_url}/profile/credits",
-                    ),
-                )
-            )
-
-            try:
-                user_email = db_client.get_user_email_by_id(user_id)
-                alert_message = (
-                    f"⚠️ **Low Balance Alert**\n"
-                    f"User: {user_email or user_id}\n"
-                    f"Balance dropped below ${LOW_BALANCE_THRESHOLD / 100:.2f}\n"
-                    f"Current balance: ${current_balance / 100:.2f}\n"
-                    f"Transaction cost: ${transaction_cost / 100:.2f}\n"
-                    f"[View User Details]({base_url}/admin/spending?search={user_email})"
-                )
-                get_notification_manager_client().discord_system_alert(
-                    alert_message, DiscordChannel.PRODUCT
-                )
-            except Exception as e:
-                logger.error(f"Failed to send low balance Discord alert: {e}")
 
 
 class ExecutionManager(AppProcess):
@@ -1900,17 +1747,16 @@ class ExecutionManager(AppProcess):
             channel = client.get_channel()
             channel.connection.add_callback_threadsafe(lambda: channel.stop_consuming())
 
-            try:
-                thread.join(timeout=300)
-            except TimeoutError:
-                logger.error(
+            thread.join(timeout=300)
+            if thread.is_alive():
+                logger.warning(
                     f"{prefix} ⚠️ Run thread did not finish in time, forcing disconnect"
                 )
 
             client.disconnect()
             logger.info(f"{prefix} ✅ Run client disconnected")
         except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
+            logger.warning(f"{prefix} ⚠️ Error disconnecting run client: {type(e)} {e}")
 
     def cleanup(self):
         """Override cleanup to implement graceful shutdown with active execution waiting."""
@@ -1926,7 +1772,9 @@ class ExecutionManager(AppProcess):
             )
             logger.info(f"{prefix} ✅ Exec consumer has been signaled to stop")
         except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}")
+            logger.warning(
+                f"{prefix} ⚠️ Error signaling consumer to stop: {type(e)} {e}"
+            )
 
         # Wait for active executions to complete
         if self.active_graph_runs:
@@ -1957,7 +1805,7 @@ class ExecutionManager(AppProcess):
                 waited += wait_interval
 
             if self.active_graph_runs:
-                logger.error(
+                logger.warning(
                     f"{prefix} ⚠️ {len(self.active_graph_runs)} executions still running after {max_wait}s"
                 )
             else:
@@ -1968,7 +1816,7 @@ class ExecutionManager(AppProcess):
             self.executor.shutdown(cancel_futures=True, wait=False)
             logger.info(f"{prefix} ✅ Executor shutdown completed")
         except Exception as e:
-            logger.error(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
+            logger.warning(f"{prefix} ⚠️ Error during executor shutdown: {type(e)} {e}")
 
         # Release remaining execution locks
         try:
@@ -1990,6 +1838,18 @@ class ExecutionManager(AppProcess):
             self.cancel_client,
             prefix + " [cancel-consumer]",
         )
+
+        # Drain any in-flight cost log tasks before exit so we don't silently
+        # drop INSERT operations during deployments.
+        loop = getattr(self, "node_execution_loop", None)
+        if loop is not None and loop.is_running():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    drain_pending_cost_logs(), loop
+                ).result(timeout=10)
+                logger.info(f"{prefix} ✅ Cost log tasks drained")
+            except Exception as e:
+                logger.warning(f"{prefix} ⚠️ Failed to drain cost log tasks: {e}")
 
         logger.info(f"{prefix} ✅ Finished GraphExec cleanup")
 

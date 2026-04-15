@@ -1,11 +1,15 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
-import { ReactNode } from "react";
+import { useCallback } from "react";
+import { useCopilotUIStore } from "../../store";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -17,15 +21,21 @@ export interface ChatContainerProps {
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
+  /** True while re-syncing session state after device wake. */
+  isSyncing?: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
   isUploadingFiles?: boolean;
-  headerSlot?: ReactNode;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
   onDroppedFilesConsumed?: () => void;
+  /** Duration in ms for historical turns, keyed by message ID. */
+  historicalDurations?: Map<string, number>;
 }
 export const ChatContainer = ({
   messages,
@@ -36,35 +46,70 @@ export const ChatContainer = ({
   isSessionError,
   isCreatingSession,
   isReconnecting,
+  isSyncing,
   onCreateSession,
   onSend,
   onStop,
   isUploadingFiles,
-  headerSlot,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
   droppedFiles,
   onDroppedFilesConsumed,
+  historicalDurations,
 }: ChatContainerProps) => {
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  // When the flag is off we must not auto-open artifacts or let the panel's
+  // open state drive layout width; an artifact generated in a stale session
+  // state would otherwise shrink the chat column with no panel rendered.
+  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
+  useAutoOpenArtifacts({ sessionId });
   const isBusy =
     status === "streaming" ||
     status === "submitted" ||
     !!isReconnecting ||
+    !!isSyncing ||
     isLoadingSession ||
     !!isSessionError;
   const inputLayoutId = "copilot-2-chat-input";
+
+  // Retry: re-send the last user message (used by ErrorCard on transient errors)
+  const handleRetry = useCallback(() => {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+    const lastText = lastUserMsg?.parts
+      .filter(
+        (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
+      )
+      .map((p) => p.text)
+      .join("");
+    if (lastText) {
+      onSend(lastText);
+    }
+  }, [messages, onSend]);
 
   return (
     <CopilotChatActionsProvider onSend={onSend}>
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
           {sessionId ? (
-            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+            <div
+              className={cn(
+                "mx-auto flex h-full min-h-0 w-full flex-col",
+                !isArtifactOpen && "max-w-3xl",
+              )}
+            >
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
                 error={error}
                 isLoading={isLoadingSession}
-                headerSlot={headerSlot}
                 sessionID={sessionId}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
+                onRetry={handleRetry}
+                historicalDurations={historicalDurations}
               />
               <motion.div
                 initial={{ opacity: 0 }}
@@ -83,6 +128,7 @@ export const ChatContainer = ({
                   placeholder="What else can I help with?"
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  hasSession={!!sessionId}
                 />
               </motion.div>
             </div>

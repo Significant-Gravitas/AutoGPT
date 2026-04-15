@@ -24,9 +24,8 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 | url | URL to navigate to. | str | Yes |
 | action | Action to perform. Suggested actions are: click, fill, type, press, scroll, select from dropdown. For multi-step actions, add an entry for each step. | List[str] | Yes |
 | variables | Variables to use in the action. Variables contains data you want the action to use. | Dict[str, str] | No |
-| iframes | Whether to search within iframes. If True, Stagehand will search for actions within iframes. | bool | No |
-| domSettleTimeoutMs | Timeout in milliseconds for DOM settlement.Wait longer for dynamic content | int | No |
-| timeoutMs | Timeout in milliseconds for DOM ready. Extended timeout for slow-loading forms | int | No |
+| dom_settle_timeout_ms | Timeout in ms to wait for the DOM to settle after navigation. | int | No |
+| timeout_ms | Timeout in ms for each action. | int | No |
 
 ### Outputs
 
@@ -34,7 +33,7 @@ Configure timeouts for DOM settlement and page loading. Variables can be passed 
 |--------|-------------|------|
 | error | Error message if the operation failed | str |
 | success | Whether the action was completed successfully | bool |
-| message | Details about the action’s execution. | str |
+| message | Details about the action's execution. | str |
 | action | Action performed | str |
 
 ### Possible use case
@@ -68,8 +67,7 @@ Supports searching within iframes and configurable timeouts for dynamic content 
 | model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-sonnet-4-5-20250929" \| "claude-sonnet-4-6" | No |
 | url | URL to navigate to. | str | Yes |
 | instruction | Natural language description of elements or actions to discover. | str | Yes |
-| iframes | Whether to search within iframes. If True, Stagehand will search for actions within iframes. | bool | No |
-| domSettleTimeoutMs | Timeout in milliseconds for DOM settlement.Wait longer for dynamic content | int | No |
+| dom_settle_timeout_ms | Timeout in ms to wait for the DOM to settle after navigation. | int | No |
 
 ### Outputs
 
@@ -109,8 +107,7 @@ Use this to explore a page's interactive elements before building automated work
 | model | LLM to use for Stagehand (provider is inferred) | "gpt-4.1-2025-04-14" \| "gpt-4.1-mini-2025-04-14" \| "claude-sonnet-4-5-20250929" \| "claude-sonnet-4-6" | No |
 | url | URL to navigate to. | str | Yes |
 | instruction | Natural language description of elements or actions to discover. | str | Yes |
-| iframes | Whether to search within iframes. If True, Stagehand will search for actions within iframes. | bool | No |
-| domSettleTimeoutMs | Timeout in milliseconds for DOM settlement.Wait longer for dynamic content | int | No |
+| dom_settle_timeout_ms | Timeout in ms to wait for the DOM to settle after navigation. | int | No |
 
 ### Outputs
 

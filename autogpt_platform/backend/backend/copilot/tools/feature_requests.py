@@ -134,11 +134,7 @@ class SearchFeatureRequestsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Search existing feature requests to check if a similar request "
-            "already exists before creating a new one. Returns matching feature "
-            "requests with their ID, title, and description."
-        )
+        return "Search existing feature requests. Check before creating a new one."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -161,9 +157,10 @@ class SearchFeatureRequestsTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        query: str = "",
         **kwargs,
     ) -> ToolResponseBase:
-        query = kwargs.get("query", "").strip()
+        query = (query or "").strip()
         session_id = session.session_id if session else None
 
         if not query:
@@ -234,14 +231,9 @@ class CreateFeatureRequestTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create a new feature request or add a customer need to an existing one. "
-            "Always search first with search_feature_requests to avoid duplicates. "
-            "If a matching request exists, pass its ID as existing_issue_id to add "
-            "the user's need to it instead of creating a duplicate. "
-            "IMPORTANT: Never include personally identifiable information (PII) in "
-            "the title or description — no names, emails, phone numbers, company "
-            "names, or other identifying details. Write titles and descriptions in "
-            "generic, feature-focused language."
+            "Create a feature request or add need to existing one. "
+            "Search first to avoid duplicates. Pass existing_issue_id to add to existing. "
+            "Never include PII (names, emails, phone numbers, company names) in title/description."
         )
 
     @property
@@ -251,28 +243,15 @@ class CreateFeatureRequestTool(BaseTool):
             "properties": {
                 "title": {
                     "type": "string",
-                    "description": (
-                        "Title for the feature request. Must be generic and "
-                        "feature-focused — do not include any user names, emails, "
-                        "company names, or other PII."
-                    ),
+                    "description": "Feature request title. No names, emails, or company info.",
                 },
                 "description": {
                     "type": "string",
-                    "description": (
-                        "Detailed description of what the user wants and why. "
-                        "Must not contain any personally identifiable information "
-                        "(PII) — describe the feature need generically without "
-                        "referencing specific users, companies, or contact details."
-                    ),
+                    "description": "What the user wants and why. No names, emails, or company info.",
                 },
                 "existing_issue_id": {
                     "type": "string",
-                    "description": (
-                        "If adding a need to an existing feature request, "
-                        "provide its Linear issue ID (from search results). "
-                        "Omit to create a new feature request."
-                    ),
+                    "description": "Linear issue ID to add need to (from search results).",
                 },
             },
             "required": ["title", "description"],
@@ -310,11 +289,13 @@ class CreateFeatureRequestTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        title: str = "",
+        description: str = "",
+        existing_issue_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        title = kwargs.get("title", "").strip()
-        description = kwargs.get("description", "").strip()
-        existing_issue_id = kwargs.get("existing_issue_id")
+        title = (title or "").strip()
+        description = (description or "").strip()
         session_id = session.session_id if session else None
 
         if not title or not description:

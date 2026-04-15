@@ -18,9 +18,7 @@ class FindAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Discover agents from the marketplace based on capabilities and user needs."
-        )
+        return "Search marketplace agents by capability, or look up by slug ('username/agent-name')."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -29,17 +27,22 @@ class FindAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "Search query describing what the user wants to accomplish. Use single keywords for best results.",
+                    "description": "Search keywords, or 'username/agent-name' for direct slug lookup.",
                 },
             },
             "required": ["query"],
         }
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        query: str = "",
+        **kwargs,
     ) -> ToolResponseBase:
+        """Search marketplace for agents matching the query."""
         return await search_agents(
-            query=kwargs.get("query", "").strip(),
+            query=query.strip(),
             source="marketplace",
             session_id=session.session_id,
             user_id=user_id,

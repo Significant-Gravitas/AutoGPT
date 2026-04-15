@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import pydantic
+from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
@@ -75,8 +76,7 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     """
     Get user's workspace, creating one if it doesn't exist.
 
-    Uses upsert to handle race conditions when multiple concurrent requests
-    attempt to create a workspace for the same user.
+    Uses upsert to atomically handle concurrent creation attempts.
 
     Args:
         user_id: The user's ID
@@ -84,13 +84,19 @@ async def get_or_create_workspace(user_id: str) -> Workspace:
     Returns:
         Workspace instance
     """
-    workspace = await UserWorkspace.prisma().upsert(
-        where={"userId": user_id},
-        data={
-            "create": {"userId": user_id},
-            "update": {},  # No updates needed if exists
-        },
-    )
+    try:
+        workspace = await UserWorkspace.prisma().upsert(
+            where={"userId": user_id},
+            data={
+                "create": {"userId": user_id},
+                "update": {},  # No-op update; workspace already exists
+            },
+        )
+    except UniqueViolationError:
+        # Defense-in-depth: should not happen with upsert, but handle gracefully
+        workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
+        if workspace is None:
+            raise
 
     return Workspace.from_db(workspace)
 
@@ -122,6 +128,13 @@ async def create_workspace_file(
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
+
+    Raises ``UniqueViolationError`` if a record with the same
+    ``(workspaceId, path)`` already exists.  The caller
+    (``WorkspaceManager._persist_db_record``) relies on this to trigger
+    its delete-old-file-then-retry flow, which cleans up the old storage
+    blob before re-creating the DB record.  Using ``upsert`` here would
+    silently overwrite ``storagePath`` and orphan the old blob in storage.
 
     Args:
         workspace_id: The workspace ID

@@ -5,6 +5,8 @@ import {
   getV2GetAdminListingsHistory,
   postV2ReviewStoreSubmission,
   getV2AdminDownloadAgentFile,
+  getV2AdminPreviewSubmissionListing,
+  postV2AdminAddPendingAgentToLibrary,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -56,5 +58,19 @@ export async function getAdminListingsWithVersions(
 
 export async function downloadAsAdmin(storeListingVersion: string) {
   const response = await getV2AdminDownloadAgentFile(storeListingVersion);
+  return okData(response);
+}
+
+export async function previewAsAdmin(storeListingVersionId: string) {
+  const response = await getV2AdminPreviewSubmissionListing(
+    storeListingVersionId,
+  );
+  return okData(response);
+}
+
+export async function addToLibraryAsAdmin(storeListingVersionId: string) {
+  const response = await postV2AdminAddPendingAgentToLibrary(
+    storeListingVersionId,
+  );
   return okData(response);
 }

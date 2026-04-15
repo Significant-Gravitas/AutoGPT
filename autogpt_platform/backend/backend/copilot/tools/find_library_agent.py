@@ -19,10 +19,9 @@ class FindLibraryAgentTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search for or list agents in the user's library. Use this to find "
-            "agents the user has already added to their library, including agents "
-            "they created or added from the marketplace. "
-            "Omit the query to list all agents."
+            "Search user's library agents. Returns graph_id, schemas for sub-agent composition. "
+            "Omit query to list all. Set include_graph=true to also fetch the full "
+            "graph structure (nodes + links) for debugging or editing."
         )
 
     @property
@@ -32,10 +31,16 @@ class FindLibraryAgentTool(BaseTool):
             "properties": {
                 "query": {
                     "type": "string",
+                    "description": "Search by name/description. Omit to list all.",
+                },
+                "include_graph": {
+                    "type": "boolean",
                     "description": (
-                        "Search query to find agents by name or description. "
-                        "Omit to list all agents in the library."
+                        "When true, includes the full graph structure "
+                        "(nodes + links) for each found agent. "
+                        "Use when you need to inspect, debug, or edit an agent."
                     ),
+                    "default": False,
                 },
             },
             "required": [],
@@ -46,11 +51,17 @@ class FindLibraryAgentTool(BaseTool):
         return True
 
     async def _execute(
-        self, user_id: str | None, session: ChatSession, **kwargs
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        query: str = "",
+        include_graph: bool = False,
+        **kwargs,
     ) -> ToolResponseBase:
         return await search_agents(
-            query=(kwargs.get("query") or "").strip(),
+            query=query.strip(),
             source="library",
             session_id=session.session_id,
             user_id=user_id,
+            include_graph=include_graph,
         )

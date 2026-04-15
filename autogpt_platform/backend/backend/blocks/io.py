@@ -2,6 +2,8 @@ import copy
 from datetime import date, time
 from typing import Any, Optional
 
+from pydantic import AliasChoices, Field
+
 from backend.blocks._base import (
     Block,
     BlockCategory,
@@ -28,9 +30,9 @@ class AgentInputBlock(Block):
     """
     This block is used to provide input to the graph.
 
-    It takes in a value, name, description, default values list and bool to limit selection to default values.
+    It takes in a value, name, and description.
 
-    It Outputs the value passed as input.
+    It outputs the value passed as input.
     """
 
     class Input(BlockSchemaInput):
@@ -47,12 +49,6 @@ class AgentInputBlock(Block):
             default=None,
             advanced=True,
         )
-        placeholder_values: list = SchemaField(
-            description="The placeholder values to be passed as input.",
-            default_factory=list,
-            advanced=True,
-            hidden=True,
-        )
         advanced: bool = SchemaField(
             description="Whether to show the input in the advanced section, if the field is not required.",
             default=False,
@@ -65,10 +61,7 @@ class AgentInputBlock(Block):
         )
 
         def generate_schema(self):
-            schema = copy.deepcopy(self.get_field_schema("value"))
-            if possible_values := self.placeholder_values:
-                schema["enum"] = possible_values
-            return schema
+            return copy.deepcopy(self.get_field_schema("value"))
 
     class Output(BlockSchema):
         # Use BlockSchema to avoid automatic error field for interface definition
@@ -86,18 +79,16 @@ class AgentInputBlock(Block):
                         "value": "Hello, World!",
                         "name": "input_1",
                         "description": "Example test input.",
-                        "placeholder_values": [],
                     },
                     {
-                        "value": "Hello, World!",
+                        "value": 42,
                         "name": "input_2",
-                        "description": "Example test input with placeholders.",
-                        "placeholder_values": ["Hello, World!"],
+                        "description": "Example numeric input.",
                     },
                 ],
                 "test_output": [
                     ("result", "Hello, World!"),
-                    ("result", "Hello, World!"),
+                    ("result", 42),
                 ],
                 "categories": {BlockCategory.INPUT, BlockCategory.BASIC},
                 "block_type": BlockType.INPUT,
@@ -211,7 +202,7 @@ class AgentOutputBlock(Block):
         if input_data.format:
             try:
                 formatter = TextFormatter(autoescape=input_data.escape_html)
-                yield "output", formatter.format_string(
+                yield "output", await formatter.format_string(
                     input_data.format, {input_data.name: input_data.value}
                 )
             except Exception as e:
@@ -245,13 +236,11 @@ class AgentShortTextInputBlock(AgentInputBlock):
                     "value": "Hello",
                     "name": "short_text_1",
                     "description": "Short text example 1",
-                    "placeholder_values": [],
                 },
                 {
                     "value": "Quick test",
                     "name": "short_text_2",
                     "description": "Short text example 2",
-                    "placeholder_values": ["Quick test", "Another option"],
                 },
             ],
             test_output=[
@@ -285,13 +274,11 @@ class AgentLongTextInputBlock(AgentInputBlock):
                     "value": "Lorem ipsum dolor sit amet...",
                     "name": "long_text_1",
                     "description": "Long text example 1",
-                    "placeholder_values": [],
                 },
                 {
                     "value": "Another multiline text input.",
                     "name": "long_text_2",
                     "description": "Long text example 2",
-                    "placeholder_values": ["Another multiline text input."],
                 },
             ],
             test_output=[
@@ -325,13 +312,11 @@ class AgentNumberInputBlock(AgentInputBlock):
                     "value": 42,
                     "name": "number_input_1",
                     "description": "Number example 1",
-                    "placeholder_values": [],
                 },
                 {
                     "value": 314,
                     "name": "number_input_2",
                     "description": "Number example 2",
-                    "placeholder_values": [314, 2718],
                 },
             ],
             test_output=[
@@ -484,7 +469,8 @@ class AgentFileInputBlock(AgentInputBlock):
 
 class AgentDropdownInputBlock(AgentInputBlock):
     """
-    A specialized text input block that relies on placeholder_values to present a dropdown.
+    A specialized text input block that presents a dropdown selector
+    restricted to a fixed set of values.
     """
 
     class Input(AgentInputBlock.Input):
@@ -494,12 +480,25 @@ class AgentDropdownInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
-        placeholder_values: list = SchemaField(
-            description="Possible values for the dropdown.",
+        # Use Field() directly (not SchemaField) to pass validation_alias,
+        # which handles backward compat for legacy "placeholder_values" across
+        # all construction paths (model_construct, __init__, model_validate).
+        options: list = Field(
             default_factory=list,
-            advanced=False,
             title="Dropdown Options",
+            description=(
+                "If provided, renders the input as a dropdown selector "
+                "restricted to these values. Leave empty for free-text input."
+            ),
+            validation_alias=AliasChoices("options", "placeholder_values"),
+            json_schema_extra={"advanced": False, "secret": False},
         )
+
+        def generate_schema(self):
+            schema = super().generate_schema()
+            if possible_values := self.options:
+                schema["enum"] = possible_values
+            return schema
 
     class Output(AgentInputBlock.Output):
         result: str = SchemaField(description="Selected dropdown value.")
@@ -515,13 +514,13 @@ class AgentDropdownInputBlock(AgentInputBlock):
                 {
                     "value": "Option A",
                     "name": "dropdown_1",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 1",
                 },
                 {
                     "value": "Option C",
                     "name": "dropdown_2",
-                    "placeholder_values": ["Option A", "Option B", "Option C"],
+                    "options": ["Option A", "Option B", "Option C"],
                     "description": "Dropdown example 2",
                 },
             ],

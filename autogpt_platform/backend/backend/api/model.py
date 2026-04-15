@@ -94,3 +94,8 @@ class NotificationPayload(pydantic.BaseModel):
 
 class OnboardingNotificationPayload(NotificationPayload):
     step: OnboardingStep | None
+
+
+class CopilotCompletionPayload(NotificationPayload):
+    session_id: str
+    status: Literal["completed", "failed"]

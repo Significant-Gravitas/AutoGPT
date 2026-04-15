@@ -1,5 +1,15 @@
-import { getIconForSocial } from "@/components/__legacy__/ui/icons";
-import { Fragment } from "react";
+import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import {
+  FacebookLogo,
+  GithubLogo,
+  Globe,
+  InstagramLogo,
+  LinkedinLogo,
+  TiktokLogo,
+  XLogo,
+  YoutubeLogo,
+} from "@phosphor-icons/react";
 
 interface CreatorLinksProps {
   links: string[];
@@ -21,39 +31,59 @@ function getHostnameFromURL(url: string): string {
   }
 }
 
-export const CreatorLinks = ({ links }: CreatorLinksProps) => {
-  if (!links || links.length === 0) {
-    return null;
+function getSocialIcon(url: string) {
+  let host;
+  try {
+    host = new URL(normalizeURL(url)).hostname.toLowerCase();
+  } catch {
+    return <Globe className="h-4 w-4" />;
   }
 
-  const renderLinkButton = (url: string) => (
-    <a
-      href={normalizeURL(url)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex min-w-[200px] flex-1 items-center justify-between rounded-[34px] border border-neutral-600 px-5 py-3 dark:border-neutral-400"
-    >
-      <div className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        {getHostnameFromURL(url)}
-      </div>
-      <div className="relative h-6 w-6">
-        {getIconForSocial(url, {
-          className: "h-6 w-6 text-neutral-800 dark:text-neutral-200",
-        })}
-      </div>
-    </a>
-  );
+  if (host === "facebook.com" || host.endsWith(".facebook.com")) {
+    return <FacebookLogo className="h-4 w-4" />;
+  } else if (
+    host === "twitter.com" ||
+    host.endsWith(".twitter.com") ||
+    host === "x.com" ||
+    host.endsWith(".x.com")
+  ) {
+    return <XLogo className="h-4 w-4" />;
+  } else if (host === "instagram.com" || host.endsWith(".instagram.com")) {
+    return <InstagramLogo className="h-4 w-4" />;
+  } else if (host === "linkedin.com" || host.endsWith(".linkedin.com")) {
+    return <LinkedinLogo className="h-4 w-4" />;
+  } else if (host === "github.com" || host.endsWith(".github.com")) {
+    return <GithubLogo className="h-4 w-4" />;
+  } else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+    return <YoutubeLogo className="h-4 w-4" />;
+  } else if (host === "tiktok.com" || host.endsWith(".tiktok.com")) {
+    return <TiktokLogo className="h-4 w-4" />;
+  }
+  return <Globe className="h-4 w-4" />;
+}
+
+export function CreatorLinks({ links }: CreatorLinksProps) {
+  if (!links || links.length === 0) return null;
 
   return (
-    <div className="flex flex-col items-start justify-start gap-4">
-      <div className="text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        Other links
-      </div>
-      <div className="flex w-full flex-wrap gap-3">
-        {links.map((link, index) => (
-          <Fragment key={index}>{renderLinkButton(link)}</Fragment>
+    <div className="flex flex-col items-start gap-3">
+      <Text variant="h5">Links</Text>
+      <div className="flex flex-wrap gap-2">
+        {links.map((link) => (
+          <Button
+            key={link}
+            variant="secondary"
+            size="small"
+            as="NextLink"
+            href={normalizeURL(link)}
+            target="_blank"
+            rel="noopener noreferrer"
+            rightIcon={getSocialIcon(link)}
+          >
+            {getHostnameFromURL(link)}
+          </Button>
         ))}
       </div>
     </div>
   );
-};
+}

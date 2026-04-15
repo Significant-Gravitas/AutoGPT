@@ -21,7 +21,7 @@ from typing import (
 )
 from uuid import uuid4
 
-from prisma.enums import CreditTransactionType, OnboardingStep
+from prisma.enums import CreditTransactionType, OnboardingStep, SubscriptionTier
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -54,7 +54,6 @@ class User(BaseModel):
     """Application-layer User model with snake_case convention."""
 
     model_config = ConfigDict(
-        extra="forbid",
         str_strip_whitespace=True,
     )
 
@@ -71,6 +70,9 @@ class User(BaseModel):
     stripe_customer_id: Optional[str] = Field(None, description="Stripe customer ID")
     top_up_config: Optional["AutoTopUpConfig"] = Field(
         None, description="Top up configuration"
+    )
+    subscription_tier: SubscriptionTier = Field(
+        default=SubscriptionTier.FREE, description="User subscription tier"
     )
 
     # Notification preferences
@@ -146,6 +148,7 @@ class User(BaseModel):
             integrations=prisma_user.integrations or "",
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
+            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.FREE,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
@@ -312,10 +315,21 @@ def SchemaField(
     )  # type: ignore
 
 
+# SDK default credentials use IDs like "{provider}-default" (set in sdk/builder.py).
+# They must never be exposed to users via the API.
+SDK_DEFAULT_SUFFIX = "-default"
+
+
+def is_sdk_default(cred_id: str) -> bool:
+    return cred_id.endswith(SDK_DEFAULT_SUFFIX)
+
+
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
     title: Optional[str] = None
+    is_managed: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):
@@ -335,7 +349,6 @@ class OAuth2Credentials(_BaseCredentials):
     refresh_token_expires_at: Optional[int] = None
     """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
     scopes: list[str]
-    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
@@ -713,7 +726,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             credentials_scopes=self.required_scopes,
             discriminator=self.discriminator,
             discriminator_mapping=self.discriminator_mapping,
-            discriminator_values=self.discriminator_values,
+            discriminator_values=set(self.discriminator_values),  # defensive copy
         )
 
 
@@ -809,6 +822,17 @@ class RefundRequest(BaseModel):
     updated_at: datetime
 
 
+ProviderCostType = Literal[
+    "cost_usd",  # Actual USD cost reported by the provider
+    "tokens",  # LLM token counts (sum of input + output)
+    "characters",  # Per-character billing (TTS providers)
+    "sandbox_seconds",  # Per-second compute billing (e.g. E2B)
+    "walltime_seconds",  # Per-second billing incl. queue/polling
+    "per_run",  # Per-API-call billing with fixed cost
+    "items",  # Per-item billing (lead/organization/result count)
+]
+
+
 class NodeExecutionStats(BaseModel):
     """Execution statistics for a node execution."""
 
@@ -826,34 +850,44 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
+    cache_read_token_count: int = 0
+    cache_creation_token_count: int = 0
+    cost: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
+    provider_cost: float | None = None
+    # Type of the provider-reported cost/usage captured above. When set
+    # by a block, resolve_tracking honors this directly instead of
+    # guessing from provider name.
+    provider_cost_type: Optional[ProviderCostType] = None
     # Moderation fields
     cleared_inputs: Optional[dict[str, list[str]]] = None
     cleared_outputs: Optional[dict[str, list[str]]] = None
 
     def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
-        """Mutate this instance by adding another NodeExecutionStats."""
+        """Mutate this instance by adding another NodeExecutionStats.
+
+        Avoids calling model_dump() twice per merge (called on every
+        merge_stats() from ~20+ blocks); reads via getattr/vars instead.
+        """
         if not isinstance(other, NodeExecutionStats):
             return NotImplemented
 
-        stats_dict = other.model_dump()
-        current_stats = self.model_dump()
-
-        for key, value in stats_dict.items():
-            if key not in current_stats:
-                # Field doesn't exist yet, just set it
+        for key in type(other).model_fields:
+            value = getattr(other, key)
+            if value is None:
+                # Never overwrite an existing value with None
+                continue
+            current = getattr(self, key, None)
+            if current is None:
+                # Field doesn't exist yet or is None, just set it
                 setattr(self, key, value)
-            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
-                current_stats[key].update(value)
-                setattr(self, key, current_stats[key])
-            elif isinstance(value, (int, float)) and isinstance(
-                current_stats[key], (int, float)
-            ):
-                setattr(self, key, current_stats[key] + value)
-            elif isinstance(value, list) and isinstance(current_stats[key], list):
-                current_stats[key].extend(value)
-                setattr(self, key, current_stats[key])
+            elif isinstance(value, dict) and isinstance(current, dict):
+                current.update(value)
+            elif isinstance(value, (int, float)) and isinstance(current, (int, float)):
+                setattr(self, key, current + value)
+            elif isinstance(value, list) and isinstance(current, list):
+                current.extend(value)
             else:
                 setattr(self, key, value)
 
@@ -888,6 +922,10 @@ class GraphExecutionStats(BaseModel):
     correctness_score: Optional[float] = Field(
         default=None,
         description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
+    )
+    is_dry_run: bool = Field(
+        default=False,
+        description="Whether this execution was a dry-run simulation",
     )
 
 

@@ -73,7 +73,7 @@ class ReadDiscordMessagesBlock(Block):
             id="df06086a-d5ac-4abb-9996-2ad0acb2eff7",
             input_schema=ReadDiscordMessagesBlock.Input,  # Assign input schema
             output_schema=ReadDiscordMessagesBlock.Output,  # Assign output schema
-            description="Reads messages from a Discord channel using a bot token.",
+            description="Reads new messages from a Discord channel using a bot token and triggers when a new message is posted",
             categories={BlockCategory.SOCIAL},
             test_input={
                 "continuous_read": False,

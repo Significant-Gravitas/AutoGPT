@@ -1,47 +1,36 @@
-import React from "react";
-import { Separator } from "@/components/__legacy__/ui/separator";
-import { ScrollArea } from "@/components/__legacy__/ui/scroll-area";
-import { beautifyString, categoryColorMap } from "@/lib/utils";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { beautifyString, cn } from "@/lib/utils";
 import { SearchableNode } from "../GraphMenuSearchBar/useGraphMenuSearchBar";
-import { TextRenderer } from "@/components/__legacy__/ui/render";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-  TooltipProvider,
-} from "@/components/atoms/Tooltip/BaseTooltip";
+import { ArrowBendUpRight } from "@phosphor-icons/react";
 import { GraphMenuSearchBar } from "../GraphMenuSearchBar/GraphMenuSearchBar";
+import { getNodeInputOutputSummary } from "./helpers";
 import { useGraphContent } from "./useGraphContent";
 
-interface GraphSearchContentProps {
+interface Props {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   filteredNodes: SearchableNode[];
-  onNodeSelect: (nodeId: string) => void;
-  onNodeHover?: (nodeId: string | null) => void;
+  onNodeSelect: (nodeID: string) => void;
 }
 
-export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
+export function GraphSearchContent({
   searchQuery,
   onSearchChange,
   filteredNodes,
   onNodeSelect,
-  onNodeHover,
-}) => {
-  const {
-    selectedIndex,
-    setSelectedIndex,
-    handleKeyDown,
-    getNodeInputOutputSummary,
-  } = useGraphContent({
-    searchQuery,
-    filteredNodes,
-    onNodeSelect,
-  });
+}: Props) {
+  const { selectedIndex, setSelectedIndex, setItemRef, handleKeyDown } =
+    useGraphContent({
+      searchQuery,
+      filteredNodes,
+      onNodeSelect,
+    });
+
+  const trimmedQuery = searchQuery?.trim();
 
   return (
     <div className="flex h-full w-full flex-col">
-      {/* Search Bar */}
       <GraphMenuSearchBar
         searchQuery={searchQuery}
         onSearchChange={onSearchChange}
@@ -50,104 +39,82 @@ export const GraphSearchContent: React.FC<GraphSearchContentProps> = ({
 
       <Separator className="h-[1px] w-full text-zinc-300" />
 
-      {/* Search Results */}
       <div className="flex-1 overflow-hidden">
-        {searchQuery && (
-          <div className="px-4 py-2 text-xs text-gray-500">
+        {trimmedQuery && (
+          <div className="px-4 pt-3 text-xs text-zinc-500">
             Found {filteredNodes.length} node
             {filteredNodes.length !== 1 ? "s" : ""}
           </div>
         )}
         <ScrollArea className="h-full w-full">
-          {filteredNodes.length === 0 ? (
-            <div className="flex h-32 items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-              {searchQuery
-                ? "No nodes found matching your search"
-                : "Start typing to search nodes"}
-            </div>
-          ) : (
-            filteredNodes.map((node, index) => {
-              // Safety check for node data
-              if (!node || !node.data) {
-                return null;
-              }
+          <div role="listbox" className="space-y-3 px-4 py-4">
+            {filteredNodes.length === 0 ? (
+              <div className="flex h-32 items-center justify-center text-sm text-zinc-500">
+                {trimmedQuery
+                  ? "No nodes found matching your search"
+                  : "Start typing to search nodes"}
+              </div>
+            ) : (
+              filteredNodes.map((node, index) => {
+                if (!node?.data) return null;
 
-              const nodeTitle =
-                (node.data?.metadata?.customized_name as string) ||
-                beautifyString(node.data?.title || "").replace(/ Block$/, "");
-              const nodeType = beautifyString(node.data?.title || "").replace(
-                / Block$/,
-                "",
-              );
+                const nodeTitle =
+                  (node.data.metadata?.customized_name as string) ||
+                  beautifyString(node.data.title || "").replace(/ Block$/, "");
+                const nodeType = beautifyString(node.data.title || "").replace(
+                  / Block$/,
+                  "",
+                );
+                const description =
+                  getNodeInputOutputSummary(node) ||
+                  node.data.description ||
+                  "";
 
-              return (
-                <TooltipProvider key={node.id}>
-                  <Tooltip delayDuration={300}>
-                    <TooltipTrigger asChild>
-                      <div
-                        className={`mx-4 my-2 flex h-20 cursor-pointer rounded-lg border border-zinc-200 bg-white ${
-                          index === selectedIndex
-                            ? "border-zinc-400 shadow-md"
-                            : "hover:border-zinc-300 hover:shadow-sm"
-                        }`}
-                        onClick={() => onNodeSelect(node.id)}
-                        onMouseEnter={() => {
-                          setSelectedIndex(index);
-                          onNodeHover?.(node.id);
-                        }}
-                        onMouseLeave={() => onNodeHover?.(null)}
-                      >
-                        <div
-                          className={`h-full w-3 rounded-l-[7px] ${
-                            (node.data?.categories?.[0]?.category &&
-                              categoryColorMap[
-                                node.data.categories[0].category
-                              ]) ||
-                            "bg-gray-300 dark:bg-slate-700"
-                          }`}
-                        />
-                        <div className="mx-3 flex flex-1 items-center justify-between">
-                          <div className="mr-2 min-w-0">
-                            <span className="block truncate pb-1 text-sm font-semibold text-zinc-800">
-                              <TextRenderer
-                                value={nodeTitle}
-                                truncateLengthLimit={45}
-                              />
-                            </span>
-                            <span className="block break-all text-xs font-normal text-zinc-500">
-                              <TextRenderer
-                                value={
-                                  getNodeInputOutputSummary(node) ||
-                                  node.data?.description ||
-                                  ""
-                                }
-                                truncateLengthLimit={165}
-                              />
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-xs">
-                      <div className="space-y-1">
-                        <div className="font-semibold">
-                          Node Type: {nodeType}
-                        </div>
-                        {!!node.data?.metadata?.customized_name && (
-                          <div className="text-xs text-gray-500">
-                            Custom Name:{" "}
-                            {String(node.data.metadata.customized_name)}
-                          </div>
+                const hasCustomName = !!node.data.metadata?.customized_name;
+
+                return (
+                  <div
+                    key={node.id}
+                    ref={(el) => setItemRef(index, el)}
+                    role="option"
+                    aria-selected={index === selectedIndex}
+                    tabIndex={index === selectedIndex ? 0 : -1}
+                    className={cn(
+                      "flex h-16 w-full cursor-pointer items-center gap-3 rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem]",
+                      index === selectedIndex
+                        ? "bg-zinc-100 ring-1 ring-zinc-300"
+                        : "hover:bg-zinc-100",
+                    )}
+                    onClick={() => onNodeSelect(node.id)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                  >
+                    <div className="flex flex-1 flex-col items-start gap-0.5 overflow-hidden">
+                      <div className="flex items-center gap-2">
+                        <span className="line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+                          {nodeTitle}
+                        </span>
+                        {hasCustomName && (
+                          <span className="shrink-0 rounded-[0.75rem] bg-zinc-200 px-2 font-sans text-xs leading-5 text-zinc-500">
+                            {nodeType}
+                          </span>
                         )}
                       </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })
-          )}
+                      {description && (
+                        <span className="line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500">
+                          {description}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[0.5rem] bg-zinc-700">
+                      <ArrowBendUpRight className="h-4 w-4 text-zinc-50" />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </ScrollArea>
       </div>
     </div>
   );
-};
+}

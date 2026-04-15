@@ -35,17 +35,19 @@ export const ContentRenderer: React.FC<{
     renderer?.name === "ImageRenderer" ||
     renderer?.name === "VideoRenderer" ||
     renderer?.name === "WorkspaceFileRenderer" ||
+    renderer?.name === "AudioRenderer" ||
+    renderer?.name === "LinkRenderer" ||
     !shortContent
   ) {
     return (
-      <div className="overflow-hidden [&>*]:rounded-xlarge [&>*]:!text-xs [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
+      <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-xs [&_pre]:whitespace-pre-wrap [&_pre]:break-words">
         {renderer?.render(value, metadata)}
       </div>
     );
   }
 
   return (
-    <div className="overflow-hidden [&>*]:rounded-xlarge [&>*]:!text-xs">
+    <div className="overflow-x-auto [&>*]:rounded-xlarge [&>*]:!text-xs">
       <TextRenderer value={value} truncateLengthLimit={200} />
     </div>
   );

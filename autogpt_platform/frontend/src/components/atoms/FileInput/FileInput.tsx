@@ -1,10 +1,76 @@
-import { FileTextIcon, TrashIcon, UploadIcon, X } from "@phosphor-icons/react";
+import {
+  FileTextIcon,
+  Eye,
+  TrashIcon,
+  UploadIcon,
+  X,
+} from "@phosphor-icons/react";
 import { useRef, useState } from "react";
 import { Button } from "../Button/Button";
 import { formatFileSize, getFileLabel } from "./helpers";
 import { cn } from "@/lib/utils";
 import { parseWorkspaceURI } from "@/lib/workspace-uri";
 import { Text } from "../Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { globalRegistry } from "@/components/contextual/OutputRenderers";
+
+function PreviewButton({
+  value,
+  title,
+  contentType,
+}: {
+  value: string;
+  title: string;
+  contentType?: string;
+}) {
+  const metadata = contentType ? { mimeType: contentType } : undefined;
+  const renderer = globalRegistry.getRenderer(value, metadata);
+  if (!renderer) return null;
+
+  return (
+    <Dialog title={title}>
+      <Dialog.Trigger>
+        <Button
+          variant="outline"
+          size="small"
+          className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-500"
+          type="button"
+          aria-label="Preview file"
+        >
+          <Eye size={14} />
+        </Button>
+      </Dialog.Trigger>
+      <Dialog.Content>
+        <div className="overflow-hidden [&>*]:rounded-xlarge">
+          {renderer.render(value, metadata)}
+        </div>
+      </Dialog.Content>
+    </Dialog>
+  );
+}
+
+function getMimeFromDataURI(value: string): string | null {
+  const match = value.match(/^data:([^;,]+)/);
+  return match?.[1] || null;
+}
+
+function isPreviewableFile(
+  value: string | undefined,
+  contentType: string | undefined,
+): boolean {
+  if (!value) return false;
+  const mimeType =
+    contentType ||
+    parseWorkspaceURI(value)?.mimeType ||
+    (value.startsWith("data:") ? getMimeFromDataURI(value) : null);
+  if (!mimeType) return false;
+  const normalized = mimeType.toLowerCase();
+  return (
+    normalized.startsWith("audio/") ||
+    normalized.startsWith("video/") ||
+    normalized.startsWith("image/")
+  );
+}
 
 type UploadFileResult = {
   file_name: string;
@@ -292,12 +358,24 @@ export function FileInput(props: Props) {
                   </Text>
                 )}
               </div>
+              {isPreviewableFile(value, fileInfo?.content_type) && (
+                <PreviewButton
+                  value={value}
+                  title={
+                    fileInfo
+                      ? getFileLabel(fileInfo.name, fileInfo.content_type)
+                      : "Preview"
+                  }
+                  contentType={fileInfo?.content_type}
+                />
+              )}
               <Button
                 variant="outline"
                 size="small"
                 className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
                 onClick={handleClear}
                 type="button"
+                aria-label="Clear file"
               >
                 <X size={14} />
               </Button>
@@ -363,10 +441,29 @@ export function FileInput(props: Props) {
                   <span>{fileInfo ? formatFileSize(fileInfo.size) : ""}</span>
                 </div>
               </div>
-              <TrashIcon
-                className="h-5 w-5 cursor-pointer text-black"
-                onClick={handleClear}
-              />
+              <div className="flex items-center gap-2">
+                {isPreviewableFile(value, fileInfo?.content_type) && (
+                  <PreviewButton
+                    value={value}
+                    title={
+                      fileInfo
+                        ? getFileLabel(fileInfo.name, fileInfo.content_type)
+                        : "Preview"
+                    }
+                    contentType={fileInfo?.content_type}
+                  />
+                )}
+                <Button
+                  variant="outline"
+                  size="small"
+                  type="button"
+                  onClick={handleClear}
+                  aria-label="Clear file"
+                  className="h-7 w-7 min-w-0 flex-shrink-0 border-zinc-300 p-0 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-500"
+                >
+                  <TrashIcon className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
           </div>
           {showStorageNote && mode === "upload" && (

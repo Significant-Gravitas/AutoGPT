@@ -23,6 +23,12 @@ import { WebhookDisclaimer } from "./components/WebhookDisclaimer";
 import { SubAgentUpdateFeature } from "./components/SubAgentUpdate/SubAgentUpdateFeature";
 import { useCustomNode } from "./useCustomNode";
 
+function hasAdvancedFields(schema: RJSFSchema): boolean {
+  const properties = schema?.properties;
+  if (!properties) return false;
+  return Object.values(properties).some((prop: any) => prop.advanced === true);
+}
+
 export type CustomNodeData = {
   hardcodedValues: {
     [key: string]: any;
@@ -86,7 +92,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
     const hasOutputError =
       typeof outputData === "object" &&
       outputData !== null &&
-      "error" in outputData;
+      "error" in outputData &&
+      Array.isArray(outputData.error) &&
+      outputData.error.some(
+        (v: unknown) => v !== "" && v !== null && v !== undefined,
+      );
 
     const hasErrors = hasConfigErrors || hasOutputError;
 
@@ -108,7 +118,11 @@ export const CustomNode: React.FC<NodeProps<CustomNode>> = React.memo(
             )}
             showHandles={showHandles}
           />
-          <NodeAdvancedToggle nodeId={nodeId} />
+          <NodeAdvancedToggle
+            nodeId={nodeId}
+            isLastSection={data.uiType === BlockUIType.OUTPUT}
+            hasAdvancedFields={hasAdvancedFields(inputSchema)}
+          />
           {data.uiType != BlockUIType.OUTPUT && (
             <OutputHandler
               uiType={data.uiType}

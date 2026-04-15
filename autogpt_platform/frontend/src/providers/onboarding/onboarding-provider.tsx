@@ -1,6 +1,6 @@
 "use client";
 import {
-  getV1IsOnboardingEnabled,
+  getV1CheckIfOnboardingIsCompleted,
   getV1OnboardingState,
   patchV1UpdateOnboardingState,
   postV1CompleteOnboardingStep,
@@ -19,6 +19,7 @@ import {
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingTimezoneDetection } from "@/hooks/useOnboardingTimezoneDetection";
 import {
+  ApiError,
   UserOnboarding,
   WebSocketNotification,
 } from "@/lib/autogpt-server-api";
@@ -142,13 +143,16 @@ export default function OnboardingProvider({
 
     async function initializeOnboarding() {
       try {
-        // Check onboarding enabled only for onboarding routes
-        if (isOnOnboardingRoute) {
-          const enabled = await resolveResponse(getV1IsOnboardingEnabled());
-          if (!enabled) {
-            router.push("/");
-            return;
-          }
+        const { is_completed } = await resolveResponse(
+          getV1CheckIfOnboardingIsCompleted(),
+        );
+
+        if (!is_completed && !isOnOnboardingRoute) {
+          router.replace("/onboarding");
+          return;
+        } else if (is_completed && isOnOnboardingRoute) {
+          router.replace("/copilot");
+          return;
         }
 
         const onboarding = await fetchOnboarding();
@@ -158,9 +162,14 @@ export default function OnboardingProvider({
           isOnOnboardingRoute &&
           shouldRedirectFromOnboarding(onboarding.completedSteps, pathname)
         ) {
-          router.push("/");
+          router.replace("/copilot");
         }
       } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          hasInitialized.current = false;
+          return;
+        }
+
         console.error("Failed to initialize onboarding:", error);
 
         toast({

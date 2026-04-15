@@ -165,7 +165,6 @@ class LibraryAgent(pydantic.BaseModel):
     id: str
     graph_id: str
     graph_version: int
-    owner_user_id: str
 
     image_url: str | None
 
@@ -206,7 +205,9 @@ class LibraryAgent(pydantic.BaseModel):
         default_factory=list,
         description="List of recent executions with status, score, and summary",
     )
-    can_access_graph: bool
+    can_access_graph: bool = pydantic.Field(
+        description="Indicates whether the same user owns the corresponding graph"
+    )
     is_latest_version: bool
     is_favorite: bool
     folder_id: str | None = None
@@ -324,7 +325,6 @@ class LibraryAgent(pydantic.BaseModel):
             id=agent.id,
             graph_id=agent.agentGraphId,
             graph_version=agent.agentGraphVersion,
-            owner_user_id=agent.userId,
             image_url=agent.imageUrl,
             creator_name=creator_name,
             creator_image_url=creator_image_url,

@@ -110,10 +110,12 @@ export function useThumbnailImages({
       if (!selectedImage) {
         setSelectedImage(imageUrl);
       }
-    } catch (_error) {
+    } catch (error) {
+      const detail =
+        error instanceof Error ? error.message : "Please try again.";
       toast({
         title: "Upload failed",
-        description: "Failed to upload image. Please try again.",
+        description: detail,
         variant: "destructive",
       });
     }

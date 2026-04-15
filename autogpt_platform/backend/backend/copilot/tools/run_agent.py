@@ -13,8 +13,9 @@ from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
+from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import DatabaseError, NotFoundError
+from backend.util.exceptions import DatabaseError, GraphValidationError, NotFoundError
 from backend.util.timezone_utils import (
     convert_utc_time_to_user_timezone,
     get_user_timezone_or_utc,
@@ -71,6 +72,7 @@ class RunAgentInput(BaseModel):
     cron: str = ""
     timezone: str = "UTC"
     wait_for_result: int = Field(default=0, ge=0, le=300)
+    dry_run: bool = Field(default=False)
 
     @field_validator(
         "username_agent_slug",
@@ -104,19 +106,13 @@ class RunAgentTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return """Run or schedule an agent from the marketplace or user's library.
-
-        The tool automatically handles the setup flow:
-        - Returns missing inputs if required fields are not provided
-        - Returns missing credentials if user needs to configure them
-        - Executes immediately if all requirements are met
-        - Schedules execution if cron expression is provided
-
-        Identify the agent using either:
-        - username_agent_slug: Marketplace format 'username/agent-name'
-        - library_agent_id: ID of an agent in the user's library
-
-        For scheduled execution, provide: schedule_name, cron, and optionally timezone."""
+        return (
+            "Run or schedule an agent. Automatically checks inputs and credentials "
+            "and surfaces the inline credentials-setup card if anything is missing — "
+            "do NOT redirect to the Builder for credential setup. "
+            "Identify by username_agent_slug ('user/agent') or library_agent_id. "
+            "For scheduling, provide schedule_name + cron."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -125,40 +121,42 @@ class RunAgentTool(BaseTool):
             "properties": {
                 "username_agent_slug": {
                     "type": "string",
-                    "description": "Agent identifier in format 'username/agent-name'",
+                    "description": "Marketplace format 'username/agent-name'.",
                 },
                 "library_agent_id": {
                     "type": "string",
-                    "description": "Library agent ID from user's library",
+                    "description": "Library agent ID.",
                 },
                 "inputs": {
                     "type": "object",
-                    "description": "Input values for the agent",
+                    "description": "Input values for the agent.",
                     "additionalProperties": True,
                 },
                 "use_defaults": {
                     "type": "boolean",
-                    "description": "Set to true to run with default values (user must confirm)",
+                    "description": "Run with default values (confirm with user first).",
                 },
                 "schedule_name": {
                     "type": "string",
-                    "description": "Name for scheduled execution (triggers scheduling mode)",
+                    "description": "Name for scheduled execution. Providing this triggers scheduling mode (also requires cron).",
                 },
                 "cron": {
                     "type": "string",
-                    "description": "Cron expression (5 fields: min hour day month weekday)",
+                    "description": "Cron expression (min hour day month weekday).",
                 },
                 "timezone": {
                     "type": "string",
-                    "description": "IANA timezone for schedule (default: UTC)",
+                    "description": "IANA timezone (default: UTC).",
                 },
                 "wait_for_result": {
                     "type": "integer",
-                    "description": (
-                        "Max seconds to wait for execution to complete (0-300). "
-                        "If >0, blocks until the execution finishes or times out. "
-                        "Returns execution outputs when complete."
-                    ),
+                    "description": "Max seconds to wait for completion (0-300).",
+                    "minimum": 0,
+                    "maximum": 300,
+                },
+                "dry_run": {
+                    "type": "boolean",
+                    "description": "Simulate the agent run without executing real actions (default: false). Use when testing agent behaviour or when the user explicitly asks for a dry run.",
                 },
             },
             "required": [],
@@ -175,8 +173,17 @@ class RunAgentTool(BaseTool):
         session: ChatSession,
         **kwargs,
     ) -> ToolResponseBase:
-        """Execute the tool with automatic state detection."""
+        """Execute the tool with automatic state detection.
+
+        Note: This tool accepts **kwargs and delegates to RunAgentInput for
+        validation because the parameter set is complex with cross-field
+        validators defined in the Pydantic model.
+        """
         params = RunAgentInput(**kwargs)
+        # Session-level dry_run forces all runs to be dry. In normal sessions
+        # the LLM may still request dry_run=True on individual calls.
+        if session.dry_run:
+            params.dry_run = True
         session_id = session.session_id
 
         # Validate at least one identifier is provided
@@ -201,6 +208,18 @@ class RunAgentTool(BaseTool):
 
         # Determine if this is a schedule request
         is_schedule = bool(params.schedule_name or params.cron)
+
+        # Session-level dry-run blocks scheduling — schedules create real
+        # side effects that cannot be simulated.
+        if params.dry_run and is_schedule:
+            return ErrorResponse(
+                message=(
+                    "Scheduling is disabled in dry-run mode because it creates "
+                    "real side effects. Remove cron/schedule_name to simulate "
+                    "a run, or disable dry-run to create a real schedule."
+                ),
+                session_id=session_id,
+            )
 
         try:
             # Step 1: Fetch agent details
@@ -239,103 +258,17 @@ class RunAgentTool(BaseTool):
                     session_id=session_id,
                 )
 
-            # Step 2: Check credentials
-            graph_credentials, missing_creds = await match_user_credentials_to_graph(
-                user_id, graph
+            # Step 2: Check credentials and inputs
+            graph_credentials, prereq_error = await self._check_prerequisites(
+                graph=graph,
+                user_id=user_id,
+                params=params,
+                session_id=session_id,
             )
+            if prereq_error:
+                return prereq_error
 
-            if missing_creds:
-                # Return credentials needed response with input data info
-                # The UI handles credential setup automatically, so the message
-                # focuses on asking about input data
-                requirements_creds_dict = build_missing_credentials_from_graph(
-                    graph, None
-                )
-                missing_credentials_dict = build_missing_credentials_from_graph(
-                    graph, graph_credentials
-                )
-                requirements_creds_list = list(requirements_creds_dict.values())
-
-                return SetupRequirementsResponse(
-                    message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
-                    session_id=session_id,
-                    setup_info=SetupInfo(
-                        agent_id=graph.id,
-                        agent_name=graph.name,
-                        user_readiness=UserReadiness(
-                            has_all_credentials=False,
-                            missing_credentials=missing_credentials_dict,
-                            ready_to_run=False,
-                        ),
-                        requirements={
-                            "credentials": requirements_creds_list,
-                            "inputs": get_inputs_from_schema(graph.input_schema),
-                            "execution_modes": self._get_execution_modes(graph),
-                        },
-                    ),
-                    graph_id=graph.id,
-                    graph_version=graph.version,
-                )
-
-            # Step 3: Check inputs
-            # Get all available input fields from schema
-            input_properties = graph.input_schema.get("properties", {})
-            required_fields = set(graph.input_schema.get("required", []))
-            provided_inputs = set(params.inputs.keys())
-            valid_fields = set(input_properties.keys())
-
-            # Check for unknown input fields
-            unrecognized_fields = provided_inputs - valid_fields
-            if unrecognized_fields:
-                return InputValidationErrorResponse(
-                    message=(
-                        f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
-                        f"Agent was not executed. Please use the correct field names from the schema."
-                    ),
-                    session_id=session_id,
-                    unrecognized_fields=sorted(unrecognized_fields),
-                    inputs=graph.input_schema,
-                    graph_id=graph.id,
-                    graph_version=graph.version,
-                )
-
-            # If agent has inputs but none were provided AND use_defaults is not set,
-            # always show what's available first so user can decide
-            if input_properties and not provided_inputs and not params.use_defaults:
-                credentials = extract_credentials_from_schema(
-                    graph.credentials_input_schema
-                )
-                return AgentDetailsResponse(
-                    message=self._build_inputs_message(graph, MSG_ASK_USER_FOR_VALUES),
-                    session_id=session_id,
-                    agent=self._build_agent_details(graph, credentials),
-                    user_authenticated=True,
-                    graph_id=graph.id,
-                    graph_version=graph.version,
-                )
-
-            # Check if required inputs are missing (and not using defaults)
-            missing_inputs = required_fields - provided_inputs
-
-            if missing_inputs and not params.use_defaults:
-                # Return agent details with missing inputs info
-                credentials = extract_credentials_from_schema(
-                    graph.credentials_input_schema
-                )
-                return AgentDetailsResponse(
-                    message=(
-                        f"Agent '{graph.name}' is missing required inputs: "
-                        f"{', '.join(missing_inputs)}. "
-                        "Please provide these values to run the agent."
-                    ),
-                    session_id=session_id,
-                    agent=self._build_agent_details(graph, credentials),
-                    user_authenticated=True,
-                    graph_id=graph.id,
-                    graph_version=graph.version,
-                )
-
-            # Step 4: Execute or Schedule
+            # Step 3: Execute or Schedule
             if is_schedule:
                 return await self._schedule_agent(
                     user_id=user_id,
@@ -355,6 +288,7 @@ class RunAgentTool(BaseTool):
                     graph_credentials=graph_credentials,
                     inputs=params.inputs,
                     wait_for_result=params.wait_for_result,
+                    dry_run=params.dry_run,
                 )
 
         except NotFoundError as e:
@@ -364,14 +298,14 @@ class RunAgentTool(BaseTool):
                 session_id=session_id,
             )
         except DatabaseError as e:
-            logger.error(f"Database error: {e}", exc_info=True)
+            logger.error("Database error: %s", e, exc_info=True)
             return ErrorResponse(
                 message=f"Failed to process request: {e!s}",
                 error=str(e),
                 session_id=session_id,
             )
         except Exception as e:
-            logger.error(f"Error processing agent request: {e}", exc_info=True)
+            logger.error("Error processing agent request: %s", e, exc_info=True)
             return ErrorResponse(
                 message=f"Failed to process request: {e!s}",
                 error=str(e),
@@ -431,6 +365,224 @@ class RunAgentTool(BaseTool):
             trigger_info=trigger_info,
         )
 
+    def _build_setup_requirements_from_validation_error(
+        self,
+        graph: GraphModel,
+        error: GraphValidationError,
+        session_id: str,
+    ) -> SetupRequirementsResponse | None:
+        """Convert a credential-related ``GraphValidationError`` into
+        the inline ``SetupRequirementsResponse`` the frontend renders.
+
+        Returns ``None`` if *error* isn't credential-related — the
+        caller should then fall back to a plain text error.
+
+        This is the race-condition path (prereq check passed → creds
+        deleted/invalidated → executor/scheduler raised). All credential
+        fields are shown as missing so the user sees exactly which
+        accounts to reconnect.
+        """
+        # Only surface the credential-setup UI when ALL errors are credential-
+        # related.  If there are also structural errors (missing inputs, invalid
+        # node config), fall through to the plain error path so those errors are
+        # not hidden from the user — they would surface on the next run attempt
+        # after the credential fix, creating a confusing two-step failure.
+        #
+        # Collect all error messages once so we can check both emptiness and
+        # uniformity without iterating twice.  all() returns True vacuously on
+        # an empty sequence, so the ``not messages`` guard is essential — an
+        # empty node_errors dict must fall through to the plain error path.
+        messages = [
+            msg
+            for node_errors in error.node_errors.values()
+            for msg in node_errors.values()
+        ]
+        if not messages or not all(
+            is_credential_validation_error_message(msg) for msg in messages
+        ):
+            return None
+
+        # Show ALL credential fields as missing — in the race case the
+        # previously-matched credentials have since become invalid, so
+        # the user needs to reconnect all of them.  Passing ``None``
+        # means no field is treated as "already connected".
+        #
+        # Trade-off: we could narrow to only the failing nodes in
+        # ``error.node_errors``, but we cannot trust the old credential
+        # mapping (those creds were valid at prereq time but are now
+        # gone/invalid), so showing all is safer than showing a partial
+        # list that might still contain broken entries.  The user sees
+        # every account that may need attention in a single card.
+        credentials_dict = build_missing_credentials_from_graph(graph, None)
+        return SetupRequirementsResponse(
+            message=(
+                f"Agent '{graph.name}' has credentials that are missing or "
+                "no longer valid. Please connect the required account(s) "
+                "and try again."
+            ),
+            session_id=session_id,
+            setup_info=SetupInfo(
+                agent_id=graph.id,
+                agent_name=graph.name,
+                user_readiness=UserReadiness(
+                    has_all_credentials=False,
+                    missing_credentials=credentials_dict,
+                    ready_to_run=False,
+                ),
+                requirements={
+                    "credentials": list(credentials_dict.values()),
+                    "inputs": get_inputs_from_schema(graph.input_schema),
+                    "execution_modes": self._get_execution_modes(graph),
+                },
+            ),
+            graph_id=graph.id,
+            graph_version=graph.version,
+        )
+
+    def _handle_graph_validation_race(
+        self,
+        error: GraphValidationError,
+        graph: GraphModel,
+        user_id: str,
+        session_id: str,
+        action_verb: str,
+    ) -> ToolResponseBase:
+        """Handle a ``GraphValidationError`` that slipped past the prereq check.
+
+        Shared by both the run and schedule paths — logs the race, attempts to
+        rebuild the credential setup card, and falls back to a user-friendly
+        ``ErrorResponse`` when the error is structural (not credential-related).
+        """
+        logger.warning(
+            "Race: GraphValidationError after prereq check passed "
+            "(user_id=%s graph_id=%s failing_fields=%s)",
+            user_id,
+            graph.id,
+            {node_id: list(fields) for node_id, fields in error.node_errors.items()},
+        )
+        creds_setup = self._build_setup_requirements_from_validation_error(
+            graph=graph,
+            error=error,
+            session_id=session_id,
+        )
+        if creds_setup is not None:
+            return creds_setup
+        return ErrorResponse(
+            message=(
+                f"Agent has configuration issues that need to be resolved "
+                f"before {action_verb}: {error}"
+            ),
+            error="graph_validation_failed",
+            session_id=session_id,
+        )
+
+    async def _check_prerequisites(
+        self,
+        graph: GraphModel,
+        user_id: str,
+        params: "RunAgentInput",
+        session_id: str,
+    ) -> tuple[dict[str, CredentialsMetaInput], ToolResponseBase | None]:
+        """Validate credentials and inputs before execution.
+
+        Dry runs skip all prerequisite gates (credentials, input prompts).
+        The dry_run flag is read from params.dry_run (which may be set by the
+        LLM per-call, or forced to True when session.dry_run is True).
+
+        Returns:
+            (graph_credentials, error_response) — error_response is None when ready.
+        """
+        graph_credentials, missing_creds = await match_user_credentials_to_graph(
+            user_id, graph
+        )
+
+        # --- Reject unknown input fields (always, even for dry runs) ---
+        input_properties = graph.input_schema.get("properties", {})
+        provided_inputs = set(params.inputs.keys())
+        valid_fields = set(input_properties.keys())
+        unrecognized_fields = provided_inputs - valid_fields
+        if unrecognized_fields:
+            return graph_credentials, InputValidationErrorResponse(
+                message=(
+                    f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
+                    f"Agent was not executed. Please use the correct field names from the schema."
+                ),
+                session_id=session_id,
+                unrecognized_fields=sorted(unrecognized_fields),
+                inputs=graph.input_schema,
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+
+        # Dry runs bypass remaining prerequisite gates (credentials, missing inputs)
+        if params.dry_run:
+            return graph_credentials, None
+
+        # --- Credential gate ---
+        if missing_creds:
+            requirements_creds_dict = build_missing_credentials_from_graph(graph, None)
+            missing_credentials_dict = build_missing_credentials_from_graph(
+                graph, graph_credentials
+            )
+            return graph_credentials, SetupRequirementsResponse(
+                message=self._build_inputs_message(graph, MSG_WHAT_VALUES_TO_USE),
+                session_id=session_id,
+                setup_info=SetupInfo(
+                    agent_id=graph.id,
+                    agent_name=graph.name,
+                    user_readiness=UserReadiness(
+                        has_all_credentials=False,
+                        missing_credentials=missing_credentials_dict,
+                        ready_to_run=False,
+                    ),
+                    requirements={
+                        "credentials": list(requirements_creds_dict.values()),
+                        "inputs": get_inputs_from_schema(graph.input_schema),
+                        "execution_modes": self._get_execution_modes(graph),
+                    },
+                ),
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+
+        # --- Input gates ---
+        required_fields = set(graph.input_schema.get("required", []))
+
+        # Prompt user when inputs exist but none were provided
+        if input_properties and not provided_inputs and not params.use_defaults:
+            credentials = extract_credentials_from_schema(
+                graph.credentials_input_schema
+            )
+            return graph_credentials, AgentDetailsResponse(
+                message=self._build_inputs_message(graph, MSG_ASK_USER_FOR_VALUES),
+                session_id=session_id,
+                agent=self._build_agent_details(graph, credentials),
+                user_authenticated=True,
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+
+        # Required inputs missing
+        missing_inputs = required_fields - provided_inputs
+        if missing_inputs and not params.use_defaults:
+            credentials = extract_credentials_from_schema(
+                graph.credentials_input_schema
+            )
+            return graph_credentials, AgentDetailsResponse(
+                message=(
+                    f"Agent '{graph.name}' is missing required inputs: "
+                    f"{', '.join(missing_inputs)}. "
+                    "Please provide these values to run the agent."
+                ),
+                session_id=session_id,
+                agent=self._build_agent_details(graph, credentials),
+                user_authenticated=True,
+                graph_id=graph.id,
+                graph_version=graph.version,
+            )
+
+        return graph_credentials, None
+
     async def _run_agent(
         self,
         user_id: str,
@@ -438,13 +590,17 @@ class RunAgentTool(BaseTool):
         graph: GraphModel,
         graph_credentials: dict[str, CredentialsMetaInput],
         inputs: dict[str, Any],
+        dry_run: bool,
         wait_for_result: int = 0,
     ) -> ToolResponseBase:
         """Execute an agent immediately, optionally waiting for completion."""
         session_id = session.session_id
 
-        # Check rate limits
-        if session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs:
+        # Check rate limits (dry runs don't count against the session limit)
+        if (
+            not dry_run
+            and session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs
+        ):
             return ErrorResponse(
                 message="Maximum agent runs reached for this session. Please try again later.",
                 session_id=session_id,
@@ -453,18 +609,35 @@ class RunAgentTool(BaseTool):
         # Get or create library agent
         library_agent = await get_or_create_library_agent(graph, user_id)
 
-        # Execute
-        execution = await execution_utils.add_graph_execution(
-            graph_id=library_agent.graph_id,
-            user_id=user_id,
-            inputs=inputs,
-            graph_credentials_inputs=graph_credentials,
-        )
+        # Execute — ``add_graph_execution`` ultimately calls
+        # ``validate_and_construct_node_execution_input`` which raises
+        # ``GraphValidationError`` on missing/invalid credentials.  The
+        # common case is caught by ``_check_prerequisites`` above, but
+        # defend against a race (creds deleted between prereq and
+        # execute) by turning credential errors back into the inline
+        # setup card.
+        try:
+            execution = await execution_utils.add_graph_execution(
+                graph_id=library_agent.graph_id,
+                user_id=user_id,
+                inputs=inputs,
+                graph_credentials_inputs=graph_credentials,
+                dry_run=dry_run,
+            )
+        except GraphValidationError as e:
+            return self._handle_graph_validation_race(
+                error=e,
+                graph=graph,
+                user_id=user_id,
+                session_id=session_id,
+                action_verb="running",
+            )
 
-        # Track successful run
-        session.successful_agent_runs[library_agent.graph_id] = (
-            session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
-        )
+        # Track successful run (dry runs don't count against the session limit)
+        if not dry_run:
+            session.successful_agent_runs[library_agent.graph_id] = (
+                session.successful_agent_runs.get(library_agent.graph_id, 0) + 1
+            )
 
         # Track in PostHog
         track_agent_run_success(
@@ -534,7 +707,9 @@ class RunAgentTool(BaseTool):
                 return ExecutionStartedResponse(
                     message=(
                         f"Agent '{library_agent.name}' is awaiting human review. "
-                        f"Check at {library_agent_link}."
+                        f"The user can approve or reject inline. After approval, "
+                        f"the execution resumes automatically. Use view_agent_output "
+                        f"with execution_id='{execution.id}' to check the result."
                     ),
                     session_id=session_id,
                     execution_id=execution.id,
@@ -619,17 +794,34 @@ class RunAgentTool(BaseTool):
         user = await user_db().get_user_by_id(user_id)
         user_timezone = get_user_timezone_or_utc(user.timezone if user else timezone)
 
-        # Create schedule
-        result = await get_scheduler_client().add_execution_schedule(
-            user_id=user_id,
-            graph_id=library_agent.graph_id,
-            graph_version=library_agent.graph_version,
-            name=schedule_name,
-            cron=cron,
-            input_data=inputs,
-            input_credentials=graph_credentials,
-            user_timezone=user_timezone,
-        )
+        # Create schedule — the scheduler re-validates credentials via
+        # ``validate_and_construct_node_execution_input`` and will raise
+        # ``GraphValidationError`` if any required credential is missing
+        # or invalid.  ``_check_prerequisites`` already catches the
+        # common case at the top of ``_execute``, but a race (creds
+        # deleted between prereq check and scheduler call) or any other
+        # validation drift could hit here — turn credential errors back
+        # into the inline ``SetupRequirementsResponse`` so the user
+        # sees the credential setup card instead of a generic error.
+        try:
+            result = await get_scheduler_client().add_execution_schedule(
+                user_id=user_id,
+                graph_id=library_agent.graph_id,
+                graph_version=library_agent.graph_version,
+                name=schedule_name,
+                cron=cron,
+                input_data=inputs,
+                input_credentials=graph_credentials,
+                user_timezone=user_timezone,
+            )
+        except GraphValidationError as e:
+            return self._handle_graph_validation_race(
+                error=e,
+                graph=graph,
+                user_id=user_id,
+                session_id=session_id,
+                action_verb="scheduling",
+            )
 
         # Convert next_run_time to user timezone for display
         if result.next_run_time:

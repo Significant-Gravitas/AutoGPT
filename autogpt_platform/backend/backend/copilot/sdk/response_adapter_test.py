@@ -18,6 +18,7 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamHeartbeat,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -28,6 +29,7 @@ from backend.copilot.response_model import (
     StreamToolOutputAvailable,
 )
 
+from .compaction import compaction_events
 from .response_adapter import SDKResponseAdapter
 from .tool_adapter import MCP_TOOL_PREFIX
 from .tool_adapter import _pending_tool_outputs as _pto
@@ -57,6 +59,14 @@ def test_system_non_init_emits_nothing():
     adapter = _adapter()
     results = adapter.convert_message(SystemMessage(subtype="other", data={}))
     assert results == []
+
+
+def test_task_progress_emits_heartbeat():
+    """task_progress events emit a StreamHeartbeat to keep Redis TTL alive."""
+    adapter = _adapter()
+    results = adapter.convert_message(SystemMessage(subtype="task_progress", data={}))
+    assert len(results) == 1
+    assert isinstance(results[0], StreamHeartbeat)
 
 
 # -- AssistantMessage with TextBlock -----------------------------------------
@@ -250,13 +260,13 @@ def test_result_error_emits_error_and_finish():
         is_error=True,
         num_turns=0,
         session_id="s1",
-        result="API rate limited",
+        result="Invalid API key provided",
     )
     results = adapter.convert_message(msg)
     # No step was open, so no FinishStep — just Error + Finish
     assert len(results) == 2
     assert isinstance(results[0], StreamError)
-    assert "API rate limited" in results[0].errorText
+    assert "Invalid API key provided" in results[0].errorText
     assert isinstance(results[1], StreamFinish)
 
 
@@ -536,10 +546,12 @@ async def test_wait_for_stash_signaled():
     result = await wait_for_stash(timeout=1.0)
 
     assert result is True
-    assert _pto.get({}).get("WebSearch") == ["result data"]
+    pto = _pto.get()
+    assert pto is not None
+    assert pto.get("WebSearch") == ["result data"]
 
     # Cleanup
-    _pto.set({})  # type: ignore[arg-type]
+    _pto.set({})
     _stash_event.set(None)
 
 
@@ -554,7 +566,7 @@ async def test_wait_for_stash_timeout():
     assert result is False
 
     # Cleanup
-    _pto.set({})  # type: ignore[arg-type]
+    _pto.set({})
     _stash_event.set(None)
 
 
@@ -573,10 +585,12 @@ async def test_wait_for_stash_already_stashed():
     assert result is True
 
     # But the stash itself is populated
-    assert _pto.get({}).get("Read") == ["file contents"]
+    pto = _pto.get()
+    assert pto is not None
+    assert pto.get("Read") == ["file contents"]
 
     # Cleanup
-    _pto.set({})  # type: ignore[arg-type]
+    _pto.set({})
     _stash_event.set(None)
 
 
@@ -676,3 +690,102 @@ def test_already_resolved_tool_skipped_in_user_message():
     assert (
         len(output_events) == 0
     ), "Already-resolved tool should not emit duplicate output"
+
+
+# -- _end_text_if_open before compaction -------------------------------------
+
+
+def test_end_text_if_open_emits_text_end_before_finish_step():
+    """StreamTextEnd must be emitted before StreamFinishStep during compaction.
+
+    When ``emit_end_if_ready`` fires compaction events while a text block is
+    still open, ``_end_text_if_open`` must close it first.  If StreamFinishStep
+    arrives before StreamTextEnd, the Vercel AI SDK clears ``activeTextParts``
+    and raises "Received text-end for missing text part".
+    """
+    adapter = _adapter()
+
+    # Open a text block by processing an AssistantMessage with text
+    msg = AssistantMessage(content=[TextBlock(text="partial response")], model="test")
+    adapter.convert_message(msg)
+    assert adapter.has_started_text
+    assert not adapter.has_ended_text
+
+    # Simulate what service.py does before yielding compaction events
+    pre_close: list[StreamBaseResponse] = []
+    adapter._end_text_if_open(pre_close)
+    combined = pre_close + list(compaction_events("Compacted transcript"))
+
+    text_end_idx = next(
+        (i for i, e in enumerate(combined) if isinstance(e, StreamTextEnd)), None
+    )
+    finish_step_idx = next(
+        (i for i, e in enumerate(combined) if isinstance(e, StreamFinishStep)), None
+    )
+
+    assert text_end_idx is not None, "StreamTextEnd must be present"
+    assert finish_step_idx is not None, "StreamFinishStep must be present"
+    assert text_end_idx < finish_step_idx, (
+        f"StreamTextEnd (idx={text_end_idx}) must precede "
+        f"StreamFinishStep (idx={finish_step_idx}) — otherwise the Vercel AI SDK "
+        "clears activeTextParts before text-end arrives"
+    )
+
+
+def test_step_open_must_reset_after_compaction_finish_step():
+    """Adapter step_open must be reset when compaction emits StreamFinishStep.
+
+    Compaction events bypass the adapter, so service.py must explicitly clear
+    step_open after yielding a StreamFinishStep from compaction. Without this,
+    the next AssistantMessage skips StreamStartStep because the adapter still
+    thinks a step is open.
+    """
+    adapter = _adapter()
+
+    # Open a step + text block via an AssistantMessage
+    msg = AssistantMessage(content=[TextBlock(text="thinking...")], model="test")
+    adapter.convert_message(msg)
+    assert adapter.step_open is True
+
+    # Simulate what service.py does: close text, then check compaction events
+    pre_close: list[StreamBaseResponse] = []
+    adapter._end_text_if_open(pre_close)
+
+    events = list(compaction_events("Compacted transcript"))
+    if any(isinstance(ev, StreamFinishStep) for ev in events):
+        adapter.step_open = False
+
+    assert (
+        adapter.step_open is False
+    ), "step_open must be False after compaction emits StreamFinishStep"
+
+    # Next AssistantMessage must open a new step
+    msg2 = AssistantMessage(content=[TextBlock(text="continued")], model="test")
+    results = adapter.convert_message(msg2)
+    assert any(
+        isinstance(r, StreamStartStep) for r in results
+    ), "A new StreamStartStep must be emitted after compaction closed the step"
+
+
+def test_end_text_if_open_no_op_when_no_text_open():
+    """_end_text_if_open emits nothing when no text block is open."""
+    adapter = _adapter()
+    results: list[StreamBaseResponse] = []
+    adapter._end_text_if_open(results)
+    assert results == []
+
+
+def test_end_text_if_open_no_op_after_text_already_ended():
+    """_end_text_if_open emits nothing when the text block is already closed."""
+    adapter = _adapter()
+    msg = AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    adapter.convert_message(msg)
+    # Close it once
+    first: list[StreamBaseResponse] = []
+    adapter._end_text_if_open(first)
+    assert len(first) == 1
+    assert isinstance(first[0], StreamTextEnd)
+    # Second call must be a no-op
+    second: list[StreamBaseResponse] = []
+    adapter._end_text_if_open(second)
+    assert second == []

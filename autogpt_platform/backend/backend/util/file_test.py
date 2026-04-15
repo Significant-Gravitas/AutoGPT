@@ -8,7 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.data.execution import ExecutionContext
-from backend.util.file import store_media_file
+from backend.util.file import (
+    is_media_file_ref,
+    parse_data_uri,
+    resolve_media_content,
+    store_media_file,
+)
 from backend.util.type import MediaFileType
 
 
@@ -344,3 +349,162 @@ class TestFileCloudIntegration:
                     execution_context=make_test_context(graph_exec_id=graph_exec_id),
                     return_format="for_local_processing",
                 )
+
+
+# ---------------------------------------------------------------------------
+# is_media_file_ref
+# ---------------------------------------------------------------------------
+
+
+class TestIsMediaFileRef:
+    def test_data_uri(self):
+        assert is_media_file_ref("data:image/png;base64,iVBORw0KGg==") is True
+
+    def test_workspace_uri(self):
+        assert is_media_file_ref("workspace://abc123") is True
+
+    def test_workspace_uri_with_mime(self):
+        assert is_media_file_ref("workspace://abc123#image/png") is True
+
+    def test_http_url(self):
+        assert is_media_file_ref("http://example.com/image.png") is True
+
+    def test_https_url(self):
+        assert is_media_file_ref("https://example.com/image.png") is True
+
+    def test_plain_text(self):
+        assert is_media_file_ref("print('hello')") is False
+
+    def test_local_path(self):
+        assert is_media_file_ref("/tmp/file.txt") is False
+
+    def test_empty_string(self):
+        assert is_media_file_ref("") is False
+
+    def test_filename(self):
+        assert is_media_file_ref("image.png") is False
+
+
+# ---------------------------------------------------------------------------
+# parse_data_uri
+# ---------------------------------------------------------------------------
+
+
+class TestParseDataUri:
+    def test_valid_png(self):
+        result = parse_data_uri("data:image/png;base64,iVBORw0KGg==")
+        assert result is not None
+        mime, payload = result
+        assert mime == "image/png"
+        assert payload == "iVBORw0KGg=="
+
+    def test_valid_text(self):
+        result = parse_data_uri("data:text/plain;base64,SGVsbG8=")
+        assert result is not None
+        assert result[0] == "text/plain"
+        assert result[1] == "SGVsbG8="
+
+    def test_mime_case_normalized(self):
+        result = parse_data_uri("data:IMAGE/PNG;base64,abc")
+        assert result is not None
+        assert result[0] == "image/png"
+
+    def test_not_data_uri(self):
+        assert parse_data_uri("workspace://abc123") is None
+
+    def test_plain_text(self):
+        assert parse_data_uri("hello world") is None
+
+    def test_missing_base64(self):
+        assert parse_data_uri("data:image/png;utf-8,abc") is None
+
+    def test_empty_payload(self):
+        result = parse_data_uri("data:image/png;base64,")
+        assert result is not None
+        assert result[1] == ""
+
+
+# ---------------------------------------------------------------------------
+# resolve_media_content
+# ---------------------------------------------------------------------------
+
+
+class TestResolveMediaContent:
+    @pytest.mark.asyncio
+    async def test_plain_text_passthrough(self):
+        """Plain text content (not a media ref) passes through unchanged."""
+        ctx = make_test_context()
+        result = await resolve_media_content(
+            MediaFileType("print('hello')"),
+            ctx,
+            return_format="for_external_api",
+        )
+        assert result == "print('hello')"
+
+    @pytest.mark.asyncio
+    async def test_empty_string_passthrough(self):
+        """Empty string passes through unchanged."""
+        ctx = make_test_context()
+        result = await resolve_media_content(
+            MediaFileType(""),
+            ctx,
+            return_format="for_external_api",
+        )
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_media_ref_delegates_to_store(self):
+        """Media references are resolved via store_media_file."""
+        ctx = make_test_context()
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType("data:image/png;base64,abc")),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType("workspace://img123"),
+                ctx,
+                return_format="for_external_api",
+            )
+        assert result == "data:image/png;base64,abc"
+        mock_store.assert_called_once_with(
+            MediaFileType("workspace://img123"),
+            ctx,
+            return_format="for_external_api",
+        )
+
+    @pytest.mark.asyncio
+    async def test_data_uri_delegates_to_store(self):
+        """Data URIs are also resolved via store_media_file."""
+        ctx = make_test_context()
+        data_uri = "data:image/png;base64,iVBORw0KGg=="
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType(data_uri)),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType(data_uri),
+                ctx,
+                return_format="for_external_api",
+            )
+        assert result == data_uri
+        mock_store.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_https_url_delegates_to_store(self):
+        """HTTPS URLs are resolved via store_media_file."""
+        ctx = make_test_context()
+        with patch(
+            "backend.util.file.store_media_file",
+            new=AsyncMock(return_value=MediaFileType("data:image/png;base64,abc")),
+        ) as mock_store:
+            result = await resolve_media_content(
+                MediaFileType("https://example.com/image.png"),
+                ctx,
+                return_format="for_local_processing",
+            )
+        assert result == "data:image/png;base64,abc"
+        mock_store.assert_called_once_with(
+            MediaFileType("https://example.com/image.png"),
+            ctx,
+            return_format="for_local_processing",
+        )

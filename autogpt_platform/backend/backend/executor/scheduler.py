@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
+from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.executor import utils as execution_utils
@@ -93,7 +94,7 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 def job_listener(event):
     """Logs job execution outcomes for better monitoring."""
     if event.exception:
-        logger.error(
+        logger.warning(
             f"Job {event.job_id} failed: {type(event.exception).__name__}: {event.exception}"
         )
     else:
@@ -136,7 +137,7 @@ def run_async(coro, timeout: float = SCHEDULER_OPERATION_TIMEOUT_SECONDS):
     try:
         return future.result(timeout=timeout)
     except Exception as e:
-        logger.error(f"Async operation failed: {type(e).__name__}: {e}")
+        logger.warning(f"Async operation failed: {type(e).__name__}: {e}")
         raise
 
 
@@ -185,7 +186,7 @@ async def _execute_graph(**kwargs):
 
 
 async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
-    logger.error(
+    logger.warning(
         f"Scheduled Graph {args.graph_id} failed validation. Unscheduling graph"
     )
     if args.schedule_id:
@@ -195,8 +196,9 @@ async def _handle_graph_validation_error(args: "GraphExecutionJobArgs") -> None:
             user_id=args.user_id,
         )
     else:
-        logger.error(
-            f"Unable to unschedule graph: {args.graph_id} as this is an old job with no associated schedule_id please remove manually"
+        logger.warning(
+            f"Unable to unschedule graph: {args.graph_id} as this is an old job "
+            f"with no associated schedule_id please remove manually"
         )
 
 
@@ -601,6 +603,19 @@ class Scheduler(AppService):
                 hours=6,
                 replace_existing=True,
                 max_instances=1,  # Prevent overlapping runs
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Block Description Optimization - Every 24 hours
+            # Generates concise LLM-optimized block descriptions for
+            # agent generation. Only processes blocks missing descriptions.
+            self.scheduler.add_job(
+                optimize_block_descriptions,
+                id="optimize_block_descriptions",
+                trigger="interval",
+                hours=24,
+                replace_existing=True,
+                max_instances=1,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

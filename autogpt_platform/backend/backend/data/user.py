@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import logging
 from datetime import datetime, timedelta
-from typing import Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
@@ -20,6 +20,9 @@ from backend.util.encryption import JSONCryptor
 from backend.util.exceptions import DatabaseError
 from backend.util.json import SafeJson
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -77,6 +80,28 @@ async def get_user_by_email(email: str) -> Optional[User]:
         return User.from_db(user) if user else None
     except Exception as e:
         raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+
+
+async def search_users(query: str, limit: int = 20) -> list[tuple[str, str | None]]:
+    """Search users by partial email or name.
+
+    Returns a list of ``(user_id, email)`` tuples, up to *limit* results.
+    Searches the User table directly — no dependency on credit history.
+    """
+    query = query.strip()
+    if not query or len(query) < 3:
+        return []
+    users = await prisma.user.find_many(
+        where={
+            "OR": [
+                {"email": {"contains": query, "mode": "insensitive"}},
+                {"name": {"contains": query, "mode": "insensitive"}},
+            ],
+        },
+        take=limit,
+        order={"email": "asc"},
+    )
+    return [(u.id, u.email) for u in users]
 
 
 async def update_user_email(user_id: str, email: str):
@@ -451,6 +476,27 @@ async def unsubscribe_user_by_token(token: str) -> None:
         )
     except Exception as e:
         raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+
+
+async def cleanup_user_managed_credentials(
+    user_id: str,
+    store: Optional["IntegrationCredentialsStore"] = None,
+) -> None:
+    """Revoke all externally-provisioned managed credentials for *user_id*.
+
+    Call this before deleting a user account so that external resources
+    (e.g. AgentMail pods, pod-scoped API keys) are properly cleaned up.
+    The credential rows themselves are cascade-deleted with the User row.
+
+    Pass an existing *store* for testability; when omitted a fresh instance
+    is created.
+    """
+    from backend.integrations.credentials_store import IntegrationCredentialsStore
+    from backend.integrations.managed_credentials import cleanup_managed_credentials
+
+    if store is None:
+        store = IntegrationCredentialsStore()
+    await cleanup_managed_credentials(user_id, store)
 
 
 async def update_user_timezone(user_id: str, timezone: str) -> User:

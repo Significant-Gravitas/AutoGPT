@@ -10,6 +10,8 @@ Provides decorators for caching function results with support for:
 """
 
 import asyncio
+import hashlib
+import hmac
 import inspect
 import logging
 import pickle
@@ -31,6 +33,9 @@ T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+# Length of the HMAC-SHA256 signature prefix on cached values.
+_HMAC_SIG_LEN = 32
 
 # RECOMMENDED REDIS CONFIGURATION FOR PRODUCTION:
 # Configure Redis with the following settings for optimal caching performance:
@@ -116,10 +121,16 @@ def _make_hashable_key(
 
 
 def _make_redis_key(key: tuple[Any, ...], func_name: str) -> str:
-    """Convert a hashable key tuple to a Redis key string."""
-    # Ensure key is already hashable
-    hashable_key = key if isinstance(key, tuple) else (key,)
-    return f"cache:{func_name}:{hash(hashable_key)}"
+    """Convert a hashable key tuple to a Redis key string.
+
+    Uses SHA-256 instead of Python's built-in ``hash()`` because ``hash()``
+    is randomised per-process (``PYTHONHASHSEED``).  In a multi-pod
+    deployment every pod must derive the **same** Redis key for the same
+    arguments, otherwise cache lookups and invalidations silently miss.
+    """
+    key_bytes = repr(key).encode()
+    digest = hashlib.sha256(key_bytes).hexdigest()
+    return f"cache:{func_name}:{digest}"
 
 
 @runtime_checkable
@@ -176,35 +187,45 @@ def cached(
     """
 
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
+        func_name = target_func.__name__
         cache_storage: dict[tuple, CachedValue] = {}
         _event_loop_locks: dict[Any, asyncio.Lock] = {}
 
         def _get_from_redis(redis_key: str) -> Any | None:
-            """Get value from Redis, optionally refreshing TTL."""
+            """Get value from Redis, optionally refreshing TTL.
+
+            Values are expected to carry an HMAC-SHA256 prefix for integrity
+            verification.  Unsigned (legacy) or tampered entries are silently
+            discarded and treated as cache misses, so the caller recomputes and
+            re-stores them with a valid signature.
+            """
             try:
                 if refresh_ttl_on_get:
-                    # Use GETEX to get value and refresh expiry atomically
                     cached_bytes = _get_redis().getex(redis_key, ex=ttl_seconds)
                 else:
                     cached_bytes = _get_redis().get(redis_key)
 
                 if cached_bytes and isinstance(cached_bytes, bytes):
-                    return pickle.loads(cached_bytes)
+                    payload = _verify_and_strip(cached_bytes)
+                    if payload is None:
+                        logger.warning(
+                            "[SECURITY] Cache HMAC verification failed "
+                            f"for {func_name}, discarding entry: "
+                            "possible tampering or legacy unsigned value"
+                        )
+                        return None
+                    return pickle.loads(payload)
             except Exception as e:
-                logger.error(
-                    f"Redis error during cache check for {target_func.__name__}: {e}"
-                )
+                logger.error(f"Redis error during cache check for {func_name}: {e}")
             return None
 
         def _set_to_redis(redis_key: str, value: Any) -> None:
-            """Set value in Redis with TTL."""
+            """Set HMAC-signed pickled value in Redis with TTL."""
             try:
-                pickled_value = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
-                _get_redis().setex(redis_key, ttl_seconds, pickled_value)
+                pickled = pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)
+                _get_redis().setex(redis_key, ttl_seconds, _sign_payload(pickled))
             except Exception as e:
-                logger.error(
-                    f"Redis error storing cache for {target_func.__name__}: {e}"
-                )
+                logger.error(f"Redis error storing cache for {func_name}: {e}")
 
         def _get_from_memory(key: tuple) -> Any | None:
             """Get value from in-memory cache, checking TTL."""
@@ -212,7 +233,7 @@ def cached(
                 cached_data = cache_storage[key]
                 if time.time() - cached_data.timestamp < ttl_seconds:
                     logger.debug(
-                        f"Cache hit for {target_func.__name__} args: {key[0]} kwargs: {key[1]}"
+                        f"Cache hit for {func_name} args: {key[0]} kwargs: {key[1]}"
                     )
                     return cached_data.result
             return None
@@ -244,9 +265,7 @@ def cached(
             @wraps(target_func)
             async def async_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
-                redis_key = (
-                    _make_redis_key(key, target_func.__name__) if shared_cache else ""
-                )
+                redis_key = _make_redis_key(key, func_name) if shared_cache else ""
 
                 # Fast path: check cache without lock
                 if shared_cache:
@@ -271,7 +290,7 @@ def cached(
                             return result
 
                     # Cache miss - execute function
-                    logger.debug(f"Cache miss for {target_func.__name__}")
+                    logger.debug(f"Cache miss for {func_name}")
                     result = await target_func(*args, **kwargs)
 
                     # Store result
@@ -291,9 +310,7 @@ def cached(
             @wraps(target_func)
             def sync_wrapper(*args: P.args, **kwargs: P.kwargs):
                 key = _make_hashable_key(args, kwargs)
-                redis_key = (
-                    _make_redis_key(key, target_func.__name__) if shared_cache else ""
-                )
+                redis_key = _make_redis_key(key, func_name) if shared_cache else ""
 
                 # Fast path: check cache without lock
                 if shared_cache:
@@ -318,7 +335,7 @@ def cached(
                             return result
 
                     # Cache miss - execute function
-                    logger.debug(f"Cache miss for {target_func.__name__}")
+                    logger.debug(f"Cache miss for {func_name}")
                     result = target_func(*args, **kwargs)
 
                     # Store result
@@ -337,16 +354,10 @@ def cached(
             if shared_cache:
                 if pattern:
                     # Clear entries matching pattern
-                    keys = list(
-                        _get_redis().scan_iter(
-                            f"cache:{target_func.__name__}:{pattern}"
-                        )
-                    )
+                    keys = list(_get_redis().scan_iter(f"cache:{func_name}:{pattern}"))
                 else:
                     # Clear all cache keys
-                    keys = list(
-                        _get_redis().scan_iter(f"cache:{target_func.__name__}:*")
-                    )
+                    keys = list(_get_redis().scan_iter(f"cache:{func_name}:*"))
 
                 if keys:
                     pipeline = _get_redis().pipeline()
@@ -364,9 +375,7 @@ def cached(
 
         def cache_info() -> dict[str, int | None]:
             if shared_cache:
-                cache_keys = list(
-                    _get_redis().scan_iter(f"cache:{target_func.__name__}:*")
-                )
+                cache_keys = list(_get_redis().scan_iter(f"cache:{func_name}:*"))
                 return {
                     "size": len(cache_keys),
                     "maxsize": None,  # Redis manages its own size
@@ -383,7 +392,7 @@ def cached(
             """Delete a specific cache entry. Returns True if entry existed."""
             key = _make_hashable_key(args, kwargs)
             if shared_cache:
-                redis_key = _make_redis_key(key, target_func.__name__)
+                redis_key = _make_redis_key(key, func_name)
                 deleted_count = cast(int, _get_redis().delete(redis_key))
                 return deleted_count > 0
             else:
@@ -399,6 +408,52 @@ def cached(
         return cast(CachedFunction[P, R], wrapper)
 
     return decorator
+
+
+def _sign_payload(data: bytes) -> bytes:
+    """Return *signature + data* (32-byte HMAC-SHA256 prefix)."""
+    sig = hmac.new(_get_hmac_key(), data, hashlib.sha256).digest()
+    return sig + data
+
+
+def _verify_and_strip(blob: bytes) -> bytes | None:
+    """Verify the HMAC prefix and return the payload, or `None`.
+
+    During deployment, the cache may still contain unsigned (legacy) entries.
+    These will fail verification and return `None`, causing callers to treat
+    them as cache misses.  The value is then recomputed and stored with a valid
+    HMAC signature.  This means the transition is fully automatic: no cache
+    flush is required, and all entries self-heal on next access within their
+    TTL window (max 1 hour for the longest-lived entries).
+    """
+    if len(blob) <= _HMAC_SIG_LEN:
+        return None
+    sig, data = blob[:_HMAC_SIG_LEN], blob[_HMAC_SIG_LEN:]
+    expected = hmac.new(_get_hmac_key(), data, hashlib.sha256).digest()
+    if hmac.compare_digest(sig, expected):
+        return data
+    return None
+
+
+@cache
+def _get_hmac_key() -> bytes:
+    """Derive a stable HMAC key for signing cached values in Redis.
+
+    Uses `encryption_key` — a backend-only secret that Redis never sees.
+    This ensures that even if an attacker compromises Redis, they cannot forge
+    valid HMAC signatures for cache entries.
+
+    Falls back to a hardcoded default with a loud warning so the decorator
+    never crashes in development/test environments without secrets configured.
+    """
+    secret = settings.secrets.encryption_key
+    if not secret:
+        logger.warning(
+            "[SECURITY] No encryption_key configured: cache HMAC signing will use a "
+            "weak default key. Set ENCRYPTION_KEY for production deployments."
+        )
+        secret = "autogpt-cache-default-hmac-key"
+    return hashlib.sha256(secret.encode()).digest()
 
 
 def thread_cached(func):

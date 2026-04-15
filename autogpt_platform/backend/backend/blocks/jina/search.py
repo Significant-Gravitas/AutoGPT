@@ -17,7 +17,7 @@ from backend.blocks.jina._auth import (
 from backend.blocks.search import GetRequest
 from backend.data.model import SchemaField
 from backend.util.exceptions import BlockExecutionError
-from backend.util.request import HTTPClientError, HTTPServerError, validate_url
+from backend.util.request import HTTPClientError, HTTPServerError, validate_url_host
 
 
 class SearchTheWebBlock(Block, GetRequest):
@@ -112,7 +112,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
     ) -> BlockOutput:
         if input_data.raw_content:
             try:
-                parsed_url, _, _ = await validate_url(input_data.url, [])
+                parsed_url, _, _ = await validate_url_host(input_data.url)
                 url = parsed_url.geturl()
             except ValueError as e:
                 yield "error", f"Invalid URL: {e}"
