@@ -2711,17 +2711,16 @@ async def stream_chat_completion_sdk(
         # inject_user_context), so the SDK replay carries context continuity
         # without us prepending them again.
         if not has_history:
-            # Inject the actual working directory on the first turn only.
-            # The system prompt keeps a static placeholder for prompt caching;
-            # the real path lives here so the model always knows where to work.
-            if not use_e2b and sdk_cwd:
-                current_message = (
-                    f"<env_context>\nworking_dir: {sdk_cwd}\n</env_context>\n\n"
-                    + current_message
-                )
-            # Pass warm_ctx to inject_user_context so it is prepended AFTER
+            # Build env_ctx for the working directory and pass it into
+            # inject_user_context so it is prepended AFTER
             # sanitize_user_supplied_context runs — preventing the trusted
-            # <memory_context> block from being stripped by the sanitizer.
+            # <env_context> block from being stripped by the sanitizer.
+            env_ctx_content = ""
+            if not use_e2b and sdk_cwd:
+                env_ctx_content = f"working_dir: {sdk_cwd}"
+            # Pass warm_ctx and env_ctx to inject_user_context so they are
+            # prepended AFTER sanitize_user_supplied_context runs — preventing
+            # trusted server-injected blocks from being stripped by the sanitizer.
             # inject_user_context persists the fully prefixed message to DB.
             prefixed_message = await inject_user_context(
                 understanding,
@@ -2729,6 +2728,7 @@ async def stream_chat_completion_sdk(
                 session_id,
                 session.messages,
                 warm_ctx=warm_ctx,
+                env_ctx=env_ctx_content,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message

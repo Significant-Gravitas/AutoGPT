@@ -210,10 +210,10 @@ def strip_user_context_prefix(content: str) -> str:
 def sanitize_user_supplied_context(message: str) -> str:
     """Strip server-only XML tags from user-supplied input.
 
-    Removes any ``<user_context>`` and ``<memory_context>`` blocks — both are
-    server-injected tags that must not appear verbatim in user messages. A user
-    who types these tags literally could spoof the trusted personalisation or
-    memory prefix the LLM relies on.
+    Removes any ``<user_context>``, ``<memory_context>``, and ``<env_context>``
+    blocks — all are server-injected tags that must not appear verbatim in user
+    messages. A user who types these tags literally could spoof the trusted
+    personalisation, memory prefix, or environment context the LLM relies on.
 
     The inject path must call this **unconditionally** — including when
     ``understanding`` is ``None`` — otherwise new users can smuggle a tag
@@ -227,7 +227,11 @@ def sanitize_user_supplied_context(message: str) -> str:
     without_user_ctx = _USER_CONTEXT_LONE_TAG_RE.sub("", without_user_ctx)
     # Strip <memory_context> blocks and lone tags
     without_mem_ctx = _MEMORY_CONTEXT_ANYWHERE_RE.sub("", without_user_ctx)
-    return _MEMORY_CONTEXT_LONE_TAG_RE.sub("", without_mem_ctx)
+    without_mem_ctx = _MEMORY_CONTEXT_LONE_TAG_RE.sub("", without_mem_ctx)
+    # Strip <env_context> blocks and lone tags — prevents spoofing of working-directory
+    # context that the SDK service injects server-side.
+    without_env_ctx = _ENV_CONTEXT_ANYWHERE_RE.sub("", without_mem_ctx)
+    return _ENV_CONTEXT_LONE_TAG_RE.sub("", without_env_ctx)
 
 
 def strip_injected_context_for_display(message: str) -> str:
@@ -343,11 +347,12 @@ async def inject_user_context(
     session_id: str,
     session_messages: list[ChatMessage],
     warm_ctx: str = "",
+    env_ctx: str = "",
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
     Builds the first-turn message in this order (all optional):
-    ``<memory_context>`` → ``<user_context>`` → sanitised user text.
+    ``<memory_context>`` → ``<env_context>`` → ``<user_context>`` → sanitised user text.
 
     Updates the in-memory session_messages list and persists the prefixed
     content to the DB so resumed sessions and page reloads retain
@@ -374,6 +379,10 @@ async def inject_user_context(
             Passed as server-side data — never sanitised (caller is responsible
             for ensuring the value is not user-supplied).  Empty string → block
             is omitted.
+        env_ctx: Trusted environment context string to inject as an
+            ``<env_context>`` block (e.g. working directory).  Prepended AFTER
+            ``sanitize_user_supplied_context`` runs so the server-injected block
+            is never stripped by the sanitizer.  Empty string → block is omitted.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
@@ -420,6 +429,12 @@ async def inject_user_context(
             user_ctx = _sanitize_user_context_field(raw_ctx)
             final_message = format_user_context_prefix(user_ctx) + sanitized_message
 
+    # Prepend environment context AFTER sanitization so the server-injected
+    # block is never stripped by sanitize_user_supplied_context.
+    if env_ctx:
+        final_message = (
+            f"<{ENV_CONTEXT_TAG}>\n{env_ctx}\n</{ENV_CONTEXT_TAG}>\n\n" + final_message
+        )
     # Prepend Graphiti warm context as a <memory_context> block AFTER sanitization
     # so that the trusted server-injected block is never stripped by
     # sanitize_user_supplied_context (which removes attacker-supplied tags).
