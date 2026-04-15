@@ -172,8 +172,77 @@ describe("LoadMoreSentinel", () => {
     expect(mockScrollEl.scrollTop).toBe(200);
   });
 
+  it("ignores same-frame duplicate triggers until isLoading transitions", () => {
+    const onLoadMore = vi.fn();
+    const { rerender } = render(
+      <LoadMoreSentinel
+        hasMore={true}
+        isLoading={false}
+        messageCount={5}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    // Two observer fires back-to-back — the second must be a no-op while
+    // the first load is still pending (isLoading hasn't propagated yet).
+    MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
+    MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+    // A manual click in the same window is also blocked.
+    fireEvent.click(
+      screen.getByRole("button", { name: /load older messages/i }),
+    );
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+    // Simulate parent flipping isLoading on then off — load cycle settled.
+    rerender(
+      <LoadMoreSentinel
+        hasMore={true}
+        isLoading={true}
+        messageCount={5}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    rerender(
+      <LoadMoreSentinel
+        hasMore={true}
+        isLoading={false}
+        messageCount={6}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    // Now a fresh trigger should fire again.
+    MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
+    expect(onLoadMore).toHaveBeenCalledTimes(2);
+  });
+
+  function simulateLoadCycle(
+    rerender: (ui: React.ReactElement) => void,
+    props: {
+      hasMore: boolean;
+      messageCount: number;
+      onLoadMore: () => void;
+    },
+  ) {
+    // Parent pattern: isLoading goes true while fetching, then false with
+    // a higher messageCount once new messages land.
+    rerender(
+      <LoadMoreSentinel
+        hasMore={props.hasMore}
+        isLoading={true}
+        messageCount={props.messageCount - 1}
+        onLoadMore={props.onLoadMore}
+      />,
+    );
+    rerender(
+      <LoadMoreSentinel
+        hasMore={props.hasMore}
+        isLoading={false}
+        messageCount={props.messageCount}
+        onLoadMore={props.onLoadMore}
+      />,
+    );
+  }
+
   it("resets the auto-fill backoff once the container becomes scrollable via a manual click", () => {
-    // Start non-scrollable: clientHeight > scrollHeight.
     mockScrollEl.clientHeight = 1000;
     mockScrollEl.scrollHeight = 100;
     const onLoadMore = vi.fn();
@@ -185,41 +254,29 @@ describe("LoadMoreSentinel", () => {
         onLoadMore={onLoadMore}
       />,
     );
-    // Three auto-triggered loads that leave the container non-scrollable → cap reached.
     for (let round = 1; round <= 3; round++) {
       MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
       mockScrollEl.scrollHeight += 50;
-      rerender(
-        <LoadMoreSentinel
-          hasMore={true}
-          isLoading={false}
-          messageCount={5 + round}
-          onLoadMore={onLoadMore}
-        />,
-      );
+      simulateLoadCycle(rerender, {
+        hasMore: true,
+        messageCount: 5 + round,
+        onLoadMore,
+      });
     }
-    // Manual button click that makes the container scrollable should reset
-    // the counter so auto-fill works again on subsequent observer fires.
     fireEvent.click(
       screen.getByRole("button", { name: /load older messages/i }),
     );
-    mockScrollEl.scrollHeight = 2000; // > clientHeight → scrollable
-    rerender(
-      <LoadMoreSentinel
-        hasMore={true}
-        isLoading={false}
-        messageCount={9}
-        onLoadMore={onLoadMore}
-      />,
-    );
-    // Auto-fire should work again after the reset.
+    mockScrollEl.scrollHeight = 2000;
+    simulateLoadCycle(rerender, {
+      hasMore: true,
+      messageCount: 9,
+      onLoadMore,
+    });
     MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
     expect(onLoadMore).toHaveBeenCalledTimes(5);
   });
 
   it("stops auto-triggering after 3 non-scrollable rounds but keeps the manual button working", () => {
-    // clientHeight < scrollHeight would be "scrollable". Here we want
-    // non-scrollable: scrollHeight <= clientHeight.
     mockScrollEl.clientHeight = 1000;
     mockScrollEl.scrollHeight = 100;
     const onLoadMore = vi.fn();
@@ -231,28 +288,20 @@ describe("LoadMoreSentinel", () => {
         onLoadMore={onLoadMore}
       />,
     );
-
-    // Simulate three auto-triggered loads, each followed by a
-    // messageCount bump (committing the load) while still non-scrollable.
     for (let round = 1; round <= 3; round++) {
       MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
-      mockScrollEl.scrollHeight += 50; // still < clientHeight
-      rerender(
-        <LoadMoreSentinel
-          hasMore={true}
-          isLoading={false}
-          messageCount={5 + round}
-          onLoadMore={onLoadMore}
-        />,
-      );
+      mockScrollEl.scrollHeight += 50;
+      simulateLoadCycle(rerender, {
+        hasMore: true,
+        messageCount: 5 + round,
+        onLoadMore,
+      });
     }
     expect(onLoadMore).toHaveBeenCalledTimes(3);
 
-    // Fourth observer firing is blocked by the cap.
     MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
     expect(onLoadMore).toHaveBeenCalledTimes(3);
 
-    // Manual button click still works.
     fireEvent.click(
       screen.getByRole("button", { name: /load older messages/i }),
     );

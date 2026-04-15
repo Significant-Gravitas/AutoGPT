@@ -151,9 +151,20 @@ export function LoadMoreSentinel({
   const autoFillRoundsRef = useRef(0);
   // True if the pending load was triggered by the observer (not the button)
   const autoTriggeredRef = useRef(false);
+  // Same-frame re-entry guard — the parent's `isLoading` flag lags by a
+  // render, so the observer or button could otherwise fire a duplicate
+  // load and overwrite the captured scroll snapshot before the first
+  // load settles.
+  const loadPendingRef = useRef(false);
   const { scrollRef } = useStickToBottomContext();
 
+  useEffect(() => {
+    if (!isLoading) loadPendingRef.current = false;
+  }, [isLoading]);
+
   function captureAndLoad(fromObserver: boolean) {
+    if (loadPendingRef.current) return;
+    loadPendingRef.current = true;
     const el = scrollRef.current;
     if (el) {
       scrollSnapshotRef.current = {
