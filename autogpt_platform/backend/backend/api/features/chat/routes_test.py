@@ -1153,7 +1153,7 @@ def test_stream_chat_dedup_hash_uses_original_message_not_mutated(
     file_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     # Mock workspace + prisma so the attachment block is actually appended.
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
     fake_file = type(
@@ -1169,7 +1169,7 @@ def test_stream_chat_dedup_hash_uses_original_message_not_mutated(
     mock_prisma = mocker.MagicMock()
     mock_prisma.find_many = mocker.AsyncMock(return_value=[fake_file])
     mocker.patch(
-        "prisma.models.UserWorkspaceFile.prisma",
+        "backend.data.workspace.UserWorkspaceFile.prisma",
         return_value=mock_prisma,
     )
 
