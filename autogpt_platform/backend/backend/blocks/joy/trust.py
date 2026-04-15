@@ -87,19 +87,19 @@ class JoyVerifyTrustBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "agent_id": "ag_test123",
+                "agent_id": "mock_agent",
                 "min_trust_score": 1.5,
             },
             test_output=[
                 ("meets_threshold", True),
                 ("trust_score", 2.0),
-                ("agent_name", "Test Agent"),
+                ("agent_name", "Mock Agent"),
                 ("verified", True),
             ],
             test_mock={
                 "get_agent": lambda agent_id, credentials: {
                     "agent_id": agent_id,
-                    "name": "Test Agent",
+                    "name": "Mock Agent",
                     "trust_score": 2.0,
                     "verified": True,
                 },
@@ -171,24 +171,24 @@ class JoyGetTrustScoreBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "agent_id": "ag_test123",
+                "agent_id": "mock_agent",
             },
             test_output=[
-                ("agent_id", "ag_test123"),
-                ("name", "Test Agent"),
+                ("agent_id", "mock_agent"),
+                ("name", "Mock Agent"),
                 ("trust_score", 2.0),
                 ("verified", True),
-                ("vouch_count", 5),
+                ("vouch_count", 3),
             ],
             test_mock={
                 "get_agent": lambda agent_id, credentials: {
                     "agent_id": agent_id,
-                    "name": "Test Agent",
+                    "name": "Mock Agent",
                     "trust_score": 2.0,
                     "verified": True,
-                    "vouch_count": 5,
-                    "capabilities": ["code-review"],
-                    "badges": ["verified"],
+                    "vouch_count": 3,
+                    "capabilities": ["mock-capability"],
+                    "badges": ["mock-badge"],
                 },
             },
         )

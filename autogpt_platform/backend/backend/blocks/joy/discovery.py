@@ -32,7 +32,7 @@ from backend.sdk import (
 from ._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
-    discover_agents,
+    discover_agents as _discover_agents,
     joy_trust,
 )
 
@@ -107,6 +107,13 @@ class JoyDiscoverAgentsBlock(Block):
                 "limit": 5,
             },
             test_output=[
+                (
+                    "agents",
+                    [
+                        {"agent_id": "ag_test1", "name": "Code Reviewer", "trust_score": 2.5},
+                        {"agent_id": "ag_test2", "name": "Code Helper", "trust_score": 1.8},
+                    ],
+                ),
                 ("count", 2),
                 ("top_agent_id", "ag_test1"),
                 ("top_agent_name", "Code Reviewer"),
@@ -115,20 +122,24 @@ class JoyDiscoverAgentsBlock(Block):
             test_mock={
                 "discover_agents": lambda **kw: {
                     "agents": [
-                        {
-                            "agent_id": "ag_test1",
-                            "name": "Code Reviewer",
-                            "trust_score": 2.5,
-                        },
-                        {
-                            "agent_id": "ag_test2",
-                            "name": "Code Helper",
-                            "trust_score": 1.8,
-                        },
+                        {"agent_id": "ag_test1", "name": "Code Reviewer", "trust_score": 2.5},
+                        {"agent_id": "ag_test2", "name": "Code Helper", "trust_score": 1.8},
                     ],
                     "count": 2,
                 },
             },
+        )
+
+    async def discover_agents(
+        self,
+        query: str | None,
+        capability: str | None,
+        limit: int,
+        credentials: APIKeyCredentials | None,
+    ) -> dict:
+        """Mockable wrapper for Joy API discovery."""
+        return await _discover_agents(
+            query=query, capability=capability, limit=limit, credentials=credentials
         )
 
     async def run(
@@ -138,7 +149,7 @@ class JoyDiscoverAgentsBlock(Block):
         credentials: APIKeyCredentials | None = None,
         **kwargs,
     ) -> BlockOutput:
-        result = await discover_agents(
+        result = await self.discover_agents(
             query=input_data.query or None,
             capability=input_data.capability or None,
             limit=input_data.limit,
