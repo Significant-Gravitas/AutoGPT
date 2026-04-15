@@ -1179,6 +1179,7 @@ async def _run_compression(
     messages: list[dict],
     model: str,
     log_prefix: str,
+    target_tokens: int | None = None,
 ) -> CompressResult:
     """Run LLM-based compression with truncation fallback.
 
@@ -1186,6 +1187,12 @@ async def _run_compression(
     If no client is configured or the LLM call fails, falls back to
     truncation-based compression which drops older messages without
     summarization.
+
+    ``target_tokens`` sets a hard token ceiling for the compressed output.
+    When ``None``, ``compress_context`` derives the limit from the model's
+    context window.  Pass a smaller value on retries to force more aggressive
+    compression — the compressor will LLM-summarize, content-truncate,
+    middle-out delete, and first/last trim until the result fits.
 
     A 60-second timeout prevents a hung LLM call from blocking the
     retry path indefinitely.  The truncation fallback also has a
@@ -1196,18 +1203,27 @@ async def _run_compression(
     if client is None:
         logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
         return await asyncio.wait_for(
-            compress_context(messages=messages, model=model, client=None),
+            compress_context(
+                messages=messages, model=model, client=None, target_tokens=target_tokens
+            ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
     try:
         return await asyncio.wait_for(
-            compress_context(messages=messages, model=model, client=client),
+            compress_context(
+                messages=messages,
+                model=model,
+                client=client,
+                target_tokens=target_tokens,
+            ),
             timeout=_COMPACTION_TIMEOUT_SECONDS,
         )
     except Exception as e:
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
         return await asyncio.wait_for(
-            compress_context(messages=messages, model=model, client=None),
+            compress_context(
+                messages=messages, model=model, client=None, target_tokens=target_tokens
+            ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
 

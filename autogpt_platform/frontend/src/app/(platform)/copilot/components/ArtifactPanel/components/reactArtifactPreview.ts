@@ -169,8 +169,8 @@ export function buildReactArtifactSrcDoc(
             return Component;
           }
 
-          return function WrappedArtifactPreview() {
-            let tree = React.createElement(Component);
+          return function WrappedArtifactPreview(props) {
+            let tree = React.createElement(Component, props);
 
             for (let i = providers.length - 1; i >= 0; i -= 1) {
               tree = React.createElement(providers[i], null, tree);
@@ -178,6 +178,17 @@ export function buildReactArtifactSrcDoc(
 
             return tree;
           };
+        }
+
+        function getPreviewProps(moduleExports) {
+          if (
+            moduleExports.previewProps &&
+            typeof moduleExports.previewProps === "object"
+          ) {
+            return moduleExports.previewProps;
+          }
+
+          return null;
         }
 
         function require(name) {
@@ -235,6 +246,11 @@ export function buildReactArtifactSrcDoc(
 
           render() {
             if (this.state.error) {
+              const propsHelp =
+                this.props.componentExpectsProps && !this.props.hasPreviewProps
+                  ? "\\n\\nThis component appears to expect props. Export a named previewProps object with sample values to render it in artifact preview."
+                  : "";
+
               return React.createElement(
                 "div",
                 {
@@ -249,7 +265,9 @@ export function buildReactArtifactSrcDoc(
                     whiteSpace: "pre-wrap",
                   },
                 },
-                this.state.error.stack || this.state.error.message || String(this.state.error),
+                (this.state.error.stack ||
+                  this.state.error.message ||
+                  String(this.state.error)) + propsHelp,
               );
             }
 
@@ -296,16 +314,19 @@ export function buildReactArtifactSrcDoc(
             moduleExports.App = executionResult.app;
           }
 
-          const Component = wrapWithProviders(
-            getRenderableCandidate(moduleExports),
-            moduleExports,
-          );
+          const RawComponent = getRenderableCandidate(moduleExports);
+          const componentExpectsProps = RawComponent.length > 0;
+          const Component = wrapWithProviders(RawComponent, moduleExports);
+          const previewProps = getPreviewProps(moduleExports);
 
           ReactDOM.createRoot(rootElement).render(
             React.createElement(
               PreviewErrorBoundary,
-              null,
-              React.createElement(Component),
+              {
+                componentExpectsProps: componentExpectsProps,
+                hasPreviewProps: previewProps != null,
+              },
+              React.createElement(Component, previewProps || {}),
             ),
           );
         } catch (error) {

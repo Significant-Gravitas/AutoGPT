@@ -193,3 +193,4 @@ services:
       - copilot_executor
       - websocket_server
       - database_manager
+      - scheduler_server

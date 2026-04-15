@@ -83,6 +83,7 @@ export function useArtifactPanel() {
   const canCopy =
     classification != null &&
     classification.type !== "image" &&
+    classification.type !== "video" &&
     classification.type !== "download-only" &&
     classification.type !== "pdf";
 

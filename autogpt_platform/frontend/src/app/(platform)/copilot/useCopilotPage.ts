@@ -42,7 +42,8 @@ export function useCopilotPage() {
     setSessionToDelete,
     isDrawerOpen,
     setDrawerOpen,
-    copilotMode,
+    copilotChatMode,
+    copilotLlmModel,
     isDryRun,
   } = useCopilotUIStore();
 
@@ -78,7 +79,8 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     refetchSession,
-    copilotMode: isModeToggleEnabled ? copilotMode : undefined,
+    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
+    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
   const { olderMessages, hasMore, isLoadingMore, loadMore } =
