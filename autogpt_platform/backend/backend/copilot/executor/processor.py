@@ -351,6 +351,7 @@ class CoPilotProcessor:
                 context=entry.context,
                 file_ids=entry.file_ids,
                 mode=effective_mode,
+                model=entry.model,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,

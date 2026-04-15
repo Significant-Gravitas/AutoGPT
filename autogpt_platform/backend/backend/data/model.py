@@ -852,6 +852,7 @@ class NodeExecutionStats(BaseModel):
     output_token_count: int = 0
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
+    cost: int = 0
     extra_cost: int = 0
     extra_steps: int = 0
     provider_cost: float | None = None

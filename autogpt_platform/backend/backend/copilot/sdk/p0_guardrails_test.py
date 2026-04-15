@@ -207,7 +207,7 @@ class TestConfigDefaults:
 
     def test_max_budget_usd_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_budget_usd == 15.0
+        assert cfg.claude_agent_max_budget_usd == 10.0
 
     def test_max_thinking_tokens_default(self):
         cfg = _make_config()

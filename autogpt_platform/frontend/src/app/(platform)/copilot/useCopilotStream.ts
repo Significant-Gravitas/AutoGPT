@@ -18,7 +18,7 @@ import {
   resolveInProgressTools,
   getSendSuppressionReason,
 } from "./helpers";
-import type { CopilotMode } from "./store";
+import type { CopilotLlmModel, CopilotMode } from "./store";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -33,6 +33,8 @@ interface UseCopilotStreamArgs {
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
   copilotMode: CopilotMode | undefined;
+  /** Model tier override. `undefined` = let backend decide. */
+  copilotModel: CopilotLlmModel | undefined;
 }
 
 export function useCopilotStream({
@@ -41,17 +43,20 @@ export function useCopilotStream({
   hasActiveStream,
   refetchSession,
   copilotMode,
+  copilotModel,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
   }
-  // Use a ref for copilotMode so the transport closure always reads the
-  // latest value without recreating the DefaultChatTransport (which would
+  // Use refs for copilotMode and copilotModel so the transport closure always reads
+  // the latest value without recreating the DefaultChatTransport (which would
   // reset useChat's internal Chat instance and break mid-session streaming).
   const copilotModeRef = useRef(copilotMode);
   copilotModeRef.current = copilotMode;
+  const copilotModelRef = useRef(copilotModel);
+  copilotModelRef.current = copilotModel;
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -83,6 +88,7 @@ export function useCopilotStream({
                   context: null,
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
                   mode: copilotModeRef.current ?? null,
+                  model: copilotModelRef.current ?? null,
                 },
                 headers: await getCopilotAuthHeaders(),
               };
