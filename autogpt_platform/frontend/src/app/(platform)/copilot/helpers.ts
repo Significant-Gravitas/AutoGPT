@@ -2,6 +2,8 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import type { UIMessage } from "ai";
 
+import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
+
 export const ORIGINAL_TITLE = "AutoGPT";
 
 /**
@@ -154,7 +156,18 @@ export function shouldSuppressDuplicateSend(
 }
 
 /**
- * Deduplicate messages by ID and by content fingerprint.
+ * Fire-and-forget: tell the backend to release XREAD listeners for a session.
+ *
+ * Called on session switch so the backend doesn't wait for its 5-10 s timeout
+ * before cleaning up. Failures are silently ignored — the backend will
+ * eventually clean up on its own.
+ */
+export function disconnectSessionStream(sessionId: string): void {
+  deleteV2DisconnectSessionStream(sessionId).catch(() => {});
+}
+
+/**
+ * Deduplicate messages by ID and by consecutive content fingerprint.
  *
  * ID dedup catches exact duplicates within the same source.
  * Content dedup uses a composite key of `role + preceding-user-message-id +
