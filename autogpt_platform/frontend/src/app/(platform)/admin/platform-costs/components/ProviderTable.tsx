@@ -3,6 +3,7 @@ import {
   defaultRateFor,
   estimateCostForRow,
   formatMicrodollars,
+  formatTokens,
   rateKey,
   rateUnitLabel,
   trackingValue,
@@ -25,10 +26,27 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
               Provider
             </th>
             <th scope="col" className="px-4 py-3">
+              Model
+            </th>
+            <th scope="col" className="px-4 py-3">
               Type
             </th>
             <th scope="col" className="px-4 py-3 text-right">
               Usage
+            </th>
+            <th
+              scope="col"
+              className="px-4 py-3 text-right"
+              title="Only populated for token-tracking providers (e.g. LLM calls). Non-token rows (per_run, characters, etc.) show —."
+            >
+              Input Tokens
+            </th>
+            <th
+              scope="col"
+              className="px-4 py-3 text-right"
+              title="Only populated for token-tracking providers (e.g. LLM calls). Non-token rows (per_run, characters, etc.) show —."
+            >
+              Output Tokens
             </th>
             <th scope="col" className="px-4 py-3 text-right">
               Requests
@@ -55,16 +73,32 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
             // For cost_usd rows the provider reports USD directly so rate
             // input doesn't apply; otherwise show an editable input.
             const showRateInput = tt !== "cost_usd";
-            const key = rateKey(row.provider, tt);
+            const key = rateKey(row.provider, tt, row.model);
             const fallback = defaultRateFor(row.provider, tt);
             const currentRate = rateOverrides[key] ?? fallback;
             return (
-              <tr key={key} className="border-b hover:bg-muted">
+              <tr
+                key={`${row.provider}:${tt}:${row.model ?? ""}`}
+                className="border-b hover:bg-muted"
+              >
                 <td className="px-4 py-3 font-medium">{row.provider}</td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {row.model || "—"}
+                </td>
                 <td className="px-4 py-3">
                   <TrackingBadge trackingType={row.tracking_type} />
                 </td>
                 <td className="px-4 py-3 text-right">{trackingValue(row)}</td>
+                <td className="px-4 py-3 text-right">
+                  {row.total_input_tokens > 0
+                    ? formatTokens(row.total_input_tokens)
+                    : "-"}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  {row.total_output_tokens > 0
+                    ? formatTokens(row.total_output_tokens)
+                    : "-"}
+                </td>
                 <td className="px-4 py-3 text-right">
                   {row.request_count.toLocaleString()}
                 </td>
@@ -115,7 +149,7 @@ function ProviderTable({ data, rateOverrides, onRateOverride }: Props) {
           {data.length === 0 && (
             <tr>
               <td
-                colSpan={7}
+                colSpan={10}
                 className="px-4 py-8 text-center text-muted-foreground"
               >
                 No cost data yet

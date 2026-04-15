@@ -2,12 +2,13 @@
 
 import { Alert, AlertDescription } from "@/components/molecules/Alert/Alert";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
-import { formatMicrodollars } from "../helpers";
+import { formatMicrodollars, formatTokens } from "../helpers";
 import { SummaryCard } from "./SummaryCard";
 import { ProviderTable } from "./ProviderTable";
 import { UserTable } from "./UserTable";
 import { LogsTable } from "./LogsTable";
 import { usePlatformCostContent } from "./usePlatformCostContent";
+import type { CostBucket } from "@/app/api/__generated__/models/costBucket";
 
 interface Props {
   searchParams: {
@@ -15,6 +16,10 @@ interface Props {
     end?: string;
     provider?: string;
     user_id?: string;
+    model?: string;
+    block_name?: string;
+    tracking_type?: string;
+    graph_exec_id?: string;
     page?: string;
     tab?: string;
   };
@@ -37,11 +42,91 @@ export function PlatformCostContent({ searchParams }: Props) {
     setProviderInput,
     userInput,
     setUserInput,
+    modelInput,
+    setModelInput,
+    blockInput,
+    setBlockInput,
+    typeInput,
+    setTypeInput,
+    executionIDInput,
+    setExecutionIDInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,
     handleFilter,
+    exporting,
+    handleExport,
   } = usePlatformCostContent(searchParams);
+
+  const summaryCards: { label: string; value: string; subtitle?: string }[] =
+    dashboard
+      ? [
+          {
+            label: "Known Cost",
+            value: formatMicrodollars(dashboard.total_cost_microdollars),
+            subtitle: "From providers that report USD cost",
+          },
+          {
+            label: "Estimated Total",
+            value: formatMicrodollars(totalEstimatedCost),
+            subtitle: "Including per-run cost estimates",
+          },
+          {
+            label: "Total Requests",
+            value: dashboard.total_requests.toLocaleString(),
+          },
+          {
+            label: "Active Users",
+            value: dashboard.total_users.toLocaleString(),
+          },
+          {
+            label: "Avg Cost / Request",
+            value: formatMicrodollars(
+              dashboard.avg_cost_microdollars_per_request ?? 0,
+            ),
+            subtitle: "Known cost divided by cost-bearing requests",
+          },
+          {
+            label: "Avg Input Tokens",
+            value: Math.round(
+              dashboard.avg_input_tokens_per_request ?? 0,
+            ).toLocaleString(),
+            subtitle: "Prompt tokens per request (context size)",
+          },
+          {
+            label: "Avg Output Tokens",
+            value: Math.round(
+              dashboard.avg_output_tokens_per_request ?? 0,
+            ).toLocaleString(),
+            subtitle: "Completion tokens per request (response length)",
+          },
+          {
+            label: "Total Tokens",
+            value: `${formatTokens(dashboard.total_input_tokens ?? 0)} in / ${formatTokens(dashboard.total_output_tokens ?? 0)} out`,
+            subtitle: "Prompt vs completion token split",
+          },
+          {
+            label: "Typical Cost (P50)",
+            value: formatMicrodollars(dashboard.cost_p50_microdollars ?? 0),
+            subtitle: "Median cost per request",
+          },
+          {
+            label: "Upper Cost (P75)",
+            value: formatMicrodollars(dashboard.cost_p75_microdollars ?? 0),
+            subtitle: "75th percentile cost",
+          },
+          {
+            label: "High Cost (P95)",
+            value: formatMicrodollars(dashboard.cost_p95_microdollars ?? 0),
+            subtitle: "95th percentile cost",
+          },
+          {
+            label: "Peak Cost (P99)",
+            value: formatMicrodollars(dashboard.cost_p99_microdollars ?? 0),
+            subtitle: "99th percentile cost",
+          },
+        ]
+      : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,6 +190,70 @@ export function PlatformCostContent({ searchParams }: Props) {
             onChange={(e) => setUserInput(e.target.value)}
           />
         </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="model-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Model
+          </label>
+          <input
+            id="model-filter"
+            type="text"
+            placeholder="e.g. gpt-4o"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={modelInput}
+            onChange={(e) => setModelInput(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="block-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Block
+          </label>
+          <input
+            id="block-filter"
+            type="text"
+            placeholder="e.g. LLMBlock"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={blockInput}
+            onChange={(e) => setBlockInput(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="type-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Type
+          </label>
+          <input
+            id="type-filter"
+            type="text"
+            placeholder="e.g. tokens"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={typeInput}
+            onChange={(e) => setTypeInput(e.target.value)}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="execution-id-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Execution ID
+          </label>
+          <input
+            id="execution-id-filter"
+            type="text"
+            placeholder="Filter by execution"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={executionIDInput}
+            onChange={(e) => setExecutionIDInput(e.target.value)}
+          />
+        </div>
         <button
           onClick={handleFilter}
           className="rounded bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
@@ -117,11 +266,19 @@ export function PlatformCostContent({ searchParams }: Props) {
             setEndInput("");
             setProviderInput("");
             setUserInput("");
+            setModelInput("");
+            setBlockInput("");
+            setTypeInput("");
+            setExecutionIDInput("");
             updateUrl({
               start: "",
               end: "",
               provider: "",
               user_id: "",
+              model: "",
+              block_name: "",
+              tracking_type: "",
+              graph_exec_id: "",
               page: "1",
             });
           }}
@@ -139,37 +296,54 @@ export function PlatformCostContent({ searchParams }: Props) {
 
       {loading ? (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+            {/* 12 skeleton placeholders — one per summary card */}
+            {Array.from({ length: 12 }, (_, i) => (
               <Skeleton key={i} className="h-20 rounded-lg" />
             ))}
           </div>
+          <Skeleton className="h-32 rounded-lg" />
           <Skeleton className="h-8 w-48 rounded" />
           <Skeleton className="h-64 rounded-lg" />
         </div>
       ) : (
         <>
           {dashboard && (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-              <SummaryCard
-                label="Known Cost"
-                value={formatMicrodollars(dashboard.total_cost_microdollars)}
-                subtitle="From providers that report USD cost"
-              />
-              <SummaryCard
-                label="Estimated Total"
-                value={formatMicrodollars(totalEstimatedCost)}
-                subtitle="Including per-run cost estimates"
-              />
-              <SummaryCard
-                label="Total Requests"
-                value={dashboard.total_requests.toLocaleString()}
-              />
-              <SummaryCard
-                label="Active Users"
-                value={dashboard.total_users.toLocaleString()}
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+                {summaryCards.map((card) => (
+                  <SummaryCard
+                    key={card.label}
+                    label={card.label}
+                    value={card.value}
+                    subtitle={card.subtitle}
+                  />
+                ))}
+              </div>
+
+              {dashboard.cost_buckets && dashboard.cost_buckets.length > 0 && (
+                <div className="rounded-lg border p-4">
+                  <h3 className="mb-3 text-sm font-medium">
+                    Cost Distribution by Bucket
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
+                    {dashboard.cost_buckets.map((b: CostBucket) => (
+                      <div
+                        key={b.bucket}
+                        className="flex flex-col items-center rounded border p-2 text-center"
+                      >
+                        <span className="text-xs text-muted-foreground">
+                          {b.bucket}
+                        </span>
+                        <span className="text-lg font-semibold">
+                          {b.count.toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           <div
@@ -224,6 +398,8 @@ export function PlatformCostContent({ searchParams }: Props) {
                 logs={logs}
                 pagination={pagination}
                 onPageChange={(p) => updateUrl({ page: p.toString() })}
+                onExport={handleExport}
+                exporting={exporting}
               />
             </div>
           )}

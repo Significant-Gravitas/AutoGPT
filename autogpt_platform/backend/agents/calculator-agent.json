@@ -1,0 +1,166 @@
+{
+  "id": "858e2226-e047-4d19-a832-3be4a134d155",
+  "version": 2,
+  "is_active": true,
+  "name": "Calculator agent",
+  "description": "",
+  "instructions": null,
+  "recommended_schedule_cron": null,
+  "forked_from_id": null,
+  "forked_from_version": null,
+  "user_id": "",
+  "created_at": "2026-04-13T03:45:11.241Z",
+  "nodes": [
+    {
+      "id": "6762da5d-6915-4836-a431-6dcd7d36a54a",
+      "block_id": "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      "input_default": {
+        "name": "Input",
+        "secret": false,
+        "advanced": false
+      },
+      "metadata": {
+        "position": {
+          "x": -188.2244873046875,
+          "y": 95
+        }
+      },
+      "input_links": [],
+      "output_links": [
+        {
+          "id": "432c7caa-49b9-4b70-bd21-2fa33a569601",
+          "source_id": "6762da5d-6915-4836-a431-6dcd7d36a54a",
+          "sink_id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+          "source_name": "result",
+          "sink_name": "a",
+          "is_static": true
+        }
+      ],
+      "graph_id": "858e2226-e047-4d19-a832-3be4a134d155",
+      "graph_version": 2,
+      "webhook_id": null
+    },
+    {
+      "id": "65429c9e-a0c6-4032-a421-6899c394fa74",
+      "block_id": "363ae599-353e-4804-937e-b2ee3cef3da4",
+      "input_default": {
+        "name": "Output",
+        "secret": false,
+        "advanced": false,
+        "escape_html": false
+      },
+      "metadata": {
+        "position": {
+          "x": 825.198974609375,
+          "y": 123.75
+        }
+      },
+      "input_links": [
+        {
+          "id": "8cdb2f33-5b10-4cc2-8839-f8ccb70083a3",
+          "source_id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+          "sink_id": "65429c9e-a0c6-4032-a421-6899c394fa74",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "output_links": [],
+      "graph_id": "858e2226-e047-4d19-a832-3be4a134d155",
+      "graph_version": 2,
+      "webhook_id": null
+    },
+    {
+      "id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+      "block_id": "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
+      "input_default": {
+        "b": 34,
+        "operation": "Add",
+        "round_result": false
+      },
+      "metadata": {
+        "position": {
+          "x": 323.0255126953125,
+          "y": 121.25
+        }
+      },
+      "input_links": [
+        {
+          "id": "432c7caa-49b9-4b70-bd21-2fa33a569601",
+          "source_id": "6762da5d-6915-4836-a431-6dcd7d36a54a",
+          "sink_id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+          "source_name": "result",
+          "sink_name": "a",
+          "is_static": true
+        }
+      ],
+      "output_links": [
+        {
+          "id": "8cdb2f33-5b10-4cc2-8839-f8ccb70083a3",
+          "source_id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+          "sink_id": "65429c9e-a0c6-4032-a421-6899c394fa74",
+          "source_name": "result",
+          "sink_name": "value",
+          "is_static": false
+        }
+      ],
+      "graph_id": "858e2226-e047-4d19-a832-3be4a134d155",
+      "graph_version": 2,
+      "webhook_id": null
+    }
+  ],
+  "links": [
+    {
+      "id": "8cdb2f33-5b10-4cc2-8839-f8ccb70083a3",
+      "source_id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+      "sink_id": "65429c9e-a0c6-4032-a421-6899c394fa74",
+      "source_name": "result",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "432c7caa-49b9-4b70-bd21-2fa33a569601",
+      "source_id": "6762da5d-6915-4836-a431-6dcd7d36a54a",
+      "sink_id": "bf4a15ff-b0c4-4032-a21b-5880224af690",
+      "source_name": "result",
+      "sink_name": "a",
+      "is_static": true
+    }
+  ],
+  "sub_graphs": [],
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "Input": {
+        "advanced": false,
+        "secret": false,
+        "title": "Input"
+      }
+    },
+    "required": [
+      "Input"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "Output": {
+        "advanced": false,
+        "secret": false,
+        "title": "Output"
+      }
+    },
+    "required": [
+      "Output"
+    ]
+  },
+  "has_external_trigger": false,
+  "has_human_in_the_loop": false,
+  "has_sensitive_action": false,
+  "trigger_setup_info": null,
+  "credentials_input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}

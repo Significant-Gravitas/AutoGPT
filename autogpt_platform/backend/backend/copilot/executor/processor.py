@@ -169,18 +169,36 @@ class CoPilotProcessor:
 
         # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
         # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
-        self._prewarm_cli()
+        # Read cli_path directly from env here so _prewarm_cli does not have
+        # to construct a ChatConfig() (which can raise and abort the worker).
+        # Priority: CHAT_CLAUDE_AGENT_CLI_PATH (prefixed) first, then
+        # CLAUDE_AGENT_CLI_PATH (unprefixed) — matches config.py's validator
+        # order so both paths resolve to the same binary.
+        cli_path = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH") or os.getenv(
+            "CLAUDE_AGENT_CLI_PATH"
+        )
+        self._prewarm_cli(cli_path=cli_path or None)
 
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
 
-    def _prewarm_cli(self) -> None:
-        """Run the bundled CLI binary once to warm OS page caches."""
-        try:
-            from claude_agent_sdk._internal.transport.subprocess_cli import (
-                SubprocessCLITransport,
-            )
+    def _prewarm_cli(self, cli_path: str | None = None) -> None:
+        """Run the Claude Code CLI binary once to warm OS page caches.
 
-            cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+        Accepts an explicit ``cli_path`` so the caller can pass the value
+        already resolved at startup rather than constructing a full
+        ``ChatConfig()`` here (which reads env vars, runs validators, and
+        can raise — aborting the worker prewarm silently).  Falls back to
+        the ``CLAUDE_AGENT_CLI_PATH`` / ``CHAT_CLAUDE_AGENT_CLI_PATH`` env
+        vars (same precedence as ``ChatConfig``), and then to the SDK's
+        bundled binary when neither is set.
+        """
+        try:
+            if not cli_path:
+                from claude_agent_sdk._internal.transport.subprocess_cli import (
+                    SubprocessCLITransport,
+                )
+
+                cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
             if cli_path:
                 result = subprocess.run(
                     [cli_path, "-v"],
@@ -333,6 +351,7 @@ class CoPilotProcessor:
                 context=entry.context,
                 file_ids=entry.file_ids,
                 mode=effective_mode,
+                model=entry.model,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,

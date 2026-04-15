@@ -31,26 +31,32 @@ gh pr view {N} --json body --jq '.body'
 
 > ⚠️ **WARNING — PAGINATE ALL PAGES BEFORE ADDRESSING ANYTHING**
 >
-> `reviewThreads(first: 100)` returns at most 100 threads per page. A PR with many review cycles can have 140+ threads across 2+ pages. **If you start addressing threads after fetching only page 1, you will miss all threads on subsequent pages and silently leave them unresolved.**
+> `reviewThreads(first: 100)` returns at most 100 threads per page AND returns threads **oldest-first**. On a PR with many review cycles (e.g. 373 threads), the oldest 100–200 threads are from past cycles and are **all already resolved**. Filtering client-side with `select(.isResolved == false)` on page 1 therefore yields **0 results** — even though pages 2–4 contain many unresolved threads from recent review cycles.
 >
-> PR #12636 had 142 total threads: page 1 returned 69 unresolved, page 2 had 42 more (111 total unresolved). An agent that stopped after page 1 addressed only 69 and falsely reported "done".
+> **This is the most common failure mode:** agent fetches page 1, sees 0 unresolved after filtering, stops pagination, reports "done" — while hundreds of unresolved threads sit on later pages.
 >
-> **The rule: collect ALL thread IDs from ALL pages into a single list, then address them.**
+> One observed PR had 142 total threads: page 1 returned 0 unresolved (all old/resolved), while pages 2–3 had 111 unresolved. Another with 373 threads across 4 pages also had page 1 entirely resolved.
+>
+> **The rule: ALWAYS paginate to `hasNextPage == false` regardless of the per-page unresolved count. Never stop early because a page returns 0 unresolved.**
 
-**Step 1 — Fetch total count first:**
+**Step 1 — Fetch total count and sanity-check the newest threads:**
 
 ```bash
+# Get total count and the newest 100 threads (last: 100 returns newest-first)
 gh api graphql -f query='
 {
   repository(owner: "Significant-Gravitas", name: "AutoGPT") {
     pullRequest(number: {N}) {
       reviewThreads { totalCount }
+      newest: reviewThreads(last: 100) {
+        nodes { isResolved }
+      }
     }
   }
-}' | jq '.data.repository.pullRequest.reviewThreads.totalCount'
+}' | jq '{ total: .data.repository.pullRequest.reviewThreads.totalCount, newest_unresolved: [.data.repository.pullRequest.newest.nodes[] | select(.isResolved == false)] | length }'
 ```
 
-If `totalCount > 100`, you have multiple pages. Fetch them all before doing anything else.
+If `total > 100`, you have multiple pages — you **must** paginate all of them regardless of what `newest_unresolved` shows. The `last: 100` check is a sanity signal only; the full loop below is mandatory.
 
 **Step 2 — Collect all unresolved thread IDs across all pages:**
 
@@ -87,6 +93,10 @@ while true; do
   [ "$HAS_NEXT" = "false" ] && break
 done
 
+# Reverse so newest threads (last pages) are addressed first — GitHub returns oldest-first
+# and the most recent review cycle's comments are the ones blocking approval.
+ALL_THREADS=$(echo "$ALL_THREADS" | jq 'reverse')
+
 echo "Total unresolved threads: $(echo "$ALL_THREADS" | jq 'length')"
 echo "$ALL_THREADS" | jq '[.[] | {id, path, line, body: .comments.nodes[0].body[:200]}]'
 ```
@@ -94,6 +104,8 @@ echo "$ALL_THREADS" | jq '[.[] | {id, path, line, body: .comments.nodes[0].body[
 **Step 3 — Address every thread in `ALL_THREADS`, then resolve.**
 
 Only after this loop completes (all pages fetched, count confirmed) should you begin making fixes.
+
+> **Why reverse?** GraphQL returns threads oldest-first and exposes no `orderBy` option. A PR with 373 threads has ~4 pages; threads from the latest review cycle land on the last pages. Processing in reverse ensures the newest, most blocking comments are addressed first — the earlier pages mostly contain outdated threads from prior cycles.
 
 **Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
 

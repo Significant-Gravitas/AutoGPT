@@ -27,6 +27,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -34,7 +35,7 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
-from backend.copilot.prompting import get_baseline_supplement
+from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -55,7 +56,10 @@ from backend.copilot.service import (
     _get_openai_client,
     _update_title_async,
     config,
+    inject_user_context,
+    strip_user_context_tags,
 )
+from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
@@ -98,6 +102,7 @@ _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
 
 # MIME types that can be embedded as vision content blocks (OpenAI format).
 _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
+
 
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
@@ -228,98 +233,6 @@ def _resolve_baseline_model(mode: CopilotMode | None) -> str:
     return config.model
 
 
-# Tag pairs to strip from baseline streaming output.  Different models use
-# different tag names for their internal reasoning (Claude uses <thinking>,
-# Gemini uses <internal_reasoning>, etc.).
-_REASONING_TAG_PAIRS: list[tuple[str, str]] = [
-    ("<thinking>", "</thinking>"),
-    ("<internal_reasoning>", "</internal_reasoning>"),
-]
-
-# Longest opener — used to size the partial-tag buffer.
-_MAX_OPEN_TAG_LEN = max(len(o) for o, _ in _REASONING_TAG_PAIRS)
-
-
-class _ThinkingStripper:
-    """Strip reasoning blocks from a stream of text deltas.
-
-    Handles multiple tag patterns (``<thinking>``, ``<internal_reasoning>``,
-    etc.) so the same stripper works across Claude, Gemini, and other models.
-
-    Buffers just enough characters to detect a tag that may be split
-    across chunks; emits text immediately when no tag is in-flight.
-    Robust to single chunks that open and close a block, multiple
-    blocks per stream, and tags that straddle chunk boundaries.
-    """
-
-    def __init__(self) -> None:
-        self._buffer: str = ""
-        self._in_thinking: bool = False
-        self._close_tag: str = ""  # closing tag for the currently open block
-
-    def _find_open_tag(self) -> tuple[int, str, str]:
-        """Find the earliest opening tag in the buffer.
-
-        Returns (position, open_tag, close_tag) or (-1, "", "") if none.
-        """
-        best_pos = -1
-        best_open = ""
-        best_close = ""
-        for open_tag, close_tag in _REASONING_TAG_PAIRS:
-            pos = self._buffer.find(open_tag)
-            if pos != -1 and (best_pos == -1 or pos < best_pos):
-                best_pos = pos
-                best_open = open_tag
-                best_close = close_tag
-        return best_pos, best_open, best_close
-
-    def process(self, chunk: str) -> str:
-        """Feed a chunk and return the text that is safe to emit now."""
-        self._buffer += chunk
-        out: list[str] = []
-        while self._buffer:
-            if self._in_thinking:
-                end = self._buffer.find(self._close_tag)
-                if end == -1:
-                    keep = len(self._close_tag) - 1
-                    self._buffer = self._buffer[-keep:] if keep else ""
-                    return "".join(out)
-                self._buffer = self._buffer[end + len(self._close_tag) :]
-                self._in_thinking = False
-                self._close_tag = ""
-            else:
-                start, open_tag, close_tag = self._find_open_tag()
-                if start == -1:
-                    # No opening tag; emit everything except a tail that
-                    # could start a partial opener on the next chunk.
-                    safe_end = len(self._buffer)
-                    for keep in range(
-                        min(_MAX_OPEN_TAG_LEN - 1, len(self._buffer)), 0, -1
-                    ):
-                        tail = self._buffer[-keep:]
-                        if any(o[:keep] == tail for o, _ in _REASONING_TAG_PAIRS):
-                            safe_end = len(self._buffer) - keep
-                            break
-                    out.append(self._buffer[:safe_end])
-                    self._buffer = self._buffer[safe_end:]
-                    return "".join(out)
-                out.append(self._buffer[:start])
-                self._buffer = self._buffer[start + len(open_tag) :]
-                self._in_thinking = True
-                self._close_tag = close_tag
-        return "".join(out)
-
-    def flush(self) -> str:
-        """Return any remaining emittable text when the stream ends."""
-        if self._in_thinking:
-            # Unclosed thinking block — discard the buffered reasoning.
-            self._buffer = ""
-            return ""
-        out = self._buffer
-        self._buffer = ""
-        return out
-
-
 @dataclass
 class _BaselineStreamState:
     """Mutable state shared between the tool-call loop callbacks.
@@ -335,6 +248,8 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    turn_cache_read_tokens: int = 0
+    turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
@@ -378,44 +293,69 @@ async def _baseline_llm_caller(
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
-        async for chunk in response:
-            if chunk.usage:
-                state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if not delta:
-                continue
-
-            if delta.content:
-                emit = state.thinking_stripper.process(delta.content)
-                if emit:
-                    if not state.text_started:
-                        state.pending_events.append(
-                            StreamTextStart(id=state.text_block_id)
+        # Iterate under an inner try/finally so early exits (cancel, tool-call
+        # break, exception) always release the underlying httpx connection.
+        # Without this, openai.AsyncStream leaks the streaming response and
+        # the TCP socket ends up in CLOSE_WAIT until the process exits.
+        try:
+            async for chunk in response:
+                if chunk.usage:
+                    state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    state.turn_completion_tokens += chunk.usage.completion_tokens or 0
+                    # Extract cache token details when available (OpenAI /
+                    # OpenRouter include these in prompt_tokens_details).
+                    ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                    if ptd:
+                        state.turn_cache_read_tokens += (
+                            getattr(ptd, "cached_tokens", 0) or 0
                         )
-                        state.text_started = True
-                    round_text += emit
-                    state.pending_events.append(
-                        StreamTextDelta(id=state.text_block_id, delta=emit)
-                    )
+                        # cache_creation_input_tokens is reported by some providers
+                        # (e.g. Anthropic native) but not standard OpenAI streaming.
+                        state.turn_cache_creation_tokens += (
+                            getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                        )
 
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_calls_by_index:
-                        tool_calls_by_index[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-                    entry = tool_calls_by_index[idx]
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        entry["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        entry["arguments"] += tc.function.arguments
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+
+                if delta.content:
+                    emit = state.thinking_stripper.process(delta.content)
+                    if emit:
+                        if not state.text_started:
+                            state.pending_events.append(
+                                StreamTextStart(id=state.text_block_id)
+                            )
+                            state.text_started = True
+                        round_text += emit
+                        state.pending_events.append(
+                            StreamTextDelta(id=state.text_block_id, delta=emit)
+                        )
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_by_index:
+                            tool_calls_by_index[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+                        entry = tool_calls_by_index[idx]
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+        finally:
+            # Release the streaming httpx connection back to the pool on every
+            # exit path (normal completion, break, exception). openai.AsyncStream
+            # does not auto-close when the async-for loop exits early.
+            try:
+                await response.close()
+            except Exception:
+                pass
 
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
@@ -919,6 +859,11 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    # Strip any user-injected <user_context> tags on every turn.
+    # Only the server-injected prefix on the first message is trusted.
+    if message:
+        message = strip_user_context_tags(message)
+
     if maybe_append_user_message(session, message, is_user_message):
         if is_user_message:
             track_user_message(
@@ -957,15 +902,23 @@ async def stream_chat_completion_baseline(
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
     is_first_turn = len(session.messages) <= 1
-    if is_first_turn:
-        prompt_task = _build_system_prompt(user_id, has_conversation_history=False)
+    # Gate context fetch on both first turn AND user message so that assistant-
+    # role calls (e.g. tool-result submissions) on the first turn don't trigger
+    # a needless DB lookup for user understanding.
+    should_inject_user_context = is_first_turn and is_user_message
+
+    if should_inject_user_context:
+        prompt_task = _build_system_prompt(user_id)
     else:
-        prompt_task = _build_system_prompt(user_id=None, has_conversation_history=True)
+        prompt_task = _build_system_prompt(None)
 
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.
     if user_id and len(session.messages) > 1:
-        transcript_covers_prefix, (base_system_prompt, _) = await asyncio.gather(
+        (
+            transcript_covers_prefix,
+            (base_system_prompt, understanding),
+        ) = await asyncio.gather(
             _load_prior_transcript(
                 user_id=user_id,
                 session_id=session_id,
@@ -975,17 +928,10 @@ async def stream_chat_completion_baseline(
             prompt_task,
         )
     else:
-        base_system_prompt, _ = await prompt_task
+        base_system_prompt, understanding = await prompt_task
 
-    # Append user message to transcript.
-    # Always append when the message is present and is from the user,
-    # even on duplicate-suppressed retries (is_new_message=False).
-    # The loaded transcript may be stale (uploaded before the previous
-    # attempt stored this message), so skipping it would leave the
-    # transcript without the user turn, creating a malformed
-    # assistant-after-assistant structure when the LLM reply is added.
-    if message and is_user_message:
-        transcript_builder.append_user(content=message)
+    # Append user message to transcript after context injection below so the
+    # transcript receives the prefixed message when user context is available.
 
     # Generate title for new sessions
     if is_user_message and not session.title:
@@ -1001,8 +947,20 @@ async def stream_chat_completion_baseline(
 
     message_id = str(uuid.uuid4())
 
-    # Append tool documentation and technical notes
-    system_prompt = base_system_prompt + get_baseline_supplement()
+    # Append tool documentation, technical notes, and Graphiti memory instructions
+    graphiti_enabled = await is_enabled_for_user(user_id)
+
+    graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+    system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
+
+    # Warm context: pre-load relevant facts from Graphiti on first turn.
+    # Stored here but injected into the user message (not the system prompt)
+    # after openai_messages is built — keeps system prompt static for caching.
+    warm_ctx: str | None = None
+    if graphiti_enabled and user_id and len(session.messages) <= 1:
+        from backend.copilot.graphiti.context import fetch_warm_context
+
+        warm_ctx = await fetch_warm_context(user_id, message or "")
 
     # Compress context if approaching the model's token limit
     messages_for_context = await _compress_session_messages(
@@ -1035,6 +993,47 @@ async def stream_chat_completion_baseline(
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
 
+    # Inject user context into the first user message on first turn.
+    # Done before attachment/URL injection so the context prefix lands at
+    # the very start of the message content.
+    user_message_for_transcript = message
+    if should_inject_user_context:
+        prefixed = await inject_user_context(
+            understanding, message or "", session_id, session.messages
+        )
+        if prefixed is not None:
+            for msg in openai_messages:
+                if msg["role"] == "user":
+                    msg["content"] = prefixed
+                    break
+            user_message_for_transcript = prefixed
+        else:
+            logger.warning("[Baseline] No user message found for context injection")
+
+    # Inject Graphiti warm context into the first user message (not the
+    # system prompt) so the system prompt stays static and cacheable.
+    # warm_ctx is already wrapped in <temporal_context>.
+    # Appended AFTER user_context so <user_context> stays at the very start.
+    if warm_ctx:
+        for msg in openai_messages:
+            if msg["role"] == "user":
+                existing = msg.get("content", "")
+                if isinstance(existing, str):
+                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                break
+        # Do NOT append warm_ctx to user_message_for_transcript — it would
+        # persist stale temporal context into the transcript for future turns.
+
+    # Append user message to transcript.
+    # Always append when the message is present and is from the user,
+    # even on duplicate-suppressed retries (is_new_message=False).
+    # The loaded transcript may be stale (uploaded before the previous
+    # attempt stored this message), so skipping it would leave the
+    # transcript without the user turn, creating a malformed
+    # assistant-after-assistant structure when the LLM reply is added.
+    if message and is_user_message:
+        transcript_builder.append_user(content=user_message_for_transcript or message)
+
     # --- File attachments (feature parity with SDK path) ---
     working_dir: str | None = None
     attachment_hint = ""
@@ -1052,7 +1051,7 @@ async def stream_chat_completion_baseline(
         content_text = context.get("content", "")
         if content_text:
             context_hint = (
-                f"\n[The user shared a URL: {url}\n" f"Content:\n{content_text[:8000]}]"
+                f"\n[The user shared a URL: {url}\nContent:\n{content_text[:8000]}]"
             )
         else:
             context_hint = f"\n[The user shared a URL: {url}]"
@@ -1234,16 +1233,22 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-
         # Persist token usage to session and record for rate limiting.
-        # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we
-        # cannot break out cache_read/cache_creation weights. Users on the
-        # baseline path may be slightly over-counted vs the SDK path.
+        # When prompt_tokens_details.cached_tokens is reported, subtract
+        # them from prompt_tokens to get the uncached count so the cost
+        # breakdown stays accurate.
+        uncached_prompt = state.turn_prompt_tokens
+        if state.turn_cache_read_tokens > 0:
+            uncached_prompt = max(
+                0, state.turn_prompt_tokens - state.turn_cache_read_tokens
+            )
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=uncached_prompt,
             completion_tokens=state.turn_completion_tokens,
+            cache_read_tokens=state.turn_cache_read_tokens,
+            cache_creation_tokens=state.turn_cache_creation_tokens,
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
@@ -1271,6 +1276,24 @@ async def stream_chat_completion_baseline(
             await upsert_chat_session(session)
         except Exception as persist_err:
             logger.error("[Baseline] Failed to persist session: %s", persist_err)
+
+        # --- Graphiti: ingest conversation turn for temporal memory ---
+        if graphiti_enabled and user_id and message and is_user_message:
+            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+
+            # Pass only the final assistant reply (after stripping tool-loop
+            # chatter) so derived-finding distillation sees the substantive
+            # response, not intermediate tool-planning text.
+            _ingest_task = asyncio.create_task(
+                enqueue_conversation_turn(
+                    user_id,
+                    session_id,
+                    message,
+                    assistant_msg=final_text if state else "",
+                )
+            )
+            _background_tasks.add(_ingest_task)
+            _ingest_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the
@@ -1303,10 +1326,13 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
+        # Report uncached prompt tokens to match what was billed — cached tokens
+        # are excluded so the frontend display is consistent with cost_usd.
+        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
         yield StreamUsage(
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
-            total_tokens=state.turn_prompt_tokens + state.turn_completion_tokens,
+            total_tokens=billed_prompt + state.turn_completion_tokens,
         )
 
     yield StreamFinish()

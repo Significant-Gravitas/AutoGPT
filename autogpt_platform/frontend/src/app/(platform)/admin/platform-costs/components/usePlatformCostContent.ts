@@ -3,17 +3,27 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
+  getV2ExportPlatformCostLogs,
   useGetV2GetPlatformCostDashboard,
   useGetV2GetPlatformCostLogs,
 } from "@/app/api/__generated__/endpoints/admin/admin";
 import { okData } from "@/app/api/helpers";
-import { estimateCostForRow, toLocalInput, toUtcIso } from "../helpers";
+import {
+  buildCostLogsCsv,
+  estimateCostForRow,
+  toLocalInput,
+  toUtcIso,
+} from "../helpers";
 
 interface InitialSearchParams {
   start?: string;
   end?: string;
   provider?: string;
   user_id?: string;
+  model?: string;
+  block_name?: string;
+  tracking_type?: string;
+  graph_exec_id?: string;
   page?: string;
   tab?: string;
 }
@@ -29,14 +39,26 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
   const providerFilter =
     urlParams.get("provider") || searchParams.provider || "";
   const userFilter = urlParams.get("user_id") || searchParams.user_id || "";
+  const modelFilter = urlParams.get("model") || searchParams.model || "";
+  const blockFilter =
+    urlParams.get("block_name") || searchParams.block_name || "";
+  const typeFilter =
+    urlParams.get("tracking_type") || searchParams.tracking_type || "";
+  const executionIDFilter =
+    urlParams.get("graph_exec_id") || searchParams.graph_exec_id || "";
 
   const [startInput, setStartInput] = useState(toLocalInput(startDate));
   const [endInput, setEndInput] = useState(toLocalInput(endDate));
   const [providerInput, setProviderInput] = useState(providerFilter);
   const [userInput, setUserInput] = useState(userFilter);
+  const [modelInput, setModelInput] = useState(modelFilter);
+  const [blockInput, setBlockInput] = useState(blockFilter);
+  const [typeInput, setTypeInput] = useState(typeFilter);
+  const [executionIDInput, setExecutionIDInput] = useState(executionIDFilter);
   const [rateOverrides, setRateOverrides] = useState<Record<string, number>>(
     {},
   );
+  const [exporting, setExporting] = useState(false);
 
   // Pass ISO date strings through `as unknown as Date` so Orval's URL builder
   // forwards them as-is. Date.toString() produces a format FastAPI rejects;
@@ -46,6 +68,10 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     end: (endDate || undefined) as unknown as Date | undefined,
     provider: providerFilter || undefined,
     user_id: userFilter || undefined,
+    model: modelFilter || undefined,
+    block_name: blockFilter || undefined,
+    tracking_type: typeFilter || undefined,
+    graph_exec_id: executionIDFilter || undefined,
   };
 
   const {
@@ -91,6 +117,10 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
       end: toUtcIso(endInput),
       provider: providerInput,
       user_id: userInput,
+      model: modelInput,
+      block_name: blockInput,
+      tracking_type: typeInput,
+      graph_exec_id: executionIDInput,
       page: "1",
     });
   }
@@ -103,6 +133,33 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
       }
       return { ...prev, [key]: val };
     });
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const response = await getV2ExportPlatformCostLogs(filterParams);
+      const data = okData(response);
+      if (!data) throw new Error("Export failed: unexpected response");
+      const csv = buildCostLogsCsv(data.logs);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `platform_costs_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      if (data.truncated) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `Export truncated: only the first ${data.total_rows} rows were included.`,
+        );
+      }
+    } finally {
+      setExporting(false);
+    }
   }
 
   const totalEstimatedCost =
@@ -128,9 +185,19 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     setProviderInput,
     userInput,
     setUserInput,
+    modelInput,
+    setModelInput,
+    blockInput,
+    setBlockInput,
+    typeInput,
+    setTypeInput,
+    executionIDInput,
+    setExecutionIDInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,
     handleFilter,
+    exporting,
+    handleExport,
   };
 }

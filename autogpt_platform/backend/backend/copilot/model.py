@@ -644,6 +644,12 @@ async def _save_session_to_db(
             start_sequence=existing_message_count,
         )
 
+        # Back-fill sequence numbers on the in-memory ChatMessage objects so
+        # that downstream callers (inject_user_context) can persist updates
+        # by sequence rather than falling back to index-based writes.
+        for i, msg in enumerate(new_messages):
+            msg.sequence = existing_message_count + i
+
 
 async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:
     """Atomically append a message to a session and persist it.

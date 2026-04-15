@@ -14,11 +14,33 @@ interface Props {
   logs: CostLogRow[];
   pagination: Pagination | null;
   onPageChange: (page: number) => void;
+  onExport: () => Promise<void>;
+  exporting: boolean;
 }
 
-function LogsTable({ logs, pagination, onPageChange }: Props) {
+function LogsTable({
+  logs,
+  pagination,
+  onPageChange,
+  onExport,
+  exporting,
+}: Props) {
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">
+          {pagination
+            ? `${pagination.total_items.toLocaleString()} total rows`
+            : ""}
+        </span>
+        <button
+          onClick={onExport}
+          disabled={exporting}
+          className="rounded border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50"
+        >
+          {exporting ? "Exporting…" : "Export CSV"}
+        </button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="border-b text-xs uppercase text-muted-foreground">
@@ -45,7 +67,10 @@ function LogsTable({ logs, pagination, onPageChange }: Props) {
                 Cost
               </th>
               <th scope="col" className="px-3 py-3 text-right">
-                Tokens
+                In / Out
+              </th>
+              <th scope="col" className="px-3 py-3 text-right">
+                Cache (R/W)
               </th>
               <th scope="col" className="px-3 py-3 text-right">
                 Duration
@@ -84,11 +109,33 @@ function LogsTable({ logs, pagination, onPageChange }: Props) {
                     : "-"}
                 </td>
                 <td className="px-3 py-2 text-right text-xs">
+                  {log.cache_read_tokens || log.cache_creation_tokens
+                    ? `${formatTokens(Number(log.cache_read_tokens ?? 0))} / ${formatTokens(Number(log.cache_creation_tokens ?? 0))}`
+                    : "-"}
+                </td>
+                <td className="px-3 py-2 text-right text-xs">
                   {log.duration != null
                     ? formatDuration(Number(log.duration))
                     : "-"}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">
+                <td
+                  className={[
+                    "px-3 py-2 text-xs text-muted-foreground",
+                    log.graph_exec_id ? "cursor-pointer" : "",
+                  ].join(" ")}
+                  title={
+                    log.graph_exec_id ? String(log.graph_exec_id) : undefined
+                  }
+                  onClick={
+                    log.graph_exec_id
+                      ? () => {
+                          navigator.clipboard
+                            .writeText(String(log.graph_exec_id))
+                            .catch(() => {});
+                        }
+                      : undefined
+                  }
+                >
                   {log.graph_exec_id
                     ? String(log.graph_exec_id).slice(0, 8)
                     : "-"}
@@ -98,7 +145,7 @@ function LogsTable({ logs, pagination, onPageChange }: Props) {
             {logs.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No logs found

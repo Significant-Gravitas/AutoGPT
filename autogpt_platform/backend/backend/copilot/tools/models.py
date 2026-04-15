@@ -81,6 +81,12 @@ class ResponseType(str, Enum):
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
 
+    # Graphiti memory
+    MEMORY_STORE = "memory_store"
+    MEMORY_SEARCH = "memory_search"
+    MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
+    MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -463,7 +469,9 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
-    is_dry_run: bool = False
+    is_dry_run: bool | None = (
+        None  # only set to True on dry-run; omitted in normal runs
+    )
 
 
 class ReviewRequiredResponse(ToolResponseBase):
@@ -688,3 +696,36 @@ class AgentsMovedToFolderResponse(ToolResponseBase):
     agent_names: list[str] = []
     folder_id: str | None = None
     count: int = 0
+
+
+# --- Graphiti memory responses ---
+
+
+class MemoryStoreResponse(ToolResponseBase):
+    """Response when a memory is stored."""
+
+    type: ResponseType = ResponseType.MEMORY_STORE
+    memory_name: str
+
+
+class MemorySearchResponse(ToolResponseBase):
+    """Response when memories are searched."""
+
+    type: ResponseType = ResponseType.MEMORY_SEARCH
+    facts: list[str] = Field(default_factory=list)
+    recent_episodes: list[str] = Field(default_factory=list)
+
+
+class MemoryForgetCandidatesResponse(ToolResponseBase):
+    """Response with candidate memories to forget."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CANDIDATES
+    candidates: list[dict[str, str]] = Field(default_factory=list)
+
+
+class MemoryForgetConfirmResponse(ToolResponseBase):
+    """Response after deleting specific memory edges."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
+    deleted_uuids: list[str] = Field(default_factory=list)
+    failed_uuids: list[str] = Field(default_factory=list)

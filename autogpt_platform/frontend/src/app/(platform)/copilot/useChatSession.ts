@@ -10,8 +10,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import { resolveSessionDryRun } from "./helpers";
 
-export function useChatSession() {
+interface UseChatSessionOptions {
+  dryRun?: boolean;
+}
+
+export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const queryClient = useQueryClient();
 
@@ -24,6 +29,19 @@ export function useChatSession() {
       refetchOnMount: true,
     },
   });
+
+  // When dry-run mode is toggled, discard the current session so the next
+  // send creates a fresh one with the correct dry_run flag.  Sessions are
+  // immutable once created: dry_run cannot be changed after the fact.
+  const prevDryRunRef = useRef(dryRun);
+  useEffect(() => {
+    if (prevDryRunRef.current !== dryRun) {
+      prevDryRunRef.current = dryRun;
+      if (sessionId) {
+        setSessionId(null);
+      }
+    }
+  }, [dryRun, sessionId, setSessionId]);
 
   // Invalidate query cache on session switch.
   // useChat destroys its Chat instance on id change, so messages are lost.
@@ -106,8 +124,9 @@ export function useChatSession() {
   async function createSession() {
     if (sessionId) return sessionId;
     try {
+      const body = dryRun ? { data: { dry_run: true } } : { data: null };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const response = await (createSessionMutation as any)({ data: null });
+      const response = await (createSessionMutation as any)(body);
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
         Sentry.captureException(error, {
@@ -145,6 +164,18 @@ export function useChatSession() {
       ? ((sessionQuery.data.data.messages ?? []) as unknown[])
       : [];
 
+  // The actual dry_run value stored in the session's metadata, read directly
+  // from the API response. This reflects what the session was ACTUALLY created
+  // with — not the user's current UI preference (isDryRun store).
+  //
+  // Design intent: the global isDryRun store is only used when creating NEW
+  // sessions. Once a session exists, its dry_run flag is immutable and should
+  // be read from here rather than from the store, which may have changed.
+  const sessionDryRun = useMemo(
+    () => resolveSessionDryRun(sessionQuery.data),
+    [sessionQuery.data],
+  );
+
   return {
     sessionId,
     setSessionId,
@@ -159,5 +190,6 @@ export function useChatSession() {
     createSession,
     isCreatingSession,
     refetchSession: sessionQuery.refetch,
+    sessionDryRun,
   };
 }

@@ -1,13 +1,23 @@
 import logging
 from enum import Enum
 
-import sentry_sdk
 from pydantic import SecretStr
+from sentry_sdk._init_implementation import init as _sentry_init
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
+from sentry_sdk.api import flush as _sentry_flush
 from sentry_sdk.integrations import DidNotEnable
-from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
-from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
+
+try:
+    from sentry_sdk.integrations.anthropic import AnthropicIntegration
+except ImportError:
+    AnthropicIntegration = None  # type: ignore[assignment,misc]
+
+try:
+    from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
+except ImportError:
+    LaunchDarklyIntegration = None  # type: ignore[assignment,misc]
 
 from backend.util import feature_flag
 from backend.util.settings import BehaveAs, Settings
@@ -131,32 +141,34 @@ def _before_send(event, hint):
 def sentry_init():
     sentry_dsn = settings.secrets.sentry_dsn
     integrations = []
-    if feature_flag.is_configured():
+    if feature_flag.is_configured() and LaunchDarklyIntegration is not None:
         try:
             integrations.append(LaunchDarklyIntegration(feature_flag.get_client()))
         except DidNotEnable as e:
             logger.error(f"Error enabling LaunchDarklyIntegration for Sentry: {e}")
-    sentry_sdk.init(
+    optional_integrations = (
+        [AnthropicIntegration(include_prompts=False)]
+        if AnthropicIntegration is not None
+        else []
+    )
+    _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
-        _experiments={"enable_logs": True},
         before_send=_before_send,
         integrations=[
             AsyncioIntegration(),
-            LoggingIntegration(sentry_logs_level=logging.INFO),
-            AnthropicIntegration(
-                include_prompts=False,
-            ),
+            LoggingIntegration(),
         ]
+        + optional_integrations
         + integrations,
     )
 
 
 def sentry_capture_error(error: BaseException):
-    sentry_sdk.capture_exception(error)
-    sentry_sdk.flush()
+    _sentry_capture_exception(error)
+    _sentry_flush()
 
 
 async def discord_send_alert(
