@@ -84,7 +84,7 @@ export function CopilotPage() {
     createSession,
     onSend,
     onEnqueue,
-    queuedMessage,
+    queuedMessages,
     isLoadingSession,
     isSessionError,
     isCreatingSession,
@@ -211,7 +211,7 @@ export function CopilotPage() {
               onSend={onSend}
               onStop={stop}
               onEnqueue={onEnqueue}
-              queuedMessage={queuedMessage}
+              queuedMessages={queuedMessages}
               isUploadingFiles={isUploadingFiles}
               hasMoreMessages={hasMoreMessages}
               isLoadingMore={isLoadingMore}

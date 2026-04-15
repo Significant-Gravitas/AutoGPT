@@ -35,7 +35,7 @@ export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
+  const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
   const queryClient = useQueryClient();
 
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
@@ -270,7 +270,7 @@ export function useCopilotPage() {
         // tool-call rounds by the currently running executor turn.
         try {
           await postV2QueuePendingMessage(sessionId, { message: trimmed });
-          setQueuedMessage(trimmed);
+          setQueuedMessages((prev) => [...prev, trimmed]);
         } catch {
           toast({
             title: "Could not queue message",
@@ -320,42 +320,54 @@ export function useCopilotPage() {
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
-  // When a session loads (or changes), restore any queued message from the
-  // backend buffer so the indicator survives a page refresh (Fix 2).
+  // When a session loads (or changes), restore any queued messages from the
+  // backend buffer so the indicator survives a page refresh.
   useEffect(() => {
     if (!sessionId) {
-      setQueuedMessage(null);
+      setQueuedMessages([]);
       return;
     }
     void getV2GetPendingMessages(sessionId).then((res) => {
       if (res.status === 200 && res.data.count > 0) {
-        setQueuedMessage(
-          res.data.messages[res.data.messages.length - 1] ?? null,
-        );
+        setQueuedMessages(res.data.messages);
       }
     });
   }, [sessionId]);
 
-  // When a turn ends, peek the buffer.  Only clear the indicator if the
-  // buffer is empty — on the SDK path pending messages are drained at the
-  // *start* of the next turn, so the buffer may still be non-empty after
-  // Turn 1 finishes (Fix 3).
+  // When a turn ends, peek the buffer to sync the indicator.
   useEffect(() => {
     if (status !== "ready" && status !== "error") return;
     if (!sessionId) {
-      setQueuedMessage(null);
+      setQueuedMessages([]);
       return;
     }
     void getV2GetPendingMessages(sessionId).then((res) => {
-      if (res.status !== 200 || res.data.count === 0) {
-        setQueuedMessage(null);
-      } else {
-        setQueuedMessage(
-          res.data.messages[res.data.messages.length - 1] ?? null,
-        );
-      }
+      setQueuedMessages(
+        res.status === 200 && res.data.count > 0 ? res.data.messages : [],
+      );
     });
   }, [status, sessionId]);
+
+  // When a new message appears during streaming the auto-continue turn has
+  // started — the buffer was already drained server-side, so peek and clear.
+  const prevMessageCountRef = useRef(messages.length);
+  useEffect(() => {
+    const isActive = status === "streaming" || status === "submitted";
+    if (
+      !isActive ||
+      !sessionId ||
+      messages.length <= prevMessageCountRef.current
+    ) {
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
+    prevMessageCountRef.current = messages.length;
+    void getV2GetPendingMessages(sessionId).then((res) => {
+      if (res.status === 200 && res.data.count === 0) {
+        setQueuedMessages([]);
+      }
+    });
+  }, [messages.length, status, sessionId]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
   const titlePollRef = useRef<ReturnType<typeof setInterval>>();
@@ -465,7 +477,7 @@ export function useCopilotPage() {
     createSession,
     onSend,
     onEnqueue,
-    queuedMessage,
+    queuedMessages,
     // Pagination
     hasMoreMessages: hasMore,
     isLoadingMore,
