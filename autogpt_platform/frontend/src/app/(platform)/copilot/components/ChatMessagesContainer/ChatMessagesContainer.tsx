@@ -45,8 +45,8 @@ interface Props {
   onLoadMore?: () => void;
   onRetry?: () => void;
   historicalDurations?: Map<string, number>;
-  /** A pending queued message waiting to be injected, shown at the end of chat. */
-  queuedMessage?: string | null;
+  /** Pending queued messages waiting to be injected, shown at the end of chat. */
+  queuedMessages?: string[];
 }
 
 function renderSegments(
@@ -210,7 +210,7 @@ export function ChatMessagesContainer({
   onLoadMore,
   onRetry,
   historicalDurations,
-  queuedMessage,
+  queuedMessages,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -435,17 +435,17 @@ export function ChatMessagesContainer({
           </Message>
         )}
         {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
-        {queuedMessage && (
-          <Message from="user">
+        {queuedMessages?.map((msg, idx) => (
+          <Message key={idx} from="user">
             <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
-              <span>{queuedMessage}</span>
+              <span>{msg}</span>
               <span className="flex items-center gap-1 text-xs text-slate-500">
                 <Clock className="size-3" weight="bold" />
                 Queued
               </span>
             </MessageContent>
           </Message>
-        )}
+        ))}
         {error && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
