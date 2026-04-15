@@ -218,6 +218,9 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
+            {/* Mode and model are per-message settings sent with each stream request,
+                so they can be freely changed between turns in an existing session.
+                Hide only while actively streaming (too late to change for that turn). */}
             {showModeToggle && !isStreaming && (
               <ModeToggleButton
                 mode={copilotChatMode}
@@ -230,11 +233,13 @@ export function ChatInput({
                 onToggle={handleToggleModel}
               />
             )}
-            {showDryRunToggle && (!hasSession || isDryRun) && (
+            {/* DryRun button only on new chats: once a session exists its
+                dry_run flag is locked and should be read from session metadata
+                (sessionDryRun in useCopilotPage), not toggled here. The banner
+                in CopilotPage.tsx reflects the actual session state. */}
+            {showDryRunToggle && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
-                isStreaming={isStreaming}
-                readOnly={hasSession}
                 onToggle={handleToggleDryRun}
               />
             )}

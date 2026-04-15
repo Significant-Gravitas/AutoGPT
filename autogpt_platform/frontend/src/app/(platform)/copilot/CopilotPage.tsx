@@ -113,8 +113,8 @@ export function CopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
-    // Dry run dev toggle
-    isDryRun,
+    // Dry run session state
+    sessionDryRun,
   } = useCopilotPage();
 
   const {
@@ -176,10 +176,15 @@ export function CopilotPage() {
         >
           {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
           <NotificationBanner />
-          {isDryRun && (
+          {/* Test mode banner: only shown when the CURRENT session is confirmed to be
+              a dry_run session via its immutable metadata. Never shown based on the
+              global isDryRun store preference alone — that only predicts future sessions
+              and would mislead users browsing non-dry-run sessions while the toggle is on.
+              The DryRunToggleButton (visible on new chats) already communicates the preference. */}
+          {sessionId && sessionDryRun && (
             <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
               <Flask size={13} weight="bold" />
-              Test mode — new sessions use dry_run=true
+              Test mode — this session runs agents as simulation
             </div>
           )}
           {/* Drop overlay */}

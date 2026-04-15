@@ -3,6 +3,7 @@ import {
   screen,
   cleanup,
   waitFor,
+  fireEvent,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlatformCostContent } from "../components/PlatformCostContent";
@@ -349,6 +350,95 @@ describe("PlatformCostContent", () => {
     expect(screen.getAllByText(/Provider/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("User ID")).toBeDefined();
     expect(screen.getByText("Apply")).toBeDefined();
+  });
+
+  it("renders execution ID filter input", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    expect(screen.getByText("Execution ID")).toBeDefined();
+    expect(screen.getByPlaceholderText("Filter by execution")).toBeDefined();
+  });
+
+  it("pre-fills execution ID filter from searchParams", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent({ graph_exec_id: "exec-123" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("exec-123");
+  });
+
+  it("clears execution ID input on Clear click", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent({ graph_exec_id: "exec-123" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    fireEvent.click(screen.getByText("Clear"));
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("");
+  });
+
+  it("passes execution ID to filter on Apply click", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "exec-abc" } });
+    expect(input.value).toBe("exec-abc");
+    fireEvent.click(screen.getByText("Apply"));
+    // After apply, the input still holds the typed value
+    expect(input.value).toBe("exec-abc");
+  });
+
+  it("copies execution ID to clipboard on cell click in logs tab", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    mockUseGetDashboard.mockReturnValue({
+      data: dashboardWithData,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: logsWithData,
+      isLoading: false,
+    });
+    renderComponent({ tab: "logs" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    // The exec ID cell shows first 8 chars of "gx-123"
+    const execIdCell = screen.getByText("gx-123".slice(0, 8));
+    fireEvent.click(execIdCell);
+    expect(writeText).toHaveBeenCalledWith("gx-123");
+    vi.unstubAllGlobals();
   });
 
   it("renders by-user tab when specified", async () => {

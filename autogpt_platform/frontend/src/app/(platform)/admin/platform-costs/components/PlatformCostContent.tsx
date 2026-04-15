@@ -19,6 +19,7 @@ interface Props {
     model?: string;
     block_name?: string;
     tracking_type?: string;
+    graph_exec_id?: string;
     page?: string;
     tab?: string;
   };
@@ -47,6 +48,8 @@ export function PlatformCostContent({ searchParams }: Props) {
     setBlockInput,
     typeInput,
     setTypeInput,
+    executionIDInput,
+    setExecutionIDInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,
@@ -235,6 +238,22 @@ export function PlatformCostContent({ searchParams }: Props) {
             onChange={(e) => setTypeInput(e.target.value)}
           />
         </div>
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="execution-id-filter"
+            className="text-sm text-muted-foreground"
+          >
+            Execution ID
+          </label>
+          <input
+            id="execution-id-filter"
+            type="text"
+            placeholder="Filter by execution"
+            className="rounded border px-3 py-1.5 text-sm"
+            value={executionIDInput}
+            onChange={(e) => setExecutionIDInput(e.target.value)}
+          />
+        </div>
         <button
           onClick={handleFilter}
           className="rounded bg-primary px-4 py-1.5 text-sm text-primary-foreground hover:bg-primary/90"
@@ -250,6 +269,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             setModelInput("");
             setBlockInput("");
             setTypeInput("");
+            setExecutionIDInput("");
             updateUrl({
               start: "",
               end: "",
@@ -258,6 +278,7 @@ export function PlatformCostContent({ searchParams }: Props) {
               model: "",
               block_name: "",
               tracking_type: "",
+              graph_exec_id: "",
               page: "1",
             });
           }}

@@ -50,7 +50,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.run_agent import RunAgentInput
 
 # Resolved once for the whole module so individual tests stay fast.
-_SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
+_SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False)
 
 
 # ---------------------------------------------------------------------------
