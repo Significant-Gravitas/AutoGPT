@@ -123,7 +123,7 @@ export function SitrepItem({ item }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5 pl-9 sm:flex-nowrap sm:pl-0">
+      <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
         {item.priority === "success" ? (
           <NextLink
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
