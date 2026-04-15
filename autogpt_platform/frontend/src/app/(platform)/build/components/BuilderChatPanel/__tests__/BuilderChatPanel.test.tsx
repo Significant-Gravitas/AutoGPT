@@ -372,13 +372,11 @@ describe("BuilderChatPanel", () => {
     expect(screen.getByText("I see you have an empty graph.")).toBeDefined();
   });
 
-  it("passes onGraphEdited and isGraphLoaded to useBuilderChatPanel", () => {
+  it("passes onGraphEdited to useBuilderChatPanel", () => {
     const onGraphEdited = vi.fn();
-    render(
-      <BuilderChatPanel onGraphEdited={onGraphEdited} isGraphLoaded={true} />,
-    );
+    render(<BuilderChatPanel onGraphEdited={onGraphEdited} />);
     expect(mockUseBuilderChatPanel).toHaveBeenCalledWith(
-      expect.objectContaining({ isGraphLoaded: true, onGraphEdited }),
+      expect.objectContaining({ onGraphEdited }),
     );
   });
 });

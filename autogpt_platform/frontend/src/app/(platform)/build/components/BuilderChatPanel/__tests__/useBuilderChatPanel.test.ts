@@ -863,9 +863,7 @@ describe("useBuilderChatPanel – retrySession", () => {
       status: 200,
       data: { id: "sess-first" },
     });
-    const { result } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
+    const { result } = renderHook(() => useBuilderChatPanel());
     await openAndFlush(() => result.current.handleToggle());
     expect(result.current.sessionId).toBe("sess-first");
     expect(mockSendMessage).not.toHaveBeenCalled(); // no auto-send

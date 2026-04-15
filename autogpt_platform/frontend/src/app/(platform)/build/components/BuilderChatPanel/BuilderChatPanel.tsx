@@ -11,15 +11,10 @@ import { useBuilderChatPanel } from "./useBuilderChatPanel";
 
 interface Props {
   className?: string;
-  isGraphLoaded?: boolean;
   onGraphEdited?: () => void;
 }
 
-export function BuilderChatPanel({
-  className,
-  isGraphLoaded,
-  onGraphEdited,
-}: Props) {
+export function BuilderChatPanel({ className, onGraphEdited }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const {
     isOpen,
@@ -43,7 +38,7 @@ export function BuilderChatPanel({
     handleKeyDown,
     isStreaming,
     canSend,
-  } = useBuilderChatPanel({ isGraphLoaded, onGraphEdited, panelRef });
+  } = useBuilderChatPanel({ onGraphEdited, panelRef });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);

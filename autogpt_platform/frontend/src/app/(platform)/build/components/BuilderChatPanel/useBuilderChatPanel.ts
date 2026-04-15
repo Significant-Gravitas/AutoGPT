@@ -19,7 +19,6 @@ import { GraphAction, getActionKey } from "./helpers";
 import { useActionParser } from "./useActionParser";
 import {
   clearGraphSessionCacheForTesting,
-  graphSessionCache,
   useSessionManager,
 } from "./useSessionManager";
 import { useToolCallHandler } from "./useToolCallHandler";
@@ -30,7 +29,6 @@ export { clearGraphSessionCacheForTesting };
 const EMPTY_NODES: never[] = [];
 
 interface UseBuilderChatPanelArgs {
-  isGraphLoaded?: boolean;
   onGraphEdited?: () => void;
   panelRef?: RefObject<HTMLElement | null>;
 }
@@ -90,7 +88,6 @@ export function useBuilderChatPanel({
     status,
     error,
     retrySession: retrySessionBase,
-    isCreatingSessionRef,
   } = useSessionManager({ isOpen, flowID, currentFlowIDRef });
 
   const { parsedActions } = useActionParser({ messages, status });
@@ -105,7 +102,6 @@ export function useBuilderChatPanel({
     setAppliedActionKeys(new Set());
     setUndoStack([]);
     setInputValue("");
-    isCreatingSessionRef.current = false;
     setMessages([]);
     // setMessages is a stable function from useChat; excluding from deps is safe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,7 +147,6 @@ export function useBuilderChatPanel({
   // Messages are cleared so stale messages from the previous session are not
   // shown alongside content from the new session.
   function retrySession() {
-    if (flowID) graphSessionCache.delete(flowID);
     retrySessionBase();
   }
 

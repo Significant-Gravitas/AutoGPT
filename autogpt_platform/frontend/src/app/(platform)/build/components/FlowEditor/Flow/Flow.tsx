@@ -141,10 +141,7 @@ export const Flow = () => {
       />
       {isBuilderChatEnabled && (
         <ErrorBoundary context="BuilderChatPanel" fallback={null}>
-          <BuilderChatPanel
-            isGraphLoaded={isInitialLoadComplete}
-            onGraphEdited={() => void refetchGraph()}
-          />
+          <BuilderChatPanel onGraphEdited={() => void refetchGraph()} />
         </ErrorBoundary>
       )}
     </div>
