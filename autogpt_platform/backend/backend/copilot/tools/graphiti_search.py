@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.copilot.graphiti._format import (
     extract_episode_body,
+    extract_episode_body_raw,
     extract_episode_timestamp,
     extract_fact,
     extract_temporal_validity,
@@ -52,6 +53,15 @@ class MemorySearchTool(BaseTool):
                     "description": "Maximum number of results to return",
                     "default": 15,
                 },
+                "scope": {
+                    "type": "string",
+                    "description": (
+                        "Optional scope filter. When set, only memories matching "
+                        "this scope are returned (hard filter). "
+                        "Examples: 'real:global', 'project:crm', 'book:my-novel'. "
+                        "Omit to search all scopes."
+                    ),
+                },
             },
             "required": ["query"],
         }
@@ -67,6 +77,7 @@ class MemorySearchTool(BaseTool):
         *,
         query: str = "",
         limit: int = 15,
+        scope: str = "",
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -122,7 +133,14 @@ class MemorySearchTool(BaseTool):
             )
 
         facts = _format_edges(edges)
-        recent = _format_episodes(episodes)
+
+        # Scope hard-filter: if a scope was requested, filter episodes
+        # whose MemoryEnvelope JSON contains a different scope.
+        # Skip redundant _format_episodes() when scope is set.
+        if scope:
+            recent = _filter_episodes_by_scope(episodes, scope)
+        else:
+            recent = _format_episodes(episodes)
 
         if not facts and not recent:
             return MemorySearchResponse(
@@ -132,9 +150,10 @@ class MemorySearchTool(BaseTool):
                 recent_episodes=[],
             )
 
+        scope_note = f" (scope filter: {scope})" if scope else ""
         return MemorySearchResponse(
             message=(
-                f"Found {len(facts)} relationship facts and {len(recent)} stored memories. "
+                f"Found {len(facts)} relationship facts and {len(recent)} stored memories{scope_note}. "
                 "Use BOTH sections to answer — stored memories often contain operational "
                 "rules and instructions that relationship facts summarize."
             ),
@@ -159,4 +178,36 @@ def _format_episodes(episodes) -> list[str]:
         ts = extract_episode_timestamp(ep)
         body = extract_episode_body(ep)
         results.append(f"[{ts}] {body}")
+    return results
+
+
+def _filter_episodes_by_scope(episodes, scope: str) -> list[str]:
+    """Filter episodes by scope — hard filter on MemoryEnvelope JSON content.
+
+    Episodes that are plain conversation text (not JSON envelopes) are
+    included by default since they have no scope metadata and belong
+    to the implicit ``real:global`` scope.
+
+    Uses ``extract_episode_body_raw`` (no truncation) for JSON parsing
+    so that long MemoryEnvelope payloads are parsed correctly.
+    """
+    import json
+
+    results = []
+    for ep in episodes:
+        raw_body = extract_episode_body_raw(ep)
+        try:
+            data = json.loads(raw_body)
+            if not isinstance(data, dict):
+                raise TypeError("non-dict JSON")
+            ep_scope = data.get("scope", "real:global")
+            if ep_scope != scope:
+                continue
+        except (json.JSONDecodeError, TypeError):
+            # Not JSON or non-dict JSON — plain conversation episode, treat as real:global
+            if scope != "real:global":
+                continue
+        display_body = extract_episode_body(ep)
+        ts = extract_episode_timestamp(ep)
+        results.append(f"[{ts}] {display_body}")
     return results
