@@ -45,7 +45,12 @@
 
 .chip {
   overflow: hidden;
-  padding-bottom: 0.5rem;
+}
+
+@media (hover: hover) {
+  .chip {
+    padding-bottom: 0.7rem;
+  }
 }
 
 @media (hover: none) {
