@@ -271,12 +271,13 @@ export function useCopilotPage() {
         try {
           await postV2QueuePendingMessage(sessionId, { message: trimmed });
           setQueuedMessages((prev) => [...prev, trimmed]);
-        } catch {
+        } catch (err) {
           toast({
             title: "Could not queue message",
             description: "Please wait for the current response to finish.",
             variant: "destructive",
           });
+          throw err;
         }
         return;
       }
