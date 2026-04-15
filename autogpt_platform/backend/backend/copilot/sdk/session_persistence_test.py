@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from backend.copilot.model import ChatMessage, ChatSession
-from backend.copilot.response_model import StreamTextDelta
+from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -198,8 +198,6 @@ class TestPreCreateAssistantMessage:
     def test_pre_create_not_triggered_without_text_delta(self) -> None:
         """Pre-create is skipped when adapter_responses has no StreamTextDelta
         (e.g. a tool-only batch). Verifies the third guard condition."""
-        from backend.copilot.response_model import StreamStartStep
-
         acc = _StreamAccumulator(
             assistant_response=ChatMessage(role="assistant", content=""),
             accumulated_tool_calls=[],
