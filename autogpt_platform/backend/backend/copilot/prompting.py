@@ -174,6 +174,7 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
+- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before asking them to connect it.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
