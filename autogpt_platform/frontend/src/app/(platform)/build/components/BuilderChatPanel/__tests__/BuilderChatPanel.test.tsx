@@ -15,6 +15,7 @@ import {
   extractTextFromParts,
   SEED_PROMPT_PREFIX,
   MAX_SEED_SUMMARY_CHARS,
+  MAX_BACKEND_MESSAGE_CHARS,
 } from "../helpers";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
 import type { CustomEdge } from "../../FlowEditor/edges/CustomEdge";
@@ -765,6 +766,20 @@ describe("buildSeedPrompt", () => {
     const summary = "x".repeat(MAX_SEED_SUMMARY_CHARS);
     const result = buildSeedPrompt(summary, "hello");
     expect(result).not.toContain("Graph context truncated");
+  });
+
+  it("caps total output at MAX_BACKEND_MESSAGE_CHARS even when summary + userMessage are both large", () => {
+    const summary = "s".repeat(MAX_SEED_SUMMARY_CHARS);
+    const userMessage = "u".repeat(MAX_BACKEND_MESSAGE_CHARS);
+    const result = buildSeedPrompt(summary, userMessage);
+    expect(result.length).toBeLessThanOrEqual(MAX_BACKEND_MESSAGE_CHARS);
+  });
+
+  it("does not cap output when total is within MAX_BACKEND_MESSAGE_CHARS", () => {
+    const result = buildSeedPrompt("small summary", "short message");
+    expect(result.length).toBeLessThan(MAX_BACKEND_MESSAGE_CHARS);
+    expect(result).toContain("small summary");
+    expect(result).toContain("short message");
   });
 });
 
