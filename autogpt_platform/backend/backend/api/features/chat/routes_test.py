@@ -710,11 +710,12 @@ def _mock_pending_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
-    # Mock Redis for per-user call-frequency rate limit (atomic Lua EVAL)
+    # Mock Redis for per-user call-frequency rate limit — patch where the
+    # symbol is *used* (pending_message_helpers), not where it's defined.
     mock_redis = mocker.MagicMock()
     mock_redis.eval = mocker.AsyncMock(return_value=call_count)
     mocker.patch(
-        "backend.api.features.chat.routes.get_redis_async",
+        "backend.copilot.pending_message_helpers.get_redis_async",
         new_callable=AsyncMock,
         return_value=mock_redis,
     )
@@ -804,9 +805,9 @@ def test_queue_pending_message_call_frequency_limit_returns_429(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """When per-user call frequency limit is exceeded, endpoint returns 429."""
-    from backend.api.features.chat.routes import _PENDING_CALL_LIMIT
+    from backend.copilot.pending_message_helpers import PENDING_CALL_LIMIT
 
-    _mock_pending_internals(mocker, call_count=_PENDING_CALL_LIMIT + 1)
+    _mock_pending_internals(mocker, call_count=PENDING_CALL_LIMIT + 1)
 
     response = client.post(
         "/sessions/sess-1/messages/pending",
