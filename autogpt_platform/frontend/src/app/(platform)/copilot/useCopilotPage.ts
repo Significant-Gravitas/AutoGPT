@@ -92,6 +92,16 @@ export function useCopilotPage() {
       initialPageRawMessages: rawSessionMessages,
     });
 
+  // Ref that mirrors whether a stream turn is currently in-flight.
+  // Updated synchronously on every render so it always reflects the latest
+  // status — unlike reading `status` inside onSend (which captures the
+  // closure's render-cycle value and can be stale for a frame).
+  // Setting it to true *before* calling sendMessage prevents rapid
+  // double-presses from both routing to /stream before React can re-render
+  // with status="submitted".
+  const isInflightRef = useRef(false);
+  isInflightRef.current = status === "streaming" || status === "submitted";
+
   // Combine older (paginated) messages with current page messages,
   // merging consecutive assistant UIMessages at the page boundary so
   // reasoning + response parts stay in a single bubble.
@@ -251,7 +261,7 @@ export function useCopilotPage() {
     isUserStoppingRef.current = false;
 
     if (sessionId) {
-      const isInFlight = status === "streaming" || status === "submitted";
+      const isInFlight = isInflightRef.current;
 
       if (isInFlight) {
         // File attachments cannot be included in a queued pending message —
@@ -282,12 +292,17 @@ export function useCopilotPage() {
         return;
       }
 
+      // Mark in-flight synchronously before sendMessage so any rapid
+      // second press sees isInflightRef.current=true and routes to /pending
+      // instead of triggering a duplicate /stream POST.
+      isInflightRef.current = true;
       if (files && files.length > 0) {
         setIsUploadingFiles(true);
         try {
           const uploaded = await uploadFiles(files, sessionId);
           if (uploaded.length === 0) {
             // All uploads failed — abort send so chips revert to editable
+            isInflightRef.current = false;
             throw new Error("All file uploads failed");
           }
           const fileParts = buildFileParts(uploaded);
