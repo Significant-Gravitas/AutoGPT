@@ -302,6 +302,7 @@ async def record_token_usage(
     *,
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
+    model_cost_multiplier: float = 1.0,
 ) -> None:
     """Record token usage for a user across all windows.
 
@@ -315,12 +316,17 @@ async def record_token_usage(
     ``prompt_tokens`` should be the *uncached* input count (``input_tokens``
     from the API response). Cache counts are passed separately.
 
+    ``model_cost_multiplier`` scales the final weighted total to reflect
+    relative model cost. Use 5.0 for Opus (5× more expensive than Sonnet)
+    so that Opus turns deplete the rate limit faster, proportional to cost.
+
     Args:
         user_id: The user's ID.
         prompt_tokens: Uncached input tokens.
         completion_tokens: Output tokens.
         cache_read_tokens: Tokens served from prompt cache (10% cost).
         cache_creation_tokens: Tokens written to prompt cache (25% cost).
+        model_cost_multiplier: Relative model cost factor (1.0 = Sonnet, 5.0 = Opus).
     """
     prompt_tokens = max(0, prompt_tokens)
     completion_tokens = max(0, completion_tokens)
@@ -332,7 +338,9 @@ async def record_token_usage(
         + round(cache_creation_tokens * 0.25)
         + round(cache_read_tokens * 0.1)
     )
-    total = weighted_input + completion_tokens
+    total = round(
+        (weighted_input + completion_tokens) * max(1.0, model_cost_multiplier)
+    )
     if total <= 0:
         return
 
@@ -340,11 +348,12 @@ async def record_token_usage(
         prompt_tokens + cache_read_tokens + cache_creation_tokens + completion_tokens
     )
     logger.info(
-        "Recording token usage for %s: raw=%d, weighted=%d "
+        "Recording token usage for %s: raw=%d, weighted=%d, multiplier=%.1fx "
         "(uncached=%d, cache_read=%d@10%%, cache_create=%d@25%%, output=%d)",
         user_id[:8],
         raw_total,
         total,
+        model_cost_multiplier,
         prompt_tokens,
         cache_read_tokens,
         cache_creation_tokens,

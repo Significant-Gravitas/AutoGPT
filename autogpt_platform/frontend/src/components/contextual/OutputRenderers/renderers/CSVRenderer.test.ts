@@ -1,3 +1,5 @@
+import { render, screen } from "@testing-library/react";
+import type React from "react";
 import { describe, expect, it } from "vitest";
 import { csvRenderer } from "./CSVRenderer";
 
@@ -15,6 +17,16 @@ describe("csvRenderer.canRender", () => {
   });
   it("matches .csv filename case-insensitively", () => {
     expect(csvRenderer.canRender("a,b", { filename: "data.CSV" })).toBe(true);
+  });
+  it("matches TSV mime type", () => {
+    expect(
+      csvRenderer.canRender("a\tb\n1\t2", {
+        mimeType: "text/tab-separated-values",
+      }),
+    ).toBe(true);
+  });
+  it("matches .tsv filename case-insensitively", () => {
+    expect(csvRenderer.canRender("a\tb", { filename: "data.TSV" })).toBe(true);
   });
   it("rejects non-string values", () => {
     expect(csvRenderer.canRender(42, { mimeType: "text/csv" })).toBe(false);
@@ -63,5 +75,17 @@ describe("csvRenderer.render (parse via render output smoke)", () => {
   it("handles escaped double quote inside a quoted field", () => {
     const csv = 'name\n"She said ""hi"""';
     expect(() => csvRenderer.render(csv)).not.toThrow();
+  });
+  it("renders TSV columns using tabs as the delimiter", () => {
+    render(
+      csvRenderer.render("name\tage\nAlice\t30", {
+        filename: "data.tsv",
+      }) as React.ReactElement,
+    );
+
+    expect(screen.getByText("name")).toBeDefined();
+    expect(screen.getByText("age")).toBeDefined();
+    expect(screen.getByText("Alice")).toBeDefined();
+    expect(screen.getByText("30")).toBeDefined();
   });
 });

@@ -64,10 +64,7 @@ export const ChatContainer = ({
   // open state drive layout width; an artifact generated in a stale session
   // state would otherwise shrink the chat column with no panel rendered.
   const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
-  useAutoOpenArtifacts({
-    messages: isArtifactsEnabled ? messages : [],
-    sessionId,
-  });
+  useAutoOpenArtifacts({ sessionId });
   const isBusy =
     status === "streaming" ||
     status === "submitted" ||
