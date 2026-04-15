@@ -77,11 +77,12 @@ export function NotificationDialog() {
             <BellRinging className="h-6 w-6 text-violet-600" weight="fill" />
           </div>
           <Text variant="body" className="text-center text-neutral-600">
-            Otto can notify you when a response is ready, even if you switch
-            tabs or close this page. Enable notifications so you never miss one.
+            AutoPilot can notify you when a response is ready, even if you
+            switch tabs or close this page. Enable notifications so you never
+            miss one.
           </Text>
         </div>
-        <Dialog.Footer>
+        <Dialog.Footer className="justify-center">
           <Button variant="secondary" onClick={handleDismiss}>
             Not now
           </Button>

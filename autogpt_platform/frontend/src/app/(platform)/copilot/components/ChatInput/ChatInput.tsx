@@ -5,17 +5,23 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
+import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
+import { ModelToggleButton } from "./components/ModelToggleButton";
+import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { useCopilotUIStore } from "../../store";
 import { useChatInput } from "./useChatInput";
 import { useVoiceRecording } from "./useVoiceRecording";
 
-export interface Props {
+interface Props {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -28,6 +34,8 @@ export interface Props {
   droppedFiles?: File[];
   /** Called after droppedFiles have been merged into internal state. */
   onDroppedFilesConsumed?: () => void;
+  /** When true, the dry-run toggle is disabled (session is active and immutable). */
+  hasSession?: boolean;
 }
 
 export function ChatInput({
@@ -41,8 +49,61 @@ export function ChatInput({
   inputId = "chat-input",
   droppedFiles,
   onDroppedFilesConsumed,
+  hasSession = false,
 }: Props) {
+  const {
+    copilotChatMode,
+    setCopilotChatMode,
+    copilotLlmModel,
+    setCopilotLlmModel,
+    isDryRun,
+    setIsDryRun,
+  } = useCopilotUIStore();
+  const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
+  const showDryRunToggle = showModeToggle;
   const [files, setFiles] = useState<File[]>([]);
+
+  function handleToggleMode() {
+    const next =
+      copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
+    setCopilotChatMode(next);
+    toast({
+      title:
+        next === "fast"
+          ? "Switched to Fast mode"
+          : "Switched to Extended Thinking mode",
+      description:
+        next === "fast"
+          ? "Optimized for speed — ideal for simpler tasks."
+          : "Responses may take longer.",
+    });
+  }
+
+  function handleToggleModel() {
+    const next = copilotLlmModel === "advanced" ? "standard" : "advanced";
+    setCopilotLlmModel(next);
+    toast({
+      title:
+        next === "advanced"
+          ? "Switched to Advanced model"
+          : "Switched to Standard model",
+      description:
+        next === "advanced"
+          ? "Using the highest-capability model."
+          : "Using the balanced standard model.",
+    });
+  }
+
+  function handleToggleDryRun() {
+    const next = !isDryRun;
+    setIsDryRun(next);
+    toast({
+      title: next ? "Test mode enabled" : "Test mode disabled",
+      description: next
+        ? "New chats will run agents in test mode."
+        : "New chats will run agents normally.",
+    });
+  }
 
   // Merge files dropped onto the chat window into internal state.
   useEffect(() => {
@@ -157,6 +218,31 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
+            {/* Mode and model are per-message settings sent with each stream request,
+                so they can be freely changed between turns in an existing session.
+                Hide only while actively streaming (too late to change for that turn). */}
+            {showModeToggle && !isStreaming && (
+              <ModeToggleButton
+                mode={copilotChatMode}
+                onToggle={handleToggleMode}
+              />
+            )}
+            {showModeToggle && !isStreaming && (
+              <ModelToggleButton
+                model={copilotLlmModel}
+                onToggle={handleToggleModel}
+              />
+            )}
+            {/* DryRun button only on new chats: once a session exists its
+                dry_run flag is locked and should be read from session metadata
+                (sessionDryRun in useCopilotPage), not toggled here. The banner
+                in CopilotPage.tsx reflects the actual session state. */}
+            {showDryRunToggle && !hasSession && (
+              <DryRunToggleButton
+                isDryRun={isDryRun}
+                onToggle={handleToggleDryRun}
+              />
+            )}
           </PromptInputTools>
 
           <div className="flex items-center gap-4">

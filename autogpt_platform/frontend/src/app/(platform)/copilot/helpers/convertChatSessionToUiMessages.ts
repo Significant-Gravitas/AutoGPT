@@ -6,6 +6,7 @@ interface SessionChatMessage {
   content: string | null;
   tool_call_id: string | null;
   tool_calls: unknown[] | null;
+  sequence: number | null;
   duration_ms: number | null;
 }
 
@@ -35,6 +36,7 @@ function coerceSessionChatMessages(
               ? null
               : String(msg.tool_call_id),
         tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : null,
+        sequence: typeof msg.sequence === "number" ? msg.sequence : null,
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
       };
@@ -101,16 +103,81 @@ function toToolInput(rawArguments: unknown): unknown {
   return {};
 }
 
+/**
+ * Concatenate two UIMessage arrays, merging consecutive assistant messages
+ * at the join point so that reasoning + response parts stay in a single bubble.
+ *
+ * Within each page, `convertChatSessionMessagesToUiMessages` already merges
+ * consecutive assistant DB rows. This handles the boundary between pages
+ * (or between older-pages and the current/streaming page).
+ */
+export function concatWithAssistantMerge(
+  a: UIMessage<unknown, UIDataTypes, UITools>[],
+  b: UIMessage<unknown, UIDataTypes, UITools>[],
+): UIMessage<unknown, UIDataTypes, UITools>[] {
+  if (a.length === 0) return b;
+  if (b.length === 0) return a;
+  const last = a[a.length - 1];
+  const first = b[0];
+  if (last.role === "assistant" && first.role === "assistant") {
+    return [
+      ...a.slice(0, -1),
+      { ...last, parts: [...last.parts, ...first.parts] },
+      ...b.slice(1),
+    ];
+  }
+  return [...a, ...b];
+}
+
+/**
+ * Extract a toolCallId → output map from raw API messages.
+ * Used to provide cross-page tool output context when converting
+ * older pages that may have assistant tool_calls whose results
+ * are in a newer page.
+ */
+export function extractToolOutputsFromRaw(
+  rawMessages: unknown[],
+): Map<string, unknown> {
+  const map = new Map<string, unknown>();
+  for (const raw of rawMessages) {
+    if (!raw || typeof raw !== "object") continue;
+    const msg = raw as Record<string, unknown>;
+    if (
+      msg.role === "tool" &&
+      typeof msg.tool_call_id === "string" &&
+      msg.content != null
+    ) {
+      map.set(
+        msg.tool_call_id,
+        typeof msg.content === "string" ? msg.content : String(msg.content),
+      );
+    }
+  }
+  return map;
+}
+
 export function convertChatSessionMessagesToUiMessages(
   sessionId: string,
   rawMessages: unknown[],
-  options?: { isComplete?: boolean },
+  options?: {
+    isComplete?: boolean;
+    /** Tool outputs from adjacent pages, for cross-page tool_call matching. */
+    extraToolOutputs?: Map<string, unknown>;
+  },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   durations: Map<string, number>;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
+
+  // Seed with extra tool outputs from adjacent pages first;
+  // outputs from this page will override if present in both.
+  if (options?.extraToolOutputs) {
+    for (const [id, output] of options.extraToolOutputs) {
+      toolOutputsByCallId.set(id, output);
+    }
+  }
 
   for (const msg of messages) {
     if (msg.role !== "tool") continue;
@@ -122,7 +189,7 @@ export function convertChatSessionMessagesToUiMessages(
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
   const durations = new Map<string, number>();
 
-  messages.forEach((msg, index) => {
+  messages.forEach((msg) => {
     if (msg.role === "tool") return;
     if (msg.role !== "user" && msg.role !== "assistant") return;
 
@@ -200,7 +267,7 @@ export function convertChatSessionMessagesToUiMessages(
       return;
     }
 
-    const msgId = `${sessionId}-${index}`;
+    const msgId = `${sessionId}-seq-${msg.sequence}`;
     uiMessages.push({
       id: msgId,
       role: msg.role,

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -9,8 +9,11 @@ import {
   MessageActions,
   MessageContent,
 } from "@/components/ai-elements/message";
+import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
@@ -37,6 +40,9 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   sessionID?: string | null;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   onRetry?: () => void;
   historicalDurations?: Map<string, number>;
 }
@@ -106,15 +112,166 @@ function extractGraphExecId(
   return null;
 }
 
+// Max consecutive auto-triggered loads where the container remains
+// non-scrollable afterwards. Prevents chewing through history on
+// sessions whose every page collapses below viewport height. The
+// manual "Load older messages" button always remains clickable.
+const MAX_AUTO_FILL_ROUNDS = 3;
+
+/**
+ * Triggers `onLoadMore` when scrolled near the top, preserves the
+ * user's scroll position after older messages are prepended, and
+ * exposes a manual "Load older messages" button as a fallback when
+ * auto-fill backs off or the container isn't scrollable.
+ *
+ * Scroll preservation works by:
+ * 1. Capturing `scrollHeight` / `scrollTop` just before `onLoadMore`
+ *    (synchronous, before React re-renders).
+ * 2. Restoring `scrollTop` in a `useLayoutEffect` keyed on
+ *    `messageCount` so it only fires when messages actually change
+ *    (not on intermediate renders like the loading-spinner toggle).
+ */
+export function LoadMoreSentinel({
+  hasMore,
+  isLoading,
+  messageCount,
+  onLoadMore,
+}: {
+  hasMore: boolean;
+  isLoading: boolean;
+  messageCount: number;
+  onLoadMore: () => void;
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  // Pre-mutation scroll snapshot, written synchronously before onLoadMore
+  const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
+  // Consecutive auto-triggered loads that left the container non-scrollable
+  const autoFillRoundsRef = useRef(0);
+  // True if the pending load was triggered by the observer (not the button)
+  const autoTriggeredRef = useRef(false);
+  // Same-frame re-entry guard — the parent's `isLoading` flag lags by a
+  // render, so the observer or button could otherwise fire a duplicate
+  // load and overwrite the captured scroll snapshot before the first
+  // load settles.
+  const loadPendingRef = useRef(false);
+  const { scrollRef } = useStickToBottomContext();
+
+  useEffect(() => {
+    if (!isLoading) loadPendingRef.current = false;
+  }, [isLoading]);
+
+  function captureAndLoad(fromObserver: boolean) {
+    if (loadPendingRef.current) return;
+    loadPendingRef.current = true;
+    const el = scrollRef.current;
+    if (el) {
+      scrollSnapshotRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      };
+    }
+    autoTriggeredRef.current = fromObserver;
+    onLoadMoreRef.current();
+  }
+
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore || isLoading) return;
+    if (autoFillRoundsRef.current >= MAX_AUTO_FILL_ROUNDS) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        if (autoFillRoundsRef.current >= MAX_AUTO_FILL_ROUNDS) return;
+        captureAndLoad(true);
+      },
+      { rootMargin: "200px 0px 0px 0px" },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, isLoading, scrollRef]);
+
+  // After React commits new DOM nodes (prepended messages), adjust
+  // scrollTop so the user stays at the same visual position.
+  // Keyed on messageCount so it only fires when messages actually
+  // change — NOT on intermediate renders (loading spinner, etc.)
+  // that would consume the snapshot too early.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const { scrollHeight: prevHeight, scrollTop: prevTop } =
+      scrollSnapshotRef.current;
+    if (!el || prevHeight === 0) return;
+    const delta = el.scrollHeight - prevHeight;
+    if (delta > 0) {
+      el.scrollTop = prevTop + delta;
+    }
+    // Reset the auto-fill backoff whenever the container becomes
+    // scrollable (from any load), so a manual button click can unstick
+    // auto-fill after it has hit the cap. Only count non-scrollable
+    // outcomes against the cap when the load itself was auto-triggered.
+    if (el.scrollHeight > el.clientHeight) {
+      autoFillRoundsRef.current = 0;
+    } else if (autoTriggeredRef.current) {
+      autoFillRoundsRef.current += 1;
+    }
+    scrollSnapshotRef.current = { scrollHeight: 0, scrollTop: 0 };
+    autoTriggeredRef.current = false;
+  }, [messageCount, scrollRef]);
+
+  return (
+    <div
+      ref={sentinelRef}
+      className="flex flex-col items-center justify-center gap-2 py-1"
+    >
+      {isLoading ? (
+        <LoadingSpinner
+          data-testid="load-more-spinner"
+          className="h-5 w-5 text-neutral-400"
+        />
+      ) : (
+        hasMore && (
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => captureAndLoad(false)}
+          >
+            Load older messages
+          </Button>
+        )
+      )}
+    </div>
+  );
+}
+
 export function ChatMessagesContainer({
   messages,
   status,
   error,
   isLoading,
   sessionID,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
   onRetry,
   historicalDurations,
 }: Props) {
+  // Hide the container for one frame when messages first load so
+  // StickToBottom can scroll to the bottom before the user sees it.
+  const [settled, setSettled] = useState(false);
+  const [prevSessionID, setPrevSessionID] = useState(sessionID);
+  if (sessionID !== prevSessionID) {
+    setPrevSessionID(sessionID);
+    if (settled) setSettled(false);
+  }
+  const messagesReady = messages.length > 0 || !isLoading;
+  useEffect(() => {
+    if (settled || !messagesReady) return;
+    const raf = requestAnimationFrame(() => setSettled(true));
+    return () => cancelAnimationFrame(raf);
+  }, [settled, messagesReady]);
+  // opacity-0 only during the single frame between messages arriving and scroll settling
+  const hideForScroll = messagesReady && !settled;
+
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
@@ -162,13 +319,27 @@ export function ChatMessagesContainer({
   });
 
   return (
-    <Conversation className="min-h-0 flex-1">
-      <ConversationContent className="flex flex-1 flex-col gap-6 px-3 py-6">
+    <Conversation
+      key={sessionID ?? "new"}
+      resize={settled ? "smooth" : "instant"}
+      className={
+        "min-h-0 flex-1 " +
+        (hideForScroll
+          ? "opacity-0"
+          : "opacity-100 transition-opacity duration-100 ease-out")
+      }
+    >
+      <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
+        {hasMoreMessages && onLoadMore && (
+          <LoadMoreSentinel
+            hasMore={hasMoreMessages}
+            isLoading={!!isLoadingMore}
+            messageCount={messages.length}
+            onLoadMore={onLoadMore}
+          />
+        )}
         {isLoading && messages.length === 0 && (
-          <div
-            className="flex flex-1 items-center justify-center"
-            style={{ minHeight: "calc(100vh - 12rem)" }}
-          >
+          <div className="flex flex-1 items-center justify-center">
             <LoadingSpinner className="text-neutral-600" />
           </div>
         )}

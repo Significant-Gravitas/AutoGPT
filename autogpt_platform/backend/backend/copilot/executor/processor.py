@@ -13,7 +13,7 @@ import time
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline
-from backend.copilot.config import ChatConfig
+from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -28,6 +28,57 @@ from backend.util.workspace_storage import shutdown_workspace_storage
 from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
+
+
+# ============ Mode Routing ============ #
+
+
+async def resolve_effective_mode(
+    mode: CopilotMode | None,
+    user_id: str | None,
+) -> CopilotMode | None:
+    """Strip ``mode`` when the user is not entitled to the toggle.
+
+    The UI gates the mode toggle behind ``CHAT_MODE_OPTION``; the
+    processor enforces the same gate server-side so an authenticated
+    user cannot bypass the flag by crafting a request directly.
+    """
+    if mode is None:
+        return None
+    allowed = await is_feature_enabled(
+        Flag.CHAT_MODE_OPTION,
+        user_id or "anonymous",
+        default=False,
+    )
+    if not allowed:
+        logger.info(f"Ignoring mode={mode} — CHAT_MODE_OPTION is disabled for user")
+        return None
+    return mode
+
+
+async def resolve_use_sdk_for_mode(
+    mode: CopilotMode | None,
+    user_id: str | None,
+    *,
+    use_claude_code_subscription: bool,
+    config_default: bool,
+) -> bool:
+    """Pick the SDK vs baseline path for a single turn.
+
+    Per-request ``mode`` wins whenever it is set (after the
+    ``CHAT_MODE_OPTION`` gate has been applied upstream).  Otherwise
+    falls back to the Claude Code subscription override, then the
+    ``COPILOT_SDK`` LaunchDarkly flag, then the config default.
+    """
+    if mode == "fast":
+        return False
+    if mode == "extended_thinking":
+        return True
+    return use_claude_code_subscription or await is_feature_enabled(
+        Flag.COPILOT_SDK,
+        user_id or "anonymous",
+        default=config_default,
+    )
 
 
 # ============ Module Entry Points ============ #
@@ -100,8 +151,8 @@ class CoPilotProcessor:
         This method is called once per worker thread to set up the async event
         loop and initialize any required resources.
 
-        Database is accessed only through DatabaseManager, so we don't need to connect
-        to Prisma directly.
+        DB operations route through DatabaseManagerAsyncClient (RPC) via the
+        db_accessors pattern — no direct Prisma connection is needed here.
         """
         configure_logging()
         set_service_name("CoPilotExecutor")
@@ -118,18 +169,36 @@ class CoPilotProcessor:
 
         # Pre-warm the bundled CLI binary so the OS page-caches the ~185 MB
         # executable.  First spawn pays ~1.2 s; subsequent spawns ~0.65 s.
-        self._prewarm_cli()
+        # Read cli_path directly from env here so _prewarm_cli does not have
+        # to construct a ChatConfig() (which can raise and abort the worker).
+        # Priority: CHAT_CLAUDE_AGENT_CLI_PATH (prefixed) first, then
+        # CLAUDE_AGENT_CLI_PATH (unprefixed) — matches config.py's validator
+        # order so both paths resolve to the same binary.
+        cli_path = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH") or os.getenv(
+            "CLAUDE_AGENT_CLI_PATH"
+        )
+        self._prewarm_cli(cli_path=cli_path or None)
 
         logger.info(f"[CoPilotExecutor] Worker {self.tid} started")
 
-    def _prewarm_cli(self) -> None:
-        """Run the bundled CLI binary once to warm OS page caches."""
-        try:
-            from claude_agent_sdk._internal.transport.subprocess_cli import (
-                SubprocessCLITransport,
-            )
+    def _prewarm_cli(self, cli_path: str | None = None) -> None:
+        """Run the Claude Code CLI binary once to warm OS page caches.
 
-            cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
+        Accepts an explicit ``cli_path`` so the caller can pass the value
+        already resolved at startup rather than constructing a full
+        ``ChatConfig()`` here (which reads env vars, runs validators, and
+        can raise — aborting the worker prewarm silently).  Falls back to
+        the ``CLAUDE_AGENT_CLI_PATH`` / ``CHAT_CLAUDE_AGENT_CLI_PATH`` env
+        vars (same precedence as ``ChatConfig``), and then to the SDK's
+        bundled binary when neither is set.
+        """
+        try:
+            if not cli_path:
+                from claude_agent_sdk._internal.transport.subprocess_cli import (
+                    SubprocessCLITransport,
+                )
+
+                cli_path = SubprocessCLITransport._find_bundled_cli(None)  # type: ignore[arg-type]
             if cli_path:
                 result = subprocess.run(
                     [cli_path, "-v"],
@@ -250,21 +319,26 @@ class CoPilotProcessor:
             if config.test_mode:
                 stream_fn = stream_chat_completion_dummy
                 log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
+                effective_mode = None
             else:
-                use_sdk = (
-                    config.use_claude_code_subscription
-                    or await is_feature_enabled(
-                        Flag.COPILOT_SDK,
-                        entry.user_id or "anonymous",
-                        default=config.use_claude_agent_sdk,
-                    )
+                # Enforce server-side feature-flag gate so unauthorised
+                # users cannot force a mode by crafting the request.
+                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
+                use_sdk = await resolve_use_sdk_for_mode(
+                    effective_mode,
+                    entry.user_id,
+                    use_claude_code_subscription=config.use_claude_code_subscription,
+                    config_default=config.use_claude_agent_sdk,
                 )
                 stream_fn = (
                     sdk_service.stream_chat_completion_sdk
                     if use_sdk
                     else stream_chat_completion_baseline
                 )
-                log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+                log.info(
+                    f"Using {'SDK' if use_sdk else 'baseline'} service "
+                    f"(mode={effective_mode or 'default'})"
+                )
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
@@ -276,6 +350,8 @@ class CoPilotProcessor:
                 user_id=entry.user_id,
                 context=entry.context,
                 file_ids=entry.file_ids,
+                mode=effective_mode,
+                model=entry.model,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,

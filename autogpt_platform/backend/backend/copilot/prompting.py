@@ -6,6 +6,8 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
+from functools import cache
+
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
 from backend.copilot.tools import TOOL_REGISTRY
 
@@ -75,11 +77,12 @@ Example — committing an image file to GitHub:
 }}
 ```
 
-### Writing large files — CRITICAL
-**Never write an entire large document in a single tool call.**  When the
-content you want to write exceeds ~2000 words the tool call's output token
-limit will silently truncate the arguments, producing an empty `{{}}` input
-that fails repeatedly.
+### Writing large files — CRITICAL (causes production failures)
+**NEVER write an entire large document in a single tool call.**  When the
+content you want to write exceeds ~2000 words the API output-token limit
+will silently truncate the tool call arguments mid-JSON, losing all content
+and producing an opaque error.  This is unrecoverable — the user's work is
+lost and retrying with the same approach fails in an infinite loop.
 
 **Preferred: compose from file references.**  If the data is already in
 files (tool outputs, workspace files), compose the report in one call
@@ -125,6 +128,21 @@ After building the file, reference it with `@@agptfile:` in other tools:
 - Prefer fewer, well-targeted searches over many variations of the same query.
 - When spawning sub-agents for research, ensure each has a distinct
   non-overlapping scope to avoid redundant searches.
+
+
+### Tool Discovery Priority
+
+When the user asks to interact with a service or API, follow this order:
+
+1. **find_block first** — Search platform blocks with `find_block`. The platform has hundreds of built-in blocks (Google Sheets, Docs, Calendar, Gmail, Slack, GitHub, etc.) that work without extra setup.
+
+2. **run_mcp_tool** — If no matching block exists, check if a hosted MCP server is available for the service. Only use known MCP server URLs from the registry.
+
+3. **SendAuthenticatedWebRequestBlock** — If no block or MCP server exists, use `SendAuthenticatedWebRequestBlock` with existing host-scoped credentials. Check available credentials via `connect_integration`.
+
+4. **Manual API call** — As a last resort, guide the user to set up credentials and use `SendAuthenticatedWebRequestBlock` with direct API calls.
+
+**Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
 
 ### Sub-agent tasks
 - When using the Task tool, NEVER set `run_in_background` to true.
@@ -262,6 +280,7 @@ def _get_local_storage_supplement(cwd: str) -> str:
     )
 
 
+@cache
 def _get_cloud_sandbox_supplement() -> str:
     """Cloud persistent sandbox (files survive across turns in session).
 
@@ -315,23 +334,67 @@ def _generate_tool_documentation() -> str:
     return docs
 
 
-def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
+@cache
+def get_sdk_supplement(use_e2b: bool) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
     receives tool schemas from the SDK. Only includes technical notes about
     storage systems and execution environment.
 
+    The system prompt must be **identical across all sessions and users** to
+    enable cross-session LLM prompt-cache hits (Anthropic caches on exact
+    content). To preserve this invariant, the local-mode supplement uses a
+    generic placeholder for the working directory. The actual ``cwd`` is
+    injected per-turn into the first user message as ``<env_context>``
+    so the model always knows its real working directory without polluting
+    the cacheable system prompt.
+
     Args:
         use_e2b: Whether E2B cloud sandbox is being used
-        cwd: Current working directory (only used in local_storage mode)
 
     Returns:
         The supplement string to append to the system prompt
     """
     if use_e2b:
         return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement(cwd)
+    return _get_local_storage_supplement("/tmp/copilot-<session-id>")
+
+
+def get_graphiti_supplement() -> str:
+    """Get the memory system instructions to append when Graphiti is enabled.
+
+    Appended after the SDK/baseline supplement in both execution paths.
+    """
+    return """
+
+## Memory System (Graphiti)
+You have access to persistent temporal memory tools that remember facts across sessions.
+
+### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
+**You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
+
+### When to STORE (memory_store):
+- User shares personal info, preferences, business context
+- User describes workflows, tools they use, pain points
+- Important decisions or outcomes from agent runs
+- Relationships between people, organizations, events
+- Operational rules (e.g. "invoices go out on the 1st", "CC Sarah on client stuff")
+- When you learn something new about the user
+
+### When to RECALL (memory_search):
+- **BEFORE answering any factual or context-dependent question — ALWAYS**
+- When the user references something from a past conversation
+- When building an agent that should use past preferences
+- At the START of every new conversation to check for relevant context
+
+### MEMORY RULES:
+- Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
+- Never fabricate memories. Only persist what the user actually said.
+- Memory is private to this user — no other user can see it.
+- group_id is handled automatically by the system — never set it yourself.
+- When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
+"""
 
 
 def get_baseline_supplement() -> str:

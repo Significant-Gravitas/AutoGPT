@@ -2,14 +2,14 @@
 
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
-import { IconAutoGPTLogo, IconType } from "@/components/__legacy__/ui/icons";
+import { IconType } from "@/components/__legacy__/ui/icons";
+import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { PreviewBanner } from "@/components/layout/Navbar/components/PreviewBanner/PreviewBanner";
 import { isLogoutInProgress } from "@/lib/autogpt-server-api/helpers";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { environment } from "@/services/environment";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { FeedbackButton } from "./components/FeedbackButton";
 import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
@@ -25,7 +25,6 @@ export function Navbar() {
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
   const dynamicMenuItems = getAccountMenuItems(user?.role);
-  const isChatEnabled = useGetFlag(Flag.CHAT);
   const previewBranchName = environment.getPreviewStealingDev();
   const logoutInProgress = isLogoutInProgress();
 
@@ -44,11 +43,9 @@ export function Navbar() {
 
   const shouldShowPreviewBanner = Boolean(isLoggedIn && previewBranchName);
 
-  const homeHref = isChatEnabled === true ? "/copilot" : "/library";
-
   const actualLoggedInLinks = [
-    { name: "Home", href: homeHref },
-    ...(isChatEnabled === true ? [{ name: "Agents", href: "/library" }] : []),
+    { name: "Home", href: "/copilot" },
+    { name: "Agents", href: "/library" },
     ...loggedInLinks,
   ];
 
@@ -88,8 +85,8 @@ export function Navbar() {
           ) : null}
 
           {/* Centered logo */}
-          <div className="static h-auto w-[4.5rem] md:absolute md:left-1/2 md:top-1/2 md:w-[5.5rem] md:-translate-x-1/2 md:-translate-y-1/2">
-            <IconAutoGPTLogo className="h-full w-full" />
+          <div className="static md:absolute md:left-1/2 md:top-1/2 md:-translate-x-1/2 md:-translate-y-1/2">
+            <AutoGPTLogo className="h-auto w-[4.5rem] md:w-[5.5rem]" />
           </div>
 
           {/* Right section */}

@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { scrollbarStyles } from "@/components/styles/scrollbars";
 import { cn } from "@/lib/utils";
 import { ArrowDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
@@ -12,12 +11,8 @@ export type ConversationProps = ComponentProps<typeof StickToBottom>;
 
 export const Conversation = ({ className, ...props }: ConversationProps) => (
   <StickToBottom
-    className={cn(
-      "relative flex-1 overflow-y-hidden",
-      scrollbarStyles,
-      className,
-    )}
-    initial="smooth"
+    className={cn("relative flex-1 overflow-y-hidden", className)}
+    initial="instant"
     resize="smooth"
     role="log"
     {...props}
@@ -30,10 +25,15 @@ export type ConversationContentProps = ComponentProps<
 
 export const ConversationContent = ({
   className,
+  scrollClassName,
   ...props
 }: ConversationContentProps) => (
   <StickToBottom.Content
     className={cn("flex flex-col gap-8 p-4", className)}
+    scrollClassName={cn(
+      "scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300",
+      scrollClassName,
+    )}
     {...props}
   />
 );

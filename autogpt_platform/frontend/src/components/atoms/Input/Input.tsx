@@ -78,7 +78,7 @@ export function Input({
     "font-normal text-black",
     "placeholder:font-normal placeholder:text-zinc-400",
     // Focus and hover states
-    "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
+    "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
     className,
   );
 
@@ -225,7 +225,7 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label htmlFor={props.id} className="flex flex-col gap-2">
+    <label htmlFor={props.id} className="flex w-full flex-col gap-2">
       <div className="flex items-center justify-between">
         <Text variant="large-medium" as="span" className="text-black">
           {label}

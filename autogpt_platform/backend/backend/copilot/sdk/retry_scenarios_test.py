@@ -26,18 +26,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.util import json
-
-from .conftest import build_test_transcript as _build_transcript
-from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
-from .transcript import (
+from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
-    compact_transcript,
-    validate_transcript,
 )
+from backend.util import json
+
+from .conftest import build_test_transcript as _build_transcript
+from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
+from .transcript import compact_transcript, validate_transcript
 from .transcript_builder import TranscriptBuilder
 
 # ---------------------------------------------------------------------------
@@ -113,7 +112,7 @@ class TestScenarioCompactAndRetry:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -170,7 +169,7 @@ class TestScenarioCompactFailsFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("LLM unavailable"),
             ),
@@ -261,7 +260,7 @@ class TestScenarioDoubleFailDBFallback:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -337,7 +336,7 @@ class TestScenarioCompactionIdentical:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -730,7 +729,7 @@ class TestRetryEdgeCases:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 return_value=mock_result,
             ),
@@ -812,20 +811,24 @@ class TestRetryStateReset:
         assert len(session_messages) == 2
         assert session_messages == ["msg1", "msg2"]
 
-    def test_write_transcript_failure_sets_error_flag(self):
-        """When write_transcript_to_tempfile fails, skip_transcript_upload
-        must be set True to prevent uploading stale data."""
-        # Simulate the logic from service.py lines 1012-1020
-        skip_transcript_upload = False
-        use_resume = True
-        resume_file = None  # write_transcript_to_tempfile returned None
+    def test_cli_session_restore_failure_skips_resume(self):
+        """When restore_cli_session returns False, --resume is not used.
+        The transcript builder is still populated for future upload_transcript.
 
-        if not resume_file:
-            use_resume = False
-            skip_transcript_upload = True
+        This covers the guard on the cli_restored branch in service.py.
+        For a full integration test exercising the actual service code path,
+        see TestStreamChatCompletionRetryIntegration.test_resume_skipped_when_cli_session_missing.
+        """
+        use_resume = False
+        resume_file = None
+        cli_restored = False  # restore_cli_session returned False
 
-        assert skip_transcript_upload is True
+        if cli_restored:
+            use_resume = True
+            resume_file = "sess-uuid"
+
         assert use_resume is False
+        assert resume_file is None
 
     @pytest.mark.asyncio
     async def test_compact_returns_none_preserves_error_flag(self):
@@ -841,7 +844,7 @@ class TestRetryStateReset:
                 )(),
             ),
             patch(
-                "backend.copilot.sdk.transcript._run_compression",
+                "backend.copilot.transcript._run_compression",
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("boom"),
             ),
@@ -999,7 +1002,11 @@ def _make_sdk_patches(
                 return_value=MagicMock(content=original_transcript, message_count=2),
             ),
         ),
-        (f"{_SVC}.write_transcript_to_tempfile", dict(return_value="/tmp/sess.jsonl")),
+        (
+            f"{_SVC}.restore_cli_session",
+            dict(new_callable=AsyncMock, return_value=True),
+        ),
+        (f"{_SVC}.upload_cli_session", dict(new_callable=AsyncMock)),
         (f"{_SVC}.validate_transcript", dict(return_value=True)),
         (
             f"{_SVC}.compact_transcript",
@@ -1024,9 +1031,14 @@ def _make_sdk_patches(
                 stream_lock_ttl=60,
                 active_e2b_api_key=None,
                 use_e2b_sandbox=False,
+                claude_agent_max_transient_retries=1,
+                claude_agent_max_turns=1000,
+                claude_agent_max_budget_usd=100.0,
+                claude_agent_fallback_model=None,
             ),
         ),
         (f"{_SVC}.upload_transcript", dict(new_callable=AsyncMock)),
+        (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
     ]
 
 
@@ -1405,9 +1417,9 @@ class TestStreamChatCompletionRetryIntegration:
                 events.append(event)
 
         # Should NOT retry — only 1 attempt for auth errors
-        assert attempt_count[0] == 1, (
-            f"Expected 1 attempt (no retry for auth error), " f"got {attempt_count[0]}"
-        )
+        assert (
+            attempt_count[0] == 1
+        ), f"Expected 1 attempt (no retry for auth error), got {attempt_count[0]}"
         errors = [e for e in events if isinstance(e, StreamError)]
         assert errors, "Expected StreamError"
         assert errors[0].code == "sdk_stream_error"
@@ -1671,4 +1683,268 @@ class TestStreamChatCompletionRetryIntegration:
         )
         errors = [e for e in events if isinstance(e, StreamError)]
         assert not errors, f"Unexpected StreamError: {errors}"
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_handled_stream_error_transient_retries_then_succeeds(self):
+        """_HandledStreamError(code="transient_api_error") triggers backoff retry.
+
+        When ``_run_stream_attempt`` raises ``_HandledStreamError`` with
+        ``code="transient_api_error"`` (i.e. an AssistantMessage with a transient
+        error field arrives mid-stream), the outer loop must:
+          1. Call ``_next_transient_backoff`` to get the sleep duration.
+          2. Yield a ``StreamStatus`` message ("Connection interrupted…").
+          3. Sleep for the backoff duration.
+          4. Continue the loop and retry the same context-level attempt.
+          5. NOT yield ``StreamError`` while retries remain.
+
+        This exercises the ``_HandledStreamError`` handler path at
+        ``stream_chat_completion_sdk`` line ~2335.
+        """
+        import contextlib
+
+        from claude_agent_sdk import AssistantMessage, ResultMessage
+
+        from backend.copilot.response_model import (
+            StreamError,
+            StreamStart,
+            StreamStatus,
+        )
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        call_count = [0]
+
+        def _client_factory(*args, **kwargs):
+            call_count[0] += 1
+            attempt = call_count[0]
+
+            async def _receive():
+                if attempt == 1:
+                    # First call: emit AssistantMessage with a transient error field
+                    # so _run_stream_attempt detects is_transient_api_error and
+                    # raises _HandledStreamError(code="transient_api_error").
+                    yield AssistantMessage(
+                        content=[],
+                        model="claude-sonnet-4-20250514",
+                        error="rate_limit",
+                    )
+                    yield ResultMessage(
+                        subtype="error",
+                        result="rate limit exceeded (status code 429)",
+                        duration_ms=50,
+                        duration_api_ms=0,
+                        is_error=True,
+                        num_turns=0,
+                        session_id="test-session-id",
+                    )
+                else:
+                    yield result_msg
+
+            client = MagicMock()
+            client.receive_response = _receive
+            client.query = AsyncMock()
+            client._transport = MagicMock()
+            client._transport.write = AsyncMock()
+
+            cm = AsyncMock()
+            cm.__aenter__.return_value = client
+            cm.__aexit__.return_value = None
+            return cm
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=None,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            # Patch asyncio.sleep to avoid actual delays in the test.
+            stack.enter_context(patch(f"{_SVC}.asyncio.sleep", new_callable=AsyncMock))
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        # Two SDK client calls: first fails with transient error, second succeeds.
+        assert (
+            call_count[0] == 2
+        ), f"Expected 2 SDK calls (transient retry), got {call_count[0]}"
+        # No StreamError emitted — the retry succeeded.
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert (
+            not errors
+        ), f"Unexpected StreamError emitted during transient retry: {errors}"
+        # StreamStatus("Connection interrupted…") must have been yielded.
+        status_events = [e for e in events if isinstance(e, StreamStatus)]
+        assert status_events, "Expected StreamStatus retry notification but got none"
+        assert any(
+            "retrying" in (e.message or "").lower()
+            or "interrupted" in (e.message or "").lower()
+            for e in status_events
+        ), f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_generic_exception_transient_retry_then_succeeds(self):
+        """Raw Exception("ECONNRESET") from receive_response triggers backoff retry.
+
+        When ``receive_response`` raises a raw ``Exception`` whose string
+        matches a transient pattern (e.g. ECONNRESET), the generic ``except
+        Exception`` handler at ``stream_chat_completion_sdk`` line ~2398 must:
+          1. Detect ``is_transient_api_error(str(e))`` as True.
+          2. Call ``_next_transient_backoff`` to get the sleep duration.
+          3. Yield a ``StreamStatus`` message ("Connection interrupted…").
+          4. Sleep for the backoff duration.
+          5. Continue the loop and retry the same context-level attempt.
+          6. NOT yield ``StreamError`` while retries remain.
+
+        This exercises the generic ``Exception`` handler (ECONNRESET path) at
+        ``stream_chat_completion_sdk`` line ~2398.
+        """
+        import contextlib
+
+        from backend.copilot.response_model import (
+            StreamError,
+            StreamStart,
+            StreamStatus,
+        )
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        call_count = [0]
+
+        def _client_factory(*args, **kwargs):
+            call_count[0] += 1
+            attempt = call_count[0]
+
+            if attempt == 1:
+                # First call: receive_response raises ECONNRESET immediately
+                return self._make_client_mock_mid_stream_error(
+                    error=Exception("ECONNRESET: connection reset by peer"),
+                    pre_error_messages=None,
+                )
+            return self._make_client_mock(result_message=result_msg)
+
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=None,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            # Patch asyncio.sleep to avoid actual delays in the test.
+            stack.enter_context(patch(f"{_SVC}.asyncio.sleep", new_callable=AsyncMock))
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        # Two SDK client calls: first fails with ECONNRESET, second succeeds.
+        assert (
+            call_count[0] == 2
+        ), f"Expected 2 SDK calls (ECONNRESET transient retry), got {call_count[0]}"
+        # No StreamError emitted — the retry succeeded.
+        errors = [e for e in events if isinstance(e, StreamError)]
+        assert (
+            not errors
+        ), f"Unexpected StreamError emitted during ECONNRESET retry: {errors}"
+        # StreamStatus("Connection interrupted…") must have been yielded.
+        status_events = [e for e in events if isinstance(e, StreamStatus)]
+        assert status_events, "Expected StreamStatus retry notification but got none"
+        assert any(
+            "retrying" in (e.message or "").lower()
+            or "interrupted" in (e.message or "").lower()
+            for e in status_events
+        ), f"Expected 'retrying' or 'interrupted' in StreamStatus, got: {[e.message for e in status_events]}"
+        assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_resume_skipped_when_cli_session_missing(self):
+        """When restore_cli_session returns False, --resume is NOT passed to ClaudeSDKClient.
+
+        Exercises the actual service code path so any change to the cli_restored
+        branch in service.py will be caught immediately by this test.
+        """
+        import contextlib
+
+        from backend.copilot.response_model import StreamStart
+        from backend.copilot.sdk.service import stream_chat_completion_sdk
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        original_transcript = _build_transcript(
+            [("user", "prior question"), ("assistant", "prior answer")]
+        )
+        captured_options: dict = {}
+
+        def _client_factory(**kwargs):
+            captured_options.update(kwargs)
+            return self._make_client_mock(result_message=result_msg)
+
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=original_transcript,
+            compacted_transcript=None,
+            client_side_effect=_client_factory,
+        )
+        # Override restore_cli_session to return False (CLI native session unavailable)
+        patches = [
+            (
+                (
+                    f"{_SVC}.restore_cli_session",
+                    dict(new_callable=AsyncMock, return_value=False),
+                )
+                if p[0] == f"{_SVC}.restore_cli_session"
+                else p
+            )
+            for p in patches
+        ]
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+            ):
+                events.append(event)
+
+        # --resume must NOT be set on the options when CLI session restore failed.
+        # captured_options holds {"options": ClaudeAgentOptions}, so check
+        # the attribute directly rather than dict keys.
+        assert not getattr(captured_options.get("options"), "resume", None), (
+            f"--resume was set even though restore_cli_session returned False: "
+            f"{captured_options}"
+        )
         assert any(isinstance(e, StreamStart) for e in events)

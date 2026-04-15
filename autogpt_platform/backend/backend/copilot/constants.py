@@ -44,15 +44,36 @@ def parse_node_id_from_exec_id(node_exec_id: str) -> str:
 # Transient Anthropic API error detection
 # ---------------------------------------------------------------------------
 # Patterns in error text that indicate a transient Anthropic API error
-# (ECONNRESET / dropped TCP connection) which is retryable.
+# which is retryable.  Covers:
+#   - Connection-level: ECONNRESET, dropped TCP connections
+#   - HTTP 429: rate-limit / too-many-requests
+#   - HTTP 5xx: server errors
+#
+# Prefer specific status-code patterns over natural-language phrases
+# (e.g. "overloaded", "bad gateway") — those phrases can appear in
+# application-level SDK messages and would trigger spurious retries.
 _TRANSIENT_ERROR_PATTERNS = (
+    # Connection-level
     "socket connection was closed unexpectedly",
     "ECONNRESET",
     "connection was forcibly closed",
     "network socket disconnected",
+    # 429 rate-limit patterns
+    "rate limit",
+    "rate_limit",
+    "too many requests",
+    "status code 429",
+    # 5xx server error patterns (status-code-specific to avoid false positives)
+    "status code 529",
+    "status code 500",
+    "status code 502",
+    "status code 503",
+    "status code 504",
 )
 
-FRIENDLY_TRANSIENT_MSG = "Anthropic connection interrupted — please retry"
+FRIENDLY_TRANSIENT_MSG = (
+    "Anthropic connection interrupted after repeated attempts — please try again later"
+)
 
 
 def is_transient_api_error(error_text: str) -> bool:
