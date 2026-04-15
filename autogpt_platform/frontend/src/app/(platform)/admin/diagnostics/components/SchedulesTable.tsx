@@ -56,8 +56,12 @@ interface OrphanedScheduleDetail {
   schedule_id: string;
   schedule_name: string;
   graph_id: string;
+  graph_name?: string;
   graph_version: number;
   user_id: string;
+  user_email?: string | null;
+  cron?: string;
+  timezone?: string;
   orphan_reason: string;
   error_detail: string | null;
   next_run_time: string;
