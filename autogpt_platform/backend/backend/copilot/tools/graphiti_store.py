@@ -191,6 +191,7 @@ class MemoryStoreTool(BaseTool):
                 rule_model = RuleMemory(**rule)
             except Exception:
                 logger.warning("Invalid rule data, storing as plain fact")
+                memory_kind = "fact"
 
         procedure_model = None
         if procedure and memory_kind == "procedure":
@@ -202,6 +203,7 @@ class MemoryStoreTool(BaseTool):
                 )
             except Exception:
                 logger.warning("Invalid procedure data, storing as plain fact")
+                memory_kind = "fact"
 
         try:
             resolved_source = SourceKind(source_kind)
