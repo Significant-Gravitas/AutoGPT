@@ -165,7 +165,7 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockFixture):
     _mock_stream_internals(mocker)
     # Patch workspace lookup as imported by the routes module
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
     mock_prisma = mocker.MagicMock()
@@ -194,7 +194,7 @@ def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockFixture):
     and NOT passed to the database query."""
     _mock_stream_internals(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
 
@@ -232,7 +232,7 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockFixture):
     """The batch query should scope to the user's workspace."""
     _mock_stream_internals(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "my-workspace-id"})(),
     )
 
@@ -859,7 +859,7 @@ def test_queue_pending_message_file_ids_scoped_to_workspace(
     """File IDs must be sanitized to the user's workspace before push."""
     _mock_pending_internals(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         new_callable=AsyncMock,
         return_value=type("W", (), {"id": "ws-1"})(),
     )

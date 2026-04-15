@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
@@ -10,7 +9,6 @@ from uuid import uuid4
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import StreamingResponse
-from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
@@ -83,7 +81,7 @@ from backend.copilot.tracking import track_user_message
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import get_or_create_workspace
+from backend.data.workspace import build_files_block, resolve_workspace_files
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
 
@@ -92,10 +90,6 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
-
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
 
 
 async def _validate_and_get_session(
@@ -107,29 +101,6 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
-
-
-async def _resolve_workspace_files(
-    user_id: str,
-    file_ids: list[str],
-) -> list[UserWorkspaceFile]:
-    """Filter *file_ids* to UUID-valid entries that exist in the caller's workspace.
-
-    Returns the matching ``UserWorkspaceFile`` records (empty list if none pass).
-    Used by both the stream and pending-message endpoints to prevent callers from
-    referencing other users' files.
-    """
-    valid_ids = [fid for fid in file_ids if _UUID_RE.fullmatch(fid)]
-    if not valid_ids:
-        return []
-    workspace = await get_or_create_workspace(user_id)
-    return await UserWorkspaceFile.prisma().find_many(
-        where={
-            "id": {"in": valid_ids},
-            "workspaceId": workspace.id,
-            "isDeleted": False,
-        }
-    )
 
 
 router = APIRouter(
@@ -894,20 +865,9 @@ async def stream_chat_post(
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
     sanitized_file_ids: list[str] | None = None
     if request.file_ids:
-        files = await _resolve_workspace_files(user_id, request.file_ids)
-        # Only keep IDs that actually exist in the user's workspace
+        files = await resolve_workspace_files(user_id, request.file_ids)
         sanitized_file_ids = [wf.id for wf in files] or None
-        file_lines: list[str] = [
-            f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
-            for wf in files
-        ]
-        if file_lines:
-            files_block = (
-                "\n\n[Attached files]\n"
-                + "\n".join(file_lines)
-                + "\nUse read_workspace_file with the file_id to access file contents."
-            )
-            request.message += files_block
+        request.message += build_files_block(files)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -1192,18 +1152,17 @@ async def queue_pending_message(
         )
 
     # Sanitise file IDs to the user's own workspace so injection doesn't
-    # surface other users' files.  _resolve_workspace_files handles UUID
-    # filtering and the workspace-scoped DB lookup.
+    # surface other users' files.
     sanitized_file_ids: list[str] = []
     if request.file_ids:
-        valid_id_count = sum(1 for fid in request.file_ids if _UUID_RE.fullmatch(fid))
-        files = await _resolve_workspace_files(user_id, request.file_ids)
+        files = await resolve_workspace_files(user_id, request.file_ids)
         sanitized_file_ids = [wf.id for wf in files]
-        if len(sanitized_file_ids) != valid_id_count:
+        dropped = len(request.file_ids) - len(sanitized_file_ids)
+        if dropped:
             logger.warning(
                 "queue_pending_message: dropped %d file id(s) not in "
                 "caller's workspace (session=%s)",
-                valid_id_count - len(sanitized_file_ids),
+                dropped,
                 session_id,
             )
 
