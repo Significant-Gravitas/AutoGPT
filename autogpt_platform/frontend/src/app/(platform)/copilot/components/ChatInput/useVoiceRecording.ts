@@ -14,6 +14,7 @@ interface Args {
   disabled?: boolean;
   value: string;
   inputId?: string;
+  isStreaming?: boolean;
 }
 
 export function useVoiceRecording({
@@ -21,6 +22,7 @@ export function useVoiceRecording({
   disabled = false,
   value,
   inputId,
+  isStreaming = false,
 }: Args) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -221,8 +223,9 @@ export function useVoiceRecording({
           event.preventDefault();
           stopRecording();
           return;
-        } else if (!value.trim()) {
-          // Start recording on space when input is empty
+        } else if (!value.trim() && !isStreaming) {
+          // Start recording on space when input is empty and not streaming
+          // (mirrors the visual disabled state of the mic button during streaming)
           event.preventDefault();
           void startRecording();
           return;
@@ -235,7 +238,7 @@ export function useVoiceRecording({
       }
       // Let PromptInputTextarea handle remaining keys (Enter → submit, etc.)
     },
-    [value, isTranscribing, stopRecording, startRecording],
+    [value, isTranscribing, isStreaming, stopRecording, startRecording],
   );
 
   const showMicButton = isSupported;
