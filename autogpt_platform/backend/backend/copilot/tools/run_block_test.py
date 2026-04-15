@@ -103,6 +103,7 @@ class TestRunBlockFiltering:
                 session=session,
                 block_id="input-block-id",
                 input_data={},
+                dry_run=False,
             )
 
         assert isinstance(response, ErrorResponse)
@@ -129,6 +130,7 @@ class TestRunBlockFiltering:
                 session=session,
                 block_id=orchestrator_id,
                 input_data={},
+                dry_run=False,
             )
 
         assert isinstance(response, ErrorResponse)
@@ -154,6 +156,7 @@ class TestRunBlockFiltering:
                     session=session,
                     block_id=block_id,
                     input_data={},
+                    dry_run=False,
                 )
         finally:
             _current_permissions.reset(token)
@@ -187,6 +190,7 @@ class TestRunBlockFiltering:
                     session=session,
                     block_id=block_id,
                     input_data={},
+                    dry_run=False,
                 )
         finally:
             _current_permissions.reset(token)
@@ -222,6 +226,7 @@ class TestRunBlockFiltering:
                 session=session,
                 block_id="standard-id",
                 input_data={},
+                dry_run=False,
             )
 
         # Should NOT be an ErrorResponse about CoPilot exclusion
@@ -282,6 +287,7 @@ class TestRunBlockInputValidation:
                     "prompt": "Write a haiku about coding",
                     "LLM_Model": "claude-opus-4-6",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, InputValidationErrorResponse)
@@ -327,6 +333,7 @@ class TestRunBlockInputValidation:
                     "system_prompt": "Be helpful",
                     "retries": 5,
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, InputValidationErrorResponse)
@@ -370,6 +377,7 @@ class TestRunBlockInputValidation:
                 input_data={
                     "LLM_Model": "claude-opus-4-6",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, InputValidationErrorResponse)
@@ -424,6 +432,7 @@ class TestRunBlockInputValidation:
                     "prompt": "Write a haiku",
                     "model": "gpt-4o-mini",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, BlockOutputResponse)
@@ -463,6 +472,7 @@ class TestRunBlockInputValidation:
                 input_data={
                     "model": "gpt-4o-mini",
                 },
+                dry_run=False,
             )
 
         assert isinstance(response, BlockDetailsResponse)
@@ -514,6 +524,7 @@ class TestRunBlockSensitiveAction:
                 session=session,
                 block_id="delete-branch-id",
                 input_data=input_data,
+                dry_run=False,
             )
 
         assert isinstance(response, ReviewRequiredResponse)
@@ -574,6 +585,7 @@ class TestRunBlockSensitiveAction:
                 session=session,
                 block_id="delete-branch-id",
                 input_data=input_data,
+                dry_run=False,
             )
 
         assert isinstance(response, BlockOutputResponse)
@@ -628,6 +640,7 @@ class TestRunBlockSensitiveAction:
                 session=session,
                 block_id="http-request-id",
                 input_data=input_data,
+                dry_run=False,
             )
 
         assert isinstance(response, BlockOutputResponse)

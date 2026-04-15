@@ -332,43 +332,6 @@ class TestValidatePromptDoubleCurlyBracesSpaces:
 
 
 # ============================================================================
-# validate_nested_sink_links
-# ============================================================================
-
-
-class TestValidateNestedSinkLinks:
-    def test_valid_nested_link_passes(self):
-        v = AgentValidator()
-        block = _make_block(
-            block_id="b1",
-            input_schema={
-                "properties": {
-                    "config": {
-                        "type": "object",
-                        "properties": {"key": {"type": "string"}},
-                    }
-                },
-                "required": [],
-            },
-        )
-        node = _make_node(node_id="n1", block_id="b1")
-        link = _make_link(sink_id="n1", sink_name="config_#_key", source_id="n2")
-        agent = _make_agent(nodes=[node], links=[link])
-
-        assert v.validate_nested_sink_links(agent, [block]) is True
-
-    def test_invalid_parent_fails(self):
-        v = AgentValidator()
-        block = _make_block(block_id="b1")
-        node = _make_node(node_id="n1", block_id="b1")
-        link = _make_link(sink_id="n1", sink_name="nonexistent_#_key", source_id="n2")
-        agent = _make_agent(nodes=[node], links=[link])
-
-        assert v.validate_nested_sink_links(agent, [block]) is False
-        assert any("does not exist" in e for e in v.errors)
-
-
-# ============================================================================
 # validate_agent_executor_block_schemas
 # ============================================================================
 
@@ -595,11 +558,28 @@ class TestValidate:
         input_block = _make_block(
             block_id=AGENT_INPUT_BLOCK_ID,
             name="AgentInputBlock",
+            input_schema={
+                "properties": {
+                    "name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "value": {},
+                    "description": {"type": "string"},
+                },
+                "required": ["name"],
+            },
             output_schema={"properties": {"result": {}}},
         )
         output_block = _make_block(
             block_id=AGENT_OUTPUT_BLOCK_ID,
             name="AgentOutputBlock",
+            input_schema={
+                "properties": {
+                    "name": {"type": "string"},
+                    "title": {"type": "string"},
+                    "value": {},
+                },
+                "required": ["name"],
+            },
         )
         input_node = _make_node(
             node_id="n-in",
@@ -648,6 +628,201 @@ class TestValidate:
         assert error_message is not None
         assert "AgentInputBlock" in error_message
         assert "AgentOutputBlock" in error_message
+
+
+class TestValidateSinkInputExistence:
+    """Tests for validate_sink_input_existence."""
+
+    def test_valid_sink_name_passes(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={"properties": {"url": {"type": "string"}}, "required": []},
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name="url"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
+    def test_invalid_sink_name_fails(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={"properties": {"url": {"type": "string"}}, "required": []},
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src", source_name="out", sink_id="n1", sink_name="nonexistent"
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is False
+        assert any("nonexistent" in e for e in v.errors)
+
+    def test_valid_nested_link_passes(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {"key": {"type": "string"}},
+                    }
+                },
+                "required": [],
+            },
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src",
+            source_name="out",
+            sink_id="n1",
+            sink_name="config_#_key",
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
+    def test_invalid_nested_child_fails(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {"key": {"type": "string"}},
+                    }
+                },
+                "required": [],
+            },
+        )
+        node = _make_node(node_id="n1", block_id="b1")
+        link = _make_link(
+            source_id="src",
+            source_name="out",
+            sink_id="n1",
+            sink_name="config_#_missing",
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is False
+
+    def test_unknown_input_default_key_fails(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={"properties": {"url": {"type": "string"}}, "required": []},
+        )
+        node = _make_node(
+            node_id="n1", block_id="b1", input_default={"nonexistent_key": "value"}
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_sink_input_existence(agent, [block]) is False
+        assert any("nonexistent_key" in e for e in v.errors)
+
+    def test_credentials_key_skipped(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={"properties": {"url": {"type": "string"}}, "required": []},
+        )
+        node = _make_node(
+            node_id="n1",
+            block_id="b1",
+            input_default={
+                "url": "http://example.com",
+                "credentials": {"api_key": "x"},
+            },
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
+    def test_agent_executor_dynamic_schema_passes(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id=AGENT_EXECUTOR_BLOCK_ID,
+            input_schema={
+                "properties": {
+                    "graph_id": {"type": "string"},
+                    "input_schema": {"type": "object"},
+                },
+                "required": ["graph_id"],
+            },
+        )
+        node = _make_node(
+            node_id="n1",
+            block_id=AGENT_EXECUTOR_BLOCK_ID,
+            input_default={
+                "graph_id": "abc",
+                "input_schema": {
+                    "properties": {"query": {"type": "string"}},
+                    "required": [],
+                },
+            },
+        )
+        link = _make_link(
+            source_id="src",
+            source_name="out",
+            sink_id="n1",
+            sink_name="query",
+        )
+        agent = _make_agent(nodes=[node], links=[link])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
+
+    def test_input_default_nested_invalid_child_fails(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {"key": {"type": "string"}},
+                    }
+                },
+                "required": [],
+            },
+        )
+        node = _make_node(
+            node_id="n1",
+            block_id="b1",
+            input_default={"config_#_invalid_child": "value"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_sink_input_existence(agent, [block]) is False
+        assert any("invalid_child" in e for e in v.errors)
+
+    def test_input_default_nested_valid_child_passes(self):
+        v = AgentValidator()
+        block = _make_block(
+            block_id="b1",
+            input_schema={
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {"key": {"type": "string"}},
+                    }
+                },
+                "required": [],
+            },
+        )
+        node = _make_node(
+            node_id="n1",
+            block_id="b1",
+            input_default={"config_#_key": "value"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_sink_input_existence(agent, [block]) is True
 
 
 class TestValidateMCPToolBlocks:

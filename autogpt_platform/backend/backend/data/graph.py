@@ -333,26 +333,29 @@ class BaseGraph(GraphBaseMeta):
             except Exception as e:
                 logger.error(f"Invalid {type_class}: {input_default}, {e}")
 
-        return {
-            "type": "object",
-            "properties": {
-                p.name: {
-                    **{
-                        k: v
-                        for k, v in p.generate_schema().items()
-                        if k not in ["description", "default"]
-                    },
-                    "secret": p.secret,
-                    # Default value has to be set for advanced fields.
-                    "advanced": p.advanced and p.value is not None,
-                    "title": p.title or p.name,
-                    **({"description": p.description} if p.description else {}),
-                    **({"default": p.value} if p.value is not None else {}),
-                }
-                for p in schema_fields
-            },
-            "required": [p.name for p in schema_fields if p.value is None],
-        }
+        try:
+            return {
+                "type": "object",
+                "properties": {
+                    p.name: {
+                        **{
+                            k: v
+                            for k, v in p.generate_schema().items()
+                            if k not in ["description", "default"]
+                        },
+                        "secret": p.secret,
+                        # Default value has to be set for advanced fields.
+                        "advanced": p.advanced and p.value is not None,
+                        "title": p.title or p.name,
+                        **({"description": p.description} if p.description else {}),
+                        **({"default": p.value} if p.value is not None else {}),
+                    }
+                    for p in schema_fields
+                },
+                "required": [p.name for p in schema_fields if p.value is None],
+            }
+        except AttributeError as e:
+            raise ValueError(str(e)) from e
 
 
 class GraphTriggerInfo(BaseModel):
@@ -581,7 +584,6 @@ class GraphModel(Graph, GraphMeta):
                     field_name,
                     field_info,
                 ) in node.block.input_schema.get_credentials_fields_info().items():
-
                     discriminator = field_info.discriminator
                     if not discriminator:
                         node_credential_data.append((field_info, (node.id, field_name)))
@@ -1528,6 +1530,28 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
 
 async def __create_graph(tx, graph: Graph, user_id: str):
     graphs = [graph] + graph.sub_graphs
+
+    # Auto-increment version for any graph entry (parent or sub-graph) whose
+    # (id, version) already exists.  This prevents UniqueViolationError when
+    # the copilot re-saves an agent that already exists at the requested version.
+    # NOTE: This issues one find_first query per graph entry (N+1 pattern).
+    # Sub-graph counts are typically small (< 5), so the overhead is negligible.
+    for g in graphs:
+        existing = await AgentGraph.prisma(tx).find_first(
+            where={"id": g.id},
+            order={"version": "desc"},
+        )
+        if existing and existing.version >= g.version:
+            old_version = g.version
+            g.version = existing.version + 1
+            logger.warning(
+                "Auto-incremented graph %s version from %d to %d "
+                "(version %d already exists)",
+                g.id,
+                old_version,
+                g.version,
+                existing.version,
+            )
 
     await AgentGraph.prisma(tx).create_many(
         data=[

@@ -24,7 +24,7 @@ class CreateAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Create a new agent from JSON (nodes + links). Validates, auto-fixes, and saves. "
-            "Before calling, search for existing agents with find_library_agent."
+            "If you haven't already, call get_agent_building_guide first."
         )
 
     @property
@@ -62,9 +62,12 @@ class CreateAgentTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
+        agent_json: dict[str, Any] | None = None,
+        save: bool = True,
+        library_agent_ids: list[str] | None = None,
+        folder_id: str | None = None,
         **kwargs,
     ) -> ToolResponseBase:
-        agent_json: dict[str, Any] | None = kwargs.get("agent_json")
         session_id = session.session_id if session else None
 
         if not agent_json:
@@ -77,9 +80,8 @@ class CreateAgentTool(BaseTool):
                 session_id=session_id,
             )
 
-        save = kwargs.get("save", True)
-        library_agent_ids = kwargs.get("library_agent_ids", [])
-        folder_id: str | None = kwargs.get("folder_id")
+        if library_agent_ids is None:
+            library_agent_ids = []
 
         nodes = agent_json.get("nodes", [])
         if not nodes:

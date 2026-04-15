@@ -922,6 +922,11 @@ async def test_orchestrator_agent_mode():
         mock_execution_processor.on_node_execution = AsyncMock(
             return_value=mock_node_stats
         )
+        # Mock charge_node_usage (called after successful tool execution).
+        # Returns (cost, remaining_balance). Must be AsyncMock because it is
+        # an async method and is directly awaited in _execute_single_tool_with_manager.
+        # Use a non-zero cost so the merge_stats branch is exercised.
+        mock_execution_processor.charge_node_usage = AsyncMock(return_value=(10, 990))
 
         # Mock the get_execution_outputs_by_node_exec_id method
         mock_db_client.get_execution_outputs_by_node_exec_id.return_value = {
@@ -966,6 +971,11 @@ async def test_orchestrator_agent_mode():
 
         # Verify tool was executed via execution processor
         assert mock_execution_processor.on_node_execution.call_count == 1
+
+        # Verify charge_node_usage was actually called for the successful
+        # tool execution — this guards against regressions where the
+        # post-execution tool charging is accidentally removed.
+        assert mock_execution_processor.charge_node_usage.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -1074,6 +1084,7 @@ async def test_orchestrator_uses_customized_name_for_blocks():
     mock_node.block_id = StoreValueBlock().id
     mock_node.metadata = {"customized_name": "My Custom Tool Name"}
     mock_node.block = StoreValueBlock()
+    mock_node.input_default = {}
 
     # Create a mock link
     mock_link = MagicMock(spec=Link)
@@ -1105,6 +1116,7 @@ async def test_orchestrator_falls_back_to_block_name():
     mock_node.block_id = StoreValueBlock().id
     mock_node.metadata = {}  # No customized_name
     mock_node.block = StoreValueBlock()
+    mock_node.input_default = {}
 
     # Create a mock link
     mock_link = MagicMock(spec=Link)

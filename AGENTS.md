@@ -1,6 +1,6 @@
 # AutoGPT Platform Contribution Guide
 
-This guide provides context for Codex when updating the **autogpt_platform** folder.
+This guide provides context for coding agents when updating the **autogpt_platform** folder.
 
 ## Directory overview
 
@@ -30,7 +30,7 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
-5. **Testing**: Add Storybook stories for new components, Playwright for E2E
+5. **Testing**: Integration tests (Vitest + RTL + MSW) are the default (~90%, page-level). Playwright for E2E critical flows. Storybook for design system components. See `autogpt_platform/frontend/TESTING.md`
 6. **Code conventions**: Function declarations (not arrow functions) for components/handlers
 
 - Component props should be `interface Props { ... }` (not exported) unless the interface needs to be used outside the component
@@ -47,7 +47,9 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 ## Testing
 
 - Backend: `poetry run test` (runs pytest with a docker based postgres + prisma).
-- Frontend: `pnpm test` or `pnpm test-ui` for Playwright tests. See `docs/content/platform/contributing/tests.md` for tips.
+- Frontend integration tests: `pnpm test:unit` (Vitest + RTL + MSW, primary testing approach).
+- Frontend E2E tests: `pnpm test` or `pnpm test-ui` for Playwright tests.
+- See `autogpt_platform/frontend/TESTING.md` for the full testing strategy.
 
 Always run the relevant linters and tests before committing.
 Use conventional commit messages for all commits (e.g. `feat(backend): add API`).

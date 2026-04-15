@@ -2,9 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/__legacy__/ui/input";
-import { Button } from "@/components/__legacy__/ui/button";
-import { Search } from "lucide-react";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 import {
   Select,
@@ -13,11 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/__legacy__/ui/select";
+import { AdminUserSearch } from "../../components/AdminUserSearch";
 
 export function SearchAndFilterAdminSpending({
   initialSearch,
 }: {
-  initialStatus?: CreditTransactionType;
   initialSearch?: string;
 }) {
   const router = useRouter();
@@ -37,11 +34,11 @@ export function SearchAndFilterAdminSpending({
     setSearchQuery(searchParams.get("search") || "");
   }, [searchParams]);
 
-  const handleSearch = () => {
+  function handleSearch(query: string) {
     const params = new URLSearchParams(searchParams.toString());
 
-    if (searchQuery) {
-      params.set("search", searchQuery);
+    if (query) {
+      params.set("search", query);
     } else {
       params.delete("search");
     }
@@ -55,21 +52,15 @@ export function SearchAndFilterAdminSpending({
     params.set("page", "1"); // Reset to first page on new search
 
     router.push(`${pathname}?${params.toString()}`);
-  };
+  }
 
   return (
     <div className="flex items-center justify-between">
-      <div className="flex w-full items-center gap-2">
-        <Input
-          placeholder="Search users by Name or Email..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-        />
-        <Button variant="outline" onClick={handleSearch}>
-          <Search className="h-4 w-4" />
-        </Button>
-      </div>
+      <AdminUserSearch
+        value={searchQuery}
+        onChange={setSearchQuery}
+        onSearch={handleSearch}
+      />
 
       <Select
         value={selectedStatus}

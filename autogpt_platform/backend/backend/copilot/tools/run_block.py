@@ -49,14 +49,6 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
-                "dry_run": {
-                    "type": "boolean",
-                    "description": (
-                        "When true, simulates block execution using an LLM without making any "
-                        "real API calls or producing side effects. Useful for testing agent "
-                        "wiring and previewing outputs. Default: false."
-                    ),
-                },
             },
             "required": ["block_id", "input_data"],
         }
@@ -69,7 +61,10 @@ class RunBlockTool(BaseTool):
         self,
         user_id: str | None,
         session: ChatSession,
-        **kwargs,
+        *,
+        block_id: str = "",
+        input_data: dict | None = None,
+        **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
 
@@ -84,9 +79,11 @@ class RunBlockTool(BaseTool):
             SetupRequirementsResponse: Missing credentials
             ErrorResponse: Error message
         """
-        block_id = kwargs.get("block_id", "").strip()
-        input_data = kwargs.get("input_data", {})
-        dry_run = bool(kwargs.get("dry_run", False))
+        block_id = block_id.strip()
+        if input_data is None:
+            input_data = {}
+        # Session-level flag drives dry-run mode — not exposed to the LLM.
+        dry_run = session.dry_run
         session_id = session.session_id
 
         if not block_id:

@@ -8,7 +8,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from .service import _prepare_file_attachments, _resolve_sdk_model
+from backend.copilot import config as cfg_mod
+
+from .service import (
+    _build_system_prompt_value,
+    _is_sdk_disconnect_error,
+    _normalize_model_name,
+    _prepare_file_attachments,
+    _resolve_sdk_model,
+    _safe_close_sdk_client,
+)
 
 
 @dataclass
@@ -156,8 +165,8 @@ class TestPromptSupplement:
         from backend.copilot.prompting import get_sdk_supplement
 
         # Test both local and E2B modes
-        local_supplement = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
-        e2b_supplement = get_sdk_supplement(use_e2b=True, cwd="")
+        local_supplement = get_sdk_supplement(use_e2b=False)
+        e2b_supplement = get_sdk_supplement(use_e2b=True)
 
         # Should NOT have tool list section
         assert "## AVAILABLE TOOLS" not in local_supplement
@@ -391,6 +400,7 @@ _CONFIG_ENV_VARS = (
     "OPENAI_BASE_URL",
     "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_USE_CLAUDE_AGENT_SDK",
+    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
 )
 
 
@@ -398,6 +408,49 @@ _CONFIG_ENV_VARS = (
 def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in _CONFIG_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
+
+
+class TestNormalizeModelName:
+    """Tests for _normalize_model_name — shared provider-aware normalization."""
+
+    def test_strips_provider_prefix(self, monkeypatch, _clean_config_env):
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
+
+    def test_dots_preserved_for_openrouter(self, monkeypatch, _clean_config_env):
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4.6"
+
+    def test_no_prefix_no_dots(self, monkeypatch, _clean_config_env):
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert (
+            _normalize_model_name("claude-sonnet-4-20250514")
+            == "claude-sonnet-4-20250514"
+        )
 
 
 class TestResolveSdkModel:
@@ -499,3 +552,170 @@ class TestResolveSdkModel:
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
+
+
+# ---------------------------------------------------------------------------
+# _is_sdk_disconnect_error — classify client disconnect cleanup errors
+# ---------------------------------------------------------------------------
+
+
+class TestIsSdkDisconnectError:
+    """Tests for _is_sdk_disconnect_error — identifies expected SDK cleanup errors."""
+
+    def test_cancel_scope_runtime_error(self):
+        """RuntimeError about cancel scope in wrong task is a disconnect error."""
+        exc = RuntimeError(
+            "Attempted to exit cancel scope in a different task than it was entered in"
+        )
+        assert _is_sdk_disconnect_error(exc) is True
+
+    def test_context_var_value_error(self):
+        """ValueError about ContextVar token mismatch is a disconnect error."""
+        exc = ValueError(
+            "<Token var=<ContextVar name='current_context'>> "
+            "was created in a different Context"
+        )
+        assert _is_sdk_disconnect_error(exc) is True
+
+    def test_unrelated_runtime_error(self):
+        """Unrelated RuntimeError should NOT be classified as disconnect error."""
+        exc = RuntimeError("something else went wrong")
+        assert _is_sdk_disconnect_error(exc) is False
+
+    def test_unrelated_value_error(self):
+        """Unrelated ValueError should NOT be classified as disconnect error."""
+        exc = ValueError("invalid argument")
+        assert _is_sdk_disconnect_error(exc) is False
+
+    def test_other_exception_types(self):
+        """Non-RuntimeError/ValueError should NOT be classified as disconnect error."""
+        assert _is_sdk_disconnect_error(TypeError("bad type")) is False
+        assert _is_sdk_disconnect_error(OSError("network down")) is False
+        assert _is_sdk_disconnect_error(asyncio.CancelledError()) is False
+
+
+# ---------------------------------------------------------------------------
+# _safe_close_sdk_client — suppress cleanup errors during disconnect
+# ---------------------------------------------------------------------------
+
+
+class TestSafeCloseSdkClient:
+    """Tests for _safe_close_sdk_client — suppresses expected SDK cleanup errors."""
+
+    @pytest.mark.asyncio
+    async def test_clean_exit(self):
+        """Normal __aexit__ (no error) should succeed silently."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(return_value=None)
+        await _safe_close_sdk_client(client, "[test]")
+        client.__aexit__.assert_awaited_once_with(None, None, None)
+
+    @pytest.mark.asyncio
+    async def test_cancel_scope_runtime_error_suppressed(self):
+        """RuntimeError from cancel scope mismatch should be suppressed."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(
+            side_effect=RuntimeError(
+                "Attempted to exit cancel scope in a different task"
+            )
+        )
+        # Should NOT raise
+        await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_context_var_value_error_suppressed(self):
+        """ValueError from ContextVar token mismatch should be suppressed."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(
+            side_effect=ValueError(
+                "<Token var=<ContextVar name='current_context'>> "
+                "was created in a different Context"
+            )
+        )
+        # Should NOT raise
+        await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unexpected_exception_suppressed_with_error_log(self):
+        """Unexpected exceptions should be caught (not propagated) but logged at error."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=OSError("unexpected"))
+        # Should NOT raise — unexpected errors are also suppressed to
+        # avoid crashing the generator during teardown.  Logged at error
+        # level so Sentry captures them via its logging integration.
+        await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unrelated_runtime_error_propagates(self):
+        """Non-cancel-scope RuntimeError should propagate (not suppressed)."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=RuntimeError("something unrelated"))
+        with pytest.raises(RuntimeError, match="something unrelated"):
+            await _safe_close_sdk_client(client, "[test]")
+
+    @pytest.mark.asyncio
+    async def test_unrelated_value_error_propagates(self):
+        """Non-disconnect ValueError should propagate (not suppressed)."""
+        client = AsyncMock()
+        client.__aexit__ = AsyncMock(side_effect=ValueError("invalid argument"))
+        with pytest.raises(ValueError, match="invalid argument"):
+            await _safe_close_sdk_client(client, "[test]")
+
+
+# ---------------------------------------------------------------------------
+# SystemPromptPreset — cross-user prompt caching
+# ---------------------------------------------------------------------------
+
+
+class TestSystemPromptPreset:
+    """Tests for _build_system_prompt_value — cross-user prompt caching."""
+
+    def test_preset_dict_structure_when_enabled(self):
+        """When cross_user_cache is True, returns a _SystemPromptPreset dict."""
+        custom_prompt = "You are a helpful assistant."
+        result = _build_system_prompt_value(custom_prompt, cross_user_cache=True)
+
+        assert isinstance(result, dict)
+        assert result["type"] == "preset"
+        assert result["preset"] == "claude_code"
+        assert result["append"] == custom_prompt
+        assert result["exclude_dynamic_sections"] is True
+
+    def test_raw_string_when_disabled(self):
+        """When cross_user_cache is False, returns the raw string."""
+        custom_prompt = "You are a helpful assistant."
+        result = _build_system_prompt_value(custom_prompt, cross_user_cache=False)
+
+        assert isinstance(result, str)
+        assert result == custom_prompt
+
+    def test_empty_string_with_cache_enabled(self):
+        """Empty system_prompt with cross_user_cache=True produces append=''."""
+        result = _build_system_prompt_value("", cross_user_cache=True)
+
+        assert isinstance(result, dict)
+        assert result["type"] == "preset"
+        assert result["preset"] == "claude_code"
+        assert result["append"] == ""
+        assert result["exclude_dynamic_sections"] is True
+
+    def test_default_config_is_enabled(self, _clean_config_env):
+        """The default value for claude_agent_cross_user_prompt_cache is True."""
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is True
+
+    def test_env_var_disables_cache(self, _clean_config_env, monkeypatch):
+        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=false disables caching."""
+        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "false")
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        assert cfg.claude_agent_cross_user_prompt_cache is False
