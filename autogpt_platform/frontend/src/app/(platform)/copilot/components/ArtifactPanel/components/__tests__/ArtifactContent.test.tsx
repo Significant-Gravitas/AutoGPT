@@ -221,9 +221,7 @@ describe("ArtifactContent", () => {
     const video = container.querySelector("video");
     expect(video).toBeTruthy();
     expect(video?.hasAttribute("controls")).toBe(true);
-
-    const source = video?.querySelector("source");
-    expect(source?.getAttribute("src")).toBe(
+    expect(video?.getAttribute("src")).toBe(
       "/api/proxy/api/workspace/files/vid-001/download",
     );
     expect(fetch).not.toHaveBeenCalled();

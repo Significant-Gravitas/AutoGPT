@@ -137,15 +137,13 @@ function ArtifactVideo({ src }: { src: string }) {
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}
       <video
+        src={src}
         controls
         preload="metadata"
         className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoadedMetadata={() => setLoaded(true)}
         onError={() => setError(true)}
-      >
-        <source src={src} />
-        Your browser does not support the video tag.
-      </video>
+      />
     </div>
   );
 }
