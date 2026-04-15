@@ -2216,6 +2216,148 @@ async def _seed_transcript(
     return _seeded, True, len(_prior)
 
 
+@dataclass
+class _TranscriptContext:
+    """Result of processing a downloaded (or reconstructed) transcript."""
+
+    use_resume: bool = False
+    resume_file: str | None = None
+    transcript_content: str = ""
+    transcript_msg_count: int = 0
+    transcript_covers_prefix: bool = True
+
+
+async def _process_transcript_download(
+    dl: Any,
+    session: "ChatSession",
+    session_id: str,
+    sdk_cwd: str,
+    user_id: str | None,
+    log_prefix: str,
+    transcript_builder: TranscriptBuilder,
+) -> _TranscriptContext:
+    """Process a transcript download result and restore the CLI native session.
+
+    Returns a ``_TranscriptContext`` with resume flags and builder state.
+    """
+    ctx = _TranscriptContext()
+    if dl is None:
+        if config.claude_agent_use_resume and user_id and len(session.messages) > 1:
+            prior = session.messages[:-1]
+            reconstructed = _session_messages_to_transcript(prior)
+            if reconstructed:
+                ctx.transcript_content = reconstructed
+                transcript_builder.load_previous(reconstructed, log_prefix=log_prefix)
+                ctx.transcript_msg_count = len(prior)
+                ctx.transcript_covers_prefix = True
+                logger.info(
+                    "%s Reconstructed transcript from %d session messages "
+                    "(no CLI native session — running without --resume this turn)",
+                    log_prefix,
+                    len(prior),
+                )
+            else:
+                logger.warning(
+                    "%s No transcript available and reconstruction produced empty"
+                    " output (%d messages in session)",
+                    log_prefix,
+                    len(session.messages),
+                )
+                ctx.transcript_covers_prefix = False
+        return ctx
+
+    is_valid = validate_transcript(dl.content)
+    dl_lines = dl.content.strip().split("\n") if dl.content else []
+    logger.info(
+        "%s Downloaded transcript: %dB, %d lines, msg_count=%d, valid=%s",
+        log_prefix,
+        len(dl.content),
+        len(dl_lines),
+        dl.message_count,
+        is_valid,
+    )
+    if not is_valid:
+        logger.warning("%s Transcript downloaded but invalid", log_prefix)
+        ctx.transcript_covers_prefix = False
+        return ctx
+
+    ctx.transcript_content = dl.content
+    transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
+    cli_restored = user_id is not None and await restore_cli_session(
+        user_id, session_id, sdk_cwd, log_prefix=log_prefix
+    )
+    if cli_restored:
+        ctx.use_resume = True
+        ctx.resume_file = session_id
+        ctx.transcript_msg_count = dl.message_count
+        logger.info(
+            "%s Using --resume %s (%dB transcript, msg_count=%d)",
+            log_prefix,
+            session_id[:8],
+            len(dl.content),
+            ctx.transcript_msg_count,
+        )
+    else:
+        ctx.transcript_msg_count = dl.message_count
+        logger.info(
+            "%s CLI session not restored — running without"
+            " --resume this turn (transcript_msg_count=%d for"
+            " gap-aware fallback)",
+            log_prefix,
+            ctx.transcript_msg_count,
+        )
+    return ctx
+
+
+async def _setup_e2b_sandbox(session_id: str) -> "Any | None":
+    """Set up E2B sandbox if configured, return sandbox or None."""
+    if not (e2b_api_key := config.active_e2b_api_key):
+        if config.use_e2b_sandbox:
+            logger.warning(
+                "[E2B] [%s] E2B sandbox enabled but no API key configured "
+                "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
+                session_id[:12],
+            )
+        return None
+    try:
+        sandbox = await get_or_create_sandbox(
+            session_id,
+            api_key=e2b_api_key,
+            template=config.e2b_sandbox_template,
+            timeout=config.e2b_sandbox_timeout,
+            on_timeout=config.e2b_sandbox_on_timeout,
+        )
+    except Exception as e2b_err:
+        logger.error(
+            "[E2B] [%s] Setup failed: %s",
+            session_id[:12],
+            e2b_err,
+            exc_info=True,
+        )
+        return None
+    return sandbox
+
+
+async def _fetch_resume_transcript(
+    session: "ChatSession",
+    user_id: str | None,
+    session_id: str,
+    log_prefix: str,
+) -> "Any | None":
+    """Download transcript for --resume if applicable."""
+    if not (config.claude_agent_use_resume and user_id and len(session.messages) > 1):
+        return None
+    try:
+        return await download_transcript(user_id, session_id, log_prefix=log_prefix)
+    except Exception as transcript_err:
+        logger.warning(
+            "%s Transcript download failed, continuing without --resume: %s",
+            log_prefix,
+            transcript_err,
+        )
+        return None
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -2380,58 +2522,10 @@ async def stream_chat_completion_sdk(
         # download are independent network calls.  Running them concurrently
         # saves ~200-500ms compared to sequential execution.
 
-        async def _setup_e2b():
-            """Set up E2B sandbox if configured, return sandbox or None."""
-            if not (e2b_api_key := config.active_e2b_api_key):
-                if config.use_e2b_sandbox:
-                    logger.warning(
-                        "[E2B] [%s] E2B sandbox enabled but no API key configured "
-                        "(CHAT_E2B_API_KEY / E2B_API_KEY) — falling back to bubblewrap",
-                        session_id[:12],
-                    )
-                return None
-            try:
-                sandbox = await get_or_create_sandbox(
-                    session_id,
-                    api_key=e2b_api_key,
-                    template=config.e2b_sandbox_template,
-                    timeout=config.e2b_sandbox_timeout,
-                    on_timeout=config.e2b_sandbox_on_timeout,
-                )
-            except Exception as e2b_err:
-                logger.error(
-                    "[E2B] [%s] Setup failed: %s",
-                    session_id[:12],
-                    e2b_err,
-                    exc_info=True,
-                )
-                return None
-
-            return sandbox
-
-        async def _fetch_transcript():
-            """Download transcript for --resume if applicable."""
-            assert session is not None  # narrowed at line 1898
-            if not (
-                config.claude_agent_use_resume and user_id and len(session.messages) > 1
-            ):
-                return None
-            try:
-                return await download_transcript(
-                    user_id, session_id, log_prefix=log_prefix
-                )
-            except Exception as transcript_err:
-                logger.warning(
-                    "%s Transcript download failed, continuing without --resume: %s",
-                    log_prefix,
-                    transcript_err,
-                )
-                return None
-
         e2b_sandbox, (base_system_prompt, understanding), dl = await asyncio.gather(
-            _setup_e2b(),
+            _setup_e2b_sandbox(session_id),
             _build_system_prompt(user_id if not has_history else None),
-            _fetch_transcript(),
+            _fetch_resume_transcript(session, user_id, session_id, log_prefix),
         )
 
         use_e2b = e2b_sandbox is not None
@@ -2458,91 +2552,14 @@ async def stream_chat_completion_sdk(
         # The CLI native session file (uploaded after each turn) is the
         # source of truth for --resume.  Our custom JSONL (TranscriptEntry)
         # is loaded into the builder for future upload_transcript calls.
-        transcript_msg_count = 0
-        if dl:
-            is_valid = validate_transcript(dl.content)
-            dl_lines = dl.content.strip().split("\n") if dl.content else []
-            logger.info(
-                "%s Downloaded transcript: %dB, %d lines, msg_count=%d, valid=%s",
-                log_prefix,
-                len(dl.content),
-                len(dl_lines),
-                dl.message_count,
-                is_valid,
-            )
-            if is_valid:
-                # Load previous FULL context into builder for state tracking.
-                transcript_content = dl.content
-                transcript_builder.load_previous(dl.content, log_prefix=log_prefix)
-                # Restore CLI's native session file so --resume session_id works.
-                # Falls back gracefully if not available (first turn or upload missed).
-                # user_id is guaranteed non-None here: _fetch_transcript only sets dl
-                # when `config.claude_agent_use_resume and user_id` is truthy.
-                cli_restored = user_id is not None and await restore_cli_session(
-                    user_id, session_id, sdk_cwd, log_prefix=log_prefix
-                )
-                if cli_restored:
-                    use_resume = True
-                    resume_file = session_id  # CLI --resume expects UUID, not file path
-                    transcript_msg_count = dl.message_count
-                    logger.info(
-                        "%s Using --resume %s (%dB transcript, msg_count=%d)",
-                        log_prefix,
-                        session_id[:8],
-                        len(dl.content),
-                        transcript_msg_count,
-                    )
-                else:
-                    # Builder loaded but CLI native session not available.
-                    # --resume will not be used this turn; upload after turn
-                    # will seed the native session for the next turn.
-                    #
-                    # Still record transcript_msg_count so _build_query_message
-                    # can use the transcript-aware gap path (inject only new
-                    # messages since the transcript end) instead of compressing
-                    # the full DB history.  This avoids prompt-too-long on
-                    # large sessions where the CLI session is temporarily
-                    # unavailable (e.g. mixed-version rolling deployment).
-                    transcript_msg_count = dl.message_count
-                    logger.info(
-                        "%s CLI session not restored — running without"
-                        " --resume this turn (transcript_msg_count=%d for"
-                        " gap-aware fallback)",
-                        log_prefix,
-                        transcript_msg_count,
-                    )
-            else:
-                logger.warning("%s Transcript downloaded but invalid", log_prefix)
-                transcript_covers_prefix = False
-        elif config.claude_agent_use_resume and user_id and len(session.messages) > 1:
-            # No transcript in storage — reconstruct from DB messages as a
-            # last-resort fallback (e.g., first turn after a crash or transition).
-            # This path loses tool call IDs and structural fidelity but prevents
-            # a completely context-free response for established sessions.
-            prior = session.messages[:-1]
-            reconstructed = _session_messages_to_transcript(prior)
-            if reconstructed:
-                # Populate builder only; no --resume since there is no CLI
-                # native session to restore.  The transcript builder state is
-                # still useful for the upload that seeds future native sessions.
-                transcript_content = reconstructed
-                transcript_builder.load_previous(reconstructed, log_prefix=log_prefix)
-                transcript_msg_count = len(prior)
-                transcript_covers_prefix = True
-                logger.info(
-                    "%s Reconstructed transcript from %d session messages "
-                    "(no CLI native session — running without --resume this turn)",
-                    log_prefix,
-                    len(prior),
-                )
-            else:
-                logger.warning(
-                    "%s No transcript available and reconstruction produced empty"
-                    " output (%d messages in session)",
-                    log_prefix,
-                    len(session.messages),
-                )
-                transcript_covers_prefix = False
+        _tc = await _process_transcript_download(
+            dl, session, session_id, sdk_cwd, user_id, log_prefix, transcript_builder
+        )
+        use_resume = _tc.use_resume
+        resume_file = _tc.resume_file
+        transcript_content = _tc.transcript_content
+        transcript_msg_count = _tc.transcript_msg_count
+        transcript_covers_prefix = _tc.transcript_covers_prefix
 
         yield StreamStart(messageId=message_id, sessionId=session_id)
 
