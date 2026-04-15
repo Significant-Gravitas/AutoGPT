@@ -1,8 +1,9 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import { useState } from "react";
+import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
@@ -20,7 +21,11 @@ import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
-import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
+import {
+  extractWorkspaceArtifacts,
+  parseSpecialMarkers,
+  resolveWorkspaceUrls,
+} from "../helpers";
 
 /**
  * Custom img component for Streamdown that renders <video> elements
@@ -29,12 +34,10 @@ import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
  */
 function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
   const { src, alt, ...rest } = props;
-  const [imgFailed, setImgFailed] = useState(false);
-  const isWorkspace = src?.includes("/workspace/files/") ?? false;
 
   if (!src) return null;
 
-  if (alt?.startsWith("video:") || (imgFailed && isWorkspace)) {
+  if (alt?.startsWith("video:")) {
     return (
       <span className="my-2 inline-block">
         <video
@@ -56,9 +59,6 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
       alt={alt || "Image"}
       className="h-auto max-w-full rounded-md border border-zinc-200"
       loading="lazy"
-      onError={() => {
-        if (isWorkspace) setImgFailed(true);
-      }}
       {...rest}
     />
   );
@@ -66,6 +66,27 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
+
+function TextWithArtifactCards({ text }: { text: string }) {
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const artifacts = extractWorkspaceArtifacts(text);
+  const resolved = resolveWorkspaceUrls(text);
+
+  return (
+    <>
+      {isArtifactsEnabled && artifacts.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {artifacts.map((artifact) => (
+            <ArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </div>
+      )}
+      <MessageResponse components={STREAMDOWN_COMPONENTS}>
+        {resolved}
+      </MessageResponse>
+    </>
+  );
+}
 
 interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
@@ -124,11 +145,7 @@ export function MessagePartRenderer({
         );
       }
 
-      return (
-        <MessageResponse key={key} components={STREAMDOWN_COMPONENTS}>
-          {resolveWorkspaceUrls(cleanText)}
-        </MessageResponse>
-      );
+      return <TextWithArtifactCards key={key} text={cleanText} />;
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;

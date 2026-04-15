@@ -40,6 +40,15 @@ model User {
 
   timezone String @default("not-set")
 
+  // CoPilot subscription tier — controls rate-limit multipliers.
+  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=20x, ENTERPRISE=60x.
+  // NOTE: @default(PRO) is intentional for the beta period — all existing and new
+  // users receive PRO-level (5x) rate limits by default. The Python-level constant
+  // DEFAULT_TIER=FREE (in copilot/rate_limit.py) acts as a code-level fallback when
+  // the DB value is NULL or unrecognised. At GA, a migration will flip the column
+  // default to FREE and batch-update users to their billing-derived tiers.
+  subscriptionTier SubscriptionTier @default(PRO)
+
   // Relations
 
   AgentGraphs          AgentGraph[]
@@ -65,12 +74,20 @@ model User {
   NotificationBatches   UserNotificationBatch[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
+  PlatformCostLogs PlatformCostLog[]
 
   // OAuth Provider relations
   OAuthApplications       OAuthApplication[]
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  BUSINESS
+  ENTERPRISE
 }
 
 enum OnboardingStep {
@@ -138,6 +155,7 @@ model CoPilotUnderstanding {
 
   @@index([userId])
 }
+
 
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
@@ -756,6 +774,7 @@ enum CreditTransactionType {
   GRANT
   REFUND
   CARD_CHECK
+  SUBSCRIPTION
 }
 
 model CreditTransaction {
@@ -797,6 +816,47 @@ model CreditRefundRequest {
   status CreditRefundRequestStatus @default(PENDING)
 
   @@index([userId, transactionKey])
+}
+
+////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////
+//////////   Platform Cost Tracking TABLES    //////////////
+////////////////////////////////////////////////////////////
+
+model PlatformCostLog {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  userId       String?
+  User         User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  graphExecId  String?
+  nodeExecId   String?
+  graphId      String?
+  nodeId       String?
+  blockId      String?
+  blockName    String?
+  provider     String
+  credentialId String?
+
+  // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
+  costMicrodollars BigInt?
+
+  inputTokens  Int?
+  outputTokens Int?
+  cacheReadTokens     Int? // Anthropic cache read tokens (billed at 10% of base)
+  cacheCreationTokens Int? // Anthropic cache write tokens (billed at 125% of base)
+  dataSize     Int? // bytes
+  duration     Float? // seconds
+  model        String?
+  trackingType   String? // e.g. "cost_usd", "tokens", "characters", "items", "per_run", "sandbox_seconds", "walltime_seconds"
+  trackingAmount Float? // Amount in the unit implied by trackingType
+  metadata       Json?
+
+  @@index([userId, createdAt])
+  @@index([provider, createdAt])
+  @@index([createdAt])
+  @@index([graphExecId])
+  @@index([provider, trackingType])
 }
 
 ////////////////////////////////////////////////////////////

@@ -1,11 +1,15 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { cn } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback } from "react";
+import { useCopilotUIStore } from "../../store";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -23,6 +27,9 @@ export interface ChatContainerProps {
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
   isUploadingFiles?: boolean;
+  hasMoreMessages?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
   /** Files dropped onto the chat window. */
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
@@ -44,10 +51,20 @@ export const ChatContainer = ({
   onSend,
   onStop,
   isUploadingFiles,
+  hasMoreMessages,
+  isLoadingMore,
+  onLoadMore,
   droppedFiles,
   onDroppedFilesConsumed,
   historicalDurations,
 }: ChatContainerProps) => {
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
+  // When the flag is off we must not auto-open artifacts or let the panel's
+  // open state drive layout width; an artifact generated in a stale session
+  // state would otherwise shrink the chat column with no panel rendered.
+  const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
+  useAutoOpenArtifacts({ sessionId });
   const isBusy =
     status === "streaming" ||
     status === "submitted" ||
@@ -76,13 +93,21 @@ export const ChatContainer = ({
       <LayoutGroup id="copilot-2-chat-layout">
         <div className="flex h-full min-h-0 w-full flex-col bg-[#f8f8f9] px-2 lg:px-0">
           {sessionId ? (
-            <div className="mx-auto flex h-full min-h-0 w-full max-w-3xl flex-col">
+            <div
+              className={cn(
+                "mx-auto flex h-full min-h-0 w-full flex-col",
+                !isArtifactOpen && "max-w-3xl",
+              )}
+            >
               <ChatMessagesContainer
                 messages={messages}
                 status={status}
                 error={error}
                 isLoading={isLoadingSession}
                 sessionID={sessionId}
+                hasMoreMessages={hasMoreMessages}
+                isLoadingMore={isLoadingMore}
+                onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 historicalDurations={historicalDurations}
               />
@@ -103,6 +128,7 @@ export const ChatContainer = ({
                   placeholder="What else can I help with?"
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
+                  hasSession={!!sessionId}
                 />
               </motion.div>
             </div>

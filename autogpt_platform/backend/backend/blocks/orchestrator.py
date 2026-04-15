@@ -36,6 +36,7 @@ from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats, SchemaField
 from backend.util import json
 from backend.util.clients import get_database_manager_async_client
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.prompt import MAIN_OBJECTIVE_PREFIX
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.tool_call_loop import (
@@ -251,8 +252,13 @@ def _convert_raw_response_to_dict(
         # Already a dict (from tests or some providers)
         return raw_response
     elif _is_responses_api_object(raw_response):
-        # OpenAI Responses API: extract individual output items
-        items = [json.to_dict(item) for item in raw_response.output]
+        # OpenAI Responses API: extract individual output items.
+        # Strip 'status' — it's a response-only field that OpenAI rejects
+        # when the item is sent back as input on the next API call.
+        items = [
+            {k: v for k, v in json.to_dict(item).items() if k != "status"}
+            for item in raw_response.output
+        ]
         return items if items else [{"role": "assistant", "content": ""}]
     else:
         # Chat Completions / Anthropic return message objects
@@ -359,10 +365,31 @@ def _disambiguate_tool_names(tools: list[dict[str, Any]]) -> None:
 
 
 class OrchestratorBlock(Block):
+    """A block that uses a language model to orchestrate tool calls.
+
+    Supports both single-shot and iterative agent mode execution.
+
+    **InsufficientBalanceError propagation contract**: ``InsufficientBalanceError``
+    (IBE) must always re-raise through every ``except`` block in this class.
+    Swallowing IBE would let the agent loop continue with unpaid work. Every
+    exception handler that catches ``Exception`` includes an explicit IBE
+    re-raise carve-out for this reason.
     """
-    A block that uses a language model to orchestrate tool calls, supporting both
-    single-shot and iterative agent mode execution.
-    """
+
+    def extra_runtime_cost(self, execution_stats: NodeExecutionStats) -> int:
+        """Charge one extra runtime cost per LLM call beyond the first.
+
+        In agent mode each iteration makes one LLM call. The first is already
+        covered by charge_usage(); this returns the number of additional
+        credits so the executor can bill the remaining calls post-completion.
+
+        SDK-mode exemption: when the block runs via _execute_tools_sdk_mode,
+        the SDK manages its own conversation loop and only exposes aggregate
+        usage. We hardcode llm_call_count=1 there (the SDK does not report a
+        per-turn call count), so this method always returns 0 for SDK-mode
+        executions. Per-iteration billing does not apply to SDK mode.
+        """
+        return max(0, execution_stats.llm_call_count - 1)
 
     # MCP server name used by the Claude Code SDK execution mode.  Keep in sync
     # with _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
@@ -844,7 +871,10 @@ class OrchestratorBlock(Block):
             NodeExecutionStats(
                 input_token_count=resp.prompt_tokens,
                 output_token_count=resp.completion_tokens,
+                cache_read_token_count=resp.cache_read_tokens,
+                cache_creation_token_count=resp.cache_creation_tokens,
                 llm_call_count=1,
+                provider_cost=resp.provider_cost,
             )
         )
 
@@ -1069,7 +1099,10 @@ class OrchestratorBlock(Block):
                 input_data=input_value,
             )
 
-        assert node_exec_result is not None, "node_exec_result should not be None"
+        if node_exec_result is None:
+            raise RuntimeError(
+                f"upsert_execution_input returned None for node {sink_node_id}"
+            )
 
         # Create NodeExecutionEntry for execution manager
         node_exec_entry = NodeExecutionEntry(
@@ -1104,15 +1137,86 @@ class OrchestratorBlock(Block):
                 task=node_exec_future,
             )
 
-            # Execute the node directly since we're in the Orchestrator context
-            node_exec_future.set_result(
-                await execution_processor.on_node_execution(
+            # Execute the node directly since we're in the Orchestrator context.
+            # Wrap in try/except so the future is always resolved, even on
+            # error — an unresolved Future would block anything awaiting it.
+            #
+            # on_node_execution is decorated with @async_error_logged(swallow=True),
+            # which catches BaseException and returns None rather than raising.
+            # Treat a None return as a failure: set_exception so the future
+            # carries an error state rather than a None result, and return an
+            # error response so the LLM knows the tool failed.
+            try:
+                tool_node_stats = await execution_processor.on_node_execution(
                     node_exec=node_exec_entry,
                     node_exec_progress=node_exec_progress,
                     nodes_input_masks=None,
                     graph_stats_pair=graph_stats_pair,
                 )
-            )
+                if tool_node_stats is None:
+                    nil_err = RuntimeError(
+                        f"on_node_execution returned None for node {sink_node_id} "
+                        "(error was swallowed by @async_error_logged)"
+                    )
+                    node_exec_future.set_exception(nil_err)
+                    resp = _create_tool_response(
+                        tool_call.id,
+                        "Tool execution returned no result",
+                        responses_api=responses_api,
+                    )
+                    resp["_is_error"] = True
+                    return resp
+                node_exec_future.set_result(tool_node_stats)
+            except Exception as exec_err:
+                node_exec_future.set_exception(exec_err)
+                raise
+
+            # Charge user credits AFTER successful tool execution. Tools
+            # spawned by the orchestrator bypass the main execution queue
+            # (where _charge_usage is called), so we must charge here to
+            # avoid free tool execution. Charging post-completion (vs.
+            # pre-execution) avoids billing users for failed tool calls.
+            # Skipped for dry runs.
+            #
+            # `error is None` intentionally excludes both Exception and
+            # BaseException subclasses (e.g. CancelledError) so cancelled
+            # or terminated tool runs are not billed.
+            #
+            # Billing errors (including non-balance exceptions) are kept
+            # in a separate try/except so they are never silently swallowed
+            # by the generic tool-error handler below.
+            if (
+                not execution_params.execution_context.dry_run
+                and tool_node_stats.error is None
+            ):
+                try:
+                    tool_cost, _ = await execution_processor.charge_node_usage(
+                        node_exec_entry,
+                    )
+                except InsufficientBalanceError:
+                    # IBE must propagate — see OrchestratorBlock class docstring.
+                    # Log the billing failure here so the discarded tool result
+                    # is traceable before the loop aborts.
+                    logger.warning(
+                        "Insufficient balance charging for tool node %s after "
+                        "successful execution; agent loop will be aborted",
+                        sink_node_id,
+                    )
+                    raise
+                except Exception:
+                    # Non-billing charge failures (DB outage, network, etc.)
+                    # must NOT propagate to the outer except handler because
+                    # the tool itself succeeded. Re-raising would mark the
+                    # tool as failed (_is_error=True), causing the LLM to
+                    # retry side-effectful operations. Log and continue.
+                    logger.exception(
+                        "Unexpected error charging for tool node %s; "
+                        "tool execution was successful",
+                        sink_node_id,
+                    )
+                    tool_cost = 0
+                if tool_cost > 0:
+                    self.merge_stats(NodeExecutionStats(extra_cost=tool_cost))
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
@@ -1125,18 +1229,26 @@ class OrchestratorBlock(Block):
                 if node_outputs
                 else "Tool executed successfully"
             )
-            return _create_tool_response(
+            resp = _create_tool_response(
                 tool_call.id, tool_response_content, responses_api=responses_api
             )
+            resp["_is_error"] = False
+            return resp
 
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring.
+            raise
         except Exception as e:
-            logger.warning("Tool execution with manager failed: %s", e)
-            # Return error response
-            return _create_tool_response(
+            logger.warning("Tool execution with manager failed: %s", e, exc_info=True)
+            # Return a generic error to the LLM — internal exception messages
+            # may contain server paths, DB details, or infrastructure info.
+            resp = _create_tool_response(
                 tool_call.id,
-                f"Tool execution failed: {e}",
+                "Tool execution failed due to an internal error",
                 responses_api=responses_api,
             )
+            resp["_is_error"] = True
+            return resp
 
     async def _agent_mode_llm_caller(
         self,
@@ -1236,13 +1348,16 @@ class OrchestratorBlock(Block):
                 content = str(raw_content)
             else:
                 content = "Tool executed successfully"
-            tool_failed = content.startswith("Tool execution failed:")
+            tool_failed = result.get("_is_error", True)
             return ToolCallResult(
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.name,
                 content=content,
                 is_error=tool_failed,
             )
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring.
+            raise
         except Exception as e:
             logger.error("Tool execution failed: %s", e)
             return ToolCallResult(
@@ -1362,9 +1477,13 @@ class OrchestratorBlock(Block):
                             "arguments": tc.arguments,
                         },
                     )
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring.
+            raise
         except Exception as e:
-            # Catch all errors (validation, network, API) so that the block
-            # surfaces them as user-visible output instead of crashing.
+            # Catch all OTHER errors (validation, network, API) so that
+            # the block surfaces them as user-visible output instead of
+            # crashing.
             yield "error", str(e)
             return
 
@@ -1442,11 +1561,14 @@ class OrchestratorBlock(Block):
                             text = content
                         else:
                             text = json.dumps(content)
-                        tool_failed = text.startswith("Tool execution failed:")
+                        tool_failed = result.get("_is_error", True)
                         return {
                             "content": [{"type": "text", "text": text}],
                             "isError": tool_failed,
                         }
+                    except InsufficientBalanceError:
+                        # IBE must propagate — see class docstring.
+                        raise
                     except Exception as e:
                         logger.error("SDK tool execution failed: %s", e)
                         return {
@@ -1572,6 +1694,7 @@ class OrchestratorBlock(Block):
         conversation: list[dict[str, Any]] = list(prompt)  # Start with input prompt
         total_prompt_tokens = 0
         total_completion_tokens = 0
+        total_cost_usd: float | None = None
 
         sdk_error: Exception | None = None
         try:
@@ -1715,6 +1838,8 @@ class OrchestratorBlock(Block):
                                 total_completion_tokens += getattr(
                                     sdk_msg.usage, "output_tokens", 0
                                 )
+                            if sdk_msg.total_cost_usd is not None:
+                                total_cost_usd = sdk_msg.total_cost_usd
                 finally:
                     if pending_task is not None and not pending_task.done():
                         pending_task.cancel()
@@ -1722,11 +1847,15 @@ class OrchestratorBlock(Block):
                             await pending_task
                         except (asyncio.CancelledError, StopAsyncIteration):
                             pass
+        except InsufficientBalanceError:
+            # IBE must propagate — see class docstring. The `finally`
+            # block below still runs and records partial token usage.
+            raise
         except Exception as e:
-            # Surface SDK errors as user-visible output instead of crashing,
-            # consistent with _execute_tools_agent_mode error handling.
-            # Don't return yet — fall through to merge_stats below so
-            # partial token usage is always recorded.
+            # Surface OTHER SDK errors as user-visible output instead
+            # of crashing, consistent with _execute_tools_agent_mode
+            # error handling. Don't return yet — fall through to
+            # merge_stats below so partial token usage is always recorded.
             sdk_error = e
         finally:
             # Always record usage stats, even on error.  The SDK may have
@@ -1734,12 +1863,17 @@ class OrchestratorBlock(Block):
             # those stats would under-count resource usage.
             # llm_call_count=1 is approximate; the SDK manages its own
             # multi-turn loop and only exposes aggregate usage.
-            if total_prompt_tokens > 0 or total_completion_tokens > 0:
+            if (
+                total_prompt_tokens > 0
+                or total_completion_tokens > 0
+                or total_cost_usd is not None
+            ):
                 self.merge_stats(
                     NodeExecutionStats(
                         input_token_count=total_prompt_tokens,
                         output_token_count=total_completion_tokens,
                         llm_call_count=1,
+                        provider_cost=total_cost_usd,
                     )
                 )
             # Clean up execution-specific working directory.

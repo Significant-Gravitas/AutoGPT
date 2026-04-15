@@ -4,14 +4,36 @@ codecov:
 coverage:
   status:
     project:
-      default:
+      platform-backend:
+        target: auto
+        threshold: 1%
+        flags:
+          - platform-backend
+      platform-frontend:
         target: auto
         threshold: 1%
         informational: true
+        flags:
+          - platform-frontend
     patch:
-      default:
+      platform-backend:
+        target: 80%
+        flags:
+          - platform-backend
+      platform-frontend:
+        target: 80%
+        flags:
+          - platform-frontend
+      autogpt-libs:
         target: 80%
         informational: true
+        flags:
+          - autogpt-libs
+      classic:
+        target: 80%
+        informational: true
+        flags:
+          - autogpt-agent
 
 flags:
   platform-backend:
@@ -21,6 +43,14 @@ flags:
   platform-frontend:
     paths:
       - autogpt_platform/frontend/src/
+    carryforward: true
+  platform-frontend-e2e:
+    paths:
+      - autogpt_platform/frontend/src/
+    carryforward: true
+  autogpt-libs:
+    paths:
+      - autogpt_platform/autogpt_libs/
     carryforward: true
   autogpt-agent:
     paths:
@@ -32,8 +62,10 @@ component_management:
     statuses:
       - type: project
         target: auto
+        informational: true
       - type: patch
         target: 80%
+        informational: true
   individual_components:
     - component_id: platform-backend
       name: "Platform Backend"
@@ -43,6 +75,13 @@ component_management:
       name: "Platform Frontend"
       paths:
         - autogpt_platform/frontend/src/**
+      statuses:
+        - type: project
+          target: auto
+          informational: true
+        - type: patch
+          target: 80%
+          informational: true
     - component_id: autogpt-libs
       name: "AutoGPT Libs"
       paths:

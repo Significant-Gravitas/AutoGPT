@@ -22,7 +22,17 @@
 - Flows requiring real browser APIs (clipboard, downloads)
 - Cross-page navigation that must work end-to-end
 
-**Location:** `src/tests/*.spec.ts` (centralized, as there will be fewer of them)
+**Location:** `src/playwright/*.spec.ts` (centralized, as there will be fewer of them)
+
+**Import:** Always import `test` and `expect` from `./coverage-fixture` instead of `@playwright/test`. This auto-collects V8 coverage per test for Codecov reporting.
+
+```ts
+// correct
+import { test, expect } from "./coverage-fixture";
+
+// wrong - bypasses coverage collection
+import { test, expect } from "@playwright/test";
+```
 
 ### ✅ Integration Tests (Vitest + RTL)
 
@@ -64,6 +74,10 @@ Start with a `main.test.tsx` file and split into smaller files as it grows.
 2. Mock API requests via MSW
 3. Assert UI scenarios via Testing Library
 
+**Prefer the UI surface over direct hook tests:** if a `use*.ts` hook only exists to support a page/component, test that page/component instead of adding a `renderHook()` test. Reserve direct hook tests for shared hooks with standalone business logic that cannot be exercised cleanly through the UI.
+
+**Prefer Orval-generated mocks:** use the generated MSW handlers and response builders from `src/app/api/__generated__/endpoints/*/*.msw.ts` instead of hand-built API response objects or mocking a page/component hook.
+
 ```tsx
 // Example: Test page renders data from API
 import { server } from "@/mocks/mock-server";
@@ -88,7 +102,7 @@ test("shows error when submission fails", async () => {
 - Pure utility functions (`lib/utils.ts`)
 - Component rendering with various props
 - Component state changes
-- Custom hooks
+- Shared hooks with standalone business logic
 
 **Location:** Co-located with the file: `Component.test.tsx` next to `Component.tsx`
 
@@ -162,25 +176,29 @@ src/
 ├── mocks/
 │   ├── mock-handlers.ts             # MSW handlers (auto-generated via Orval)
 │   └── mock-server.ts               # MSW server setup
+├── playwright/
+│   ├── *.spec.ts                    # E2E tests (Playwright) - centralized
+│   ├── pages/                       # Playwright page objects
+│   └── utils/                       # Playwright helpers/fixtures
 └── tests/
     ├── integrations/
     │   ├── test-utils.tsx           # Testing utilities
     │   └── vitest.setup.tsx         # Integration test setup
-    └── *.spec.ts                    # E2E tests (Playwright) - centralized
+    └── AGENTS.md                    # Testing guidance for agents
 ```
 
 ---
 
 ## Priority Matrix
 
-| Component Type      | Test Priority | Recommended Test |
-| ------------------- | ------------- | ---------------- |
-| Pages/Features      | **Highest**   | Integration      |
-| Custom Hooks        | High          | Unit             |
-| Utility Functions   | High          | Unit             |
-| Organisms (complex) | High          | Integration      |
-| Molecules           | Medium        | Unit + Storybook |
-| Atoms               | Medium        | Storybook only\* |
+| Component Type      | Test Priority | Recommended Test                       |
+| ------------------- | ------------- | -------------------------------------- |
+| Pages/Features      | **Highest**   | Integration                            |
+| Custom Hooks        | Medium        | Parent integration or shared-hook unit |
+| Utility Functions   | High          | Unit                                   |
+| Organisms (complex) | High          | Integration                            |
+| Molecules           | Medium        | Unit + Storybook                       |
+| Atoms               | Medium        | Storybook only\*                       |
 
 \*Atoms are typically simple enough that Storybook visual tests suffice.
 
@@ -208,6 +226,8 @@ test("shows error when deletion fails", async () => {
 
 **Generated handlers location:** `src/app/api/__generated__/endpoints/*/` - each endpoint has handlers for different status codes.
 
+For Playwright support code, keep browser-only helpers in `src/playwright/` rather than `src/tests/`.
+
 ---
 
 ## Golden Rules
@@ -218,3 +238,5 @@ test("shows error when deletion fails", async () => {
 4. **Co-locate integration tests** - Keep `__tests__/` folder next to the component
 5. **E2E is expensive** - Only for critical happy paths; prefer integration tests
 6. **AI agents are good at writing integration tests** - Start with these when adding test coverage
+7. **Prefer component/page tests over hook tests** - Don't add `renderHook()` coverage for component implementation details
+8. **Use generated API mocks** - Prefer Orval MSW helpers over manual API object stubs

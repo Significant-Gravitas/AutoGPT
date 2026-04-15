@@ -24,7 +24,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "Before calling, search for existing agents with find_library_agent."
+            "If you haven't already, call get_agent_building_guide first."
         )
 
     @property

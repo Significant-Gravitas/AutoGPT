@@ -7,7 +7,8 @@ import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
-import { UploadSimple } from "@phosphor-icons/react";
+import { Flask, UploadSimple } from "@phosphor-icons/react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
@@ -19,6 +20,14 @@ import { NotificationDialog } from "./components/NotificationDialog/Notification
 import { RateLimitResetDialog } from "./components/RateLimitResetDialog/RateLimitResetDialog";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
 import { useCopilotPage } from "./useCopilotPage";
+
+const ArtifactPanel = dynamic(
+  () =>
+    import("./components/ArtifactPanel/ArtifactPanel").then(
+      (m) => m.ArtifactPanel,
+    ),
+  { ssr: false },
+);
 
 export function CopilotPage() {
   const [isDragging, setIsDragging] = useState(false);
@@ -80,6 +89,10 @@ export function CopilotPage() {
     isUploadingFiles,
     isUserLoading,
     isLoggedIn,
+    // Pagination
+    hasMoreMessages,
+    isLoadingMore,
+    loadMore,
     // Mobile drawer
     isMobile,
     isDrawerOpen,
@@ -100,6 +113,8 @@ export function CopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
+    // Dry run session state
+    sessionDryRun,
   } = useCopilotPage();
 
   const {
@@ -116,6 +131,7 @@ export function CopilotPage() {
   const resetCost = usage?.reset_cost;
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
@@ -150,48 +166,66 @@ export function CopilotPage() {
       className="h-[calc(100vh-72px)] min-h-0"
     >
       {!isMobile && <ChatSidebar />}
-      <div
-        className="relative flex h-full w-full flex-col overflow-hidden bg-[#f8f8f9] px-0"
-        onDragEnter={handleDragEnter}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
-        <NotificationBanner />
-        {/* Drop overlay */}
+      <div className="flex h-full w-full flex-row overflow-hidden">
         <div
-          className={cn(
-            "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
-            isDragging ? "opacity-100" : "opacity-0",
-          )}
+          className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8f8f9] px-0"
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
         >
-          <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
-          <span className="text-lg font-medium text-violet-600">
-            Drop files here
-          </span>
+          {isMobile && <MobileHeader onOpenDrawer={handleOpenDrawer} />}
+          <NotificationBanner />
+          {/* Test mode banner: only shown when the CURRENT session is confirmed to be
+              a dry_run session via its immutable metadata. Never shown based on the
+              global isDryRun store preference alone — that only predicts future sessions
+              and would mislead users browsing non-dry-run sessions while the toggle is on.
+              The DryRunToggleButton (visible on new chats) already communicates the preference. */}
+          {sessionId && sessionDryRun && (
+            <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
+              <Flask size={13} weight="bold" />
+              Test mode — this session runs agents as simulation
+            </div>
+          )}
+          {/* Drop overlay */}
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed border-violet-400 bg-violet-500/10 transition-opacity duration-150",
+              isDragging ? "opacity-100" : "opacity-0",
+            )}
+          >
+            <UploadSimple className="h-10 w-10 text-violet-500" weight="bold" />
+            <span className="text-lg font-medium text-violet-600">
+              Drop files here
+            </span>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ChatContainer
+              messages={messages}
+              status={status}
+              error={error}
+              sessionId={sessionId}
+              isLoadingSession={isLoadingSession}
+              isSessionError={isSessionError}
+              isCreatingSession={isCreatingSession}
+              isReconnecting={isReconnecting}
+              isSyncing={isSyncing}
+              onCreateSession={createSession}
+              onSend={onSend}
+              onStop={stop}
+              isUploadingFiles={isUploadingFiles}
+              hasMoreMessages={hasMoreMessages}
+              isLoadingMore={isLoadingMore}
+              onLoadMore={loadMore}
+              droppedFiles={droppedFiles}
+              onDroppedFilesConsumed={handleDroppedFilesConsumed}
+              historicalDurations={historicalDurations}
+            />
+          </div>
         </div>
-        <div className="flex-1 overflow-hidden">
-          <ChatContainer
-            messages={messages}
-            status={status}
-            error={error}
-            sessionId={sessionId}
-            isLoadingSession={isLoadingSession}
-            isSessionError={isSessionError}
-            isCreatingSession={isCreatingSession}
-            isReconnecting={isReconnecting}
-            isSyncing={isSyncing}
-            onCreateSession={createSession}
-            onSend={onSend}
-            onStop={stop}
-            isUploadingFiles={isUploadingFiles}
-            droppedFiles={droppedFiles}
-            onDroppedFilesConsumed={handleDroppedFilesConsumed}
-            historicalDurations={historicalDurations}
-          />
-        </div>
+        {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
       </div>
+      {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && (
         <MobileDrawer
           isOpen={isDrawerOpen}

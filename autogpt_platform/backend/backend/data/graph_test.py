@@ -15,6 +15,7 @@ from backend.blocks.basic import StoreValueBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.graph import (
     Graph,
+    GraphModel,
     Link,
     Node,
     get_graph,
@@ -1460,3 +1461,21 @@ async def test_validate_graph_execution_permissions_library_wrong_version_denied
     mock_is_published.assert_awaited_once_with(graph_id, graph_version)
     lib_where = mock_lib_prisma.return_value.find_first.call_args.kwargs["where"]
     assert lib_where["agentGraphVersion"] == graph_version
+
+
+# ============================================================================
+# Tests for _generate_schema AttributeError → ValueError conversion
+# ============================================================================
+
+
+def test_generate_schema_raises_value_error_when_name_missing():
+    """AgentInputBlock.Input constructed without 'name' should raise ValueError.
+
+    model_construct() skips validation, so the Input object is created without
+    a 'name' attribute.  The dict comprehension in _generate_schema then hits an
+    AttributeError when it accesses p.name.  That AttributeError must be caught
+    and re-raised as ValueError so the existing 400 handler in rest_api.py fires
+    instead of falling through to the 500 catch-all.
+    """
+    with pytest.raises(ValueError):
+        GraphModel._generate_schema((AgentInputBlock.Input, {}))

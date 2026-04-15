@@ -7,7 +7,7 @@ import pytest
 from .model import create_chat_session, get_chat_session, upsert_chat_session
 from .response_model import StreamError, StreamTextDelta
 from .sdk import service as sdk_service
-from .sdk.transcript import download_transcript
+from .transcript import download_transcript
 
 logger = logging.getLogger(__name__)
 
