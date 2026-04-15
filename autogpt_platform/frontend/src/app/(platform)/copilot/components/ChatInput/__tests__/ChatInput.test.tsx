@@ -166,6 +166,13 @@ describe("ChatInput mode toggle", () => {
     expect(screen.queryByLabelText(/switch to/i)).toBeNull();
   });
 
+  it("hides mode toggle when hasSession is true", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} hasSession />);
+    expect(screen.queryByLabelText(/switch to fast mode/i)).toBeNull();
+    expect(screen.queryByLabelText(/switch to extended thinking/i)).toBeNull();
+  });
+
   it("exposes aria-pressed=true in extended_thinking mode", () => {
     mockFlagValue = true;
     mockCopilotMode = "extended_thinking";
@@ -230,6 +237,14 @@ describe("ChatInput model toggle", () => {
   it("hides model toggle when streaming", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} isStreaming />);
+    expect(
+      screen.queryByLabelText(/switch to (advanced|standard) model/i),
+    ).toBeNull();
+  });
+
+  it("hides model toggle when hasSession is true", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} hasSession />);
     expect(
       screen.queryByLabelText(/switch to (advanced|standard) model/i),
     ).toBeNull();

@@ -195,6 +195,14 @@ class TestBuildPrismaWhere:
         where = _build_prisma_where(None, None, None, None, tracking_type="tokens")
         assert where["trackingType"] == "tokens"
 
+    def test_graph_exec_id_filter(self):
+        where = _build_prisma_where(None, None, None, None, graph_exec_id="exec-123")
+        assert where["graphExecId"] == "exec-123"
+
+    def test_graph_exec_id_none_not_included(self):
+        where = _build_prisma_where(None, None, None, None, graph_exec_id=None)
+        assert "graphExecId" not in where
+
 
 class TestBuildRawWhere:
     def test_end_filter(self):
@@ -234,6 +242,15 @@ class TestBuildRawWhere:
     def test_explicit_tracking_type_overrides_default(self):
         sql, params = _build_raw_where(None, None, None, None, tracking_type="tokens")
         assert params[0] == "tokens"
+
+    def test_graph_exec_id_filter(self):
+        sql, params = _build_raw_where(None, None, None, None, graph_exec_id="exec-abc")
+        assert '"graphExecId" = $' in sql
+        assert "exec-abc" in params
+
+    def test_graph_exec_id_not_included_when_none(self):
+        sql, params = _build_raw_where(None, None, None, None)
+        assert "graphExecId" not in sql
 
 
 def _make_entry(**overrides: object) -> PlatformCostEntry:
@@ -688,6 +705,37 @@ class TestGetPlatformCostDashboard:
         provider_call_where = mock_actions.group_by.call_args_list[0][1]["where"]
         assert "trackingType" in provider_call_where
 
+    @pytest.mark.asyncio
+    async def test_graph_exec_id_filter_passed_to_queries(self):
+        """graph_exec_id must be forwarded to both prisma and raw SQL queries."""
+        mock_actions = MagicMock()
+        mock_actions.group_by = AsyncMock(side_effect=[[], [], [], [], []])
+        mock_actions.find_many = AsyncMock(return_value=[])
+        raw_mock = AsyncMock(side_effect=[[], []])
+
+        with (
+            patch(
+                "backend.data.platform_cost.PrismaLog.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost.PrismaUser.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.platform_cost.query_raw_with_schema",
+                raw_mock,
+            ),
+        ):
+            await get_platform_cost_dashboard(graph_exec_id="exec-xyz")
+
+        # Prisma groupBy where must include graphExecId
+        first_call_where = mock_actions.group_by.call_args_list[0][1]["where"]
+        assert first_call_where.get("graphExecId") == "exec-xyz"
+        # Raw SQL params must include the exec id
+        raw_params = raw_mock.call_args_list[0][0][1:]
+        assert "exec-xyz" in raw_params
+
 
 def _make_prisma_log_row(
     i: int = 0,
@@ -787,6 +835,21 @@ class TestGetPlatformCostLogs:
         # start provided — should appear in the where filter
         assert "createdAt" in where
 
+    @pytest.mark.asyncio
+    async def test_graph_exec_id_filter(self):
+        mock_actions = MagicMock()
+        mock_actions.count = AsyncMock(return_value=0)
+        mock_actions.find_many = AsyncMock(return_value=[])
+
+        with patch(
+            "backend.data.platform_cost.PrismaLog.prisma",
+            return_value=mock_actions,
+        ):
+            logs, total = await get_platform_cost_logs(graph_exec_id="exec-abc")
+
+        where = mock_actions.count.call_args[1]["where"]
+        assert where.get("graphExecId") == "exec-abc"
+
 
 class TestGetPlatformCostLogsForExport:
     @pytest.mark.asyncio
@@ -871,6 +934,24 @@ class TestGetPlatformCostLogsForExport:
 
         assert logs[0].cache_read_tokens == 50
         assert logs[0].cache_creation_tokens == 25
+
+    @pytest.mark.asyncio
+    async def test_graph_exec_id_filter(self):
+        mock_actions = MagicMock()
+        mock_actions.find_many = AsyncMock(return_value=[])
+
+        with patch(
+            "backend.data.platform_cost.PrismaLog.prisma",
+            return_value=mock_actions,
+        ):
+            logs, truncated = await get_platform_cost_logs_for_export(
+                graph_exec_id="exec-xyz"
+            )
+
+        where = mock_actions.find_many.call_args[1]["where"]
+        assert where.get("graphExecId") == "exec-xyz"
+        assert logs == []
+        assert truncated is False
 
     @pytest.mark.asyncio
     async def test_explicit_start_skips_default(self):

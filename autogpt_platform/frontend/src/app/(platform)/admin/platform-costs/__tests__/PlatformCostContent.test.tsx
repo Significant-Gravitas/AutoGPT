@@ -351,6 +351,36 @@ describe("PlatformCostContent", () => {
     expect(screen.getByText("Apply")).toBeDefined();
   });
 
+  it("renders execution ID filter input", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    expect(screen.getByText("Execution ID")).toBeDefined();
+    expect(screen.getByPlaceholderText("Filter by execution")).toBeDefined();
+  });
+
+  it("pre-fills execution ID filter from searchParams", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent({ graph_exec_id: "exec-123" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("exec-123");
+  });
+
   it("renders by-user tab when specified", async () => {
     mockUseGetDashboard.mockReturnValue({
       data: dashboardWithData,
