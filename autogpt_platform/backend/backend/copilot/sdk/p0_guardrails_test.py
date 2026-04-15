@@ -198,8 +198,7 @@ class TestConfigDefaults:
 
     def test_fallback_model_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_fallback_model
-        assert "sonnet" in cfg.claude_agent_fallback_model.lower()
+        assert cfg.claude_agent_fallback_model == ""
 
     def test_max_turns_default(self):
         cfg = _make_config()
