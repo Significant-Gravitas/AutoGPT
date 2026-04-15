@@ -4,6 +4,7 @@ Covers both the baseline (prompt+completion only) and SDK (with cache breakdown)
 calling conventions, session persistence, and rate-limit recording.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -229,6 +230,7 @@ class TestRateLimitRecording:
             completion_tokens=50,
             cache_read_tokens=1000,
             cache_creation_tokens=200,
+            model_cost_multiplier=1.0,
         )
 
     @pytest.mark.asyncio
@@ -279,3 +281,290 @@ class TestRateLimitRecording:
                 completion_tokens=0,
             )
         mock_record.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# PlatformCostLog integration
+# ---------------------------------------------------------------------------
+
+
+class TestPlatformCostLogging:
+    @pytest.mark.asyncio
+    async def test_logs_cost_entry_with_cost_usd(self):
+        """When cost_usd is provided, tracking_type should be 'cost_usd'."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=_make_session(),
+                user_id="user-cost",
+                prompt_tokens=200,
+                completion_tokens=100,
+                cost_usd=0.005,
+                model="gpt-4",
+                provider="anthropic",
+                log_prefix="[SDK]",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.user_id == "user-cost"
+        assert entry.provider == "anthropic"
+        assert entry.model == "gpt-4"
+        assert entry.cost_microdollars == 5000
+        assert entry.input_tokens == 200
+        assert entry.output_tokens == 100
+        assert entry.tracking_type == "cost_usd"
+        assert entry.metadata["tracking_type"] == "cost_usd"
+        assert entry.metadata["tracking_amount"] == 0.005
+        assert entry.block_name == "copilot:SDK"
+        assert entry.graph_exec_id == "sess-test"
+
+    @pytest.mark.asyncio
+    async def test_logs_cost_entry_without_cost_usd(self):
+        """When cost_usd is None, tracking_type should be 'tokens'."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-tokens",
+                prompt_tokens=100,
+                completion_tokens=50,
+                log_prefix="[Baseline]",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.cost_microdollars is None
+        assert entry.tracking_type == "tokens"
+        assert entry.metadata["tracking_type"] == "tokens"
+        assert entry.metadata["tracking_amount"] == 150
+        assert entry.graph_exec_id is None
+        assert entry.block_name == "copilot:Baseline"
+
+    @pytest.mark.asyncio
+    async def test_skips_cost_log_when_no_user_id(self):
+        """No PlatformCostLog entry when user_id is None."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id=None,
+                prompt_tokens=100,
+                completion_tokens=50,
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_invalid_string_falls_back_to_tokens(self):
+        """Invalid cost_usd string should fall back to tokens tracking."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-invalid",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cost_usd="not-a-number",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.cost_microdollars is None
+        assert entry.metadata["tracking_type"] == "tokens"
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_string_number_is_parsed(self):
+        """String-encoded cost_usd (e.g. from OpenRouter) should be parsed."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-str",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cost_usd="0.01",
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.cost_microdollars == 10_000
+        assert entry.metadata["tracking_type"] == "cost_usd"
+
+    @pytest.mark.asyncio
+    async def test_empty_log_prefix_produces_copilot_block_name(self):
+        """Empty log_prefix results in block_name='copilot'."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-empty",
+                prompt_tokens=10,
+                completion_tokens=5,
+                log_prefix="",
+            )
+            await asyncio.sleep(0)
+        entry = mock_log.call_args[0][0]
+        assert entry.block_name == "copilot"
+
+    @pytest.mark.asyncio
+    async def test_cache_tokens_included_in_metadata(self):
+        """Cache token counts should be present in the metadata."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cache",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cache_read_tokens=5000,
+                cache_creation_tokens=300,
+            )
+            await asyncio.sleep(0)
+        entry = mock_log.call_args[0][0]
+        assert entry.metadata["cache_read_tokens"] == 5000
+        assert entry.metadata["cache_creation_tokens"] == 300
+        assert entry.metadata["source"] == "copilot"
+
+    @pytest.mark.asyncio
+    async def test_logs_cost_only_when_tokens_zero(self):
+        """Zero prompt+completion tokens with cost_usd set still logs the entry."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-cached",
+                prompt_tokens=0,
+                completion_tokens=0,
+                cost_usd=0.005,
+                model="claude-3-5-sonnet",
+                provider="anthropic",
+                log_prefix="[SDK]",
+            )
+            await asyncio.sleep(0)
+        # Guard: total_tokens == 0 but cost_usd is set — must still log
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        assert entry.user_id == "user-cached"
+        assert entry.tracking_type == "cost_usd"
+        assert entry.cost_microdollars == 5000
+        assert entry.input_tokens == 0
+        assert entry.output_tokens == 0
+
+    @pytest.mark.asyncio
+    async def test_negative_cost_usd_falls_back_to_tokens(self):
+        """Negative cost_usd must be rejected — val >= 0 guard in persist_and_record_usage."""
+        mock_log = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.token_tracking.record_token_usage",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "backend.copilot.token_tracking.platform_cost_db",
+                return_value=type(
+                    "FakePlatformCostDb", (), {"log_platform_cost": mock_log}
+                )(),
+            ),
+        ):
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-negative",
+                prompt_tokens=100,
+                completion_tokens=50,
+                cost_usd=-0.01,
+            )
+            await asyncio.sleep(0)
+        mock_log.assert_awaited_once()
+        entry = mock_log.call_args[0][0]
+        # Negative cost rejected — falls back to token-based tracking
+        assert entry.cost_microdollars is None
+        assert entry.metadata["tracking_type"] == "tokens"

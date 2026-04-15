@@ -7,6 +7,362 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/platform-costs/dashboard": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Dashboard",
+        "operationId": "getV2Get platform cost dashboard",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostDashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Logs",
+        "operationId": "getV2Get platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostLogsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs/export": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Export Platform Cost Logs",
+        "operationId": "getV2Export platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -990,7 +1346,15 @@
                     {
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
-                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    { "$ref": "#/components/schemas/MemoryStoreResponse" },
+                    { "$ref": "#/components/schemas/MemorySearchResponse" },
+                    {
+                      "$ref": "#/components/schemas/MemoryForgetCandidatesResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
+                    }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -1059,9 +1423,22 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces run_block and run_agent calls to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/CreateSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1075,6 +1452,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -1113,7 +1498,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nLooks up a chat session by ID for the given user (if authenticated) and returns all session data including messages.\nIf there's an active stream for this session, returns active_stream info for reconnection.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The optional authenticated user ID, or None for anonymous access.\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including active_stream info if applicable.",
+        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The authenticated user's ID.\n    limit: Maximum number of messages to return (1-200, default 50).\n    before_sequence: Return messages with sequence < this value (cursor).\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including\n        active_stream info and pagination metadata.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1122,6 +1507,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "before_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "integer", "minimum": 0 },
+                { "type": "null" }
+              ],
+              "title": "Before Sequence"
+            }
           }
         ],
         "responses": {
@@ -1232,6 +1641,35 @@
       }
     },
     "/api/chat/sessions/{session_id}/stream": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Disconnect Session Stream",
+        "description": "Disconnect all active SSE listeners for a session.\n\nCalled by the frontend when the user switches away from a chat so the\nbackend releases XREAD listeners immediately rather than waiting for\nthe 5-10 s timeout.",
+        "operationId": "deleteV2DisconnectSessionStream",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
@@ -1386,7 +1824,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).\nIncludes the user's rate-limit tier.",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -1530,6 +1968,128 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/copilot/admin/rate_limit/search_users": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Search Users by Name or Email",
+        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly — returns results even for users\nwithout credit transaction history.",
+        "operationId": "getV2Search users by name or email",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Query" }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "default": 20, "title": "Limit" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/UserSearchResult" },
+                  "title": "Response Getv2Search Users By Name Or Email"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/copilot/admin/rate_limit/tier": {
+      "get": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Get User Rate Limit Tier",
+        "description": "Get a user's current rate-limit tier. Admin-only.\n\nReturns 404 if the user does not exist in the database.",
+        "operationId": "getV2Get user rate limit tier",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "User Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserTierResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "admin", "copilot", "admin"],
+        "summary": "Set User Rate Limit Tier",
+        "description": "Set a user's rate-limit tier. Admin-only.\n\nReturns 404 if the user does not exist in the database.",
+        "operationId": "postV2Set user rate limit tier",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SetUserTierRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserTierResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/credits": {
@@ -1829,6 +2389,68 @@
             "content": { "application/json": { "schema": {} } }
           }
         }
+      }
+    },
+    "/api/credits/subscription": {
+      "get": {
+        "tags": ["v1", "credits"],
+        "summary": "Get subscription tier, current cost, and all tier costs",
+        "operationId": "getSubscriptionStatus",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "credits"],
+        "summary": "Start a Stripe Checkout session to upgrade subscription tier",
+        "operationId": "updateSubscriptionTier",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionTierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCheckoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/transactions": {
@@ -5327,11 +5949,11 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/onboarding/enabled": {
+    "/api/onboarding/completed": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Is onboarding enabled",
-        "operationId": "getV1Is onboarding enabled",
+        "summary": "Check if onboarding is completed",
+        "operationId": "getV1Check if onboarding is completed",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -5345,6 +5967,41 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/onboarding/profile": {
+      "post": {
+        "tags": ["v1", "onboarding"],
+        "summary": "Submit onboarding profile",
+        "operationId": "postV1Submit onboarding profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardingProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -6863,12 +7520,76 @@
         }
       }
     },
+    "/api/workspace/files": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "List workspace files",
+        "description": "List files in the user's workspace.\n\nWhen session_id is provided, only files for that session are returned.\nOtherwise, all files across sessions are listed. Results are paginated\nvia `limit`/`offset`; `has_more` indicates whether additional pages exist.",
+        "operationId": "listWorkspaceFiles",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "default": 200,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ListFilesResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/files/upload": {
       "post": {
         "tags": ["workspace"],
         "summary": "Upload file to workspace",
         "description": "Upload a file to the user's workspace.\n\nFiles are stored in session-scoped paths when session_id is provided,\nso the agent's session-scoped tools can discover them automatically.",
-        "operationId": "postWorkspaceUpload file to workspace",
+        "operationId": "uploadWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -6896,7 +7617,7 @@
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_postWorkspaceUpload_file_to_workspace"
+                "$ref": "#/components/schemas/Body_uploadWorkspaceFile"
               }
             }
           }
@@ -6931,7 +7652,7 @@
         "tags": ["workspace"],
         "summary": "Delete a workspace file",
         "description": "Soft-delete a workspace file and attempt to remove it from storage.\n\nUsed when a user clears a file input in the builder.",
-        "operationId": "deleteWorkspaceDelete a workspace file",
+        "operationId": "deleteWorkspaceFile",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -6969,7 +7690,7 @@
         "tags": ["workspace"],
         "summary": "Download file by ID",
         "description": "Download a file by its ID.\n\nReturns the file content directly or redirects to a signed URL for GCS.",
-        "operationId": "getWorkspaceDownload file by id",
+        "operationId": "getWorkspaceDownloadFileById",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
           {
@@ -7003,7 +7724,7 @@
         "tags": ["workspace"],
         "summary": "Get workspace storage usage",
         "description": "Get storage usage information for the user's workspace.",
-        "operationId": "getWorkspaceGet workspace storage usage",
+        "operationId": "getWorkspaceStorageUsage",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -7045,6 +7766,16 @@
           "title": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
           },
           "type": {
             "type": "string",
@@ -7429,6 +8160,13 @@
             ],
             "title": "Inputs",
             "description": "Input schema for the agent, including field names, types, and defaults"
+          },
+          "graph": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/BaseGraph-Output" },
+              { "type": "null" }
+            ],
+            "description": "Full graph structure (nodes + links) when include_graph is requested"
           }
         },
         "type": "object",
@@ -8067,9 +8805,8 @@
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
-            "type": "boolean",
-            "title": "Is Dry Run",
-            "default": false
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Dry Run"
           }
         },
         "type": "object",
@@ -8304,13 +9041,13 @@
         "required": ["file"],
         "title": "Body_postV2Upload submission media"
       },
-      "Body_postWorkspaceUpload_file_to_workspace": {
+      "Body_uploadWorkspaceFile": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
         },
         "type": "object",
         "required": ["file"],
-        "title": "Body_postWorkspaceUpload file to workspace"
+        "title": "Body_uploadWorkspaceFile"
       },
       "BulkMoveAgentsRequest": {
         "properties": {
@@ -8375,6 +9112,14 @@
         "required": ["query", "conversation_history", "message_id"],
         "title": "ChatRequest"
       },
+      "ChatSessionMetadata": {
+        "properties": {
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+        },
+        "type": "object",
+        "title": "ChatSessionMetadata",
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
+      },
       "ClarificationNeededResponse": {
         "properties": {
           "type": {
@@ -8415,6 +9160,10 @@
         "properties": {
           "daily": { "$ref": "#/components/schemas/UsageWindow" },
           "weekly": { "$ref": "#/components/schemas/UsageWindow" },
+          "tier": {
+            "$ref": "#/components/schemas/SubscriptionTier",
+            "default": "FREE"
+          },
           "reset_cost": {
             "type": "integer",
             "title": "Reset Cost",
@@ -8437,6 +9186,78 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CostBucket": {
+        "properties": {
+          "bucket": { "type": "string", "title": "Bucket" },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["bucket", "count"],
+        "title": "CostBucket"
+      },
+      "CostLogRow": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
+          "node_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Exec Id"
+          },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "cost_microdollars": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cost Microdollars"
+          },
+          "input_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Output Tokens"
+          },
+          "duration": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Duration"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          },
+          "cache_read_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cache Read Tokens"
+          },
+          "cache_creation_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cache Creation Tokens"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "block_name", "provider"],
+        "title": "CostLogRow"
       },
       "CountResponse": {
         "properties": {
@@ -8504,6 +9325,15 @@
         "required": ["graph"],
         "title": "CreateGraph"
       },
+      "CreateSessionRequest": {
+        "properties": {
+          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "CreateSessionRequest",
+        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+      },
       "CreateSessionResponse": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -8511,6 +9341,10 @@
           "user_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Id"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": { "dry_run": false }
           }
         },
         "type": "object",
@@ -8661,6 +9495,11 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Host",
             "description": "Host pattern for host-scoped or MCP server URL for MCP credentials"
+          },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
           }
         },
         "type": "object",
@@ -8669,7 +9508,14 @@
       },
       "CreditTransactionType": {
         "type": "string",
-        "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
+        "enum": [
+          "TOP_UP",
+          "USAGE",
+          "GRANT",
+          "REFUND",
+          "CARD_CHECK",
+          "SUBSCRIPTION"
+        ],
         "title": "CreditTransactionType"
       },
       "DeleteFileResponse": {
@@ -9892,6 +10738,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "host_scoped",
@@ -10457,6 +11313,24 @@
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
       },
+      "ListFilesResponse": {
+        "properties": {
+          "files": {
+            "items": { "$ref": "#/components/schemas/WorkspaceFileItem" },
+            "type": "array",
+            "title": "Files"
+          },
+          "offset": { "type": "integer", "title": "Offset", "default": 0 },
+          "has_more": {
+            "type": "boolean",
+            "title": "Has More",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["files"],
+        "title": "ListFilesResponse"
+      },
       "ListSessionsResponse": {
         "properties": {
           "sessions": {
@@ -10658,6 +11532,103 @@
         "required": ["name", "id", "slug"],
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
+      },
+      "MemoryForgetCandidatesResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_forget_candidates"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "candidates": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemoryForgetCandidatesResponse",
+        "description": "Response with candidate memories to forget."
+      },
+      "MemoryForgetConfirmResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_forget_confirm"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "deleted_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Deleted Uuids"
+          },
+          "failed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemoryForgetConfirmResponse",
+        "description": "Response after deleting specific memory edges."
+      },
+      "MemorySearchResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_search"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "facts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Facts"
+          },
+          "recent_episodes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Recent Episodes"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemorySearchResponse",
+        "description": "Response when memories are searched."
+      },
+      "MemoryStoreResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_store"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "memory_name": { "type": "string", "title": "Memory Name" }
+        },
+        "type": "object",
+        "required": ["message", "memory_name"],
+        "title": "MemoryStoreResponse",
+        "description": "Response when a memory is stored."
       },
       "Message": {
         "properties": {
@@ -10985,6 +11956,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "oauth2",
@@ -11020,11 +12001,6 @@
             "items": { "type": "string" },
             "type": "array",
             "title": "Scopes"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
           }
         },
         "type": "object",
@@ -11110,18 +12086,40 @@
         "title": "OAuthApplicationPublicInfo",
         "description": "Public information about an OAuth application (for consent screen)"
       },
-      "OnboardingStatusResponse": {
+      "OnboardingProfileRequest": {
         "properties": {
-          "is_onboarding_enabled": {
-            "type": "boolean",
-            "title": "Is Onboarding Enabled"
+          "user_name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Name"
           },
-          "is_chat_enabled": { "type": "boolean", "title": "Is Chat Enabled" }
+          "user_role": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "User Role"
+          },
+          "pain_points": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Pain Points"
+          }
         },
         "type": "object",
-        "required": ["is_onboarding_enabled", "is_chat_enabled"],
+        "required": ["user_name", "user_role"],
+        "title": "OnboardingProfileRequest",
+        "description": "Request body for onboarding profile submission."
+      },
+      "OnboardingStatusResponse": {
+        "properties": {
+          "is_completed": { "type": "boolean", "title": "Is Completed" }
+        },
+        "type": "object",
+        "required": ["is_completed"],
         "title": "OnboardingStatusResponse",
-        "description": "Response for onboarding status check."
+        "description": "Response for onboarding completion check."
       },
       "OnboardingStep": {
         "type": "string",
@@ -11295,6 +12293,113 @@
         ],
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
+      },
+      "PlatformCostDashboard": {
+        "properties": {
+          "by_provider": {
+            "items": { "$ref": "#/components/schemas/ProviderCostSummary" },
+            "type": "array",
+            "title": "By Provider"
+          },
+          "by_user": {
+            "items": { "$ref": "#/components/schemas/UserCostSummary" },
+            "type": "array",
+            "title": "By User"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_requests": { "type": "integer", "title": "Total Requests" },
+          "total_users": { "type": "integer", "title": "Total Users" },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens",
+            "default": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens",
+            "default": 0
+          },
+          "avg_input_tokens_per_request": {
+            "type": "number",
+            "title": "Avg Input Tokens Per Request",
+            "default": 0.0
+          },
+          "avg_output_tokens_per_request": {
+            "type": "number",
+            "title": "Avg Output Tokens Per Request",
+            "default": 0.0
+          },
+          "avg_cost_microdollars_per_request": {
+            "type": "number",
+            "title": "Avg Cost Microdollars Per Request",
+            "default": 0.0
+          },
+          "cost_p50_microdollars": {
+            "type": "number",
+            "title": "Cost P50 Microdollars",
+            "default": 0.0
+          },
+          "cost_p75_microdollars": {
+            "type": "number",
+            "title": "Cost P75 Microdollars",
+            "default": 0.0
+          },
+          "cost_p95_microdollars": {
+            "type": "number",
+            "title": "Cost P95 Microdollars",
+            "default": 0.0
+          },
+          "cost_p99_microdollars": {
+            "type": "number",
+            "title": "Cost P99 Microdollars",
+            "default": 0.0
+          },
+          "cost_buckets": {
+            "items": { "$ref": "#/components/schemas/CostBucket" },
+            "type": "array",
+            "title": "Cost Buckets",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "by_provider",
+          "by_user",
+          "total_cost_microdollars",
+          "total_requests",
+          "total_users"
+        ],
+        "title": "PlatformCostDashboard"
+      },
+      "PlatformCostExportResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "truncated": { "type": "boolean", "title": "Truncated" }
+        },
+        "type": "object",
+        "required": ["logs", "total_rows", "truncated"],
+        "title": "PlatformCostExportResponse"
+      },
+      "PlatformCostLogsResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["logs", "pagination"],
+        "title": "PlatformCostLogsResponse"
       },
       "PostmarkBounceEnum": {
         "type": "integer",
@@ -11690,6 +12795,61 @@
         "title": "ProviderConstants",
         "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
       },
+      "ProviderCostSummary": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0.0
+          },
+          "total_tracking_amount": {
+            "type": "number",
+            "title": "Total Tracking Amount",
+            "default": 0.0
+          },
+          "request_count": { "type": "integer", "title": "Request Count" }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "ProviderCostSummary"
+      },
       "ProviderEnumResponse": {
         "properties": {
           "provider": {
@@ -11864,7 +13024,11 @@
           "bash_exec",
           "web_fetch",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "memory_store",
+          "memory_search",
+          "memory_forget_candidates",
+          "memory_forget_confirm"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -12100,6 +13264,15 @@
               { "type": "null" }
             ]
           },
+          "has_more_messages": {
+            "type": "boolean",
+            "title": "Has More Messages",
+            "default": false
+          },
+          "oldest_sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Oldest Sequence"
+          },
           "total_prompt_tokens": {
             "type": "integer",
             "title": "Total Prompt Tokens",
@@ -12109,6 +13282,10 @@
             "type": "integer",
             "title": "Total Completion Tokens",
             "default": 0
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/ChatSessionMetadata",
+            "default": { "dry_run": false }
           }
         },
         "type": "object",
@@ -12142,6 +13319,15 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetUserTierRequest": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+        },
+        "type": "object",
+        "required": ["user_id", "tier"],
+        "title": "SetUserTierRequest"
       },
       "SetupInfo": {
         "properties": {
@@ -12900,6 +14086,22 @@
               { "type": "null" }
             ],
             "title": "File Ids"
+          },
+          "mode": {
+            "anyOf": [
+              { "type": "string", "enum": ["fast", "extended_thinking"] },
+              { "type": "null" }
+            ],
+            "title": "Mode",
+            "description": "Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. If None, uses the server default (extended_thinking)."
+          },
+          "model": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "advanced"] },
+              { "type": "null" }
+            ],
+            "title": "Model",
+            "description": "Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. If None, the server applies per-user LD targeting then falls back to config."
           }
         },
         "type": "object",
@@ -12911,6 +14113,54 @@
         "type": "string",
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
+      },
+      "SubscriptionCheckoutResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "SubscriptionCheckoutResponse"
+      },
+      "SubscriptionStatusResponse": {
+        "properties": {
+          "tier": { "type": "string", "title": "Tier" },
+          "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
+          "tier_costs": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "monthly_cost", "tier_costs"],
+        "title": "SubscriptionStatusResponse"
+      },
+      "SubscriptionTier": {
+        "type": "string",
+        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+        "title": "SubscriptionTier",
+        "description": "Subscription tiers with increasing token allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
+      },
+      "SubscriptionTierRequest": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["FREE", "PRO", "BUSINESS"],
+            "title": "Tier"
+          },
+          "success_url": {
+            "type": "string",
+            "title": "Success Url",
+            "default": ""
+          },
+          "cancel_url": {
+            "type": "string",
+            "title": "Cancel Url",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["tier"],
+        "title": "SubscriptionTierRequest"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -14534,6 +15784,54 @@
         "title": "UsageWindow",
         "description": "Usage within a single time window."
       },
+      "UserCostSummary": {
+        "properties": {
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "request_count": { "type": "integer", "title": "Request Count" },
+          "cost_bearing_request_count": {
+            "type": "integer",
+            "title": "Cost Bearing Request Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "UserCostSummary"
+      },
       "UserHistoryResponse": {
         "properties": {
           "history": {
@@ -14685,6 +15983,16 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
+          "is_managed": {
+            "type": "boolean",
+            "title": "Is Managed",
+            "default": false
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
           "type": {
             "type": "string",
             "const": "user_password",
@@ -14730,7 +16038,8 @@
           "weekly_tokens_used": {
             "type": "integer",
             "title": "Weekly Tokens Used"
-          }
+          },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": [
@@ -14738,7 +16047,8 @@
           "daily_token_limit",
           "weekly_token_limit",
           "daily_tokens_used",
-          "weekly_tokens_used"
+          "weekly_tokens_used",
+          "tier"
         ],
         "title": "UserRateLimitResponse"
       },
@@ -14764,6 +16074,27 @@
         "type": "object",
         "title": "UserReadiness",
         "description": "User readiness status."
+      },
+      "UserSearchResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          }
+        },
+        "type": "object",
+        "required": ["user_id"],
+        "title": "UserSearchResult"
+      },
+      "UserTierResponse": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+        },
+        "type": "object",
+        "required": ["user_id", "tier"],
+        "title": "UserTierResponse"
       },
       "UserTransaction": {
         "properties": {
@@ -14896,6 +16227,31 @@
           "url"
         ],
         "title": "Webhook"
+      },
+      "WorkspaceFileItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "path": { "type": "string", "title": "Path" },
+          "mime_type": { "type": "string", "title": "Mime Type" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          },
+          "created_at": { "type": "string", "title": "Created At" }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "path",
+          "mime_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "title": "WorkspaceFileItem"
       },
       "backend__api__features__workspace__routes__UploadFileResponse": {
         "properties": {

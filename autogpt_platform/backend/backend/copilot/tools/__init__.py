@@ -10,6 +10,7 @@ from backend.copilot.tracking import track_tool_called
 from .add_understanding import AddUnderstandingTool
 from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
+from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
 from .connect_integration import ConnectIntegrationTool
@@ -25,6 +26,9 @@ from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
+from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
+from .graphiti_search import MemorySearchTool
+from .graphiti_store import MemoryStoreTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -55,12 +59,18 @@ logger = logging.getLogger(__name__)
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
+    "ask_question": AskQuestionTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "edit_agent": EditAgentTool(),
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Graphiti memory tools
+    "memory_forget_confirm": MemoryForgetConfirmTool(),
+    "memory_forget_search": MemoryForgetSearchTool(),
+    "memory_search": MemorySearchTool(),
+    "memory_store": MemoryStoreTool(),
     # Folder management tools
     "create_folder": CreateFolderTool(),
     "list_folders": ListFoldersTool(),

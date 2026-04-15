@@ -9,16 +9,54 @@ UTC). Fails open when Redis is unavailable to avoid blocking users.
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from enum import Enum
 
+from prisma.models import User as PrismaUser
 from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
+from backend.data.db_accessors import user_db
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
 # Redis key prefixes
 _USAGE_KEY_PREFIX = "copilot:usage"
+
+
+# ---------------------------------------------------------------------------
+# Subscription tier definitions
+# ---------------------------------------------------------------------------
+
+
+class SubscriptionTier(str, Enum):
+    """Subscription tiers with increasing token allowances.
+
+    Mirrors the ``SubscriptionTier`` enum in ``schema.prisma``.
+    Once ``prisma generate`` is run, this can be replaced with::
+
+        from prisma.enums import SubscriptionTier
+    """
+
+    FREE = "FREE"
+    PRO = "PRO"
+    BUSINESS = "BUSINESS"
+    ENTERPRISE = "ENTERPRISE"
+
+
+# Multiplier applied to the base limits (from LD / config) for each tier.
+# Intentionally int (not float): keeps limits as whole token counts and avoids
+# floating-point rounding.  If fractional multipliers are ever needed, change
+# the type and round the result in get_global_rate_limits().
+TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
+    SubscriptionTier.FREE: 1,
+    SubscriptionTier.PRO: 5,
+    SubscriptionTier.BUSINESS: 20,
+    SubscriptionTier.ENTERPRISE: 60,
+}
+
+DEFAULT_TIER = SubscriptionTier.FREE
 
 
 class UsageWindow(BaseModel):
@@ -36,6 +74,7 @@ class CoPilotUsageStatus(BaseModel):
 
     daily: UsageWindow
     weekly: UsageWindow
+    tier: SubscriptionTier = DEFAULT_TIER
     reset_cost: int = Field(
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
@@ -66,6 +105,7 @@ async def get_usage_status(
     daily_token_limit: int,
     weekly_token_limit: int,
     rate_limit_reset_cost: int = 0,
+    tier: SubscriptionTier = DEFAULT_TIER,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -74,6 +114,7 @@ async def get_usage_status(
         daily_token_limit: Max tokens per day (0 = unlimited).
         weekly_token_limit: Max tokens per week (0 = unlimited).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
+        tier: The user's rate-limit tier (included in the response).
 
     Returns:
         CoPilotUsageStatus with current usage and limits.
@@ -103,6 +144,7 @@ async def get_usage_status(
             limit=weekly_token_limit,
             resets_at=_weekly_reset_time(now=now),
         ),
+        tier=tier,
         reset_cost=rate_limit_reset_cost,
     )
 
@@ -161,8 +203,9 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
         daily_token_limit: The configured daily token limit. When positive,
             the weekly counter is reduced by this amount.
 
-    Fails open: returns False if Redis is unavailable (consistent with
-    the fail-open design of this module).
+    Returns False if Redis is unavailable so the caller can handle
+    compensation (fail-closed for billed operations, unlike the read-only
+    rate-limit checks which fail-open).
     """
     now = datetime.now(UTC)
     try:
@@ -259,6 +302,7 @@ async def record_token_usage(
     *,
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
+    model_cost_multiplier: float = 1.0,
 ) -> None:
     """Record token usage for a user across all windows.
 
@@ -272,12 +316,17 @@ async def record_token_usage(
     ``prompt_tokens`` should be the *uncached* input count (``input_tokens``
     from the API response). Cache counts are passed separately.
 
+    ``model_cost_multiplier`` scales the final weighted total to reflect
+    relative model cost. Use 5.0 for Opus (5× more expensive than Sonnet)
+    so that Opus turns deplete the rate limit faster, proportional to cost.
+
     Args:
         user_id: The user's ID.
         prompt_tokens: Uncached input tokens.
         completion_tokens: Output tokens.
         cache_read_tokens: Tokens served from prompt cache (10% cost).
         cache_creation_tokens: Tokens written to prompt cache (25% cost).
+        model_cost_multiplier: Relative model cost factor (1.0 = Sonnet, 5.0 = Opus).
     """
     prompt_tokens = max(0, prompt_tokens)
     completion_tokens = max(0, completion_tokens)
@@ -289,7 +338,9 @@ async def record_token_usage(
         + round(cache_creation_tokens * 0.25)
         + round(cache_read_tokens * 0.1)
     )
-    total = weighted_input + completion_tokens
+    total = round(
+        (weighted_input + completion_tokens) * max(1.0, model_cost_multiplier)
+    )
     if total <= 0:
         return
 
@@ -297,11 +348,12 @@ async def record_token_usage(
         prompt_tokens + cache_read_tokens + cache_creation_tokens + completion_tokens
     )
     logger.info(
-        "Recording token usage for %s: raw=%d, weighted=%d "
+        "Recording token usage for %s: raw=%d, weighted=%d, multiplier=%.1fx "
         "(uncached=%d, cache_read=%d@10%%, cache_create=%d@25%%, output=%d)",
         user_id[:8],
         raw_total,
         total,
+        model_cost_multiplier,
         prompt_tokens,
         cache_read_tokens,
         cache_creation_tokens,
@@ -342,12 +394,95 @@ async def record_token_usage(
         )
 
 
+class _UserNotFoundError(Exception):
+    """Raised when a user record is missing or has no subscription tier.
+
+    Used internally by ``_fetch_user_tier`` to signal a cache-miss condition:
+    by raising instead of returning ``DEFAULT_TIER``, we prevent the ``@cached``
+    decorator from storing the fallback value.  This avoids a race condition
+    where a non-existent user's DEFAULT_TIER is cached, then the user is
+    created with a higher tier but receives the stale cached FREE tier for
+    up to 5 minutes.
+    """
+
+
+@cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
+async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
+    """Fetch the user's rate-limit tier from the database (cached via Redis).
+
+    Uses ``shared_cache=True`` so that tier changes propagate across all pods
+    immediately when the cache entry is invalidated (via ``cache_delete``).
+
+    Only successful DB lookups of existing users with a valid tier are cached.
+    Raises ``_UserNotFoundError`` when the user is missing or has no tier, so
+    the ``@cached`` decorator does **not** store a fallback value.  This
+    prevents a race condition where a non-existent user's ``DEFAULT_TIER`` is
+    cached and then persists after the user is created with a higher tier.
+    """
+    try:
+        user = await user_db().get_user_by_id(user_id)
+    except Exception:
+        raise _UserNotFoundError(user_id)
+    if user.subscription_tier:
+        return SubscriptionTier(user.subscription_tier)
+    raise _UserNotFoundError(user_id)
+
+
+async def get_user_tier(user_id: str) -> SubscriptionTier:
+    """Look up the user's rate-limit tier from the database.
+
+    Successful results are cached for 5 minutes (via ``_fetch_user_tier``)
+    to avoid a DB round-trip on every rate-limit check.
+
+    Falls back to ``DEFAULT_TIER`` **without caching** when the DB is
+    unreachable or returns an unrecognised value, so the next call retries
+    the query instead of serving a stale fallback for up to 5 minutes.
+    """
+    try:
+        return await _fetch_user_tier(user_id)
+    except Exception as exc:
+        logger.warning(
+            "Failed to resolve rate-limit tier for user %s, defaulting to %s: %s",
+            user_id[:8],
+            DEFAULT_TIER.value,
+            exc,
+        )
+    return DEFAULT_TIER
+
+
+# Expose cache management on the public function so callers (including tests)
+# never need to reach into the private ``_fetch_user_tier``.
+get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-defined]
+get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
+
+
+async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
+    """Persist the user's rate-limit tier to the database.
+
+    Also invalidates the ``get_user_tier`` cache for this user so that
+    subsequent rate-limit checks immediately see the new tier.
+
+    Raises:
+        prisma.errors.RecordNotFoundError: If the user does not exist.
+    """
+    await PrismaUser.prisma().update(
+        where={"id": user_id},
+        data={"subscriptionTier": tier.value},
+    )
+    # Invalidate cached tier so rate-limit checks pick up the change immediately.
+    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
+
+
 async def get_global_rate_limits(
     user_id: str,
     config_daily: int,
     config_weekly: int,
-) -> tuple[int, int]:
+) -> tuple[int, int, SubscriptionTier]:
     """Resolve global rate limits from LaunchDarkly, falling back to config.
+
+    The base limits (from LD or config) are multiplied by the user's
+    tier multiplier so that higher tiers receive proportionally larger
+    allowances.
 
     Args:
         user_id: User ID for LD flag evaluation context.
@@ -355,7 +490,7 @@ async def get_global_rate_limits(
         config_weekly: Fallback weekly limit from ChatConfig.
 
     Returns:
-        (daily_token_limit, weekly_token_limit) tuple.
+        (daily_token_limit, weekly_token_limit, tier) 3-tuple.
     """
     # Lazy import to avoid circular dependency:
     # rate_limit -> feature_flag -> settings -> ... -> rate_limit
@@ -377,7 +512,15 @@ async def get_global_rate_limits(
     except (TypeError, ValueError):
         logger.warning("Invalid LD value for weekly token limit: %r", weekly_raw)
         weekly = config_weekly
-    return daily, weekly
+
+    # Apply tier multiplier
+    tier = await get_user_tier(user_id)
+    multiplier = TIER_MULTIPLIERS.get(tier, 1)
+    if multiplier != 1:
+        daily = daily * multiplier
+        weekly = weekly * multiplier
+
+    return daily, weekly, tier
 
 
 async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -18,9 +19,11 @@ from backend.data.model import (
     UserPasswordCredentials,
 )
 from backend.data.redis_client import get_redis_async
+from backend.util.cache import thread_cached
 from backend.util.settings import Settings
 
 settings = Settings()
+logger = logging.getLogger(__name__)
 
 
 def provider_matches(stored: str, expected: str) -> bool:
@@ -284,6 +287,7 @@ DEFAULT_CREDENTIALS = [
     elevenlabs_credentials,
 ]
 
+
 SYSTEM_CREDENTIAL_IDS = {cred.id for cred in DEFAULT_CREDENTIALS}
 
 # Set of providers that have system credentials available
@@ -301,15 +305,12 @@ def is_system_provider(provider: str) -> bool:
 
 
 class IntegrationCredentialsStore:
-    def __init__(self):
-        self._locks = None
-
+    @thread_cached
     async def locks(self) -> AsyncRedisKeyedMutex:
-        if self._locks:
-            return self._locks
-
-        self._locks = AsyncRedisKeyedMutex(await get_redis_async())
-        return self._locks
+        # Per-thread: copilot executor runs worker threads with separate event
+        # loops; AsyncRedisKeyedMutex's internal asyncio.Lock is bound to the
+        # loop it was created on.
+        return AsyncRedisKeyedMutex(await get_redis_async())
 
     @property
     def db_manager(self):
@@ -323,20 +324,45 @@ class IntegrationCredentialsStore:
             return get_database_manager_async_client()
 
     # =============== USER-MANAGED CREDENTIALS =============== #
+
+    async def _get_persisted_user_creds_unlocked(
+        self, user_id: str
+    ) -> list[Credentials]:
+        """Return only the persisted (user-stored) credentials — no side effects.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        return list((await self._get_user_integrations(user_id)).credentials)
+
     async def add_creds(self, user_id: str, credentials: Credentials) -> None:
         async with await self.locked_user_integrations(user_id):
-            if await self.get_creds_by_id(user_id, credentials.id):
+            # Check system/managed IDs without triggering provisioning
+            if credentials.id in SYSTEM_CREDENTIAL_IDS:
                 raise ValueError(
                     f"Can not re-create existing credentials #{credentials.id} "
                     f"for user #{user_id}"
                 )
-            await self._set_user_integration_creds(
-                user_id, [*(await self.get_all_creds(user_id)), credentials]
-            )
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            if any(c.id == credentials.id for c in persisted):
+                raise ValueError(
+                    f"Can not re-create existing credentials #{credentials.id} "
+                    f"for user #{user_id}"
+                )
+            await self._set_user_integration_creds(user_id, [*persisted, credentials])
 
     async def get_all_creds(self, user_id: str) -> list[Credentials]:
-        users_credentials = (await self._get_user_integrations(user_id)).credentials
-        all_credentials = users_credentials
+        """Public entry point — acquires lock, then delegates."""
+        async with await self.locked_user_integrations(user_id):
+            return await self._get_all_creds_unlocked(user_id)
+
+    async def _get_all_creds_unlocked(self, user_id: str) -> list[Credentials]:
+        """Return all credentials for *user_id*.
+
+        **Caller must already hold ``locked_user_integrations(user_id)``.**
+        """
+        user_integrations = await self._get_user_integrations(user_id)
+        all_credentials = list(user_integrations.credentials)
+
         # These will always be added
         all_credentials.append(ollama_credentials)
 
@@ -417,12 +443,21 @@ class IntegrationCredentialsStore:
         return list(set(c.provider for c in credentials))
 
     async def update_creds(self, user_id: str, updated: Credentials) -> None:
+        if updated.id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(
+                f"System credential #{updated.id} cannot be updated directly"
+            )
         async with await self.locked_user_integrations(user_id):
-            current = await self.get_creds_by_id(user_id, updated.id)
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            current = next((c for c in persisted if c.id == updated.id), None)
             if not current:
                 raise ValueError(
                     f"Credentials with ID {updated.id} "
                     f"for user with ID {user_id} not found"
+                )
+            if current.is_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{updated.id} cannot be updated"
                 )
             if type(current) is not type(updated):
                 raise TypeError(
@@ -443,21 +478,52 @@ class IntegrationCredentialsStore:
                     f"to more restrictive set of scopes {updated.scopes}"
                 )
 
-            # Update the credentials
+            # Update only persisted credentials — no side-effectful provisioning
             updated_credentials_list = [
-                updated if c.id == updated.id else c
-                for c in await self.get_all_creds(user_id)
+                updated if c.id == updated.id else c for c in persisted
             ]
             await self._set_user_integration_creds(user_id, updated_credentials_list)
 
     async def delete_creds_by_id(self, user_id: str, credentials_id: str) -> None:
+        if credentials_id in SYSTEM_CREDENTIAL_IDS:
+            raise ValueError(f"System credential #{credentials_id} cannot be deleted")
         async with await self.locked_user_integrations(user_id):
-            filtered_credentials = [
-                c for c in await self.get_all_creds(user_id) if c.id != credentials_id
-            ]
+            persisted = await self._get_persisted_user_creds_unlocked(user_id)
+            target = next((c for c in persisted if c.id == credentials_id), None)
+            if target and target.is_managed:
+                raise ValueError(
+                    f"AutoGPT-managed credential #{credentials_id} cannot be deleted"
+                )
+            filtered_credentials = [c for c in persisted if c.id != credentials_id]
             await self._set_user_integration_creds(user_id, filtered_credentials)
 
     # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    async def has_managed_credential(self, user_id: str, provider: str) -> bool:
+        """Check if a managed credential exists for *provider*."""
+        user_integrations = await self._get_user_integrations(user_id)
+        return any(
+            c.provider == provider and c.is_managed
+            for c in user_integrations.credentials
+        )
+
+    async def add_managed_credential(
+        self, user_id: str, credential: Credentials
+    ) -> None:
+        """Upsert a managed credential.
+
+        Removes any existing managed credential for the same provider,
+        then appends the new one. The credential MUST have is_managed=True.
+        """
+        if not credential.is_managed:
+            raise ValueError("credential.is_managed must be True")
+        async with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.credentials = [
+                c
+                for c in user_integrations.credentials
+                if not (c.provider == credential.provider and c.is_managed)
+            ]
+            user_integrations.credentials.append(credential)
 
     async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         """Set the Ayrshare profile key for a user.

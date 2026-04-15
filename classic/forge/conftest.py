@@ -6,9 +6,7 @@ import pytest
 from forge.file_storage.base import FileStorage, FileStorageConfiguration
 from forge.file_storage.local import LocalFileStorage
 
-pytest_plugins = [
-    "tests.vcr",
-]
+pytest_plugins = []
 
 
 @pytest.fixture(scope="session", autouse=True)

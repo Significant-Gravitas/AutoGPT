@@ -30,6 +30,7 @@ import uvicorn
 from fastapi import FastAPI, Request, responses
 from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
+from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -155,9 +156,30 @@ class BaseAppService(AppProcess, ABC):
         super().cleanup()
 
 
+class RemoteCallExtras(BaseModel):
+    """Structured extras that can ride alongside a ``RemoteCallError``.
+
+    Each field here must be JSON-safe and explicitly typed — ``Any`` is
+    deliberately avoided so non-serializable payloads fail at model
+    validation time instead of inside FastAPI's JSON encoder. Add new
+    fields here (rather than re-typing to ``Any``) when a new exception
+    type needs to preserve structured state across RPC.
+    """
+
+    # GraphValidationError.node_errors — dict[node_id, dict[field, error_msg]]
+    node_errors: Optional[dict[str, dict[str, str]]] = None
+
+
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
     args: Optional[Tuple[Any, ...]] = None
+    # Optional extras for exception types that carry structured attributes
+    # beyond ``exc.args``. When set, the client-side handler uses these to
+    # reconstruct the exception with the original attributes.
+    # Currently used by ``GraphValidationError.node_errors`` so the
+    # copilot's credential-race fallback can distinguish credential
+    # failures from other graph validation errors over RPC.
+    extras: Optional[RemoteCallExtras] = None
 
 
 class UnhealthyServiceError(ValueError):
@@ -237,11 +259,30 @@ class AppService(BaseAppService, ABC):
                         f"{request.method} {request.url.path} failed: {exc}",
                         exc_info=exc,
                     )
+            extras: Optional[RemoteCallExtras] = None
+            if isinstance(exc, exceptions.GraphValidationError):
+                # ``exc.args`` only preserves the top-level message; the
+                # structured ``node_errors`` mapping needs to ride along
+                # in ``extras`` so the client can rebuild the original
+                # exception state (used by the copilot credential-race
+                # fallback to distinguish credential failures from other
+                # validation errors).
+                # Normalise to plain ``dict[str, dict[str, str]]`` so
+                # Pydantic validation enforces the JSON-safe shape —
+                # any non-serializable sneak-in fails here instead of
+                # inside the JSON encoder.
+                extras = RemoteCallExtras(
+                    node_errors={
+                        node_id: dict(errors)
+                        for node_id, errors in exc.node_errors.items()
+                    },
+                )
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
                     type=str(exc.__class__.__name__),
                     args=exc.args or (str(exc),),
+                    extras=extras,
                 ).model_dump(),
             )
 
@@ -613,6 +654,25 @@ def get_service_client(
                         msg = str(args[0]) if args else str(e)
                         raise exception_class({"user_facing_error": {"message": msg}})
 
+                    # GraphValidationError carries a structured ``node_errors``
+                    # attribute that ``exc.args`` alone doesn't preserve.
+                    # If the server included it in ``extras``, thread it
+                    # back into the reconstructed exception.
+                    #
+                    # Identity check (``is``) is deliberate here — unlike the
+                    # DataError path above which uses ``issubclass`` to catch
+                    # all subclasses, GraphValidationError subclasses should
+                    # fall through to the generic ``raise exception_class(*args)``
+                    # below rather than silently losing their custom attributes.
+                    if exception_class is exceptions.GraphValidationError:
+                        msg = str(args[0]) if args else str(e)
+                        node_errors = (
+                            error_response.extras.node_errors
+                            if error_response.extras
+                            else None
+                        )
+                        raise exception_class(msg, node_errors=node_errors)
+
                     raise exception_class(*args)
 
                 # Otherwise categorize by HTTP status code
@@ -711,16 +771,16 @@ def get_service_client(
         def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
             """Validate and coerce the RPC result to the expected return type.
 
-            Falls back to the raw result with a warning if validation fails.
+            Falls back to the raw result with a warning and Sentry capture if validation fails.
             """
             if expected_return:
                 try:
                     return expected_return.validate_python(result)
                 except Exception as e:
                     logger.warning(
-                        "RPC return type validation failed, using raw result: %s",
-                        type(e).__name__,
+                        f"RPC return type validation failed for {type(e).__name__}: {e}"
                     )
+                    _sentry_capture_exception(e)
                     return result
             return result
 

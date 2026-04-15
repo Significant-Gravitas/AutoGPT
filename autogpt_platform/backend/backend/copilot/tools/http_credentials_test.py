@@ -866,6 +866,7 @@ class TestRunBlockToolAuthenticatedHttp:
                     session=session,
                     block_id=block.id,
                     input_data={"url": "https://api.example.com/data", "method": "GET"},
+                    dry_run=False,
                 )
 
         assert isinstance(response, SetupRequirementsResponse)
@@ -907,6 +908,7 @@ class TestRunBlockToolAuthenticatedHttp:
                     session=session,
                     block_id=block.id,
                     input_data={},
+                    dry_run=False,
                 )
 
         assert isinstance(response, BlockDetailsResponse)

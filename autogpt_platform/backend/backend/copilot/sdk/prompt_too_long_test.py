@@ -8,20 +8,19 @@ from uuid import uuid4
 
 import pytest
 
-from backend.util import json
-from backend.util.prompt import CompressResult
-
-from .conftest import build_test_transcript as _build_transcript
-from .service import _friendly_error_text, _is_prompt_too_long
-from .transcript import (
+from backend.copilot.transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
     _messages_to_transcript,
     _run_compression,
     _transcript_to_messages,
-    compact_transcript,
-    validate_transcript,
 )
+from backend.util import json
+from backend.util.prompt import CompressResult
+
+from .conftest import build_test_transcript as _build_transcript
+from .service import _friendly_error_text, _is_prompt_too_long
+from .transcript import compact_transcript, validate_transcript
 
 # ---------------------------------------------------------------------------
 # _flatten_assistant_content
@@ -38,7 +37,7 @@ class TestFlattenAssistantContent:
 
     def test_tool_use_blocks(self):
         blocks = [{"type": "tool_use", "name": "read_file", "input": {}}]
-        assert _flatten_assistant_content(blocks) == "[tool_use: read_file]"
+        assert _flatten_assistant_content(blocks) == ""
 
     def test_mixed_blocks(self):
         blocks = [
@@ -47,19 +46,22 @@ class TestFlattenAssistantContent:
         ]
         result = _flatten_assistant_content(blocks)
         assert "Let me read that." in result
-        assert "[tool_use: Read]" in result
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert "Read" not in result
 
     def test_raw_strings(self):
         assert _flatten_assistant_content(["hello", "world"]) == "hello\nworld"
 
-    def test_unknown_block_type_preserved_as_placeholder(self):
+    def test_unknown_block_type_dropped(self):
         blocks = [
             {"type": "text", "text": "See this image:"},
             {"type": "image", "source": {"type": "base64", "data": "..."}},
         ]
         result = _flatten_assistant_content(blocks)
         assert "See this image:" in result
-        assert "[__image__]" in result
+        # Unknown block types are dropped to prevent model mimicry
+        assert "[__image__]" not in result
+        assert "base64" not in result
 
     def test_empty(self):
         assert _flatten_assistant_content([]) == ""
@@ -279,7 +281,8 @@ class TestTranscriptToMessages:
         messages = _transcript_to_messages(content)
         assert len(messages) == 2
         assert "Let me check." in messages[0]["content"]
-        assert "[tool_use: read_file]" in messages[0]["content"]
+        # tool_use blocks are dropped entirely to prevent model mimicry
+        assert "read_file" not in messages[0]["content"]
         assert messages[1]["content"] == "file contents"
 
 
@@ -399,7 +402,7 @@ class TestCompactTranscript:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -434,7 +437,7 @@ class TestCompactTranscript:
             },
         )()
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -458,7 +461,7 @@ class TestCompactTranscript:
             ]
         )
         with patch(
-            "backend.copilot.sdk.transcript._run_compression",
+            "backend.copilot.transcript._run_compression",
             new_callable=AsyncMock,
             side_effect=RuntimeError("LLM unavailable"),
         ):
@@ -564,11 +567,11 @@ class TestRunCompressionTimeout:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value="fake-client",
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_mock_compress,
             ),
         ):
@@ -598,11 +601,11 @@ class TestRunCompressionTimeout:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=None,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=truncation_result,
             ) as mock_compress,

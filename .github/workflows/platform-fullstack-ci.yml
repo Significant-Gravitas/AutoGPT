@@ -160,6 +160,7 @@ jobs:
         run: |
           cp ../backend/.env.default ../backend/.env
           echo "OPENAI_INTERNAL_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> ../backend/.env
+          echo "SCHEDULER_STARTUP_EMBEDDING_BACKFILL=false" >> ../backend/.env
         env:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -179,7 +180,15 @@ jobs:
           pip install pyyaml
 
           # Resolve extends and generate a flat compose file that bake can understand
+          export NEXT_PUBLIC_SOURCEMAPS NEXT_PUBLIC_PW_TEST
           docker compose -f docker-compose.yml config > docker-compose.resolved.yml
+
+          # Ensure NEXT_PUBLIC_SOURCEMAPS is in resolved compose
+          # (docker compose config on some versions drops this arg)
+          if ! grep -q "NEXT_PUBLIC_SOURCEMAPS" docker-compose.resolved.yml; then
+            echo "Injecting NEXT_PUBLIC_SOURCEMAPS into resolved compose (docker compose config dropped it)"
+            sed -i '/NEXT_PUBLIC_PW_TEST/a\        NEXT_PUBLIC_SOURCEMAPS: "true"' docker-compose.resolved.yml
+          fi
 
           # Add cache configuration to the resolved compose file
           python ../.github/workflows/scripts/docker-ci-fix-compose-build-cache.py \
@@ -187,13 +196,14 @@ jobs:
             --cache-from "type=gha" \
             --cache-to "type=gha,mode=max" \
             --backend-hash "${{ hashFiles('autogpt_platform/backend/Dockerfile', 'autogpt_platform/backend/poetry.lock', 'autogpt_platform/backend/backend/**') }}" \
-            --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}" \
+            --frontend-hash "${{ hashFiles('autogpt_platform/frontend/Dockerfile', 'autogpt_platform/frontend/pnpm-lock.yaml', 'autogpt_platform/frontend/src/**') }}-sourcemaps" \
             --git-ref "${{ github.ref }}"
 
           # Build with bake using the resolved compose file (now includes cache config)
           docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load
         env:
           NEXT_PUBLIC_PW_TEST: true
+          NEXT_PUBLIC_SOURCEMAPS: true
 
       - name: Set up tests - Cache E2E test data
         id: e2e-data-cache
@@ -279,15 +289,37 @@ jobs:
           cache: "pnpm"
           cache-dependency-path: autogpt_platform/frontend/pnpm-lock.yaml
 
+      - name: Set up tests - Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Copy source maps from Docker for E2E coverage
+        run: |
+          FRONTEND_CONTAINER=$(docker compose -f ../docker-compose.resolved.yml ps -q frontend)
+          docker cp "$FRONTEND_CONTAINER":/app/.next/static .next-static-coverage
+
       - name: Set up tests - Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Set up tests - Install browser 'chromium'
         run: pnpm playwright install --with-deps chromium
 
-      - name: Run Playwright tests
-        run: pnpm test:no-build
+      - name: Run Playwright E2E suite
+        run: pnpm test:e2e:no-build
         continue-on-error: false
+
+      - name: Upload E2E coverage to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: platform-frontend-e2e
+          files: ./autogpt_platform/frontend/coverage/e2e/cobertura-coverage.xml
+          disable_search: true
 
       - name: Upload Playwright report
         if: always()

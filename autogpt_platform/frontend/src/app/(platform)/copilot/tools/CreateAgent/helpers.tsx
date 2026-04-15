@@ -1,6 +1,5 @@
 import type { AgentPreviewResponse } from "@/app/api/__generated__/models/agentPreviewResponse";
 import type { AgentSavedResponse } from "@/app/api/__generated__/models/agentSavedResponse";
-import type { ClarificationNeededResponse } from "@/app/api/__generated__/models/clarificationNeededResponse";
 import type { ErrorResponse } from "@/app/api/__generated__/models/errorResponse";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { SuggestedGoalResponse } from "@/app/api/__generated__/models/suggestedGoalResponse";
@@ -15,7 +14,6 @@ import { ScaleLoader } from "../../components/ScaleLoader/ScaleLoader";
 export type CreateAgentToolOutput =
   | AgentPreviewResponse
   | AgentSavedResponse
-  | ClarificationNeededResponse
   | SuggestedGoalResponse
   | ErrorResponse;
 
@@ -35,7 +33,6 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
     if (
       type === ResponseType.agent_builder_preview ||
       type === ResponseType.agent_builder_saved ||
-      type === ResponseType.agent_builder_clarification_needed ||
       type === ResponseType.suggested_goal ||
       type === ResponseType.error
     ) {
@@ -45,7 +42,6 @@ function parseOutput(output: unknown): CreateAgentToolOutput | null {
       return output as AgentPreviewResponse;
     if ("agent_id" in output && "library_agent_id" in output)
       return output as AgentSavedResponse;
-    if ("questions" in output) return output as ClarificationNeededResponse;
     if ("suggested_goal" in output) return output as SuggestedGoalResponse;
     if ("error" in output || "details" in output)
       return output as ErrorResponse;
@@ -77,15 +73,6 @@ export function isAgentSavedOutput(
   );
 }
 
-export function isClarificationNeededOutput(
-  output: CreateAgentToolOutput,
-): output is ClarificationNeededResponse {
-  return (
-    output.type === ResponseType.agent_builder_clarification_needed ||
-    "questions" in output
-  );
-}
-
 export function isSuggestedGoalOutput(
   output: CreateAgentToolOutput,
 ): output is SuggestedGoalResponse {
@@ -114,7 +101,6 @@ export function getAnimationText(part: {
       if (!output) return "Creating a new agent";
       if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
-      if (isClarificationNeededOutput(output)) return "Needs clarification";
       if (isSuggestedGoalOutput(output)) return "Goal needs refinement";
       return "Error creating agent";
     }

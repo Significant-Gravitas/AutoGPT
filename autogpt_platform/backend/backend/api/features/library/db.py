@@ -481,6 +481,11 @@ async def create_library_agent(
                                     sensitive_action_safe_mode=sensitive_action_safe_mode,
                                 ).model_dump()
                             ),
+                            **(
+                                {"Folder": {"connect": {"id": folder_id}}}
+                                if folder_id and graph_entry is graph
+                                else {}
+                            ),
                         },
                     },
                     include=library_agent_include(

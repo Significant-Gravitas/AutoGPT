@@ -1,22 +1,25 @@
-"""Tests for tool_adapter helpers: truncation, stash, context vars, parallel pre-launch."""
+"""Tests for tool_adapter: truncation, stash, context vars, readOnlyHint annotations."""
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+import json
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from mcp.types import ToolAnnotations
 
 from backend.copilot.context import get_sdk_cwd
 from backend.copilot.response_model import StreamToolOutputAvailable
-from backend.copilot.sdk.file_ref import FileRefExpansionError
 from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
+    _STRIP_FROM_LLM,
+    SDK_DISALLOWED_TOOLS,
+    _make_truncating_wrapper,
+    _strip_llm_fields,
     _text_from_mcp_result,
-    cancel_pending_tool_tasks,
     create_tool_handler,
     pop_pending_tool_output,
-    pre_launch_tool_call,
     reset_stash_event,
     set_execution_context,
     stash_pending_tool_output,
@@ -244,7 +247,7 @@ class TestTruncationAndStashIntegration:
 
 
 # ---------------------------------------------------------------------------
-# Parallel pre-launch infrastructure
+# create_tool_handler (direct execution, no pre-launch)
 # ---------------------------------------------------------------------------
 
 
@@ -277,169 +280,18 @@ def _init_ctx(session=None):
     )
 
 
-class TestPreLaunchToolCall:
-    """Tests for pre_launch_tool_call and the queue-based parallel dispatch."""
+class TestCreateToolHandler:
+    """Tests for create_tool_handler — direct tool execution."""
 
     @pytest.fixture(autouse=True)
     def _init(self):
         _init_ctx(session=_make_mock_session())
 
     @pytest.mark.asyncio
-    async def test_unknown_tool_is_silently_ignored(self):
-        """pre_launch_tool_call does nothing for tools not in TOOL_REGISTRY."""
-        # Should not raise even if the tool name is completely unknown
-        await pre_launch_tool_call("nonexistent_tool", {})
-
-    @pytest.mark.asyncio
-    async def test_mcp_prefix_stripped_before_registry_lookup(self):
-        """mcp__copilot__run_block is looked up as 'run_block'."""
-        mock_tool = _make_mock_tool("run_block")
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("mcp__copilot__run_block", {"block_id": "b1"})
-
-        # The task was enqueued — mock_tool.execute should be called once
-        # (may not complete immediately but should start)
-        await asyncio.sleep(0)  # yield to event loop
-        mock_tool.execute.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_bare_tool_name_without_prefix(self):
-        """Tool names without __ separator are looked up as-is."""
-        mock_tool = _make_mock_tool("run_block")
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-
-        await asyncio.sleep(0)
-        mock_tool.execute.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_task_enqueued_fifo_for_same_tool(self):
-        """Two pre-launched calls for the same tool name are enqueued FIFO."""
-        results = []
-
-        async def slow_execute(*args, **kwargs):
-            results.append(len(results))
-            return StreamToolOutputAvailable(
-                toolCallId="id",
-                output=str(len(results) - 1),
-                toolName="t",
-                success=True,
-            )
-
-        mock_tool = _make_mock_tool("t")
-        mock_tool.execute = AsyncMock(side_effect=slow_execute)
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"t": mock_tool},
-        ):
-            await pre_launch_tool_call("t", {"n": 1})
-            await pre_launch_tool_call("t", {"n": 2})
-            await asyncio.sleep(0)
-
-        assert mock_tool.execute.await_count == 2
-
-    @pytest.mark.asyncio
-    async def test_file_ref_expansion_failure_skips_pre_launch(self):
-        """When @@agptfile: expansion fails, pre_launch_tool_call skips the task.
-
-        The handler should then fall back to direct execution (which will also
-        fail with a proper MCP error via _truncating's own expansion).
-        """
-        mock_tool = _make_mock_tool("run_block", output="should-not-execute")
-
-        with (
-            patch(
-                "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-                {"run_block": mock_tool},
-            ),
-            patch(
-                "backend.copilot.sdk.tool_adapter.expand_file_refs_in_args",
-                AsyncMock(side_effect=FileRefExpansionError("@@agptfile:missing.txt")),
-            ),
-        ):
-            # Should not raise — expansion failure is handled gracefully
-            await pre_launch_tool_call("run_block", {"text": "@@agptfile:missing.txt"})
-            await asyncio.sleep(0)
-
-        # No task was pre-launched — execute was not called
-        mock_tool.execute.assert_not_awaited()
-
-
-class TestCreateToolHandlerParallel:
-    """Tests for create_tool_handler using pre-launched tasks."""
-
-    @pytest.fixture(autouse=True)
-    def _init(self):
-        _init_ctx(session=_make_mock_session())
-
-    @pytest.mark.asyncio
-    async def test_handler_uses_prelaunched_task(self):
-        """Handler pops and awaits the pre-launched task rather than re-executing."""
-        mock_tool = _make_mock_tool("run_block", output="pre-launched result")
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-            await asyncio.sleep(0)  # let task start
-
-            handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "b1"})
-
-        assert result["isError"] is False
-        text = result["content"][0]["text"]
-        assert "pre-launched result" in text
-        # Should only have been called once (the pre-launched task), not twice
-        mock_tool.execute.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_handler_does_not_double_stash_for_prelaunched_task(self):
-        """Pre-launched task result must NOT be stashed by tool_handler directly.
-
-        The _truncating wrapper wraps tool_handler and handles stashing after
-        tool_handler returns.  If tool_handler also stashed, the output would be
-        appended twice to the FIFO queue and pop_pending_tool_output would return
-        a duplicate on the second call.
-
-        This test calls tool_handler directly (without _truncating) and asserts
-        that nothing was stashed — confirming stashing is deferred to _truncating.
-        """
-        mock_tool = _make_mock_tool("run_block", output="stash-me")
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-            await asyncio.sleep(0)
-
-            handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "b1"})
-
-        assert result["isError"] is False
-        assert "stash-me" in result["content"][0]["text"]
-        # tool_handler must NOT stash — _truncating (which wraps handler) does it.
-        # Calling pop here (without going through _truncating) should return None.
-        not_stashed = pop_pending_tool_output("run_block")
-        assert not_stashed is None, (
-            "tool_handler must not stash directly — _truncating handles stashing "
-            "to prevent double-stash in the FIFO queue"
-        )
-
-    @pytest.mark.asyncio
-    async def test_handler_falls_back_when_queue_empty(self):
-        """When no pre-launched task exists, handler executes directly."""
+    async def test_handler_executes_tool_directly(self):
+        """Handler executes the tool and returns MCP-formatted result."""
         mock_tool = _make_mock_tool("run_block", output="direct result")
 
-        # Don't call pre_launch_tool_call — queue is empty
         handler = create_tool_handler(mock_tool)
         result = await handler({"block_id": "b1"})
 
@@ -449,104 +301,9 @@ class TestCreateToolHandlerParallel:
         mock_tool.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_handler_cancelled_error_propagates(self):
-        """CancelledError from a pre-launched task is re-raised to preserve cancellation semantics."""
+    async def test_handler_returns_error_on_no_session(self):
+        """When session is None, handler returns MCP error."""
         mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=asyncio.CancelledError())
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-            await asyncio.sleep(0)
-
-            handler = create_tool_handler(mock_tool)
-            with pytest.raises(asyncio.CancelledError):
-                await handler({"block_id": "b1"})
-
-    @pytest.mark.asyncio
-    async def test_handler_exception_returns_mcp_error(self):
-        """Exception from a pre-launched task is caught and returned as MCP error."""
-        mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=RuntimeError("block exploded"))
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-            await asyncio.sleep(0)
-
-            handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "b1"})
-
-        assert result["isError"] is True
-        assert "Failed to execute run_block" in result["content"][0]["text"]
-
-    @pytest.mark.asyncio
-    async def test_two_same_tool_calls_dispatched_in_order(self):
-        """Two pre-launched tasks for the same tool are consumed in FIFO order."""
-        call_order = []
-
-        async def execute_with_tag(*args, **kwargs):
-            tag = kwargs.get("block_id", "?")
-            call_order.append(tag)
-            return StreamToolOutputAvailable(
-                toolCallId="id", output=f"out-{tag}", toolName="run_block", success=True
-            )
-
-        mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=execute_with_tag)
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "first"})
-            await pre_launch_tool_call("run_block", {"block_id": "second"})
-            await asyncio.sleep(0)
-
-            handler = create_tool_handler(mock_tool)
-            r1 = await handler({"block_id": "first"})
-            r2 = await handler({"block_id": "second"})
-
-        assert "out-first" in r1["content"][0]["text"]
-        assert "out-second" in r2["content"][0]["text"]
-        assert call_order == [
-            "first",
-            "second",
-        ], f"Expected FIFO dispatch order but got {call_order}"
-
-    @pytest.mark.asyncio
-    async def test_arg_mismatch_falls_back_to_direct_execution(self):
-        """When pre-launched args differ from SDK args, handler cancels pre-launched
-        task and falls back to direct execution with the correct args."""
-        mock_tool = _make_mock_tool("run_block", output="direct-result")
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            # Pre-launch with args {"block_id": "wrong"}
-            await pre_launch_tool_call("run_block", {"block_id": "wrong"})
-            await asyncio.sleep(0)
-
-            # SDK dispatches with different args
-            handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "correct"})
-
-        assert result["isError"] is False
-        # The tool was called twice: once by pre-launch (wrong args), once by
-        # direct fallback (correct args). The result should come from the
-        # direct execution path.
-        assert mock_tool.execute.await_count == 2
-
-    @pytest.mark.asyncio
-    async def test_no_session_falls_back_gracefully(self):
-        """When session is None and no pre-launched task, handler returns MCP error."""
-        mock_tool = _make_mock_tool("run_block")
-        # session=None means get_execution_context returns (user_id, None)
         set_execution_context(user_id="u", session=None, sandbox=None)  # type: ignore[arg-type]
 
         handler = create_tool_handler(mock_tool)
@@ -555,220 +312,620 @@ class TestCreateToolHandlerParallel:
         assert result["isError"] is True
         assert "session" in result["content"][0]["text"].lower()
 
-
-# ---------------------------------------------------------------------------
-# cancel_pending_tool_tasks
-# ---------------------------------------------------------------------------
-
-
-class TestCancelPendingToolTasks:
-    """Tests for cancel_pending_tool_tasks — the stream-abort cleanup helper."""
-
-    @pytest.fixture(autouse=True)
-    def _init(self):
-        _init_ctx(session=_make_mock_session())
-
     @pytest.mark.asyncio
-    async def test_cancels_queued_tasks(self):
-        """Queued tasks are cancelled and the queue is cleared."""
-        ran = False
-
-        async def never_run(*_args, **_kwargs):
-            nonlocal ran
-            await asyncio.sleep(10)  # long enough to still be pending
-            ran = True
-
+    async def test_handler_returns_error_on_exception(self):
+        """Exception from tool execution is caught and returned as MCP error."""
         mock_tool = _make_mock_tool("run_block")
-        mock_tool.execute = AsyncMock(side_effect=never_run)
+        mock_tool.execute = AsyncMock(side_effect=RuntimeError("block exploded"))
 
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-            await asyncio.sleep(0)  # let task start
-            await cancel_pending_tool_tasks()
-            await asyncio.sleep(0)  # let cancellation propagate
+        handler = create_tool_handler(mock_tool)
+        result = await handler({"block_id": "b1"})
 
-        assert not ran, "Task should have been cancelled before completing"
+        assert result["isError"] is True
+        assert "Failed to execute run_block" in result["content"][0]["text"]
 
     @pytest.mark.asyncio
-    async def test_noop_when_no_tasks_queued(self):
-        """cancel_pending_tool_tasks does not raise when queues are empty."""
-        await cancel_pending_tool_tasks()  # should not raise
+    async def test_handler_executes_once_per_call(self):
+        """Each handler call executes the tool exactly once — no duplicate execution."""
+        mock_tool = _make_mock_tool("run_block", output="single-execution")
 
-    @pytest.mark.asyncio
-    async def test_handler_does_not_find_cancelled_task(self):
-        """After cancel, tool_handler falls back to direct execution."""
-        mock_tool = _make_mock_tool("run_block", output="direct-fallback")
+        handler = create_tool_handler(mock_tool)
+        await handler({"block_id": "b1"})
+        await handler({"block_id": "b2"})
 
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"run_block": mock_tool},
-        ):
-            await pre_launch_tool_call("run_block", {"block_id": "b1"})
-            await asyncio.sleep(0)
-            await cancel_pending_tool_tasks()
-
-            # Queue is now empty — handler should execute directly
-            handler = create_tool_handler(mock_tool)
-            result = await handler({"block_id": "b1"})
-
-        assert result["isError"] is False
-        assert "direct-fallback" in result["content"][0]["text"]
-
-
-# ---------------------------------------------------------------------------
-# Concurrent / parallel pre-launch scenarios
-# ---------------------------------------------------------------------------
-
-
-class TestAllParallelToolsPrelaunchedIndependently:
-    """Simulate SDK sending N separate AssistantMessages for the same tool concurrently."""
-
-    @pytest.fixture(autouse=True)
-    def _init(self):
-        _init_ctx(session=_make_mock_session())
-
-    @pytest.mark.asyncio
-    async def test_all_parallel_tools_prelaunched_independently(self):
-        """5 pre-launches for the same tool all enqueue independently and run concurrently.
-
-        Each task sleeps for PER_TASK_S seconds. If they ran sequentially the total
-        wall time would be ~5*PER_TASK_S. Running concurrently it should finish in
-        roughly PER_TASK_S (plus scheduling overhead).
-        """
-        PER_TASK_S = 0.05
-        N = 5
-        started: list[int] = []
-        finished: list[int] = []
-
-        async def slow_execute(*args, **kwargs):
-            idx = len(started)
-            started.append(idx)
-            await asyncio.sleep(PER_TASK_S)
-            finished.append(idx)
-            return StreamToolOutputAvailable(
-                toolCallId=f"id-{idx}",
-                output=f"result-{idx}",
-                toolName="bash_exec",
-                success=True,
-            )
-
-        mock_tool = _make_mock_tool("bash_exec")
-        mock_tool.execute = AsyncMock(side_effect=slow_execute)
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"bash_exec": mock_tool},
-        ):
-            for i in range(N):
-                await pre_launch_tool_call("bash_exec", {"cmd": f"echo {i}"})
-
-            # Measure only the concurrent execution window, not pre-launch overhead.
-            # Starting the timer here avoids false failures on slow CI runners where
-            # the pre_launch_tool_call setup takes longer than the concurrent sleep.
-            t0 = asyncio.get_running_loop().time()
-            await asyncio.sleep(PER_TASK_S * 2)
-            elapsed = asyncio.get_running_loop().time() - t0
-
-        assert mock_tool.execute.await_count == N
-        assert len(finished) == N
-        # Wall time of the sleep window should be well under N * PER_TASK_S
-        # (sequential would be ~0.25s; concurrent finishes in ~PER_TASK_S = 0.05s)
-        assert elapsed < N * PER_TASK_S, (
-            f"Expected concurrent execution (<{N * PER_TASK_S:.2f}s) "
-            f"but sleep window took {elapsed:.2f}s"
-        )
-
-
-class TestHandlerReturnsResultFromCorrectPrelaunchedTask:
-    """Pop pre-launched tasks in order and verify each returns its own result."""
-
-    @pytest.fixture(autouse=True)
-    def _init(self):
-        _init_ctx(session=_make_mock_session())
-
-    @pytest.mark.asyncio
-    async def test_handler_returns_result_from_correct_prelaunched_task(self):
-        """Two pre-launches for the same tool: first handler gets first result, second gets second."""
-
-        async def execute_with_cmd(*args, **kwargs):
-            cmd = kwargs.get("cmd", "?")
-            return StreamToolOutputAvailable(
-                toolCallId="id",
-                output=f"output-for-{cmd}",
-                toolName="bash_exec",
-                success=True,
-            )
-
-        mock_tool = _make_mock_tool("bash_exec")
-        mock_tool.execute = AsyncMock(side_effect=execute_with_cmd)
-
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"bash_exec": mock_tool},
-        ):
-            await pre_launch_tool_call("bash_exec", {"cmd": "alpha"})
-            await pre_launch_tool_call("bash_exec", {"cmd": "beta"})
-            await asyncio.sleep(0)  # let both tasks start
-
-            handler = create_tool_handler(mock_tool)
-            r1 = await handler({"cmd": "alpha"})
-            r2 = await handler({"cmd": "beta"})
-
-        text1 = r1["content"][0]["text"]
-        text2 = r2["content"][0]["text"]
-        assert "output-for-alpha" in text1, f"Expected alpha result, got: {text1}"
-        assert "output-for-beta" in text2, f"Expected beta result, got: {text2}"
         assert mock_tool.execute.await_count == 2
 
 
-class TestFiveConcurrentPrelaunchAllComplete:
-    """Pre-launch 5 tasks; consume all 5 via handlers; assert all succeed."""
+# ---------------------------------------------------------------------------
+# Regression tests: bugs fixed by removing pre-launch mechanism
+#
+# Each test class includes a _buggy_handler fixture that reproduces the old
+# pre-launch implementation inline.  Tests run against BOTH the buggy handler
+# (xfail — proves the bug exists) and the current clean handler (must pass).
+# ---------------------------------------------------------------------------
+
+
+def _make_execute_fn(tool_name: str = "run_block"):
+    """Return (execute_fn, call_log) — execute_fn records every call."""
+    call_log: list[dict] = []
+
+    async def execute_fn(*args, **kwargs):
+        call_log.append(kwargs)
+        return StreamToolOutputAvailable(
+            toolCallId=f"id-{len(call_log)}",
+            output=f"result-{len(call_log)}",
+            toolName=tool_name,
+            success=True,
+        )
+
+    return execute_fn, call_log
+
+
+async def _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args):
+    """Simulate the OLD buggy pre-launch flow.
+
+    1. pre_launch_tool_call fires _execute_tool_sync with pre_launch_args
+    2. SDK dispatches handler with dispatch_args
+    3. Handler compares args — on mismatch, cancels + re-executes (BUG)
+
+    Returns the handler result.
+    """
+    from backend.copilot.sdk.tool_adapter import _execute_tool_sync
+
+    user_id, session = "user-1", _make_mock_session()
+
+    # Step 1: pre-launch fires immediately (speculative)
+    task = asyncio.create_task(
+        _execute_tool_sync(mock_tool, user_id, session, pre_launch_args)
+    )
+    await asyncio.sleep(0)  # let task start
+
+    # Step 2: SDK dispatches with (potentially different) args
+    if pre_launch_args != dispatch_args:
+        # Arg mismatch path: cancel pre-launched task + re-execute
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Fall through to direct execution (duplicate!)
+        return await _execute_tool_sync(mock_tool, user_id, session, dispatch_args)
+    else:
+        return await task
+
+
+class TestBug1DuplicateExecution:
+    """Bug 1 (SECRT-2204): arg mismatch causes duplicate execution.
+
+    Pre-launch fires with raw args, SDK dispatches with normalised args.
+    Mismatch → cancel (too late) + re-execute → 2 API calls.
+    """
 
     @pytest.fixture(autouse=True)
     def _init(self):
         _init_ctx(session=_make_mock_session())
 
+    @pytest.mark.xfail(reason="Old pre-launch code causes duplicate execution")
     @pytest.mark.asyncio
-    async def test_five_concurrent_prelaunch_all_complete(self):
-        """All 5 pre-launched tasks complete and return successful results."""
-        N = 5
-        call_count = 0
+    async def test_old_code_duplicates_on_arg_mismatch(self):
+        """OLD CODE: pre-launch with args A, dispatch with args B → 2 calls."""
+        execute_fn, call_log = _make_execute_fn()
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=execute_fn)
 
-        async def counting_execute(*args, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            n = call_count
+        pre_launch_args = {"block_id": "b1", "input_data": {"title": "Test"}}
+        dispatch_args = {
+            "block_id": "b1",
+            "input_data": {"title": "Test", "priority": None},
+        }
+
+        await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
+
+        # BUG: pre-launch executed once + fallback executed again = 2
+        assert (
+            len(call_log) == 1
+        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+
+    @pytest.mark.asyncio
+    async def test_current_code_no_duplicate(self):
+        """FIXED: handler executes exactly once regardless of arg shape."""
+        execute_fn, call_log = _make_execute_fn()
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=execute_fn)
+
+        handler = create_tool_handler(mock_tool)
+        await handler({"block_id": "b1", "input_data": {"title": "Test"}})
+
+        assert len(call_log) == 1, f"Expected 1 execution but got {len(call_log)}"
+
+
+class TestBug2FIFODesync:
+    """Bug 2: FIFO desync when security hook denies a tool.
+
+    Pre-launch queues [task_A, task_B]. Tool A denied (no MCP dispatch).
+    Tool B's handler dequeues task_A → returns wrong result.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.xfail(reason="Old FIFO queue returns wrong result on denial")
+    @pytest.mark.asyncio
+    async def test_old_code_fifo_desync_on_denial(self):
+        """OLD CODE: denied tool's task stays in queue, next tool gets wrong result."""
+        from backend.copilot.sdk.tool_adapter import _execute_tool_sync
+
+        call_log: list[str] = []
+
+        async def tagged_execute(*args, **kwargs):
+            tag = kwargs.get("block_id", "?")
+            call_log.append(tag)
             return StreamToolOutputAvailable(
-                toolCallId=f"id-{n}",
-                output=f"done-{n}",
-                toolName="bash_exec",
+                toolCallId="id",
+                output=f"result-for-{tag}",
+                toolName="run_block",
                 success=True,
             )
 
-        mock_tool = _make_mock_tool("bash_exec")
-        mock_tool.execute = AsyncMock(side_effect=counting_execute)
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=tagged_execute)
+        user_id, session = "user-1", _make_mock_session()
 
-        with patch(
-            "backend.copilot.sdk.tool_adapter.TOOL_REGISTRY",
-            {"bash_exec": mock_tool},
-        ):
-            for i in range(N):
-                await pre_launch_tool_call("bash_exec", {"cmd": f"task-{i}"})
+        # Simulate old FIFO queue
+        queue: asyncio.Queue = asyncio.Queue()
 
-            await asyncio.sleep(0)  # let all tasks start
+        # Pre-launch for tool A and tool B
+        task_a = asyncio.create_task(
+            _execute_tool_sync(mock_tool, user_id, session, {"block_id": "A"})
+        )
+        task_b = asyncio.create_task(
+            _execute_tool_sync(mock_tool, user_id, session, {"block_id": "B"})
+        )
+        queue.put_nowait(task_a)
+        queue.put_nowait(task_b)
+        await asyncio.sleep(0)  # let both tasks run
 
-            handler = create_tool_handler(mock_tool)
-            results = []
-            for i in range(N):
-                results.append(await handler({"cmd": f"task-{i}"}))
+        # Tool A is DENIED by security hook — no MCP dispatch, no dequeue
+        # Tool B's handler dequeues from FIFO → gets task_A!
+        dequeued_task = queue.get_nowait()
+        result = await dequeued_task
+        result_text = result["content"][0]["text"]
 
-        assert (
-            mock_tool.execute.await_count == N
-        ), f"Expected {N} execute calls, got {mock_tool.execute.await_count}"
-        for i, result in enumerate(results):
-            assert result["isError"] is False, f"Result {i} should not be an error"
-            text = result["content"][0]["text"]
-            assert "done-" in text, f"Result {i} missing expected output: {text}"
+        # BUG: handler for B got task_A's result
+        assert "result-for-B" in result_text, (
+            f"Expected result for B but got: {result_text} — "
+            f"FIFO desync: B got A's result!"
+        )
+
+    @pytest.mark.asyncio
+    async def test_current_code_no_fifo_desync(self):
+        """FIXED: each handler call executes independently, no shared queue."""
+        call_log: list[str] = []
+
+        async def tagged_execute(*args, **kwargs):
+            tag = kwargs.get("block_id", "?")
+            call_log.append(tag)
+            return StreamToolOutputAvailable(
+                toolCallId="id",
+                output=f"result-for-{tag}",
+                toolName="run_block",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=tagged_execute)
+
+        handler = create_tool_handler(mock_tool)
+
+        # Tool A denied (never called). Tool B dispatched normally.
+        result_b = await handler({"block_id": "B"})
+
+        assert "result-for-B" in result_b["content"][0]["text"]
+        assert call_log == ["B"]
+
+
+class TestBug3CancelRace:
+    """Bug 3: cancel race — task completes before cancel arrives.
+
+    Pre-launch fires fast HTTP call (< 1s). By the time handler detects
+    mismatch and calls task.cancel(), the API call already completed.
+    Side effect (Linear issue created) is irreversible.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.xfail(reason="Old code: cancel arrives after task completes")
+    @pytest.mark.asyncio
+    async def test_old_code_cancel_arrives_too_late(self):
+        """OLD CODE: fast task completes before cancel, side effect persists."""
+        side_effects: list[str] = []
+
+        async def fast_execute_with_side_effect(*args, **kwargs):
+            # Side effect happens immediately (like an HTTP POST to Linear)
+            side_effects.append("created-issue")
+            return StreamToolOutputAvailable(
+                toolCallId="id",
+                output="issue-created",
+                toolName="run_block",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=fast_execute_with_side_effect)
+
+        # Pre-launch fires immediately
+        pre_launch_args = {"block_id": "b1"}
+        dispatch_args = {"block_id": "b1", "extra": "normalised"}
+
+        await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
+
+        # BUG: side effect happened TWICE (pre-launch + fallback)
+        assert len(side_effects) == 1, (
+            f"Expected 1 side effect but got {len(side_effects)} — "
+            f"cancel race: pre-launch completed before cancel!"
+        )
+
+    @pytest.mark.asyncio
+    async def test_current_code_single_side_effect(self):
+        """FIXED: no speculative execution, exactly 1 side effect per call."""
+        side_effects: list[str] = []
+
+        async def execute_with_side_effect(*args, **kwargs):
+            side_effects.append("created-issue")
+            return StreamToolOutputAvailable(
+                toolCallId="id",
+                output="issue-created",
+                toolName="run_block",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("run_block")
+        mock_tool.execute = AsyncMock(side_effect=execute_with_side_effect)
+
+        handler = create_tool_handler(mock_tool)
+        await handler({"block_id": "b1"})
+
+        assert len(side_effects) == 1
+
+
+# ---------------------------------------------------------------------------
+# readOnlyHint annotations
+# ---------------------------------------------------------------------------
+
+
+class TestReadOnlyAnnotations:
+    """Tests that all tools get readOnlyHint=True for parallel dispatch."""
+
+    def test_parallel_annotation_constant(self):
+        """_PARALLEL_ANNOTATION is a ToolAnnotations with readOnlyHint=True."""
+        from .tool_adapter import _PARALLEL_ANNOTATION
+
+        assert isinstance(_PARALLEL_ANNOTATION, ToolAnnotations)
+        assert _PARALLEL_ANNOTATION.readOnlyHint is True
+
+
+# ---------------------------------------------------------------------------
+# SDK_DISALLOWED_TOOLS
+# ---------------------------------------------------------------------------
+
+
+class TestSDKDisallowedTools:
+    """Verify that dangerous SDK built-in tools are in the disallowed list."""
+
+    def test_bash_tool_is_disallowed(self):
+        assert "Bash" in SDK_DISALLOWED_TOOLS
+
+    def test_webfetch_tool_is_disallowed(self):
+        """WebFetch is disallowed due to SSRF risk."""
+        assert "WebFetch" in SDK_DISALLOWED_TOOLS
+
+
+# ---------------------------------------------------------------------------
+# _read_file_handler — bridge_and_annotate integration
+# ---------------------------------------------------------------------------
+
+
+class TestReadFileHandlerBridge:
+    """Verify that _read_file_handler calls bridge_and_annotate when a sandbox is active."""
+
+    @pytest.fixture(autouse=True)
+    def _init_context(self):
+        set_execution_context(
+            user_id="test",
+            session=None,  # type: ignore[arg-type]
+            sandbox=None,
+            sdk_cwd="/tmp/copilot-bridge-test",
+        )
+
+    @pytest.mark.asyncio
+    async def test_bridge_called_when_sandbox_active(self, tmp_path, monkeypatch):
+        """When a sandbox is set, bridge_and_annotate is called and its annotation appended."""
+        from backend.copilot.context import _current_sandbox
+
+        from .tool_adapter import _read_file_handler
+
+        test_file = tmp_path / "tool-results" / "data.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text('{"ok": true}\n')
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        fake_sandbox = object()
+        token = _current_sandbox.set(fake_sandbox)  # type: ignore[arg-type]
+        try:
+            bridge_calls: list[tuple] = []
+
+            async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+                bridge_calls.append((sandbox, file_path, offset, limit))
+                return "\n[Sandbox copy available at /tmp/abc-data.json]"
+
+            monkeypatch.setattr(
+                "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+                fake_bridge_and_annotate,
+            )
+
+            result = await _read_file_handler(
+                {"file_path": str(test_file), "offset": 0, "limit": 2000}
+            )
+
+            assert result["isError"] is False
+            assert len(bridge_calls) == 1
+            assert bridge_calls[0][0] is fake_sandbox
+            assert "/tmp/abc-data.json" in result["content"][0]["text"]
+        finally:
+            _current_sandbox.reset(token)
+
+    @pytest.mark.asyncio
+    async def test_bridge_not_called_without_sandbox(self, tmp_path, monkeypatch):
+        """When no sandbox is set, bridge_and_annotate is not called."""
+        from .tool_adapter import _read_file_handler
+
+        test_file = tmp_path / "tool-results" / "data.json"
+        test_file.parent.mkdir(parents=True, exist_ok=True)
+        test_file.write_text('{"ok": true}\n')
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
+        )
+
+        bridge_calls: list[tuple] = []
+
+        async def fake_bridge_and_annotate(sandbox, file_path, offset, limit):
+            bridge_calls.append((sandbox, file_path, offset, limit))
+            return "\n[Sandbox copy available at /tmp/abc-data.json]"
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.bridge_and_annotate",
+            fake_bridge_and_annotate,
+        )
+
+        result = await _read_file_handler(
+            {"file_path": str(test_file), "offset": 0, "limit": 2000}
+        )
+
+        assert result["isError"] is False
+        assert len(bridge_calls) == 0
+        assert "Sandbox copy" not in result["content"][0]["text"]
+
+
+# ---------------------------------------------------------------------------
+# _STRIP_FROM_LLM / _strip_llm_fields — dry-run field stripping
+# ---------------------------------------------------------------------------
+
+
+class TestStripLlmFields:
+    """Regression tests for _strip_llm_fields — the guard that hides dry_run
+    execution mode from the LLM.
+
+    Strip-after-stash ordering is the core correctness guarantee: the frontend
+    SSE stream receives the full payload (including is_dry_run) while the LLM
+    sees a clean response without it.
+    """
+
+    def test_strip_from_llm_contains_is_dry_run(self):
+        """_STRIP_FROM_LLM must include is_dry_run so the guard is active."""
+        assert "is_dry_run" in _STRIP_FROM_LLM
+
+    def test_is_dry_run_removed_from_json_text_block(self):
+        """is_dry_run is stripped from a JSON text block before LLM sees it."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"message": "ok", "is_dry_run": true, "outputs": {}}',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" not in parsed
+        assert parsed["message"] == "ok"
+        assert parsed["outputs"] == {}
+
+    def test_other_fields_preserved_after_strip(self):
+        """Stripping is_dry_run does not affect unrelated fields."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"success": true, "is_dry_run": true, "block_id": "b1"}',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert parsed["success"] is True
+        assert parsed["block_id"] == "b1"
+        assert "is_dry_run" not in parsed
+
+    def test_error_result_not_modified(self):
+        """Error results pass through unchanged — stripping only applies on success."""
+        result = {
+            "content": [
+                {"type": "text", "text": '{"is_dry_run": true, "error": "boom"}'}
+            ],
+            "isError": True,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" in parsed
+
+    def test_non_json_text_block_unchanged(self):
+        """Plain-text blocks that are not valid JSON are left as-is."""
+        result = {
+            "content": [{"type": "text", "text": "plain text, not JSON"}],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        assert stripped["content"][0]["text"] == "plain text, not JSON"
+
+    def test_strip_after_stash_ordering(self):
+        """Stash receives full payload (with is_dry_run); LLM result does not."""
+        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+
+        full_text = '{"message": "ok", "is_dry_run": true}'
+        result = {
+            "content": [{"type": "text", "text": full_text}],
+            "isError": False,
+        }
+
+        # Simulate the stash-before-strip ordering in _truncating:
+        # 1. Stash the FULL output (before any stripping)
+        text = _text_from_mcp_result(result)
+        stash_pending_tool_output("tool_x", text)
+
+        # 2. Strip for the LLM
+        llm_result = _strip_llm_fields(result)
+
+        # Stash (frontend) still has is_dry_run
+        stashed = pop_pending_tool_output("tool_x")
+        assert stashed is not None
+        assert "is_dry_run" in json.loads(stashed)
+
+        # LLM result does NOT have is_dry_run
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" not in llm_parsed
+
+    def test_multiple_text_blocks_strips_only_json_blocks(self):
+        """Mixed content array: JSON block is stripped, plain-text block is untouched."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"message": "ok", "is_dry_run": true}',
+                },
+                {
+                    "type": "text",
+                    "text": "plain text block — not JSON",
+                },
+                {
+                    "type": "text",
+                    "text": '{"other": "data", "is_dry_run": false}',
+                },
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        # First block: JSON — is_dry_run removed
+        first = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" not in first
+        assert first["message"] == "ok"
+        # Second block: plain text — unchanged
+        assert stripped["content"][1]["text"] == "plain text block — not JSON"
+        # Third block: JSON — is_dry_run removed
+        third = json.loads(stripped["content"][2]["text"])
+        assert "is_dry_run" not in third
+        assert third["other"] == "data"
+
+    def test_non_dict_json_value_unchanged(self):
+        """A JSON array or string value is valid JSON but not a dict — left as-is."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '["is_dry_run", true]',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        # Not a dict, so should be returned unchanged
+        assert stripped["content"][0]["text"] == '["is_dry_run", true]'
+
+    @pytest.mark.asyncio
+    async def test_truncating_wrapper_stash_then_strip_ordering(self):
+        """The _make_truncating_wrapper must stash BEFORE strip so the frontend
+        gets is_dry_run while the LLM return value does not.
+
+        This test calls the ACTUAL _make_truncating_wrapper so that swapping
+        the stash/strip lines in production code causes this test to fail.
+        Uses a session with dry_run=True so that stripping is active.
+        """
+        dry_run_session = MagicMock()
+        dry_run_session.dry_run = True
+        set_execution_context(user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        full_payload = '{"message": "done", "is_dry_run": true}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": full_payload}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool")
+        llm_result = await wrapper({})
+
+        # Stash (frontend path) must contain is_dry_run
+        stashed = pop_pending_tool_output("fake_tool")
+        assert stashed is not None
+        assert '"is_dry_run": true' in stashed
+
+        # LLM return value must NOT contain is_dry_run (stripped for session dry_run)
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" not in llm_parsed
+        assert llm_parsed["message"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_truncating_wrapper_normal_mode_preserves_is_dry_run_for_llm(self):
+        """In normal (non-session-dry_run) mode, is_dry_run=True must reach the LLM.
+
+        When a single tool was individually dry-run but the session is not in
+        dry_run mode, the LLM should see is_dry_run=True so it knows that
+        specific tool result was simulated.
+        """
+        normal_session = MagicMock()
+        normal_session.dry_run = False
+        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        full_payload = '{"message": "simulated", "is_dry_run": true}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": full_payload}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_normal")
+        llm_result = await wrapper({})
+
+        # LLM return value MUST contain is_dry_run in normal session mode
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" in llm_parsed
+        assert llm_parsed["is_dry_run"] is True
+        assert llm_parsed["message"] == "simulated"
+
+        # Stash also still has is_dry_run (stash is always unstripped)
+        stashed = pop_pending_tool_output("fake_tool_normal")
+        assert stashed is not None
+        assert '"is_dry_run": true' in stashed

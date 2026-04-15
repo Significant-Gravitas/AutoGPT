@@ -48,27 +48,41 @@ logger = logging.getLogger(__name__)
 def get_inputs_from_schema(
     input_schema: dict[str, Any],
     exclude_fields: set[str] | None = None,
+    input_data: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Extract input field info from JSON schema."""
+    """Extract input field info from JSON schema.
+
+    When *input_data* is provided, each field's ``value`` key is populated
+    with the value the CoPilot already supplied — so the frontend can
+    prefill the form instead of showing empty inputs.  Fields marked
+    ``advanced`` in the schema are flagged so the frontend can hide them
+    by default (matching the builder behaviour).
+    """
     if not isinstance(input_schema, dict):
         return []
 
     exclude = exclude_fields or set()
     properties = input_schema.get("properties", {})
     required = set(input_schema.get("required", []))
+    provided = input_data or {}
 
-    return [
-        {
+    results: list[dict[str, Any]] = []
+    for name, schema in properties.items():
+        if name in exclude:
+            continue
+        entry: dict[str, Any] = {
             "name": name,
             "title": schema.get("title", name),
             "type": schema.get("type", "string"),
             "description": schema.get("description", ""),
             "required": name in required,
             "default": schema.get("default"),
+            "advanced": schema.get("advanced", False),
         }
-        for name, schema in properties.items()
-        if name not in exclude
-    ]
+        if name in provided:
+            entry["value"] = provided[name]
+        results.append(entry)
+    return results
 
 
 async def execute_block(
@@ -81,7 +95,7 @@ async def execute_block(
     node_exec_id: str,
     matched_credentials: dict[str, CredentialsMetaInput],
     sensitive_action_safe_mode: bool = False,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> ToolResponseBase:
     """Execute a block with full context setup, credential injection, and error handling.
 
@@ -114,11 +128,9 @@ async def execute_block(
                     error=sim_error[0],
                     session_id=session_id,
                 )
+
             return BlockOutputResponse(
-                message=(
-                    f"[DRY RUN] Block '{block.name}' simulated successfully "
-                    "— no real execution occurred."
-                ),
+                message=f"Block '{block.name}' executed successfully",
                 block_id=block_id,
                 block_name=block.name,
                 outputs=dict(outputs),
@@ -337,7 +349,7 @@ async def prepare_block_for_execution(
     user_id: str,
     session: ChatSession,
     session_id: str,
-    dry_run: bool = False,
+    dry_run: bool,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -448,7 +460,9 @@ async def prepare_block_for_execution(
                 requirements={
                     "credentials": missing_creds_list,
                     "inputs": get_inputs_from_schema(
-                        input_schema, exclude_fields=credentials_fields
+                        input_schema,
+                        exclude_fields=credentials_fields,
+                        input_data=input_data,
                     ),
                     "execution_modes": ["immediate"],
                 },
