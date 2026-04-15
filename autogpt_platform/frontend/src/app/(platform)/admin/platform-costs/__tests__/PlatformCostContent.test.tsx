@@ -3,6 +3,7 @@ import {
   screen,
   cleanup,
   waitFor,
+  fireEvent,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlatformCostContent } from "../components/PlatformCostContent";
@@ -379,6 +380,23 @@ describe("PlatformCostContent", () => {
       "Filter by execution",
     ) as HTMLInputElement;
     expect(input.value).toBe("exec-123");
+  });
+
+  it("clears execution ID input on Clear click", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent({ graph_exec_id: "exec-123" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    fireEvent.click(screen.getByText("Clear"));
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("");
   });
 
   it("renders by-user tab when specified", async () => {
