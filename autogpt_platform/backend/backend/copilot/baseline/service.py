@@ -103,6 +103,7 @@ _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
 # MIME types that can be embedded as vision content blocks (OpenAI format).
 _VISION_MIME_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 
+
 # Max size for embedding images directly in the user message (20 MiB raw).
 _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
@@ -247,6 +248,8 @@ class _BaselineStreamState:
     text_started: bool = False
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
+    turn_cache_read_tokens: int = 0
+    turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
@@ -294,6 +297,18 @@ async def _baseline_llm_caller(
             if chunk.usage:
                 state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                 state.turn_completion_tokens += chunk.usage.completion_tokens or 0
+                # Extract cache token details when available (OpenAI /
+                # OpenRouter include these in prompt_tokens_details).
+                ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                if ptd:
+                    state.turn_cache_read_tokens += (
+                        getattr(ptd, "cached_tokens", 0) or 0
+                    )
+                    # cache_creation_input_tokens is reported by some providers
+                    # (e.g. Anthropic native) but not standard OpenAI streaming.
+                    state.turn_cache_creation_tokens += (
+                        getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                    )
 
             delta = chunk.choices[0].delta if chunk.choices else None
             if not delta:
@@ -1190,16 +1205,22 @@ async def stream_chat_completion_baseline(
                 state.turn_prompt_tokens,
                 state.turn_completion_tokens,
             )
-
         # Persist token usage to session and record for rate limiting.
-        # NOTE: OpenRouter folds cached tokens into prompt_tokens, so we
-        # cannot break out cache_read/cache_creation weights. Users on the
-        # baseline path may be slightly over-counted vs the SDK path.
+        # When prompt_tokens_details.cached_tokens is reported, subtract
+        # them from prompt_tokens to get the uncached count so the cost
+        # breakdown stays accurate.
+        uncached_prompt = state.turn_prompt_tokens
+        if state.turn_cache_read_tokens > 0:
+            uncached_prompt = max(
+                0, state.turn_prompt_tokens - state.turn_cache_read_tokens
+            )
         await persist_and_record_usage(
             session=session,
             user_id=user_id,
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=uncached_prompt,
             completion_tokens=state.turn_completion_tokens,
+            cache_read_tokens=state.turn_cache_read_tokens,
+            cache_creation_tokens=state.turn_cache_creation_tokens,
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
@@ -1269,10 +1290,13 @@ async def stream_chat_completion_baseline(
     # On GeneratorExit the client is already gone, so unreachable yields
     # are harmless; on normal completion they reach the SSE stream.
     if state.turn_prompt_tokens > 0 or state.turn_completion_tokens > 0:
+        # Report uncached prompt tokens to match what was billed — cached tokens
+        # are excluded so the frontend display is consistent with cost_usd.
+        billed_prompt = max(0, state.turn_prompt_tokens - state.turn_cache_read_tokens)
         yield StreamUsage(
-            prompt_tokens=state.turn_prompt_tokens,
+            prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
-            total_tokens=state.turn_prompt_tokens + state.turn_completion_tokens,
+            total_tokens=billed_prompt + state.turn_completion_tokens,
         )
 
     yield StreamFinish()

@@ -55,6 +55,8 @@ class TranscriptDownload:
 
 # Workspace storage constants — deterministic path from session_id.
 TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
+# Storage prefix for the CLI's native session JSONL files (for cross-pod --resume).
+_CLI_SESSION_STORAGE_PREFIX = "cli-sessions"
 
 
 # ---------------------------------------------------------------------------
@@ -652,6 +654,158 @@ def _build_meta_storage_path(user_id: str, session_id: str, backend: object) -> 
     )
 
 
+# ---------------------------------------------------------------------------
+# CLI native session file — cross-pod --resume support
+# ---------------------------------------------------------------------------
+
+
+def _cli_session_path(sdk_cwd: str, session_id: str) -> str:
+    """Expected path of the CLI's native session JSONL file.
+
+    The CLI resolves the working directory via ``os.path.realpath``, then
+    encodes it by replacing every non-alphanumeric character with ``-``,
+    placing its session file at::
+
+        {projects_base}/{encoded_cwd}/{session_id}.jsonl
+
+    We must mirror the CLI's realpath + regex encoding exactly.  On macOS
+    ``/tmp`` is a symlink to ``/private/tmp``, so a naive ``str.replace("/",
+    "-")`` would produce the wrong directory name and the file would never be
+    found.
+    """
+    encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+    safe_id = _sanitize_id(session_id)
+    return os.path.join(_projects_base(), encoded_cwd, f"{safe_id}.jsonl")
+
+
+def _cli_session_storage_path_parts(
+    user_id: str, session_id: str
+) -> tuple[str, str, str]:
+    """Return (workspace_id, file_id, filename) for a CLI session file in storage."""
+    return (
+        _CLI_SESSION_STORAGE_PREFIX,
+        _sanitize_id(user_id),
+        f"{_sanitize_id(session_id)}.jsonl",
+    )
+
+
+async def upload_cli_session(
+    user_id: str,
+    session_id: str,
+    sdk_cwd: str,
+    log_prefix: str = "[Transcript]",
+) -> None:
+    """Upload the CLI's native session JSONL file to remote storage.
+
+    Called after each turn so the next turn can restore the file on any pod
+    (eliminating the pod-affinity requirement for --resume).
+
+    The CLI only writes the session file after the turn completes, so this
+    must run in the finally block, AFTER the SDK stream has finished.
+    """
+    session_file = _cli_session_path(sdk_cwd, session_id)
+    real_path = os.path.realpath(session_file)
+    projects_base = _projects_base()
+
+    if not real_path.startswith(projects_base + os.sep):
+        logger.warning(
+            "%s CLI session file outside projects base, skipping upload: %s",
+            log_prefix,
+            os.path.basename(real_path),
+        )
+        return
+
+    try:
+        content = Path(real_path).read_bytes()
+    except FileNotFoundError:
+        logger.debug(
+            "%s CLI session file not found, skipping upload: %s",
+            log_prefix,
+            session_file,
+        )
+        return
+    except OSError as e:
+        logger.warning("%s Failed to read CLI session file: %s", log_prefix, e)
+        return
+
+    storage = await get_workspace_storage()
+    wid, fid, fname = _cli_session_storage_path_parts(user_id, session_id)
+    try:
+        await storage.store(
+            workspace_id=wid, file_id=fid, filename=fname, content=content
+        )
+        logger.info(
+            "%s Uploaded CLI session file (%dB) for cross-pod --resume",
+            log_prefix,
+            len(content),
+        )
+    except Exception as e:
+        logger.warning("%s Failed to upload CLI session file: %s", log_prefix, e)
+
+
+async def restore_cli_session(
+    user_id: str,
+    session_id: str,
+    sdk_cwd: str,
+    log_prefix: str = "[Transcript]",
+) -> bool:
+    """Download and restore the CLI's native session file for --resume.
+
+    Returns True if the file was successfully restored and --resume can be
+    used with the session UUID.  Returns False if not available (first turn
+    or upload failed), in which case the caller should not set --resume.
+    """
+    session_file = _cli_session_path(sdk_cwd, session_id)
+    real_path = os.path.realpath(session_file)
+    projects_base = _projects_base()
+
+    if not real_path.startswith(projects_base + os.sep):
+        logger.warning(
+            "%s CLI session restore path outside projects base: %s",
+            log_prefix,
+            os.path.basename(session_file),
+        )
+        return False
+
+    # If the session file already exists locally (same-pod reuse), use it directly.
+    # Downloading from storage could overwrite a newer local version when a previous
+    # turn's upload failed: stored content is stale while the local file already
+    # contains extended history from that turn.
+    if Path(real_path).exists():
+        logger.debug(
+            "%s CLI session file already exists locally — using it for --resume",
+            log_prefix,
+        )
+        return True
+
+    storage = await get_workspace_storage()
+    path = _build_path_from_parts(
+        _cli_session_storage_path_parts(user_id, session_id), storage
+    )
+
+    try:
+        content = await storage.retrieve(path)
+    except FileNotFoundError:
+        logger.debug("%s No CLI session in storage (first turn or missing)", log_prefix)
+        return False
+    except Exception as e:
+        logger.warning("%s Failed to download CLI session: %s", log_prefix, e)
+        return False
+
+    try:
+        os.makedirs(os.path.dirname(real_path), exist_ok=True)
+        Path(real_path).write_bytes(content)
+        logger.info(
+            "%s Restored CLI session file (%dB) for --resume",
+            log_prefix,
+            len(content),
+        )
+        return True
+    except OSError as e:
+        logger.warning("%s Failed to write CLI session file: %s", log_prefix, e)
+        return False
+
+
 async def upload_transcript(
     user_id: str,
     session_id: str,
@@ -821,6 +975,16 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
         logger.info("[Transcript] Deleted metadata for session %s", session_id)
     except Exception as e:
         logger.warning("[Transcript] Failed to delete metadata: %s", e)
+
+    # Also delete the CLI native session file to prevent storage growth.
+    try:
+        cli_path = _build_path_from_parts(
+            _cli_session_storage_path_parts(user_id, session_id), storage
+        )
+        await storage.delete(cli_path)
+        logger.info("[Transcript] Deleted CLI session for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete CLI session: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -1015,6 +1179,7 @@ async def _run_compression(
     messages: list[dict],
     model: str,
     log_prefix: str,
+    target_tokens: int | None = None,
 ) -> CompressResult:
     """Run LLM-based compression with truncation fallback.
 
@@ -1022,6 +1187,12 @@ async def _run_compression(
     If no client is configured or the LLM call fails, falls back to
     truncation-based compression which drops older messages without
     summarization.
+
+    ``target_tokens`` sets a hard token ceiling for the compressed output.
+    When ``None``, ``compress_context`` derives the limit from the model's
+    context window.  Pass a smaller value on retries to force more aggressive
+    compression — the compressor will LLM-summarize, content-truncate,
+    middle-out delete, and first/last trim until the result fits.
 
     A 60-second timeout prevents a hung LLM call from blocking the
     retry path indefinitely.  The truncation fallback also has a
@@ -1032,18 +1203,27 @@ async def _run_compression(
     if client is None:
         logger.warning("%s No OpenAI client configured, using truncation", log_prefix)
         return await asyncio.wait_for(
-            compress_context(messages=messages, model=model, client=None),
+            compress_context(
+                messages=messages, model=model, client=None, target_tokens=target_tokens
+            ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
     try:
         return await asyncio.wait_for(
-            compress_context(messages=messages, model=model, client=client),
+            compress_context(
+                messages=messages,
+                model=model,
+                client=client,
+                target_tokens=target_tokens,
+            ),
             timeout=_COMPACTION_TIMEOUT_SECONDS,
         )
     except Exception as e:
         logger.warning("%s LLM compaction failed, using truncation: %s", log_prefix, e)
         return await asyncio.wait_for(
-            compress_context(messages=messages, model=model, client=None),
+            compress_context(
+                messages=messages, model=model, client=None, target_tokens=target_tokens
+            ),
             timeout=_TRUNCATION_TIMEOUT_SECONDS,
         )
 

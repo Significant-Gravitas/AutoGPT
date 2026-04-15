@@ -349,7 +349,7 @@ class UserCreditBase(ABC):
                 CreditTransactionType.GRANT,
                 CreditTransactionType.TOP_UP,
             ]:
-                from backend.executor.manager import (
+                from backend.executor.billing import (
                     clear_insufficient_funds_notifications,
                 )
 
@@ -554,7 +554,7 @@ class UserCreditBase(ABC):
                 in [CreditTransactionType.GRANT, CreditTransactionType.TOP_UP]
             ):
                 # Lazy import to avoid circular dependency with executor.manager
-                from backend.executor.manager import (
+                from backend.executor.billing import (
                     clear_insufficient_funds_notifications,
                 )
 

@@ -67,7 +67,10 @@ function LogsTable({
                 Cost
               </th>
               <th scope="col" className="px-3 py-3 text-right">
-                Tokens
+                In / Out
+              </th>
+              <th scope="col" className="px-3 py-3 text-right">
+                Cache (R/W)
               </th>
               <th scope="col" className="px-3 py-3 text-right">
                 Duration
@@ -106,6 +109,11 @@ function LogsTable({
                     : "-"}
                 </td>
                 <td className="px-3 py-2 text-right text-xs">
+                  {log.cache_read_tokens || log.cache_creation_tokens
+                    ? `${formatTokens(Number(log.cache_read_tokens ?? 0))} / ${formatTokens(Number(log.cache_creation_tokens ?? 0))}`
+                    : "-"}
+                </td>
+                <td className="px-3 py-2 text-right text-xs">
                   {log.duration != null
                     ? formatDuration(Number(log.duration))
                     : "-"}
@@ -120,7 +128,7 @@ function LogsTable({
             {logs.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No logs found

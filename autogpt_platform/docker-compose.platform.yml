@@ -6,7 +6,8 @@
 # 5. CLI arguments - docker compose run -e VAR=value
 
 # Common backend environment - Docker service names
-x-backend-env: &backend-env # Docker internal service hostnames (override localhost defaults)
+x-backend-env:
+  &backend-env # Docker internal service hostnames (override localhost defaults)
   PYRO_HOST: "0.0.0.0"
   AGENTSERVER_HOST: rest_server
   SCHEDULER_HOST: scheduler_server
@@ -39,7 +40,12 @@ services:
       context: ../
       dockerfile: autogpt_platform/backend/Dockerfile
       target: migrate
-    command: ["sh", "-c", "prisma generate && python3 scripts/gen_prisma_types_stub.py && prisma migrate deploy"]
+    command:
+      [
+        "sh",
+        "-c",
+        "prisma generate && python3 scripts/gen_prisma_types_stub.py && prisma migrate deploy",
+      ]
     develop:
       watch:
         - path: ./
@@ -79,8 +85,8 @@ services:
   falkordb:
     image: falkordb/falkordb:latest
     ports:
-      - "6380:6379"   # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
-      - "3001:3000"   # FalkorDB web UI
+      - "6380:6379" # FalkorDB Redis protocol (6380 to avoid clash with Redis on 6379)
+      - "3001:3000" # FalkorDB web UI
     environment:
       - REDIS_ARGS=--requirepass ${GRAPHITI_FALKORDB_PASSWORD:-}
     volumes:
@@ -88,7 +94,11 @@ services:
     networks:
       - app-network
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -p 6379 -a \"${GRAPHITI_FALKORDB_PASSWORD:-}\" --no-auth-warning ping && wget --spider -q http://localhost:3000 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          'redis-cli -p 6379 -a "${GRAPHITI_FALKORDB_PASSWORD:-}" --no-auth-warning ping && wget --spider -q http://localhost:3000 || exit 1',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -300,19 +310,6 @@ services:
         condition: service_completed_successfully
       database_manager:
         condition: service_started
-    # healthcheck:
-    #   test:
-    #     [
-    #       "CMD",
-    #       "curl",
-    #       "-f",
-    #       "-X",
-    #       "POST",
-    #       "http://localhost:8003/health_check",
-    #     ]
-    #   interval: 10s
-    #   timeout: 10s
-    #   retries: 5
     <<: *backend-env-files
     environment:
       <<: *backend-env
