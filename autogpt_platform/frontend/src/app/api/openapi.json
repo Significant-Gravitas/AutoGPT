@@ -2757,7 +2757,7 @@
           "admin"
         ],
         "summary": "Search Users by Name or Email",
-        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly \u2014 returns results even for users\nwithout credit transaction history.",
+        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly — returns results even for users\nwithout credit transaction history.",
         "operationId": "getV2Search users by name or email",
         "security": [
           {
@@ -7279,7 +7279,7 @@
           "mcp"
         ],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically \u2014 no need to pass an explicit auth token.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -10415,39 +10415,6 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions": {
-      "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "Get Execution Diagnostics",
-        "description": "Get comprehensive diagnostic information about execution status.\n\nReturns all execution metrics including:\n- Current state (running, queued)\n- Orphaned executions (>24h old, likely not in executor)\n- Failure metrics (1h, 24h, rate)\n- Long-running detection (stuck >1h, >24h)\n- Stuck queued detection\n- Throughput metrics (completions/hour)\n- RabbitMQ queue depths",
-        "operationId": "getV2Get execution diagnostics",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ExecutionDiagnosticsResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
-      }
-    },
     "/api/admin/diagnostics/agents": {
       "get": {
         "tags": [
@@ -10481,7 +10448,7 @@
         ]
       }
     },
-    "/api/admin/diagnostics/executions/running": {
+    "/api/admin/diagnostics/executions": {
       "get": {
         "tags": [
           "v2",
@@ -10489,9 +10456,301 @@
           "diagnostics",
           "admin"
         ],
-        "summary": "List Running Executions",
-        "description": "Get detailed list of running and queued executions (recent, likely active).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of running executions with details",
-        "operationId": "getV2List running executions",
+        "summary": "Get Execution Diagnostics",
+        "description": "Get comprehensive diagnostic information about execution status.\n\nReturns all execution metrics including:\n- Current state (running, queued)\n- Orphaned executions (>24h old, likely not in executor)\n- Failure metrics (1h, 24h, rate)\n- Long-running detection (stuck >1h, >24h)\n- Stuck queued detection\n- Throughput metrics (completions/hour)\n- RabbitMQ queue depths",
+        "operationId": "getV2Get execution diagnostics",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDiagnosticsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
+    "/api/admin/diagnostics/executions/cleanup-all-orphaned": {
+      "post": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "Cleanup ALL Orphaned Executions",
+        "description": "Cleanup ALL orphaned executions (>24h old) by directly updating DB status.\nOperates on all executions, not just paginated results.\n\nReturns:\n    Number of executions cleaned up and success message",
+        "operationId": "postV2Cleanup all orphaned executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
+    "/api/admin/diagnostics/executions/cleanup-all-stuck-queued": {
+      "post": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "Cleanup ALL Stuck Queued Executions",
+        "description": "Cleanup ALL stuck queued executions (QUEUED >1h) by updating DB status (admin only).\nOperates on entire dataset, not limited to pagination.\n\nReturns:\n    Number of executions cleaned up and success message",
+        "operationId": "postV2Cleanup all stuck queued executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
+    "/api/admin/diagnostics/executions/cleanup-orphaned": {
+      "post": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "Cleanup Orphaned Executions",
+        "description": "Cleanup orphaned executions by directly updating DB status (admin only).\nFor executions in DB but not actually running in executor (old/stale records).\n\nArgs:\n    request: Contains list of execution_ids to cleanup\n\nReturns:\n    Number of executions cleaned up and success message",
+        "operationId": "postV2Cleanup orphaned executions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopExecutionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
+    "/api/admin/diagnostics/executions/failed": {
+      "get": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "List Failed Executions",
+        "description": "Get detailed list of failed executions.\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n    hours: Number of hours to look back (default 24)\n\nReturns:\n    List of failed executions with error details",
+        "operationId": "getV2List failed executions",
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          },
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 24,
+              "title": "Hours"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailedExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/executions/invalid": {
+      "get": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "List Invalid Executions",
+        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n⚠️ NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
+        "operationId": "getV2List invalid executions",
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
+    "/api/admin/diagnostics/executions/long-running": {
+      "get": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "List Long-Running Executions",
+        "description": "Get detailed list of long-running executions (RUNNING status >24h).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of long-running executions with details",
+        "operationId": "getV2List long-running executions",
         "security": [
           {
             "HTTPBearerJWT": []
@@ -10611,276 +10870,6 @@
         }
       }
     },
-    "/api/admin/diagnostics/executions/failed": {
-      "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "List Failed Executions",
-        "description": "Get detailed list of failed executions.\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n    hours: Number of hours to look back (default 24)\n\nReturns:\n    List of failed executions with error details",
-        "operationId": "getV2List failed executions",
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 100,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 0,
-              "title": "Offset"
-            }
-          },
-          {
-            "name": "hours",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 24,
-              "title": "Hours"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FailedExecutionsListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/admin/diagnostics/executions/long-running": {
-      "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "List Long-Running Executions",
-        "description": "Get detailed list of long-running executions (RUNNING status >24h).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of long-running executions with details",
-        "operationId": "getV2List long-running executions",
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 100,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 0,
-              "title": "Offset"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/admin/diagnostics/executions/stuck-queued": {
-      "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "List Stuck Queued Executions",
-        "description": "Get detailed list of stuck queued executions (QUEUED >1h, never started).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of stuck queued executions with details",
-        "operationId": "getV2List stuck queued executions",
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 100,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 0,
-              "title": "Offset"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
-    "/api/admin/diagnostics/executions/invalid": {
-      "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "List Invalid Executions",
-        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n\u26a0\ufe0f NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
-        "operationId": "getV2List invalid executions",
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 100,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 0,
-              "title": "Offset"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        }
-      }
-    },
     "/api/admin/diagnostics/executions/requeue": {
       "post": {
         "tags": [
@@ -10890,7 +10879,7 @@
           "admin"
         ],
         "summary": "Requeue Stuck Execution",
-        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
+        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
         "operationId": "postV2Requeue stuck execution",
         "requestBody": {
           "content": {
@@ -10934,6 +10923,39 @@
         ]
       }
     },
+    "/api/admin/diagnostics/executions/requeue-all-stuck": {
+      "post": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "Requeue ALL Stuck Queued Executions",
+        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
+        "operationId": "postV2Requeue all stuck queued executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequeueExecutionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
     "/api/admin/diagnostics/executions/requeue-bulk": {
       "post": {
         "tags": [
@@ -10943,7 +10965,7 @@
           "admin"
         ],
         "summary": "Requeue Multiple Stuck Executions",
-        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue multiple stuck executions",
         "requestBody": {
           "content": {
@@ -10987,6 +11009,71 @@
         ]
       }
     },
+    "/api/admin/diagnostics/executions/running": {
+      "get": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "List Running Executions",
+        "description": "Get detailed list of running and queued executions (recent, likely active).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of running executions with details",
+        "operationId": "getV2List running executions",
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        }
+      }
+    },
     "/api/admin/diagnostics/executions/stop": {
       "post": {
         "tags": [
@@ -11025,6 +11112,39 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ]
+      }
+    },
+    "/api/admin/diagnostics/executions/stop-all-long-running": {
+      "post": {
+        "tags": [
+          "v2",
+          "admin",
+          "diagnostics",
+          "admin"
+        ],
+        "summary": "Stop ALL Long-Running Executions",
+        "description": "Stop ALL long-running executions (RUNNING >24h) by sending cancel signals (admin only).\nOperates on entire dataset, not limited to pagination.\n\nReturns:\n    Number of executions stopped and success message",
+        "operationId": "postV2Stop all long-running executions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopExecutionResponse"
                 }
               }
             }
@@ -11093,34 +11213,51 @@
         ]
       }
     },
-    "/api/admin/diagnostics/executions/cleanup-orphaned": {
-      "post": {
+    "/api/admin/diagnostics/executions/stuck-queued": {
+      "get": {
         "tags": [
           "v2",
           "admin",
           "diagnostics",
           "admin"
         ],
-        "summary": "Cleanup Orphaned Executions",
-        "description": "Cleanup orphaned executions by directly updating DB status (admin only).\nFor executions in DB but not actually running in executor (old/stale records).\n\nArgs:\n    request: Contains list of execution_ids to cleanup\n\nReturns:\n    Number of executions cleaned up and success message",
-        "operationId": "postV2Cleanup orphaned executions",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StopExecutionsRequest"
-              }
+        "summary": "List Stuck Queued Executions",
+        "description": "Get detailed list of stuck queued executions (QUEUED >1h, never started).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of stuck queued executions with details",
+        "operationId": "getV2List stuck queued executions",
+        "security": [
+          {
+            "HTTPBearerJWT": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
             }
           },
-          "required": true
-        },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StopExecutionResponse"
+                  "$ref": "#/components/schemas/RunningExecutionsListResponse"
                 }
               }
             }
@@ -11138,12 +11275,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
-        },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
+        }
       }
     },
     "/api/admin/diagnostics/schedules": {
@@ -11244,39 +11376,6 @@
         }
       }
     },
-    "/api/admin/diagnostics/schedules/orphaned": {
-      "get": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "List Orphaned Schedules",
-        "description": "Get detailed list of orphaned schedules with orphan reasons.\n\nReturns:\n    List of orphaned schedules categorized by orphan type",
-        "operationId": "getV2List orphaned schedules",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrphanedSchedulesListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
-      }
-    },
     "/api/admin/diagnostics/schedules/cleanup-orphaned": {
       "post": {
         "tags": [
@@ -11330,123 +11429,24 @@
         ]
       }
     },
-    "/api/admin/diagnostics/executions/stop-all-long-running": {
-      "post": {
+    "/api/admin/diagnostics/schedules/orphaned": {
+      "get": {
         "tags": [
           "v2",
           "admin",
           "diagnostics",
           "admin"
         ],
-        "summary": "Stop ALL Long-Running Executions",
-        "description": "Stop ALL long-running executions (RUNNING >24h) by sending cancel signals (admin only).\nOperates on entire dataset, not limited to pagination.\n\nReturns:\n    Number of executions stopped and success message",
-        "operationId": "postV2Stop all long-running executions",
+        "summary": "List Orphaned Schedules",
+        "description": "Get detailed list of orphaned schedules with orphan reasons.\n\nReturns:\n    List of orphaned schedules categorized by orphan type",
+        "operationId": "getV2List orphaned schedules",
         "responses": {
           "200": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StopExecutionResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
-      }
-    },
-    "/api/admin/diagnostics/executions/cleanup-all-orphaned": {
-      "post": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "Cleanup ALL Orphaned Executions",
-        "description": "Cleanup ALL orphaned executions (>24h old) by directly updating DB status.\nOperates on all executions, not just paginated results.\n\nReturns:\n    Number of executions cleaned up and success message",
-        "operationId": "postV2Cleanup all orphaned executions",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StopExecutionResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
-      }
-    },
-    "/api/admin/diagnostics/executions/cleanup-all-stuck-queued": {
-      "post": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "Cleanup ALL Stuck Queued Executions",
-        "description": "Cleanup ALL stuck queued executions (QUEUED >1h) by updating DB status (admin only).\nOperates on entire dataset, not limited to pagination.\n\nReturns:\n    Number of executions cleaned up and success message",
-        "operationId": "postV2Cleanup all stuck queued executions",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/StopExecutionResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          }
-        },
-        "security": [
-          {
-            "HTTPBearerJWT": []
-          }
-        ]
-      }
-    },
-    "/api/admin/diagnostics/executions/requeue-all-stuck": {
-      "post": {
-        "tags": [
-          "v2",
-          "admin",
-          "diagnostics",
-          "admin"
-        ],
-        "summary": "Requeue ALL Stuck Queued Executions",
-        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
-        "operationId": "postV2Requeue all stuck queued executions",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/RequeueExecutionResponse"
+                  "$ref": "#/components/schemas/OrphanedSchedulesListResponse"
                 }
               }
             }
@@ -13691,7 +13691,7 @@
         },
         "type": "object",
         "title": "ChatSessionMetadata",
-        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns \u2014\nno migration required for new fields as long as a default is provided."
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -14106,7 +14106,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field \u2014 do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
