@@ -43,19 +43,22 @@
   }
 }
 
-@media (hover: hover) {
-  .chip {
-    overflow: hidden;
-    padding-bottom: 2.25rem;
-  }
+.chip {
+  overflow: hidden;
+  padding-bottom: 0.5rem;
+}
 
+.chipActions {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+@media (hover: hover) {
   .chipActions {
-    position: absolute;
-    inset-inline: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
     opacity: 0;
     transform: translateY(100%);
     transition:
