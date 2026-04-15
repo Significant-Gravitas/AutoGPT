@@ -29,7 +29,12 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._config import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, discover_agents, joy_trust
+from ._config import (
+    TEST_CREDENTIALS,
+    TEST_CREDENTIALS_INPUT,
+    discover_agents,
+    joy_trust,
+)
 
 
 class JoyDiscoverAgentsBlock(Block):
