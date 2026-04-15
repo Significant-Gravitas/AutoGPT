@@ -1,5 +1,7 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
+# isort: skip_file
+
 import asyncio
 import base64
 import json
@@ -17,7 +19,7 @@ from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 if TYPE_CHECKING:
-    from backend.copilot.permissions import CopilotPermissions
+    from ..permissions import CopilotPermissions
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -35,11 +37,11 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
-from backend.copilot.context import get_workspace_manager
-from backend.copilot.permissions import apply_tool_permissions
-from backend.copilot.rate_limit import get_user_tier
-from backend.copilot.thinking_stripper import ThinkingStripper
-from backend.copilot.transcript import (
+from ..context import get_workspace_manager
+from ..permissions import apply_tool_permissions
+from ..rate_limit import get_user_tier
+from ..thinking_stripper import ThinkingStripper
+from ..transcript import (
     _run_compression,
     cleanup_stale_project_dirs,
     compact_transcript,
@@ -50,7 +52,7 @@ from backend.copilot.transcript import (
     upload_transcript,
     validate_transcript,
 )
-from backend.copilot.transcript_builder import TranscriptBuilder
+from ..transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -2424,7 +2426,7 @@ async def stream_chat_completion_sdk(
 
         # Warm context: pre-load relevant facts from Graphiti on first turn
         if graphiti_enabled and user_id and len(session.messages) <= 1:
-            from backend.copilot.graphiti.context import fetch_warm_context
+            from ..graphiti.context import fetch_warm_context
 
             warm_ctx = await fetch_warm_context(user_id, message or "")
             if warm_ctx:
@@ -3281,7 +3283,7 @@ async def stream_chat_completion_sdk(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+            from ..graphiti.ingest import enqueue_conversation_turn
 
             _ingest_task = asyncio.create_task(
                 enqueue_conversation_turn(user_id, session_id, message)
