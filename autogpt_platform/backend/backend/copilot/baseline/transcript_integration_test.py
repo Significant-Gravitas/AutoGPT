@@ -68,7 +68,7 @@ class TestResolveBaselineModel:
         assert _resolve_baseline_model(None) == config.model
 
     def test_default_and_fast_models_same(self):
-        """SDK 0.1.58: both tiers now use the same model (anthropic/claude-sonnet-4)."""
+        """SDK defaults currently keep standard and fast on Sonnet 4.6."""
         assert config.model == config.fast_model
 
 

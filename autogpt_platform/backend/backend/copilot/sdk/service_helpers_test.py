@@ -392,7 +392,9 @@ class TestNormalizeModelName:
 
     def test_sonnet_openrouter_model(self):
         """Sonnet model as stored in config (OpenRouter-prefixed) strips cleanly."""
-        assert _normalize_model_name("anthropic/claude-sonnet-4") == "claude-sonnet-4"
+        assert (
+            _normalize_model_name("anthropic/claude-sonnet-4-6") == "claude-sonnet-4-6"
+        )
 
 
 # ---------------------------------------------------------------------------
