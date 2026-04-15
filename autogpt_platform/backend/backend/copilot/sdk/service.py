@@ -17,7 +17,7 @@ from dataclasses import field as dataclass_field
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 if TYPE_CHECKING:
-    from backend.copilot.permissions import CopilotPermissions
+    from ..permissions import CopilotPermissions
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -35,22 +35,6 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
-from ..context import get_workspace_manager
-from ..permissions import apply_tool_permissions
-from ..rate_limit import get_user_tier
-from ..thinking_stripper import ThinkingStripper
-from ..transcript import (
-    _run_compression,
-    cleanup_stale_project_dirs,
-    compact_transcript,
-    download_transcript,
-    read_compacted_entries,
-    restore_cli_session,
-    upload_cli_session,
-    upload_transcript,
-    validate_transcript,
-)
-from ..transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -64,7 +48,7 @@ from ..constants import (
     FRIENDLY_TRANSIENT_MSG,
     is_transient_api_error,
 )
-from ..context import encode_cwd_for_cli
+from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -73,7 +57,9 @@ from ..model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..rate_limit import get_user_tier
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -97,10 +83,23 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
+from ..transcript import (
+    _run_compression,
+    cleanup_stale_project_dirs,
+    compact_transcript,
+    download_transcript,
+    read_compacted_entries,
+    restore_cli_session,
+    upload_cli_session,
+    upload_transcript,
+    validate_transcript,
+)
+from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionTracker, filter_compaction_messages
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .response_adapter import SDKResponseAdapter
@@ -2428,7 +2427,7 @@ async def stream_chat_completion_sdk(
         # sessions, enabling cross-session Anthropic prompt-cache hits.
         warm_ctx = ""
         if graphiti_enabled and user_id and len(session.messages) <= 1:
-            from backend.copilot.graphiti.context import fetch_warm_context
+            from ..graphiti.context import fetch_warm_context
 
             warm_ctx = await fetch_warm_context(user_id, message or "") or ""
 
@@ -3299,7 +3298,7 @@ async def stream_chat_completion_sdk(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+            from ..graphiti.ingest import enqueue_conversation_turn
 
             _ingest_task = asyncio.create_task(
                 enqueue_conversation_turn(user_id, session_id, message)
