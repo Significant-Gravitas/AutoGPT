@@ -162,12 +162,15 @@ describe("ChatInput mode toggle", () => {
     expect(mockSetCopilotChatMode).toHaveBeenCalledWith("extended_thinking");
   });
 
-  it("disables toggle button when streaming", () => {
+  it("hides toggle buttons when streaming", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} isStreaming />);
-    expect(screen.getByLabelText(/switch to/i).hasAttribute("disabled")).toBe(
-      true,
-    );
+    expect(
+      screen.queryByLabelText(/switch to (fast|extended thinking) mode/i),
+    ).toBeNull();
+    expect(
+      screen.queryByLabelText(/switch to (advanced|balanced|standard) model/i),
+    ).toBeNull();
   });
 
   it("shows mode toggle when hasSession is true and not streaming", () => {
@@ -236,7 +239,7 @@ describe("ChatInput model toggle", () => {
     mockFlagValue = true;
     mockCopilotLlmModel = "advanced";
     render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to standard model/i));
+    fireEvent.click(screen.getByLabelText(/switch to balanced model/i));
     expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("standard");
   });
 
@@ -290,10 +293,10 @@ describe("ChatInput model toggle", () => {
     mockFlagValue = true;
     mockCopilotLlmModel = "advanced";
     render(<ChatInput onSend={mockOnSend} />);
-    fireEvent.click(screen.getByLabelText(/switch to standard model/i));
+    fireEvent.click(screen.getByLabelText(/switch to balanced model/i));
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: expect.stringMatching(/switched to standard model/i),
+        title: expect.stringMatching(/switched to balanced model/i),
       }),
     );
   });
