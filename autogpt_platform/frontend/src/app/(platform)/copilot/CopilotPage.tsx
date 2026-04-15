@@ -113,8 +113,7 @@ export function CopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
-    // Dry run dev toggle
-    isDryRun,
+    // Dry run session state
     sessionDryRun,
   } = useCopilotPage();
 

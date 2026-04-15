@@ -10,6 +10,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
 import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import { resolveSessionDryRun } from "./helpers";
 
 interface UseChatSessionOptions {
   dryRun?: boolean;
@@ -170,10 +171,10 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   // Design intent: the global isDryRun store is only used when creating NEW
   // sessions. Once a session exists, its dry_run flag is immutable and should
   // be read from here rather than from the store, which may have changed.
-  const sessionDryRun = useMemo(() => {
-    if (sessionQuery.data?.status !== 200) return false;
-    return sessionQuery.data.data.metadata?.dry_run === true;
-  }, [sessionQuery.data]);
+  const sessionDryRun = useMemo(
+    () => resolveSessionDryRun(sessionQuery.data),
+    [sessionQuery.data],
+  );
 
   return {
     sessionId,

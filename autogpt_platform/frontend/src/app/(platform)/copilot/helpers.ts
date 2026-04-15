@@ -53,6 +53,24 @@ export function parseSessionIDs(raw: string | null | undefined): Set<string> {
 }
 
 /**
+ * Resolve the actual dry_run value for a session from the raw API response.
+ * Returns true only when the session response is a 200 with metadata.dry_run === true.
+ * Returns false for missing/non-200 responses so callers never show a stale
+ * preference value when the real session state is unknown.
+ */
+export function resolveSessionDryRun(queryData: unknown): boolean {
+  if (
+    queryData == null ||
+    typeof queryData !== "object" ||
+    !("status" in queryData) ||
+    (queryData as { status: unknown }).status !== 200
+  )
+    return false;
+  const d = queryData as { data?: { metadata?: { dry_run?: unknown } } };
+  return d.data?.metadata?.dry_run === true;
+}
+
+/**
  * Check whether a refetchSession result indicates the backend still has an
  * active SSE stream for this session.
  */
