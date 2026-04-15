@@ -280,6 +280,7 @@ def _get_local_storage_supplement(cwd: str) -> str:
     )
 
 
+@cache
 def _get_cloud_sandbox_supplement() -> str:
     """Cloud persistent sandbox (files survive across turns in session).
 
