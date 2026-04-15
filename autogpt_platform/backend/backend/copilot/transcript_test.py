@@ -918,6 +918,202 @@ class TestUploadCliSession:
 
         mock_storage.store.assert_not_called()
 
+    def test_strips_session_before_upload_and_writes_back(self, tmp_path):
+        """Strippable entries (progress, thinking blocks) are removed before upload.
+
+        The stripped content is written back to disk (so same-pod turns benefit)
+        and the smaller bytes are uploaded to GCS.
+        """
+        import asyncio
+        import os
+        import re
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import _sanitize_id, upload_cli_session
+
+        projects_base = str(tmp_path)
+        session_id = "12345678-0000-0000-0000-000000000010"
+        sdk_cwd = str(tmp_path)
+
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+        session_dir = tmp_path / encoded_cwd
+        session_dir.mkdir(parents=True, exist_ok=True)
+        session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
+
+        # A CLI session with a progress entry (strippable) and a real assistant message.
+        import json
+
+        progress_entry = {
+            "type": "progress",
+            "uuid": "p1",
+            "parentUuid": "u1",
+            "data": {"type": "bash_progress", "stdout": "running..."},
+        }
+        user_entry = {
+            "type": "user",
+            "uuid": "u1",
+            "message": {"role": "user", "content": "hello"},
+        }
+        asst_entry = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {"role": "assistant", "content": "world"},
+        }
+        raw_content = (
+            json.dumps(progress_entry)
+            + "\n"
+            + json.dumps(user_entry)
+            + "\n"
+            + json.dumps(asst_entry)
+            + "\n"
+        )
+        raw_bytes = raw_content.encode("utf-8")
+        session_file.write_bytes(raw_bytes)
+
+        mock_storage = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.transcript._projects_base",
+                return_value=projects_base,
+            ),
+            patch(
+                "backend.copilot.transcript.get_workspace_storage",
+                new_callable=AsyncMock,
+                return_value=mock_storage,
+            ),
+        ):
+            asyncio.run(
+                upload_cli_session(
+                    user_id="user-1",
+                    session_id=session_id,
+                    sdk_cwd=sdk_cwd,
+                )
+            )
+
+        # Upload should have been called with stripped bytes (no progress entry).
+        mock_storage.store.assert_called_once()
+        stored_content: bytes = mock_storage.store.call_args.kwargs["content"]
+        stored_lines = stored_content.decode("utf-8").strip().split("\n")
+        stored_types = [json.loads(line).get("type") for line in stored_lines]
+        assert "progress" not in stored_types
+        assert "user" in stored_types
+        assert "assistant" in stored_types
+        # Stripped bytes should be smaller than raw.
+        assert len(stored_content) < len(raw_bytes)
+        # File on disk should also be the stripped version.
+        disk_content = session_file.read_bytes()
+        assert disk_content == stored_content
+
+    def test_strips_stale_thinking_blocks_before_upload(self, tmp_path):
+        """Thinking blocks in non-last assistant turns are stripped to reduce size."""
+        import asyncio
+        import json
+        import os
+        import re
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import _sanitize_id, upload_cli_session
+
+        projects_base = str(tmp_path)
+        session_id = "12345678-0000-0000-0000-000000000011"
+        sdk_cwd = str(tmp_path)
+
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+        session_dir = tmp_path / encoded_cwd
+        session_dir.mkdir(parents=True, exist_ok=True)
+        session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
+
+        # Two turns: first assistant has thinking block (stale), second doesn't.
+        u1 = {
+            "type": "user",
+            "uuid": "u1",
+            "message": {"role": "user", "content": "q1"},
+        }
+        a1_with_thinking = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "id": "msg_a1",
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "A" * 5000},
+                    {"type": "text", "text": "answer1"},
+                ],
+            },
+        }
+        u2 = {
+            "type": "user",
+            "uuid": "u2",
+            "parentUuid": "a1",
+            "message": {"role": "user", "content": "q2"},
+        }
+        a2_no_thinking = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "u2",
+            "message": {
+                "id": "msg_a2",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "answer2"}],
+            },
+        }
+        raw_content = (
+            json.dumps(u1)
+            + "\n"
+            + json.dumps(a1_with_thinking)
+            + "\n"
+            + json.dumps(u2)
+            + "\n"
+            + json.dumps(a2_no_thinking)
+            + "\n"
+        )
+        raw_bytes = raw_content.encode("utf-8")
+        session_file.write_bytes(raw_bytes)
+
+        mock_storage = AsyncMock()
+
+        with (
+            patch(
+                "backend.copilot.transcript._projects_base",
+                return_value=projects_base,
+            ),
+            patch(
+                "backend.copilot.transcript.get_workspace_storage",
+                new_callable=AsyncMock,
+                return_value=mock_storage,
+            ),
+        ):
+            asyncio.run(
+                upload_cli_session(
+                    user_id="user-1",
+                    session_id=session_id,
+                    sdk_cwd=sdk_cwd,
+                )
+            )
+
+        stored_content: bytes = mock_storage.store.call_args.kwargs["content"]
+        stored_lines = stored_content.decode("utf-8").strip().split("\n")
+
+        # a1 should have its thinking block stripped (it's not the last assistant turn).
+        a1_stored = json.loads(stored_lines[1])
+        a1_content = a1_stored["message"]["content"]
+        assert all(
+            b["type"] != "thinking" for b in a1_content
+        ), "stale thinking block should be stripped from a1"
+        assert any(
+            b["type"] == "text" for b in a1_content
+        ), "text block should be kept in a1"
+
+        # a2 (last turn) should be unchanged.
+        a2_stored = json.loads(stored_lines[3])
+        assert a2_stored["message"]["content"] == [{"type": "text", "text": "answer2"}]
+
+        # Stripped bytes smaller than raw.
+        assert len(stored_content) < len(raw_bytes)
+
 
 class TestRestoreCliSession:
     def test_returns_false_when_file_not_found_in_storage(self):

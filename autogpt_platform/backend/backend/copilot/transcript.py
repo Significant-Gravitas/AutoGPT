@@ -716,7 +716,7 @@ async def upload_cli_session(
         return
 
     try:
-        content = Path(real_path).read_bytes()
+        raw_bytes = Path(real_path).read_bytes()
     except FileNotFoundError:
         logger.debug(
             "%s CLI session file not found, skipping upload: %s",
@@ -727,6 +727,32 @@ async def upload_cli_session(
     except OSError as e:
         logger.warning("%s Failed to read CLI session file: %s", log_prefix, e)
         return
+
+    # Strip stale thinking blocks and metadata entries (progress, file-history-snapshot,
+    # queue-operation) from the CLI session before writing it back locally and uploading
+    # to GCS.  Thinking blocks from non-last assistant turns are not needed for --resume
+    # but can be massive (tens of thousands of tokens each), causing the CLI to auto-compact
+    # its session when the context window fills up.  Stripping keeps the session well below
+    # the ~200K-token compaction threshold and prevents silent context loss.
+    try:
+        raw_text = raw_bytes.decode("utf-8")
+        stripped_text = strip_for_upload(raw_text)
+        stripped_bytes = stripped_text.encode("utf-8")
+        if len(stripped_bytes) < len(raw_bytes):
+            # Write the stripped version back locally so same-pod turns also benefit.
+            Path(real_path).write_bytes(stripped_bytes)
+            logger.info(
+                "%s Stripped CLI session file: %dB → %dB",
+                log_prefix,
+                len(raw_bytes),
+                len(stripped_bytes),
+            )
+        content = stripped_bytes
+    except Exception as e:
+        logger.warning(
+            "%s Failed to strip CLI session file, uploading raw: %s", log_prefix, e
+        )
+        content = raw_bytes
 
     storage = await get_workspace_storage()
     wid, fid, fname = _cli_session_storage_path_parts(user_id, session_id)
