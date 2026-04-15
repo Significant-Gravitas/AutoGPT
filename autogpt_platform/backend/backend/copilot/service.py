@@ -292,8 +292,12 @@ async def inject_user_context(
     message: str,
     session_id: str,
     session_messages: list[ChatMessage],
+    warm_ctx: str = "",
 ) -> str | None:
-    """Prepend a <user_context> block to the first user message.
+    """Prepend trusted context blocks to the first user message.
+
+    Builds the first-turn message in this order (all optional):
+    ``<memory_context>`` → ``<user_context>`` → sanitised user text.
 
     Updates the in-memory session_messages list and persists the prefixed
     content to the DB so resumed sessions and page reloads retain
@@ -306,9 +310,20 @@ async def inject_user_context(
     supplying a literal ``<user_context>...</user_context>`` tag in the
     message body or in any of their understanding fields.
 
-    When ``understanding`` is ``None``, no trusted prefix is wrapped but the
+    When ``understanding`` is ``None``, no trusted context is wrapped but the
     first user message is still sanitised in place so that attacker tags
     typed by new users do not reach the LLM.
+
+    Args:
+        understanding: Business context fetched from the DB, or ``None``.
+        message: The raw user-supplied message text (may contain attacker tags).
+        session_id: Used as the DB key for persisting the updated content.
+        session_messages: The in-memory message list for the current session.
+        warm_ctx: Trusted Graphiti warm-context string to inject as a
+            ``<memory_context>`` block before the ``<user_context>`` prefix.
+            Passed as server-side data — never sanitised (caller is responsible
+            for ensuring the value is not user-supplied).  Empty string → block
+            is omitted.
 
     Returns:
         ``str`` -- the sanitised (and optionally prefixed) message when
@@ -354,6 +369,16 @@ async def inject_user_context(
             # wrapped in the <user_context> block that the LLM sees.
             user_ctx = _sanitize_user_context_field(raw_ctx)
             final_message = format_user_context_prefix(user_ctx) + sanitized_message
+
+    # Prepend Graphiti warm context as a <memory_context> block AFTER sanitization
+    # so that the trusted server-injected block is never stripped by
+    # sanitize_user_supplied_context (which removes attacker-supplied tags).
+    # This must be the outermost prefix so the LLM sees memory context first.
+    if warm_ctx:
+        final_message = (
+            f"<{MEMORY_CONTEXT_TAG}>\n{warm_ctx}\n</{MEMORY_CONTEXT_TAG}>\n\n"
+            + final_message
+        )
 
     for session_msg in session_messages:
         if session_msg.role == "user":

@@ -2650,16 +2650,16 @@ async def stream_chat_completion_sdk(
                     f"<env_context>\nworking_dir: {sdk_cwd}\n</env_context>\n\n"
                     + current_message
                 )
-            # Prepend Graphiti warm context as a trusted <memory_context> block
-            # so it reaches the LLM without polluting the (cached) system prompt.
-            # inject_user_context will persist the full prefixed message to DB.
-            if warm_ctx:
-                current_message = (
-                    f"<memory_context>\n{warm_ctx}\n</memory_context>\n\n"
-                    + current_message
-                )
+            # Pass warm_ctx to inject_user_context so it is prepended AFTER
+            # sanitize_user_supplied_context runs — preventing the trusted
+            # <memory_context> block from being stripped by the sanitizer.
+            # inject_user_context persists the fully prefixed message to DB.
             prefixed_message = await inject_user_context(
-                understanding, current_message, session_id, session.messages
+                understanding,
+                current_message,
+                session_id,
+                session.messages,
+                warm_ctx=warm_ctx,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
