@@ -77,7 +77,7 @@ function PulseChip({ chip, onAsk }: ChipProps) {
         </div>
       </div>
       <div
-        className={`${styles.chipActions} absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 rounded-b-medium bg-white/95 px-3 py-1.5 backdrop-blur-sm`}
+        className={`${styles.chipActions} flex items-center justify-center gap-1.5 rounded-b-medium px-3 py-1.5`}
       >
         <NextLink
           href={`/library/agents/${chip.agentID}`}
