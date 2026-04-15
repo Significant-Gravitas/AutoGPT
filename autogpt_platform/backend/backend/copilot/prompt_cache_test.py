@@ -729,6 +729,65 @@ class TestInjectUserContextWarmCtx:
         assert "multi" not in stripped
         assert "actual message" in stripped
 
+    @pytest.mark.asyncio
+    async def test_no_user_message_in_session_returns_none(self):
+        """inject_user_context returns None when session_messages has no user role.
+
+        This mirrors the has_history=True path in stream_chat_completion_sdk:
+        the SDK skips inject_user_context on resume turns where the transcript
+        already contains the prefixed first message.  The function returns None
+        (no matching user message to update) rather than re-injecting context.
+        """
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context
+
+        assistant_msg = ChatMessage(role="assistant", content="hi there", sequence=1)
+        mock_db = MagicMock()
+        mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
+            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        ):
+            result = await inject_user_context(
+                None,
+                "hello",
+                "sess-resume",
+                [assistant_msg],
+                warm_ctx="some fact",
+                env_ctx="working_dir: /tmp/test",
+            )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_none_warm_ctx_coalesces_to_empty(self):
+        """warm_ctx=None (or falsy) → no <memory_context> block injected.
+
+        fetch_warm_context can return None when Graphiti is unavailable; the SDK
+        service coerces it with ``or ""`` before passing to inject_user_context.
+        This test verifies that inject_user_context itself treats empty/falsy
+        warm_ctx correctly (no block injected).
+        """
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.service import inject_user_context
+
+        msg = ChatMessage(role="user", content="hello", sequence=1)
+        mock_db = MagicMock()
+        mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
+        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
+            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        ):
+            result = await inject_user_context(
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                warm_ctx="",
+            )
+
+        assert result is not None
+        assert "memory_context" not in result
+        assert result == "hello"
+
 
 class TestInjectUserContextEnvCtx:
     """Tests for the env_ctx parameter of inject_user_context.
