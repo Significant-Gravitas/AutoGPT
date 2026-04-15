@@ -215,6 +215,7 @@ def _build_prisma_where(
     model: str | None = None,
     block_name: str | None = None,
     tracking_type: str | None = None,
+    graph_exec_id: str | None = None,
 ) -> PlatformCostLogWhereInput:
     """Build a Prisma WhereInput for PlatformCostLog filters."""
     where: PlatformCostLogWhereInput = {}
@@ -242,6 +243,9 @@ def _build_prisma_where(
     if tracking_type:
         where["trackingType"] = tracking_type
 
+    if graph_exec_id:
+        where["graphExecId"] = graph_exec_id
+
     return where
 
 
@@ -253,6 +257,7 @@ def _build_raw_where(
     model: str | None = None,
     block_name: str | None = None,
     tracking_type: str | None = None,
+    graph_exec_id: str | None = None,
 ) -> tuple[str, list]:
     """Build a parameterised WHERE clause for raw SQL queries.
 
@@ -302,6 +307,11 @@ def _build_raw_where(
         params.append(block_name)
         idx += 1
 
+    if graph_exec_id is not None:
+        clauses.append(f'"graphExecId" = ${idx}')
+        params.append(graph_exec_id)
+        idx += 1
+
     return (" AND ".join(clauses), params)
 
 
@@ -314,6 +324,7 @@ async def get_platform_cost_dashboard(
     model: str | None = None,
     block_name: str | None = None,
     tracking_type: str | None = None,
+    graph_exec_id: str | None = None,
 ) -> PlatformCostDashboard:
     """Aggregate platform cost logs for the admin dashboard.
 
@@ -330,7 +341,7 @@ async def get_platform_cost_dashboard(
         start = datetime.now(timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type
+        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
     )
 
     # For per-user tracking-type breakdown we intentionally omit the
@@ -338,7 +349,14 @@ async def get_platform_cost_dashboard(
     # This ensures cost_bearing_request_count is correct even when the caller
     # is filtering the main view by a different tracking_type.
     where_no_tracking_type = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type=None
+        start,
+        end,
+        provider,
+        user_id,
+        model,
+        block_name,
+        tracking_type=None,
+        graph_exec_id=graph_exec_id,
     )
 
     sum_fields = {
@@ -358,7 +376,14 @@ async def get_platform_cost_dashboard(
     # "cost_usd" — percentile and histogram queries only make sense on
     # cost-denominated rows, regardless of what the caller is filtering.
     raw_where, raw_params = _build_raw_where(
-        start, end, provider, user_id, model, block_name, tracking_type=None
+        start,
+        end,
+        provider,
+        user_id,
+        model,
+        block_name,
+        tracking_type=None,
+        graph_exec_id=graph_exec_id,
     )
 
     # Queries that always run regardless of tracking_type filter.
@@ -647,12 +672,13 @@ async def get_platform_cost_logs(
     model: str | None = None,
     block_name: str | None = None,
     tracking_type: str | None = None,
+    graph_exec_id: str | None = None,
 ) -> tuple[list[CostLogRow], int]:
     if start is None:
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type
+        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
     )
     offset = (page - 1) * page_size
 
@@ -702,6 +728,7 @@ async def get_platform_cost_logs_for_export(
     model: str | None = None,
     block_name: str | None = None,
     tracking_type: str | None = None,
+    graph_exec_id: str | None = None,
 ) -> tuple[list[CostLogRow], bool]:
     """Return all matching rows up to EXPORT_MAX_ROWS.
 
@@ -712,7 +739,7 @@ async def get_platform_cost_logs_for_export(
         start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     where = _build_prisma_where(
-        start, end, provider, user_id, model, block_name, tracking_type
+        start, end, provider, user_id, model, block_name, tracking_type, graph_exec_id
     )
 
     rows = await PrismaLog.prisma().find_many(

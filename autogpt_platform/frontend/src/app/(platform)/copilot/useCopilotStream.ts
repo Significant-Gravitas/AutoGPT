@@ -17,8 +17,9 @@ import {
   hasActiveBackendStream,
   resolveInProgressTools,
   getSendSuppressionReason,
+  disconnectSessionStream,
 } from "./helpers";
-import type { CopilotMode } from "./store";
+import type { CopilotLlmModel, CopilotMode } from "./store";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -33,6 +34,8 @@ interface UseCopilotStreamArgs {
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Autopilot mode to use for requests. `undefined` = let backend decide via feature flags. */
   copilotMode: CopilotMode | undefined;
+  /** Model tier override. `undefined` = let backend decide. */
+  copilotModel: CopilotLlmModel | undefined;
 }
 
 export function useCopilotStream({
@@ -41,17 +44,20 @@ export function useCopilotStream({
   hasActiveStream,
   refetchSession,
   copilotMode,
+  copilotModel,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
   }
-  // Use a ref for copilotMode so the transport closure always reads the
-  // latest value without recreating the DefaultChatTransport (which would
+  // Use refs for copilotMode and copilotModel so the transport closure always reads
+  // the latest value without recreating the DefaultChatTransport (which would
   // reset useChat's internal Chat instance and break mid-session streaming).
   const copilotModeRef = useRef(copilotMode);
   copilotModeRef.current = copilotMode;
+  const copilotModelRef = useRef(copilotModel);
+  copilotModelRef.current = copilotModel;
 
   // Connect directly to the Python backend for SSE, bypassing the Next.js
   // serverless proxy. This eliminates the Vercel 800s function timeout that
@@ -83,6 +89,7 @@ export function useCopilotStream({
                   context: null,
                   file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
                   mode: copilotModeRef.current ?? null,
+                  model: copilotModelRef.current ?? null,
                 },
                 headers: await getCopilotAuthHeaders(),
               };
@@ -147,16 +154,15 @@ export function useCopilotStream({
     reconnectTimerRef.current = setTimeout(() => {
       isReconnectScheduledRef.current = false;
       setIsReconnectScheduled(false);
-      // Strip any stale in-progress assistant message before resuming.
-      // The backend replays from "0-0", so the partial message would
-      // otherwise sit alongside the fully-replayed version.
+      // Strip the stale in-progress assistant message before resuming —
+      // the backend replays from "0-0", so keeping it would duplicate parts.
       setMessages((prev) => {
         if (prev.length > 0 && prev[prev.length - 1].role === "assistant") {
           return prev.slice(0, -1);
         }
         return prev;
       });
-      resumeStream();
+      resumeStreamRef.current();
     }, delay);
   }
 
@@ -253,6 +259,14 @@ export function useCopilotStream({
       }
     },
   });
+
+  // Keep stable refs to sdkStop and resumeStream so that async callbacks
+  // (session-switch cleanup, wake re-sync, reconnect timer) always call the
+  // latest version without stale-closure bugs.
+  const sdkStopRef = useRef(sdkStop);
+  sdkStopRef.current = sdkStop;
+  const resumeStreamRef = useRef(resumeStream);
+  resumeStreamRef.current = resumeStream;
 
   // Wrap sdkSendMessage to guard against re-sending the user message during a
   // reconnect cycle. If the session already has the message (i.e. we are in a
@@ -380,7 +394,7 @@ export function useCopilotStream({
             }
             return prev;
           });
-          await resumeStream();
+          await resumeStreamRef.current();
         }
         // If !backendActive, the refetch will update hydratedMessages via
         // React Query, and the hydration effect below will merge them in.
@@ -403,7 +417,7 @@ export function useCopilotStream({
     return () => {
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [refetchSession, setMessages, resumeStream]);
+  }, [refetchSession, setMessages]);
 
   // Hydrate messages from REST API when not actively streaming
   useEffect(() => {
@@ -419,8 +433,34 @@ export function useCopilotStream({
   // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
 
-  // Clean up reconnect state on session switch
+  // Clean up reconnect state on session switch.
+  // Abort the old stream's in-flight fetch and tell the backend to release
+  // its XREAD listeners immediately (fire-and-forget).
+  const prevStreamSessionRef = useRef(sessionId);
   useEffect(() => {
+    const prevSid = prevStreamSessionRef.current;
+    prevStreamSessionRef.current = sessionId;
+
+    const isSwitching = Boolean(prevSid && prevSid !== sessionId);
+    if (isSwitching) {
+      // Mark BEFORE stopping so the old stream's async onError (which fires
+      // after the abort) sees the flag and short-circuits the reconnect path.
+      // Without this, the AbortError can queue a reconnect against the new
+      // session's `sessionId` (captured in the fresh onError closure).
+      isUserStoppingRef.current = true;
+      sdkStopRef.current();
+      disconnectSessionStream(prevSid!);
+      // Schedule the reset as a task (not a microtask) so it runs AFTER the
+      // aborted fetch's onError has fired — otherwise the new session would
+      // be stuck with the "user stopping" flag set, preventing auto-resume
+      // when hydration detects an active backend stream.
+      setTimeout(() => {
+        isUserStoppingRef.current = false;
+      }, 0);
+    } else {
+      isUserStoppingRef.current = false;
+    }
+
     clearTimeout(reconnectTimerRef.current);
     reconnectTimerRef.current = undefined;
     reconnectAttemptsRef.current = 0;
@@ -428,7 +468,6 @@ export function useCopilotStream({
     setIsReconnectScheduled(false);
     setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
-    isUserStoppingRef.current = false;
     lastSubmittedMsgRef.current = null;
     setReconnectExhausted(false);
     setIsSyncing(false);
@@ -458,7 +497,12 @@ export function useCopilotStream({
       if (status === "ready") {
         reconnectAttemptsRef.current = 0;
         hasShownDisconnectToast.current = false;
-        lastSubmittedMsgRef.current = null;
+        // Intentionally NOT clearing lastSubmittedMsgRef here: keeping the last
+        // submitted text prevents getSendSuppressionReason from allowing a
+        // duplicate POST of the same message immediately after a successful turn
+        // (the "duplicate" branch checks both the ref and the visible last user
+        // message, so legitimate re-sends after a different reply are still
+        // allowed).
         setReconnectExhausted(false);
       }
     }
@@ -495,15 +539,8 @@ export function useCopilotStream({
       return prev;
     });
 
-    resumeStream();
-  }, [
-    sessionId,
-    hasActiveStream,
-    hydratedMessages,
-    status,
-    resumeStream,
-    setMessages,
-  ]);
+    resumeStreamRef.current();
+  }, [sessionId, hasActiveStream, hydratedMessages, status, setMessages]);
 
   // Clear messages when session is null
   useEffect(() => {

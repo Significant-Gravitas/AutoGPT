@@ -1,5 +1,7 @@
 """Claude Agent SDK service layer for CoPilot chat completions."""
 
+# isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
+
 import asyncio
 import base64
 import json
@@ -14,10 +16,10 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, NotRequired, cast
 
 if TYPE_CHECKING:
-    from backend.copilot.permissions import CopilotPermissions
+    from ..permissions import CopilotPermissions
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -35,28 +37,12 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
-from backend.copilot.context import get_workspace_manager
-from backend.copilot.permissions import apply_tool_permissions
-from backend.copilot.rate_limit import get_user_tier
-from backend.copilot.thinking_stripper import ThinkingStripper
-from backend.copilot.transcript import (
-    _run_compression,
-    cleanup_stale_project_dirs,
-    compact_transcript,
-    download_transcript,
-    read_compacted_entries,
-    restore_cli_session,
-    upload_cli_session,
-    upload_transcript,
-    validate_transcript,
-)
-from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
 from backend.util.settings import Settings
 
-from ..config import ChatConfig, CopilotMode
+from ..config import ChatConfig, CopilotLlmModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
@@ -64,7 +50,7 @@ from ..constants import (
     FRIENDLY_TRANSIENT_MSG,
     is_transient_api_error,
 )
-from ..context import encode_cwd_for_cli
+from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
     ChatMessage,
@@ -73,7 +59,9 @@ from ..model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
+from ..rate_limit import get_user_tier
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -97,10 +85,23 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
+from ..transcript import (
+    _run_compression,
+    cleanup_stale_project_dirs,
+    compact_transcript,
+    download_transcript,
+    read_compacted_entries,
+    restore_cli_session,
+    upload_cli_session,
+    upload_transcript,
+    validate_transcript,
+)
+from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionTracker, filter_compaction_messages
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .response_adapter import SDKResponseAdapter
@@ -119,6 +120,12 @@ logger = logging.getLogger(__name__)
 config = ChatConfig()
 
 
+class _SystemPromptPreset(SystemPromptPreset, total=False):
+    """Extends SystemPromptPreset with fields added in claude-agent-sdk 0.1.59."""
+
+    exclude_dynamic_sections: NotRequired[bool]
+
+
 # On context-size errors the SDK query is retried with progressively
 # less context: (1) original transcript → (2) compacted transcript →
 # (3) no transcript (DB messages only).
@@ -131,6 +138,11 @@ _MAX_STREAM_ATTEMPTS = 3
 # guidance on the first empty call, giving the model a chance to
 # self-correct.  The limit is generous to allow recovery attempts.
 _EMPTY_TOOL_CALL_LIMIT = 5
+
+# Cost multiplier for Opus model turns — Opus is ~5× more expensive than Sonnet
+# ($15/$75 vs $3/$15 per M tokens).  Applied to rate-limit counters so Opus
+# turns deplete quota proportionally faster.
+_OPUS_COST_MULTIPLIER = 5.0
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -419,7 +431,7 @@ async def _reduce_context(
     # Subsequent retry or compaction failed: drop transcript entirely.
     # Return retry_target so the caller compresses DB messages to that budget.
     logger.warning(
-        "%s Dropping transcript, rebuilding from DB messages" " (target_tokens=%d)",
+        "%s Dropping transcript, rebuilding from DB messages (target_tokens=%d)",
         log_prefix,
         retry_target,
     )
@@ -674,6 +686,48 @@ def _resolve_fallback_model() -> str | None:
     return _normalize_model_name(raw)
 
 
+async def _resolve_model_and_multiplier(
+    model: "CopilotLlmModel | None",
+    session_id: str,
+) -> tuple[str | None, float]:
+    """Resolve the SDK model string and rate-limit cost multiplier for a turn.
+
+    Priority (highest first):
+    1. Explicit per-request ``model`` tier from the frontend toggle.
+    2. Global config default (``_resolve_sdk_model()``).
+
+    Returns a ``(sdk_model, cost_multiplier)`` pair.
+    ``sdk_model`` is ``None`` when the Claude Code subscription default applies.
+    ``cost_multiplier`` is 5.0 for Opus, 1.0 otherwise.
+    """
+    sdk_model = _resolve_sdk_model()
+
+    if model == "advanced":
+        sdk_model = _normalize_model_name("anthropic/claude-opus-4-6")
+        logger.info(
+            "[SDK] [%s] Per-request model override: advanced (%s)",
+            session_id[:12] if session_id else "?",
+            sdk_model,
+        )
+        return sdk_model, _OPUS_COST_MULTIPLIER
+
+    if model == "standard":
+        # Reset to config default — respects subscription mode (None = CLI default).
+        sdk_model = _resolve_sdk_model()
+        logger.info(
+            "[SDK] [%s] Per-request model override: standard (%s)",
+            session_id[:12] if session_id else "?",
+            sdk_model or "subscription-default",
+        )
+        return sdk_model, 1.0
+
+    # No per-request override; derive multiplier from final resolved model.
+    cost_multiplier = (
+        _OPUS_COST_MULTIPLIER if sdk_model and "opus" in sdk_model else 1.0
+    )
+    return sdk_model, cost_multiplier
+
+
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
 
 
@@ -770,7 +824,7 @@ def _build_system_prompt_value(
     """
     if cross_user_cache:
         logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        return SystemPromptPreset(
+        return _SystemPromptPreset(
             type="preset",
             preset="claude_code",
             append=system_prompt,
@@ -1161,7 +1215,7 @@ async def _build_query_message(
         history_context = _format_conversation_context(compressed)
         if history_context:
             logger.info(
-                "[SDK] [%s] Fallback context built: compressed=%s," " context_bytes=%d",
+                "[SDK] [%s] Fallback context built: compressed=%s, context_bytes=%d",
                 session_id[:8],
                 was_compressed,
                 len(history_context),
@@ -1940,6 +1994,39 @@ async def _run_stream_attempt(
 
             # --- Dispatch adapter responses ---
             adapter_responses = state.adapter.convert_message(sdk_msg)
+
+            # Pre-create the new assistant message in the session BEFORE
+            # yielding any events so it survives a GeneratorExit (client
+            # disconnect) that interrupts the yield loop at StreamStartStep.
+            #
+            # Without this, the sequence is:
+            #   tool result saved → intermediate flush → StreamStartStep
+            #   yield → GeneratorExit → finally saves session with
+            #   last_role=tool (the text response was generated but never
+            #   appended because _dispatch_response(StreamTextDelta) was
+            #   skipped).
+            #
+            # We only pre-create when:
+            #   1. Tool results were received this turn (has_tool_results).
+            #   2. The prior assistant message is already appended
+            #      (has_appended_assistant) — so this is a post-tool turn.
+            #   3. This batch contains StreamTextDelta — text IS coming, so
+            #      we won't leave a spurious empty message for tool-only turns.
+            #
+            # Subsequent StreamTextDelta dispatches accumulate content into
+            # acc.assistant_response in-place (ChatMessage is mutable), so
+            # the DB record is updated without a second append.
+            if (
+                acc.has_tool_results
+                and acc.has_appended_assistant
+                and any(isinstance(r, StreamTextDelta) for r in adapter_responses)
+            ):
+                acc.assistant_response = ChatMessage(role="assistant", content="")
+                acc.accumulated_tool_calls = []
+                acc.has_tool_results = False
+                ctx.session.messages.append(acc.assistant_response)
+                # acc.has_appended_assistant stays True — placeholder is live
+
             # When StreamFinish is in this batch (ResultMessage), flush any
             # text buffered by the thinking stripper and inject it as a
             # StreamTextDelta BEFORE the StreamTextEnd so the Vercel AI SDK
@@ -2155,6 +2242,7 @@ async def stream_chat_completion_sdk(
     file_ids: list[str] | None = None,
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
+    model: CopilotLlmModel | None = None,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -2165,6 +2253,9 @@ async def stream_chat_completion_sdk(
             saved to the SDK working directory for the Read tool.
         mode: Accepted for signature compatibility with the baseline path.
             The SDK path does not currently branch on this value.
+        model: Per-request model preference from the frontend toggle.
+            'advanced' → Claude Opus; 'standard' → global config default.
+            Takes priority over per-user LaunchDarkly targeting.
     """
     _ = mode  # SDK path ignores the requested mode.
 
@@ -2280,6 +2371,10 @@ async def stream_chat_completion_sdk(
     turn_cost_usd: float | None = None
     graphiti_enabled = False
     pre_attempt_msg_count = 0
+    # Defaults ensure the finally block can always reference these safely even when
+    # an early return (e.g. sdk_cwd error) skips their normal assignment below.
+    sdk_model: str | None = None
+    model_cost_multiplier: float = 1.0
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -2364,18 +2459,19 @@ async def stream_chat_completion_sdk(
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
         system_prompt = (
             base_system_prompt
-            + get_sdk_supplement(use_e2b=use_e2b, cwd=sdk_cwd)
+            + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
         )
 
         # Warm context: pre-load relevant facts from Graphiti on first turn.
-        # Stored here but injected into the user message (not the system prompt)
-        # after query_message is built — keeps system prompt static for caching.
-        warm_ctx: str | None = None
+        # Stored here and injected into the first user message (not the system
+        # prompt) so the system prompt stays identical across all users and
+        # sessions, enabling cross-session Anthropic prompt-cache hits.
+        warm_ctx = ""
         if graphiti_enabled and user_id and len(session.messages) <= 1:
-            from backend.copilot.graphiti.context import fetch_warm_context
+            from ..graphiti.context import fetch_warm_context
 
-            warm_ctx = await fetch_warm_context(user_id, message or "")
+            warm_ctx = await fetch_warm_context(user_id, message or "") or ""
 
         # Process transcript download result and restore CLI native session.
         # The CLI native session file (uploaded after each turn) is the
@@ -2492,7 +2588,10 @@ async def stream_chat_completion_sdk(
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
-        sdk_model = _resolve_sdk_model()
+        # Resolve model and cost multiplier (request tier → config default).
+        sdk_model, model_cost_multiplier = await _resolve_model_and_multiplier(
+            model, session_id
+        )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -2578,13 +2677,19 @@ async def stream_chat_completion_sdk(
             # --session-id here.  CLI >=2.1.97 rejects the combination of
             # --session-id + --resume unless --fork-session is also given.
             sdk_options_kwargs["resume"] = resume_file
-        elif not has_history:
-            # T1 only: write CLI native session to a predictable path so
-            # upload_cli_session() can find it after the turn completes.
-            # On T2+ without --resume the T1 session file already exists at
-            # that path; passing --session-id again would fail with
-            # "Session ID already in use".  The upload guard also skips T2+
-            # no-resume turns, so --session-id provides no benefit there.
+        else:
+            # Set session_id whenever NOT resuming so the CLI writes the
+            # native session file to a predictable path for
+            # upload_cli_session() after the turn.  This covers:
+            #   • T1 fresh: no prior history, first SDK turn.
+            #   • Mode-switch T1: has_history=True (prior baseline turns in
+            #     DB) but no CLI session file was ever uploaded — the CLI has
+            #     never been invoked with this session_id before.
+            #   • T2+ without --resume (restore failed): no session file was
+            #     restored to local storage (restore_cli_session returned
+            #     False), so no conflict with an existing file.
+            # When --resume is active the session_id is already implied by
+            # the resume file; passing it again would be rejected by the CLI.
             sdk_options_kwargs["session_id"] = session_id
         # Optional explicit Claude Code CLI binary path (decouples the
         # bundled SDK version from the CLI version we run — needed because
@@ -2642,13 +2747,29 @@ async def stream_chat_completion_sdk(
         # cache it across sessions.
         #
         # On resume (has_history=True) we intentionally skip re-injection: the
-        # transcript already contains the <user_context> prefix from the original
-        # turn (persisted to the DB in inject_user_context), so the SDK replay
-        # carries context continuity without us prepending it again.  Adding it
-        # a second time would duplicate the block and inflate tokens.
+        # transcript already contains the <user_context> and <memory_context>
+        # prefixes from the original turn (persisted to the DB via
+        # inject_user_context), so the SDK replay carries context continuity
+        # without us prepending them again.
         if not has_history:
+            # Build env_ctx for the working directory and pass it into
+            # inject_user_context so it is prepended AFTER
+            # sanitize_user_supplied_context runs — preventing the trusted
+            # <env_context> block from being stripped by the sanitizer.
+            env_ctx_content = ""
+            if not use_e2b and sdk_cwd:
+                env_ctx_content = f"working_dir: {sdk_cwd}"
+            # Pass warm_ctx and env_ctx to inject_user_context so they are
+            # prepended AFTER sanitize_user_supplied_context runs — preventing
+            # trusted server-injected blocks from being stripped by the sanitizer.
+            # inject_user_context persists the fully prefixed message to DB.
             prefixed_message = await inject_user_context(
-                understanding, current_message, session_id, session.messages
+                understanding,
+                current_message,
+                session_id,
+                session.messages,
+                warm_ctx=warm_ctx,
+                env_ctx=env_ctx_content,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -2789,9 +2910,12 @@ async def stream_chat_completion_sdk(
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
                     sdk_options_kwargs_retry.pop("session_id", None)
-                elif not has_history:
-                    # T1 retry: keep session_id so the CLI writes to the
-                    # predictable path for upload_cli_session().
+                elif "session_id" in sdk_options_kwargs:
+                    # Initial invocation used session_id (T1 or mode-switch
+                    # T1): keep it so the CLI writes the session file to the
+                    # predictable path for upload_cli_session().  Storage is
+                    # ephemeral per invocation, so no "Session ID already in
+                    # use" conflict occurs — no prior file was restored.
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry["session_id"] = session_id
                 else:
@@ -3186,8 +3310,9 @@ async def stream_chat_completion_sdk(
             cache_creation_tokens=turn_cache_creation_tokens,
             log_prefix=log_prefix,
             cost_usd=turn_cost_usd,
-            model=config.model,
+            model=sdk_model or config.model,
             provider="anthropic",
+            model_cost_multiplier=model_cost_multiplier,
         )
 
         # --- Persist session messages ---
@@ -3224,7 +3349,7 @@ async def stream_chat_completion_sdk(
 
         # --- Graphiti: ingest conversation turn for temporal memory ---
         if graphiti_enabled and user_id and message and is_user_message:
-            from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+            from ..graphiti.ingest import enqueue_conversation_turn
 
             # Extract last assistant message from THIS TURN only (not all
             # session history) to avoid distilling stale content from prior

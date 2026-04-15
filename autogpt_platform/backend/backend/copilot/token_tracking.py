@@ -96,6 +96,7 @@ async def persist_and_record_usage(
     cost_usd: float | str | None = None,
     model: str | None = None,
     provider: str = "open_router",
+    model_cost_multiplier: float = 1.0,
 ) -> int:
     """Persist token usage to session and record for rate limiting.
 
@@ -109,6 +110,9 @@ async def persist_and_record_usage(
         log_prefix: Prefix for log messages (e.g. "[SDK]", "[Baseline]").
         cost_usd: Optional cost for logging (float from SDK, str otherwise).
         provider: Cost provider name (e.g. "anthropic", "open_router").
+        model_cost_multiplier: Relative model cost factor for rate limiting
+            (1.0 = Sonnet/default, 5.0 = Opus). Scales the token counter so
+            more expensive models deplete the rate limit proportionally faster.
 
     Returns:
         The computed total_tokens (prompt + completion; cache excluded).
@@ -163,6 +167,7 @@ async def persist_and_record_usage(
                 completion_tokens=completion_tokens,
                 cache_read_tokens=cache_read_tokens,
                 cache_creation_tokens=cache_creation_tokens,
+                model_cost_multiplier=model_cost_multiplier,
             )
         except Exception as usage_err:
             logger.warning("%s Failed to record token usage: %s", log_prefix, usage_err)
