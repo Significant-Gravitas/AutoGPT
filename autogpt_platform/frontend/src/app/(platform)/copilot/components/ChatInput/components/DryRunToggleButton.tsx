@@ -50,11 +50,11 @@ export function DryRunToggleButton({
           </span>
         </button>
       </TooltipTrigger>
-      {isDryRun && (
-        <TooltipContent>
-          Test mode — new sessions use dry_run=true
-        </TooltipContent>
-      )}
+      <TooltipContent>
+        {isDryRun
+          ? "Test mode on — new sessions run with dry_run=true (click to turn off)."
+          : "Turn on test mode to run new sessions with dry_run=true."}
+      </TooltipContent>
     </Tooltip>
   );
 }
