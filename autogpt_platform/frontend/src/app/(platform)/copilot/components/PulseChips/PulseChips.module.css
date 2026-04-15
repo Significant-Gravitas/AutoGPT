@@ -46,6 +46,7 @@
 @media (hover: hover) {
   .chip {
     overflow: hidden;
+    padding-bottom: 0;
   }
 
   .chipActions {

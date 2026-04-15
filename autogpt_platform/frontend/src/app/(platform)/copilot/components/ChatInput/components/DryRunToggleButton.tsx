@@ -52,8 +52,8 @@ export function DryRunToggleButton({
       </TooltipTrigger>
       <TooltipContent>
         {isDryRun
-          ? "Test mode on — new sessions run with dry_run=true (click to turn off)."
-          : "Turn on test mode to run new sessions with dry_run=true."}
+          ? "Test mode on — new sessions run without performing real actions (click to turn off)."
+          : "Turn on test mode to try prompts without performing real actions."}
       </TooltipContent>
     </Tooltip>
   );
