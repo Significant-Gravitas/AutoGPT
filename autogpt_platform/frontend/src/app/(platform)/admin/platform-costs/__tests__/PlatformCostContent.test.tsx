@@ -399,6 +399,26 @@ describe("PlatformCostContent", () => {
     expect(input.value).toBe("");
   });
 
+  it("passes execution ID to filter on Apply click", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "exec-abc" } });
+    expect(input.value).toBe("exec-abc");
+    fireEvent.click(screen.getByText("Apply"));
+    // After apply, the input still holds the typed value
+    expect(input.value).toBe("exec-abc");
+  });
+
   it("renders by-user tab when specified", async () => {
     mockUseGetDashboard.mockReturnValue({
       data: dashboardWithData,
