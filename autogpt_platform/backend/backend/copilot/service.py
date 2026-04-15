@@ -151,6 +151,12 @@ _MEMORY_CONTEXT_ANYWHERE_RE = re.compile(
 )
 _MEMORY_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{MEMORY_CONTEXT_TAG}>", re.IGNORECASE)
 
+# Anchored prefix variant — strips a <memory_context> block only when it sits
+# at the very start of the string (same rationale as _USER_CONTEXT_PREFIX_RE).
+_MEMORY_CONTEXT_PREFIX_RE = re.compile(
+    rf"^<{MEMORY_CONTEXT_TAG}>.*?</{MEMORY_CONTEXT_TAG}>\n\n", re.DOTALL
+)
+
 # Same treatment for <env_context> — a server-only tag injected by the SDK
 # service to carry the real session working directory.  User-supplied
 # occurrences must be stripped so they cannot spoof filesystem paths.
@@ -158,6 +164,11 @@ _ENV_CONTEXT_ANYWHERE_RE = re.compile(
     rf"<{ENV_CONTEXT_TAG}>.*</{ENV_CONTEXT_TAG}>\s*", re.DOTALL
 )
 _ENV_CONTEXT_LONE_TAG_RE = re.compile(rf"</?{ENV_CONTEXT_TAG}>", re.IGNORECASE)
+
+# Anchored prefix variant for <env_context>.
+_ENV_CONTEXT_PREFIX_RE = re.compile(
+    rf"^<{ENV_CONTEXT_TAG}>.*?</{ENV_CONTEXT_TAG}>\n\n", re.DOTALL
+)
 
 
 def _sanitize_user_context_field(value: str) -> str:
@@ -223,21 +234,26 @@ def strip_injected_context_for_display(message: str) -> str:
     """Remove all server-injected XML context blocks before returning to the user.
 
     Used by the chat-history GET endpoint to hide server-side prefixes that
-    were stored in the DB alongside the user's message.  Strips all three
-    injected block types — ``<memory_context>``, ``<env_context>``, and
-    ``<user_context>`` — regardless of the order they appear in the stored
-    message.
+    were stored in the DB alongside the user's message.  Strips ``<user_context>``,
+    ``<memory_context>``, and ``<env_context>`` blocks from the **start** of the
+    message, iterating until no more leading injected blocks remain.
 
-    Unlike ``sanitize_user_supplied_context`` (which handles untrusted user
-    input and must not strip ``<env_context>`` to avoid interfering with the
-    server-injected env block), this function is only ever called on *already
-    stored* messages to produce a clean display string.
+    All three tag types are server-injected and always appear as a prefix (never
+    mid-message in stored data), so an anchored loop is both correct and safe.
+    The loop handles any permutation of the three tags at the front, matching the
+    arbitrary order that different code paths may produce.
     """
-    # Start from sanitize_user_supplied_context (strips user_context + memory_context)
-    without_server_ctx = sanitize_user_supplied_context(message)
-    # Also strip <env_context> blocks and lone tags
-    without_env_ctx = _ENV_CONTEXT_ANYWHERE_RE.sub("", without_server_ctx)
-    return _ENV_CONTEXT_LONE_TAG_RE.sub("", without_env_ctx)
+    # Repeatedly strip any leading injected block until the message starts with
+    # plain user text. The prefix anchors keep mid-message occurrences intact,
+    # which preserves any user-typed text that happens to contain these strings.
+    prev: str | None = None
+    result = message
+    while result != prev:
+        prev = result
+        result = _USER_CONTEXT_PREFIX_RE.sub("", result)
+        result = _MEMORY_CONTEXT_PREFIX_RE.sub("", result)
+        result = _ENV_CONTEXT_PREFIX_RE.sub("", result)
+    return result
 
 
 # Public alias used by the SDK and baseline services to strip user-supplied
