@@ -49,15 +49,18 @@ async function fetchFileAsBlob(url: string): Promise<Blob | null> {
 }
 
 /** Strip path traversal components and unsafe characters from a filename. */
-function sanitizeFilename(filename: string): string {
+export function sanitizeFilename(filename: string): string {
   const sanitized = filename
     .replace(/[/\\]/g, "_")
-    .replace(/\.\./g, "_")
-    .replace(/^\.+/, "");
+    .replace(/^\.+/, "")
+    .replace(/\.\./g, "_");
   return sanitized || "file";
 }
 
-function getUniqueFilename(filename: string, usedNames: Set<string>): string {
+export function getUniqueFilename(
+  filename: string,
+  usedNames: Set<string>,
+): string {
   const safe = sanitizeFilename(filename);
   if (!usedNames.has(safe)) {
     usedNames.add(safe);
