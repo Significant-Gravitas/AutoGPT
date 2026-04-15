@@ -15,15 +15,18 @@ from backend.copilot.pending_message_helpers import (
 )
 from backend.copilot.pending_messages import PendingMessage
 
-
 # ── check_pending_call_rate ────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_check_pending_call_rate_returns_count(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_check_pending_call_rate_returns_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mock_redis = MagicMock()
     mock_redis.eval = AsyncMock(return_value=3)
-    monkeypatch.setattr(helpers_module, "get_redis_async", AsyncMock(return_value=mock_redis))
+    monkeypatch.setattr(
+        helpers_module, "get_redis_async", AsyncMock(return_value=mock_redis)
+    )
 
     result = await check_pending_call_rate("user-1")
     assert result == 3
@@ -34,7 +37,9 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        helpers_module, "get_redis_async", AsyncMock(side_effect=ConnectionError("down"))
+        helpers_module,
+        "get_redis_async",
+        AsyncMock(side_effect=ConnectionError("down")),
     )
 
     result = await check_pending_call_rate("user-1")
@@ -42,10 +47,14 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
 
 
 @pytest.mark.asyncio
-async def test_check_pending_call_rate_at_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_check_pending_call_rate_at_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     mock_redis = MagicMock()
     mock_redis.eval = AsyncMock(return_value=PENDING_CALL_LIMIT + 1)
-    monkeypatch.setattr(helpers_module, "get_redis_async", AsyncMock(return_value=mock_redis))
+    monkeypatch.setattr(
+        helpers_module, "get_redis_async", AsyncMock(return_value=mock_redis)
+    )
 
     result = await check_pending_call_rate("user-1")
     assert result > PENDING_CALL_LIMIT
@@ -59,7 +68,9 @@ async def test_drain_pending_safe_returns_content_strings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     msgs = [PendingMessage(content="hello"), PendingMessage(content="world")]
-    monkeypatch.setattr(helpers_module, "drain_pending_messages", AsyncMock(return_value=msgs))
+    monkeypatch.setattr(
+        helpers_module, "drain_pending_messages", AsyncMock(return_value=msgs)
+    )
 
     result = await drain_pending_safe("sess-1")
     assert result == ["hello", "world"]
@@ -81,7 +92,9 @@ async def test_drain_pending_safe_returns_empty_on_error(
 
 @pytest.mark.asyncio
 async def test_drain_pending_safe_empty_buffer(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(helpers_module, "drain_pending_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        helpers_module, "drain_pending_messages", AsyncMock(return_value=[])
+    )
 
     result = await drain_pending_safe("sess-1")
     assert result == []
@@ -131,7 +144,9 @@ async def test_persist_session_safe_returns_updated_session(
 ) -> None:
     original = MagicMock()
     updated = MagicMock()
-    monkeypatch.setattr(helpers_module, "upsert_chat_session", AsyncMock(return_value=updated))
+    monkeypatch.setattr(
+        helpers_module, "upsert_chat_session", AsyncMock(return_value=updated)
+    )
 
     result = await persist_session_safe(original, "[Test]")
     assert result is updated
