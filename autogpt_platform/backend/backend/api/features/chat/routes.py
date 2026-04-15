@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
-from backend.copilot.config import ChatConfig, CopilotMode
+from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.model import (
@@ -138,6 +138,11 @@ class StreamChatRequest(BaseModel):
         default=None,
         description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
         "If None, uses the server default (extended_thinking).",
+    )
+    model: CopilotLlmModel | None = Field(
+        default=None,
+        description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
+        "If None, the server applies per-user LD targeting then falls back to config.",
     )
 
 
@@ -373,6 +378,31 @@ async def delete_session(
                 "[E2B] Failed to kill sandbox for session %s", session_id[:12]
             )
 
+    return Response(status_code=204)
+
+
+@router.delete(
+    "/sessions/{session_id}/stream",
+    dependencies=[Security(auth.requires_user)],
+    status_code=204,
+)
+async def disconnect_session_stream(
+    session_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> Response:
+    """Disconnect all active SSE listeners for a session.
+
+    Called by the frontend when the user switches away from a chat so the
+    backend releases XREAD listeners immediately rather than waiting for
+    the 5-10 s timeout.
+    """
+    session = await get_chat_session(session_id, user_id)
+    if not session:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id} not found or access denied",
+        )
+    await stream_registry.disconnect_all_listeners(session_id)
     return Response(status_code=204)
 
 
@@ -891,6 +921,7 @@ async def stream_chat_post(
         context=request.context,
         file_ids=sanitized_file_ids,
         mode=request.mode,
+        model=request.model,
     )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
