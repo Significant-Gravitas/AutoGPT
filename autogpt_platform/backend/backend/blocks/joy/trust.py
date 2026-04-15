@@ -5,13 +5,19 @@ Verify agent trust scores before delegating tasks. Joy Trust Network provides
 cross-platform reputation scoring for AI agents based on vouches, verification,
 and behavioral signals.
 
-Use Cases:
-- Safety Checkpoint: Verify an agent meets trust threshold before delegation
-- Trust Auditing: Log trust scores for compliance and monitoring
-- Capability Discovery: Find trusted agents with specific capabilities
-"""
+**Use Cases:**
 
-import logging
+- **Safety Checkpoint:** Verify an agent meets trust threshold before delegation
+- **Trust Auditing:** Log trust scores for compliance and monitoring
+- **Capability Discovery:** Find trusted agents with specific capabilities
+
+**How It Works:**
+
+1. Call the Joy API with an agent ID
+2. Receive trust score (0-5 scale) and verification status
+3. Compare against your minimum threshold
+4. Proceed with delegation only if threshold is met
+"""
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -27,12 +33,9 @@ from backend.sdk import (
 from ._config import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
-    discover_agents,
     get_agent,
     joy_trust,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class JoyVerifyTrustBlock(Block):
@@ -61,6 +64,8 @@ class JoyVerifyTrustBlock(Block):
         min_trust_score: float = SchemaField(
             description="Minimum trust score required (0-5 scale). Default 1.5 is recommended for general use.",
             default=1.5,
+            ge=0.0,
+            le=5.0,
             advanced=False,
         )
 
@@ -71,15 +76,11 @@ class JoyVerifyTrustBlock(Block):
         trust_score: float = SchemaField(
             description="The agent's current trust score (0-5 scale)"
         )
-        agent_name: str = SchemaField(
-            description="Name of the verified agent"
-        )
+        agent_name: str = SchemaField(description="Name of the verified agent")
         verified: bool = SchemaField(
             description="Whether the agent has endpoint verification"
         )
-        error: str = SchemaField(
-            description="Error message if verification failed"
-        )
+        error: str = SchemaField(description="Error message if verification failed")
 
     def __init__(self):
         super().__init__(
@@ -111,23 +112,20 @@ class JoyVerifyTrustBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials | None = None, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
-        try:
-            agent = await get_agent(input_data.agent_id, credentials)
-            trust_score = agent.get("trust_score", 0.0)
-            meets_threshold = trust_score >= input_data.min_trust_score
+        agent = await get_agent(input_data.agent_id, credentials)
+        trust_score = agent.get("trust_score", 0.0)
+        meets_threshold = trust_score >= input_data.min_trust_score
 
-            yield "meets_threshold", meets_threshold
-            yield "trust_score", trust_score
-            yield "agent_name", agent.get("name", "Unknown")
-            yield "verified", agent.get("verified", False)
-
-        except Exception as e:
-            logger.error("Joy trust verification failed: %s", e)
-            yield "error", str(e)
-            yield "meets_threshold", False
-            yield "trust_score", 0.0
+        yield "meets_threshold", meets_threshold
+        yield "trust_score", trust_score
+        yield "agent_name", agent.get("name", "Unknown")
+        yield "verified", agent.get("verified", False)
 
 
 class JoyGetTrustScoreBlock(Block):
@@ -137,6 +135,12 @@ class JoyGetTrustScoreBlock(Block):
     Returns the full trust profile including score, verification status,
     vouch count, capabilities, and badges. Use this for detailed trust
     auditing or to display agent information.
+
+    **How It Works:**
+
+    1. Query the Joy API with an agent ID
+    2. Receive full agent profile with trust metrics
+    3. Use the data for auditing, display, or decision-making
     """
 
     class Input(BlockSchemaInput):
@@ -155,7 +159,9 @@ class JoyGetTrustScoreBlock(Block):
         verified: bool = SchemaField(description="Whether endpoint is verified")
         vouch_count: int = SchemaField(description="Number of vouches received")
         capabilities: list = SchemaField(description="List of agent capabilities")
-        badges: list = SchemaField(description="Earned badges (verified, responsive, etc.)")
+        badges: list = SchemaField(
+            description="Earned badges (verified, responsive, etc.)"
+        )
         result: dict = SchemaField(description="Complete agent profile")
         error: str = SchemaField(description="Error message if lookup failed")
 
@@ -192,20 +198,19 @@ class JoyGetTrustScoreBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials | None = None, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials | None = None,
+        **kwargs,
     ) -> BlockOutput:
-        try:
-            agent = await get_agent(input_data.agent_id, credentials)
+        agent = await get_agent(input_data.agent_id, credentials)
 
-            yield "agent_id", agent.get("agent_id", input_data.agent_id)
-            yield "name", agent.get("name", "Unknown")
-            yield "trust_score", agent.get("trust_score", 0.0)
-            yield "verified", agent.get("verified", False)
-            yield "vouch_count", agent.get("vouch_count", 0)
-            yield "capabilities", agent.get("capabilities", [])
-            yield "badges", agent.get("badges", [])
-            yield "result", agent
-
-        except Exception as e:
-            logger.error("Joy trust lookup failed: %s", e)
-            yield "error", str(e)
+        yield "agent_id", agent.get("agent_id", input_data.agent_id)
+        yield "name", agent.get("name", "Unknown")
+        yield "trust_score", agent.get("trust_score", 0.0)
+        yield "verified", agent.get("verified", False)
+        yield "vouch_count", agent.get("vouch_count", 0)
+        yield "capabilities", agent.get("capabilities", [])
+        yield "badges", agent.get("badges", [])
+        yield "result", agent

@@ -42,7 +42,9 @@ def _client(credentials: APIKeyCredentials | None = None) -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=JOY_BASE_URL, headers=headers, timeout=10.0)
 
 
-async def get_agent(agent_id: str, credentials: APIKeyCredentials | None = None) -> dict:
+async def get_agent(
+    agent_id: str, credentials: APIKeyCredentials | None = None
+) -> dict:
     """Fetch agent details from Joy API."""
     async with _client(credentials) as client:
         response = await client.get(f"/agents/{agent_id}")
