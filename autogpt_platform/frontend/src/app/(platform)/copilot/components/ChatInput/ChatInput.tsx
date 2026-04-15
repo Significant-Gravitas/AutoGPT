@@ -235,9 +235,10 @@ export function ChatInput({
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
-                onClick={() => {
-                  if (value.trim()) {
-                    void onEnqueue(value.trim());
+                onClick={async () => {
+                  const trimmed = value.trim();
+                  if (trimmed) {
+                    await onEnqueue(trimmed);
                     setValue("");
                   }
                 }}
