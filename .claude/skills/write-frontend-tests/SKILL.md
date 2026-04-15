@@ -48,14 +48,15 @@ git diff "$BASE_BRANCH"...HEAD -- src/ | head -500
 For each changed file, determine:
 
 1. **Is it a page?** (`page.tsx`) — these are the primary test targets
-2. **Is it a hook?** (`use*.ts`) — test via the page that uses it
+2. **Is it a hook?** (`use*.ts`) — test via the page/component that uses it; avoid direct `renderHook()` tests unless it is a shared reusable hook with standalone business logic
 3. **Is it a component?** (`.tsx` in `components/`) — test via the parent page unless it's complex enough to warrant isolation
 4. **Is it a helper?** (`helpers.ts`, `utils.ts`) — unit test directly if pure logic
 
 **Priority order:**
+
 1. Pages with new/changed data fetching or user interactions
 2. Components with complex internal logic (modals, forms, wizards)
-3. Hooks with non-trivial business logic
+3. Shared hooks with standalone business logic when UI-level coverage is impractical
 4. Pure helper functions
 
 Skip: styling-only changes, type-only changes, config changes.
@@ -163,6 +164,7 @@ describe("LibraryPage", () => {
 - Use `waitFor` when asserting side effects or state changes after interactions
 - Import `fireEvent` or `userEvent` from the test-utils for interactions
 - Do NOT mock internal hooks or functions — mock at the API boundary via MSW
+- Prefer Orval-generated MSW handlers and response builders over hand-built API response objects
 - Do NOT use `act()` manually — `render` and `fireEvent` handle it
 - Keep tests focused: one behavior per test
 - Use descriptive test names that read like sentences
@@ -190,9 +192,7 @@ import { http, HttpResponse } from "msw";
 server.use(
   http.get("http://localhost:3000/api/proxy/api/v2/library/agents", () => {
     return HttpResponse.json({
-      agents: [
-        { id: "1", name: "Test Agent", description: "A test agent" },
-      ],
+      agents: [{ id: "1", name: "Test Agent", description: "A test agent" }],
       pagination: { total_items: 1, total_pages: 1, page: 1, page_size: 10 },
     });
   }),
@@ -211,6 +211,7 @@ pnpm test:unit --reporter=verbose
 ```
 
 If tests fail:
+
 1. Read the error output carefully
 2. Fix the test (not the source code, unless there is a genuine bug)
 3. Re-run until all pass
