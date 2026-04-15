@@ -59,7 +59,7 @@ async def discover_agents(
     credentials: APIKeyCredentials | None = None,
 ) -> dict:
     """Discover agents from Joy API."""
-    params = {"limit": limit}
+    params: dict[str, str | int] = {"limit": limit}
     if query:
         params["query"] = query
     if capability:
