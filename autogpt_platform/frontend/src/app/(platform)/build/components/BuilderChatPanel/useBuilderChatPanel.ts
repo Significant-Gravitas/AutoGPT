@@ -67,6 +67,9 @@ export function useBuilderChatPanel({
   });
   // Keep ref in sync with the current flowID so in-flight session callbacks can
   // detect stale graph context without closure staleness issues.
+  // Assigned during render (not in useEffect) so callbacks created in the same
+  // render cycle see the current flowID immediately — useEffect would delay by
+  // one render, creating a window where stale values are visible.
   currentFlowIDRef.current = flowID;
   const { toast } = useToast();
 
