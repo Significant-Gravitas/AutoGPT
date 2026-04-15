@@ -99,6 +99,50 @@ describe("artifactPanel store actions", () => {
     expect(s.history).toEqual([]);
   });
 
+  it("openArtifact does not resurrect a previously closed artifact into history", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().closeArtifactPanel();
+    useCopilotUIStore.getState().openArtifact(b);
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe("b");
+    expect(s.history).toEqual([]);
+  });
+
+  it("openArtifact ignores non-previewable artifacts", () => {
+    const binary = {
+      ...makeArtifact("bin", "artifact.bin"),
+      mimeType: "application/octet-stream",
+    };
+
+    useCopilotUIStore.getState().openArtifact(binary);
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+
+  it("resetArtifactPanel clears active artifact and history", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().maximizeArtifactPanel();
+
+    useCopilotUIStore.getState().resetArtifactPanel();
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.isMinimized).toBe(false);
+    expect(s.isMaximized).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+  });
+
   it("minimize/restore toggles isMinimized without touching activeArtifact", () => {
     const a = makeArtifact("a");
     useCopilotUIStore.getState().openArtifact(a);
@@ -137,5 +181,36 @@ describe("artifactPanel store actions", () => {
     const s = useCopilotUIStore.getState().artifactPanel;
     expect(s.width).toBe(720);
     expect(s.isMaximized).toBe(false);
+  });
+
+  it("history is capped at 25 entries (MAX_HISTORY)", () => {
+    // Open 27 artifacts sequentially (A0..A26). History should never exceed 25.
+    for (let i = 0; i < 27; i++) {
+      useCopilotUIStore.getState().openArtifact(makeArtifact(`a${i}`));
+    }
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.activeArtifact?.id).toBe("a26");
+    expect(s.history.length).toBe(25);
+    // The oldest entry (a0) should have been dropped; a1 is the earliest surviving.
+    expect(s.history[0].id).toBe("a1");
+    expect(s.history[24].id).toBe("a25");
+  });
+
+  it("clearCopilotLocalData resets artifact panel to default", () => {
+    const a = makeArtifact("a");
+    const b = makeArtifact("b");
+    useCopilotUIStore.getState().openArtifact(a);
+    useCopilotUIStore.getState().openArtifact(b);
+    useCopilotUIStore.getState().maximizeArtifactPanel();
+
+    useCopilotUIStore.getState().clearCopilotLocalData();
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(false);
+    expect(s.isMinimized).toBe(false);
+    expect(s.isMaximized).toBe(false);
+    expect(s.activeArtifact).toBeNull();
+    expect(s.history).toEqual([]);
+    expect(s.width).toBe(600); // DEFAULT_PANEL_WIDTH
   });
 });

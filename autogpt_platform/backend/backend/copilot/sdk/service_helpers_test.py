@@ -15,6 +15,7 @@ from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
+    _RETRY_TARGET_TOKENS,
     ReducedContext,
     _is_prompt_too_long,
     _is_tool_only_message,
@@ -206,6 +207,24 @@ class TestReduceContext:
             )
 
         assert ctx.transcript_lost is True
+
+    @pytest.mark.asyncio
+    async def test_drop_returns_target_tokens_attempt_1(self) -> None:
+        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=1)
+        assert ctx.transcript_lost is True
+        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[0]
+
+    @pytest.mark.asyncio
+    async def test_drop_returns_target_tokens_attempt_2(self) -> None:
+        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=2)
+        assert ctx.transcript_lost is True
+        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[1]
+
+    @pytest.mark.asyncio
+    async def test_drop_clamps_attempt_beyond_limits(self) -> None:
+        ctx = await _reduce_context("", False, "sess-1", "/tmp", "[t]", attempt=99)
+        assert ctx.transcript_lost is True
+        assert ctx.target_tokens == _RETRY_TARGET_TOKENS[-1]
 
 
 # ---------------------------------------------------------------------------

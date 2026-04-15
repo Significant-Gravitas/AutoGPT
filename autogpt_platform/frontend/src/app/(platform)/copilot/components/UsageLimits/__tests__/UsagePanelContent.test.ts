@@ -19,8 +19,16 @@ describe("formatResetTime", () => {
   });
 
   it("returns formatted date when over 24 hours away", () => {
-    const result = formatResetTime("2025-06-17T00:00:00Z", now);
-    expect(result).toMatch(/Tue/);
+    const resetsAt = "2025-06-17T00:00:00Z";
+    const result = formatResetTime(resetsAt, now);
+    const expected = new Date(resetsAt).toLocaleString(undefined, {
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZoneName: "short",
+    });
+
+    expect(result).toBe(expected);
   });
 
   it("accepts a Date object for resetsAt", () => {
