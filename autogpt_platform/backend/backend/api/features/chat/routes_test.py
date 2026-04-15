@@ -1040,7 +1040,7 @@ def test_cancel_session_enqueues_cancel_and_confirms(
         tool_call_id="chat_stream",
         tool_name="chat",
         turn_id="turn-1",
-        status="done",
+        status="completed",
     )
     mock_registry = MagicMock()
     mock_registry.get_active_session = AsyncMock(return_value=(active_session, "1-0"))
