@@ -2483,13 +2483,21 @@ async def stream_chat_completion_sdk(
             pending_texts: list[str] = [
                 format_pending_as_user_message(pm)["content"] for pm in pending_at_start
             ]
-            for pt in pending_texts:
-                # Append directly — pending messages are atomically-popped from
+            # Insert pending messages BEFORE the current user message so
+            # session.messages order matches chronological order:
+            # [...history, pending_1, pending_2, current_user_msg].
+            # maybe_append_user_message already appended current_message at
+            # the top of stream_chat_completion_sdk, so insert at len-1.
+            insert_idx = max(0, len(session.messages) - 1)
+            for i, pt in enumerate(pending_texts):
+                # Insert directly — pending messages are atomically-popped from
                 # Redis and are never stale-cache duplicates, so the
                 # maybe_append_user_message dedup is wrong here.
-                session.messages.append(ChatMessage(role="user", content=pt))
+                session.messages.insert(insert_idx + i, ChatMessage(role="user", content=pt))
+            # Prepend pending texts so the model sees them in chronological
+            # order: pending (queued during T1) → current (T2 user message).
             if current_message.strip():
-                current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
+                current_message = "\n\n".join(pending_texts) + "\n\n" + current_message
             else:
                 current_message = "\n\n".join(pending_texts)
             # Persist immediately so a crash between here and the finally block
