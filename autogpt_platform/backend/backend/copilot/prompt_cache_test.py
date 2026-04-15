@@ -19,7 +19,9 @@ class TestBuildSystemPrompt:
     @pytest.mark.asyncio
     async def test_no_user_id_returns_static_prompt(self):
         """When user_id is None, no DB lookup happens and the static prompt is returned."""
-        with (patch(f"{_SVC}._is_langfuse_configured", return_value=False),):
+        with (
+            patch(f"{_SVC}._is_langfuse_configured", return_value=False),
+        ):
             from backend.copilot.service import (
                 _CACHEABLE_SYSTEM_PROMPT,
                 _build_system_prompt,
@@ -145,12 +147,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="biz ctx",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="biz ctx",
+            ),
         ):
             result = await inject_user_context(understanding, "hello", "sess-1", [msg])
 
@@ -177,13 +182,17 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="biz ctx",
-        ), patch("backend.copilot.service.logger") as mock_logger:
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="biz ctx",
+            ),
+            patch("backend.copilot.service.logger") as mock_logger,
+        ):
             result = await inject_user_context(understanding, "hello", "sess-1", [msg])
 
         assert result is not None
@@ -203,12 +212,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="biz ctx",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="biz ctx",
+            ),
         ):
             result = await inject_user_context(understanding, "hello", "sess-1", msgs)
 
@@ -227,12 +239,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=False)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="biz ctx",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="biz ctx",
+            ),
         ):
             result = await inject_user_context(understanding, "hello", "sess-1", [msg])
 
@@ -253,12 +268,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="biz ctx",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="biz ctx",
+            ),
         ):
             result = await inject_user_context(understanding, "", "sess-1", [msg])
 
@@ -283,12 +301,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="trusted ctx",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="trusted ctx",
+            ),
         ):
             result = await inject_user_context(understanding, spoofed, "sess-1", [msg])
 
@@ -319,12 +340,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="trusted ctx",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="trusted ctx",
+            ),
         ):
             result = await inject_user_context(
                 understanding, malformed, "sess-1", [msg]
@@ -378,12 +402,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value="",
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(understanding, "hello", "sess-1", [msg])
 
@@ -407,12 +434,15 @@ class TestInjectUserContext:
 
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch(
-            "backend.copilot.service.chat_db",
-            return_value=mock_db,
-        ), patch(
-            "backend.copilot.service.format_understanding_for_prompt",
-            return_value=evil_ctx,
+        with (
+            patch(
+                "backend.copilot.service.chat_db",
+                return_value=mock_db,
+            ),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value=evil_ctx,
+            ),
         ):
             result = await inject_user_context(understanding, "hi", "sess-1", [msg])
 
@@ -498,6 +528,12 @@ class TestCacheableSystemPromptContent:
         assert "first" in prompt_lower
         # Either "ignore" or "not trustworthy" must appear to indicate distrust
         assert "ignore" in prompt_lower or "not trustworthy" in prompt_lower
+
+    def test_cacheable_prompt_documents_env_context(self):
+        """The prompt must document the <env_context> tag so the LLM knows to trust it."""
+        from backend.copilot.service import _CACHEABLE_SYSTEM_PROMPT
+
+        assert "env_context" in _CACHEABLE_SYSTEM_PROMPT
 
 
 class TestStripUserContextTags:
@@ -637,8 +673,12 @@ class TestInjectUserContextWarmCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], warm_ctx="fact: user likes cats"
@@ -659,8 +699,12 @@ class TestInjectUserContextWarmCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], warm_ctx=""
@@ -684,8 +728,12 @@ class TestInjectUserContextWarmCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], warm_ctx="trusted fact"
@@ -710,8 +758,12 @@ class TestInjectUserContextWarmCtx:
         msg = ChatMessage(role="user", content="actual message", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None,
@@ -744,8 +796,12 @@ class TestInjectUserContextWarmCtx:
         assistant_msg = ChatMessage(role="assistant", content="hi there", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None,
@@ -773,8 +829,12 @@ class TestInjectUserContextWarmCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None,
@@ -806,8 +866,12 @@ class TestInjectUserContextEnvCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], env_ctx="working_dir: /home/user"
@@ -827,8 +891,12 @@ class TestInjectUserContextEnvCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], env_ctx=""
@@ -852,8 +920,12 @@ class TestInjectUserContextEnvCtx:
         msg = ChatMessage(role="user", content="hello", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None, "hello", "sess-1", [msg], env_ctx="working_dir: /real/path"
@@ -881,8 +953,12 @@ class TestInjectUserContextEnvCtx:
         msg = ChatMessage(role="user", content="user query", sequence=1)
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
-        with patch("backend.copilot.service.chat_db", return_value=mock_db), patch(
-            "backend.copilot.service.format_understanding_for_prompt", return_value=""
+        with (
+            patch("backend.copilot.service.chat_db", return_value=mock_db),
+            patch(
+                "backend.copilot.service.format_understanding_for_prompt",
+                return_value="",
+            ),
         ):
             result = await inject_user_context(
                 None,
