@@ -703,7 +703,9 @@ def test_stream_chat_rejects_too_long_message():
     assert response.status_code == 422
 
 
-def test_stream_chat_accepts_exactly_max_length_message(mocker: pytest_mock.MockFixture):
+def test_stream_chat_accepts_exactly_max_length_message(
+    mocker: pytest_mock.MockFixture,
+):
     """A message exactly at max_length=64_000 must be accepted."""
     _mock_stream_internals(mocker)
     mocker.patch(
@@ -985,7 +987,9 @@ def test_get_session_load_more_skips_active_stream(
 # ─── cancel_session_task ──────────────────────────────────────────────
 
 
-def _mock_validate_session(mocker: pytest_mock.MockerFixture, *, session_id: str = "sess-1"):
+def _mock_validate_session(
+    mocker: pytest_mock.MockerFixture, *, session_id: str = "sess-1"
+):
     """Mock _validate_and_get_session to return a dummy session."""
     from backend.copilot.model import ChatSession
 
@@ -1353,7 +1357,9 @@ def test_reset_usage_success(mocker: pytest_mock.MockerFixture) -> None:
     assert "weekly" in data["usage"]
 
 
-def test_reset_usage_refunds_on_redis_failure(mocker: pytest_mock.MockerFixture) -> None:
+def test_reset_usage_refunds_on_redis_failure(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
     """POST /usage/reset returns 503 and refunds credits when Redis reset fails."""
     mock_credit = _mock_reset_internals(mocker, reset_daily=False)
 
