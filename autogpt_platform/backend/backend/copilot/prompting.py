@@ -6,6 +6,8 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
+from functools import cache
+
 from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
 from backend.copilot.tools import TOOL_REGISTRY
 
@@ -278,6 +280,7 @@ def _get_local_storage_supplement(cwd: str) -> str:
     )
 
 
+@cache
 def _get_cloud_sandbox_supplement() -> str:
     """Cloud persistent sandbox (files survive across turns in session).
 
@@ -331,23 +334,31 @@ def _generate_tool_documentation() -> str:
     return docs
 
 
-def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
+@cache
+def get_sdk_supplement(use_e2b: bool) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
     receives tool schemas from the SDK. Only includes technical notes about
     storage systems and execution environment.
 
+    The system prompt must be **identical across all sessions and users** to
+    enable cross-session LLM prompt-cache hits (Anthropic caches on exact
+    content). To preserve this invariant, the local-mode supplement uses a
+    generic placeholder for the working directory. The actual ``cwd`` is
+    injected per-turn into the first user message as ``<env_context>``
+    so the model always knows its real working directory without polluting
+    the cacheable system prompt.
+
     Args:
         use_e2b: Whether E2B cloud sandbox is being used
-        cwd: Current working directory (only used in local_storage mode)
 
     Returns:
         The supplement string to append to the system prompt
     """
     if use_e2b:
         return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement(cwd)
+    return _get_local_storage_supplement("/tmp/copilot-<session-id>")
 
 
 def get_graphiti_supplement() -> str:

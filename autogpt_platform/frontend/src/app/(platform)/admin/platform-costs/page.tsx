@@ -7,6 +7,10 @@ type SearchParams = {
   end?: string;
   provider?: string;
   user_id?: string;
+  model?: string;
+  block_name?: string;
+  tracking_type?: string;
+  graph_exec_id?: string;
   page?: string;
   tab?: string;
 };
