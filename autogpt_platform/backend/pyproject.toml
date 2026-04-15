@@ -17,13 +17,15 @@ anthropic = "^0.79.0"
 apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
-claude-agent-sdk = "0.1.45"  # see copilot/sdk/sdk_compat_test.py for capability checks
+cachetools = "^5.5.0"
+claude-agent-sdk = "0.1.58"  # latest stable; bundled CLI 2.1.97 -- CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 env var strips the broken context-management beta. See sdk_compat_test.py.
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
 e2b = "^2.15.2"
 e2b-code-interpreter = "^2.0"
 elevenlabs = "^1.50.0"
+falkordb = "^1.1.2"
 fastapi = "^0.128.6"
 feedparser = "^6.0.11"
 flake8 = "^7.3.0"
@@ -32,6 +34,7 @@ google-auth-oauthlib = "^1.2.2"
 google-cloud-storage = "^3.2.0"
 googlemaps = "^4.10.0"
 gravitasml = "^0.1.4"
+graphiti-core = "^0.28.2"
 groq = "^0.30.0"
 html2text = "^2024.2.26"
 jinja2 = "^3.1.6"
@@ -168,4 +171,3 @@ filterwarnings = [
 
 [tool.ruff]
 target-version = "py310"
-

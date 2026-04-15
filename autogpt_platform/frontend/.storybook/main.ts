@@ -8,6 +8,7 @@ const config: StorybookConfig = {
     "../src/components/molecules/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/ai-elements/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/renderers/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/app/[(]platform[)]/copilot/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [
     "@storybook/addon-a11y",

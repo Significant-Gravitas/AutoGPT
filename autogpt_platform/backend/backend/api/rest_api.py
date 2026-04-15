@@ -18,6 +18,7 @@ from prisma.errors import PrismaError
 
 import backend.api.features.admin.credit_admin_routes
 import backend.api.features.admin.execution_analytics_routes
+import backend.api.features.admin.platform_cost_routes
 import backend.api.features.admin.rate_limit_admin_routes
 import backend.api.features.admin.store_admin_routes
 import backend.api.features.builder
@@ -328,6 +329,11 @@ app.include_router(
     backend.api.features.admin.rate_limit_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api/copilot",
+)
+app.include_router(
+    backend.api.features.admin.platform_cost_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/admin",
 )
 app.include_router(
     backend.api.features.executions.review.routes.router,

@@ -7,6 +7,362 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/admin/platform-costs/dashboard": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Dashboard",
+        "operationId": "getV2Get platform cost dashboard",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostDashboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Get Platform Cost Logs",
+        "operationId": "getV2Get platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostLogsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-costs/logs/export": {
+      "get": {
+        "tags": ["v2", "admin", "platform-cost", "admin"],
+        "summary": "Export Platform Cost Logs",
+        "operationId": "getV2Export platform cost logs",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Provider"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Model"
+            }
+          },
+          {
+            "name": "block_name",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Block Name"
+            }
+          },
+          {
+            "name": "tracking_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Tracking Type"
+            }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Graph Exec Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformCostExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/analytics/log_raw_analytics": {
       "post": {
         "tags": ["analytics"],
@@ -990,7 +1346,15 @@
                     {
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
-                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    { "$ref": "#/components/schemas/MemoryStoreResponse" },
+                    { "$ref": "#/components/schemas/MemorySearchResponse" },
+                    {
+                      "$ref": "#/components/schemas/MemoryForgetCandidatesResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
+                    }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -1277,6 +1641,35 @@
       }
     },
     "/api/chat/sessions/{session_id}/stream": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Disconnect Session Stream",
+        "description": "Disconnect all active SSE listeners for a session.\n\nCalled by the frontend when the user switches away from a chat so the\nbackend releases XREAD listeners immediately rather than waiting for\nthe 5-10 s timeout.",
+        "operationId": "deleteV2DisconnectSessionStream",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
@@ -1996,6 +2389,68 @@
             "content": { "application/json": { "schema": {} } }
           }
         }
+      }
+    },
+    "/api/credits/subscription": {
+      "get": {
+        "tags": ["v1", "credits"],
+        "summary": "Get subscription tier, current cost, and all tier costs",
+        "operationId": "getSubscriptionStatus",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v1", "credits"],
+        "summary": "Start a Stripe Checkout session to upgrade subscription tier",
+        "operationId": "updateSubscriptionTier",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionTierRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionCheckoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/credits/transactions": {
@@ -8350,9 +8805,8 @@
           },
           "success": { "type": "boolean", "title": "Success", "default": true },
           "is_dry_run": {
-            "type": "boolean",
-            "title": "Is Dry Run",
-            "default": false
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Dry Run"
           }
         },
         "type": "object",
@@ -8733,6 +9187,78 @@
         ],
         "title": "ContentType"
       },
+      "CostBucket": {
+        "properties": {
+          "bucket": { "type": "string", "title": "Bucket" },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["bucket", "count"],
+        "title": "CostBucket"
+      },
+      "CostLogRow": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
+          "node_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Node Exec Id"
+          },
+          "block_name": { "type": "string", "title": "Block Name" },
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "cost_microdollars": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cost Microdollars"
+          },
+          "input_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Output Tokens"
+          },
+          "duration": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Duration"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          },
+          "cache_read_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cache Read Tokens"
+          },
+          "cache_creation_tokens": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Cache Creation Tokens"
+          }
+        },
+        "type": "object",
+        "required": ["id", "created_at", "block_name", "provider"],
+        "title": "CostLogRow"
+      },
       "CountResponse": {
         "properties": {
           "all_blocks": { "type": "integer", "title": "All Blocks" },
@@ -8982,7 +9508,14 @@
       },
       "CreditTransactionType": {
         "type": "string",
-        "enum": ["TOP_UP", "USAGE", "GRANT", "REFUND", "CARD_CHECK"],
+        "enum": [
+          "TOP_UP",
+          "USAGE",
+          "GRANT",
+          "REFUND",
+          "CARD_CHECK",
+          "SUBSCRIPTION"
+        ],
         "title": "CreditTransactionType"
       },
       "DeleteFileResponse": {
@@ -11000,6 +11533,103 @@
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
       },
+      "MemoryForgetCandidatesResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_forget_candidates"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "candidates": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemoryForgetCandidatesResponse",
+        "description": "Response with candidate memories to forget."
+      },
+      "MemoryForgetConfirmResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_forget_confirm"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "deleted_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Deleted Uuids"
+          },
+          "failed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemoryForgetConfirmResponse",
+        "description": "Response after deleting specific memory edges."
+      },
+      "MemorySearchResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_search"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "facts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Facts"
+          },
+          "recent_episodes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Recent Episodes"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemorySearchResponse",
+        "description": "Response when memories are searched."
+      },
+      "MemoryStoreResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_store"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "memory_name": { "type": "string", "title": "Memory Name" }
+        },
+        "type": "object",
+        "required": ["message", "memory_name"],
+        "title": "MemoryStoreResponse",
+        "description": "Response when a memory is stored."
+      },
       "Message": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -11664,6 +12294,113 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PlatformCostDashboard": {
+        "properties": {
+          "by_provider": {
+            "items": { "$ref": "#/components/schemas/ProviderCostSummary" },
+            "type": "array",
+            "title": "By Provider"
+          },
+          "by_user": {
+            "items": { "$ref": "#/components/schemas/UserCostSummary" },
+            "type": "array",
+            "title": "By User"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_requests": { "type": "integer", "title": "Total Requests" },
+          "total_users": { "type": "integer", "title": "Total Users" },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens",
+            "default": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens",
+            "default": 0
+          },
+          "avg_input_tokens_per_request": {
+            "type": "number",
+            "title": "Avg Input Tokens Per Request",
+            "default": 0.0
+          },
+          "avg_output_tokens_per_request": {
+            "type": "number",
+            "title": "Avg Output Tokens Per Request",
+            "default": 0.0
+          },
+          "avg_cost_microdollars_per_request": {
+            "type": "number",
+            "title": "Avg Cost Microdollars Per Request",
+            "default": 0.0
+          },
+          "cost_p50_microdollars": {
+            "type": "number",
+            "title": "Cost P50 Microdollars",
+            "default": 0.0
+          },
+          "cost_p75_microdollars": {
+            "type": "number",
+            "title": "Cost P75 Microdollars",
+            "default": 0.0
+          },
+          "cost_p95_microdollars": {
+            "type": "number",
+            "title": "Cost P95 Microdollars",
+            "default": 0.0
+          },
+          "cost_p99_microdollars": {
+            "type": "number",
+            "title": "Cost P99 Microdollars",
+            "default": 0.0
+          },
+          "cost_buckets": {
+            "items": { "$ref": "#/components/schemas/CostBucket" },
+            "type": "array",
+            "title": "Cost Buckets",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "by_provider",
+          "by_user",
+          "total_cost_microdollars",
+          "total_requests",
+          "total_users"
+        ],
+        "title": "PlatformCostDashboard"
+      },
+      "PlatformCostExportResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "truncated": { "type": "boolean", "title": "Truncated" }
+        },
+        "type": "object",
+        "required": ["logs", "total_rows", "truncated"],
+        "title": "PlatformCostExportResponse"
+      },
+      "PlatformCostLogsResponse": {
+        "properties": {
+          "logs": {
+            "items": { "$ref": "#/components/schemas/CostLogRow" },
+            "type": "array",
+            "title": "Logs"
+          },
+          "pagination": { "$ref": "#/components/schemas/Pagination" }
+        },
+        "type": "object",
+        "required": ["logs", "pagination"],
+        "title": "PlatformCostLogsResponse"
+      },
       "PostmarkBounceEnum": {
         "type": "integer",
         "enum": [
@@ -12058,6 +12795,61 @@
         "title": "ProviderConstants",
         "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
       },
+      "ProviderCostSummary": {
+        "properties": {
+          "provider": { "type": "string", "title": "Provider" },
+          "tracking_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Tracking Type"
+          },
+          "model": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Model"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "total_duration_seconds": {
+            "type": "number",
+            "title": "Total Duration Seconds",
+            "default": 0.0
+          },
+          "total_tracking_amount": {
+            "type": "number",
+            "title": "Total Tracking Amount",
+            "default": 0.0
+          },
+          "request_count": { "type": "integer", "title": "Request Count" }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "ProviderCostSummary"
+      },
       "ProviderEnumResponse": {
         "properties": {
           "provider": {
@@ -12232,7 +13024,11 @@
           "bash_exec",
           "web_fetch",
           "feature_request_search",
-          "feature_request_created"
+          "feature_request_created",
+          "memory_store",
+          "memory_search",
+          "memory_forget_candidates",
+          "memory_forget_confirm"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -13298,6 +14094,14 @@
             ],
             "title": "Mode",
             "description": "Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. If None, uses the server default (extended_thinking)."
+          },
+          "model": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "advanced"] },
+              { "type": "null" }
+            ],
+            "title": "Model",
+            "description": "Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. If None, the server applies per-user LD targeting then falls back to config."
           }
         },
         "type": "object",
@@ -13310,11 +14114,53 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
+      "SubscriptionCheckoutResponse": {
+        "properties": { "url": { "type": "string", "title": "Url" } },
+        "type": "object",
+        "required": ["url"],
+        "title": "SubscriptionCheckoutResponse"
+      },
+      "SubscriptionStatusResponse": {
+        "properties": {
+          "tier": { "type": "string", "title": "Tier" },
+          "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
+          "tier_costs": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs"
+          }
+        },
+        "type": "object",
+        "required": ["tier", "monthly_cost", "tier_costs"],
+        "title": "SubscriptionStatusResponse"
+      },
       "SubscriptionTier": {
         "type": "string",
         "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing token allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
+      },
+      "SubscriptionTierRequest": {
+        "properties": {
+          "tier": {
+            "type": "string",
+            "enum": ["FREE", "PRO", "BUSINESS"],
+            "title": "Tier"
+          },
+          "success_url": {
+            "type": "string",
+            "title": "Success Url",
+            "default": ""
+          },
+          "cancel_url": {
+            "type": "string",
+            "title": "Cancel Url",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["tier"],
+        "title": "SubscriptionTierRequest"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -14937,6 +15783,54 @@
         "required": ["used", "limit", "resets_at"],
         "title": "UsageWindow",
         "description": "Usage within a single time window."
+      },
+      "UserCostSummary": {
+        "properties": {
+          "user_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Id"
+          },
+          "email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Email"
+          },
+          "total_cost_microdollars": {
+            "type": "integer",
+            "title": "Total Cost Microdollars"
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "title": "Total Input Tokens"
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "title": "Total Output Tokens"
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "title": "Total Cache Read Tokens",
+            "default": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "title": "Total Cache Creation Tokens",
+            "default": 0
+          },
+          "request_count": { "type": "integer", "title": "Request Count" },
+          "cost_bearing_request_count": {
+            "type": "integer",
+            "title": "Cost Bearing Request Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_cost_microdollars",
+          "total_input_tokens",
+          "total_output_tokens",
+          "request_count"
+        ],
+        "title": "UserCostSummary"
       },
       "UserHistoryResponse": {
         "properties": {

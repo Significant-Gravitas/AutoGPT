@@ -42,7 +42,9 @@ export function useCopilotPage() {
     setSessionToDelete,
     isDrawerOpen,
     setDrawerOpen,
-    copilotMode,
+    copilotChatMode,
+    copilotLlmModel,
+    isDryRun,
   } = useCopilotUIStore();
 
   const {
@@ -59,7 +61,8 @@ export function useCopilotPage() {
     createSession,
     isCreatingSession,
     refetchSession,
-  } = useChatSession();
+    sessionDryRun,
+  } = useChatSession({ dryRun: isDryRun });
 
   const {
     messages: currentMessages,
@@ -77,7 +80,8 @@ export function useCopilotPage() {
     hydratedMessages,
     hasActiveStream,
     refetchSession,
-    copilotMode: isModeToggleEnabled ? copilotMode : undefined,
+    copilotMode: isModeToggleEnabled ? copilotChatMode : undefined,
+    copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
   const { olderMessages, hasMore, isLoadingMore, loadMore } =
@@ -414,5 +418,12 @@ export function useCopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
+    // Dry run dev toggle
+    // isDryRun = global preference for NEW sessions (from localStorage).
+    // sessionDryRun = actual dry_run value of the CURRENT session (from API).
+    // Use isDryRun to configure future sessions; use sessionDryRun to display
+    // the current session's simulation state (banner, indicators).
+    isDryRun,
+    sessionDryRun,
   };
 }

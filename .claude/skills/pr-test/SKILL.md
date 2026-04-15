@@ -310,6 +310,28 @@ TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
 ```
 
+### 3i. Disable onboarding for test user
+
+The frontend redirects to `/onboarding` when the `VISIT_COPILOT` step is not in `completedSteps`.
+Mark it complete via the backend API so every browser test lands on the real feature UI:
+
+```bash
+ONBOARDING_RESULT=$(curl -s --max-time 30 -X POST \
+  "http://localhost:8006/api/onboarding/step?step=VISIT_COPILOT" \
+  -H "Authorization: Bearer $TOKEN")
+echo "Onboarding bypass: $ONBOARDING_RESULT"
+
+# Verify it took effect
+ONBOARDING_STATUS=$(curl -s --max-time 30 \
+  "http://localhost:8006/api/onboarding/completed" \
+  -H "Authorization: Bearer $TOKEN" | jq -r '.is_completed')
+echo "Onboarding completed: $ONBOARDING_STATUS"
+if [ "$ONBOARDING_STATUS" != "true" ]; then
+  echo "ERROR: onboarding bypass failed — browser tests will hit /onboarding instead of the target feature. Investigate before proceeding."
+  exit 1
+fi
+```
+
 ## Step 4: Run tests
 
 ### Service ports reference
