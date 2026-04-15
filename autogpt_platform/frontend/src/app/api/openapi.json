@@ -11391,7 +11391,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/StopExecutionsRequest"
+                "$ref": "#/components/schemas/ScheduleCleanupRequest"
               }
             }
           },
@@ -25162,6 +25162,23 @@
         ],
         "title": "RunningExecutionsListResponse",
         "description": "Response model for list of running executions"
+      },
+      "ScheduleCleanupRequest": {
+        "properties": {
+          "schedule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Schedule Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_ids"
+        ],
+        "title": "ScheduleCleanupRequest",
+        "description": "Request model for cleaning up schedules"
       },
       "ScheduleCleanupResponse": {
         "properties": {

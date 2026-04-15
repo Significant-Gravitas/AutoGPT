@@ -63,6 +63,12 @@ interface OrphanedScheduleDetail {
   next_run_time: string;
 }
 
+interface CleanupResponseData {
+  success: boolean;
+  message: string;
+  deleted_count?: number;
+}
+
 interface SchedulesTableProps {
   onRefresh?: () => void;
   diagnosticsData?: {
@@ -104,9 +110,11 @@ export function SchedulesTable({
     refetch,
   } = activeQuery;
 
-  const schedules =
-    (schedulesResponse?.data as any)?.schedules || ([] as any[]);
-  const total = (schedulesResponse?.data as any)?.total || 0;
+  const schedulesData = schedulesResponse?.data as
+    | { schedules: (ScheduleDetail | OrphanedScheduleDetail)[]; total: number }
+    | undefined;
+  const schedules = schedulesData?.schedules || [];
+  const total = schedulesData?.total || 0;
 
   // Cleanup mutation
   const { mutateAsync: cleanupOrphanedSchedules, isPending: isDeleting } =
@@ -114,7 +122,13 @@ export function SchedulesTable({
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds(new Set(schedules.map((s: any) => s.schedule_id)));
+      setSelectedIds(
+        new Set(
+          schedules.map(
+            (s: ScheduleDetail | OrphanedScheduleDetail) => s.schedule_id,
+          ),
+        ),
+      );
     } else {
       setSelectedIds(new Set());
     }
@@ -140,28 +154,31 @@ export function SchedulesTable({
     try {
       const idsToDelete =
         activeTab === "orphaned" && selectedIds.size === 0
-          ? schedules.map((s: any) => s.schedule_id)
+          ? schedules.map(
+              (s: ScheduleDetail | OrphanedScheduleDetail) => s.schedule_id,
+            )
           : Array.from(selectedIds);
 
       const result = await cleanupOrphanedSchedules({
-        data: { execution_ids: idsToDelete }, // Reuses execution_ids field name
+        data: { schedule_ids: idsToDelete },
       });
 
       toast({
         title: "Success",
         description:
-          (result.data as any)?.message ||
-          `Deleted ${(result.data as any)?.deleted_count || 0} schedule(s)`,
+          (result.data as CleanupResponseData)?.message ||
+          `Deleted ${(result.data as CleanupResponseData)?.deleted_count || 0} schedule(s)`,
       });
 
       setSelectedIds(new Set());
       await refetch();
       if (onRefresh) onRefresh();
-    } catch (error: any) {
-      console.error("Error deleting schedules:", error);
+    } catch (err: unknown) {
+      console.error("Error deleting schedules:", err);
       toast({
         title: "Error",
-        description: error.message || "Failed to delete schedules",
+        description:
+          err instanceof Error ? err.message : "Failed to delete schedules",
         variant: "destructive",
       });
     }
@@ -174,7 +191,7 @@ export function SchedulesTable({
       <Card>
         <TabsLine
           value={activeTab}
-          onValueChange={(v) => setActiveTab(v as any)}
+          onValueChange={(v) => setActiveTab(v as "all" | "orphaned")}
         >
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -264,80 +281,84 @@ export function SchedulesTable({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {schedules.map((schedule: any) => {
-                      const isOrphaned = activeTab === "orphaned";
-                      return (
-                        <TableRow
-                          key={schedule.schedule_id}
-                          className={isOrphaned ? "bg-purple-50" : ""}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={selectedIds.has(schedule.schedule_id)}
-                              onCheckedChange={(checked) =>
-                                handleSelectSchedule(
-                                  schedule.schedule_id,
-                                  checked as boolean,
-                                )
-                              }
-                            />
-                          </TableCell>
-                          <TableCell>{schedule.schedule_name}</TableCell>
-                          <TableCell>
-                            <div>{schedule.graph_name || "Unknown"}</div>
-                            <div className="font-mono text-xs text-gray-500">
-                              v{schedule.graph_version}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div>
-                              {(schedule as ScheduleDetail).user_email || (
-                                <span className="text-gray-400">Unknown</span>
-                              )}
-                            </div>
-                            <div
-                              className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
-                              onClick={() => {
-                                navigator.clipboard.writeText(schedule.user_id);
-                                toast({
-                                  title: "Copied",
-                                  description: "User ID copied to clipboard",
-                                });
-                              }}
-                              title="Click to copy user ID"
-                            >
-                              {schedule.user_id.substring(0, 8)}...
-                              <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <code className="rounded bg-gray-100 px-2 py-1 text-xs">
-                              {schedule.cron}
-                            </code>
-                            <div className="text-xs text-gray-500">
-                              {schedule.timezone}
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            {schedule.next_run_time
-                              ? new Date(
-                                  schedule.next_run_time,
-                                ).toLocaleString()
-                              : "Not scheduled"}
-                          </TableCell>
-                          {activeTab === "orphaned" && (
+                    {schedules.map(
+                      (schedule: ScheduleDetail | OrphanedScheduleDetail) => {
+                        const isOrphaned = activeTab === "orphaned";
+                        return (
+                          <TableRow
+                            key={schedule.schedule_id}
+                            className={isOrphaned ? "bg-purple-50" : ""}
+                          >
                             <TableCell>
-                              <span className="text-xs text-purple-600">
-                                {(
-                                  schedule as OrphanedScheduleDetail
-                                ).orphan_reason?.replace(/_/g, " ") ||
-                                  "unknown"}
-                              </span>
+                              <Checkbox
+                                checked={selectedIds.has(schedule.schedule_id)}
+                                onCheckedChange={(checked) =>
+                                  handleSelectSchedule(
+                                    schedule.schedule_id,
+                                    checked as boolean,
+                                  )
+                                }
+                              />
                             </TableCell>
-                          )}
-                        </TableRow>
-                      );
-                    })}
+                            <TableCell>{schedule.schedule_name}</TableCell>
+                            <TableCell>
+                              <div>{schedule.graph_name || "Unknown"}</div>
+                              <div className="font-mono text-xs text-gray-500">
+                                v{schedule.graph_version}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                {(schedule as ScheduleDetail).user_email || (
+                                  <span className="text-gray-400">Unknown</span>
+                                )}
+                              </div>
+                              <div
+                                className="group flex cursor-pointer items-center gap-1 font-mono text-xs text-gray-500 hover:text-gray-700"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(
+                                    schedule.user_id,
+                                  );
+                                  toast({
+                                    title: "Copied",
+                                    description: "User ID copied to clipboard",
+                                  });
+                                }}
+                                title="Click to copy user ID"
+                              >
+                                {schedule.user_id.substring(0, 8)}...
+                                <Copy className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                                {schedule.cron}
+                              </code>
+                              <div className="text-xs text-gray-500">
+                                {schedule.timezone}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {schedule.next_run_time
+                                ? new Date(
+                                    schedule.next_run_time,
+                                  ).toLocaleString()
+                                : "Not scheduled"}
+                            </TableCell>
+                            {activeTab === "orphaned" && (
+                              <TableCell>
+                                <span className="text-xs text-purple-600">
+                                  {(
+                                    schedule as OrphanedScheduleDetail
+                                  ).orphan_reason?.replace(/_/g, " ") ||
+                                    "unknown"}
+                                </span>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        );
+                      },
+                    )}
                   </TableBody>
                 </Table>
               )}

@@ -44,7 +44,7 @@ export function DiagnosticsContent() {
   if (isError) {
     return (
       <ErrorCard
-        httpError={error as any}
+        httpError={error as { status?: number; message?: string }}
         onRetry={refresh}
         context="diagnostics"
       />

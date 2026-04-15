@@ -10,7 +10,7 @@ from typing import List, Optional
 
 from croniter import croniter
 from prisma.enums import AgentExecutionStatus
-from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent
+from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
 from pydantic import BaseModel
 
 from backend.data.db import query_raw_with_schema
@@ -297,9 +297,11 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
     failure_rate_24h = failed_count_24h / 24.0 if failed_count_24h > 0 else 0.0
     throughput_per_hour = completed_24h / 24.0 if completed_24h > 0 else 0.0
 
-    # RabbitMQ queue depths (separate connections, not DB queries)
-    rabbitmq_queue_depth = get_rabbitmq_queue_depth()
-    cancel_queue_depth = get_rabbitmq_cancel_queue_depth()
+    # RabbitMQ queue depths (blocking sync calls, run in thread pool)
+    rabbitmq_queue_depth, cancel_queue_depth = await asyncio.gather(
+        asyncio.to_thread(get_rabbitmq_queue_depth),
+        asyncio.to_thread(get_rabbitmq_cancel_queue_depth),
+    )
 
     # Find oldest running execution (single query)
     oldest_running_list = await get_graph_executions(
@@ -639,11 +641,13 @@ async def get_all_schedules_details(
                     "version": schedule.graph_version,
                 }
             },
-            include={"User": True},
         )
 
         graph_name = graph.name if graph and graph.name else "Unknown"
-        user_email = graph.User.email if graph and graph.User else None
+
+        # Fetch user by schedule creator's user_id (not graph owner)
+        schedule_user = await User.prisma().find_unique(where={"id": schedule.user_id})
+        user_email = schedule_user.email if schedule_user else None
 
         results.append(
             ScheduleDetail(
@@ -774,7 +778,8 @@ async def get_running_executions_details(
         where={
             "executionStatus": {
                 "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
-            }
+            },
+            "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
@@ -806,6 +811,7 @@ async def get_orphaned_executions_details(
                 "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]  # type: ignore
             },
             "createdAt": {"lt": cutoff},
+            "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
@@ -835,6 +841,7 @@ async def get_long_running_executions_details(
         where={
             "executionStatus": AgentExecutionStatus.RUNNING,
             "startedAt": {"lt": cutoff},
+            "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
@@ -864,6 +871,7 @@ async def get_stuck_queued_executions_details(
         where={
             "executionStatus": AgentExecutionStatus.QUEUED,
             "createdAt": {"lt": one_hour_ago},
+            "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
@@ -895,6 +903,7 @@ async def get_invalid_executions_details(
     """
     executions = await AgentGraphExecution.prisma().find_many(
         where={
+            "isDeleted": False,
             "OR": [  # type: ignore
                 {
                     "executionStatus": AgentExecutionStatus.QUEUED,
@@ -904,7 +913,7 @@ async def get_invalid_executions_details(
                     "executionStatus": AgentExecutionStatus.RUNNING,
                     "startedAt": None,
                 },
-            ]
+            ],
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,
@@ -928,7 +937,7 @@ async def get_failed_executions_count(hours: int = 24) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     count = await get_graph_executions_count(
         statuses=[AgentExecutionStatus.FAILED],
-        created_time_gte=cutoff,
+        updated_time_gte=cutoff,
     )
     return count
 
@@ -953,6 +962,7 @@ async def get_failed_executions_details(
         where={
             "executionStatus": AgentExecutionStatus.FAILED,
             "updatedAt": {"gte": cutoff},
+            "isDeleted": False,
         },
         include=_EXECUTION_ADMIN_INCLUDE,
         take=limit,

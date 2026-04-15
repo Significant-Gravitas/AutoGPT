@@ -657,6 +657,12 @@ class OrphanedSchedulesListResponse(BaseModel):
     total: int
 
 
+class ScheduleCleanupRequest(BaseModel):
+    """Request model for cleaning up schedules"""
+
+    schedule_ids: List[str]
+
+
 class ScheduleCleanupResponse(BaseModel):
     """Response model for schedule cleanup operations"""
 
@@ -747,7 +753,7 @@ async def list_orphaned_schedules():
     summary="Cleanup Orphaned Schedules",
 )
 async def cleanup_orphaned_schedules(
-    request: StopExecutionsRequest,  # Reuse for schedule_ids list
+    request: ScheduleCleanupRequest,
     user: AuthUser = Security(requires_admin_user),
 ):
     """
@@ -760,17 +766,17 @@ async def cleanup_orphaned_schedules(
         Number of schedules deleted and success message
     """
     logger.info(
-        f"Admin {user.user_id} cleaning up {len(request.execution_ids)} orphaned schedules"
+        f"Admin {user.user_id} cleaning up {len(request.schedule_ids)} orphaned schedules"
     )
 
     deleted_count = await cleanup_orphaned_schedules_bulk(
-        request.execution_ids, user.user_id
+        request.schedule_ids, user.user_id
     )
 
     return ScheduleCleanupResponse(
         success=deleted_count > 0,
         deleted_count=deleted_count,
-        message=f"Deleted {deleted_count} of {len(request.execution_ids)} orphaned schedules",
+        message=f"Deleted {deleted_count} of {len(request.schedule_ids)} orphaned schedules",
     )
 
 

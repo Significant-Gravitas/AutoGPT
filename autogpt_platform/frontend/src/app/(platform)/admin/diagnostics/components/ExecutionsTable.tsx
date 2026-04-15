@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Card } from "@/components/atoms/Card/Card";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import {
   Dialog,
   DialogContent,
@@ -69,6 +70,15 @@ interface RunningExecutionDetail {
   created_at: string;
   started_at: string | null;
   queue_status: string | null;
+  failed_at?: string | null;
+  error_message?: string | null;
+}
+
+interface MutationResponseData {
+  success: boolean;
+  message: string;
+  stopped_count?: number;
+  requeued_count?: number;
 }
 
 interface ExecutionsTableProps {
@@ -121,17 +131,19 @@ export function ExecutionsTable({
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
 
-  // Handle tab changes
+  type ExecutionTab =
+    | "all"
+    | "orphaned"
+    | "failed"
+    | "long-running"
+    | "stuck-queued"
+    | "invalid";
+
   function handleTabChange(newTab: string) {
-    const tab = newTab as
-      | "all"
-      | "orphaned"
-      | "failed"
-      | "long-running"
-      | "stuck-queued";
+    const tab = newTab as ExecutionTab;
     setActiveTab(tab);
-    setCurrentPage(1); // Reset to first page
-    setSelectedIds(new Set()); // Clear selections
+    setCurrentPage(1);
+    setSelectedIds(new Set());
     if (onTabChange) onTabChange(tab);
   }
 
@@ -213,10 +225,11 @@ export function ExecutionsTable({
 
   const { data: executionsResponse, isLoading, error, refetch } = activeQuery;
 
-  const executions =
-    (executionsResponse?.data as any)?.executions ||
-    ([] as RunningExecutionDetail[]);
-  const total = (executionsResponse?.data as any)?.total || 0;
+  const responseData = executionsResponse?.data as
+    | { executions: RunningExecutionDetail[]; total: number }
+    | undefined;
+  const executions = responseData?.executions || [];
+  const total = responseData?.total || 0;
 
   // Stop single execution mutation
   const { mutateAsync: stopSingleExecution, isPending: isStoppingSingle } =
@@ -353,7 +366,7 @@ export function ExecutionsTable({
         toast({
           title: "Success",
           description:
-            (result.data as any)?.message ||
+            (result.data as MutationResponseData)?.message ||
             (stopMode === "cleanup"
               ? "Orphaned execution cleaned up"
               : stopMode === "requeue"
@@ -371,8 +384,8 @@ export function ExecutionsTable({
             toast({
               title: "Success",
               description:
-                (result.data as any)?.message ||
-                `Requeued ${(result.data as any)?.requeued_count || 0} stuck executions`,
+                (result.data as MutationResponseData)?.message ||
+                `Requeued ${(result.data as MutationResponseData)?.requeued_count || 0} stuck executions`,
             });
           } else {
             // Selected only
@@ -384,8 +397,8 @@ export function ExecutionsTable({
             toast({
               title: "Success",
               description:
-                (result.data as any)?.message ||
-                `Requeued ${(result.data as any)?.requeued_count || 0} execution(s)`,
+                (result.data as MutationResponseData)?.message ||
+                `Requeued ${(result.data as MutationResponseData)?.requeued_count || 0} execution(s)`,
             });
           }
         } else if (stopMode === "cleanup") {
@@ -397,8 +410,8 @@ export function ExecutionsTable({
             toast({
               title: "Success",
               description:
-                (result.data as any)?.message ||
-                `Cleaned up ${(result.data as any)?.stopped_count || 0} orphaned executions`,
+                (result.data as MutationResponseData)?.message ||
+                `Cleaned up ${(result.data as MutationResponseData)?.stopped_count || 0} orphaned executions`,
             });
           } else if (stopTarget === "all" && activeTab === "stuck-queued") {
             // Use ALL endpoint for stuck-queued tab (>1h old)
@@ -407,8 +420,8 @@ export function ExecutionsTable({
             toast({
               title: "Success",
               description:
-                (result.data as any)?.message ||
-                `Cleaned up ${(result.data as any)?.stopped_count || 0} stuck queued executions`,
+                (result.data as MutationResponseData)?.message ||
+                `Cleaned up ${(result.data as MutationResponseData)?.stopped_count || 0} stuck queued executions`,
             });
           } else {
             // Selected or other tabs
@@ -424,8 +437,8 @@ export function ExecutionsTable({
             toast({
               title: "Success",
               description:
-                (result.data as any)?.message ||
-                `Cleaned up ${(result.data as any)?.stopped_count || 0} execution(s)`,
+                (result.data as MutationResponseData)?.message ||
+                `Cleaned up ${(result.data as MutationResponseData)?.stopped_count || 0} execution(s)`,
             });
           }
         } else {
@@ -437,8 +450,8 @@ export function ExecutionsTable({
             toast({
               title: "Success",
               description:
-                (result.data as any)?.message ||
-                `Stopped ${(result.data as any)?.stopped_count || 0} long-running executions`,
+                (result.data as MutationResponseData)?.message ||
+                `Stopped ${(result.data as MutationResponseData)?.stopped_count || 0} long-running executions`,
             });
           } else {
             // Stop selected - intelligently split between active and orphaned
@@ -471,10 +484,10 @@ export function ExecutionsTable({
             ]);
 
             const stoppedCount = results[0]
-              ? (results[0].data as any)?.stopped_count || 0
+              ? (results[0].data as MutationResponseData)?.stopped_count || 0
               : 0;
             const cleanedCount = results[1]
-              ? (results[1].data as any)?.stopped_count || 0
+              ? (results[1].data as MutationResponseData)?.stopped_count || 0
               : 0;
 
             toast({
@@ -496,11 +509,14 @@ export function ExecutionsTable({
       if (onRefresh) {
         onRefresh();
       }
-    } catch (error: any) {
-      console.error("Error stopping/cleaning executions:", error);
+    } catch (err: unknown) {
+      console.error("Error stopping/cleaning executions:", err);
       toast({
         title: "Error",
-        description: error.message || "Failed to stop/cleanup executions",
+        description:
+          err instanceof Error
+            ? err.message
+            : "Failed to stop/cleanup executions",
         variant: "destructive",
       });
     }
@@ -630,7 +646,13 @@ export function ExecutionsTable({
 
           <TabsLineContent value={activeTab}>
             <CardContent>
-              {isLoading && executions.length === 0 ? (
+              {error ? (
+                <ErrorCard
+                  httpError={error as { status?: number; message?: string }}
+                  onRetry={() => refetch()}
+                  context="executions"
+                />
+              ) : isLoading && executions.length === 0 ? (
                 <div className="flex h-32 items-center justify-center">
                   <ArrowClockwise className="h-6 w-6 animate-spin text-gray-400" />
                 </div>
@@ -783,9 +805,9 @@ export function ExecutionsTable({
                             </TableCell>
                             <TableCell>
                               {activeTab === "failed"
-                                ? (execution as any).failed_at
+                                ? execution.failed_at
                                   ? new Date(
-                                      (execution as any).failed_at,
+                                      execution.failed_at,
                                     ).toLocaleString()
                                   : "-"
                                 : execution.started_at
@@ -798,9 +820,9 @@ export function ExecutionsTable({
                               <TableCell className="max-w-xs truncate">
                                 <span
                                   className="text-xs text-red-600"
-                                  title={(execution as any).error_message || ""}
+                                  title={execution.error_message || ""}
                                 >
-                                  {(execution as any).error_message ||
+                                  {execution.error_message ||
                                     "No error message"}
                                 </span>
                               </TableCell>
