@@ -44,7 +44,7 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     urlParams.get("block_name") || searchParams.block_name || "";
   const typeFilter =
     urlParams.get("tracking_type") || searchParams.tracking_type || "";
-  const executionIdFilter =
+  const executionIDFilter =
     urlParams.get("graph_exec_id") || searchParams.graph_exec_id || "";
 
   const [startInput, setStartInput] = useState(toLocalInput(startDate));
@@ -54,7 +54,7 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
   const [modelInput, setModelInput] = useState(modelFilter);
   const [blockInput, setBlockInput] = useState(blockFilter);
   const [typeInput, setTypeInput] = useState(typeFilter);
-  const [executionIdInput, setExecutionIdInput] = useState(executionIdFilter);
+  const [executionIDInput, setExecutionIDInput] = useState(executionIDFilter);
   const [rateOverrides, setRateOverrides] = useState<Record<string, number>>(
     {},
   );
@@ -71,7 +71,7 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     model: modelFilter || undefined,
     block_name: blockFilter || undefined,
     tracking_type: typeFilter || undefined,
-    graph_exec_id: executionIdFilter || undefined,
+    graph_exec_id: executionIDFilter || undefined,
   };
 
   const {
@@ -120,7 +120,7 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
       model: modelInput,
       block_name: blockInput,
       tracking_type: typeInput,
-      graph_exec_id: executionIdInput,
+      graph_exec_id: executionIDInput,
       page: "1",
     });
   }
@@ -191,8 +191,8 @@ export function usePlatformCostContent(searchParams: InitialSearchParams) {
     setBlockInput,
     typeInput,
     setTypeInput,
-    executionIdInput,
-    setExecutionIdInput,
+    executionIDInput,
+    setExecutionIDInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,

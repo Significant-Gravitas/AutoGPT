@@ -48,8 +48,8 @@ export function PlatformCostContent({ searchParams }: Props) {
     setBlockInput,
     typeInput,
     setTypeInput,
-    executionIdInput,
-    setExecutionIdInput,
+    executionIDInput,
+    setExecutionIDInput,
     rateOverrides,
     handleRateOverride,
     updateUrl,
@@ -250,8 +250,8 @@ export function PlatformCostContent({ searchParams }: Props) {
             type="text"
             placeholder="Filter by execution"
             className="rounded border px-3 py-1.5 text-sm"
-            value={executionIdInput}
-            onChange={(e) => setExecutionIdInput(e.target.value)}
+            value={executionIDInput}
+            onChange={(e) => setExecutionIDInput(e.target.value)}
           />
         </div>
         <button
@@ -269,7 +269,7 @@ export function PlatformCostContent({ searchParams }: Props) {
             setModelInput("");
             setBlockInput("");
             setTypeInput("");
-            setExecutionIdInput("");
+            setExecutionIDInput("");
             updateUrl({
               start: "",
               end: "",
