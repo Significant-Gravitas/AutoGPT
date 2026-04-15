@@ -871,62 +871,70 @@ async def stream_chat_post(
     # race condition where GET_SESSION sees task as "running" but message isn't
     # saved yet.  append_and_save_message re-fetches inside a lock to prevent
     # message loss from concurrent requests.
-    if request.message:
-        message = ChatMessage(
-            role="user" if request.is_user_message else "assistant",
-            content=request.message,
-        )
-        if request.is_user_message:
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(request.message),
+    #
+    # If any of these operations raises, release the dedup lock before propagating
+    # so subsequent retries are not blocked for 30 s.
+    try:
+        if request.message:
+            message = ChatMessage(
+                role="user" if request.is_user_message else "assistant",
+                content=request.message,
             )
-        logger.info(f"[STREAM] Saving user message to session {session_id}")
-        await append_and_save_message(session_id, message)
-        logger.info(f"[STREAM] User message saved for session {session_id}")
+            if request.is_user_message:
+                track_user_message(
+                    user_id=user_id,
+                    session_id=session_id,
+                    message_length=len(request.message),
+                )
+            logger.info(f"[STREAM] Saving user message to session {session_id}")
+            await append_and_save_message(session_id, message)
+            logger.info(f"[STREAM] User message saved for session {session_id}")
 
-    # Create a task in the stream registry for reconnection support
-    turn_id = str(uuid4())
-    log_meta["turn_id"] = turn_id
+        # Create a task in the stream registry for reconnection support
+        turn_id = str(uuid4())
+        log_meta["turn_id"] = turn_id
 
-    session_create_start = time.perf_counter()
-    await stream_registry.create_session(
-        session_id=session_id,
-        user_id=user_id,
-        tool_call_id="chat_stream",
-        tool_name="chat",
-        turn_id=turn_id,
-    )
-    logger.info(
-        f"[TIMING] create_session completed in {(time.perf_counter() - session_create_start) * 1000:.1f}ms",
-        extra={
-            "json_fields": {
-                **log_meta,
-                "duration_ms": (time.perf_counter() - session_create_start) * 1000,
-            }
-        },
-    )
+        session_create_start = time.perf_counter()
+        await stream_registry.create_session(
+            session_id=session_id,
+            user_id=user_id,
+            tool_call_id="chat_stream",
+            tool_name="chat",
+            turn_id=turn_id,
+        )
+        logger.info(
+            f"[TIMING] create_session completed in {(time.perf_counter() - session_create_start) * 1000:.1f}ms",
+            extra={
+                "json_fields": {
+                    **log_meta,
+                    "duration_ms": (time.perf_counter() - session_create_start) * 1000,
+                }
+            },
+        )
 
-    # Per-turn stream is always fresh (unique turn_id), subscribe from beginning
-    subscribe_from_id = "0-0"
-
-    await enqueue_copilot_turn(
-        session_id=session_id,
-        user_id=user_id,
-        message=request.message,
-        turn_id=turn_id,
-        is_user_message=request.is_user_message,
-        context=request.context,
-        file_ids=sanitized_file_ids,
-        mode=request.mode,
-    )
+        await enqueue_copilot_turn(
+            session_id=session_id,
+            user_id=user_id,
+            message=request.message,
+            turn_id=turn_id,
+            is_user_message=request.is_user_message,
+            context=request.context,
+            file_ids=sanitized_file_ids,
+            mode=request.mode,
+        )
+    except Exception:
+        if dedup_lock:
+            await dedup_lock.release()
+        raise
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
         f"[TIMING] Task enqueued to RabbitMQ, setup={setup_time:.1f}ms",
         extra={"json_fields": {**log_meta, "setup_time_ms": setup_time}},
     )
+
+    # Per-turn stream is always fresh (unique turn_id), subscribe from beginning
+    subscribe_from_id = "0-0"
 
     # SSE endpoint that subscribes to the task's stream
     async def event_generator() -> AsyncGenerator[str, None]:
