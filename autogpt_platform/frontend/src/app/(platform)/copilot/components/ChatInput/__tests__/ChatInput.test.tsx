@@ -8,14 +8,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
 
 let mockCopilotMode = "extended_thinking";
-const mockSetCopilotMode = vi.fn((mode: string) => {
+const mockSetCopilotChatMode = vi.fn((mode: string) => {
   mockCopilotMode = mode;
+});
+
+let mockCopilotLlmModel = "standard";
+const mockSetCopilotLlmModel = vi.fn((model: string) => {
+  mockCopilotLlmModel = model;
 });
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
   useCopilotUIStore: () => ({
-    copilotMode: mockCopilotMode,
-    setCopilotMode: mockSetCopilotMode,
+    copilotChatMode: mockCopilotMode,
+    setCopilotChatMode: mockSetCopilotChatMode,
+    copilotLlmModel: mockCopilotLlmModel,
+    setCopilotLlmModel: mockSetCopilotLlmModel,
     initialPrompt: null,
     setInitialPrompt: vi.fn(),
   }),
@@ -107,6 +114,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   mockCopilotMode = "extended_thinking";
+  mockCopilotLlmModel = "standard";
 });
 
 describe("ChatInput mode toggle", () => {
@@ -141,7 +149,7 @@ describe("ChatInput mode toggle", () => {
     mockCopilotMode = "extended_thinking";
     render(<ChatInput onSend={mockOnSend} />);
     fireEvent.click(screen.getByLabelText(/switch to fast mode/i));
-    expect(mockSetCopilotMode).toHaveBeenCalledWith("fast");
+    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("fast");
   });
 
   it("toggles from fast to extended_thinking on click", () => {
@@ -149,7 +157,7 @@ describe("ChatInput mode toggle", () => {
     mockCopilotMode = "fast";
     render(<ChatInput onSend={mockOnSend} />);
     fireEvent.click(screen.getByLabelText(/switch to extended thinking/i));
-    expect(mockSetCopilotMode).toHaveBeenCalledWith("extended_thinking");
+    expect(mockSetCopilotChatMode).toHaveBeenCalledWith("extended_thinking");
   });
 
   it("hides toggle button when streaming", () => {
@@ -183,6 +191,72 @@ describe("ChatInput mode toggle", () => {
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: expect.stringMatching(/switched to fast mode/i),
+      }),
+    );
+  });
+});
+
+describe("ChatInput model toggle", () => {
+  it("renders model toggle button when flag is enabled", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} />);
+    expect(screen.getByLabelText(/switch to advanced model/i)).toBeDefined();
+  });
+
+  it("does not render model toggle when flag is disabled", () => {
+    mockFlagValue = false;
+    render(<ChatInput onSend={mockOnSend} />);
+    expect(
+      screen.queryByLabelText(/switch to (advanced|standard) model/i),
+    ).toBeNull();
+  });
+
+  it("toggles from standard to advanced on click", () => {
+    mockFlagValue = true;
+    mockCopilotLlmModel = "standard";
+    render(<ChatInput onSend={mockOnSend} />);
+    fireEvent.click(screen.getByLabelText(/switch to advanced model/i));
+    expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("advanced");
+  });
+
+  it("toggles from advanced to standard on click", () => {
+    mockFlagValue = true;
+    mockCopilotLlmModel = "advanced";
+    render(<ChatInput onSend={mockOnSend} />);
+    fireEvent.click(screen.getByLabelText(/switch to standard model/i));
+    expect(mockSetCopilotLlmModel).toHaveBeenCalledWith("standard");
+  });
+
+  it("hides model toggle when streaming", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} isStreaming />);
+    expect(
+      screen.queryByLabelText(/switch to (advanced|standard) model/i),
+    ).toBeNull();
+  });
+
+  it("shows a toast when switching to advanced", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockFlagValue = true;
+    mockCopilotLlmModel = "standard";
+    render(<ChatInput onSend={mockOnSend} />);
+    fireEvent.click(screen.getByLabelText(/switch to advanced model/i));
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringMatching(/switched to advanced model/i),
+      }),
+    );
+  });
+
+  it("shows a toast when switching to standard", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockFlagValue = true;
+    mockCopilotLlmModel = "advanced";
+    render(<ChatInput onSend={mockOnSend} />);
+    fireEvent.click(screen.getByLabelText(/switch to standard model/i));
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringMatching(/switched to standard model/i),
       }),
     );
   });

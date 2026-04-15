@@ -13,6 +13,7 @@ import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
+import { ModelToggleButton } from "./components/ModelToggleButton";
 import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
@@ -50,16 +51,22 @@ export function ChatInput({
   onDroppedFilesConsumed,
   hasSession = false,
 }: Props) {
-  const { copilotMode, setCopilotMode, isDryRun, setIsDryRun } =
-    useCopilotUIStore();
+  const {
+    copilotChatMode,
+    setCopilotChatMode,
+    copilotLlmModel,
+    setCopilotLlmModel,
+    isDryRun,
+    setIsDryRun,
+  } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
   const [files, setFiles] = useState<File[]>([]);
 
   function handleToggleMode() {
     const next =
-      copilotMode === "extended_thinking" ? "fast" : "extended_thinking";
-    setCopilotMode(next);
+      copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
+    setCopilotChatMode(next);
     toast({
       title:
         next === "fast"
@@ -69,6 +76,21 @@ export function ChatInput({
         next === "fast"
           ? "Optimized for speed — ideal for simpler tasks."
           : "Responses may take longer.",
+    });
+  }
+
+  function handleToggleModel() {
+    const next = copilotLlmModel === "advanced" ? "standard" : "advanced";
+    setCopilotLlmModel(next);
+    toast({
+      title:
+        next === "advanced"
+          ? "Switched to Advanced model"
+          : "Switched to Standard model",
+      description:
+        next === "advanced"
+          ? "Using the highest-capability model."
+          : "Using the balanced standard model.",
     });
   }
 
@@ -198,8 +220,14 @@ export function ChatInput({
             />
             {showModeToggle && !isStreaming && (
               <ModeToggleButton
-                mode={copilotMode}
+                mode={copilotChatMode}
                 onToggle={handleToggleMode}
+              />
+            )}
+            {showModeToggle && !isStreaming && (
+              <ModelToggleButton
+                model={copilotLlmModel}
+                onToggle={handleToggleModel}
               />
             )}
             {showDryRunToggle && (!hasSession || isDryRun) && (

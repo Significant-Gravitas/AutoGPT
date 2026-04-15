@@ -230,6 +230,7 @@ class TestRateLimitRecording:
             completion_tokens=50,
             cache_read_tokens=1000,
             cache_creation_tokens=200,
+            model_cost_multiplier=1.0,
         )
 
     @pytest.mark.asyncio

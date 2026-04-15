@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
-from backend.copilot.config import ChatConfig, CopilotMode
+from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.message_dedup import acquire_dedup_lock
@@ -139,6 +139,11 @@ class StreamChatRequest(BaseModel):
         default=None,
         description="Autopilot mode: 'fast' for baseline LLM, 'extended_thinking' for Claude Agent SDK. "
         "If None, uses the server default (extended_thinking).",
+    )
+    model: CopilotLlmModel | None = Field(
+        default=None,
+        description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
+        "If None, the server applies per-user LD targeting then falls back to config.",
     )
 
 
@@ -921,6 +926,7 @@ async def stream_chat_post(
             context=request.context,
             file_ids=sanitized_file_ids,
             mode=request.mode,
+            model=request.model,
         )
     except Exception:
         if dedup_lock:
