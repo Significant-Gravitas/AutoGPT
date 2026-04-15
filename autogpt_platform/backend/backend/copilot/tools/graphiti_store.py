@@ -187,15 +187,21 @@ class MemoryStoreTool(BaseTool):
 
         rule_model = None
         if rule and memory_kind == "rule":
-            rule_model = RuleMemory(**rule)
+            try:
+                rule_model = RuleMemory(**rule)
+            except Exception:
+                logger.warning("Invalid rule data, storing as plain fact")
 
         procedure_model = None
         if procedure and memory_kind == "procedure":
-            steps = [ProcedureStep(**s) for s in procedure.get("steps", [])]
-            procedure_model = ProcedureMemory(
-                description=procedure.get("description", content),
-                steps=steps,
-            )
+            try:
+                steps = [ProcedureStep(**s) for s in procedure.get("steps", [])]
+                procedure_model = ProcedureMemory(
+                    description=procedure.get("description", content),
+                    steps=steps,
+                )
+            except Exception:
+                logger.warning("Invalid procedure data, storing as plain fact")
 
         try:
             resolved_source = SourceKind(source_kind)

@@ -319,16 +319,25 @@ async def _hard_delete_edges(
             if not records:
                 failed.append(uuid)
                 continue
-            # Clean up episode back-references
-            await driver.execute_query(
-                """
-                MATCH (ep:Episodic)
-                WHERE $uuid IN ep.entity_edges
-                SET ep.entity_edges = [x IN ep.entity_edges WHERE x <> $uuid]
-                """,
-                uuid=uuid,
-            )
+            # Edge was deleted — report success regardless of cleanup outcome.
             deleted.append(uuid)
+            # Clean up episode back-references (best-effort).
+            try:
+                await driver.execute_query(
+                    """
+                    MATCH (ep:Episodic)
+                    WHERE $uuid IN ep.entity_edges
+                    SET ep.entity_edges = [x IN ep.entity_edges WHERE x <> $uuid]
+                    """,
+                    uuid=uuid,
+                )
+            except Exception:
+                logger.warning(
+                    "Edge %s deleted but back-ref cleanup failed for user %s",
+                    uuid,
+                    user_id[:12],
+                    exc_info=True,
+                )
         except Exception:
             logger.warning(
                 "Failed to hard-delete edge %s for user %s",

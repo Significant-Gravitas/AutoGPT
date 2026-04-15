@@ -278,11 +278,10 @@ async def _resolve_user_name(user_id: str) -> str:
 _CHATTER_PREFIXES = (
     "done",
     "got it",
-    "sure",
+    "sure, i",
+    "sure!",
     "ok",
     "okay",
-    "here's",
-    "here is",
     "i've created",
     "i've updated",
     "i've sent",
