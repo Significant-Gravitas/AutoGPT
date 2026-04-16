@@ -45,7 +45,7 @@ export function BuilderChatPanel({ className, onGraphEdited }: Props) {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages.length, isStreaming]);
 
   // Move focus to the textarea when the panel opens so keyboard users can type immediately.
   useEffect(() => {
