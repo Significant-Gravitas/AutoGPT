@@ -307,39 +307,16 @@ describe("useLoadMoreMessages", () => {
 
   describe("loadMore — MAX_OLDER_MESSAGES truncation", () => {
     it("truncates accumulated messages at MAX_OLDER_MESSAGES (2000)", async () => {
-      // Simulate being near the limit — 1990 existing paged messages
-      const nearLimitArgs = {
-        ...BASE_ARGS,
-        forwardPaginated: false,
-        initialOldestSequence: 1990,
-      };
-
-      // Return 20 messages to push total past 2000
-      const newMessages = Array.from({ length: 20 }, (_, i) => ({
-        role: "user",
-        content: `msg ${i}`,
-        sequence: i,
-      }));
+      // Single load of 2001 messages exceeds the limit in one shot.
+      // This avoids relying on cross-render closure staleness: estimatedTotal =
+      // pagedRawMessages.length (0, fresh) + 2001 = 2001 >= 2000 → hasMore=false.
+      const args = { ...BASE_ARGS, forwardPaginated: false };
 
       mockGetV2GetSession.mockResolvedValueOnce(
         makeSuccessResponse({
-          messages: newMessages,
-          has_more_messages: true,
-          oldest_sequence: 0,
-        }),
-      );
-
-      const { result } = renderHook((props) => useLoadMoreMessages(props), {
-        initialProps: nearLimitArgs,
-      });
-
-      // Pre-fill pagedRawMessages to near limit by doing a successful load first
-      // then checking hasMore is set to false when limit reached
-      mockGetV2GetSession.mockResolvedValueOnce(
-        makeSuccessResponse({
-          messages: Array.from({ length: 1990 }, (_, i) => ({
+          messages: Array.from({ length: 2001 }, (_, i) => ({
             role: "user",
-            content: `old ${i}`,
+            content: `msg ${i}`,
             sequence: i,
           })),
           has_more_messages: true,
@@ -347,11 +324,8 @@ describe("useLoadMoreMessages", () => {
         }),
       );
 
-      await act(async () => {
-        await result.current.loadMore();
-      });
+      const { result } = renderHook(() => useLoadMoreMessages(args));
 
-      // Now add 20 more to exceed 2000 — hasMore should be forced false
       await act(async () => {
         await result.current.loadMore();
       });
