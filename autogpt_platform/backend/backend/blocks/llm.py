@@ -106,7 +106,6 @@ class LlmModelMeta(EnumMeta):
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
-
     @classmethod
     def _missing_(cls, value: object) -> "LlmModel | None":
         """Handle provider-prefixed model names like 'anthropic/claude-sonnet-4-6'."""
@@ -203,6 +202,8 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
     GROK_4_1_FAST = "x-ai/grok-4.1-fast"
+    GROK_4_20 = "x-ai/grok-4.20"
+    GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
@@ -627,6 +628,18 @@ MODEL_METADATA = {
     LlmModel.GROK_4_1_FAST: ModelMetadata(
         "open_router", 2000000, 30000, "Grok 4.1 Fast", "OpenRouter", "xAI", 1
     ),
+    LlmModel.GROK_4_20: ModelMetadata(
+        "open_router", 2000000, 100000, "Grok 4.20", "OpenRouter", "xAI", 3
+    ),
+    LlmModel.GROK_4_20_MULTI_AGENT: ModelMetadata(
+        "open_router",
+        2000000,
+        100000,
+        "Grok 4.20 Multi-Agent",
+        "OpenRouter",
+        "xAI",
+        3,
+    ),
     LlmModel.GROK_CODE_FAST_1: ModelMetadata(
         "open_router", 256000, 10000, "Grok Code Fast 1", "OpenRouter", "xAI", 1
     ),
@@ -987,7 +1000,6 @@ async def llm_call(
             reasoning=reasoning,
         )
     elif provider == "anthropic":
-
         an_tools = convert_openai_tool_fmt_to_anthropic(tools)
         # Cache tool definitions alongside the system prompt.
         # Placing cache_control on the last tool caches all tool schemas as a

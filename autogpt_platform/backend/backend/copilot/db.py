@@ -10,9 +10,11 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
     ChatSessionWhereInput,
+    FindManyChatMessageArgsFromChatSession,
 )
 from pydantic import BaseModel
 
@@ -30,6 +32,8 @@ from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
 
+_BOUNDARY_SCAN_LIMIT = 10
+
 
 class PaginatedMessages(BaseModel):
     """Result of a paginated message query."""
@@ -37,6 +41,7 @@ class PaginatedMessages(BaseModel):
     messages: list[ChatMessage]
     has_more: bool
     oldest_sequence: int | None
+    newest_sequence: int | None
     session: ChatSessionInfo
 
 
@@ -61,32 +66,48 @@ async def get_chat_messages_paginated(
     session_id: str,
     limit: int = 50,
     before_sequence: int | None = None,
+    after_sequence: int | None = None,
+    from_start: bool = False,
     user_id: str | None = None,
 ) -> PaginatedMessages | None:
-    """Get paginated messages for a session, newest first.
+    """Get paginated messages for a session.
 
-    Verifies session existence (and ownership when ``user_id`` is provided)
-    in parallel with the message query.  Returns ``None`` when the session
-    is not found or does not belong to the user.
+    Three modes:
 
-    Args:
-        session_id: The chat session ID.
-        limit: Max messages to return.
-        before_sequence: Cursor — return messages with sequence < this value.
-        user_id: If provided, filters via ``Session.userId`` so only the
-            session owner's messages are returned (acts as an ownership guard).
+    - ``before_sequence`` set: backward pagination (DESC), returns messages
+      with sequence < ``before_sequence``. Used for active sessions or manual
+      backward navigation.
+    - ``from_start=True`` or ``after_sequence`` set: forward pagination (ASC).
+      Returns messages from sequence 0 (``from_start``) or after
+      ``after_sequence``. Used on initial load of completed sessions and for
+      loading subsequent forward pages.
+    - Both cursors ``None`` and ``from_start=False``: newest-first (DESC
+      without filter). Used for active sessions on initial load.
+
+    Verifies session existence (and ownership when ``user_id`` is provided).
+    Returns ``None`` when the session is not found or does not belong to the
+    user.
     """
     # Build session-existence / ownership check
     session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
         session_where["userId"] = user_id
 
-    # Build message include — fetch paginated messages in the same query
-    msg_include: dict[str, Any] = {
-        "order_by": {"sequence": "desc"},
+    forward = from_start or after_sequence is not None
+
+    # Build message include — fetch paginated messages in the same query.
+    # Note: when both from_start=True and after_sequence is not None, the
+    # after_sequence filter takes precedence (the elif branch below is skipped).
+    # This combination is not reachable via the HTTP route (mutual exclusion is
+    # enforced there), so we rely on the documented priority here without an
+    # additional assertion.
+    msg_include: FindManyChatMessageArgsFromChatSession = {
+        "order_by": {"sequence": "asc" if forward else "desc"},
         "take": limit + 1,
     }
-    if before_sequence is not None:
+    if after_sequence is not None:
+        msg_include["where"] = {"sequence": {"gt": after_sequence}}
+    elif before_sequence is not None:
         msg_include["where"] = {"sequence": {"lt": before_sequence}}
 
     # Single query: session existence/ownership + paginated messages
@@ -104,57 +125,96 @@ async def get_chat_messages_paginated(
     has_more = len(results) > limit
     results = results[:limit]
 
-    # Reverse to ascending order
-    results.reverse()
+    if not forward:
+        # Backward mode: DB returned DESC; reverse to ascending order.
+        results.reverse()
 
-    # Tool-call boundary fix: if the oldest message is a tool message,
-    # expand backward to include the preceding assistant message that
-    # owns the tool_calls, so convertChatSessionMessagesToUiMessages
-    # can pair them correctly.
-    _BOUNDARY_SCAN_LIMIT = 10
-    if results and results[0].role == "tool":
-        boundary_where: dict[str, Any] = {
-            "sessionId": session_id,
-            "sequence": {"lt": results[0].sequence},
-        }
-        if user_id is not None:
-            boundary_where["Session"] = {"is": {"userId": user_id}}
-        extra = await PrismaChatMessage.prisma().find_many(
-            where=boundary_where,
-            order={"sequence": "desc"},
-            take=_BOUNDARY_SCAN_LIMIT,
-        )
-        # Find the first non-tool message (should be the assistant)
-        boundary_msgs = []
-        found_owner = False
-        for msg in extra:
-            boundary_msgs.append(msg)
-            if msg.role != "tool":
-                found_owner = True
-                break
-        boundary_msgs.reverse()
-        if not found_owner:
-            logger.warning(
-                "Boundary expansion did not find owning assistant message "
-                "for session=%s before sequence=%s (%d msgs scanned)",
-                session_id,
-                results[0].sequence,
-                len(extra),
+        # Tool-call boundary fix: if the oldest message is a tool message,
+        # expand backward to include the preceding assistant message that
+        # owns the tool_calls, so convertChatSessionMessagesToUiMessages
+        # can pair them correctly.
+        if results and results[0].role == "tool":
+            boundary_where: ChatMessageWhereInput = {
+                "sessionId": session_id,
+                "sequence": {"lt": results[0].sequence},
+            }
+            if user_id is not None:
+                boundary_where["Session"] = {"is": {"userId": user_id}}
+            extra = await PrismaChatMessage.prisma().find_many(
+                where=boundary_where,
+                order={"sequence": "desc"},
+                take=_BOUNDARY_SCAN_LIMIT,
             )
-        if boundary_msgs:
-            results = boundary_msgs + results
-            # Only mark has_more if the expanded boundary isn't the
-            # very start of the conversation (sequence 0).
-            if boundary_msgs[0].sequence > 0:
+            # Find the first non-tool message (should be the assistant)
+            boundary_msgs = []
+            found_owner = False
+            for msg in extra:
+                boundary_msgs.append(msg)
+                if msg.role != "tool":
+                    found_owner = True
+                    break
+            boundary_msgs.reverse()
+            if not found_owner:
+                logger.warning(
+                    "Boundary expansion did not find owning assistant message "
+                    "for session=%s before sequence=%s (%d msgs scanned)",
+                    session_id,
+                    results[0].sequence,
+                    len(extra),
+                )
+            if boundary_msgs:
+                results = boundary_msgs + results
+                # Only mark has_more if the expanded boundary isn't the
+                # very start of the conversation (sequence 0).
+                if boundary_msgs[0].sequence > 0:
+                    has_more = True
+    else:
+        # Forward mode: DB returned ASC.
+        # Tool-call tail boundary fix: if the last message in this page is a
+        # tool message, the NEXT forward page would start after it and begin
+        # mid-tool-group — the owning assistant message is on this page but
+        # the following tool results are on the next page.
+        # Trim the current page so it ends on the owning assistant message,
+        # which keeps tool groups intact across page boundaries.
+        if results and results[-1].role == "tool":
+            # Walk backward through results to find the last non-tool message.
+            trim_idx = len(results) - 1
+            while trim_idx >= 0 and results[trim_idx].role == "tool":
+                trim_idx -= 1
+
+            if trim_idx >= 0:
+                # Trim results so the page ends at the owning assistant.
+                # Mark has_more=True so the client knows to fetch the rest.
+                results = results[: trim_idx + 1]
                 has_more = True
+            else:
+                # Entire page is tool messages with no visible owner — log and
+                # keep as-is so the caller is not stuck with an empty page.
+                logger.warning(
+                    "Forward tail boundary: entire page is tool messages "
+                    "for session=%s, no owning assistant found (%d msgs)",
+                    session_id,
+                    len(results),
+                )
 
     messages = [ChatMessage.from_db(m) for m in results]
-    oldest_sequence = messages[0].sequence if messages else None
+    # oldest_sequence is only meaningful in backward mode (used as backward
+    # pagination cursor).  In forward mode the page always starts near seq 0
+    # and clients should use newest_sequence as the forward cursor instead.
+    # Return None in forward mode so clients don't accidentally treat it as a
+    # backward cursor on a forward-paginated session.
+    oldest_sequence = messages[0].sequence if (messages and not forward) else None
+    # newest_sequence is only meaningful in forward mode; in backward mode it
+    # points to the last message of the page (not the session's newest message)
+    # which is not a valid forward cursor.  Return None in backward mode so
+    # clients don't accidentally use it as one.
+    newest_sequence = messages[-1].sequence if (messages and forward) else None
 
     return PaginatedMessages(
         messages=messages,
         has_more=has_more,
         oldest_sequence=oldest_sequence,
+        newest_sequence=newest_sequence,
         session=session_info,
     )
 

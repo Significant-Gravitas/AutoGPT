@@ -1,9 +1,8 @@
-import asyncio
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any, Self, cast
-from weakref import WeakValueDictionary
+from typing import Any, AsyncIterator, Self, cast
 
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
@@ -522,10 +521,7 @@ async def upsert_chat_session(
             callers are aware of the persistence failure.
         RedisError: If the cache write fails (after successful DB write).
     """
-    # Acquire session-specific lock to prevent concurrent upserts
-    lock = await _get_session_lock(session.session_id)
-
-    async with lock:
+    async with _get_session_lock(session.session_id) as _:
         # Always query DB for existing message count to ensure consistency
         existing_message_count = await chat_db().get_next_sequence(session.session_id)
 
@@ -651,19 +647,49 @@ async def _save_session_to_db(
             msg.sequence = existing_message_count + i
 
 
-async def append_and_save_message(session_id: str, message: ChatMessage) -> ChatSession:
+async def append_and_save_message(
+    session_id: str, message: ChatMessage
+) -> ChatSession | None:
     """Atomically append a message to a session and persist it.
 
-    Acquires the session lock, re-fetches the latest session state,
-    appends the message, and saves — preventing message loss when
-    concurrent requests modify the same session.
-    """
-    lock = await _get_session_lock(session_id)
+    Returns the updated session, or None if the message was detected as a
+    duplicate (idempotency guard). Callers must check for None and skip any
+    downstream work (e.g. enqueuing a new LLM turn) when a duplicate is detected.
 
-    async with lock:
-        session = await get_chat_session(session_id)
+    Uses _get_session_lock (Redis NX) to serialise concurrent writers across replicas.
+    The idempotency check below provides a last-resort guard when the lock degrades.
+    """
+    async with _get_session_lock(session_id) as lock_acquired:
+        # When the lock degraded (Redis down or 2s timeout), bypass cache for
+        # the idempotency check. Stale cache could let two concurrent writers
+        # both see the old state, pass the check, and write the same message.
+        if lock_acquired:
+            session = await get_chat_session(session_id)
+        else:
+            session = await _get_session_from_db(session_id)
         if session is None:
             raise ValueError(f"Session {session_id} not found")
+
+        # Idempotency: skip if the trailing block of same-role messages already
+        # contains this content. Uses is_message_duplicate which checks all
+        # consecutive trailing messages of the same role, not just [-1].
+        #
+        # This collapses infra/nginx retries whether they land on the same pod
+        # (serialised by the Redis lock) or a different pod.
+        #
+        # Legit same-text messages are distinguished by the assistant turn
+        # between them: if the user said "yes", got a response, and says
+        # "yes" again, session.messages[-1] is the assistant reply, so the
+        # role check fails and the second message goes through normally.
+        #
+        # Edge case: if a turn dies without writing any assistant message,
+        # the user's next send of the same text is blocked here permanently.
+        # The fix is to ensure failed turns always write an error/timeout
+        # assistant message so the session always ends on an assistant turn.
+        if message.content is not None and is_message_duplicate(
+            session.messages, message.role, message.content
+        ):
+            return None  # duplicate — caller should skip enqueue
 
         session.messages.append(message)
         existing_message_count = await chat_db().get_next_sequence(session_id)
@@ -679,6 +705,9 @@ async def append_and_save_message(session_id: str, message: ChatMessage) -> Chat
             await cache_chat_session(session)
         except Exception as e:
             logger.warning(f"Cache write failed for session {session_id}: {e}")
+            # Invalidate the stale entry so future reads fall back to DB,
+            # preventing a retry from bypassing the idempotency check above.
+            await invalidate_session_cache(session_id)
 
         return session
 
@@ -764,10 +793,6 @@ async def delete_chat_session(session_id: str, user_id: str | None = None) -> bo
     except Exception as e:
         logger.warning(f"Failed to delete session {session_id} from cache: {e}")
 
-    # Clean up session lock (belt-and-suspenders with WeakValueDictionary)
-    async with _session_locks_mutex:
-        _session_locks.pop(session_id, None)
-
     # Shut down any local browser daemon for this session (best-effort).
     # Inline import required: all tool modules import ChatSession from this
     # module, so any top-level import from tools.* would create a cycle.
@@ -832,25 +857,38 @@ async def update_session_title(
 
 # ==================== Chat session locks ==================== #
 
-_session_locks: WeakValueDictionary[str, asyncio.Lock] = WeakValueDictionary()
-_session_locks_mutex = asyncio.Lock()
 
+@asynccontextmanager
+async def _get_session_lock(session_id: str) -> AsyncIterator[bool]:
+    """Distributed Redis lock for a session, usable as an async context manager.
 
-async def _get_session_lock(session_id: str) -> asyncio.Lock:
-    """Get or create a lock for a specific session to prevent concurrent upserts.
+    Yields True if the lock was acquired, False if it timed out or Redis was
+    unavailable. Callers should treat False as a degraded mode and prefer fresh
+    DB reads over cache to avoid acting on stale state.
 
-    This was originally added to solve the specific problem of race conditions between
-    the session title thread and the conversation thread, which always occurs on the
-    same instance as we prevent rapid request sends on the frontend.
-
-    Uses WeakValueDictionary for automatic cleanup: locks are garbage collected
-    when no coroutine holds a reference to them, preventing memory leaks from
-    unbounded growth of session locks. Explicit cleanup also occurs
-    in `delete_chat_session()`.
+    Uses redis-py's built-in Lock (Lua-script acquire/release) so lock acquisition
+    is atomic and release is owner-verified. Blocks up to 2s for a concurrent
+    writer to finish; the 10s TTL ensures a dead pod never holds the lock forever.
     """
-    async with _session_locks_mutex:
-        lock = _session_locks.get(session_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            _session_locks[session_id] = lock
-        return lock
+    _lock_key = f"copilot:session_lock:{session_id}"
+    lock = None
+    acquired = False
+    try:
+        _redis = await get_redis_async()
+        lock = _redis.lock(_lock_key, timeout=10, blocking_timeout=2)
+        acquired = await lock.acquire(blocking=True)
+        if not acquired:
+            logger.warning(
+                "Could not acquire session lock for %s within 2s", session_id
+            )
+    except Exception as e:
+        logger.warning("Redis unavailable for session lock on %s: %s", session_id, e)
+
+    try:
+        yield acquired
+    finally:
+        if acquired and lock is not None:
+            try:
+                await lock.release()
+            except Exception:
+                pass  # TTL will expire the key
