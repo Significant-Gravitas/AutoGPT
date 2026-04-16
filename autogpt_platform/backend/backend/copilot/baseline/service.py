@@ -1135,12 +1135,14 @@ async def stream_chat_completion_baseline(
         else:
             logger.warning("[Baseline] No user message found for context injection")
 
-    # Inject Graphiti warm context into the first user message (not the
-    # system prompt) so the system prompt stays static and cacheable.
+    # Inject Graphiti warm context into the current turn's user message (not
+    # the system prompt) so the system prompt stays static and cacheable.
     # warm_ctx is already wrapped in <temporal_context>.
     # Appended AFTER user_context so <user_context> stays at the very start.
+    # Reverse scan so we update the current turn's user message, not the
+    # oldest one when pending messages were drained.
     if warm_ctx:
-        for msg in openai_messages:
+        for msg in reversed(openai_messages):
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
