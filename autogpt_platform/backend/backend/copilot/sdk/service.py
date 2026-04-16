@@ -129,7 +129,12 @@ config = ChatConfig()
 
 
 class _SystemPromptPreset(SystemPromptPreset, total=False):
-    """Extends SystemPromptPreset with fields added in claude-agent-sdk 0.1.59."""
+    """Extends :class:`SystemPromptPreset` with ``exclude_dynamic_sections``.
+
+    The field was added to the upstream TypedDict in claude-agent-sdk 0.1.59.
+    Until the package is pinned to that version we declare it locally so Pyright
+    accepts the kwarg without a ``# type: ignore`` comment.
+    """
 
     exclude_dynamic_sections: NotRequired[bool]
 
