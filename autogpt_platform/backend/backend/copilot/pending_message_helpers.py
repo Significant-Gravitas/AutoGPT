@@ -98,7 +98,18 @@ def insert_pending_before_last(session: "ChatSession", texts: list[str]) -> None
     chronologically before the current user message that was already
     appended via ``maybe_append_user_message``.  Inserting at ``len-1``
     preserves that order: [...history, pending_1, pending_2, current_msg].
+
+    The caller must have already appended the current user message before
+    calling this function.  If ``session.messages`` is unexpectedly empty,
+    a warning is logged and the messages are appended at index 0 so they
+    are not silently lost.
     """
+    if not session.messages:
+        logger.warning(
+            "insert_pending_before_last: session.messages is empty — "
+            "current user message was not appended before drain; "
+            "inserting pending messages at index 0"
+        )
     insert_idx = max(0, len(session.messages) - 1)
     for i, content in enumerate(texts):
         session.messages.insert(

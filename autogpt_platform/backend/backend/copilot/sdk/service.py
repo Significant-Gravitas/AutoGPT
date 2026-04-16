@@ -1327,7 +1327,9 @@ async def _build_query_message(
     )
     # Exclude the current user message and any pending messages appended after
     # the ceiling snapshot — only history up to effective_count-1 is in scope.
-    prior = session.messages[: effective_count - 1]
+    # max(0, ...) guards against a theoretical 0-message ceiling (brand-new
+    # session) where -1 would select all-but-last instead of an empty slice.
+    prior = session.messages[: max(0, effective_count - 1)]
 
     logger.info(
         "[SDK] [%s] Context path: use_resume=%s, transcript_msg_count=%d,"
@@ -3792,6 +3794,14 @@ async def stream_chat_completion_sdk(
     if not ended_with_stream_error:
         _auto_pending_texts = await drain_pending_safe(session_id, log_prefix)
         if _auto_pending_texts:
+            # Flatten multiple queued messages into a single string.
+            # stream_chat_completion_sdk takes a single ``message`` string, so
+            # multiple pending messages must be joined here.  This means they
+            # land as one ChatMessage in the DB rather than N separate rows
+            # (unlike the turn-start drain which inserts them individually).
+            # The trade-off is accepted: auto-continue is triggered only when
+            # messages arrive after the turn-start drain window closes, which
+            # is uncommon, and the model still sees all the content in order.
             auto_message = "\n\n".join(_auto_pending_texts)
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",
