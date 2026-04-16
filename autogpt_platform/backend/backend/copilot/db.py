@@ -198,7 +198,12 @@ async def get_chat_messages_paginated(
                 )
 
     messages = [ChatMessage.from_db(m) for m in results]
-    oldest_sequence = messages[0].sequence if messages else None
+    # oldest_sequence is only meaningful in backward mode (used as backward
+    # pagination cursor).  In forward mode the page always starts near seq 0
+    # and clients should use newest_sequence as the forward cursor instead.
+    # Return None in forward mode so clients don't accidentally treat it as a
+    # backward cursor on a forward-paginated session.
+    oldest_sequence = messages[0].sequence if (messages and not forward) else None
     # newest_sequence is only meaningful in forward mode; in backward mode it
     # points to the last message of the page (not the session's newest message)
     # which is not a valid forward cursor.  Return None in backward mode so

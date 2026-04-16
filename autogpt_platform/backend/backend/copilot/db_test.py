@@ -210,7 +210,7 @@ async def test_from_start_returns_messages_ascending(
 
     assert page is not None
     assert [m.sequence for m in page.messages] == [0, 1, 2]
-    assert page.oldest_sequence == 0
+    assert page.oldest_sequence is None  # None in forward mode — not a valid backward cursor
     assert page.newest_sequence == 2
     assert page.has_more is False
 
@@ -265,7 +265,7 @@ async def test_after_sequence_returns_messages_in_order(
 
     assert page is not None
     assert [m.sequence for m in page.messages] == [11, 12, 13]
-    assert page.oldest_sequence == 11
+    assert page.oldest_sequence is None  # None in forward mode — not a valid backward cursor
     assert page.newest_sequence == 13
     assert page.has_more is False
 

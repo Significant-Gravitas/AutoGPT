@@ -87,6 +87,15 @@ export function useLoadMoreMessages({
 
     // If we haven't paged yet, mirror the parent so the first
     // `loadMore` starts from the correct cursor.
+    //
+    // When paged messages exist (pagedRawMessages.length > 0) we intentionally
+    // do NOT update `hasMore` or `newestSequence` from the parent.  A parent
+    // refetch (e.g. after a new turn completes) may carry a fresh
+    // `initialHasMore=true` or a larger `initialNewestSequence`, but those
+    // reflect the *initial* page window, not the forward-paged window we have
+    // already advanced into.  Overwriting the local cursor here would cause the
+    // next `loadMore` to re-fetch pages we already have.  The local cursor is
+    // advanced correctly inside `loadMore` itself via `setNewestSequence`.
     if (pagedRawMessages.length === 0) {
       setOldestSequence(initialOldestSequence);
       // Only regress the forward cursor if we haven't paged ahead yet —
@@ -152,6 +161,10 @@ export function useLoadMoreMessages({
       consecutiveErrorsRef.current = 0;
 
       const newRaw = (response.data.messages ?? []) as unknown[];
+      // Use a ref to pass the merged length out of the functional updater so
+      // the hasMore decision below uses the accurate post-merge length rather
+      // than the potentially-stale `pagedRawMessages.length` closure value.
+      let mergedLength = 0;
       setPagedRawMessages((prev) => {
         // Forward: append to end. Backward: prepend to start.
         const merged = forwardPaginated
@@ -164,10 +177,13 @@ export function useLoadMoreMessages({
           // forward, so the tail is the most recently appended page; shedding
           // it means the sentinel stalls, which is safer than discarding the
           // beginning of the conversation the user is here to read.
-          return forwardPaginated
+          const trimmed = forwardPaginated
             ? merged.slice(0, MAX_OLDER_MESSAGES)
             : merged.slice(merged.length - MAX_OLDER_MESSAGES);
+          mergedLength = trimmed.length;
+          return trimmed;
         }
+        mergedLength = merged.length;
         return merged;
       });
 
@@ -177,13 +193,12 @@ export function useLoadMoreMessages({
         setOldestSequence(response.data.oldest_sequence ?? null);
       }
 
-      const totalAfterMerge = newRaw.length + pagedRawMessages.length;
       if (forwardPaginated) {
         // Forward: truncation sheds the newest tail but the cursor
         // (newestSequence) still advances, so the sentinel can keep
         // fetching. Only stop when the server reports no more messages.
         setHasMore(!!response.data.has_more_messages);
-      } else if (totalAfterMerge >= MAX_OLDER_MESSAGES) {
+      } else if (mergedLength >= MAX_OLDER_MESSAGES) {
         // Backward: we've accumulated MAX_OLDER_MESSAGES of history —
         // stop to avoid unbounded memory growth.
         setHasMore(false);
