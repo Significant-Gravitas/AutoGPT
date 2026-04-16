@@ -154,7 +154,7 @@ function buildSitrepFromConfig(agent: LibraryAgent): SitrepItemData | null {
     };
   }
 
-  if (agent.recommended_schedule_cron) {
+  if (agent.is_scheduled || agent.recommended_schedule_cron) {
     return {
       id: `${agent.id}-scheduled`,
       agentID: agent.id,

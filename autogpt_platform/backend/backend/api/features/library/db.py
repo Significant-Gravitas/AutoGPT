@@ -62,6 +62,19 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
+async def _fetch_scheduled_graph_ids(user_id: str) -> set[str]:
+    """Fetch graph IDs that have active execution schedules."""
+    try:
+        scheduler_client = get_scheduler_client()
+        schedules = await scheduler_client.get_execution_schedules(
+            user_id=user_id,
+        )
+        return {s.graph_id for s in schedules}
+    except Exception:
+        logger.warning("Failed to fetch schedules for library agents", exc_info=True)
+        return set()
+
+
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
@@ -158,6 +171,7 @@ async def list_library_agents(
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
     execution_counts = await _fetch_execution_counts(user_id, graph_ids)
+    scheduled_graph_ids = await _fetch_scheduled_graph_ids(user_id)
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -167,6 +181,7 @@ async def list_library_agents(
             library_agent = library_model.LibraryAgent.from_db(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
+                scheduled_graph_ids=scheduled_graph_ids,
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -241,6 +256,7 @@ async def list_favorite_library_agents(
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
     execution_counts = await _fetch_execution_counts(user_id, graph_ids)
+    scheduled_graph_ids = await _fetch_scheduled_graph_ids(user_id)
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -250,6 +266,7 @@ async def list_favorite_library_agents(
             library_agent = library_model.LibraryAgent.from_db(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
+                scheduled_graph_ids=scheduled_graph_ids,
             )
             valid_library_agents.append(library_agent)
         except Exception as e:

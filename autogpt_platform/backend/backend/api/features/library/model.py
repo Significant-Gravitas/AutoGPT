@@ -214,6 +214,10 @@ class LibraryAgent(pydantic.BaseModel):
     folder_name: str | None = None  # Denormalized for display
 
     recommended_schedule_cron: str | None = None
+    is_scheduled: bool = pydantic.Field(
+        default=False,
+        description="Whether this agent has active execution schedules",
+    )
     settings: GraphSettings = pydantic.Field(default_factory=GraphSettings)
     marketplace_listing: Optional["MarketplaceListing"] = None
 
@@ -224,6 +228,7 @@ class LibraryAgent(pydantic.BaseModel):
         store_listing: Optional[prisma.models.StoreListing] = None,
         profile: Optional[prisma.models.Profile] = None,
         execution_count_override: Optional[int] = None,
+        scheduled_graph_ids: Optional[set[str]] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -359,6 +364,9 @@ class LibraryAgent(pydantic.BaseModel):
             folder_id=agent.folderId,
             folder_name=agent.Folder.name if agent.Folder else None,
             recommended_schedule_cron=agent.AgentGraph.recommendedScheduleCron,
+            is_scheduled=bool(
+                scheduled_graph_ids and agent.agentGraphId in scheduled_graph_ids
+            ),
             settings=_parse_settings(agent.settings),
             marketplace_listing=marketplace_listing_data,
         )
