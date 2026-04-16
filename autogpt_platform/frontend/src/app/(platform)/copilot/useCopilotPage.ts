@@ -187,7 +187,11 @@ export function useCopilotPage() {
   // disorder. Reset paged state so the completed session renders cleanly.
   const prevForwardPaginatedRef = useRef(forwardPaginated);
   useEffect(() => {
-    if (!prevForwardPaginatedRef.current && forwardPaginated && pagedMessages.length > 0) {
+    if (
+      !prevForwardPaginatedRef.current &&
+      forwardPaginated &&
+      pagedMessages.length > 0
+    ) {
       resetPaged();
     }
     prevForwardPaginatedRef.current = forwardPaginated;
