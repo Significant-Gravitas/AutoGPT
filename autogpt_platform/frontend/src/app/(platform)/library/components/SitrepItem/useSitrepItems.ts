@@ -160,10 +160,22 @@ function buildSitrepFromConfig(agent: LibraryAgent): SitrepItemData | null {
       agentID: agent.id,
       agentName: agent.name,
       priority: "scheduled",
-      message: "Has a scheduled run",
+      message: formatNextRun(agent.next_scheduled_run),
       status: "scheduled",
     };
   }
 
   return null;
+}
+
+function formatNextRun(iso: string | undefined | null): string {
+  if (!iso) return "Has a scheduled run";
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return "Scheduled to run soon";
+  const minutes = Math.round(diff / 60_000);
+  if (minutes < 60) return `Scheduled to run in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Scheduled to run in ${hours}h`;
+  const days = Math.round(hours / 24);
+  return `Scheduled to run in ${days}d`;
 }

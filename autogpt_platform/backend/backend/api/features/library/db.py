@@ -62,17 +62,21 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
-async def _fetch_scheduled_graph_ids(user_id: str) -> set[str]:
-    """Fetch graph IDs that have active execution schedules."""
+async def _fetch_schedule_info(user_id: str) -> dict[str, str]:
+    """Fetch a map of graph_id → earliest next_run_time ISO string."""
     try:
         scheduler_client = get_scheduler_client()
         schedules = await scheduler_client.get_execution_schedules(
             user_id=user_id,
         )
-        return {s.graph_id for s in schedules}
+        earliest: dict[str, str] = {}
+        for s in schedules:
+            if s.graph_id not in earliest or s.next_run_time < earliest[s.graph_id]:
+                earliest[s.graph_id] = s.next_run_time
+        return earliest
     except Exception:
         logger.warning("Failed to fetch schedules for library agents", exc_info=True)
-        return set()
+        return {}
 
 
 async def list_library_agents(
@@ -171,7 +175,7 @@ async def list_library_agents(
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
     execution_counts = await _fetch_execution_counts(user_id, graph_ids)
-    scheduled_graph_ids = await _fetch_scheduled_graph_ids(user_id)
+    schedule_info = await _fetch_schedule_info(user_id)
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -181,7 +185,7 @@ async def list_library_agents(
             library_agent = library_model.LibraryAgent.from_db(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
-                scheduled_graph_ids=scheduled_graph_ids,
+                schedule_info=schedule_info,
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -256,7 +260,7 @@ async def list_favorite_library_agents(
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
     execution_counts = await _fetch_execution_counts(user_id, graph_ids)
-    scheduled_graph_ids = await _fetch_scheduled_graph_ids(user_id)
+    schedule_info = await _fetch_schedule_info(user_id)
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -266,7 +270,7 @@ async def list_favorite_library_agents(
             library_agent = library_model.LibraryAgent.from_db(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
-                scheduled_graph_ids=scheduled_graph_ids,
+                schedule_info=schedule_info,
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
