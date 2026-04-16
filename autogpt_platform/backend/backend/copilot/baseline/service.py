@@ -989,7 +989,7 @@ async def stream_chat_completion_baseline(
         if last_user_msg is not None:
             last_user_msg.content = message
             if last_user_msg.sequence is not None:
-                await update_message_content_by_sequence(
+                await chat_db().update_message_content_by_sequence(
                     session_id, last_user_msg.sequence, message
                 )
             else:
