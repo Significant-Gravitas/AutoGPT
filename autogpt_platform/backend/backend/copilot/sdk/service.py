@@ -38,6 +38,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -62,8 +63,6 @@ from ..model import (
 )
 from ..pending_message_helpers import (
     drain_pending_safe,
-    insert_pending_before_last,
-    persist_session_safe,
 )
 from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
@@ -2677,8 +2676,6 @@ async def stream_chat_completion_sdk(
     turn = sum(1 for m in session.messages if m.role == "user")
     log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
 
-    session = await upsert_chat_session(session)
-
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
         user_messages = [m for m in session.messages if m.role == "user"]
@@ -3020,14 +3017,14 @@ async def stream_chat_completion_sdk(
         # lost between LPOP and clear.  File IDs and context are
         # preserved via format_pending_as_user_message.
         #
-        # The drained content is concatenated into ``current_message``
-        # so the SDK CLI sees it in the new user message, AND appended
-        # directly to ``session.messages`` (no dedup — pending messages are
-        # atomically-popped from Redis and are never stale-cache duplicates)
-        # so the durable transcript records it too.  Session is persisted
-        # immediately after the drain so a crash doesn't lose the messages.
-        # The endpoint deliberately does NOT persist to session.messages —
-        # Redis is the single source of truth until this drain runs.
+        # The drained content is prepended into ``current_message`` so
+        # the SDK CLI sees it in chronological order (pending → current).
+        # The already-saved user message in the DB is updated via
+        # update_message_content_by_sequence to include the pending texts,
+        # avoiding a duplicate INSERT that would occur if we used
+        # insert_pending_before_last + persist_session_safe (routes.py has
+        # already saved the user message at sequence N before the executor
+        # runs, so an incremental upsert would write a second copy at N+1).
         pending_texts = await drain_pending_safe(session_id, log_prefix)
         if pending_texts:
             logger.info(
@@ -3035,14 +3032,30 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(pending_texts),
             )
-            # Insert BEFORE current user message: [...history, pending_1, ..., current_msg].
-            insert_pending_before_last(session, pending_texts)
             # Prepend so the model sees them in chronological order: pending → current.
             if current_message.strip():
                 current_message = "\n\n".join(pending_texts) + "\n\n" + current_message
             else:
                 current_message = "\n\n".join(pending_texts)
-            session = await persist_session_safe(session, log_prefix)
+            # Update the in-memory content of the already-saved user message
+            # and persist that update to the DB by sequence number.  This
+            # avoids inserting an extra row — the user message was already
+            # written at its sequence by append_and_save_message in routes.py.
+            last_user_msg = next(
+                (m for m in reversed(session.messages) if m.role == "user"), None
+            )
+            if last_user_msg is not None:
+                last_user_msg.content = current_message
+                if last_user_msg.sequence is not None:
+                    await chat_db().update_message_content_by_sequence(
+                        session_id, last_user_msg.sequence, current_message
+                    )
+                else:
+                    logger.warning(
+                        "%s Last user message has no sequence number; "
+                        "pending injection cannot be persisted to DB",
+                        log_prefix,
+                    )
 
         if not current_message.strip():
             yield StreamError(

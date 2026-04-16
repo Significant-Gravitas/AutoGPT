@@ -37,7 +37,6 @@ from backend.copilot.model import (
 )
 from backend.copilot.pending_message_helpers import (
     drain_pending_safe,
-    insert_pending_before_last,
     persist_session_safe,
 )
 from backend.copilot.pending_messages import (
@@ -84,6 +83,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.data.db_accessors import chat_db
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
@@ -963,6 +963,12 @@ async def stream_chat_completion_baseline(
     # Drain any messages the user queued via POST /messages/pending
     # while this session was idle (or during a previous turn whose
     # mid-loop drains missed them).
+    # The drained content is prepended into ``message`` so the model sees it
+    # in chronological order.  The already-saved user message in the DB is
+    # updated via update_message_content_by_sequence rather than inserting a
+    # new row, because routes.py has already saved the user message before the
+    # executor picks up the turn (using insert_pending_before_last +
+    # persist_session_safe would add a duplicate row at sequence N+1).
     drained_at_start_content = await drain_pending_safe(session_id, "[Baseline]")
     if drained_at_start_content:
         logger.info(
@@ -970,11 +976,27 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_content),
             session_id,
         )
-        # Insert BEFORE the current user message: [...history, pending_1, ..., current_msg].
-        insert_pending_before_last(session, drained_at_start_content)
-
-    # Persist the drained pending messages (if any) plus the current user message.
-    session = await persist_session_safe(session, "[Baseline]")
+        # Prepend so the model sees them in chronological order: pending → current.
+        if message and message.strip():
+            message = "\n\n".join(drained_at_start_content) + "\n\n" + message
+        else:
+            message = "\n\n".join(drained_at_start_content)
+        # Update the in-memory content of the already-saved user message
+        # and persist that update by sequence number.
+        last_user_msg = next(
+            (m for m in reversed(session.messages) if m.role == "user"), None
+        )
+        if last_user_msg is not None:
+            last_user_msg.content = message
+            if last_user_msg.sequence is not None:
+                await update_message_content_by_sequence(
+                    session_id, last_user_msg.sequence, message
+                )
+            else:
+                logger.warning(
+                    "[Baseline] Last user message has no sequence number; "
+                    "pending injection cannot be persisted to DB"
+                )
 
     # Select model based on the per-request mode.  'fast' downgrades to
     # the cheaper/faster model; everything else keeps the default.
@@ -1041,13 +1063,17 @@ async def stream_chat_completion_baseline(
     # transcript receives the prefixed message when user context is available.
 
     # Mirror any messages drained at turn start (see above) into the
-    # transcript — otherwise the loaded prior transcript would be
-    # missing them and a mid-turn upload could leave a malformed
-    # assistant-after-assistant structure on the next turn.
-    # Reuse the pre-computed content strings to avoid calling
-    # format_pending_as_user_message a second time.
-    for _drained_content in drained_at_start_content:
-        transcript_builder.append_user(content=_drained_content)
+    # transcript builder ONLY when no prior transcript was loaded.
+    # When a transcript was loaded, detect_gap already appended these
+    # messages (they are in session.messages after the watermark but
+    # before the current user turn), so appending them again would
+    # produce a malformed double-entry in the uploaded transcript.
+    # When transcript_download is None (no GCS transcript, or first
+    # turn where _load_prior_transcript was never called), detect_gap
+    # never ran, so this explicit mirror is required.
+    if transcript_download is None:
+        for _drained_content in drained_at_start_content:
+            transcript_builder.append_user(content=_drained_content)
 
     # Generate title for new sessions
     if is_user_message and not session.title:
