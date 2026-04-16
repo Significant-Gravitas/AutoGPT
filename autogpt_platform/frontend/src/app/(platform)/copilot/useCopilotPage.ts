@@ -367,26 +367,34 @@ export function useCopilotPage() {
     });
   }, [status, sessionId]);
 
-  // When a new message appears during streaming the auto-continue turn has
-  // started — the buffer was already drained server-side, so peek and clear.
-  const prevMessageCountRef = useRef(messages.length);
+  // When a NEW USER message appears during streaming the auto-continue turn has
+  // started (SDK path drained pending messages and kicked off a new turn).
+  // Only clear the indicator in that case — clearing on every new message would
+  // wipe the indicator the moment the assistant starts responding, which is
+  // wrong: the backend has already drained the buffer at turn start so the
+  // peek would return empty even though the queued messages haven't finished
+  // being processed.
+  const prevUserMessageCountRef = useRef(
+    messages.filter((m) => m.role === "user").length,
+  );
   useEffect(() => {
+    const userMessageCount = messages.filter((m) => m.role === "user").length;
     const isActive = status === "streaming" || status === "submitted";
     if (
       !isActive ||
       !sessionId ||
-      messages.length <= prevMessageCountRef.current
+      userMessageCount <= prevUserMessageCountRef.current
     ) {
-      prevMessageCountRef.current = messages.length;
+      prevUserMessageCountRef.current = userMessageCount;
       return;
     }
-    prevMessageCountRef.current = messages.length;
+    prevUserMessageCountRef.current = userMessageCount;
     void getV2GetPendingMessages(sessionId).then((res) => {
       if (res.status === 200 && res.data.count === 0) {
         setQueuedMessages([]);
       }
     });
-  }, [messages.length, status, sessionId]);
+  }, [messages, status, sessionId]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
   const titlePollRef = useRef<ReturnType<typeof setInterval>>();

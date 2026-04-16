@@ -963,11 +963,12 @@ async def stream_chat_completion_baseline(
     # Drain any messages the user queued via POST /messages/pending
     # while this session was idle (or during a previous turn whose
     # mid-loop drains missed them).
-    # The drained content is prepended into ``message`` so the model sees it
-    # in chronological order.  The already-saved user message in the DB is
-    # updated via update_message_content_by_sequence rather than inserting a
-    # new row, because routes.py has already saved the user message before the
-    # executor picks up the turn (using insert_pending_before_last +
+    # The drained content is appended after ``message`` so the user's submitted
+    # message remains the leading context (better UX: the user sent their primary
+    # message first, queued follow-ups second).  The already-saved user message
+    # in the DB is updated via update_message_content_by_sequence rather than
+    # inserting a new row, because routes.py has already saved the user message
+    # before the executor picks up the turn (using insert_pending_before_last +
     # persist_session_safe would add a duplicate row at sequence N+1).
     drained_at_start_content = await drain_pending_safe(session_id, "[Baseline]")
     if drained_at_start_content:
@@ -976,9 +977,10 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_content),
             session_id,
         )
-        # Prepend so the model sees them in chronological order: pending → current.
+        # Append so the user's submitted message is the primary context;
+        # queued follow-ups trail it: current → pending.
         if message and message.strip():
-            message = "\n\n".join(drained_at_start_content) + "\n\n" + message
+            message = message + "\n\n" + "\n\n".join(drained_at_start_content)
         else:
             message = "\n\n".join(drained_at_start_content)
         # Update the in-memory content of the already-saved user message
