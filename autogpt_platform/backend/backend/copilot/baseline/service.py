@@ -720,16 +720,15 @@ def is_transcript_stale(dl: TranscriptDownload | None, session_msg_count: int) -
 
 
 def should_upload_transcript(
-    user_id: str | None, transcript_covers_prefix: bool
+    user_id: str | None, upload_safe: bool
 ) -> bool:
     """Return ``True`` when the caller should upload the final transcript.
 
-    Uploads require a logged-in user (for the storage key) *and* a
-    transcript that covered the session prefix when loaded — otherwise
-    we'd be overwriting a more complete version in storage with a
-    partial one built from just the current turn.
+    Uploads require a logged-in user (for the storage key) *and* a safe
+    upload signal from ``_load_prior_transcript`` — i.e. GCS does not hold a
+    newer version that we'd be overwriting.
     """
-    return bool(user_id) and transcript_covers_prefix
+    return bool(user_id) and upload_safe
 
 
 async def _load_prior_transcript(
@@ -740,24 +739,30 @@ async def _load_prior_transcript(
 ) -> bool:
     """Download and load the prior transcript into ``transcript_builder``.
 
-    Returns ``True`` when the loaded transcript fully covers the session
-    prefix; ``False`` otherwise (stale, missing, invalid, or download
-    error).  Callers should suppress uploads when this returns ``False``
-    to avoid overwriting a more complete version in storage.
+    Returns ``True`` when upload is safe at the end of this turn; ``False``
+    when GCS has a *newer* version that we must not overwrite (stale case).
+
+    Upload is suppressed only for **stale** transcripts (GCS watermark >
+    current turn's prefix) and **download errors** (we can't know what GCS
+    holds).  Missing and invalid transcripts return ``True`` because there is
+    nothing in GCS worth protecting — uploading is always safe.
     """
     try:
         dl = await download_transcript(user_id, session_id, log_prefix="[Baseline]")
     except Exception as e:
         logger.warning("[Baseline] Transcript download failed: %s", e)
+        # Unknown GCS state — be conservative and skip upload.
         return False
 
     if dl is None:
-        logger.debug("[Baseline] No transcript available")
-        return False
+        logger.debug("[Baseline] No transcript available — will upload fresh")
+        # Nothing in GCS to protect; allow upload.
+        return True
 
     if not validate_transcript(dl.content):
-        logger.warning("[Baseline] Downloaded transcript but invalid")
-        return False
+        logger.warning("[Baseline] Downloaded transcript is invalid — will overwrite")
+        # Corrupt file in GCS; uploading a valid one is strictly better.
+        return True
 
     if is_transcript_stale(dl, session_msg_count):
         logger.warning(
@@ -765,6 +770,7 @@ async def _load_prior_transcript(
             dl.message_count,
             session_msg_count,
         )
+        # GCS watermark is ahead of this turn — do not overwrite.
         return False
 
     transcript_builder.load_previous(dl.content, log_prefix="[Baseline]")
@@ -897,7 +903,7 @@ async def stream_chat_completion_baseline(
 
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()
-    transcript_covers_prefix = True
+    transcript_upload_safe = True
 
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
@@ -916,7 +922,7 @@ async def stream_chat_completion_baseline(
     # on the request critical path.
     if user_id and len(session.messages) > 1:
         (
-            transcript_covers_prefix,
+            transcript_upload_safe,
             (base_system_prompt, understanding),
         ) = await asyncio.gather(
             _load_prior_transcript(
@@ -1308,7 +1314,7 @@ async def stream_chat_completion_baseline(
                     stop_reason=STOP_REASON_END_TURN,
                 )
 
-        if user_id and should_upload_transcript(user_id, transcript_covers_prefix):
+        if user_id and should_upload_transcript(user_id, transcript_upload_safe):
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,
