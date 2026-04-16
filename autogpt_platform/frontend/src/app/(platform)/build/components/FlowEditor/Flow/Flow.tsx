@@ -110,7 +110,7 @@ export const Flow = () => {
             event.preventDefault();
           }}
           maxZoom={2}
-          minZoom={0.1}
+          minZoom={0.05}
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodesDraggable={!isLocked}

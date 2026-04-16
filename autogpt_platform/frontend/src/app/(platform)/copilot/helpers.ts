@@ -2,6 +2,8 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/supabase/actions";
 import type { UIMessage } from "ai";
 
+import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
+
 export const ORIGINAL_TITLE = "AutoGPT";
 
 /**
@@ -48,6 +50,24 @@ export function parseSessionIDs(raw: string | null | undefined): Set<string> {
   } catch {
     return new Set();
   }
+}
+
+/**
+ * Resolve the actual dry_run value for a session from the raw API response.
+ * Returns true only when the session response is a 200 with metadata.dry_run === true.
+ * Returns false for missing/non-200 responses so callers never show a stale
+ * preference value when the real session state is unknown.
+ */
+export function resolveSessionDryRun(queryData: unknown): boolean {
+  if (
+    queryData == null ||
+    typeof queryData !== "object" ||
+    !("status" in queryData) ||
+    (queryData as { status: unknown }).status !== 200
+  )
+    return false;
+  const d = queryData as { data?: { metadata?: { dry_run?: unknown } } };
+  return d.data?.metadata?.dry_run === true;
 }
 
 /**
@@ -154,7 +174,18 @@ export function shouldSuppressDuplicateSend(
 }
 
 /**
- * Deduplicate messages by ID and by content fingerprint.
+ * Fire-and-forget: tell the backend to release XREAD listeners for a session.
+ *
+ * Called on session switch so the backend doesn't wait for its 5-10 s timeout
+ * before cleaning up. Failures are silently ignored — the backend will
+ * eventually clean up on its own.
+ */
+export function disconnectSessionStream(sessionId: string): void {
+  deleteV2DisconnectSessionStream(sessionId).catch(() => {});
+}
+
+/**
+ * Deduplicate messages by ID and by consecutive content fingerprint.
  *
  * ID dedup catches exact duplicates within the same source.
  * Content dedup uses a composite key of `role + preceding-user-message-id +

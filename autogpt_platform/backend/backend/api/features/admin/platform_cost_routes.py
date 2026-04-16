@@ -43,6 +43,7 @@ async def get_cost_dashboard(
     model: str | None = Query(None),
     block_name: str | None = Query(None),
     tracking_type: str | None = Query(None),
+    graph_exec_id: str | None = Query(None),
 ):
     logger.info("Admin %s fetching platform cost dashboard", admin_user_id)
     return await get_platform_cost_dashboard(
@@ -53,6 +54,7 @@ async def get_cost_dashboard(
         model=model,
         block_name=block_name,
         tracking_type=tracking_type,
+        graph_exec_id=graph_exec_id,
     )
 
 
@@ -72,6 +74,7 @@ async def get_cost_logs(
     model: str | None = Query(None),
     block_name: str | None = Query(None),
     tracking_type: str | None = Query(None),
+    graph_exec_id: str | None = Query(None),
 ):
     logger.info("Admin %s fetching platform cost logs", admin_user_id)
     logs, total = await get_platform_cost_logs(
@@ -84,6 +87,7 @@ async def get_cost_logs(
         model=model,
         block_name=block_name,
         tracking_type=tracking_type,
+        graph_exec_id=graph_exec_id,
     )
     total_pages = (total + page_size - 1) // page_size
     return PlatformCostLogsResponse(
@@ -117,6 +121,7 @@ async def export_cost_logs(
     model: str | None = Query(None),
     block_name: str | None = Query(None),
     tracking_type: str | None = Query(None),
+    graph_exec_id: str | None = Query(None),
 ):
     logger.info("Admin %s exporting platform cost logs", admin_user_id)
     logs, truncated = await get_platform_cost_logs_for_export(
@@ -127,6 +132,7 @@ async def export_cost_logs(
         model=model,
         block_name=block_name,
         tracking_type=tracking_type,
+        graph_exec_id=graph_exec_id,
     )
     return PlatformCostExportResponse(
         logs=logs,

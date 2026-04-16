@@ -22,6 +22,7 @@ from .service import (
     _iter_sdk_messages,
     _normalize_model_name,
     _reduce_context,
+    _restore_cli_session_for_turn,
     _TokenUsage,
 )
 
@@ -392,7 +393,9 @@ class TestNormalizeModelName:
 
     def test_sonnet_openrouter_model(self):
         """Sonnet model as stored in config (OpenRouter-prefixed) strips cleanly."""
-        assert _normalize_model_name("anthropic/claude-sonnet-4") == "claude-sonnet-4"
+        assert (
+            _normalize_model_name("anthropic/claude-sonnet-4-6") == "claude-sonnet-4-6"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -410,7 +413,14 @@ class TestTokenUsageNullSafety:
     """
 
     def _apply_usage(self, usage: dict, acc: _TokenUsage) -> None:
-        """Mirror the production accumulation in sdk/service.py."""
+        """Null-safe accumulation: ``or 0`` treats missing/None as zero.
+
+        Uses ``usage.get("key") or 0`` rather than ``usage.get("key", 0)``
+        because the latter returns ``None`` when the key exists with a null
+        value, which would raise ``TypeError`` on ``int += None``.  This is
+        the intentional pattern that fixes the OpenRouter initial-stream-event
+        bug described in the class docstring.
+        """
         acc.prompt_tokens += usage.get("input_tokens") or 0
         acc.cache_read_tokens += usage.get("cache_read_input_tokens") or 0
         acc.cache_creation_tokens += usage.get("cache_creation_input_tokens") or 0
@@ -477,3 +487,469 @@ class TestTokenUsageNullSafety:
         assert acc.cache_read_tokens == 16600
         assert acc.cache_creation_tokens == 512
         assert acc.completion_tokens == 349
+
+
+# ---------------------------------------------------------------------------
+# session_id / resume selection logic
+# ---------------------------------------------------------------------------
+
+
+def _build_sdk_options(
+    use_resume: bool,
+    resume_file: str | None,
+    session_id: str,
+) -> dict:
+    """Mirror the session_id/resume selection in stream_chat_completion_sdk.
+
+    This helper encodes the exact branching so the unit tests stay in sync
+    with the production code without needing to invoke the full generator.
+    """
+    kwargs: dict = {}
+    if use_resume and resume_file:
+        kwargs["resume"] = resume_file
+    else:
+        kwargs["session_id"] = session_id
+    return kwargs
+
+
+def _build_retry_sdk_options(
+    initial_kwargs: dict,
+    ctx_use_resume: bool,
+    ctx_resume_file: str | None,
+    session_id: str,
+) -> dict:
+    """Mirror the retry branch in stream_chat_completion_sdk."""
+    retry: dict = dict(initial_kwargs)
+    if ctx_use_resume and ctx_resume_file:
+        retry["resume"] = ctx_resume_file
+        retry.pop("session_id", None)
+    elif "session_id" in initial_kwargs:
+        retry.pop("resume", None)
+        retry["session_id"] = session_id
+    else:
+        retry.pop("resume", None)
+        retry.pop("session_id", None)
+    return retry
+
+
+class TestSdkSessionIdSelection:
+    """Verify that session_id is set for all non-resume turns.
+
+    Regression test for the mode-switch T1 bug: when a user switches from
+    baseline mode (fast) to SDK mode (extended_thinking) mid-session, the
+    first SDK turn has has_history=True but no CLI session file.  The old
+    code gated session_id on ``not has_history``, so mode-switch T1 never
+    got a session_id — the CLI used a random ID that couldn't be found on
+    the next turn, causing --resume to fail for the whole session.
+    """
+
+    SESSION_ID = "sess-abc123"
+
+    def test_t1_fresh_sets_session_id(self):
+        """T1 of a fresh session always gets session_id."""
+        opts = _build_sdk_options(
+            use_resume=False,
+            resume_file=None,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("session_id") == self.SESSION_ID
+        assert "resume" not in opts
+
+    def test_mode_switch_t1_sets_session_id(self):
+        """Mode-switch T1 (has_history=True, no CLI session) gets session_id.
+
+        Before the fix, the ``elif not has_history`` guard prevented this
+        case from setting session_id, causing all subsequent turns to run
+        without --resume.
+        """
+        # Mode-switch T1: use_resume=False (no prior CLI session) and
+        # has_history=True (prior baseline turns in DB). The old code
+        # (``elif not has_history``) silently skipped this case.
+        opts = _build_sdk_options(
+            use_resume=False,
+            resume_file=None,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("session_id") == self.SESSION_ID
+        assert "resume" not in opts
+
+    def test_t2_with_resume_uses_resume(self):
+        """T2+ with a restored CLI session uses --resume, not session_id."""
+        opts = _build_sdk_options(
+            use_resume=True,
+            resume_file=self.SESSION_ID,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("resume") == self.SESSION_ID
+        assert "session_id" not in opts
+
+    def test_t2_without_resume_sets_session_id(self):
+        """T2+ when restore failed still gets session_id (no prior file on disk)."""
+        opts = _build_sdk_options(
+            use_resume=False,
+            resume_file=None,
+            session_id=self.SESSION_ID,
+        )
+        assert opts.get("session_id") == self.SESSION_ID
+        assert "resume" not in opts
+
+    def test_retry_keeps_session_id_for_t1(self):
+        """Retry for T1 (or mode-switch T1) preserves session_id."""
+        initial = _build_sdk_options(False, None, self.SESSION_ID)
+        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        assert retry.get("session_id") == self.SESSION_ID
+        assert "resume" not in retry
+
+    def test_retry_removes_session_id_for_t2_plus(self):
+        """Retry for T2+ (initial used --resume) removes session_id to avoid conflict."""
+        initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
+        # T2+ retry where context reduction dropped --resume
+        retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
+        assert "session_id" not in retry
+        assert "resume" not in retry
+
+    def test_retry_t2_with_resume_sets_resume(self):
+        """Retry that still uses --resume keeps --resume and drops session_id."""
+        initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
+        retry = _build_retry_sdk_options(
+            initial, True, self.SESSION_ID, self.SESSION_ID
+        )
+        assert retry.get("resume") == self.SESSION_ID
+        assert "session_id" not in retry
+
+
+# ---------------------------------------------------------------------------
+# _restore_cli_session_for_turn — mode check
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreCliSessionModeCheck:
+    """SDK skips --resume when the transcript was written by the baseline mode."""
+
+    @pytest.mark.asyncio
+    async def test_baseline_mode_transcript_skips_gcs_content(self, tmp_path):
+        """A transcript with mode='baseline' must not be used as the --resume source.
+
+        The mode check discards the GCS baseline content and falls back to DB
+        reconstruction from session.messages instead.
+        """
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatMessage, ChatSession
+        from backend.copilot.transcript import TranscriptDownload
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        session = ChatSession(
+            session_id="test-session",
+            user_id="user-1",
+            messages=[
+                ChatMessage(role="user", content="hello-unique-marker"),
+                ChatMessage(role="assistant", content="world-unique-marker"),
+                ChatMessage(role="user", content="follow up"),
+            ],
+            title="test",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        builder = TranscriptBuilder()
+        # Baseline content with a sentinel that must NOT appear in the final transcript
+        baseline_restore = TranscriptDownload(
+            content=b'{"type":"user","uuid":"bad-uuid","message":{"role":"user","content":"BASELINE_SENTINEL"}}\n',
+            message_count=1,
+            mode="baseline",
+        )
+
+        import backend.copilot.sdk.service as _svc_mod
+
+        download_mock = AsyncMock(return_value=baseline_restore)
+        with (
+            patch(
+                "backend.copilot.sdk.service.download_transcript",
+                new=download_mock,
+            ),
+            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
+        ):
+            result = await _restore_cli_session_for_turn(
+                user_id="user-1",
+                session_id="test-session",
+                session=session,
+                sdk_cwd=str(tmp_path),
+                transcript_builder=builder,
+                log_prefix="[Test]",
+            )
+
+        # download_transcript was called (attempted GCS restore)
+        download_mock.assert_awaited_once()
+        # use_resume must be False — baseline transcripts cannot be used with --resume
+        assert result.use_resume is False
+        # context_messages must be populated — new behaviour uses transcript content + gap
+        # instead of full DB reconstruction.
+        assert result.context_messages is not None
+        # The baseline transcript has 1 user message (BASELINE_SENTINEL).
+        # Watermark=1 but position 0 is 'user', not 'assistant', so detect_gap returns [].
+        # Result: 1 message from transcript, no gap.
+        assert len(result.context_messages) == 1
+        assert "BASELINE_SENTINEL" in (result.context_messages[0].content or "")
+
+    @pytest.mark.asyncio
+    async def test_sdk_mode_transcript_allows_resume(self, tmp_path):
+        """A valid SDK-written transcript is accepted for --resume."""
+        import json as stdlib_json
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatMessage, ChatSession
+        from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        lines = [
+            stdlib_json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "uid-0",
+                    "parentUuid": "",
+                    "message": {"role": "user", "content": "hi"},
+                }
+            ),
+            stdlib_json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "uid-1",
+                    "parentUuid": "uid-0",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_1",
+                        "model": "test",
+                        "type": "message",
+                        "stop_reason": STOP_REASON_END_TURN,
+                        "content": [{"type": "text", "text": "hello"}],
+                    },
+                }
+            ),
+        ]
+        content = ("\n".join(lines) + "\n").encode("utf-8")
+
+        session = ChatSession(
+            session_id="test-session",
+            user_id="user-1",
+            messages=[
+                ChatMessage(role="user", content="hi"),
+                ChatMessage(role="assistant", content="hello"),
+                ChatMessage(role="user", content="follow up"),
+            ],
+            title="test",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        builder = TranscriptBuilder()
+        sdk_restore = TranscriptDownload(
+            content=content,
+            message_count=2,
+            mode="sdk",
+        )
+
+        import backend.copilot.sdk.service as _svc_mod
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.download_transcript",
+                new=AsyncMock(return_value=sdk_restore),
+            ),
+            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
+        ):
+            result = await _restore_cli_session_for_turn(
+                user_id="user-1",
+                session_id="test-session",
+                session=session,
+                sdk_cwd=str(tmp_path),
+                transcript_builder=builder,
+                log_prefix="[Test]",
+            )
+
+        assert result.use_resume is True
+
+    @pytest.mark.asyncio
+    async def test_baseline_mode_context_messages_from_transcript_content(
+        self, tmp_path
+    ):
+        """mode='baseline' → context_messages populated from transcript content + gap.
+
+        When a baseline-mode transcript exists, extract_context_messages converts
+        the JSONL content to ChatMessage objects and returns them in context_messages.
+        use_resume must remain False.
+        """
+        import json as stdlib_json
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatMessage, ChatSession
+        from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        # Build a minimal valid JSONL transcript with 2 messages
+        lines = [
+            stdlib_json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "uid-0",
+                    "parentUuid": "",
+                    "message": {"role": "user", "content": "TRANSCRIPT_USER"},
+                }
+            ),
+            stdlib_json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "uid-1",
+                    "parentUuid": "uid-0",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_1",
+                        "model": "test",
+                        "type": "message",
+                        "stop_reason": STOP_REASON_END_TURN,
+                        "content": [{"type": "text", "text": "TRANSCRIPT_ASSISTANT"}],
+                    },
+                }
+            ),
+        ]
+        content = ("\n".join(lines) + "\n").encode("utf-8")
+
+        session = ChatSession(
+            session_id="test-session",
+            user_id="user-1",
+            messages=[
+                ChatMessage(role="user", content="DB_USER"),
+                ChatMessage(role="assistant", content="DB_ASSISTANT"),
+                ChatMessage(role="user", content="current turn"),
+            ],
+            title="test",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        builder = TranscriptBuilder()
+        baseline_restore = TranscriptDownload(
+            content=content,
+            message_count=2,
+            mode="baseline",
+        )
+
+        import backend.copilot.sdk.service as _svc_mod
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.download_transcript",
+                new=AsyncMock(return_value=baseline_restore),
+            ),
+            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
+        ):
+            result = await _restore_cli_session_for_turn(
+                user_id="user-1",
+                session_id="test-session",
+                session=session,
+                sdk_cwd=str(tmp_path),
+                transcript_builder=builder,
+                log_prefix="[Test]",
+            )
+
+        assert result.use_resume is False
+        assert result.context_messages is not None
+        # Transcript content has 2 messages, no gap (watermark=2, session prior=2)
+        assert len(result.context_messages) == 2
+        assert result.context_messages[0].role == "user"
+        assert result.context_messages[1].role == "assistant"
+        assert "TRANSCRIPT_ASSISTANT" in (result.context_messages[1].content or "")
+        # transcript_content must be non-empty so the _seed_transcript guard in
+        # stream_chat_completion_sdk skips DB reconstruction (which would duplicate
+        # builder entries since load_previous appends).
+        assert result.transcript_content != ""
+
+    @pytest.mark.asyncio
+    async def test_baseline_mode_gap_present_context_includes_gap(self, tmp_path):
+        """mode='baseline' + gap → context_messages includes transcript msgs and gap."""
+        import json as stdlib_json
+        from datetime import UTC, datetime
+
+        from backend.copilot.model import ChatMessage, ChatSession
+        from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
+        # Transcript covers only 2 messages; session has 4 prior + current turn
+        lines = [
+            stdlib_json.dumps(
+                {
+                    "type": "user",
+                    "uuid": "uid-0",
+                    "parentUuid": "",
+                    "message": {"role": "user", "content": "TRANSCRIPT_USER_0"},
+                }
+            ),
+            stdlib_json.dumps(
+                {
+                    "type": "assistant",
+                    "uuid": "uid-1",
+                    "parentUuid": "uid-0",
+                    "message": {
+                        "role": "assistant",
+                        "id": "msg_1",
+                        "model": "test",
+                        "type": "message",
+                        "stop_reason": STOP_REASON_END_TURN,
+                        "content": [{"type": "text", "text": "TRANSCRIPT_ASSISTANT_1"}],
+                    },
+                }
+            ),
+        ]
+        content = ("\n".join(lines) + "\n").encode("utf-8")
+
+        session = ChatSession(
+            session_id="test-session",
+            user_id="user-1",
+            messages=[
+                ChatMessage(role="user", content="DB_USER_0"),
+                ChatMessage(role="assistant", content="DB_ASSISTANT_1"),
+                ChatMessage(role="user", content="GAP_USER_2"),
+                ChatMessage(role="assistant", content="GAP_ASSISTANT_3"),
+                ChatMessage(role="user", content="current turn"),
+            ],
+            title="test",
+            usage=[],
+            started_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+        builder = TranscriptBuilder()
+        baseline_restore = TranscriptDownload(
+            content=content,
+            message_count=2,  # watermark=2; session has 4 prior → gap of 2
+            mode="baseline",
+        )
+
+        import backend.copilot.sdk.service as _svc_mod
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.download_transcript",
+                new=AsyncMock(return_value=baseline_restore),
+            ),
+            patch.object(_svc_mod.config, "claude_agent_use_resume", True),
+        ):
+            result = await _restore_cli_session_for_turn(
+                user_id="user-1",
+                session_id="test-session",
+                session=session,
+                sdk_cwd=str(tmp_path),
+                transcript_builder=builder,
+                log_prefix="[Test]",
+            )
+
+        assert result.use_resume is False
+        assert result.context_messages is not None
+        # 2 from transcript + 2 gap messages = 4 total
+        assert len(result.context_messages) == 4
+        roles = [m.role for m in result.context_messages]
+        assert roles == ["user", "assistant", "user", "assistant"]
+        # Gap messages come from DB (ChatMessage objects)
+        gap_user = result.context_messages[2]
+        gap_asst = result.context_messages[3]
+        assert gap_user.content == "GAP_USER_2"
+        assert gap_asst.content == "GAP_ASSISTANT_3"

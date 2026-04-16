@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from ._format import (
     extract_episode_body,
+    extract_episode_body_raw,
     extract_episode_timestamp,
     extract_fact,
     extract_temporal_validity,
@@ -68,7 +69,7 @@ async def _fetch(user_id: str, message: str) -> str | None:
     return _format_context(edges, episodes)
 
 
-def _format_context(edges, episodes) -> str:
+def _format_context(edges, episodes) -> str | None:
     sections: list[str] = []
 
     if edges:
@@ -82,12 +83,35 @@ def _format_context(edges, episodes) -> str:
     if episodes:
         ep_lines = []
         for ep in episodes:
+            # Use raw body (no truncation) for scope parsing — truncated
+            # JSON from extract_episode_body() would fail json.loads().
+            raw_body = extract_episode_body_raw(ep)
+            if _is_non_global_scope(raw_body):
+                continue
+            display_body = extract_episode_body(ep)
             ts = extract_episode_timestamp(ep)
-            body = extract_episode_body(ep)
-            ep_lines.append(f"  - [{ts}] {body}")
-        sections.append(
-            "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"
-        )
+            ep_lines.append(f"  - [{ts}] {display_body}")
+        if ep_lines:
+            sections.append(
+                "<RECENT_EPISODES>\n" + "\n".join(ep_lines) + "\n</RECENT_EPISODES>"
+            )
+
+    if not sections:
+        return None
 
     body = "\n\n".join(sections)
     return f"<temporal_context>\n{body}\n</temporal_context>"
+
+
+def _is_non_global_scope(body: str) -> bool:
+    """Check if an episode body is a MemoryEnvelope with a non-global scope."""
+    import json
+
+    try:
+        data = json.loads(body)
+        if not isinstance(data, dict):
+            return False
+        scope = data.get("scope", "real:global")
+        return scope != "real:global"
+    except (json.JSONDecodeError, TypeError):
+        return False

@@ -9,6 +9,7 @@ import {
   MessageActions,
   MessageContent,
 } from "@/components/ai-elements/message";
+import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
@@ -111,18 +112,26 @@ function extractGraphExecId(
   return null;
 }
 
+// Max consecutive auto-triggered loads where the container remains
+// non-scrollable afterwards. Prevents chewing through history on
+// sessions whose every page collapses below viewport height. The
+// manual "Load older messages" button always remains clickable.
+const MAX_AUTO_FILL_ROUNDS = 3;
+
 /**
- * Triggers `onLoadMore` when scrolled near the top, and preserves the
- * user's scroll position after older messages are prepended to the DOM.
+ * Triggers `onLoadMore` when scrolled near the top, preserves the
+ * user's scroll position after older messages are prepended, and
+ * exposes a manual "Load older messages" button as a fallback when
+ * auto-fill backs off or the container isn't scrollable.
  *
  * Scroll preservation works by:
- * 1. Capturing `scrollHeight` / `scrollTop` in the observer callback
+ * 1. Capturing `scrollHeight` / `scrollTop` just before `onLoadMore`
  *    (synchronous, before React re-renders).
  * 2. Restoring `scrollTop` in a `useLayoutEffect` keyed on
  *    `messageCount` so it only fires when messages actually change
  *    (not on intermediate renders like the loading-spinner toggle).
  */
-function LoadMoreSentinel({
+export function LoadMoreSentinel({
   hasMore,
   isLoading,
   messageCount,
@@ -138,33 +147,43 @@ function LoadMoreSentinel({
   onLoadMoreRef.current = onLoadMore;
   // Pre-mutation scroll snapshot, written synchronously before onLoadMore
   const scrollSnapshotRef = useRef({ scrollHeight: 0, scrollTop: 0 });
+  // Consecutive auto-triggered loads that left the container non-scrollable
+  const autoFillRoundsRef = useRef(0);
+  // True if the pending load was triggered by the observer (not the button)
+  const autoTriggeredRef = useRef(false);
+  // Same-frame re-entry guard — the parent's `isLoading` flag lags by a
+  // render, so the observer or button could otherwise fire a duplicate
+  // load and overwrite the captured scroll snapshot before the first
+  // load settles.
+  const loadPendingRef = useRef(false);
   const { scrollRef } = useStickToBottomContext();
 
-  // IntersectionObserver to trigger load when sentinel is near viewport.
-  // Only fires when the container is actually scrollable to prevent
-  // exhausting all pages when content fits without scrolling.
+  useEffect(() => {
+    if (!isLoading) loadPendingRef.current = false;
+  }, [isLoading]);
+
+  function captureAndLoad(fromObserver: boolean) {
+    if (loadPendingRef.current) return;
+    loadPendingRef.current = true;
+    const el = scrollRef.current;
+    if (el) {
+      scrollSnapshotRef.current = {
+        scrollHeight: el.scrollHeight,
+        scrollTop: el.scrollTop,
+      };
+    }
+    autoTriggeredRef.current = fromObserver;
+    onLoadMoreRef.current();
+  }
+
   useEffect(() => {
     if (!sentinelRef.current || !hasMore || isLoading) return;
+    if (autoFillRoundsRef.current >= MAX_AUTO_FILL_ROUNDS) return;
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
-        const scrollParent =
-          sentinelRef.current?.closest('[role="log"]') ??
-          sentinelRef.current?.parentElement;
-        if (
-          scrollParent &&
-          scrollParent.scrollHeight <= scrollParent.clientHeight
-        )
-          return;
-        // Capture scroll metrics *before* the state update
-        const el = scrollRef.current;
-        if (el) {
-          scrollSnapshotRef.current = {
-            scrollHeight: el.scrollHeight,
-            scrollTop: el.scrollTop,
-          };
-        }
-        onLoadMoreRef.current();
+        if (autoFillRoundsRef.current >= MAX_AUTO_FILL_ROUNDS) return;
+        captureAndLoad(true);
       },
       { rootMargin: "200px 0px 0px 0px" },
     );
@@ -186,12 +205,40 @@ function LoadMoreSentinel({
     if (delta > 0) {
       el.scrollTop = prevTop + delta;
     }
+    // Reset the auto-fill backoff whenever the container becomes
+    // scrollable (from any load), so a manual button click can unstick
+    // auto-fill after it has hit the cap. Only count non-scrollable
+    // outcomes against the cap when the load itself was auto-triggered.
+    if (el.scrollHeight > el.clientHeight) {
+      autoFillRoundsRef.current = 0;
+    } else if (autoTriggeredRef.current) {
+      autoFillRoundsRef.current += 1;
+    }
     scrollSnapshotRef.current = { scrollHeight: 0, scrollTop: 0 };
+    autoTriggeredRef.current = false;
   }, [messageCount, scrollRef]);
 
   return (
-    <div ref={sentinelRef} className="flex justify-center py-1">
-      {isLoading && <LoadingSpinner className="h-5 w-5 text-neutral-400" />}
+    <div
+      ref={sentinelRef}
+      className="flex flex-col items-center justify-center gap-2 py-1"
+    >
+      {isLoading ? (
+        <LoadingSpinner
+          data-testid="load-more-spinner"
+          className="h-5 w-5 text-neutral-400"
+        />
+      ) : (
+        hasMore && (
+          <Button
+            variant="ghost"
+            size="small"
+            onClick={() => captureAndLoad(false)}
+          >
+            Load older messages
+          </Button>
+        )
+      )}
     </div>
   );
 }
