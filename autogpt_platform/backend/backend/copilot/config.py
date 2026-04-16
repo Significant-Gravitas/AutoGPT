@@ -29,13 +29,13 @@ class ChatConfig(BaseSettings):
 
     # OpenAI API Configuration
     model: str = Field(
-        default="anthropic/claude-sonnet-4",
+        default="anthropic/claude-sonnet-4-6",
         description="Default model for extended thinking mode. "
-        "Changed from Opus ($15/$75 per M) to Sonnet ($3/$15 per M) — "
-        "5x cheaper. Override via CHAT_MODEL env var for Opus.",
+        "Uses Sonnet 4.6 as the balanced default. "
+        "Override via CHAT_MODEL env var if you want a different default.",
     )
     fast_model: str = Field(
-        default="anthropic/claude-sonnet-4",
+        default="anthropic/claude-sonnet-4-6",
         description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
     )
     title_model: str = Field(
@@ -156,9 +156,10 @@ class ChatConfig(BaseSettings):
         "history compression. Falls back to compression when unavailable.",
     )
     claude_agent_fallback_model: str = Field(
-        default="claude-sonnet-4-20250514",
+        default="",
         description="Fallback model when the primary model is unavailable (e.g. 529 "
-        "overloaded). The SDK automatically retries with this cheaper model.",
+        "overloaded). The SDK automatically retries with this cheaper model. "
+        "Empty string disables the fallback (no --fallback-model flag passed to CLI).",
     )
     claude_agent_max_turns: int = Field(
         default=50,
