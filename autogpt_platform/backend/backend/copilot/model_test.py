@@ -832,3 +832,89 @@ async def test_append_and_save_message_invalidates_cache_on_cache_failure(
     # DB write succeeded, cache invalidation was called
     mock_invalidate.assert_called_once_with(session.session_id)
     assert result is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_uses_db_when_redis_unavailable(
+    mocker: MockerFixture,
+) -> None:
+    """When get_redis_async raises, _get_session_lock yields False (degraded) and DB is read."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        side_effect=ConnectionError("redis down"),
+    )
+    mock_get_from_db = mocker.patch(
+        "backend.copilot.model._get_session_from_db",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    new_msg = ChatMessage(role="user", content="new msg")
+    result = await append_and_save_message(session.session_id, new_msg)
+    mock_get_from_db.assert_called_once_with(session.session_id)
+    assert result is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_lock_release_failure_is_ignored(
+    mocker: MockerFixture,
+) -> None:
+    """If lock.release() raises, the exception is swallowed (TTL will clean up)."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock(
+        side_effect=RuntimeError("release failed")
+    )
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    new_msg = ChatMessage(role="user", content="new msg")
+    result = await append_and_save_message(session.session_id, new_msg)
+    assert result is not None
