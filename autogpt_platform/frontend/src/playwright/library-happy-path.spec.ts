@@ -386,10 +386,7 @@ test("library happy path: user can edit a saved agent from Library and keep chan
     .waitForEvent("page", { timeout: 10000 })
     .catch(() => null);
   // "Edit agent" link is inside the three-dot dropdown menu
-  await agentCard
-    .getByRole("button", { name: "More actions" })
-    .first()
-    .click();
+  await agentCard.getByRole("button", { name: "More actions" }).first().click();
   await page
     .getByTestId("library-agent-card-open-in-builder-link")
     .first()
