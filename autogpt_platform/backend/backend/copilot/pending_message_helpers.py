@@ -108,6 +108,8 @@ def insert_pending_before_last(session: "ChatSession", texts: list[str]) -> None
     a warning is logged and the messages are appended at index 0 so they
     are not silently lost.
     """
+    if not texts:
+        return
     if not session.messages:
         logger.warning(
             "insert_pending_before_last: session.messages is empty — "
