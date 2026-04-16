@@ -129,7 +129,12 @@ config = ChatConfig()
 
 
 class _SystemPromptPreset(SystemPromptPreset, total=False):
-    """Extends SystemPromptPreset with fields added in claude-agent-sdk 0.1.59."""
+    """Extends :class:`SystemPromptPreset` with ``exclude_dynamic_sections``.
+
+    The field was added to the upstream TypedDict in claude-agent-sdk 0.1.59.
+    Until the package is pinned to that version we declare it locally so Pyright
+    accepts the kwarg without a ``# type: ignore`` comment.
+    """
 
     exclude_dynamic_sections: NotRequired[bool]
 
@@ -897,7 +902,7 @@ def _write_cli_session_to_disk(
         return False
 
 
-def _read_cli_session_from_disk(
+def read_cli_session_from_disk(
     sdk_cwd: str,
     session_id: str,
     log_prefix: str,
@@ -977,7 +982,7 @@ def _read_cli_session_from_disk(
     return stripped_bytes
 
 
-def _process_cli_restore(
+def process_cli_restore(
     cli_restore: TranscriptDownload,
     sdk_cwd: str,
     session_id: str,
@@ -2513,9 +2518,7 @@ async def _restore_cli_session_for_turn(
     # session path, so we validate BEFORE any disk write.
     stripped = ""
     if cli_restore is not None and sdk_cwd:
-        stripped, ok = _process_cli_restore(
-            cli_restore, sdk_cwd, session_id, log_prefix
-        )
+        stripped, ok = process_cli_restore(cli_restore, sdk_cwd, session_id, log_prefix)
         if not ok:
             result.transcript_covers_prefix = False
             cli_restore = None
@@ -3724,7 +3727,7 @@ async def stream_chat_completion_sdk(
         # this turn ran without --resume (restore failed or first T2+ on a new
         # pod), the T1 session file at the expected path may still be present
         # and should be re-uploaded so the next turn can resume from it.
-        # _read_cli_session_from_disk returns None when the file is absent, so
+        # read_cli_session_from_disk returns None when the file is absent, so
         # this is always safe.
         #
         # Intentionally NOT gated on skip_transcript_upload: that flag is set
@@ -3753,7 +3756,7 @@ async def stream_chat_completion_sdk(
             try:
                 # Read the CLI's native session file from disk (written by the CLI
                 # after the turn), then upload the bytes to GCS.
-                _cli_content = _read_cli_session_from_disk(
+                _cli_content = read_cli_session_from_disk(
                     sdk_cwd, session_id, log_prefix
                 )
                 if _cli_content:
