@@ -163,10 +163,42 @@ async def get_chat_messages_paginated(
                 # very start of the conversation (sequence 0).
                 if boundary_msgs[0].sequence > 0:
                     has_more = True
+    else:
+        # Forward mode: DB returned ASC.
+        # Tool-call tail boundary fix: if the last message in this page is a
+        # tool message, the NEXT forward page would start after it and begin
+        # mid-tool-group — the owning assistant message is on this page but
+        # the following tool results are on the next page.
+        # Trim the current page so it ends on the owning assistant message,
+        # which keeps tool groups intact across page boundaries.
+        if results and results[-1].role == "tool":
+            # Walk backward through results to find the last non-tool message.
+            trim_idx = len(results) - 1
+            while trim_idx >= 0 and results[trim_idx].role == "tool":
+                trim_idx -= 1
+
+            if trim_idx >= 0:
+                # Trim results so the page ends at the owning assistant.
+                # Mark has_more=True so the client knows to fetch the rest.
+                results = results[: trim_idx + 1]
+                has_more = True
+            else:
+                # Entire page is tool messages with no visible owner — log and
+                # keep as-is so the caller is not stuck with an empty page.
+                logger.warning(
+                    "Forward tail boundary: entire page is tool messages "
+                    "for session=%s, no owning assistant found (%d msgs)",
+                    session_id,
+                    len(results),
+                )
 
     messages = [ChatMessage.from_db(m) for m in results]
     oldest_sequence = messages[0].sequence if messages else None
-    newest_sequence = messages[-1].sequence if messages else None
+    # newest_sequence is only meaningful in forward mode; in backward mode it
+    # points to the last message of the page (not the session's newest message)
+    # which is not a valid forward cursor.  Return None in backward mode so
+    # clients don't accidentally use it as one.
+    newest_sequence = messages[-1].sequence if (messages and forward) else None
 
     return PaginatedMessages(
         messages=messages,

@@ -358,6 +358,60 @@ describe("useLoadMoreMessages", () => {
 
       expect(result.current.hasMore).toBe(false);
     });
+
+    it("forward truncation keeps first MAX_OLDER_MESSAGES items (not last)", async () => {
+      // 1990 messages already paged; load 20 more forward — total 2010 > 2000.
+      // Forward truncation must keep slice(0, 2000), not slice(-2000),
+      // to preserve the beginning of the conversation.
+      const forwardNearLimitArgs = {
+        ...BASE_ARGS,
+        forwardPaginated: true,
+        initialNewestSequence: 49,
+        initialOldestSequence: 0,
+        initialHasMore: true,
+      };
+
+      const { result } = renderHook((props) => useLoadMoreMessages(props), {
+        initialProps: forwardNearLimitArgs,
+      });
+
+      // First load: 1990 messages — advances newestSequence to 2039
+      mockGetV2GetSession.mockResolvedValueOnce(
+        makeSuccessResponse({
+          messages: Array.from({ length: 1990 }, (_, i) => ({
+            role: "assistant",
+            content: `msg ${i + 50}`,
+            sequence: i + 50,
+          })),
+          has_more_messages: true,
+          newest_sequence: 2039,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.loadMore();
+      });
+
+      // Second load: 20 more messages pushes total to 2010 > 2000 — hasMore=false
+      mockGetV2GetSession.mockResolvedValueOnce(
+        makeSuccessResponse({
+          messages: Array.from({ length: 20 }, (_, i) => ({
+            role: "assistant",
+            content: `msg ${i + 2040}`,
+            sequence: i + 2040,
+          })),
+          has_more_messages: false,
+          newest_sequence: 2059,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.loadMore();
+      });
+
+      // After truncation, hasMore is forced false (total ≥ MAX_OLDER_MESSAGES).
+      expect(result.current.hasMore).toBe(false);
+    });
   });
 
   describe("loadMore — null cursor guard", () => {

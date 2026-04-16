@@ -158,7 +158,15 @@ export function useLoadMoreMessages({
           ? [...prev, ...newRaw]
           : [...newRaw, ...prev];
         if (merged.length > MAX_OLDER_MESSAGES) {
-          return merged.slice(merged.length - MAX_OLDER_MESSAGES);
+          // Backward: discard the oldest (front) items — user has scrolled far
+          // back and we shed the furthest history.
+          // Forward: discard the newest (tail) items — we only ever fetch
+          // forward, so the tail is the most recently appended page; shedding
+          // it means the sentinel stalls, which is safer than discarding the
+          // beginning of the conversation the user is here to read.
+          return forwardPaginated
+            ? merged.slice(0, MAX_OLDER_MESSAGES)
+            : merged.slice(merged.length - MAX_OLDER_MESSAGES);
         }
         return merged;
       });
