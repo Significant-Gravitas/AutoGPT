@@ -253,6 +253,23 @@ async def test_drain_decodes_bytes_payloads(
     assert drained[0].content == "from bytes"
 
 
+@pytest.mark.asyncio
+async def test_peek_decodes_bytes_payloads(
+    fake_redis: _FakeRedis,
+) -> None:
+    """``peek_pending_messages`` uses the same ``_decode_redis_item`` helper
+    as the drain path.  Seed with bytes to guard against regression.
+    """
+    fake_redis.lists["copilot:pending:peek_bytes_sess"] = [
+        json.dumps({"content": "peeked from bytes"}).encode("utf-8"),
+    ]
+    peeked = await peek_pending_messages("peek_bytes_sess")
+    assert len(peeked) == 1
+    assert peeked[0].content == "peeked from bytes"
+    # peek must NOT consume the item
+    assert fake_redis.lists["copilot:pending:peek_bytes_sess"] != []
+
+
 # ── Concurrency ─────────────────────────────────────────────────────
 
 
