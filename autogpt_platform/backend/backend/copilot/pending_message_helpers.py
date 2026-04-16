@@ -45,6 +45,10 @@ return count
 async def check_pending_call_rate(user_id: str) -> int:
     """Increment and return the per-user push counter for the current window.
 
+    The counter is **user-global**: it counts pushes across ALL sessions
+    belonging to the user, not per-session.  This prevents a client from
+    bypassing the cap by spreading rapid pushes across many sessions.
+
     Returns the new call count.  Raises nothing — callers compare the
     return value against ``PENDING_CALL_LIMIT`` and decide what to do.
     Fails open (returns 0) if Redis is unavailable so the endpoint stays
