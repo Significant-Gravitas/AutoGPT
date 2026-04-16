@@ -1,7 +1,7 @@
 """Integration tests for baseline transcript flow.
 
-Exercises the real helpers in ``baseline/service.py`` that download,
-validate, load, append to, backfill, and upload the transcript.
+Exercises the real helpers in ``baseline/service.py`` that restore,
+validate, load, append to, backfill, and upload the CLI session.
 Storage is mocked via ``download_transcript`` / ``upload_transcript``
 patches; no network access is required.
 """
@@ -12,13 +12,14 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.baseline.service import (
+    _append_gap_to_builder,
     _load_prior_transcript,
     _record_turn_to_transcript,
     _resolve_baseline_model,
     _upload_final_transcript,
-    is_transcript_stale,
     should_upload_transcript,
 )
+from backend.copilot.model import ChatMessage
 from backend.copilot.service import config
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -54,6 +55,13 @@ def _make_transcript_content(*roles: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _make_session_messages(*roles: str) -> list[ChatMessage]:
+    """Build a list of ChatMessage objects matching the given roles."""
+    return [
+        ChatMessage(role=r, content=f"{r} message {i}") for i, r in enumerate(roles)
+    ]
+
+
 class TestResolveBaselineModel:
     """Model selection honours the per-request mode."""
 
@@ -73,89 +81,102 @@ class TestResolveBaselineModel:
 
 
 class TestLoadPriorTranscript:
-    """``_load_prior_transcript`` wraps the download + validate + load flow."""
+    """``_load_prior_transcript`` wraps the CLI session restore + validate + load flow."""
 
     @pytest.mark.asyncio
     async def test_loads_fresh_transcript(self):
         builder = TranscriptBuilder()
         content = _make_transcript_content("user", "assistant")
-        download = TranscriptDownload(content=content, message_count=2)
+        restore = TranscriptDownload(
+            content=content.encode("utf-8"), message_count=2, mode="sdk"
+        )
 
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            covers = await _load_prior_transcript(
+            covers, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=3,
+                session_messages=_make_session_messages("user", "assistant", "user"),
                 transcript_builder=builder,
             )
 
         assert covers is True
+        assert dl is not None
+        assert dl.message_count == 2
         assert builder.entry_count == 2
         assert builder.last_entry_type == "assistant"
 
     @pytest.mark.asyncio
-    async def test_rejects_stale_transcript(self):
-        """msg_count strictly less than session-1 is treated as stale."""
+    async def test_fills_gap_when_transcript_is_behind(self):
+        """When transcript covers fewer messages than session, gap is filled from DB."""
         builder = TranscriptBuilder()
         content = _make_transcript_content("user", "assistant")
-        # session has 6 messages, transcript only covers 2 → stale.
-        download = TranscriptDownload(content=content, message_count=2)
+        # transcript covers 2 messages, session has 4 (plus current user turn = 5)
+        restore = TranscriptDownload(
+            content=content.encode("utf-8"), message_count=2, mode="baseline"
+        )
 
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            covers = await _load_prior_transcript(
+            covers, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=6,
+                session_messages=_make_session_messages(
+                    "user", "assistant", "user", "assistant", "user"
+                ),
                 transcript_builder=builder,
             )
 
-        assert covers is False
-        assert builder.is_empty
+        assert covers is True
+        assert dl is not None
+        # 2 from transcript + 2 gap messages (user+assistant at positions 2,3)
+        assert builder.entry_count == 4
 
     @pytest.mark.asyncio
     async def test_missing_transcript_allows_upload(self):
-        """Nothing in GCS → safe to upload fresh transcript after the turn."""
+        """Nothing in GCS → upload is safe; the turn writes the first snapshot."""
         builder = TranscriptBuilder()
         with patch(
             "backend.copilot.baseline.service.download_transcript",
             new=AsyncMock(return_value=None),
         ):
-            upload_safe = await _load_prior_transcript(
+            upload_safe, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=2,
+                session_messages=_make_session_messages("user", "assistant"),
                 transcript_builder=builder,
             )
 
         assert upload_safe is True
+        assert dl is None
         assert builder.is_empty
 
     @pytest.mark.asyncio
     async def test_invalid_transcript_allows_upload(self):
-        """Corrupt file in GCS → overwriting with valid data is better."""
+        """Corrupt file in GCS → overwriting with a valid one is better."""
         builder = TranscriptBuilder()
-        download = TranscriptDownload(
-            content='{"type":"progress","uuid":"a"}\n',
+        restore = TranscriptDownload(
+            content=b'{"type":"progress","uuid":"a"}\n',
             message_count=1,
+            mode="sdk",
         )
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            upload_safe = await _load_prior_transcript(
+            upload_safe, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=2,
+                session_messages=_make_session_messages("user", "assistant"),
                 transcript_builder=builder,
             )
 
         assert upload_safe is True
+        assert dl is None
         assert builder.is_empty
 
     @pytest.mark.asyncio
@@ -165,36 +186,39 @@ class TestLoadPriorTranscript:
             "backend.copilot.baseline.service.download_transcript",
             new=AsyncMock(side_effect=RuntimeError("boom")),
         ):
-            covers = await _load_prior_transcript(
+            covers, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=2,
+                session_messages=_make_session_messages("user", "assistant"),
                 transcript_builder=builder,
             )
 
         assert covers is False
+        assert dl is None
         assert builder.is_empty
 
     @pytest.mark.asyncio
     async def test_zero_message_count_not_stale(self):
-        """When msg_count is 0 (unknown), staleness check is skipped."""
+        """When msg_count is 0 (unknown), gap detection is skipped."""
         builder = TranscriptBuilder()
-        download = TranscriptDownload(
-            content=_make_transcript_content("user", "assistant"),
+        restore = TranscriptDownload(
+            content=_make_transcript_content("user", "assistant").encode("utf-8"),
             message_count=0,
+            mode="sdk",
         )
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            covers = await _load_prior_transcript(
+            covers, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=20,
+                session_messages=_make_session_messages(*["user"] * 20),
                 transcript_builder=builder,
             )
 
         assert covers is True
+        assert dl is not None
         assert builder.entry_count == 2
 
 
@@ -229,7 +253,7 @@ class TestUploadFinalTranscript:
         assert call_kwargs["user_id"] == "user-1"
         assert call_kwargs["session_id"] == "session-1"
         assert call_kwargs["message_count"] == 2
-        assert "hello" in call_kwargs["content"]
+        assert b"hello" in call_kwargs["content"]
 
     @pytest.mark.asyncio
     async def test_skips_upload_when_builder_empty(self):
@@ -376,17 +400,19 @@ class TestRoundTrip:
     @pytest.mark.asyncio
     async def test_full_round_trip(self):
         prior = _make_transcript_content("user", "assistant")
-        download = TranscriptDownload(content=prior, message_count=2)
+        restore = TranscriptDownload(
+            content=prior.encode("utf-8"), message_count=2, mode="sdk"
+        )
 
         builder = TranscriptBuilder()
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            covers = await _load_prior_transcript(
+            covers, _ = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=3,
+                session_messages=_make_session_messages("user", "assistant", "user"),
                 transcript_builder=builder,
             )
         assert covers is True
@@ -426,11 +452,11 @@ class TestRoundTrip:
         upload_mock.assert_awaited_once()
         assert upload_mock.await_args is not None
         uploaded = upload_mock.await_args.kwargs["content"]
-        assert "new question" in uploaded
-        assert "new answer" in uploaded
+        assert b"new question" in uploaded
+        assert b"new answer" in uploaded
         # Original content preserved in the round trip.
-        assert "user message 0" in uploaded
-        assert "assistant message 1" in uploaded
+        assert b"user message 0" in uploaded
+        assert b"assistant message 1" in uploaded
 
     @pytest.mark.asyncio
     async def test_backfill_append_guard(self):
@@ -461,36 +487,6 @@ class TestRoundTrip:
         assert builder.entry_count == initial_count
 
 
-class TestIsTranscriptStale:
-    """``is_transcript_stale`` gates prior-transcript loading."""
-
-    def test_none_download_is_not_stale(self):
-        assert is_transcript_stale(None, session_msg_count=5) is False
-
-    def test_zero_message_count_is_not_stale(self):
-        """Legacy transcripts without msg_count tracking must remain usable."""
-        dl = TranscriptDownload(content="", message_count=0)
-        assert is_transcript_stale(dl, session_msg_count=20) is False
-
-    def test_stale_when_covers_less_than_prefix(self):
-        dl = TranscriptDownload(content="", message_count=2)
-        # session has 6 messages; transcript must cover at least 5 (6-1).
-        assert is_transcript_stale(dl, session_msg_count=6) is True
-
-    def test_fresh_when_covers_full_prefix(self):
-        dl = TranscriptDownload(content="", message_count=5)
-        assert is_transcript_stale(dl, session_msg_count=6) is False
-
-    def test_fresh_when_exceeds_prefix(self):
-        """Race: transcript ahead of session count is still acceptable."""
-        dl = TranscriptDownload(content="", message_count=10)
-        assert is_transcript_stale(dl, session_msg_count=6) is False
-
-    def test_boundary_equal_to_prefix_minus_one(self):
-        dl = TranscriptDownload(content="", message_count=5)
-        assert is_transcript_stale(dl, session_msg_count=6) is False
-
-
 class TestShouldUploadTranscript:
     """``should_upload_transcript`` gates the final upload."""
 
@@ -512,7 +508,7 @@ class TestShouldUploadTranscript:
 
 
 class TestTranscriptLifecycle:
-    """End-to-end: download → validate → build → upload.
+    """End-to-end: restore → validate → build → upload.
 
     Simulates the full transcript lifecycle inside
     ``stream_chat_completion_baseline`` by mocking the storage layer and
@@ -521,27 +517,29 @@ class TestTranscriptLifecycle:
 
     @pytest.mark.asyncio
     async def test_full_lifecycle_happy_path(self):
-        """Fresh download, append a turn, upload covers the session."""
+        """Fresh restore, append a turn, upload covers the session."""
         builder = TranscriptBuilder()
         prior = _make_transcript_content("user", "assistant")
-        download = TranscriptDownload(content=prior, message_count=2)
+        restore = TranscriptDownload(
+            content=prior.encode("utf-8"), message_count=2, mode="sdk"
+        )
 
         upload_mock = AsyncMock(return_value=None)
         with (
             patch(
                 "backend.copilot.baseline.service.download_transcript",
-                new=AsyncMock(return_value=download),
+                new=AsyncMock(return_value=restore),
             ),
             patch(
                 "backend.copilot.baseline.service.upload_transcript",
                 new=upload_mock,
             ),
         ):
-            # --- 1. Download & load prior transcript ---
-            covers = await _load_prior_transcript(
+            # --- 1. Restore & load prior session ---
+            covers, _ = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=3,
+                session_messages=_make_session_messages("user", "assistant", "user"),
                 transcript_builder=builder,
             )
             assert covers is True
@@ -561,10 +559,7 @@ class TestTranscriptLifecycle:
 
             # --- 3. Gate + upload ---
             assert (
-                should_upload_transcript(
-                    user_id="user-1", upload_safe=covers
-                )
-                is True
+                should_upload_transcript(user_id="user-1", upload_safe=covers) is True
             )
             await _upload_final_transcript(
                 user_id="user-1",
@@ -576,20 +571,21 @@ class TestTranscriptLifecycle:
         upload_mock.assert_awaited_once()
         assert upload_mock.await_args is not None
         uploaded = upload_mock.await_args.kwargs["content"]
-        assert "follow-up question" in uploaded
-        assert "follow-up answer" in uploaded
+        assert b"follow-up question" in uploaded
+        assert b"follow-up answer" in uploaded
         # Original prior-turn content preserved.
-        assert "user message 0" in uploaded
-        assert "assistant message 1" in uploaded
+        assert b"user message 0" in uploaded
+        assert b"assistant message 1" in uploaded
 
     @pytest.mark.asyncio
-    async def test_lifecycle_stale_download_suppresses_upload(self):
-        """Stale download → covers=False → upload must be skipped."""
+    async def test_lifecycle_stale_download_fills_gap(self):
+        """When transcript covers fewer messages, gap is filled rather than rejected."""
         builder = TranscriptBuilder()
-        # session has 10 msgs but stored transcript only covers 2 → stale.
+        # session has 5 msgs but stored transcript only covers 2 → gap filled.
         stale = TranscriptDownload(
-            content=_make_transcript_content("user", "assistant"),
+            content=_make_transcript_content("user", "assistant").encode("utf-8"),
             message_count=2,
+            mode="baseline",
         )
 
         upload_mock = AsyncMock(return_value=None)
@@ -603,20 +599,18 @@ class TestTranscriptLifecycle:
                 new=upload_mock,
             ),
         ):
-            covers = await _load_prior_transcript(
+            covers, _ = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=10,
+                session_messages=_make_session_messages(
+                    "user", "assistant", "user", "assistant", "user"
+                ),
                 transcript_builder=builder,
             )
 
-        assert covers is False
-        # The caller's gate mirrors the production path.
-        assert (
-            should_upload_transcript(user_id="user-1", upload_safe=covers)
-            is False
-        )
-        upload_mock.assert_not_awaited()
+        assert covers is True
+        # Gap was filled: 2 from transcript + 2 gap messages
+        assert builder.entry_count == 4
 
     @pytest.mark.asyncio
     async def test_lifecycle_anonymous_user_skips_upload(self):
@@ -629,14 +623,11 @@ class TestTranscriptLifecycle:
             stop_reason=STOP_REASON_END_TURN,
         )
 
-        assert (
-            should_upload_transcript(user_id=None, upload_safe=True)
-            is False
-        )
+        assert should_upload_transcript(user_id=None, upload_safe=True) is False
 
     @pytest.mark.asyncio
     async def test_lifecycle_missing_download_still_uploads_new_content(self):
-        """No prior transcript → upload is safe; the turn writes the first snapshot."""
+        """No prior session → upload is safe; the turn writes the first snapshot."""
         builder = TranscriptBuilder()
         upload_mock = AsyncMock(return_value=None)
         with (
@@ -649,18 +640,117 @@ class TestTranscriptLifecycle:
                 new=upload_mock,
             ),
         ):
-            upload_safe = await _load_prior_transcript(
+            upload_safe, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=1,
+                session_messages=_make_session_messages("user"),
                 transcript_builder=builder,
             )
             # Nothing in GCS → upload is safe so the first baseline turn
-            # can write the initial snapshot.
+            # can write the initial transcript snapshot.
             assert upload_safe is True
+            assert dl is None
             assert (
-                should_upload_transcript(
-                    user_id="user-1", upload_safe=upload_safe
-                )
+                should_upload_transcript(user_id="user-1", upload_safe=upload_safe)
                 is True
             )
+
+
+# ---------------------------------------------------------------------------
+# _append_gap_to_builder
+# ---------------------------------------------------------------------------
+
+
+class TestAppendGapToBuilder:
+    """``_append_gap_to_builder`` converts ChatMessage objects to TranscriptBuilder entries."""
+
+    def test_user_message_appended(self):
+        builder = TranscriptBuilder()
+        msgs = [ChatMessage(role="user", content="hello")]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 1
+        assert builder.last_entry_type == "user"
+
+    def test_assistant_text_message_appended(self):
+        builder = TranscriptBuilder()
+        msgs = [
+            ChatMessage(role="user", content="q"),
+            ChatMessage(role="assistant", content="answer"),
+        ]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 2
+        assert builder.last_entry_type == "assistant"
+        assert "answer" in builder.to_jsonl()
+
+    def test_assistant_with_tool_calls_appended(self):
+        """Assistant tool_calls are recorded as tool_use blocks in the transcript."""
+        builder = TranscriptBuilder()
+        tool_call = {
+            "id": "tc-1",
+            "type": "function",
+            "function": {"name": "my_tool", "arguments": '{"key":"val"}'},
+        }
+        msgs = [ChatMessage(role="assistant", content=None, tool_calls=[tool_call])]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 1
+        jsonl = builder.to_jsonl()
+        assert "tool_use" in jsonl
+        assert "my_tool" in jsonl
+        assert "tc-1" in jsonl
+
+    def test_assistant_invalid_json_args_uses_empty_dict(self):
+        """Malformed JSON in tool_call arguments falls back to {}."""
+        builder = TranscriptBuilder()
+        tool_call = {
+            "id": "tc-bad",
+            "type": "function",
+            "function": {"name": "bad_tool", "arguments": "not-json"},
+        }
+        msgs = [ChatMessage(role="assistant", content=None, tool_calls=[tool_call])]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 1
+        jsonl = builder.to_jsonl()
+        assert '"input":{}' in jsonl
+
+    def test_assistant_empty_content_and_no_tools_uses_fallback(self):
+        """Assistant with no content and no tool_calls gets a fallback empty text block."""
+        builder = TranscriptBuilder()
+        msgs = [ChatMessage(role="assistant", content=None)]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 1
+        jsonl = builder.to_jsonl()
+        assert "text" in jsonl
+
+    def test_tool_role_with_tool_call_id_appended(self):
+        """Tool result messages are appended when tool_call_id is set."""
+        builder = TranscriptBuilder()
+        # Need a preceding assistant tool_use entry
+        builder.append_user("use tool")
+        builder.append_assistant(
+            content_blocks=[
+                {"type": "tool_use", "id": "tc-1", "name": "my_tool", "input": {}}
+            ]
+        )
+        msgs = [ChatMessage(role="tool", tool_call_id="tc-1", content="result")]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 3
+        assert "tool_result" in builder.to_jsonl()
+
+    def test_tool_role_without_tool_call_id_skipped(self):
+        """Tool messages without tool_call_id are silently skipped."""
+        builder = TranscriptBuilder()
+        msgs = [ChatMessage(role="tool", tool_call_id=None, content="orphan")]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 0
+
+    def test_tool_call_missing_function_key_uses_unknown_name(self):
+        """A tool_call dict with no 'function' key uses 'unknown' as the tool name."""
+        builder = TranscriptBuilder()
+        # Tool call dict exists but 'function' sub-dict is missing entirely
+        msgs = [
+            ChatMessage(role="assistant", content=None, tool_calls=[{"id": "tc-x"}])
+        ]
+        _append_gap_to_builder(msgs, builder)
+        assert builder.entry_count == 1
+        jsonl = builder.to_jsonl()
+        assert "unknown" in jsonl

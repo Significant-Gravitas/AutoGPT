@@ -16,11 +16,11 @@ from .transcript import (
     _flatten_assistant_content,
     _flatten_tool_result_content,
     _messages_to_transcript,
-    _meta_storage_path_parts,
     _rechain_tail,
     _sanitize_id,
-    _storage_path_parts,
     _transcript_to_messages,
+    detect_gap,
+    extract_context_messages,
     strip_for_upload,
     validate_transcript,
 )
@@ -65,24 +65,6 @@ class TestSanitizeId:
 
 
 # ---------------------------------------------------------------------------
-# _storage_path_parts / _meta_storage_path_parts
-# ---------------------------------------------------------------------------
-
-
-class TestStoragePathParts:
-    def test_returns_triple(self):
-        prefix, uid, fname = _storage_path_parts("user-1", "sess-2")
-        assert prefix == "chat-transcripts"
-        assert "e" in uid  # hex chars from "user-1" sanitized
-        assert fname.endswith(".jsonl")
-
-    def test_meta_returns_meta_json(self):
-        prefix, _, fname = _meta_storage_path_parts("user-1", "sess-2")
-        assert prefix == "chat-transcripts"
-        assert fname.endswith(".meta.json")
-
-
-# ---------------------------------------------------------------------------
 # _build_path_from_parts
 # ---------------------------------------------------------------------------
 
@@ -101,24 +83,6 @@ class TestBuildPathFromParts:
         local_backend = type("LocalBackend", (), {})()
         path = _build_path_from_parts(("wid", "fid", "file.jsonl"), local_backend)
         assert path == "local://wid/fid/file.jsonl"
-
-
-# ---------------------------------------------------------------------------
-# TranscriptDownload dataclass
-# ---------------------------------------------------------------------------
-
-
-class TestTranscriptDownload:
-    def test_defaults(self):
-        td = TranscriptDownload(content="hello")
-        assert td.content == "hello"
-        assert td.message_count == 0
-        assert td.uploaded_at == 0.0
-
-    def test_custom_values(self):
-        td = TranscriptDownload(content="data", message_count=5, uploaded_at=123.45)
-        assert td.message_count == 5
-        assert td.uploaded_at == 123.45
 
 
 # ---------------------------------------------------------------------------
@@ -733,190 +697,188 @@ class TestValidateTranscript:
 
 class TestCliSessionPath:
     def test_encodes_slashes_to_dashes(self):
-        from .transcript import _cli_session_path, _projects_base
+        from .transcript import cli_session_path, projects_base
 
         sdk_cwd = "/tmp/copilot-abc"
-        result = _cli_session_path(sdk_cwd, "12345678-1234-1234-1234-123456789abc")
-        base = _projects_base()
+        result = cli_session_path(sdk_cwd, "12345678-1234-1234-1234-123456789abc")
+        base = projects_base()
         assert result.startswith(base)
         # Encoded cwd replaces '/' with '-'
         assert "-tmp-copilot-abc" in result
         assert result.endswith(".jsonl")
 
     def test_sanitizes_session_id(self):
-        from .transcript import _cli_session_path
+        from .transcript import cli_session_path
 
-        result = _cli_session_path("/tmp/cwd", "../../etc/passwd")
+        result = cli_session_path("/tmp/cwd", "../../etc/passwd")
         # _sanitize_id strips non-hex/hyphen chars; path traversal impossible
         assert ".." not in result
         assert "passwd" not in result
 
 
 class TestUploadCliSession:
-    def test_skips_upload_when_path_outside_projects_base(self, tmp_path):
-        """Files outside the CLI projects base are rejected without upload."""
+    def test_uploads_content_bytes_successfully(self):
+        """Happy path: content bytes are stored as jsonl + meta.json."""
         import asyncio
         from unittest.mock import AsyncMock, patch
 
-        from .transcript import upload_cli_session
+        from .transcript import upload_transcript
 
         mock_storage = AsyncMock()
+        content = b'{"type":"assistant"}\n'
 
-        with (
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=str(tmp_path),
-            ),
-            # Return a path that is genuinely outside tmp_path so that
-            # realpath(session_file).startswith(projects_base + "/") is False
-            # and the boundary guard actually fires.
-            patch(
-                "backend.copilot.transcript._cli_session_path",
-                return_value="/outside/escaped/session.jsonl",
-            ),
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
         ):
             asyncio.run(
-                upload_cli_session(
+                upload_transcript(
                     user_id="user-1",
-                    session_id="12345678-0000-0000-0000-000000000000",
-                    sdk_cwd=str(tmp_path),
+                    session_id="12345678-0000-0000-0000-000000000001",
+                    content=content,
                 )
             )
 
-        # storage.store must NOT be called — boundary guard should reject the path
-        mock_storage.store.assert_not_called()
+        # Two calls expected: session JSONL + companion .meta.json
+        assert mock_storage.store.call_count == 2
 
-    def test_skips_upload_when_file_not_found(self, tmp_path):
-        """Missing CLI session file logs debug and skips upload silently."""
+    def test_uploads_companion_meta_json_with_message_count(self):
+        """upload_transcript stores a companion .meta.json with message_count."""
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import upload_transcript
+
+        mock_storage = AsyncMock()
+        content = b'{"type":"assistant"}\n'
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            asyncio.run(
+                upload_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000010",
+                    content=content,
+                    message_count=5,
+                )
+            )
+
+        assert mock_storage.store.call_count == 2
+        # Find the meta.json store call
+        meta_call = next(
+            c
+            for c in mock_storage.store.call_args_list
+            if c.kwargs.get("filename", "").endswith(".meta.json")
+        )
+        meta_content = json.loads(meta_call.kwargs["content"])
+        assert meta_content["message_count"] == 5
+
+    def test_skips_upload_on_storage_failure(self):
+        """Storage exception on jsonl write is logged and does not propagate.
+
+        With sequential writes, JSONL failure returns early — meta store is
+        never called, so no rollback is needed.
+        """
         import asyncio
         from unittest.mock import AsyncMock, patch
 
-        from .transcript import upload_cli_session
+        from .transcript import upload_transcript
 
         mock_storage = AsyncMock()
-        projects_base = str(tmp_path)
+        mock_storage.store.side_effect = RuntimeError("gcs unavailable")
+        content = b'{"type":"assistant"}\n'
 
-        with (
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=projects_base,
-            ),
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
         ):
-            # session file doesn't exist — should not raise
+            # Should not raise — failures are logged as warnings
             asyncio.run(
-                upload_cli_session(
+                upload_transcript(
                     user_id="user-1",
-                    session_id="12345678-0000-0000-0000-000000000000",
-                    sdk_cwd=str(tmp_path),
+                    session_id="12345678-0000-0000-0000-000000000002",
+                    content=content,
                 )
             )
 
-        mock_storage.store.assert_not_called()
-
-    def test_uploads_file_successfully(self, tmp_path):
-        """Happy path: session file exists within projects base → upload called."""
-        import asyncio
-        from unittest.mock import AsyncMock, patch
-
-        from .transcript import _sanitize_id, upload_cli_session
-
-        projects_base = str(tmp_path)
-        session_id = "12345678-0000-0000-0000-000000000001"
-        sdk_cwd = str(tmp_path)
-
-        # Build the path the same way _cli_session_path does, but using our tmp_path
-        # as projects_base so the boundary check passes.
-        # Must use the same encoding: re.sub non-alphanumeric → "-" on realpath.
-        import os
-        import re
-
-        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-        session_dir = tmp_path / encoded_cwd
-        session_dir.mkdir(parents=True, exist_ok=True)
-        session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
-        session_file.write_bytes(b'{"type":"assistant"}\n')
-
-        mock_storage = AsyncMock()
-
-        with (
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=projects_base,
-            ),
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
-        ):
-            asyncio.run(
-                upload_cli_session(
-                    user_id="user-1",
-                    session_id=session_id,
-                    sdk_cwd=sdk_cwd,
-                )
-            )
-
+        # Only one store call attempted (the JSONL); meta never reached
         mock_storage.store.assert_called_once()
+        mock_storage.delete.assert_not_called()
 
-    def test_skips_upload_on_oserror(self, tmp_path):
-        """OSError reading session file is logged as warning; upload is skipped."""
+    def test_rolls_back_session_when_meta_upload_fails(self):
+        """When meta upload fails after JSONL succeeds, JSONL is rolled back.
+
+        Guarantees the pair is either both present or both absent — avoids an
+        orphaned JSONL being used with wrong mode/watermark defaults.
+        """
         import asyncio
         from unittest.mock import AsyncMock, patch
 
-        from .transcript import _sanitize_id, upload_cli_session
-
-        projects_base = str(tmp_path)
-        sdk_cwd = str(tmp_path)
-        session_id = "12345678-0000-0000-0000-000000000002"
-
-        # Build file at a path inside projects_base so boundary check passes.
-        import os
-        import re
-
-        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-        session_dir = tmp_path / encoded_cwd
-        session_dir.mkdir(parents=True, exist_ok=True)
-        session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
-        session_file.write_bytes(b'{"type":"assistant"}\n')
-        # Remove read permission to trigger OSError
-        session_file.chmod(0o000)
+        from .transcript import upload_transcript
 
         mock_storage = AsyncMock()
+        # First store (JSONL) succeeds; second store (meta) fails
+        mock_storage.store.side_effect = [None, RuntimeError("meta write failed")]
+        content = b'{"type":"assistant"}\n'
 
-        try:
-            with (
-                patch(
-                    "backend.copilot.transcript._projects_base",
-                    return_value=projects_base,
-                ),
-                patch(
-                    "backend.copilot.transcript.get_workspace_storage",
-                    new_callable=AsyncMock,
-                    return_value=mock_storage,
-                ),
-            ):
-                asyncio.run(
-                    upload_cli_session(
-                        user_id="user-1",
-                        session_id=session_id,
-                        sdk_cwd=sdk_cwd,
-                    )
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            asyncio.run(
+                upload_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000099",
+                    content=content,
                 )
-        finally:
-            session_file.chmod(0o644)  # restore so tmp_path cleanup works
+            )
 
-        mock_storage.store.assert_not_called()
+        # Both store calls were attempted (JSONL then meta)
+        assert mock_storage.store.call_count == 2
+        # JSONL should be rolled back via delete
+        mock_storage.delete.assert_called_once()
+
+    def test_baseline_mode_stored_in_meta(self):
+        """upload_transcript with mode='baseline' stores mode in companion meta.json."""
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import upload_transcript
+
+        mock_storage = AsyncMock()
+        content = b'{"type":"assistant"}\n'
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            asyncio.run(
+                upload_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000098",
+                    content=content,
+                    message_count=4,
+                    mode="baseline",
+                )
+            )
+
+        meta_call = next(
+            c
+            for c in mock_storage.store.call_args_list
+            if c.kwargs.get("filename", "").endswith(".meta.json")
+        )
+        meta_content = json.loads(meta_call.kwargs["content"])
+        assert meta_content["mode"] == "baseline"
+        assert meta_content["message_count"] == 4
 
     def test_strips_session_before_upload_and_writes_back(self, tmp_path):
         """Strippable entries (progress, thinking blocks) are removed before upload.
@@ -1116,15 +1078,18 @@ class TestUploadCliSession:
 
 
 class TestRestoreCliSession:
-    def test_returns_false_when_file_not_found_in_storage(self):
-        """Returns False (graceful degradation) when the session is missing."""
+    def test_returns_none_when_file_not_found_in_storage(self):
+        """Returns None (graceful degradation) when the session is missing."""
         import asyncio
         from unittest.mock import AsyncMock, patch
 
-        from .transcript import restore_cli_session
+        from .transcript import download_transcript
 
         mock_storage = AsyncMock()
-        mock_storage.retrieve.side_effect = FileNotFoundError("not found")
+        mock_storage.retrieve.side_effect = [
+            FileNotFoundError("no session"),
+            FileNotFoundError("no meta"),
+        ]
 
         with patch(
             "backend.copilot.transcript.get_workspace_storage",
@@ -1132,144 +1097,26 @@ class TestRestoreCliSession:
             return_value=mock_storage,
         ):
             result = asyncio.run(
-                restore_cli_session(
+                download_transcript(
                     user_id="user-1",
                     session_id="12345678-0000-0000-0000-000000000000",
-                    sdk_cwd="/tmp/copilot-test",
                 )
             )
 
-        assert result is False
+        assert result is None
 
-    def test_returns_false_when_restore_path_outside_projects_base(self, tmp_path):
-        """Path traversal guard: rejects restoration outside the projects base."""
+    def test_returns_transcript_download_on_success_no_meta(self):
+        """Happy path with no meta.json: returns TranscriptDownload with message_count=0."""
         import asyncio
         from unittest.mock import AsyncMock, patch
 
-        from .transcript import restore_cli_session
+        from .transcript import download_transcript
 
-        mock_storage = AsyncMock()
-        mock_storage.retrieve.return_value = b'{"type":"assistant"}\n'
-
-        with (
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=str(tmp_path),
-            ),
-            # Return a path genuinely outside tmp_path so the boundary guard fires.
-            patch(
-                "backend.copilot.transcript._cli_session_path",
-                return_value="/outside/escaped/session.jsonl",
-            ),
-        ):
-            result = asyncio.run(
-                restore_cli_session(
-                    user_id="user-1",
-                    session_id="12345678-0000-0000-0000-000000000000",
-                    sdk_cwd=str(tmp_path),
-                )
-            )
-
-        assert result is False
-
-    def test_returns_true_when_local_file_already_exists(self, tmp_path):
-        """Same-pod reuse: if local file exists, skip storage download and return True."""
-        import asyncio
-        import os
-        import re
-        from pathlib import Path
-        from unittest.mock import AsyncMock, patch
-
-        from .transcript import restore_cli_session
-
-        session_id = "12345678-0000-0000-0000-000000000099"
-        sdk_cwd = str(tmp_path)
-
-        # Pre-create the local session file (simulates previous turn on same pod)
-        projects_base = os.path.realpath(str(tmp_path))
-        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", projects_base)
-        session_dir = Path(projects_base) / encoded_cwd
-        session_dir.mkdir(parents=True, exist_ok=True)
-        existing_content = b'{"type":"user"}\n{"type":"assistant"}\n'
-        (session_dir / f"{session_id}.jsonl").write_bytes(existing_content)
-
-        mock_storage = AsyncMock()
-
-        with (
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=projects_base,
-            ),
-        ):
-            result = asyncio.run(
-                restore_cli_session(
-                    user_id="user-1",
-                    session_id=session_id,
-                    sdk_cwd=sdk_cwd,
-                )
-            )
-
-        assert result is True
-        # Storage should NOT have been accessed (local file was used as-is)
-        mock_storage.retrieve.assert_not_called()
-        # Local file should be unchanged
-        assert (session_dir / f"{session_id}.jsonl").read_bytes() == existing_content
-
-    def test_returns_true_on_success(self, tmp_path):
-        """Happy path: storage has the session → file written → returns True."""
-        import asyncio
-        from unittest.mock import AsyncMock, patch
-
-        from .transcript import restore_cli_session
-
-        projects_base = str(tmp_path)
-        sdk_cwd = str(tmp_path)
         session_id = "12345678-0000-0000-0000-000000000003"
         content = b'{"type":"assistant"}\n'
 
         mock_storage = AsyncMock()
-        mock_storage.retrieve.return_value = content
-
-        with (
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=projects_base,
-            ),
-        ):
-            result = asyncio.run(
-                restore_cli_session(
-                    user_id="user-1",
-                    session_id=session_id,
-                    sdk_cwd=sdk_cwd,
-                )
-            )
-
-        assert result is True
-
-    def test_returns_false_on_download_exception(self):
-        """Non-FileNotFoundError during retrieve logs warning and returns False."""
-        import asyncio
-        from unittest.mock import AsyncMock, patch
-
-        from .transcript import restore_cli_session
-
-        mock_storage = AsyncMock()
-        mock_storage.retrieve.side_effect = RuntimeError("network error")
+        mock_storage.retrieve.side_effect = [content, FileNotFoundError("no meta")]
 
         with patch(
             "backend.copilot.transcript.get_workspace_storage",
@@ -1277,11 +1124,411 @@ class TestRestoreCliSession:
             return_value=mock_storage,
         ):
             result = asyncio.run(
-                restore_cli_session(
+                download_transcript(
                     user_id="user-1",
-                    session_id="12345678-0000-0000-0000-000000000004",
-                    sdk_cwd="/tmp/copilot-test",
+                    session_id=session_id,
                 )
             )
 
-        assert result is False
+        assert isinstance(result, TranscriptDownload)
+        assert result.content == content
+        assert result.message_count == 0
+        assert result.mode == "sdk"
+
+    def test_returns_transcript_download_with_message_count_from_meta(self):
+        """When meta.json is present, message_count and mode are read from it."""
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import download_transcript
+
+        session_id = "12345678-0000-0000-0000-000000000005"
+        content = b'{"type":"assistant"}\n'
+        meta_bytes = json.dumps(
+            {"message_count": 7, "mode": "sdk", "uploaded_at": 1234567.0}
+        ).encode()
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = [content, meta_bytes]
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            result = asyncio.run(
+                download_transcript(
+                    user_id="user-1",
+                    session_id=session_id,
+                )
+            )
+
+        assert isinstance(result, TranscriptDownload)
+        assert result.content == content
+        assert result.message_count == 7
+        assert result.mode == "sdk"
+
+    def test_returns_none_on_download_exception(self):
+        """Non-FileNotFoundError during retrieve logs warning and returns None."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import download_transcript
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = [
+            RuntimeError("network error"),
+            FileNotFoundError("no meta"),
+        ]
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            result = asyncio.run(
+                download_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000004",
+                )
+            )
+
+        assert result is None
+
+    def test_baseline_mode_in_meta_returned(self):
+        """When meta.json contains mode='baseline', result.mode is 'baseline'."""
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import download_transcript
+
+        content = b'{"type":"assistant"}\n'
+        meta_bytes = json.dumps(
+            {"message_count": 3, "mode": "baseline", "uploaded_at": 0.0}
+        ).encode()
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = [content, meta_bytes]
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            result = asyncio.run(
+                download_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000020",
+                )
+            )
+
+        assert isinstance(result, TranscriptDownload)
+        assert result.mode == "baseline"
+        assert result.message_count == 3
+
+    def test_invalid_mode_in_meta_defaults_to_sdk(self):
+        """Unknown mode value in meta.json falls back to 'sdk'."""
+        import asyncio
+        import json
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import download_transcript
+
+        content = b'{"type":"assistant"}\n'
+        meta_bytes = json.dumps({"message_count": 2, "mode": "unknown_mode"}).encode()
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = [content, meta_bytes]
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            result = asyncio.run(
+                download_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000021",
+                )
+            )
+
+        assert isinstance(result, TranscriptDownload)
+        assert result.mode == "sdk"
+
+    def test_invalid_utf8_meta_uses_defaults(self):
+        """Meta bytes that fail UTF-8 decode fall back to message_count=0, mode='sdk'."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import download_transcript
+
+        content = b'{"type":"assistant"}\n'
+        bad_meta = b"\xff\xfe"
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = [content, bad_meta]
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            result = asyncio.run(
+                download_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000022",
+                )
+            )
+
+        assert isinstance(result, TranscriptDownload)
+        assert result.message_count == 0
+        assert result.mode == "sdk"
+
+    def test_meta_fetch_exception_uses_defaults(self):
+        """Non-FileNotFoundError on meta fetch still returns content with defaults."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+
+        from .transcript import download_transcript
+
+        content = b'{"type":"assistant"}\n'
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.side_effect = [content, RuntimeError("meta unavailable")]
+
+        with patch(
+            "backend.copilot.transcript.get_workspace_storage",
+            new_callable=AsyncMock,
+            return_value=mock_storage,
+        ):
+            result = asyncio.run(
+                download_transcript(
+                    user_id="user-1",
+                    session_id="12345678-0000-0000-0000-000000000023",
+                )
+            )
+
+        assert isinstance(result, TranscriptDownload)
+        assert result.content == content
+        assert result.message_count == 0
+        assert result.mode == "sdk"
+
+
+# ---------------------------------------------------------------------------
+# detect_gap
+# ---------------------------------------------------------------------------
+
+
+def _msgs(*roles: str):
+    """Build a list of ChatMessage objects with the given roles."""
+    from .model import ChatMessage
+
+    return [ChatMessage(role=r, content=f"{r}-{i}") for i, r in enumerate(roles)]
+
+
+class TestDetectGap:
+    """``detect_gap`` returns messages between transcript watermark and current turn."""
+
+    def _dl(self, message_count: int) -> TranscriptDownload:
+        return TranscriptDownload(content=b"", message_count=message_count, mode="sdk")
+
+    def test_zero_watermark_returns_empty(self):
+        """message_count=0 means no watermark — skip gap detection."""
+        dl = self._dl(0)
+        messages = _msgs("user", "assistant", "user")
+        assert detect_gap(dl, messages) == []
+
+    def test_watermark_covers_all_prefix_returns_empty(self):
+        """Transcript already covers all messages up to the current user turn."""
+        # session: [user, assistant, user(current)] — wm=2 means covers up to assistant
+        dl = self._dl(2)
+        messages = _msgs("user", "assistant", "user")
+        assert detect_gap(dl, messages) == []
+
+    def test_watermark_exceeds_session_returns_empty(self):
+        """Watermark ahead of session count (race / over-count) → no gap."""
+        dl = self._dl(10)
+        messages = _msgs("user", "assistant", "user")
+        assert detect_gap(dl, messages) == []
+
+    def test_misaligned_watermark_not_on_assistant_returns_empty(self):
+        """Watermark at a user-role position is misaligned — skip gap."""
+        # wm=1: position 0 is 'user', not 'assistant' → skip
+        dl = self._dl(1)
+        messages = _msgs("user", "assistant", "user", "assistant", "user")
+        assert detect_gap(dl, messages) == []
+
+    def test_returns_gap_messages(self):
+        """Watermark behind session — gap messages returned (excluding current turn)."""
+        # session: [user0, assistant1, user2, assistant3, user4(current)]
+        # wm=2: transcript covers [0,1]; gap = [user2, assistant3]
+        dl = self._dl(2)
+        messages = _msgs("user", "assistant", "user", "assistant", "user")
+        gap = detect_gap(dl, messages)
+        assert len(gap) == 2
+        assert gap[0].role == "user"
+        assert gap[1].role == "assistant"
+
+    def test_excludes_current_user_turn(self):
+        """The last message (current user turn) is never included in the gap."""
+        # wm=2, session has 4 msgs: gap = [msg2] only (msg3 is current turn → excluded)
+        dl = self._dl(2)
+        messages = _msgs("user", "assistant", "user", "user")
+        gap = detect_gap(dl, messages)
+        assert len(gap) == 1
+        assert gap[0].role == "user"
+
+    def test_single_gap_message(self):
+        """One message between watermark and current turn."""
+        # session: [user0, assistant1, user2, assistant3, user4(current)]
+        # wm=3: position 2 is 'user' → misaligned, returns []
+        # use wm=4: but 4 >= total-1=4 → also empty
+        # wm=3 with session [u, a, u, a, u, a, u(current)]: position 2 is 'user' → empty
+        # Valid case: wm=2 has 3 messages (assistant at 1), wm=4 with [u,a,u,a,u,a,u]:
+        # let's use wm=4 with 7 messages: wm=4 >= total-1=6? no, 4<6. pos[3]=assistant → gap=[msg4,msg5]
+        # simpler: wm=2, [u0,a1,a2,u3(current)] — pos[1]=assistant, gap=[a2] only
+        dl = self._dl(2)
+        messages = _msgs("user", "assistant", "assistant", "user")
+        gap = detect_gap(dl, messages)
+        assert len(gap) == 1
+        assert gap[0].role == "assistant"
+
+
+# ---------------------------------------------------------------------------
+# extract_context_messages
+# ---------------------------------------------------------------------------
+
+
+def _make_valid_transcript(*roles: str) -> str:
+    """Build a minimal valid JSONL transcript with the given message roles."""
+    import json as stdlib_json
+
+    from .transcript import STOP_REASON_END_TURN
+
+    lines = []
+    parent = ""
+    for i, role in enumerate(roles):
+        uid = f"uid-{i}"
+        entry: dict = {
+            "type": role,
+            "uuid": uid,
+            "parentUuid": parent,
+            "message": {
+                "role": role,
+                "content": f"{role} content {i}",
+            },
+        }
+        if role == "assistant":
+            entry["message"]["id"] = f"msg_{i}"
+            entry["message"]["model"] = "test-model"
+            entry["message"]["type"] = "message"
+            entry["message"]["stop_reason"] = STOP_REASON_END_TURN
+            entry["message"]["content"] = [
+                {"type": "text", "text": f"assistant content {i}"}
+            ]
+        lines.append(stdlib_json.dumps(entry))
+        parent = uid
+    return "\n".join(lines) + "\n"
+
+
+class TestExtractContextMessages:
+    """``extract_context_messages`` returns the shared context primitive."""
+
+    def test_none_download_returns_prior(self):
+        """No download → falls back to all session messages except current turn."""
+        messages = _msgs("user", "assistant", "user")
+        result = extract_context_messages(None, messages)
+        assert result == messages[:-1]
+        assert len(result) == 2
+
+    def test_empty_content_download_returns_prior(self):
+        """Empty bytes content → falls back to all prior messages."""
+        dl = TranscriptDownload(content=b"", message_count=2, mode="sdk")
+        messages = _msgs("user", "assistant", "user")
+        result = extract_context_messages(dl, messages)
+        assert result == messages[:-1]
+
+    def test_valid_transcript_no_gap_returns_transcript_messages(self):
+        """Transcript covers all prior turns → only transcript messages returned."""
+        # Transcript: [user, assistant] — 2 messages
+        # Session: [user, assistant, user(current)] — watermark=2 covers prefix
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "user")
+        result = extract_context_messages(dl, messages)
+        # Transcript has 2 messages (user + assistant) and no gap
+        assert len(result) == 2
+        assert result[0].role == "user"
+        assert result[1].role == "assistant"
+
+    def test_valid_transcript_with_gap_returns_transcript_plus_gap(self):
+        """Transcript is stale → gap messages appended after transcript content."""
+        # Transcript: [user, assistant] — watermark=2
+        # Session: [user, assistant, user, assistant, user(current)]
+        # Gap: [user(2), assistant(3)] — positions 2 and 3
+        transcript_content = _make_valid_transcript("user", "assistant")
+        dl = TranscriptDownload(
+            content=transcript_content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "user", "assistant", "user")
+        result = extract_context_messages(dl, messages)
+        # 2 transcript messages + 2 gap messages = 4
+        assert len(result) == 4
+        assert result[0].role == "user"  # transcript user
+        assert result[1].role == "assistant"  # transcript assistant
+        assert result[2].role == "user"  # gap user
+        assert result[3].role == "assistant"  # gap assistant
+
+    def test_compact_summary_entries_preserved(self):
+        """``isCompactSummary=True`` entries survive ``_transcript_to_messages``."""
+        import json as stdlib_json
+
+        from .transcript import STOP_REASON_END_TURN
+
+        # Build a transcript where one entry is a compaction summary.
+        # isCompactSummary=True entries have type in STRIPPABLE_TYPES but are kept.
+        compact_entry = stdlib_json.dumps(
+            {
+                "type": "summary",
+                "uuid": "uid-compact",
+                "parentUuid": "",
+                "isCompactSummary": True,
+                "message": {
+                    "role": "user",
+                    "content": "COMPACT_SUMMARY_CONTENT",
+                },
+            }
+        )
+        assistant_entry = stdlib_json.dumps(
+            {
+                "type": "assistant",
+                "uuid": "uid-1",
+                "parentUuid": "uid-compact",
+                "message": {
+                    "role": "assistant",
+                    "id": "msg_1",
+                    "model": "test",
+                    "type": "message",
+                    "stop_reason": STOP_REASON_END_TURN,
+                    "content": [{"type": "text", "text": "response after compact"}],
+                },
+            }
+        )
+        content = compact_entry + "\n" + assistant_entry + "\n"
+        dl = TranscriptDownload(
+            content=content.encode("utf-8"), message_count=2, mode="sdk"
+        )
+        messages = _msgs("user", "assistant", "user")
+        result = extract_context_messages(dl, messages)
+        # Both the compact summary and the assistant response are present
+        assert len(result) == 2
+        roles = [m.role for m in result]
+        assert "user" in roles  # compact summary has role=user
+        assert "assistant" in roles
+        # The compact summary content is preserved
+        compact_msgs = [m for m in result if m.role == "user"]
+        assert any("COMPACT_SUMMARY_CONTENT" in (m.content or "") for m in compact_msgs)

@@ -67,11 +67,15 @@ from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
     TranscriptDownload,
+    detect_gap,
     download_transcript,
+    extract_context_messages,
+    strip_for_upload,
     upload_transcript,
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
     compress_context,
@@ -699,29 +703,7 @@ async def _compress_session_messages(
     return messages
 
 
-def is_transcript_stale(dl: TranscriptDownload | None, session_msg_count: int) -> bool:
-    """Return ``True`` when a download doesn't cover the current session.
-
-    A transcript is stale when it has a known ``message_count`` and that
-    count doesn't reach ``session_msg_count - 1`` (i.e. the session has
-    already advanced beyond what the stored transcript captures).
-    Loading a stale transcript would silently drop intermediate turns,
-    so callers should treat stale as "skip load, skip upload".
-
-    An unknown ``message_count`` (``0``) is treated as **not stale**
-    because older transcripts uploaded before msg_count tracking
-    existed must still be usable.
-    """
-    if dl is None:
-        return False
-    if not dl.message_count:
-        return False
-    return dl.message_count < session_msg_count - 1
-
-
-def should_upload_transcript(
-    user_id: str | None, upload_safe: bool
-) -> bool:
+def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
     """Return ``True`` when the caller should upload the final transcript.
 
     Uploads require a logged-in user (for the storage key) *and* a safe
@@ -731,55 +713,137 @@ def should_upload_transcript(
     return bool(user_id) and upload_safe
 
 
+def _append_gap_to_builder(
+    gap: list[ChatMessage],
+    builder: TranscriptBuilder,
+) -> None:
+    """Append gap messages from chat-db into the TranscriptBuilder.
+
+    Converts ChatMessage (OpenAI format) to TranscriptBuilder entries
+    (Claude CLI JSONL format) so the uploaded transcript covers all turns.
+
+    Pre-condition: ``gap`` always starts at a user or assistant boundary
+    (never mid-turn at a ``tool`` role), because ``detect_gap`` enforces
+    ``session_messages[wm-1].role == 'assistant'`` before returning a non-empty
+    gap.  Any ``tool`` role messages within the gap always follow an assistant
+    entry that already exists in the builder or in the gap itself.
+    """
+    for msg in gap:
+        if msg.role == "user":
+            builder.append_user(msg.content or "")
+        elif msg.role == "assistant":
+            content_blocks: list[dict] = []
+            if msg.content:
+                content_blocks.append({"type": "text", "text": msg.content})
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+                    input_data = util_json.loads(fn.get("arguments", "{}"), fallback={})
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", "") if isinstance(tc, dict) else "",
+                            "name": fn.get("name", "unknown"),
+                            "input": input_data,
+                        }
+                    )
+            if not content_blocks:
+                # Fallback: ensure every assistant gap message produces an entry
+                # so the builder's entry count matches the gap length.
+                content_blocks.append({"type": "text", "text": ""})
+            builder.append_assistant(content_blocks=content_blocks)
+        elif msg.role == "tool":
+            if msg.tool_call_id:
+                builder.append_tool_result(
+                    tool_use_id=msg.tool_call_id,
+                    content=msg.content or "",
+                )
+            else:
+                # Malformed tool message — no tool_call_id to link to an
+                # assistant tool_use block.  Skip to avoid an unmatched
+                # tool_result entry in the builder (which would confuse --resume).
+                logger.warning(
+                    "[Baseline] Skipping tool gap message with no tool_call_id"
+                )
+
+
 async def _load_prior_transcript(
     user_id: str,
     session_id: str,
-    session_msg_count: int,
+    session_messages: list[ChatMessage],
     transcript_builder: TranscriptBuilder,
-) -> bool:
-    """Download and load the prior transcript into ``transcript_builder``.
+) -> tuple[bool, "TranscriptDownload | None"]:
+    """Download and load the prior CLI session into ``transcript_builder``.
 
-    Returns ``True`` when upload is safe at the end of this turn; ``False``
-    when GCS has a *newer* version that we must not overwrite (stale case).
-
-    Upload is suppressed only for **stale** transcripts (GCS watermark >
-    current turn's prefix) and **download errors** (we can't know what GCS
-    holds).  Missing and invalid transcripts return ``True`` because there is
-    nothing in GCS worth protecting — uploading is always safe.
+    Returns a tuple of (upload_safe, transcript_download):
+    - ``upload_safe`` is ``True`` when it is safe to upload at the end of this
+      turn.  Upload is suppressed only for **download errors** (unknown GCS
+      state) — missing and invalid files return ``True`` because there is
+      nothing in GCS worth protecting against overwriting.
+    - ``transcript_download`` is a ``TranscriptDownload`` with str content
+      (pre-decoded and stripped) when available, or ``None`` when no valid
+      transcript could be loaded.  Callers pass this to
+      ``extract_context_messages`` to build the LLM context.
     """
     try:
-        dl = await download_transcript(user_id, session_id, log_prefix="[Baseline]")
-    except Exception as e:
-        logger.warning("[Baseline] Transcript download failed: %s", e)
-        # Unknown GCS state — be conservative and skip upload.
-        return False
-
-    if dl is None:
-        logger.debug("[Baseline] No transcript available — will upload fresh")
-        # Nothing in GCS to protect; allow upload.
-        return True
-
-    if not validate_transcript(dl.content):
-        logger.warning("[Baseline] Downloaded transcript is invalid — will overwrite")
-        # Corrupt file in GCS; uploading a valid one is strictly better.
-        return True
-
-    if is_transcript_stale(dl, session_msg_count):
-        logger.warning(
-            "[Baseline] Transcript stale: covers %d of %d messages, skipping",
-            dl.message_count,
-            session_msg_count,
+        restore = await download_transcript(
+            user_id, session_id, log_prefix="[Baseline]"
         )
-        # GCS watermark is ahead of this turn — do not overwrite.
-        return False
+    except Exception as e:
+        logger.warning("[Baseline] Session restore failed: %s", e)
+        # Unknown GCS state — be conservative, skip upload.
+        return False, None
 
-    transcript_builder.load_previous(dl.content, log_prefix="[Baseline]")
+    if restore is None:
+        logger.debug("[Baseline] No CLI session available — will upload fresh")
+        # Nothing in GCS to protect; allow upload so the first baseline turn
+        # writes the initial transcript snapshot.
+        return True, None
+
+    content_bytes = restore.content
+    try:
+        raw_str = (
+            content_bytes.decode("utf-8")
+            if isinstance(content_bytes, bytes)
+            else content_bytes
+        )
+    except UnicodeDecodeError:
+        logger.warning("[Baseline] CLI session content is not valid UTF-8")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
+
+    stripped = strip_for_upload(raw_str)
+    if not validate_transcript(stripped):
+        logger.warning("[Baseline] CLI session content invalid after strip")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
+
+    transcript_builder.load_previous(stripped, log_prefix="[Baseline]")
     logger.info(
-        "[Baseline] Loaded transcript: %dB, msg_count=%d",
-        len(dl.content),
-        dl.message_count,
+        "[Baseline] Loaded CLI session: %dB, msg_count=%d",
+        len(content_bytes) if isinstance(content_bytes, bytes) else len(raw_str),
+        restore.message_count,
     )
-    return True
+
+    gap = detect_gap(restore, session_messages)
+    if gap:
+        _append_gap_to_builder(gap, transcript_builder)
+        logger.info(
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d gap msgs from DB",
+            restore.message_count,
+            len(gap),
+        )
+
+    # Return a str-content version so extract_context_messages receives a
+    # pre-decoded, stripped transcript (avoids redundant decode + strip).
+    # TranscriptDownload.content is typed as bytes | str; we pass str here
+    # to avoid a redundant encode + decode round-trip.
+    str_restore = TranscriptDownload(
+        content=stripped,
+        message_count=restore.message_count,
+        mode=restore.mode,
+    )
+    return True, str_restore
 
 
 async def _upload_final_transcript(
@@ -813,10 +877,10 @@ async def _upload_final_transcript(
             upload_transcript(
                 user_id=user_id,
                 session_id=session_id,
-                content=content,
+                content=content.encode("utf-8"),
                 message_count=session_msg_count,
+                mode="baseline",
                 log_prefix="[Baseline]",
-                skip_strip=True,
             )
         )
         _background_tasks.add(upload_task)
@@ -920,15 +984,16 @@ async def stream_chat_completion_baseline(
 
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.
+    transcript_download: TranscriptDownload | None = None
     if user_id and len(session.messages) > 1:
         (
-            transcript_upload_safe,
+            (transcript_upload_safe, transcript_download),
             (base_system_prompt, understanding),
         ) = await asyncio.gather(
             _load_prior_transcript(
                 user_id=user_id,
                 session_id=session_id,
-                session_msg_count=len(session.messages),
+                session_messages=session.messages,
                 transcript_builder=transcript_builder,
             ),
             prompt_task,
@@ -968,9 +1033,14 @@ async def stream_chat_completion_baseline(
 
         warm_ctx = await fetch_warm_context(user_id, message or "")
 
-    # Compress context if approaching the model's token limit
+    # Context path: transcript content (compacted, isCompactSummary preserved) +
+    # gap (DB messages after watermark) + current user turn.
+    # This avoids re-reading the full session history from DB on every turn.
+    # See extract_context_messages() in transcript.py for the shared primitive.
+    prior_context = extract_context_messages(transcript_download, session.messages)
     messages_for_context = await _compress_session_messages(
-        session.messages, model=active_model
+        prior_context + ([session.messages[-1]] if session.messages else []),
+        model=active_model,
     )
 
     # Build OpenAI message list from session history.
