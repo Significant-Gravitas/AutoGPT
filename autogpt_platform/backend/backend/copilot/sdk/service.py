@@ -3017,8 +3017,9 @@ async def stream_chat_completion_sdk(
         # lost between LPOP and clear.  File IDs and context are
         # preserved via format_pending_as_user_message.
         #
-        # The drained content is prepended into ``current_message`` so
-        # the SDK CLI sees it in chronological order (pending → current).
+        # The drained content is appended after ``current_message`` so the
+        # user's submitted message remains the leading context (better UX: the
+        # user's primary intent appears first, queued follow-ups trail it).
         # The already-saved user message in the DB is updated via
         # update_message_content_by_sequence to include the pending texts,
         # avoiding a duplicate INSERT that would occur if we used
@@ -3032,9 +3033,10 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(pending_texts),
             )
-            # Prepend so the model sees them in chronological order: pending → current.
+            # Append so the user's submitted message is the primary context;
+            # queued follow-ups trail it: current → pending.
             if current_message.strip():
-                current_message = "\n\n".join(pending_texts) + "\n\n" + current_message
+                current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
             else:
                 current_message = "\n\n".join(pending_texts)
             # Update the in-memory content of the already-saved user message
