@@ -475,10 +475,6 @@ export function useCopilotPage() {
     }
   }
 
-  async function onEnqueue(message: string) {
-    await onSend(message);
-  }
-
   return {
     sessionId,
     messages,
@@ -495,7 +491,9 @@ export function useCopilotPage() {
     isLoggedIn,
     createSession,
     onSend,
-    onEnqueue,
+    // onEnqueue delegates to onSend, which internally routes to the pending
+    // endpoint when isInflightRef.current is true.
+    onEnqueue: onSend,
     queuedMessages,
     // Pagination
     hasMoreMessages: hasMore,

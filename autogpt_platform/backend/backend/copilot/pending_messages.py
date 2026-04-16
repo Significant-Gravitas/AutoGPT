@@ -81,6 +81,18 @@ async def push_pending_message(
     Returns the new buffer length.  Enforces ``MAX_PENDING_MESSAGES`` by
     trimming from the left (oldest) — the newest message always wins if
     the user has been typing faster than the copilot can drain.
+
+    Note on atomicity: RPUSH + LTRIM are issued as separate commands, so a
+    concurrent drain (LPOP) could observe MAX_PENDING_MESSAGES + 1 items
+    between the RPUSH and the LTRIM.  This is benign — the drain simply
+    returns one extra item, and the subsequent LTRIM brings the list back
+    in bounds before the next push.
+
+    Note on durability: if the executor turn crashes after a push but before
+    the drain window runs, the message remains in Redis until the TTL expires
+    (``_PENDING_TTL_SECONDS``, currently 1 hour).  It is delivered on the
+    next turn that drains the buffer.  If no turn runs within the TTL the
+    message is silently dropped; the user may resend it.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
@@ -119,8 +131,9 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     # Redis LPOP with count (Redis 6.2+) returns None for missing key,
     # empty list if we somehow race an empty key, or the popped items.
     # We drain exactly MAX_PENDING_MESSAGES per call, which is safe
-    # because the push-side Lua script trims to that same cap so the
-    # list can never hold more than MAX_PENDING_MESSAGES items.
+    # because the push side uses RPUSH + LTRIM(-MAX_PENDING_MESSAGES, -1)
+    # to trim the list to that same cap, so the list can never hold more
+    # than MAX_PENDING_MESSAGES items.
     # Both constants must stay in sync; if you raise the cap on the
     # push side, raise it here too (or switch to a loop drain).
     lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
