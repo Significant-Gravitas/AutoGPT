@@ -87,8 +87,9 @@ export const OutputHandler = ({
           getTypeDisplayInfo(fieldSchema);
         const isExpanded = expandedObjects[fullKey] ?? false;
 
-        // User expanded → show all children; auto-expanded → filter to connected only
-        const shouldRenderChildren = isExpanded || descendantIsRelevant;
+        // Default collapse object outputs to save canvas real-estate
+        // User must manually expand to see sub-outputs
+        const shouldRenderChildren = isExpanded;
 
         return shouldShow ? (
           <div
