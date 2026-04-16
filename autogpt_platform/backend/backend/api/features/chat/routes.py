@@ -883,17 +883,17 @@ async def stream_chat_post(
             role="user" if request.is_user_message else "assistant",
             content=request.message,
         )
-        if request.is_user_message:
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(request.message),
-            )
         logger.info(f"[STREAM] Saving user message to session {session_id}")
         is_duplicate_message = (
             await append_and_save_message(session_id, message)
         ) is None
         logger.info(f"[STREAM] User message saved for session {session_id}")
+        if not is_duplicate_message and request.is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(request.message),
+            )
 
     # Create a task in the stream registry for reconnection support.
     # For duplicate messages, skip create_session entirely so the infra-retry
