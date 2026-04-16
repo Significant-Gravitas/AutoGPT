@@ -899,10 +899,10 @@ async def stream_chat_post(
     # For duplicate messages, skip create_session entirely so the infra-retry
     # client subscribes to the *existing* turn's Redis stream and receives the
     # in-progress executor output rather than an empty stream.
-    turn_id = str(uuid4())
-    log_meta["turn_id"] = turn_id
-
+    turn_id = ""
     if not is_duplicate_message:
+        turn_id = str(uuid4())
+        log_meta["turn_id"] = turn_id
         session_create_start = time.perf_counter()
         await stream_registry.create_session(
             session_id=session_id,

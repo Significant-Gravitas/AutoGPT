@@ -1,7 +1,6 @@
 from typing import cast
 
 import pytest
-import pytest_mock
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
@@ -12,6 +11,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from pytest_mock import MockerFixture
 
 from .model import (
     ChatMessage,
@@ -591,7 +591,7 @@ def _make_session_with_messages(*msgs: ChatMessage) -> ChatSession:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_returns_none_for_duplicate(
-    mocker: pytest_mock.MockerFixture,
+    mocker: MockerFixture,
 ) -> None:
     """append_and_save_message returns None when the trailing message is a duplicate."""
 
@@ -622,7 +622,7 @@ async def test_append_and_save_message_returns_none_for_duplicate(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_appends_new_message(
-    mocker: pytest_mock.MockerFixture,
+    mocker: MockerFixture,
 ) -> None:
     """append_and_save_message appends a non-duplicate message and returns the session."""
 
@@ -668,7 +668,7 @@ async def test_append_and_save_message_appends_new_message(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_raises_when_session_not_found(
-    mocker: pytest_mock.MockerFixture,
+    mocker: MockerFixture,
 ) -> None:
     """append_and_save_message raises ValueError when the session does not exist."""
 
@@ -696,7 +696,7 @@ async def test_append_and_save_message_raises_when_session_not_found(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_uses_db_when_lock_degraded(
-    mocker: pytest_mock.MockerFixture,
+    mocker: MockerFixture,
 ) -> None:
     """When the Redis lock times out (acquired=False), the fallback reads from DB."""
 
@@ -741,7 +741,7 @@ async def test_append_and_save_message_uses_db_when_lock_degraded(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_raises_database_error_on_save_failure(
-    mocker: pytest_mock.MockerFixture,
+    mocker: MockerFixture,
 ) -> None:
     """When _save_session_to_db fails, append_and_save_message raises DatabaseError."""
     from backend.util.exceptions import DatabaseError
@@ -784,7 +784,7 @@ async def test_append_and_save_message_raises_database_error_on_save_failure(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_invalidates_cache_on_cache_failure(
-    mocker: pytest_mock.MockerFixture,
+    mocker: MockerFixture,
 ) -> None:
     """When cache_chat_session fails, invalidate_session_cache is called to avoid stale reads."""
 
