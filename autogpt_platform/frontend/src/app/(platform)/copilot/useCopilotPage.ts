@@ -180,6 +180,19 @@ export function useCopilotPage() {
     }
   }, [sessionId, pendingMessage, sendMessage]);
 
+  // --- Clear backward-paginated messages when session completes ---
+  // When a session transitions from active (forwardPaginated=false) to complete
+  // (forwardPaginated=true), any backward-paginated older messages would be
+  // appended after currentMessages instead of before, causing chronological
+  // disorder. Reset paged state so the completed session renders cleanly.
+  const prevForwardPaginatedRef = useRef(forwardPaginated);
+  useEffect(() => {
+    if (!prevForwardPaginatedRef.current && forwardPaginated && pagedMessages.length > 0) {
+      resetPaged();
+    }
+    prevForwardPaginatedRef.current = forwardPaginated;
+  }, [forwardPaginated, pagedMessages.length, resetPaged]);
+
   // --- Extract prompt from URL hash on mount (e.g. /copilot#prompt=Hello) ---
   useWorkflowImportAutoSubmit({
     createSession,
