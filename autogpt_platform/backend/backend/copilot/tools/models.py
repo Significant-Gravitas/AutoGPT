@@ -84,6 +84,8 @@ class ResponseType(str, Enum):
     # Graphiti memory
     MEMORY_STORE = "memory_store"
     MEMORY_SEARCH = "memory_search"
+    MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
+    MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
 
 
 # Base response model
@@ -712,3 +714,18 @@ class MemorySearchResponse(ToolResponseBase):
     type: ResponseType = ResponseType.MEMORY_SEARCH
     facts: list[str] = Field(default_factory=list)
     recent_episodes: list[str] = Field(default_factory=list)
+
+
+class MemoryForgetCandidatesResponse(ToolResponseBase):
+    """Response with candidate memories to forget."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CANDIDATES
+    candidates: list[dict[str, str]] = Field(default_factory=list)
+
+
+class MemoryForgetConfirmResponse(ToolResponseBase):
+    """Response after deleting specific memory edges."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
+    deleted_uuids: list[str] = Field(default_factory=list)
+    failed_uuids: list[str] = Field(default_factory=list)

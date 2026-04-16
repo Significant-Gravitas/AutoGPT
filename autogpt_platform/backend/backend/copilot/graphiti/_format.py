@@ -18,15 +18,24 @@ def extract_temporal_validity(edge) -> tuple[str, str]:
     return str(valid_from), str(valid_to)
 
 
-def extract_episode_body(episode, max_len: int = 500) -> str:
-    """Extract the body text from an episode object, truncated to *max_len*."""
-    body = str(
+def extract_episode_body_raw(episode) -> str:
+    """Extract the full body text from an episode object (no truncation).
+
+    Use this when the body needs to be parsed as JSON (e.g. scope filtering
+    on MemoryEnvelope payloads).  For display purposes, use
+    ``extract_episode_body()`` which truncates.
+    """
+    return str(
         getattr(episode, "content", None)
         or getattr(episode, "body", None)
         or getattr(episode, "episode_body", None)
         or ""
     )
-    return body[:max_len]
+
+
+def extract_episode_body(episode, max_len: int = 500) -> str:
+    """Extract the body text from an episode object, truncated to *max_len*."""
+    return extract_episode_body_raw(episode)[:max_len]
 
 
 def extract_episode_timestamp(episode) -> str:
