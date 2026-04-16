@@ -1498,7 +1498,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The authenticated user's ID.\n    limit: Maximum number of messages to return (1-200, default 50).\n    before_sequence: Return messages with sequence < this value (cursor).\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including\n        active_stream info and pagination metadata.",
+        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit``, ``before_sequence``, and\n``after_sequence``. The two cursor parameters are mutually exclusive.\n\nOn the initial load (no cursor provided) of a completed session, messages\nare returned in forward order starting from sequence 0 so the user always\nsees their initial prompt.  Active sessions use the legacy newest-first\norder so streaming context is preserved.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1516,9 +1516,11 @@
               "type": "integer",
               "maximum": 200,
               "minimum": 1,
+              "description": "Maximum number of messages to return.",
               "default": 50,
               "title": "Limit"
-            }
+            },
+            "description": "Maximum number of messages to return."
           },
           {
             "name": "before_sequence",
@@ -1529,8 +1531,24 @@
                 { "type": "integer", "minimum": 0 },
                 { "type": "null" }
               ],
+              "description": "Backward pagination cursor. Return messages with sequence number strictly less than this value. Used by active-session load-more. Mutually exclusive with after_sequence.",
               "title": "Before Sequence"
-            }
+            },
+            "description": "Backward pagination cursor. Return messages with sequence number strictly less than this value. Used by active-session load-more. Mutually exclusive with after_sequence."
+          },
+          {
+            "name": "after_sequence",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "integer", "minimum": 0 },
+                { "type": "null" }
+              ],
+              "description": "Forward pagination cursor. Return messages with sequence number strictly greater than this value. Used by completed-session load-more. Mutually exclusive with before_sequence.",
+              "title": "After Sequence"
+            },
+            "description": "Forward pagination cursor. Return messages with sequence number strictly greater than this value. Used by completed-session load-more. Mutually exclusive with before_sequence."
           }
         ],
         "responses": {
@@ -13272,6 +13290,15 @@
           "oldest_sequence": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Oldest Sequence"
+          },
+          "newest_sequence": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Newest Sequence"
+          },
+          "forward_paginated": {
+            "type": "boolean",
+            "title": "Forward Paginated",
+            "default": false
           },
           "total_prompt_tokens": {
             "type": "integer",
