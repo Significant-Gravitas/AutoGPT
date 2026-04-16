@@ -11,7 +11,7 @@ from prisma.models import CreditTransaction, User, UserBalance
 
 from backend.data.credit import (
     AutoTopUpConfig,
-    BetaUserCredit,
+    UserCredit,
     UsageTransactionMetadata,
     get_auto_top_up,
     set_auto_top_up,
@@ -61,7 +61,7 @@ async def test_credit_transaction_enum_casting_integration(cleanup_test_user):
     platform."CreditTransactionType" but got "CreditTransactionType".
     """
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Test each transaction type to ensure enum casting works
     test_cases = [
@@ -115,7 +115,7 @@ async def test_auto_top_up_integration(cleanup_test_user, monkeypatch):
     monkeypatch.setattr(settings.config, "num_user_credits_refill", 1000)
 
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # First add some initial credits so we can test the configuration and subsequent behavior
     balance, _ = await credit_system._add_transaction(
@@ -177,7 +177,7 @@ async def test_enable_transaction_enum_casting_integration(cleanup_test_user):
     involves SQL queries with CreditTransactionType enum casting.
     """
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Create an inactive transaction
     balance, tx_key = await credit_system._add_transaction(
@@ -242,7 +242,7 @@ async def test_auto_top_up_configuration_storage(cleanup_test_user, monkeypatch)
     monkeypatch.setattr(settings.config, "num_user_credits_refill", 1000)
 
     user_id = cleanup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Set initial balance
     balance, _ = await credit_system._add_transaction(

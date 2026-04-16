@@ -1130,37 +1130,6 @@ class UserCredit(UserCreditBase):
         ]
 
 
-class BetaUserCredit(UserCredit):
-    """
-    This is a temporary class to handle the test user utilizing monthly credit refill.
-    TODO: Remove this class & its feature toggle.
-    """
-
-    def __init__(self, num_user_credits_refill: int):
-        self.num_user_credits_refill = num_user_credits_refill
-
-    async def get_credits(self, user_id: str) -> int:
-        cur_time = self.time_now().date()
-        balance, snapshot_time = await self._get_credits(user_id)
-        if (snapshot_time.year, snapshot_time.month) == (cur_time.year, cur_time.month):
-            return balance
-
-        target = self.num_user_credits_refill
-
-        try:
-            balance, _ = await self._add_transaction(
-                user_id=user_id,
-                amount=max(target - balance, 0),
-                transaction_type=CreditTransactionType.GRANT,
-                transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
-                metadata=SafeJson({"reason": "Monthly credit refill"}),
-            )
-            return balance
-        except UniqueViolationError:
-            # Already refilled this month
-            return (await self._get_credits(user_id))[0]
-
-
 class DisabledUserCredit(UserCreditBase):
     async def get_credits(self, *args, **kwargs) -> int:
         return 100
@@ -1209,18 +1178,7 @@ async def get_user_credit_model(user_id: str) -> UserCreditBase:
     if not settings.config.enable_credit:
         return DisabledUserCredit()
 
-    # Check LaunchDarkly flag for payment pilot users
-    # Default to False (beta monthly credit behavior) to maintain current behavior
-    is_payment_enabled = await is_feature_enabled(
-        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
-    )
-
-    if is_payment_enabled:
-        # Payment enabled users get UserCredit (no monthly refills, enable payments)
-        return UserCredit()
-    else:
-        # Default behavior: users get beta monthly credits
-        return BetaUserCredit(settings.config.num_user_credits_refill)
+    return UserCredit()
 
 
 def get_block_costs() -> dict[str, list["BlockCost"]]:

@@ -13,7 +13,7 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, UserBalance
 
-from backend.data.credit import BetaUserCredit
+from backend.data.credit import UserCredit
 from backend.data.user import DEFAULT_USER_ID
 from backend.util.json import SafeJson
 
@@ -38,7 +38,7 @@ async def setup_test_user():
 async def test_metadata_json_serialization(setup_test_user):
     """Test that metadata is properly serialized for JSONB column in raw SQL."""
     user_id = setup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # Test with complex metadata that would fail if not properly serialized
     complex_metadata = SafeJson(
@@ -90,7 +90,7 @@ async def test_metadata_json_serialization(setup_test_user):
 async def test_enable_transaction_metadata_serialization(setup_test_user):
     """Test that _enable_transaction also handles metadata JSON serialization correctly."""
     user_id = setup_test_user
-    credit_system = BetaUserCredit(1000)
+    credit_system = UserCredit()
 
     # First create an inactive transaction
     balance, tx_key = await credit_system._add_transaction(
