@@ -3806,5 +3806,6 @@ async def stream_chat_completion_sdk(
                 file_ids=None,
                 permissions=permissions,
                 mode=mode,
+                model=model,
             ):
                 yield event
