@@ -177,7 +177,15 @@ export function useLoadMoreMessages({
         setOldestSequence(response.data.oldest_sequence ?? null);
       }
 
-      if (newRaw.length + pagedRawMessages.length >= MAX_OLDER_MESSAGES) {
+      const totalAfterMerge = newRaw.length + pagedRawMessages.length;
+      if (forwardPaginated) {
+        // Forward: truncation sheds the newest tail but the cursor
+        // (newestSequence) still advances, so the sentinel can keep
+        // fetching. Only stop when the server reports no more messages.
+        setHasMore(!!response.data.has_more_messages);
+      } else if (totalAfterMerge >= MAX_OLDER_MESSAGES) {
+        // Backward: we've accumulated MAX_OLDER_MESSAGES of history —
+        // stop to avoid unbounded memory growth.
         setHasMore(false);
       } else {
         setHasMore(!!response.data.has_more_messages);

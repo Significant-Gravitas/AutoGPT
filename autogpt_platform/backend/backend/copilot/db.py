@@ -95,7 +95,12 @@ async def get_chat_messages_paginated(
 
     forward = from_start or after_sequence is not None
 
-    # Build message include — fetch paginated messages in the same query
+    # Build message include — fetch paginated messages in the same query.
+    # Note: when both from_start=True and after_sequence is not None, the
+    # after_sequence filter takes precedence (the elif branch below is skipped).
+    # This combination is not reachable via the HTTP route (mutual exclusion is
+    # enforced there), so we rely on the documented priority here without an
+    # additional assertion.
     msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "asc" if forward else "desc"},
         "take": limit + 1,
