@@ -841,7 +841,7 @@ def test_queue_pending_message_call_frequency_limit_returns_429(
         json={"message": "hi"},
     )
     assert response.status_code == 429
-    assert "Too many pending messages" in response.json()["detail"]
+    assert "Too many pending message requests this minute" in response.json()["detail"]
 
 
 def test_queue_pending_message_context_url_too_long_returns_422() -> None:
