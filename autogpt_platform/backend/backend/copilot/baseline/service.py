@@ -27,6 +27,7 @@ from opentelemetry import trace as otel_trace
 
 from backend.copilot.config import CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.db import update_message_content_by_sequence
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import (
     ChatMessage,
@@ -83,7 +84,6 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
-from backend.data.db_accessors import chat_db
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
@@ -989,7 +989,7 @@ async def stream_chat_completion_baseline(
         if last_user_msg is not None:
             last_user_msg.content = message
             if last_user_msg.sequence is not None:
-                await chat_db().update_message_content_by_sequence(
+                await update_message_content_by_sequence(
                     session_id, last_user_msg.sequence, message
                 )
             else:
