@@ -107,8 +107,16 @@ class JoyDiscoverAgentsBlock(Block):
                 (
                     "agents",
                     [
-                        {"agent_id": "ag_test1", "name": "Code Reviewer", "trust_score": 2.5},
-                        {"agent_id": "ag_test2", "name": "Code Helper", "trust_score": 1.8},
+                        {
+                            "agent_id": "ag_test1",
+                            "name": "Code Reviewer",
+                            "trust_score": 2.5,
+                        },
+                        {
+                            "agent_id": "ag_test2",
+                            "name": "Code Helper",
+                            "trust_score": 1.8,
+                        },
                     ],
                 ),
                 ("count", 2),
@@ -119,8 +127,16 @@ class JoyDiscoverAgentsBlock(Block):
             test_mock={
                 "discover_agents": lambda **kw: {
                     "agents": [
-                        {"agent_id": "ag_test1", "name": "Code Reviewer", "trust_score": 2.5},
-                        {"agent_id": "ag_test2", "name": "Code Helper", "trust_score": 1.8},
+                        {
+                            "agent_id": "ag_test1",
+                            "name": "Code Reviewer",
+                            "trust_score": 2.5,
+                        },
+                        {
+                            "agent_id": "ag_test2",
+                            "name": "Code Helper",
+                            "trust_score": 1.8,
+                        },
                     ],
                     "count": 2,
                 },
