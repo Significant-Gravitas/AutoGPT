@@ -81,7 +81,7 @@ class JoyVerifyTrustBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d8e9f0a1-2b3c-4d5e-6f7a-8b9c0d1e2f3a",
+            id="d8e9f0a1-2b3c-4d5e-8f7a-8b9c0d1e2f3a",
             description="Verify if an agent meets minimum trust threshold before delegating tasks. Use as a safety gate in multi-agent workflows.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
@@ -171,7 +171,7 @@ class JoyGetTrustScoreBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e9f0a1b2-3c4d-4e5f-7a8b-9c0d1e2f3a4b",
+            id="e9f0a1b2-3c4d-4e5f-9a8b-9c0d1e2f3a4b",
             description="Get detailed trust profile for an agent including score, verification status, and capabilities.",
             categories={BlockCategory.SAFETY},
             input_schema=self.Input,
@@ -187,6 +187,20 @@ class JoyGetTrustScoreBlock(Block):
                 ("trust_score", 2.0),
                 ("verified", True),
                 ("vouch_count", 3),
+                ("capabilities", ["mock-capability"]),
+                ("badges", ["mock-badge"]),
+                (
+                    "result",
+                    {
+                        "agent_id": "mock_agent",
+                        "name": "Mock Agent",
+                        "trust_score": 2.0,
+                        "verified": True,
+                        "vouch_count": 3,
+                        "capabilities": ["mock-capability"],
+                        "badges": ["mock-badge"],
+                    },
+                ),
             ],
             test_mock={
                 "get_agent": lambda agent_id, credentials: {
@@ -215,11 +229,12 @@ class JoyGetTrustScoreBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         agent = await self.get_agent(input_data.agent_id, credentials)
+        raw_score = agent.get("trust_score")
+        trust_score = 0.0 if raw_score is None else float(raw_score)
 
         yield "agent_id", agent.get("agent_id", input_data.agent_id)
         yield "name", agent.get("name", "Unknown")
-        raw_score2 = agent.get("trust_score")
-        yield "trust_score", 0.0 if raw_score2 is None else float(raw_score2)
+        yield "trust_score", trust_score
         yield "verified", agent.get("verified", False)
         yield "vouch_count", agent.get("vouch_count", 0)
         yield "capabilities", agent.get("capabilities", [])
