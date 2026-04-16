@@ -25,15 +25,25 @@ export function useSitrepItems(
   });
 
   return useMemo(() => {
-    if (!executions || agents.length === 0) return [];
+    if (agents.length === 0) return [];
 
     const graphIdToAgent = new Map(agents.map((a) => [a.graph_id, a]));
-    const agentExecutions = groupByAgent(executions, graphIdToAgent);
+    const agentExecutions = groupByAgent(executions ?? [], graphIdToAgent);
     const items: SitrepItemData[] = [];
+    const coveredAgentIds = new Set<string>();
 
     for (const [agent, execs] of agentExecutions) {
       const item = buildSitrepFromExecutions(agent, execs);
-      if (item) items.push(item);
+      if (item) {
+        items.push(item);
+        coveredAgentIds.add(agent.id);
+      }
+    }
+
+    for (const agent of agents) {
+      if (coveredAgentIds.has(agent.id)) continue;
+      const configItem = buildSitrepFromConfig(agent);
+      if (configItem) items.push(configItem);
     }
 
     const order: Record<SitrepPriority, number> = {
@@ -126,6 +136,32 @@ function buildSitrepFromExecutions(
       priority: "success",
       message: typeof summary === "string" ? summary : "Completed successfully",
       status: "idle",
+    };
+  }
+
+  return null;
+}
+
+function buildSitrepFromConfig(agent: LibraryAgent): SitrepItemData | null {
+  if (agent.has_external_trigger) {
+    return {
+      id: `${agent.id}-listening`,
+      agentID: agent.id,
+      agentName: agent.name,
+      priority: "listening",
+      message: "Waiting for trigger event",
+      status: "listening",
+    };
+  }
+
+  if (agent.recommended_schedule_cron) {
+    return {
+      id: `${agent.id}-scheduled`,
+      agentID: agent.id,
+      agentName: agent.name,
+      priority: "scheduled",
+      message: "Has a scheduled run",
+      status: "scheduled",
     };
   }
 
