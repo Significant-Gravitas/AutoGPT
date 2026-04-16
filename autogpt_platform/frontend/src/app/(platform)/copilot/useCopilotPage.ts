@@ -403,33 +403,47 @@ export function useCopilotPage() {
     });
   }, [status, sessionId]);
 
-  // When a NEW USER message appears during streaming the auto-continue turn has
-  // started (SDK path drained pending messages and kicked off a new turn).
-  // Only clear the indicator in that case — clearing on every new message would
-  // wipe the indicator the moment the assistant starts responding, which is
-  // wrong: the backend has already drained the buffer at turn start so the
-  // peek would return empty even though the queued messages haven't finished
-  // being processed.
+  // Clear the queued indicator at the two points where the backend has
+  // provably consumed pending messages:
+  //
+  // 1. submitted → streaming: the turn-start drain has already run and the
+  //    LLM is actively responding. Messages merged into the current user turn
+  //    will never appear as separate bubbles, so the indicator must go now —
+  //    keeping it visible while the assistant responds causes the text to look
+  //    duplicated (once in the combined user bubble, once in the queue chip).
+  //
+  // 2. A new USER message appears during streaming: the SDK auto-continue path
+  //    drained the buffer and started a new turn, injecting a fresh user
+  //    message. Clearing here covers the mid-turn inject case too.
+  //
+  // In both cases we peek the buffer first — if it still has items (e.g. a
+  // message was queued between the drain and this render), we keep them.
+  const prevStatusForQueueRef = useRef(status);
   const prevUserMessageCountRef = useRef(
     messages.filter((m) => m.role === "user").length,
   );
   useEffect(() => {
+    const prevStatus = prevStatusForQueueRef.current;
+    prevStatusForQueueRef.current = status;
+
     const userMessageCount = messages.filter((m) => m.role === "user").length;
-    const isActive = status === "streaming" || status === "submitted";
-    if (
-      !isActive ||
-      !sessionId ||
-      userMessageCount <= prevUserMessageCountRef.current
-    ) {
-      prevUserMessageCountRef.current = userMessageCount;
-      return;
-    }
+    const prevUserMessageCount = prevUserMessageCountRef.current;
     prevUserMessageCountRef.current = userMessageCount;
-    void getV2GetPendingMessages(sessionId).then((res) => {
-      if (res.status === 200 && res.data.count === 0) {
-        setQueuedMessages([]);
-      }
-    });
+
+    if (!sessionId) return;
+
+    const isTurnStarting = prevStatus === "submitted" && status === "streaming";
+    const isActive = status === "streaming" || status === "submitted";
+    const newUserMessageDuringStreaming =
+      isActive && userMessageCount > prevUserMessageCount;
+
+    if (isTurnStarting || newUserMessageDuringStreaming) {
+      void getV2GetPendingMessages(sessionId).then((res) => {
+        if (res.status === 200 && res.data.count === 0) {
+          setQueuedMessages([]);
+        }
+      });
+    }
   }, [messages, status, sessionId]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
