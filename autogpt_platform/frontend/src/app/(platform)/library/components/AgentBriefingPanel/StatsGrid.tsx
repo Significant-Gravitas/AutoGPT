@@ -1,6 +1,7 @@
 "use client";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Emoji } from "@/components/atoms/Emoji/Emoji";
 import { cn } from "@/lib/utils";
 import type { FleetSummary, AgentStatusFilter } from "../../types";
@@ -78,17 +79,19 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
             type="button"
             onClick={() => onTabChange(tile.filter)}
             className={cn(
-              "flex flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
+              "flex min-w-0 flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
               isActive
                 ? "border-zinc-900 bg-zinc-50"
                 : "border-zinc-100 bg-white",
             )}
           >
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <Emoji text={tile.emoji} size={18} />
-              <Text variant="body" className="text-zinc-800">
-                {tile.label}
-              </Text>
+              <OverflowText
+                value={tile.label}
+                variant="body"
+                className="text-zinc-800"
+              />
             </div>
             <Text variant="h4">{value}</Text>
           </button>

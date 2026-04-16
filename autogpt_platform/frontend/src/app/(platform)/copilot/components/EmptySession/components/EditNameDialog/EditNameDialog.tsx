@@ -16,7 +16,7 @@ export function EditNameDialog({ currentName }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [name, setName] = useState(currentName);
   const [isSaving, setIsSaving] = useState(false);
-  const { supabase, refreshSession } = useSupabase();
+  const { refreshSession } = useSupabase();
   const { toast } = useToast();
 
   function handleOpenChange(open: boolean) {
@@ -26,29 +26,31 @@ export function EditNameDialog({ currentName }: Props) {
 
   async function handleSave() {
     const trimmed = name.trim();
-    if (!trimmed || !supabase) return;
+    if (!trimmed) return;
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.auth.updateUser({
-        data: { full_name: trimmed },
+      const res = await fetch("/api/auth/user", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ full_name: trimmed }),
       });
 
-      if (error) {
+      if (!res.ok) {
+        const body = await res.json();
         toast({
           title: "Failed to update name",
-          description: error.message,
+          description: body.error ?? "Unknown error",
           variant: "destructive",
         });
         return;
       }
 
-      try {
-        await refreshSession();
-      } catch (e) {
+      const session = await refreshSession();
+      if (session?.error) {
         toast({
           title: "Name saved, but session refresh failed",
-          description: e instanceof Error ? e.message : "Please reload.",
+          description: session.error,
           variant: "destructive",
         });
         setIsOpen(false);
