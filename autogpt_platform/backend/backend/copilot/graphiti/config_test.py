@@ -8,6 +8,8 @@ _ENV_VARS_TO_CLEAR = (
     "GRAPHITI_FALKORDB_HOST",
     "GRAPHITI_FALKORDB_PORT",
     "GRAPHITI_FALKORDB_PASSWORD",
+    "CHAT_API_KEY",
+    "CHAT_OPENAI_API_KEY",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
 )
@@ -31,7 +33,15 @@ class TestResolveLlmApiKey:
         cfg = GraphitiConfig(llm_api_key="my-llm-key")
         assert cfg.resolve_llm_api_key() == "my-llm-key"
 
-    def test_falls_back_to_open_router_env(
+    def test_falls_back_to_chat_api_key_first(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_API_KEY", "autopilot-key")
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "platform-key")
+        cfg = GraphitiConfig(llm_api_key="")
+        assert cfg.resolve_llm_api_key() == "autopilot-key"
+
+    def test_falls_back_to_open_router_when_no_chat_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("OPEN_ROUTER_API_KEY", "fallback-router-key")
@@ -59,7 +69,15 @@ class TestResolveEmbedderApiKey:
         cfg = GraphitiConfig(embedder_api_key="my-embedder-key")
         assert cfg.resolve_embedder_api_key() == "my-embedder-key"
 
-    def test_falls_back_to_openai_api_key_env(
+    def test_falls_back_to_chat_openai_api_key_first(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CHAT_OPENAI_API_KEY", "autopilot-openai-key")
+        monkeypatch.setenv("OPENAI_API_KEY", "platform-openai-key")
+        cfg = GraphitiConfig(embedder_api_key="")
+        assert cfg.resolve_embedder_api_key() == "autopilot-openai-key"
+
+    def test_falls_back_to_openai_when_no_chat_openai_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("OPENAI_API_KEY", "fallback-openai-key")

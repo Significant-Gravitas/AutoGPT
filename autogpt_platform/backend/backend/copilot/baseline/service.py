@@ -67,11 +67,15 @@ from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
     TranscriptDownload,
+    detect_gap,
     download_transcript,
+    extract_context_messages,
+    strip_for_upload,
     upload_transcript,
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
     compress_context,
@@ -293,56 +297,69 @@ async def _baseline_llm_caller(
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
-        async for chunk in response:
-            if chunk.usage:
-                state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
-                state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-                # Extract cache token details when available (OpenAI /
-                # OpenRouter include these in prompt_tokens_details).
-                ptd = getattr(chunk.usage, "prompt_tokens_details", None)
-                if ptd:
-                    state.turn_cache_read_tokens += (
-                        getattr(ptd, "cached_tokens", 0) or 0
-                    )
-                    # cache_creation_input_tokens is reported by some providers
-                    # (e.g. Anthropic native) but not standard OpenAI streaming.
-                    state.turn_cache_creation_tokens += (
-                        getattr(ptd, "cache_creation_input_tokens", 0) or 0
-                    )
-
-            delta = chunk.choices[0].delta if chunk.choices else None
-            if not delta:
-                continue
-
-            if delta.content:
-                emit = state.thinking_stripper.process(delta.content)
-                if emit:
-                    if not state.text_started:
-                        state.pending_events.append(
-                            StreamTextStart(id=state.text_block_id)
+        # Iterate under an inner try/finally so early exits (cancel, tool-call
+        # break, exception) always release the underlying httpx connection.
+        # Without this, openai.AsyncStream leaks the streaming response and
+        # the TCP socket ends up in CLOSE_WAIT until the process exits.
+        try:
+            async for chunk in response:
+                if chunk.usage:
+                    state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
+                    state.turn_completion_tokens += chunk.usage.completion_tokens or 0
+                    # Extract cache token details when available (OpenAI /
+                    # OpenRouter include these in prompt_tokens_details).
+                    ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                    if ptd:
+                        state.turn_cache_read_tokens += (
+                            getattr(ptd, "cached_tokens", 0) or 0
                         )
-                        state.text_started = True
-                    round_text += emit
-                    state.pending_events.append(
-                        StreamTextDelta(id=state.text_block_id, delta=emit)
-                    )
+                        # cache_creation_input_tokens is reported by some providers
+                        # (e.g. Anthropic native) but not standard OpenAI streaming.
+                        state.turn_cache_creation_tokens += (
+                            getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                        )
 
-            if delta.tool_calls:
-                for tc in delta.tool_calls:
-                    idx = tc.index
-                    if idx not in tool_calls_by_index:
-                        tool_calls_by_index[idx] = {
-                            "id": "",
-                            "name": "",
-                            "arguments": "",
-                        }
-                    entry = tool_calls_by_index[idx]
-                    if tc.id:
-                        entry["id"] = tc.id
-                    if tc.function and tc.function.name:
-                        entry["name"] = tc.function.name
-                    if tc.function and tc.function.arguments:
-                        entry["arguments"] += tc.function.arguments
+                delta = chunk.choices[0].delta if chunk.choices else None
+                if not delta:
+                    continue
+
+                if delta.content:
+                    emit = state.thinking_stripper.process(delta.content)
+                    if emit:
+                        if not state.text_started:
+                            state.pending_events.append(
+                                StreamTextStart(id=state.text_block_id)
+                            )
+                            state.text_started = True
+                        round_text += emit
+                        state.pending_events.append(
+                            StreamTextDelta(id=state.text_block_id, delta=emit)
+                        )
+
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_by_index:
+                            tool_calls_by_index[idx] = {
+                                "id": "",
+                                "name": "",
+                                "arguments": "",
+                            }
+                        entry = tool_calls_by_index[idx]
+                        if tc.id:
+                            entry["id"] = tc.id
+                        if tc.function and tc.function.name:
+                            entry["name"] = tc.function.name
+                        if tc.function and tc.function.arguments:
+                            entry["arguments"] += tc.function.arguments
+        finally:
+            # Release the streaming httpx connection back to the pool on every
+            # exit path (normal completion, break, exception). openai.AsyncStream
+            # does not auto-close when the async-for loop exits early.
+            try:
+                await response.close()
+            except Exception:
+                pass
 
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
@@ -686,81 +703,147 @@ async def _compress_session_messages(
     return messages
 
 
-def is_transcript_stale(dl: TranscriptDownload | None, session_msg_count: int) -> bool:
-    """Return ``True`` when a download doesn't cover the current session.
-
-    A transcript is stale when it has a known ``message_count`` and that
-    count doesn't reach ``session_msg_count - 1`` (i.e. the session has
-    already advanced beyond what the stored transcript captures).
-    Loading a stale transcript would silently drop intermediate turns,
-    so callers should treat stale as "skip load, skip upload".
-
-    An unknown ``message_count`` (``0``) is treated as **not stale**
-    because older transcripts uploaded before msg_count tracking
-    existed must still be usable.
-    """
-    if dl is None:
-        return False
-    if not dl.message_count:
-        return False
-    return dl.message_count < session_msg_count - 1
-
-
-def should_upload_transcript(
-    user_id: str | None, transcript_covers_prefix: bool
-) -> bool:
+def should_upload_transcript(user_id: str | None, upload_safe: bool) -> bool:
     """Return ``True`` when the caller should upload the final transcript.
 
-    Uploads require a logged-in user (for the storage key) *and* a
-    transcript that covered the session prefix when loaded — otherwise
-    we'd be overwriting a more complete version in storage with a
-    partial one built from just the current turn.
+    Uploads require a logged-in user (for the storage key) *and* a safe
+    upload signal from ``_load_prior_transcript`` — i.e. GCS does not hold a
+    newer version that we'd be overwriting.
     """
-    return bool(user_id) and transcript_covers_prefix
+    return bool(user_id) and upload_safe
+
+
+def _append_gap_to_builder(
+    gap: list[ChatMessage],
+    builder: TranscriptBuilder,
+) -> None:
+    """Append gap messages from chat-db into the TranscriptBuilder.
+
+    Converts ChatMessage (OpenAI format) to TranscriptBuilder entries
+    (Claude CLI JSONL format) so the uploaded transcript covers all turns.
+
+    Pre-condition: ``gap`` always starts at a user or assistant boundary
+    (never mid-turn at a ``tool`` role), because ``detect_gap`` enforces
+    ``session_messages[wm-1].role == 'assistant'`` before returning a non-empty
+    gap.  Any ``tool`` role messages within the gap always follow an assistant
+    entry that already exists in the builder or in the gap itself.
+    """
+    for msg in gap:
+        if msg.role == "user":
+            builder.append_user(msg.content or "")
+        elif msg.role == "assistant":
+            content_blocks: list[dict] = []
+            if msg.content:
+                content_blocks.append({"type": "text", "text": msg.content})
+            if msg.tool_calls:
+                for tc in msg.tool_calls:
+                    fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+                    input_data = util_json.loads(fn.get("arguments", "{}"), fallback={})
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", "") if isinstance(tc, dict) else "",
+                            "name": fn.get("name", "unknown"),
+                            "input": input_data,
+                        }
+                    )
+            if not content_blocks:
+                # Fallback: ensure every assistant gap message produces an entry
+                # so the builder's entry count matches the gap length.
+                content_blocks.append({"type": "text", "text": ""})
+            builder.append_assistant(content_blocks=content_blocks)
+        elif msg.role == "tool":
+            if msg.tool_call_id:
+                builder.append_tool_result(
+                    tool_use_id=msg.tool_call_id,
+                    content=msg.content or "",
+                )
+            else:
+                # Malformed tool message — no tool_call_id to link to an
+                # assistant tool_use block.  Skip to avoid an unmatched
+                # tool_result entry in the builder (which would confuse --resume).
+                logger.warning(
+                    "[Baseline] Skipping tool gap message with no tool_call_id"
+                )
 
 
 async def _load_prior_transcript(
     user_id: str,
     session_id: str,
-    session_msg_count: int,
+    session_messages: list[ChatMessage],
     transcript_builder: TranscriptBuilder,
-) -> bool:
-    """Download and load the prior transcript into ``transcript_builder``.
+) -> tuple[bool, "TranscriptDownload | None"]:
+    """Download and load the prior CLI session into ``transcript_builder``.
 
-    Returns ``True`` when the loaded transcript fully covers the session
-    prefix; ``False`` otherwise (stale, missing, invalid, or download
-    error).  Callers should suppress uploads when this returns ``False``
-    to avoid overwriting a more complete version in storage.
+    Returns a tuple of (upload_safe, transcript_download):
+    - ``upload_safe`` is ``True`` when it is safe to upload at the end of this
+      turn.  Upload is suppressed only for **download errors** (unknown GCS
+      state) — missing and invalid files return ``True`` because there is
+      nothing in GCS worth protecting against overwriting.
+    - ``transcript_download`` is a ``TranscriptDownload`` with str content
+      (pre-decoded and stripped) when available, or ``None`` when no valid
+      transcript could be loaded.  Callers pass this to
+      ``extract_context_messages`` to build the LLM context.
     """
     try:
-        dl = await download_transcript(user_id, session_id, log_prefix="[Baseline]")
-    except Exception as e:
-        logger.warning("[Baseline] Transcript download failed: %s", e)
-        return False
-
-    if dl is None:
-        logger.debug("[Baseline] No transcript available")
-        return False
-
-    if not validate_transcript(dl.content):
-        logger.warning("[Baseline] Downloaded transcript but invalid")
-        return False
-
-    if is_transcript_stale(dl, session_msg_count):
-        logger.warning(
-            "[Baseline] Transcript stale: covers %d of %d messages, skipping",
-            dl.message_count,
-            session_msg_count,
+        restore = await download_transcript(
+            user_id, session_id, log_prefix="[Baseline]"
         )
-        return False
+    except Exception as e:
+        logger.warning("[Baseline] Session restore failed: %s", e)
+        # Unknown GCS state — be conservative, skip upload.
+        return False, None
 
-    transcript_builder.load_previous(dl.content, log_prefix="[Baseline]")
+    if restore is None:
+        logger.debug("[Baseline] No CLI session available — will upload fresh")
+        # Nothing in GCS to protect; allow upload so the first baseline turn
+        # writes the initial transcript snapshot.
+        return True, None
+
+    content_bytes = restore.content
+    try:
+        raw_str = (
+            content_bytes.decode("utf-8")
+            if isinstance(content_bytes, bytes)
+            else content_bytes
+        )
+    except UnicodeDecodeError:
+        logger.warning("[Baseline] CLI session content is not valid UTF-8")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
+
+    stripped = strip_for_upload(raw_str)
+    if not validate_transcript(stripped):
+        logger.warning("[Baseline] CLI session content invalid after strip")
+        # Corrupt file in GCS; overwriting with a valid one is better.
+        return True, None
+
+    transcript_builder.load_previous(stripped, log_prefix="[Baseline]")
     logger.info(
-        "[Baseline] Loaded transcript: %dB, msg_count=%d",
-        len(dl.content),
-        dl.message_count,
+        "[Baseline] Loaded CLI session: %dB, msg_count=%d",
+        len(content_bytes) if isinstance(content_bytes, bytes) else len(raw_str),
+        restore.message_count,
     )
-    return True
+
+    gap = detect_gap(restore, session_messages)
+    if gap:
+        _append_gap_to_builder(gap, transcript_builder)
+        logger.info(
+            "[Baseline] Filled gap: loaded %d transcript msgs + %d gap msgs from DB",
+            restore.message_count,
+            len(gap),
+        )
+
+    # Return a str-content version so extract_context_messages receives a
+    # pre-decoded, stripped transcript (avoids redundant decode + strip).
+    # TranscriptDownload.content is typed as bytes | str; we pass str here
+    # to avoid a redundant encode + decode round-trip.
+    str_restore = TranscriptDownload(
+        content=stripped,
+        message_count=restore.message_count,
+        mode=restore.mode,
+    )
+    return True, str_restore
 
 
 async def _upload_final_transcript(
@@ -794,10 +877,10 @@ async def _upload_final_transcript(
             upload_transcript(
                 user_id=user_id,
                 session_id=session_id,
-                content=content,
+                content=content.encode("utf-8"),
                 message_count=session_msg_count,
+                mode="baseline",
                 log_prefix="[Baseline]",
-                skip_strip=True,
             )
         )
         _background_tasks.add(upload_task)
@@ -884,7 +967,7 @@ async def stream_chat_completion_baseline(
 
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()
-    transcript_covers_prefix = True
+    transcript_upload_safe = True
 
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
@@ -901,15 +984,16 @@ async def stream_chat_completion_baseline(
 
     # Run download + prompt build concurrently — both are independent I/O
     # on the request critical path.
+    transcript_download: TranscriptDownload | None = None
     if user_id and len(session.messages) > 1:
         (
-            transcript_covers_prefix,
+            (transcript_upload_safe, transcript_download),
             (base_system_prompt, understanding),
         ) = await asyncio.gather(
             _load_prior_transcript(
                 user_id=user_id,
                 session_id=session_id,
-                session_msg_count=len(session.messages),
+                session_messages=session.messages,
                 transcript_builder=transcript_builder,
             ),
             prompt_task,
@@ -940,17 +1024,23 @@ async def stream_chat_completion_baseline(
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
     system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
 
-    # Warm context: pre-load relevant facts from Graphiti on first turn
+    # Warm context: pre-load relevant facts from Graphiti on first turn.
+    # Stored here but injected into the user message (not the system prompt)
+    # after openai_messages is built — keeps system prompt static for caching.
+    warm_ctx: str | None = None
     if graphiti_enabled and user_id and len(session.messages) <= 1:
         from backend.copilot.graphiti.context import fetch_warm_context
 
         warm_ctx = await fetch_warm_context(user_id, message or "")
-        if warm_ctx:
-            system_prompt += f"\n\n{warm_ctx}"
 
-    # Compress context if approaching the model's token limit
+    # Context path: transcript content (compacted, isCompactSummary preserved) +
+    # gap (DB messages after watermark) + current user turn.
+    # This avoids re-reading the full session history from DB on every turn.
+    # See extract_context_messages() in transcript.py for the shared primitive.
+    prior_context = extract_context_messages(transcript_download, session.messages)
     messages_for_context = await _compress_session_messages(
-        session.messages, model=active_model
+        prior_context + ([session.messages[-1]] if session.messages else []),
+        model=active_model,
     )
 
     # Build OpenAI message list from session history.
@@ -995,6 +1085,20 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # Inject Graphiti warm context into the first user message (not the
+    # system prompt) so the system prompt stays static and cacheable.
+    # warm_ctx is already wrapped in <temporal_context>.
+    # Appended AFTER user_context so <user_context> stays at the very start.
+    if warm_ctx:
+        for msg in openai_messages:
+            if msg["role"] == "user":
+                existing = msg.get("content", "")
+                if isinstance(existing, str):
+                    msg["content"] = f"{existing}\n\n{warm_ctx}"
+                break
+        # Do NOT append warm_ctx to user_message_for_transcript — it would
+        # persist stale temporal context into the transcript for future turns.
 
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
@@ -1253,8 +1357,16 @@ async def stream_chat_completion_baseline(
         if graphiti_enabled and user_id and message and is_user_message:
             from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 
+            # Pass only the final assistant reply (after stripping tool-loop
+            # chatter) so derived-finding distillation sees the substantive
+            # response, not intermediate tool-planning text.
             _ingest_task = asyncio.create_task(
-                enqueue_conversation_turn(user_id, session_id, message)
+                enqueue_conversation_turn(
+                    user_id,
+                    session_id,
+                    message,
+                    assistant_msg=final_text if state else "",
+                )
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
@@ -1272,7 +1384,7 @@ async def stream_chat_completion_baseline(
                     stop_reason=STOP_REASON_END_TURN,
                 )
 
-        if user_id and should_upload_transcript(user_id, transcript_covers_prefix):
+        if user_id and should_upload_transcript(user_id, transcript_upload_safe):
             await _upload_final_transcript(
                 user_id=user_id,
                 session_id=session_id,

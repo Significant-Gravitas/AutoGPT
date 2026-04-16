@@ -1,10 +1,10 @@
 """JSONL transcript management for stateless multi-turn resume.
 
 The Claude Code CLI persists conversations as JSONL files (one JSON object per
-line).  When the SDK's ``Stop`` hook fires we read this file, strip bloat
-(progress entries, metadata), and upload the result to bucket storage.  On the
-next turn we download the transcript, write it to a temp file, and pass
-``--resume`` so the CLI can reconstruct the full conversation.
+line).  When the SDK's ``Stop`` hook fires the caller reads this file, strips
+bloat (progress entries, metadata), and uploads the result to bucket storage.
+On the next turn the caller downloads the bytes and writes them to disk before
+passing ``--resume`` so the CLI can reconstruct the full conversation.
 
 Storage is handled via ``WorkspaceStorageBackend`` (GCS in prod, local
 filesystem for self-hosted) — no DB column needed.
@@ -20,12 +20,16 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from backend.util import json
 from backend.util.clients import get_openai_client
 from backend.util.prompt import CompressResult, compress_context
 from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_storage
+
+if TYPE_CHECKING:
+    from .model import ChatMessage
 
 logger = logging.getLogger(__name__)
 
@@ -44,17 +48,17 @@ STRIPPABLE_TYPES = frozenset(
 )
 
 
+TranscriptMode = Literal["sdk", "baseline"]
+
+
 @dataclass
 class TranscriptDownload:
-    """Result of downloading a transcript with its metadata."""
+    content: bytes | str
+    message_count: int = 0
+    # "sdk" = Claude CLI native, "baseline" = TranscriptBuilder
+    mode: TranscriptMode = "sdk"
 
-    content: str
-    message_count: int = 0  # session.messages length when uploaded
-    uploaded_at: float = 0.0  # epoch timestamp of upload
 
-
-# Workspace storage constants — deterministic path from session_id.
-TRANSCRIPT_STORAGE_PREFIX = "chat-transcripts"
 # Storage prefix for the CLI's native session JSONL files (for cross-pod --resume).
 _CLI_SESSION_STORAGE_PREFIX = "cli-sessions"
 
@@ -363,7 +367,7 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
 _SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
 
 
-def _projects_base() -> str:
+def projects_base() -> str:
     """Return the resolved path to the CLI's projects directory."""
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
     return os.path.realpath(os.path.join(config_dir, "projects"))
@@ -390,8 +394,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
 
     Returns the number of directories removed.
     """
-    projects_base = _projects_base()
-    if not os.path.isdir(projects_base):
+    _pbase = projects_base()
+    if not os.path.isdir(_pbase):
         return 0
 
     now = time.time()
@@ -399,7 +403,7 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
 
     # Scoped mode: only clean up the one directory for the current session.
     if encoded_cwd:
-        target = Path(projects_base) / encoded_cwd
+        target = Path(_pbase) / encoded_cwd
         if not target.is_dir():
             return 0
         # Guard: only sweep copilot-generated dirs.
@@ -437,7 +441,7 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     # Only safe for single-tenant deployments; callers should prefer the
     # scoped variant by passing encoded_cwd.
     try:
-        entries = Path(projects_base).iterdir()
+        entries = Path(_pbase).iterdir()
     except OSError as e:
         logger.warning("[Transcript] Failed to list projects dir: %s", e)
         return 0
@@ -490,9 +494,9 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
     if not transcript_path:
         return None
 
-    projects_base = _projects_base()
+    _pbase = projects_base()
     real_path = os.path.realpath(transcript_path)
-    if not real_path.startswith(projects_base + os.sep):
+    if not real_path.startswith(_pbase + os.sep):
         logger.warning(
             "[Transcript] transcript_path outside projects base: %s", transcript_path
         )
@@ -611,28 +615,6 @@ def validate_transcript(content: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
-    """Return (workspace_id, file_id, filename) for a session's transcript.
-
-    Path structure: ``chat-transcripts/{user_id}/{session_id}.jsonl``
-    IDs are sanitized to hex+hyphen to prevent path traversal.
-    """
-    return (
-        TRANSCRIPT_STORAGE_PREFIX,
-        _sanitize_id(user_id),
-        f"{_sanitize_id(session_id)}.jsonl",
-    )
-
-
-def _meta_storage_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
-    """Return (workspace_id, file_id, filename) for a session's transcript metadata."""
-    return (
-        TRANSCRIPT_STORAGE_PREFIX,
-        _sanitize_id(user_id),
-        f"{_sanitize_id(session_id)}.meta.json",
-    )
-
-
 def _build_path_from_parts(parts: tuple[str, str, str], backend: object) -> str:
     """Build a full storage path from (workspace_id, file_id, filename) parts."""
     wid, fid, fname = parts
@@ -642,24 +624,12 @@ def _build_path_from_parts(parts: tuple[str, str, str], backend: object) -> str:
     return f"local://{wid}/{fid}/{fname}"
 
 
-def _build_storage_path(user_id: str, session_id: str, backend: object) -> str:
-    """Build the full storage path string that ``retrieve()`` expects."""
-    return _build_path_from_parts(_storage_path_parts(user_id, session_id), backend)
-
-
-def _build_meta_storage_path(user_id: str, session_id: str, backend: object) -> str:
-    """Build the full storage path for the companion .meta.json file."""
-    return _build_path_from_parts(
-        _meta_storage_path_parts(user_id, session_id), backend
-    )
-
-
 # ---------------------------------------------------------------------------
 # CLI native session file — cross-pod --resume support
 # ---------------------------------------------------------------------------
 
 
-def _cli_session_path(sdk_cwd: str, session_id: str) -> str:
+def cli_session_path(sdk_cwd: str, session_id: str) -> str:
     """Expected path of the CLI's native session JSONL file.
 
     The CLI resolves the working directory via ``os.path.realpath``, then
@@ -675,7 +645,7 @@ def _cli_session_path(sdk_cwd: str, session_id: str) -> str:
     """
     encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     safe_id = _sanitize_id(session_id)
-    return os.path.join(_projects_base(), encoded_cwd, f"{safe_id}.jsonl")
+    return os.path.join(projects_base(), encoded_cwd, f"{safe_id}.jsonl")
 
 
 def _cli_session_storage_path_parts(
@@ -689,209 +659,82 @@ def _cli_session_storage_path_parts(
     )
 
 
-async def upload_cli_session(
-    user_id: str,
-    session_id: str,
-    sdk_cwd: str,
-    log_prefix: str = "[Transcript]",
-) -> None:
-    """Upload the CLI's native session JSONL file to remote storage.
-
-    Called after each turn so the next turn can restore the file on any pod
-    (eliminating the pod-affinity requirement for --resume).
-
-    The CLI only writes the session file after the turn completes, so this
-    must run in the finally block, AFTER the SDK stream has finished.
-    """
-    session_file = _cli_session_path(sdk_cwd, session_id)
-    real_path = os.path.realpath(session_file)
-    projects_base = _projects_base()
-
-    if not real_path.startswith(projects_base + os.sep):
-        logger.warning(
-            "%s CLI session file outside projects base, skipping upload: %s",
-            log_prefix,
-            os.path.basename(real_path),
-        )
-        return
-
-    try:
-        content = Path(real_path).read_bytes()
-    except FileNotFoundError:
-        logger.debug(
-            "%s CLI session file not found, skipping upload: %s",
-            log_prefix,
-            session_file,
-        )
-        return
-    except OSError as e:
-        logger.warning("%s Failed to read CLI session file: %s", log_prefix, e)
-        return
-
-    storage = await get_workspace_storage()
-    wid, fid, fname = _cli_session_storage_path_parts(user_id, session_id)
-    try:
-        await storage.store(
-            workspace_id=wid, file_id=fid, filename=fname, content=content
-        )
-        logger.info(
-            "%s Uploaded CLI session file (%dB) for cross-pod --resume",
-            log_prefix,
-            len(content),
-        )
-    except Exception as e:
-        logger.warning("%s Failed to upload CLI session file: %s", log_prefix, e)
-
-
-async def restore_cli_session(
-    user_id: str,
-    session_id: str,
-    sdk_cwd: str,
-    log_prefix: str = "[Transcript]",
-) -> bool:
-    """Download and restore the CLI's native session file for --resume.
-
-    Returns True if the file was successfully restored and --resume can be
-    used with the session UUID.  Returns False if not available (first turn
-    or upload failed), in which case the caller should not set --resume.
-    """
-    session_file = _cli_session_path(sdk_cwd, session_id)
-    real_path = os.path.realpath(session_file)
-    projects_base = _projects_base()
-
-    if not real_path.startswith(projects_base + os.sep):
-        logger.warning(
-            "%s CLI session restore path outside projects base: %s",
-            log_prefix,
-            os.path.basename(session_file),
-        )
-        return False
-
-    # If the session file already exists locally (same-pod reuse), use it directly.
-    # Downloading from storage could overwrite a newer local version when a previous
-    # turn's upload failed: stored content is stale while the local file already
-    # contains extended history from that turn.
-    if Path(real_path).exists():
-        logger.debug(
-            "%s CLI session file already exists locally — using it for --resume",
-            log_prefix,
-        )
-        return True
-
-    storage = await get_workspace_storage()
-    path = _build_path_from_parts(
-        _cli_session_storage_path_parts(user_id, session_id), storage
+def _cli_session_meta_path_parts(user_id: str, session_id: str) -> tuple[str, str, str]:
+    """Return (workspace_id, file_id, filename) for the CLI session meta file."""
+    return (
+        _CLI_SESSION_STORAGE_PREFIX,
+        _sanitize_id(user_id),
+        f"{_sanitize_id(session_id)}.meta.json",
     )
-
-    try:
-        content = await storage.retrieve(path)
-    except FileNotFoundError:
-        logger.debug("%s No CLI session in storage (first turn or missing)", log_prefix)
-        return False
-    except Exception as e:
-        logger.warning("%s Failed to download CLI session: %s", log_prefix, e)
-        return False
-
-    try:
-        os.makedirs(os.path.dirname(real_path), exist_ok=True)
-        Path(real_path).write_bytes(content)
-        logger.info(
-            "%s Restored CLI session file (%dB) for --resume",
-            log_prefix,
-            len(content),
-        )
-        return True
-    except OSError as e:
-        logger.warning("%s Failed to write CLI session file: %s", log_prefix, e)
-        return False
 
 
 async def upload_transcript(
     user_id: str,
     session_id: str,
-    content: str,
+    content: bytes,
     message_count: int = 0,
+    mode: TranscriptMode = "sdk",
     log_prefix: str = "[Transcript]",
-    skip_strip: bool = False,
 ) -> None:
-    """Strip progress entries and stale thinking blocks, then upload transcript.
+    """Upload CLI session content to GCS with companion meta.json.
 
-    The transcript represents the FULL active context (atomic).
-    Each upload REPLACES the previous transcript entirely.
+    Pure GCS operation — no disk I/O.  The caller is responsible for reading
+    the session file from disk before calling this function.
 
-    The executor holds a cluster lock per session, so concurrent uploads for
-    the same session cannot happen.
+    Also uploads a companion .meta.json with the message_count watermark so
+    download_transcript can return it without a separate fetch.
 
-    Args:
-        content: Complete JSONL transcript (from TranscriptBuilder).
-        message_count: ``len(session.messages)`` at upload time.
-        skip_strip: When ``True``, skip the strip + re-validate pass.
-            Safe for builder-generated content (baseline path) which
-            never emits progress entries or stale thinking blocks.
+    Called after each turn so the next turn can restore the file on any pod
+    (eliminating the pod-affinity requirement for --resume).
     """
-    if skip_strip:
-        # Caller guarantees the content is already clean and valid.
-        stripped = content
-    else:
-        # Strip metadata entries and stale thinking blocks in a single parse.
-        # SDK-built transcripts may have progress entries; strip for safety.
-        stripped = strip_for_upload(content)
-    if not skip_strip and not validate_transcript(stripped):
-        # Log entry types for debugging — helps identify why validation failed
-        entry_types = [
-            json.loads(line, fallback={"type": "INVALID_JSON"}).get("type", "?")
-            for line in stripped.strip().split("\n")
-        ]
-        logger.warning(
-            "%s Skipping upload — stripped content not valid "
-            "(types=%s, stripped_len=%d, raw_len=%d)",
-            log_prefix,
-            entry_types,
-            len(stripped),
-            len(content),
-        )
-        logger.debug("%s Raw content preview: %s", log_prefix, content[:500])
-        logger.debug("%s Stripped content: %s", log_prefix, stripped[:500])
-        return
-
     storage = await get_workspace_storage()
-    wid, fid, fname = _storage_path_parts(user_id, session_id)
-    encoded = stripped.encode("utf-8")
-    meta = {"message_count": message_count, "uploaded_at": time.time()}
-    mwid, mfid, mfname = _meta_storage_path_parts(user_id, session_id)
+    wid, fid, fname = _cli_session_storage_path_parts(user_id, session_id)
+    mwid, mfid, mfname = _cli_session_meta_path_parts(user_id, session_id)
+    meta = {"message_count": message_count, "mode": mode, "uploaded_at": time.time()}
     meta_encoded = json.dumps(meta).encode("utf-8")
 
-    # Transcript + metadata are independent objects at different keys, so
-    # write them concurrently.  ``return_exceptions`` keeps a metadata
-    # failure from sinking the transcript write.
-    transcript_result, metadata_result = await asyncio.gather(
-        storage.store(
-            workspace_id=wid,
-            file_id=fid,
-            filename=fname,
-            content=encoded,
-        ),
-        storage.store(
-            workspace_id=mwid,
-            file_id=mfid,
-            filename=mfname,
-            content=meta_encoded,
-        ),
-        return_exceptions=True,
-    )
-    if isinstance(transcript_result, BaseException):
-        raise transcript_result
-    if isinstance(metadata_result, BaseException):
-        # Metadata is best-effort — the gap-fill logic in
-        # _build_query_message tolerates a missing metadata file.
-        logger.warning("%s Failed to write metadata: %s", log_prefix, metadata_result)
+    # Write JSONL first, meta second — sequential so a crash between the two
+    # leaves an orphaned JSONL (no meta) rather than an orphaned meta (wrong
+    # watermark / mode paired with stale or absent content).
+    # On any failure we roll back the other file so the pair is always absent
+    # together; download_transcript returns None when either file is missing.
+    try:
+        await storage.store(
+            workspace_id=wid, file_id=fid, filename=fname, content=content
+        )
+    except Exception as session_err:
+        logger.warning(
+            "%s Failed to upload CLI session file: %s", log_prefix, session_err
+        )
+        return
+
+    try:
+        await storage.store(
+            workspace_id=mwid, file_id=mfid, filename=mfname, content=meta_encoded
+        )
+    except Exception as meta_err:
+        logger.warning("%s Failed to upload CLI session meta: %s", log_prefix, meta_err)
+        # Roll back the JSONL so neither file exists — avoids orphaned JSONL being
+        # used with wrong mode/watermark defaults on the next restore.
+        try:
+            session_path = _build_path_from_parts(
+                _cli_session_storage_path_parts(user_id, session_id), storage
+            )
+            await storage.delete(session_path)
+        except Exception as rollback_err:
+            logger.debug(
+                "%s Session rollback failed (harmless — download will return None): %s",
+                log_prefix,
+                rollback_err,
+            )
+        return
 
     logger.info(
-        "%s Uploaded %dB (stripped from %dB, msg_count=%d)",
+        "%s Uploaded CLI session (%dB, msg_count=%d, mode=%s)",
         log_prefix,
-        len(encoded),
         len(content),
         message_count,
+        mode,
     )
 
 
@@ -900,83 +743,173 @@ async def download_transcript(
     session_id: str,
     log_prefix: str = "[Transcript]",
 ) -> TranscriptDownload | None:
-    """Download transcript and metadata from bucket storage.
+    """Download CLI session from GCS. Returns content + message_count + mode, or None if not found.
 
-    Returns a ``TranscriptDownload`` with the JSONL content and the
-    ``message_count`` watermark from the upload, or ``None`` if not found.
+    Pure GCS operation — no disk I/O.  The caller is responsible for writing
+    content to disk if --resume is needed.
 
-    The content and metadata fetches run concurrently since they are
-    independent objects in the bucket.
+    Returns a TranscriptDownload with the raw content, message_count watermark,
+    and mode on success, or None if not available (first turn or upload failed).
     """
     storage = await get_workspace_storage()
-    path = _build_storage_path(user_id, session_id, storage)
-    meta_path = _build_meta_storage_path(user_id, session_id, storage)
+    path = _build_path_from_parts(
+        _cli_session_storage_path_parts(user_id, session_id), storage
+    )
+    meta_path = _build_path_from_parts(
+        _cli_session_meta_path_parts(user_id, session_id), storage
+    )
 
-    content_task = asyncio.create_task(storage.retrieve(path))
-    meta_task = asyncio.create_task(storage.retrieve(meta_path))
     content_result, meta_result = await asyncio.gather(
-        content_task, meta_task, return_exceptions=True
+        storage.retrieve(path),
+        storage.retrieve(meta_path),
+        return_exceptions=True,
     )
 
     if isinstance(content_result, FileNotFoundError):
-        logger.debug("%s No transcript in storage", log_prefix)
+        logger.debug("%s No CLI session in storage (first turn or missing)", log_prefix)
         return None
     if isinstance(content_result, BaseException):
         logger.warning(
-            "%s Failed to download transcript: %s", log_prefix, content_result
+            "%s Failed to download CLI session: %s", log_prefix, content_result
         )
         return None
 
-    content = content_result.decode("utf-8")
+    content: bytes = content_result
 
-    # Metadata is best-effort — old transcripts won't have it.
+    # Parse message_count and mode from companion meta — best-effort, defaults.
     message_count = 0
-    uploaded_at = 0.0
+    mode: TranscriptMode = "sdk"
     if isinstance(meta_result, FileNotFoundError):
-        pass  # No metadata — treat as unknown (msg_count=0 → always fill gap)
+        pass  # No meta — old upload; default to "sdk"
     elif isinstance(meta_result, BaseException):
-        logger.debug(
-            "%s Failed to load transcript metadata: %s", log_prefix, meta_result
-        )
+        logger.debug("%s Failed to load CLI session meta: %s", log_prefix, meta_result)
     else:
-        meta = json.loads(meta_result.decode("utf-8"), fallback={})
-        message_count = meta.get("message_count", 0)
-        uploaded_at = meta.get("uploaded_at", 0.0)
+        try:
+            meta_str = meta_result.decode("utf-8")
+        except UnicodeDecodeError:
+            logger.debug("%s CLI session meta is not valid UTF-8, ignoring", log_prefix)
+            meta_str = None
+        if meta_str is not None:
+            meta = json.loads(meta_str, fallback={})
+            if isinstance(meta, dict):
+                raw_count = meta.get("message_count", 0)
+                message_count = (
+                    raw_count if isinstance(raw_count, int) and raw_count >= 0 else 0
+                )
+                raw_mode = meta.get("mode", "sdk")
+                mode = raw_mode if raw_mode in ("sdk", "baseline") else "sdk"
 
     logger.info(
-        "%s Downloaded %dB (msg_count=%d)", log_prefix, len(content), message_count
+        "%s Downloaded CLI session (%dB, msg_count=%d, mode=%s)",
+        log_prefix,
+        len(content),
+        message_count,
+        mode,
     )
-    return TranscriptDownload(
-        content=content,
-        message_count=message_count,
-        uploaded_at=uploaded_at,
-    )
+    return TranscriptDownload(content=content, message_count=message_count, mode=mode)
+
+
+def detect_gap(
+    download: TranscriptDownload,
+    session_messages: list[ChatMessage],
+) -> list[ChatMessage]:
+    """Return chat-db messages after the transcript watermark (excluding current user turn).
+
+    Returns [] if transcript is current, watermark is zero, or the watermark
+    position doesn't end on an assistant turn (misaligned watermark).
+    """
+    if download.message_count == 0:
+        return []
+    wm = download.message_count
+    total = len(session_messages)
+    if wm >= total - 1:
+        return []
+    # Sanity: position wm-1 should be an assistant turn; misaligned watermark
+    # means the DB messages shifted (e.g. deletion) — skip gap to avoid wrong context.
+    # In normal operation ``message_count`` is always written after a complete
+    # user→assistant exchange (never mid-turn), so the last covered position is
+    # always assistant.  This guard fires only on data corruption or message deletion.
+    if session_messages[wm - 1].role != "assistant":
+        return []
+    return list(session_messages[wm : total - 1])
+
+
+def extract_context_messages(
+    download: TranscriptDownload | None,
+    session_messages: "list[ChatMessage]",
+) -> "list[ChatMessage]":
+    """Return context messages for the current turn: transcript content + gap.
+
+    This is the shared context primitive used by both the SDK path
+    (``use_resume=False`` → ``<conversation_history>`` injection) and the
+    baseline path (OpenAI messages array).
+
+    How it works:
+
+    - When a transcript exists, ``TranscriptBuilder.load_previous`` preserves
+      ``isCompactSummary=True`` compaction entries, so the returned messages
+      mirror the compacted context the CLI would see via ``--resume``.
+    - The gap (DB messages after the transcript watermark) is always small in
+      normal operation; it only grows during mode switches or when an upload
+      was missed.
+    - Falls back to full DB messages when no transcript exists (first turn,
+      upload failure, or GCS unavailable).
+    - Returns *prior* messages only (excluding the current user turn at
+      ``session_messages[-1]``).  Callers that need the current turn append
+      ``session_messages[-1]`` themselves.
+    - **Tool calls from transcript entries are flattened to text**: assistant
+      messages derived from the JSONL use ``_flatten_assistant_content``, which
+      serialises ``tool_use`` blocks as human-readable text rather than
+      structured ``tool_calls``.  Gap messages (from DB) preserve their
+      original ``tool_calls`` field.  This is the same trade-off as the old
+      ``_compress_session_messages(session.messages)`` approach — no regression.
+
+    Args:
+        download: The ``TranscriptDownload`` from GCS, or ``None`` when no
+            transcript is available.  ``content`` may be either ``bytes`` or
+            ``str`` (the baseline path decodes + strips before returning).
+        session_messages: All messages in the session, with the current user
+            turn as the last element.
+
+    Returns:
+        A list of ``ChatMessage`` objects covering the prior conversation
+        context, suitable for injection as conversation history.
+    """
+    from .model import ChatMessage as _ChatMessage  # runtime import
+
+    prior = session_messages[:-1]
+
+    if download is None:
+        return prior
+
+    raw_content = download.content
+    if not raw_content:
+        return prior
+
+    # Handle both bytes (raw GCS download) and str (pre-decoded baseline path).
+    if isinstance(raw_content, bytes):
+        try:
+            content_str: str = raw_content.decode("utf-8")
+        except UnicodeDecodeError:
+            return prior
+    else:
+        content_str = raw_content
+
+    raw = _transcript_to_messages(content_str)
+    if not raw:
+        return prior
+
+    transcript_msgs = [
+        _ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw
+    ]
+    gap = detect_gap(download, session_messages)
+    return transcript_msgs + gap
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:
-    """Delete transcript and its metadata from bucket storage.
-
-    Removes both the ``.jsonl`` transcript and the companion ``.meta.json``
-    so stale ``message_count`` watermarks cannot corrupt gap-fill logic.
-    """
+    """Delete CLI session JSONL and its companion .meta.json from bucket storage."""
     storage = await get_workspace_storage()
-    path = _build_storage_path(user_id, session_id, storage)
 
-    try:
-        await storage.delete(path)
-        logger.info("[Transcript] Deleted transcript for session %s", session_id)
-    except Exception as e:
-        logger.warning("[Transcript] Failed to delete transcript: %s", e)
-
-    # Also delete the companion .meta.json to avoid orphaned metadata.
-    try:
-        meta_path = _build_meta_storage_path(user_id, session_id, storage)
-        await storage.delete(meta_path)
-        logger.info("[Transcript] Deleted metadata for session %s", session_id)
-    except Exception as e:
-        logger.warning("[Transcript] Failed to delete metadata: %s", e)
-
-    # Also delete the CLI native session file to prevent storage growth.
     try:
         cli_path = _build_path_from_parts(
             _cli_session_storage_path_parts(user_id, session_id), storage
@@ -985,6 +918,15 @@ async def delete_transcript(user_id: str, session_id: str) -> None:
         logger.info("[Transcript] Deleted CLI session for session %s", session_id)
     except Exception as e:
         logger.warning("[Transcript] Failed to delete CLI session: %s", e)
+
+    try:
+        cli_meta_path = _build_path_from_parts(
+            _cli_session_meta_path_parts(user_id, session_id), storage
+        )
+        await storage.delete(cli_meta_path)
+        logger.info("[Transcript] Deleted CLI session meta for session %s", session_id)
+    except Exception as e:
+        logger.warning("[Transcript] Failed to delete CLI session meta: %s", e)
 
 
 # ---------------------------------------------------------------------------
