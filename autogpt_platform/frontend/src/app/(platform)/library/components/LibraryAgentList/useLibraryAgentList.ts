@@ -21,7 +21,12 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useFavoriteAgents } from "../../hooks/useFavoriteAgents";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { AgentStatusFilter } from "../../types";
+import { useGetV1ListAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+
+const FILTER_EXHAUST_THRESHOLD = 3;
 
 interface Props {
   searchTerm: string;
@@ -29,6 +34,7 @@ interface Props {
   selectedFolderId: string | null;
   onFolderSelect: (folderId: string | null) => void;
   activeTab: string;
+  statusFilter?: AgentStatusFilter;
 }
 
 export function useLibraryAgentList({
@@ -37,12 +43,16 @@ export function useLibraryAgentList({
   selectedFolderId,
   onFolderSelect,
   activeTab,
+  statusFilter = "all",
 }: Props) {
   const isFavoritesTab = activeTab === "favorites";
   const { toast } = useToast();
   const stableQueryClient = getQueryClient();
   const queryClient = useQueryClient();
   const prevSortRef = useRef<LibraryAgentSort | null>(null);
+  const [consecutiveEmptyPages, setConsecutiveEmptyPages] = useState(0);
+  const prevFilteredLengthRef = useRef(0);
+  const prevAgentsLengthRef = useRef(0);
 
   const [editingFolder, setEditingFolder] = useState<LibraryFolder | null>(
     null,
@@ -199,6 +209,90 @@ export function useLibraryAgentList({
 
   const showFolders = !isFavoritesTab;
 
+  const { data: executions } = useGetV1ListAllExecutions({
+    query: { select: okData },
+  });
+
+  const { activeGraphIds, errorGraphIds, completedGraphIds } = useMemo(() => {
+    const active = new Set<string>();
+    const errors = new Set<string>();
+    const completed = new Set<string>();
+    const cutoff = Date.now() - 72 * 60 * 60 * 1000;
+    for (const exec of executions ?? []) {
+      if (
+        exec.status === AgentExecutionStatus.RUNNING ||
+        exec.status === AgentExecutionStatus.QUEUED ||
+        exec.status === AgentExecutionStatus.REVIEW
+      ) {
+        active.add(exec.graph_id);
+      }
+      const endedTs = exec.ended_at
+        ? exec.ended_at instanceof Date
+          ? exec.ended_at.getTime()
+          : new Date(String(exec.ended_at)).getTime()
+        : 0;
+      if (
+        (exec.status === AgentExecutionStatus.FAILED ||
+          exec.status === AgentExecutionStatus.TERMINATED) &&
+        endedTs > cutoff
+      ) {
+        errors.add(exec.graph_id);
+      }
+      if (exec.status === AgentExecutionStatus.COMPLETED && endedTs > cutoff) {
+        completed.add(exec.graph_id);
+      }
+    }
+    return {
+      activeGraphIds: active,
+      errorGraphIds: errors,
+      completedGraphIds: completed,
+    };
+  }, [executions]);
+
+  const filteredAgents = filterAgentsByStatus(
+    agents,
+    statusFilter,
+    activeGraphIds,
+    errorGraphIds,
+    completedGraphIds,
+  );
+
+  useEffect(() => {
+    if (statusFilter === "all") {
+      setConsecutiveEmptyPages(0);
+      prevFilteredLengthRef.current = filteredAgents.length;
+      prevAgentsLengthRef.current = agents.length;
+      return;
+    }
+
+    if (agents.length > prevAgentsLengthRef.current) {
+      const newFilteredCount = filteredAgents.length;
+      const previousCount = prevFilteredLengthRef.current;
+
+      if (newFilteredCount > previousCount) {
+        setConsecutiveEmptyPages(0);
+      } else {
+        setConsecutiveEmptyPages((prev) => prev + 1);
+      }
+    }
+
+    prevAgentsLengthRef.current = agents.length;
+    prevFilteredLengthRef.current = filteredAgents.length;
+  }, [agents.length, filteredAgents.length, statusFilter]);
+
+  useEffect(() => {
+    setConsecutiveEmptyPages(0);
+    prevFilteredLengthRef.current = 0;
+    prevAgentsLengthRef.current = 0;
+  }, [statusFilter]);
+
+  const filteredExhausted =
+    statusFilter !== "all" && consecutiveEmptyPages >= FILTER_EXHAUST_THRESHOLD;
+
+  // When a filter is active, show the filtered count instead of the API total.
+  const displayedCount =
+    statusFilter === "all" ? allAgentsCount : filteredAgents.length;
+
   function handleFolderDeleted() {
     if (selectedFolderId === deletingFolder?.id) {
       onFolderSelect(null);
@@ -210,9 +304,10 @@ export function useLibraryAgentList({
     agentLoading,
     agentCount,
     allAgentsCount,
+    displayedCount,
     favoritesCount: favoriteAgentsData.agentCount,
-    agents,
-    hasNextPage: agentsHasNextPage,
+    agents: filteredAgents,
+    hasNextPage: agentsHasNextPage && !filteredExhausted,
     isFetchingNextPage: agentsIsFetchingNextPage,
     fetchNextPage: agentsFetchNextPage,
     foldersData,
@@ -225,4 +320,47 @@ export function useLibraryAgentList({
     handleAgentDrop,
     handleFolderDeleted,
   };
+}
+
+function filterAgentsByStatus<
+  T extends {
+    graph_id: string;
+    has_external_trigger: boolean;
+    recommended_schedule_cron?: string | null;
+  },
+>(
+  agents: T[],
+  statusFilter: AgentStatusFilter,
+  activeGraphIds: Set<string>,
+  errorGraphIds: Set<string>,
+  completedGraphIds: Set<string>,
+): T[] {
+  if (statusFilter === "all") return agents;
+  return agents.filter((agent) => {
+    const isRunning = activeGraphIds.has(agent.graph_id);
+    const hasError = errorGraphIds.has(agent.graph_id);
+
+    if (statusFilter === "running") return isRunning;
+    if (statusFilter === "attention") return hasError && !isRunning;
+    if (statusFilter === "completed")
+      return completedGraphIds.has(agent.graph_id);
+    if (statusFilter === "listening")
+      return !isRunning && !hasError && agent.has_external_trigger;
+    if (statusFilter === "scheduled")
+      return (
+        !isRunning &&
+        !hasError &&
+        !agent.has_external_trigger &&
+        !!agent.recommended_schedule_cron
+      );
+    if (statusFilter === "idle")
+      return (
+        !isRunning &&
+        !hasError &&
+        !agent.has_external_trigger &&
+        !agent.recommended_schedule_cron
+      );
+    if (statusFilter === "healthy") return !hasError;
+    return true;
+  });
 }
