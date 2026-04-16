@@ -1229,7 +1229,7 @@ async def queue_pending_message(
     if call_count >= PENDING_CALL_LIMIT:
         raise HTTPException(
             status_code=429,
-            detail=f"Too many pending messages: limit is {PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s",
+            detail=f"Too many pending message requests this minute: limit is {PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s across all sessions",
         )
 
     # Sanitise file IDs to the user's own workspace so injection doesn't

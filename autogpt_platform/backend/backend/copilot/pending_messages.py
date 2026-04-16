@@ -72,6 +72,16 @@ def _notify_channel(session_id: str) -> str:
     return f"{_PENDING_CHANNEL_PREFIX}{session_id}"
 
 
+def _decode_redis_item(item: Any) -> str:
+    """Decode a redis-py list item to a str.
+
+    redis-py returns ``bytes`` when ``decode_responses=False`` and ``str``
+    when ``decode_responses=True``.  This helper handles both so callers
+    don't have to repeat the isinstance guard.
+    """
+    return item.decode("utf-8") if isinstance(item, bytes) else str(item)
+
+
 async def push_pending_message(
     session_id: str,
     message: PendingMessage,
@@ -130,22 +140,18 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
 
     # Redis LPOP with count (Redis 6.2+) returns None for missing key,
     # empty list if we somehow race an empty key, or the popped items.
-    # We drain exactly MAX_PENDING_MESSAGES per call, which is safe
-    # because the push side uses RPUSH + LTRIM(-MAX_PENDING_MESSAGES, -1)
-    # to trim the list to that same cap, so the list can never hold more
-    # than MAX_PENDING_MESSAGES items.
-    # Both constants must stay in sync; if you raise the cap on the
-    # push side, raise it here too (or switch to a loop drain).
+    # Draining MAX_PENDING_MESSAGES at once is safe because the push side
+    # uses RPUSH + LTRIM(-MAX_PENDING_MESSAGES, -1) to cap the list to that
+    # same value, so the list can never hold more items than we drain here.
+    # If the cap is raised on the push side, raise the drain count here too
+    # (or switch to a loop drain).
     lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
     if not lpop_result:
         return []
     raw_popped: list[Any] = list(lpop_result)
 
     # redis-py may return bytes or str depending on decode_responses.
-    decoded: list[str] = [
-        item.decode("utf-8") if isinstance(item, bytes) else str(item)
-        for item in raw_popped
-    ]
+    decoded: list[str] = [_decode_redis_item(item) for item in raw_popped]
 
     messages: list[PendingMessage] = []
     for payload in decoded:
@@ -188,9 +194,10 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
         return []
     messages: list[PendingMessage] = []
     for item in items:
-        decoded = item.decode("utf-8") if isinstance(item, bytes) else str(item)
         try:
-            messages.append(PendingMessage.model_validate(json.loads(decoded)))
+            messages.append(
+                PendingMessage.model_validate(json.loads(_decode_redis_item(item)))
+            )
         except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
             logger.warning(
                 "pending_messages: dropping malformed peek entry for %s: %s",
