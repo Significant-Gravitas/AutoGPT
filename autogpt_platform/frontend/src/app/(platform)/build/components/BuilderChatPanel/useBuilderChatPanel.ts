@@ -146,8 +146,14 @@ export function useBuilderChatPanel({
   // Also evicts the stale cached session so a fresh one is created.
   // Messages are cleared so stale messages from the previous session are not
   // shown alongside content from the new session.
+  // appliedActionKeys and undoStack are cleared because they reference the
+  // previous session's state: stale undo entries hold closures over old
+  // node snapshots, and the applied badges would incorrectly show actions as
+  // applied in the new session even though they have not been re-applied.
   function retrySession() {
     retrySessionBase();
+    setAppliedActionKeys(new Set());
+    setUndoStack([]);
   }
 
   function handleSend() {

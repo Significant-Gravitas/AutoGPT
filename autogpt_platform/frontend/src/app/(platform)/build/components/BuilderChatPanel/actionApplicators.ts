@@ -62,23 +62,6 @@ export function pushUndoEntry(
   });
 }
 
-/**
- * Deep-clones a nodes array so an undo snapshot is isolated from in-place
- * mutations of node data elsewhere in the app. Uses `safeCloneArray` with a
- * node-specific fallback that also copies the `data` sub-object so the
- * shallow path still isolates the field commonly mutated by the builder.
- */
-export function cloneNodes(nodes: CustomNode[]): CustomNode[] {
-  if (typeof structuredClone === "function") {
-    try {
-      return structuredClone(nodes);
-    } catch {
-      // Fall through to shallow copy — some nodes may contain non-cloneable values.
-    }
-  }
-  return nodes.map((n) => ({ ...n, data: { ...n.data } }));
-}
-
 /** Removes an applied action key from the set — used by undo restore callbacks. */
 function removeAppliedActionKey(
   setAppliedActionKeys: Dispatch<SetStateAction<Set<string>>>,

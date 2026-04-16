@@ -45,7 +45,6 @@ import {
   type UndoSnapshot,
   applyConnectNodes,
   applyUpdateNodeInput,
-  cloneNodes,
   pushUndoEntry,
   safeCloneArray,
 } from "../actionApplicators";
@@ -151,37 +150,6 @@ describe("safeCloneArray", () => {
       const cloned = safeCloneArray(items);
       expect(cloned).toEqual(items);
       expect(cloned[0]).not.toBe(items[0]);
-    } finally {
-      (globalThis as { structuredClone: unknown }).structuredClone = original;
-    }
-  });
-});
-
-// -----------------------------------------------------------------------
-// cloneNodes
-// -----------------------------------------------------------------------
-
-describe("cloneNodes", () => {
-  it("deep clones nodes via structuredClone", () => {
-    const nodes = [makeNode({ id: "a" }), makeNode({ id: "b" })];
-    const cloned = cloneNodes(nodes);
-    expect(cloned).toHaveLength(2);
-    expect(cloned[0]).not.toBe(nodes[0]);
-    expect(cloned[0].data).not.toBe(nodes[0].data);
-  });
-
-  it("falls back to a shallow node+data copy when structuredClone fails", () => {
-    const original = globalThis.structuredClone;
-    (globalThis as { structuredClone: unknown }).structuredClone = () => {
-      throw new Error("boom");
-    };
-    try {
-      const nodes = [makeNode({ id: "a" })];
-      const cloned = cloneNodes(nodes);
-      expect(cloned[0]).not.toBe(nodes[0]);
-      expect(cloned[0].data).not.toBe(nodes[0].data);
-      // data still carries the original field values.
-      expect(cloned[0].id).toBe("a");
     } finally {
       (globalThis as { structuredClone: unknown }).structuredClone = original;
     }
