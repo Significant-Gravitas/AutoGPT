@@ -8,7 +8,7 @@ import {
   SEED_PROMPT_PREFIX,
   extractTextFromParts,
 } from "../helpers";
-import { useBuilderChatPanel } from "../useBuilderChatPanel";
+import type { useBuilderChatPanel } from "../useBuilderChatPanel";
 import { ActionList } from "./ActionList";
 import { TypingIndicator } from "./TypingIndicator";
 
