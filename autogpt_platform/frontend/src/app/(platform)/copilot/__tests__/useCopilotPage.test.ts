@@ -163,7 +163,10 @@ describe("useCopilotPage — forwardPaginated message ordering", () => {
     );
     mockUseCopilotStream.mockReturnValue(makeBaseCopilotStream());
     mockUseLoadMoreMessages.mockReturnValue(
-      makeBaseLoadMore({ pagedMessages: [pagedMsg], resetPaged: mockResetPaged }),
+      makeBaseLoadMore({
+        pagedMessages: [pagedMsg],
+        resetPaged: mockResetPaged,
+      }),
     );
 
     const { rerender } = renderHook(() => useCopilotPage());
