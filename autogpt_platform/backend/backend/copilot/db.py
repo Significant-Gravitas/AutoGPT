@@ -10,9 +10,11 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
     ChatSessionWhereInput,
+    FindManyChatMessageArgsFromChatSession,
 )
 from pydantic import BaseModel
 
@@ -94,7 +96,7 @@ async def get_chat_messages_paginated(
     forward = from_start or after_sequence is not None
 
     # Build message include — fetch paginated messages in the same query
-    msg_include: dict[str, Any] = {
+    msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "asc" if forward else "desc"},
         "take": limit + 1,
     }
@@ -127,7 +129,7 @@ async def get_chat_messages_paginated(
         # owns the tool_calls, so convertChatSessionMessagesToUiMessages
         # can pair them correctly.
         if results and results[0].role == "tool":
-            boundary_where: dict[str, Any] = {
+            boundary_where: ChatMessageWhereInput = {
                 "sessionId": session_id,
                 "sequence": {"lt": results[0].sequence},
             }
