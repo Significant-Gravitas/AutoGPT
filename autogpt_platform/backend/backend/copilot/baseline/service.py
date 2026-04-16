@@ -1345,6 +1345,31 @@ async def stream_chat_completion_baseline(
                 # on persist (user interposed between an assistant tool_call
                 # and its tool-result), which breaks OpenAI tool-call ordering
                 # invariants on the next turn's replay.
+                #
+                # Also persist any assistant text from text-only rounds (rounds
+                # with no tool calls, which ``_baseline_conversation_updater``
+                # does NOT record in session_messages).  If we only update
+                # ``_flushed_assistant_text_len`` without persisting the text,
+                # that text is silently lost: the finally block only appends
+                # assistant_text[_flushed_assistant_text_len:], so text generated
+                # before this drain never reaches session.messages.
+                recorded_text = "".join(
+                    m.content or ""
+                    for m in state.session_messages
+                    if m.role == "assistant"
+                )
+                unflushed_text = state.assistant_text[
+                    state._flushed_assistant_text_len :
+                ]
+                text_only_text = (
+                    unflushed_text[len(recorded_text) :]
+                    if unflushed_text.startswith(recorded_text)
+                    else unflushed_text
+                )
+                if text_only_text.strip():
+                    session.messages.append(
+                        ChatMessage(role="assistant", content=text_only_text)
+                    )
                 for _buffered in state.session_messages:
                     session.messages.append(_buffered)
                 state.session_messages.clear()

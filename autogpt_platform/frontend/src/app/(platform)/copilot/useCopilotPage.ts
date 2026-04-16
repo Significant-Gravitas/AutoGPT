@@ -383,9 +383,9 @@ export function useCopilotPage() {
       return;
     }
     void getV2GetPendingMessages(sessionId).then((res) => {
-      if (res.status === 200 && res.data.count > 0) {
-        setQueuedMessages(res.data.messages);
-      }
+      setQueuedMessages(
+        res.status === 200 && res.data.count > 0 ? res.data.messages : [],
+      );
     });
   }, [sessionId]);
 
