@@ -495,3 +495,101 @@ class TestHttpBlockWithHostScopedCredentials:
                 # Should only include user headers
                 assert "Authorization" not in headers
                 assert headers["User-Agent"] == "test-agent"
+
+
+class TestHttpBlock204NoContent:
+    """Test suite for HTTP block handling of 204 No Content responses."""
+
+    @pytest.fixture
+    def send_web_request_block(self):
+        """Create a SendWebRequestBlock instance."""
+        from backend.blocks.http import SendWebRequestBlock
+
+        return SendWebRequestBlock()
+
+    @pytest.fixture
+    def mock_204_response(self):
+        """Mock a 204 No Content response."""
+        response = MagicMock(spec=Response)
+        response.status = 204
+        response.headers = {"content-type": "application/json"}
+        response.content = b""
+        return response
+
+    @pytest.fixture
+    def mock_204_response_empty_string_body(self):
+        """Mock a 204 response with empty string body that still has JSON content-type."""
+        response = MagicMock(spec=Response)
+        response.status = 204
+        response.headers = {"content-type": "application/json"}
+        response.content = b""
+        return response
+
+    @pytest.mark.asyncio
+    @patch("backend.blocks.http.Requests")
+    async def test_http_block_204_no_content_success(
+        self,
+        mock_requests_class,
+        send_web_request_block,
+        mock_204_response,
+    ):
+        """Test that 204 No Content responses are handled gracefully."""
+        mock_requests = AsyncMock()
+        mock_requests.request.return_value = mock_204_response
+        mock_requests_class.return_value = mock_requests
+
+        input_data = send_web_request_block.Input(
+            url="https://discord.com/api/webhooks/test",
+            method=HttpMethod.POST,
+            headers={},
+            json_format=True,
+            body={"content": "Hello from AutoGPT"},
+        )
+
+        result = []
+        async for output_name, output_data in send_web_request_block.run(
+            input_data,
+            execution_context=make_test_context(),
+        ):
+            result.append((output_name, output_data))
+
+        assert len(result) == 1
+        assert result[0][0] == "response"
+        assert result[0][1] is None
+
+    @pytest.mark.asyncio
+    @patch("backend.blocks.http.Requests")
+    async def test_http_block_204_with_json_content_type_and_empty_body(
+        self,
+        mock_requests_class,
+        send_web_request_block,
+        mock_204_response_empty_string_body,
+    ):
+        """Test 204 with application/json content-type but empty body doesn't crash.
+
+        This is the bug reported in issue #9883:
+        When Discord webhooks return 204, the response has content-type: application/json
+        but body is empty. The block should not try to parse empty body as JSON.
+        """
+        mock_requests = AsyncMock()
+        mock_requests.request.return_value = mock_204_response_empty_string_body
+        mock_requests_class.return_value = mock_requests
+
+        input_data = send_web_request_block.Input(
+            url="https://discord.com/api/webhooks/test",
+            method=HttpMethod.POST,
+            headers={},
+            json_format=True,
+            body={"content": "Hello from AutoGPT"},
+        )
+
+        result = []
+        async for output_name, output_data in send_web_request_block.run(
+            input_data,
+            execution_context=make_test_context(),
+        ):
+            result.append((output_name, output_data))
+
+        assert len(result) == 1
+        assert result[0][0] == "response"
+        assert result[0][1] is None
