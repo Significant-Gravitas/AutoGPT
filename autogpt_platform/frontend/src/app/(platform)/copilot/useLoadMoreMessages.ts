@@ -161,10 +161,11 @@ export function useLoadMoreMessages({
       consecutiveErrorsRef.current = 0;
 
       const newRaw = (response.data.messages ?? []) as unknown[];
-      // Use a ref to pass the merged length out of the functional updater so
-      // the hasMore decision below uses the accurate post-merge length rather
-      // than the potentially-stale `pagedRawMessages.length` closure value.
-      let mergedLength = 0;
+      // Estimate total after merge using the closure-captured pagedRawMessages.length.
+      // This is a safe approximation: worst case it's one page stale (one extra load
+      // allowed), but it avoids the React-18-batching pitfall where a functional
+      // updater's mutations are not visible until the next render.
+      const estimatedTotal = pagedRawMessages.length + newRaw.length;
       setPagedRawMessages((prev) => {
         // Forward: append to end. Backward: prepend to start.
         const merged = forwardPaginated
@@ -177,13 +178,10 @@ export function useLoadMoreMessages({
           // forward, so the tail is the most recently appended page; shedding
           // it means the sentinel stalls, which is safer than discarding the
           // beginning of the conversation the user is here to read.
-          const trimmed = forwardPaginated
+          return forwardPaginated
             ? merged.slice(0, MAX_OLDER_MESSAGES)
             : merged.slice(merged.length - MAX_OLDER_MESSAGES);
-          mergedLength = trimmed.length;
-          return trimmed;
         }
-        mergedLength = merged.length;
         return merged;
       });
 
@@ -198,7 +196,7 @@ export function useLoadMoreMessages({
         // (newestSequence) still advances, so the sentinel can keep
         // fetching. Only stop when the server reports no more messages.
         setHasMore(!!response.data.has_more_messages);
-      } else if (mergedLength >= MAX_OLDER_MESSAGES) {
+      } else if (estimatedTotal >= MAX_OLDER_MESSAGES) {
         // Backward: we've accumulated MAX_OLDER_MESSAGES of history —
         // stop to avoid unbounded memory growth.
         setHasMore(false);
