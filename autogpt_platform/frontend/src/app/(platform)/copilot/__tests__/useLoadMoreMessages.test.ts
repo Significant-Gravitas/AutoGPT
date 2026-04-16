@@ -410,7 +410,11 @@ describe("useLoadMoreMessages", () => {
         await result.current.loadMore();
       });
 
-      // Second load: 20 more messages pushes total to 2010 > 2000 — hasMore=false
+      // Second load: 20 more messages pushes total to 2010 > 2000.
+      // Truncation keeps seq 50..2049 (2000 items); discards seq 2050..2059 (10 items).
+      // Even though the server says has_more_messages=false, hasMore stays true
+      // because there are discarded items that need to be re-fetched.
+      // The cursor (newestSequence) advances to 2049 — the last kept item's sequence.
       mockGetV2GetSession.mockResolvedValueOnce(
         makeSuccessResponse({
           messages: Array.from({ length: 20 }, (_, i) => ({
@@ -427,9 +431,9 @@ describe("useLoadMoreMessages", () => {
         await result.current.loadMore();
       });
 
-      // Server returned has_more_messages=false, so hasMore=false.
-      // (Forward mode trusts the server regardless of local count.)
-      expect(result.current.hasMore).toBe(false);
+      // Truncation occurred (2010 > 2000): hasMore=true so discarded items can be fetched.
+      // Cursor advances to last kept item (seq 2049), not the server's newest (2059).
+      await waitFor(() => expect(result.current.hasMore).toBe(true));
     });
   });
 

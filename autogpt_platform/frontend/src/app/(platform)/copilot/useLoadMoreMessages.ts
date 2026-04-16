@@ -186,22 +186,41 @@ export function useLoadMoreMessages({
       });
 
       if (forwardPaginated) {
-        setNewestSequence(response.data.newest_sequence ?? null);
+        const willTruncateForward = estimatedTotal > MAX_OLDER_MESSAGES;
+        if (willTruncateForward) {
+          // Truncation shed the newest tail. Advance the cursor to the last KEPT
+          // item's sequence so the sentinel re-fetches the discarded items next
+          // time rather than jumping past them.
+          // lastKeptIdx: index within newRaw of the last item that survives.
+          // prev contributes pagedRawMessages.length items; total kept = MAX.
+          const lastKeptIdx = MAX_OLDER_MESSAGES - 1 - pagedRawMessages.length;
+          if (lastKeptIdx >= 0 && lastKeptIdx < newRaw.length) {
+            const lastKeptMsg = newRaw[lastKeptIdx] as { sequence?: number };
+            if (typeof lastKeptMsg?.sequence === "number") {
+              setNewestSequence(lastKeptMsg.sequence);
+              setHasMore(true); // Discarded items still exist — keep sentinel active
+            } else {
+              // Sequence unavailable — fall back; truncated items will be lost
+              setNewestSequence(response.data.newest_sequence ?? null);
+              setHasMore(!!response.data.has_more_messages);
+            }
+          } else {
+            // All of newRaw was dropped (already at MAX_OLDER_MESSAGES cap).
+            // Stop to avoid an infinite re-fetch loop at the display cap.
+            setHasMore(false);
+          }
+        } else {
+          setNewestSequence(response.data.newest_sequence ?? null);
+          setHasMore(!!response.data.has_more_messages);
+        }
       } else {
         setOldestSequence(response.data.oldest_sequence ?? null);
-      }
-
-      if (forwardPaginated) {
-        // Forward: truncation sheds the newest tail but the cursor
-        // (newestSequence) still advances, so the sentinel can keep
-        // fetching. Only stop when the server reports no more messages.
-        setHasMore(!!response.data.has_more_messages);
-      } else if (estimatedTotal >= MAX_OLDER_MESSAGES) {
-        // Backward: we've accumulated MAX_OLDER_MESSAGES of history —
-        // stop to avoid unbounded memory growth.
-        setHasMore(false);
-      } else {
-        setHasMore(!!response.data.has_more_messages);
+        if (estimatedTotal >= MAX_OLDER_MESSAGES) {
+          // Backward: accumulated MAX_OLDER_MESSAGES — stop to avoid unbounded memory.
+          setHasMore(false);
+        } else {
+          setHasMore(!!response.data.has_more_messages);
+        }
       }
     } catch (error) {
       if (epochRef.current !== requestEpoch) return;
