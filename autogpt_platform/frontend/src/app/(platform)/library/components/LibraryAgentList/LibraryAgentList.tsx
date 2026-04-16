@@ -1,6 +1,7 @@
 "use client";
 
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { LibraryAgentCard } from "../LibraryAgentCard/LibraryAgentCard";
@@ -16,8 +17,11 @@ import {
 } from "framer-motion";
 import { LibraryFolderEditDialog } from "../LibraryFolderEditDialog/LibraryFolderEditDialog";
 import { LibraryFolderDeleteDialog } from "../LibraryFolderDeleteDialog/LibraryFolderDeleteDialog";
-import { LibraryTab } from "../../types";
+import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import { useLibraryAgentList } from "./useLibraryAgentList";
+import { AgentBriefingPanel } from "../AgentBriefingPanel/AgentBriefingPanel";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { useAgentStatusMap, getAgentStatus } from "../../hooks/useAgentStatus";
 
 // cancels the current spring and starts a new one from current state.
 const containerVariants = {
@@ -70,6 +74,10 @@ interface Props {
   tabs: LibraryTab[];
   activeTab: string;
   onTabChange: (tabId: string) => void;
+  statusFilter?: AgentStatusFilter;
+  onStatusFilterChange?: (filter: AgentStatusFilter) => void;
+  fleetSummary?: FleetSummary;
+  briefingAgents?: LibraryAgent[];
 }
 
 export function LibraryAgentList({
@@ -81,7 +89,12 @@ export function LibraryAgentList({
   tabs,
   activeTab,
   onTabChange,
+  statusFilter = "all",
+  onStatusFilterChange,
+  fleetSummary,
+  briefingAgents,
 }: Props) {
+  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
   const shouldReduceMotion = useReducedMotion();
   const activeContainerVariants = shouldReduceMotion
     ? reducedContainerVariants
@@ -95,7 +108,7 @@ export function LibraryAgentList({
   const {
     isFavoritesTab,
     agentLoading,
-    allAgentsCount,
+    displayedCount,
     favoritesCount,
     agents,
     hasNextPage,
@@ -116,18 +129,37 @@ export function LibraryAgentList({
     selectedFolderId,
     onFolderSelect,
     activeTab,
+    statusFilter,
   });
+
+  const agentStatusMap = useAgentStatusMap(agents);
 
   return (
     <>
+      {isAgentBriefingEnabled &&
+        !selectedFolderId &&
+        fleetSummary &&
+        briefingAgents &&
+        briefingAgents.length > 0 && (
+          <div className="mb-4">
+            <AgentBriefingPanel
+              summary={fleetSummary}
+              agents={briefingAgents}
+            />
+          </div>
+        )}
+
       {!selectedFolderId && (
         <LibrarySubSection
           tabs={tabs}
           activeTab={activeTab}
           onTabChange={onTabChange}
-          allCount={allAgentsCount}
+          allCount={displayedCount}
           favoritesCount={favoritesCount}
           setLibrarySort={setLibrarySort}
+          statusFilter={statusFilter}
+          onStatusFilterChange={onStatusFilterChange}
+          fleetSummary={fleetSummary}
         />
       )}
 
@@ -219,7 +251,13 @@ export function LibraryAgentList({
                           0.04,
                       }}
                     >
-                      <LibraryAgentCard agent={agent} />
+                      <LibraryAgentCard
+                        agent={agent}
+                        statusInfo={getAgentStatus(
+                          agentStatusMap,
+                          agent.graph_id,
+                        )}
+                      />
                     </motion.div>
                   ))}
                 </motion.div>
