@@ -101,7 +101,34 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for feature flag usage patterns, local 
 
 ## 🚚 Deploy
 
-TODO
+### Docker (Recommended)
+
+The frontend is deployed as a Docker container. See the [platform deployment guide](../../README.md#docker-compose-commands) for general Docker Compose commands.
+
+```bash
+# Build and run frontend container
+docker build -t autogpt-frontend .
+docker run -p 3000:3000 autogpt-frontend
+
+# Or use Docker Compose from platform root
+docker compose up frontend
+```
+
+### Production Build
+
+```bash
+# Build for production
+pnpm build
+
+# Start production server
+pnpm start
+```
+
+The production build uses standalone mode with `node server.js`. Ensure environment variables are configured in `.env.production` before building.
+
+### Environment Variables
+
+For production deployments, create a `.env.production` file based on `.env.default`. The Dockerfile automatically merges `.env.default` with your production environment file.
 
 ## 📙 Storybook
 
