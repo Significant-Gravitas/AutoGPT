@@ -19,7 +19,6 @@ from pydantic import (
     EmailStr,
     Field,
     field_validator,
-    model_validator,
 )
 
 from backend.util.exceptions import DatabaseError
@@ -182,23 +181,7 @@ class RefundRequestData(BaseNotificationData):
     balance: int
 
 
-class _LegacyAgentFieldsMixin:
-    """Temporary patch to handle existing queued payloads"""
-
-    # FIXME: remove in next release
-
-    @model_validator(mode="before")
-    @classmethod
-    def _map_legacy_agent_fields(cls, values: Any):
-        if isinstance(values, dict):
-            if "graph_id" not in values and "agent_id" in values:
-                values["graph_id"] = values.pop("agent_id")
-            if "graph_version" not in values and "agent_version" in values:
-                values["graph_version"] = values.pop("agent_version")
-        return values
-
-
-class AgentApprovalData(_LegacyAgentFieldsMixin, BaseNotificationData):
+class AgentApprovalData(BaseNotificationData):
     agent_name: str
     graph_id: str
     graph_version: int
@@ -216,7 +199,7 @@ class AgentApprovalData(_LegacyAgentFieldsMixin, BaseNotificationData):
         return value
 
 
-class AgentRejectionData(_LegacyAgentFieldsMixin, BaseNotificationData):
+class AgentRejectionData(BaseNotificationData):
     agent_name: str
     graph_id: str
     graph_version: int
