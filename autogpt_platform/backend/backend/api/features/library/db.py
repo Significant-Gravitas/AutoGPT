@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import fastapi
@@ -69,14 +70,30 @@ async def _fetch_schedule_info(user_id: str) -> dict[str, str]:
         schedules = await scheduler_client.get_execution_schedules(
             user_id=user_id,
         )
-        earliest: dict[str, str] = {}
+        earliest: dict[str, tuple[datetime, str]] = {}
         for s in schedules:
-            if s.graph_id not in earliest or s.next_run_time < earliest[s.graph_id]:
-                earliest[s.graph_id] = s.next_run_time
-        return earliest
+            parsed = _parse_iso_datetime(s.next_run_time)
+            if parsed is None:
+                continue
+            current = earliest.get(s.graph_id)
+            if current is None or parsed < current[0]:
+                earliest[s.graph_id] = (parsed, s.next_run_time)
+        return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
     except Exception:
         logger.warning("Failed to fetch schedules for library agents", exc_info=True)
         return {}
+
+
+def _parse_iso_datetime(value: str) -> Optional[datetime]:
+    """Parse an ISO 8601 datetime, tolerating `Z` and naive forms (assumed UTC)."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("Failed to parse schedule next_run_time: %s", value)
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 async def list_library_agents(
