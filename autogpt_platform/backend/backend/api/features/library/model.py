@@ -223,6 +223,7 @@ class LibraryAgent(pydantic.BaseModel):
         sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
         store_listing: Optional[prisma.models.StoreListing] = None,
         profile: Optional[prisma.models.Profile] = None,
+        execution_count_override: Optional[int] = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -258,10 +259,14 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
-        execution_count = len(executions)
+        execution_count = (
+            execution_count_override
+            if execution_count_override is not None
+            else len(executions)
+        )
         success_rate: float | None = None
         avg_correctness_score: float | None = None
-        if execution_count > 0:
+        if executions and execution_count > 0:
             success_count = sum(
                 1
                 for e in executions

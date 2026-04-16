@@ -155,6 +155,7 @@
     "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
     "@vitest/coverage-v8": "4.0.17",
+    "agentation": "3.0.2",
     "axe-playwright": "2.2.2",
     "chromatic": "13.3.3",
     "concurrently": "9.2.1",

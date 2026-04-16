@@ -1,35 +1,10 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
-import { formatCents } from "../RateLimitResetDialog/RateLimitResetDialog";
+import { formatCents, formatResetTime } from "../usageHelpers";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
-export function formatResetTime(
-  resetsAt: Date | string,
-  now: Date = new Date(),
-): string {
-  const resetDate =
-    typeof resetsAt === "string" ? new Date(resetsAt) : resetsAt;
-  const diffMs = resetDate.getTime() - now.getTime();
-  if (diffMs <= 0) return "now";
-
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-
-  // Under 24h: show relative time ("in 4h 23m")
-  if (hours < 24) {
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    if (hours > 0) return `in ${hours}h ${minutes}m`;
-    return `in ${minutes}m`;
-  }
-
-  // Over 24h: show day and time in local timezone ("Mon 12:00 AM PST")
-  return resetDate.toLocaleString(undefined, {
-    weekday: "short",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
-}
+export { formatResetTime };
 
 function UsageBar({
   label,

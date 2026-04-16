@@ -1371,7 +1371,7 @@ class TestStripStaleThinkingBlocks:
 
 
 class TestProcessCliRestore:
-    """``_process_cli_restore`` validates, strips, and writes CLI session to disk."""
+    """``process_cli_restore`` validates, strips, and writes CLI session to disk."""
 
     def test_writes_stripped_bytes_not_raw(self, tmp_path):
         """Stripped bytes (not raw bytes) must be written to disk for --resume."""
@@ -1380,7 +1380,7 @@ class TestProcessCliRestore:
         from pathlib import Path
         from unittest.mock import patch
 
-        from backend.copilot.sdk.service import _process_cli_restore
+        from backend.copilot.sdk.service import process_cli_restore
         from backend.copilot.transcript import TranscriptDownload
 
         session_id = "12345678-0000-0000-0000-abcdef000001"
@@ -1406,7 +1406,7 @@ class TestProcessCliRestore:
                 return_value=projects_base_dir,
             ),
         ):
-            stripped_str, ok = _process_cli_restore(
+            stripped_str, ok = process_cli_restore(
                 restore, sdk_cwd, session_id, "[Test]"
             )
 
@@ -1433,7 +1433,7 @@ class TestProcessCliRestore:
 
     def test_invalid_content_returns_false(self):
         """Content that fails validation after strip returns (empty, False)."""
-        from backend.copilot.sdk.service import _process_cli_restore
+        from backend.copilot.sdk.service import process_cli_restore
         from backend.copilot.transcript import TranscriptDownload
 
         # A single progress-only entry — stripped result will be empty/invalid
@@ -1442,7 +1442,7 @@ class TestProcessCliRestore:
             content=raw_content.encode("utf-8"), message_count=1, mode="sdk"
         )
 
-        stripped_str, ok = _process_cli_restore(
+        stripped_str, ok = process_cli_restore(
             restore,
             "/tmp/nonexistent-sdk-cwd",
             "12345678-0000-0000-0000-000000000099",
@@ -1454,7 +1454,7 @@ class TestProcessCliRestore:
 
 
 class TestReadCliSessionFromDisk:
-    """``_read_cli_session_from_disk`` reads, strips, and optionally writes back the session."""
+    """``read_cli_session_from_disk`` reads, strips, and optionally writes back the session."""
 
     def _build_session_file(self, tmp_path, session_id: str):
         """Build the session file path inside tmp_path using the same encoding as cli_session_path."""
@@ -1472,7 +1472,7 @@ class TestReadCliSessionFromDisk:
         """Non-UTF-8 bytes trigger UnicodeDecodeError — returns raw bytes (upload-raw fallback)."""
         from unittest.mock import patch
 
-        from backend.copilot.sdk.service import _read_cli_session_from_disk
+        from backend.copilot.sdk.service import read_cli_session_from_disk
 
         session_id = "12345678-0000-0000-0000-aabbccdd0001"
         projects_base_dir = str(tmp_path)
@@ -1491,7 +1491,7 @@ class TestReadCliSessionFromDisk:
                 return_value=projects_base_dir,
             ),
         ):
-            result = _read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
+            result = read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
 
         # UnicodeDecodeError path returns the raw bytes (upload-raw fallback)
         assert result == b"\xff\xfe invalid utf-8\n"
@@ -1500,7 +1500,7 @@ class TestReadCliSessionFromDisk:
         """OSError on write-back returns stripped bytes for GCS upload (not raw)."""
         from unittest.mock import patch
 
-        from backend.copilot.sdk.service import _read_cli_session_from_disk
+        from backend.copilot.sdk.service import read_cli_session_from_disk
 
         session_id = "12345678-0000-0000-0000-aabbccdd0002"
         projects_base_dir = str(tmp_path)
@@ -1527,7 +1527,7 @@ class TestReadCliSessionFromDisk:
                     return_value=projects_base_dir,
                 ),
             ):
-                result = _read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
+                result = read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
         finally:
             session_file.chmod(0o644)
 

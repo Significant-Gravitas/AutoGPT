@@ -14122,16 +14122,29 @@
       },
       "SubscriptionStatusResponse": {
         "properties": {
-          "tier": { "type": "string", "title": "Tier" },
+          "tier": {
+            "type": "string",
+            "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+            "title": "Tier"
+          },
           "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
           "tier_costs": {
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs"
+          },
+          "proration_credit_cents": {
+            "type": "integer",
+            "title": "Proration Credit Cents"
           }
         },
         "type": "object",
-        "required": ["tier", "monthly_cost", "tier_costs"],
+        "required": [
+          "tier",
+          "monthly_cost",
+          "tier_costs",
+          "proration_credit_cents"
+        ],
         "title": "SubscriptionStatusResponse"
       },
       "SubscriptionTier": {
