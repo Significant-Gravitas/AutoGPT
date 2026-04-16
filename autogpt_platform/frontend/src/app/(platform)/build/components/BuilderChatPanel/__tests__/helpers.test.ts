@@ -98,9 +98,28 @@ describe("buildSeedPrompt", () => {
 
   it("caps total output at MAX_BACKEND_MESSAGE_CHARS", () => {
     const hugeSummary = "s".repeat(MAX_SEED_SUMMARY_CHARS + 1);
-    const hugeUserMsg = "u".repeat(MAX_BACKEND_MESSAGE_CHARS);
+    const shortUserMsg = "hello";
+    const result = buildSeedPrompt(hugeSummary, shortUserMsg);
+    expect(result.length).toBeLessThanOrEqual(MAX_BACKEND_MESSAGE_CHARS);
+  });
+
+  it("preserves user message when summary + overhead would overflow the limit", () => {
+    const hugeSummary = "s".repeat(MAX_SEED_SUMMARY_CHARS);
+    // User message that, combined with fixed overhead, fits within the limit
+    const userMsg = "u".repeat(1000);
+    const result = buildSeedPrompt(hugeSummary, userMsg);
+    expect(result.length).toBeLessThanOrEqual(MAX_BACKEND_MESSAGE_CHARS);
+    expect(result).toContain(userMsg);
+  });
+
+  it("omits graph context entirely when user message alone fills the limit", () => {
+    const hugeSummary = "s".repeat(MAX_SEED_SUMMARY_CHARS);
+    // User message that leaves no room for any graph context
+    const hugeUserMsg = "u".repeat(MAX_BACKEND_MESSAGE_CHARS - 500);
     const result = buildSeedPrompt(hugeSummary, hugeUserMsg);
     expect(result.length).toBeLessThanOrEqual(MAX_BACKEND_MESSAGE_CHARS);
+    // Graph context should not appear since there is no room for it
+    expect(result).not.toContain("sssss");
   });
 
   it("preserves a short summary and user message without truncation", () => {
