@@ -904,6 +904,43 @@ describe("useBuilderChatPanel – retrySession", () => {
     // setMessages([]) clears the internal useChat message list
     expect(mockSetMessages).toHaveBeenCalledWith([]);
   });
+
+  it("clears appliedActionKeys and undoStack on retry to prevent stale state", async () => {
+    mockPostV2CreateSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-for-retry" },
+    });
+
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await openAndFlush(() => result.current.handleToggle());
+
+    // Apply an action to populate appliedActionKeys and undoStack
+    mockNodes.push({
+      id: "node-r1",
+      data: {
+        inputSchema: { properties: { key1: {} } },
+        hardcodedValues: {},
+      },
+    });
+    act(() => {
+      result.current.handleApplyAction({
+        type: "update_node_input",
+        nodeId: "node-r1",
+        key: "key1",
+        value: "v1",
+      });
+    });
+    expect(result.current.appliedActionKeys.size).toBe(1);
+    expect(result.current.undoStack).toHaveLength(1);
+
+    // Retry should clear both
+    act(() => {
+      result.current.retrySession();
+    });
+
+    expect(result.current.appliedActionKeys.size).toBe(0);
+    expect(result.current.undoStack).toHaveLength(0);
+  });
 });
 
 describe("useBuilderChatPanel – handleSend", () => {
