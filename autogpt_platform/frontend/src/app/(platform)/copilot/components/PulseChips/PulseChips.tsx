@@ -34,7 +34,7 @@ export function PulseChips({ chips, onChipClick }: Props) {
           View all <ArrowRightIcon size={12} />
         </NextLink>
       </div>
-      <div className="flex gap-2 overflow-x-auto">
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
         {chips.map((chip) => (
           <PulseChip key={chip.id} chip={chip} onAsk={onChipClick} />
         ))}
@@ -56,7 +56,7 @@ function PulseChip({ chip, onAsk }: ChipProps) {
 
   return (
     <div
-      className={`${styles.chip} relative flex shrink-0 flex-col items-start gap-2 rounded-medium border border-zinc-100 bg-white px-3 py-2`}
+      className={`${styles.chip} relative flex w-[15rem] shrink-0 flex-col items-start gap-2 rounded-medium border border-zinc-100 bg-white px-3 py-2`}
     >
       <div className={`${styles.chipContent} w-full text-left`}>
         {chip.priority === "success" ? (

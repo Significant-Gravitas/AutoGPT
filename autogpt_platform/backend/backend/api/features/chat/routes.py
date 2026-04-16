@@ -16,7 +16,6 @@ from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
-from backend.copilot.message_dedup import acquire_dedup_lock
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -245,6 +244,8 @@ class SessionDetailResponse(BaseModel):
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
     has_more_messages: bool = False
     oldest_sequence: int | None = None
+    newest_sequence: int | None = None
+    forward_paginated: bool = False
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
@@ -509,52 +510,113 @@ async def update_session_title_route(
 async def get_session(
     session_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
-    limit: int = Query(default=50, ge=1, le=200),
-    before_sequence: int | None = Query(default=None, ge=0),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=200,
+        description="Maximum number of messages to return.",
+    ),
+    before_sequence: int | None = Query(
+        default=None,
+        ge=0,
+        description=(
+            "Backward pagination cursor. Return messages with sequence number "
+            "strictly less than this value. Used by active-session load-more. "
+            "Mutually exclusive with after_sequence."
+        ),
+    ),
+    after_sequence: int | None = Query(
+        default=None,
+        ge=0,
+        description=(
+            "Forward pagination cursor. Return messages with sequence number "
+            "strictly greater than this value. Used by completed-session load-more. "
+            "Mutually exclusive with before_sequence."
+        ),
+    ),
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
 
-    Supports cursor-based pagination via ``limit`` and ``before_sequence``.
-    When no pagination params are provided, returns the most recent messages.
+    Supports cursor-based pagination via ``limit``, ``before_sequence``, and
+    ``after_sequence``. The two cursor parameters are mutually exclusive.
 
-    Args:
-        session_id: The unique identifier for the desired chat session.
-        user_id: The authenticated user's ID.
-        limit: Maximum number of messages to return (1-200, default 50).
-        before_sequence: Return messages with sequence < this value (cursor).
-
-    Returns:
-        SessionDetailResponse: Details for the requested session, including
-            active_stream info and pagination metadata.
+    On the initial load (no cursor provided) of a completed session, messages
+    are returned in forward order starting from sequence 0 so the user always
+    sees their initial prompt.  Active sessions use the legacy newest-first
+    order so streaming context is preserved.
     """
+    if before_sequence is not None and after_sequence is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="before_sequence and after_sequence are mutually exclusive",
+        )
+
+    is_initial_load = before_sequence is None and after_sequence is None
+
+    # Check active stream before the DB query on initial loads so we can
+    # choose the correct pagination direction (forward for completed sessions,
+    # newest-first for active ones).
+    active_session = None
+    last_message_id = None
+    if is_initial_load:
+        active_session, last_message_id = await stream_registry.get_active_session(
+            session_id, user_id
+        )
+
+    # Completed sessions on initial load start from sequence 0 so the user's
+    # initial prompt is always visible.  Active sessions keep the legacy
+    # newest-first behavior to preserve streaming context.
+    from_start = is_initial_load and active_session is None
+    forward_paginated = from_start or after_sequence is not None
+
     page = await get_chat_messages_paginated(
-        session_id, limit, before_sequence, user_id=user_id
+        session_id,
+        limit,
+        before_sequence=before_sequence,
+        after_sequence=after_sequence,
+        from_start=from_start,
+        user_id=user_id,
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
+
+    # Close the TOCTOU window: if the session was active at pre-check, re-verify
+    # after the DB fetch.  The session may have completed between the two awaits,
+    # which would have caused messages to be fetched newest-first even though the
+    # session is now complete.  Re-fetch from seq 0 so the initial prompt is
+    # always visible.
+    if is_initial_load and active_session is not None:
+        post_active, _ = await stream_registry.get_active_session(session_id, user_id)
+        if post_active is None:
+            active_session = None
+            last_message_id = None
+            from_start = True
+            forward_paginated = True
+            page = await get_chat_messages_paginated(
+                session_id,
+                limit,
+                before_sequence=None,
+                after_sequence=None,
+                from_start=True,
+                user_id=user_id,
+            )
+            if page is None:
+                raise NotFoundError(f"Session {session_id} not found.")
+
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
     ]
 
-    # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None
-    if before_sequence is None:
-        active_session, last_message_id = await stream_registry.get_active_session(
-            session_id, user_id
+    if active_session and last_message_id is not None:
+        active_stream_info = ActiveStreamInfo(
+            turn_id=active_session.turn_id,
+            last_message_id=last_message_id,
         )
-        logger.info(
-            f"[GET_SESSION] session={session_id}, active_session={active_session is not None}, "
-            f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
-        )
-        if active_session:
-            active_stream_info = ActiveStreamInfo(
-                turn_id=active_session.turn_id,
-                last_message_id=last_message_id,
-            )
 
     # Skip session metadata on "load more" — frontend only needs messages
-    if before_sequence is not None:
+    if not is_initial_load:
         return SessionDetailResponse(
             id=page.session.session_id,
             created_at=page.session.started_at.isoformat(),
@@ -564,6 +626,8 @@ async def get_session(
             active_stream=None,
             has_more_messages=page.has_more,
             oldest_sequence=page.oldest_sequence,
+            newest_sequence=page.newest_sequence,
+            forward_paginated=forward_paginated,
             total_prompt_tokens=0,
             total_completion_tokens=0,
         )
@@ -580,6 +644,8 @@ async def get_session(
         active_stream=active_stream_info,
         has_more_messages=page.has_more,
         oldest_sequence=page.oldest_sequence,
+        newest_sequence=page.newest_sequence,
+        forward_paginated=forward_paginated,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
@@ -900,66 +966,41 @@ async def stream_chat_post(
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
     sanitized_file_ids: list[str] | None = None
-    # Capture the original message text BEFORE any mutation (attachment enrichment)
-    # so the idempotency hash is stable across retries.
-    original_message = request.message
     if request.file_ids:
         files = await resolve_workspace_files(user_id, request.file_ids)
         sanitized_file_ids = [wf.id for wf in files] or None
         request.message += build_files_block(files)
 
-    # ── Idempotency guard ────────────────────────────────────────────────────
-    # Blocks duplicate executor tasks from concurrent/retried POSTs.
-    # See backend/copilot/message_dedup.py for the full lifecycle description.
-    dedup_lock = None
-    if request.is_user_message:
-        dedup_lock = await acquire_dedup_lock(
-            session_id, original_message, sanitized_file_ids
-        )
-        if dedup_lock is None and (original_message or sanitized_file_ids):
-
-            async def _empty_sse() -> AsyncGenerator[str, None]:
-                yield StreamFinish().to_sse()
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(
-                _empty_sse(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "X-Accel-Buffering": "no",
-                    "Connection": "keep-alive",
-                    "x-vercel-ai-ui-message-stream": "v1",
-                },
-            )
-
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
-    # saved yet.  append_and_save_message re-fetches inside a lock to prevent
-    # message loss from concurrent requests.
-    #
-    # If any of these operations raises, release the dedup lock before propagating
-    # so subsequent retries are not blocked for 30 s.
-    try:
-        if request.message:
-            message = ChatMessage(
-                role="user" if request.is_user_message else "assistant",
-                content=request.message,
-            )
-            if request.is_user_message:
-                track_user_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    message_length=len(request.message),
-                )
-            logger.info(f"[STREAM] Saving user message to session {session_id}")
+    # saved yet.  append_and_save_message returns None when a duplicate is
+    # detected — in that case skip enqueue to avoid processing the message twice.
+    is_duplicate_message = False
+    if request.message:
+        message = ChatMessage(
+            role="user" if request.is_user_message else "assistant",
+            content=request.message,
+        )
+        logger.info(f"[STREAM] Saving user message to session {session_id}")
+        is_duplicate_message = (
             await append_and_save_message(session_id, message)
-            logger.info(f"[STREAM] User message saved for session {session_id}")
+        ) is None
+        logger.info(f"[STREAM] User message saved for session {session_id}")
+        if not is_duplicate_message and request.is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(request.message),
+            )
 
-        # Create a task in the stream registry for reconnection support
+    # Create a task in the stream registry for reconnection support.
+    # For duplicate messages, skip create_session entirely so the infra-retry
+    # client subscribes to the *existing* turn's Redis stream and receives the
+    # in-progress executor output rather than an empty stream.
+    turn_id = ""
+    if not is_duplicate_message:
         turn_id = str(uuid4())
         log_meta["turn_id"] = turn_id
-
         session_create_start = time.perf_counter()
         await stream_registry.create_session(
             session_id=session_id,
@@ -977,7 +1018,6 @@ async def stream_chat_post(
                 }
             },
         )
-
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,
@@ -989,10 +1029,10 @@ async def stream_chat_post(
             mode=request.mode,
             model=request.model,
         )
-    except Exception:
-        if dedup_lock:
-            await dedup_lock.release()
-        raise
+    else:
+        logger.info(
+            f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
+        )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
@@ -1016,12 +1056,6 @@ async def stream_chat_post(
         subscriber_queue = None
         first_chunk_yielded = False
         chunks_yielded = 0
-        # True for every exit path except GeneratorExit (client disconnect).
-        # On disconnect the backend turn is still running — releasing the lock
-        # there would reopen the infra-retry duplicate window. The 30 s TTL
-        # is the fallback. All other exits (normal finish, early return, error)
-        # should release so the user can re-send the same message.
-        release_dedup_lock_on_exit = True
         try:
             # Subscribe from the position we captured before enqueuing
             # This avoids replaying old messages while catching all new ones
@@ -1033,7 +1067,7 @@ async def stream_chat_post(
 
             if subscriber_queue is None:
                 yield StreamFinish().to_sse()
-                return  # finally releases dedup_lock
+                return
 
             # Read from the subscriber queue and yield to SSE
             logger.info(
@@ -1075,7 +1109,7 @@ async def stream_chat_post(
                                 }
                             },
                         )
-                        break  # finally releases dedup_lock
+                        break
 
                 except asyncio.TimeoutError:
                     yield StreamHeartbeat().to_sse()
@@ -1091,7 +1125,6 @@ async def stream_chat_post(
                     }
                 },
             )
-            release_dedup_lock_on_exit = False
         except Exception as e:
             elapsed = (time_module.perf_counter() - event_gen_start) * 1000
             logger.error(
@@ -1106,10 +1139,7 @@ async def stream_chat_post(
                 code="stream_error",
             ).to_sse()
             yield StreamFinish().to_sse()
-            # finally releases dedup_lock
         finally:
-            if dedup_lock and release_dedup_lock_on_exit:
-                await dedup_lock.release()
             # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:

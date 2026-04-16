@@ -5,31 +5,37 @@ import {
   screen,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import { server } from "@/mocks/mock-server";
+import { http, HttpResponse } from "msw";
 import { EditNameDialog } from "../EditNameDialog";
 
 const mockToast = vi.hoisted(() => vi.fn());
-const mockUseSupabase = vi.hoisted(() => vi.fn());
+const mockRefreshSession = vi.hoisted(() => vi.fn());
 
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
 vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
-  useSupabase: mockUseSupabase,
+  useSupabase: () => ({
+    refreshSession: mockRefreshSession,
+  }),
 }));
 
-function setup({
-  updateUser = vi.fn().mockResolvedValue({ error: null }),
-  refreshSession = vi.fn().mockResolvedValue(undefined),
-}: {
-  updateUser?: ReturnType<typeof vi.fn>;
-  refreshSession?: ReturnType<typeof vi.fn>;
-} = {}) {
-  mockUseSupabase.mockReturnValue({
-    supabase: { auth: { updateUser } },
-    refreshSession,
-  });
-  return { updateUser, refreshSession };
+function mockUpdateNameSuccess() {
+  server.use(
+    http.put("/api/auth/user", () => {
+      return HttpResponse.json({ user: { id: "u1" } });
+    }),
+  );
+}
+
+function mockUpdateNameError(message = "Network error") {
+  server.use(
+    http.put("/api/auth/user", () => {
+      return HttpResponse.json({ error: message }, { status: 400 });
+    }),
+  );
 }
 
 async function openDialogAndGetInput() {
@@ -49,19 +55,20 @@ function getSaveButton() {
 describe("EditNameDialog", () => {
   beforeEach(() => {
     mockToast.mockReset();
-    mockUseSupabase.mockReset();
+    mockRefreshSession.mockReset();
+    mockRefreshSession.mockResolvedValue({ user: { id: "u1" } });
   });
 
   test("opens dialog with current name prefilled", async () => {
-    setup();
+    mockUpdateNameSuccess();
     render(<EditNameDialog currentName="Alice" />);
 
     const input = await openDialogAndGetInput();
     expect(input.value).toBe("Alice");
   });
 
-  test("saves name successfully and closes dialog", async () => {
-    const { updateUser, refreshSession } = setup();
+  test("saves name via API route and closes dialog", async () => {
+    mockUpdateNameSuccess();
     render(<EditNameDialog currentName="Alice" />);
 
     const input = await openDialogAndGetInput();
@@ -69,21 +76,13 @@ describe("EditNameDialog", () => {
     fireEvent.click(getSaveButton());
 
     await waitFor(() => {
-      expect(updateUser).toHaveBeenCalledWith({ data: { full_name: "Bob" } });
+      expect(mockRefreshSession).toHaveBeenCalled();
     });
-    expect(refreshSession).toHaveBeenCalled();
-    await waitFor(() => {
-      expect(mockToast).toHaveBeenCalledWith({ title: "Name updated" });
-    });
+    expect(mockToast).toHaveBeenCalledWith({ title: "Name updated" });
   });
 
-  test("shows error toast when updateUser fails and keeps dialog open", async () => {
-    const updateUser = vi
-      .fn()
-      .mockResolvedValue({ error: { message: "Network error" } });
-    const refreshSession = vi.fn();
-    setup({ updateUser, refreshSession });
-
+  test("shows error toast when API returns error", async () => {
+    mockUpdateNameError("Network error");
     render(<EditNameDialog currentName="Alice" />);
 
     const input = await openDialogAndGetInput();
@@ -99,15 +98,12 @@ describe("EditNameDialog", () => {
         }),
       );
     });
-    expect(refreshSession).not.toHaveBeenCalled();
+    expect(mockRefreshSession).not.toHaveBeenCalled();
   });
 
-  test("closes dialog and toasts failure when refreshSession throws", async () => {
-    const updateUser = vi.fn().mockResolvedValue({ error: null });
-    const refreshSession = vi
-      .fn()
-      .mockRejectedValue(new Error("refresh failed"));
-    setup({ updateUser, refreshSession });
+  test("shows warning toast when refreshSession returns an error", async () => {
+    mockUpdateNameSuccess();
+    mockRefreshSession.mockResolvedValue({ error: "refresh failed" });
 
     render(<EditNameDialog currentName="Alice" />);
 
@@ -119,6 +115,7 @@ describe("EditNameDialog", () => {
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Name saved, but session refresh failed",
+          description: "refresh failed",
           variant: "destructive",
         }),
       );
@@ -126,8 +123,8 @@ describe("EditNameDialog", () => {
     expect(mockToast).not.toHaveBeenCalledWith({ title: "Name updated" });
   });
 
-  test("disables Save button while empty input", async () => {
-    setup();
+  test("disables Save button while input is empty", async () => {
+    mockUpdateNameSuccess();
     render(<EditNameDialog currentName="Alice" />);
 
     const input = await openDialogAndGetInput();
