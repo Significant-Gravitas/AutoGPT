@@ -228,6 +228,50 @@ describe("useLoadMoreMessages", () => {
       expect(result.current.hasMore).toBe(true);
       expect(result.current.isLoadingMore).toBe(false);
     });
+
+    it("sets hasMore=false after MAX_CONSECUTIVE_ERRORS (3) non-200 responses", async () => {
+      mockGetV2GetSession.mockResolvedValue({ status: 503, data: {} });
+
+      const { result } = renderHook(() => useLoadMoreMessages(BASE_ARGS));
+
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          await result.current.loadMore();
+        });
+        await waitFor(() => expect(result.current.isLoadingMore).toBe(false));
+      }
+
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    it("discards in-flight error when epoch changes mid-flight (resetPaged called)", async () => {
+      let rejectRequest!: (e: Error) => void;
+      mockGetV2GetSession.mockReturnValueOnce(
+        new Promise((_, rej) => {
+          rejectRequest = rej;
+        }),
+      );
+
+      const { result } = renderHook(() => useLoadMoreMessages(BASE_ARGS));
+
+      act(() => {
+        result.current.loadMore();
+      });
+
+      // Reset epoch mid-flight
+      act(() => {
+        result.current.resetPaged();
+      });
+
+      // Reject the in-flight request — stale error should be discarded
+      await act(async () => {
+        rejectRequest(new Error("network error"));
+      });
+
+      // State unchanged: no hasMore=false, no errorCount, isLoadingMore cleared
+      expect(result.current.hasMore).toBe(false); // false from resetPaged
+      expect(result.current.isLoadingMore).toBe(false);
+    });
   });
 
   describe("loadMore — forward pagination cursor advancement", () => {
