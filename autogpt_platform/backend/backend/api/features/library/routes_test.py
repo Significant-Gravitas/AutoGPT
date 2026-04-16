@@ -105,7 +105,7 @@ async def test_get_library_agents_success(
     assert data.agents[1].can_access_graph is False
 
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(json.dumps(response.json(), indent=2), "lib_agts_search")
+    snapshot.assert_match(f"{json.dumps(response.json(), indent=2)}\n", "lib_agts_search")
 
     mock_db_call.assert_called_once_with(
         user_id=test_user_id,

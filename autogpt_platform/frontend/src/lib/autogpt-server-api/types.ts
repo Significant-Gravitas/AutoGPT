@@ -525,6 +525,7 @@ export type LibraryAgent = {
   is_favorite: boolean;
   is_latest_version: boolean;
   recommended_schedule_cron: string | null;
+  top_integrations: Array<{ name: string; type: "provider" | "category" }>;
 } & (
   | {
       has_external_trigger: true;

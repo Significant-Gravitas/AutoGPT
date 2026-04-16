@@ -44,6 +44,7 @@
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false
       },
+      "top_integrations": [],
       "marketplace_listing": null
     },
     {
@@ -90,6 +91,7 @@
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false
       },
+      "top_integrations": [],
       "marketplace_listing": null
     }
   ],

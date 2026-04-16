@@ -33,6 +33,7 @@ async def test_get_library_agents(mocker):
             userId="test-user",
             agentGraphId="agent2",
             settings="{}",  # type: ignore
+            topIntegrations="[]",  # type: ignore
             agentGraphVersion=1,
             isCreatedByUser=False,
             isDeleted=False,
@@ -121,6 +122,7 @@ async def test_add_agent_to_library(mocker):
         userId="test-user",
         agentGraphId=mock_store_listing_data.agentGraphId,
         settings="{}",  # type: ignore
+        topIntegrations="[]",  # type: ignore
         agentGraphVersion=1,
         isCreatedByUser=False,
         isDeleted=False,
