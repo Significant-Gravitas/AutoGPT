@@ -191,8 +191,10 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
-    schedule_info = await _fetch_schedule_info(user_id)
+    execution_counts, schedule_info = await asyncio.gather(
+        _fetch_execution_counts(user_id, graph_ids),
+        _fetch_schedule_info(user_id),
+    )
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -276,8 +278,10 @@ async def list_favorite_library_agents(
     )
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
-    schedule_info = await _fetch_schedule_info(user_id)
+    execution_counts, schedule_info = await asyncio.gather(
+        _fetch_execution_counts(user_id, graph_ids),
+        _fetch_schedule_info(user_id),
+    )
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
