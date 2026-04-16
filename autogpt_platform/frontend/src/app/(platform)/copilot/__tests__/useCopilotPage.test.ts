@@ -39,6 +39,10 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   useDeleteV2DeleteSession: () => ({ mutate: vi.fn(), isPending: false }),
   useGetV2ListSessions: () => ({ data: undefined, isLoading: false }),
   getGetV2ListSessionsQueryKey: () => ["sessions"],
+  getV2GetPendingMessages: vi.fn().mockResolvedValue({
+    status: 200,
+    data: { count: 0, messages: [] },
+  }),
 }));
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: vi.fn(),
