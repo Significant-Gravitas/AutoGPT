@@ -19,6 +19,7 @@ import {
 export function useSitrepItems(
   agents: LibraryAgent[],
   maxItems: number,
+  scheduledWithinMs?: number,
 ): SitrepItemData[] {
   const { data: executions } = useGetV1ListAllExecutions({
     query: { select: okData },
@@ -42,7 +43,7 @@ export function useSitrepItems(
 
     for (const agent of agents) {
       if (coveredAgentIds.has(agent.id)) continue;
-      const configItem = buildSitrepFromConfig(agent);
+      const configItem = buildSitrepFromConfig(agent, scheduledWithinMs);
       if (configItem) items.push(configItem);
     }
 
@@ -58,7 +59,7 @@ export function useSitrepItems(
     items.sort((a, b) => order[a.priority] - order[b.priority]);
 
     return items.slice(0, maxItems);
-  }, [agents, executions, maxItems]);
+  }, [agents, executions, maxItems, scheduledWithinMs]);
 }
 
 function groupByAgent(
@@ -142,7 +143,10 @@ function buildSitrepFromExecutions(
   return null;
 }
 
-function buildSitrepFromConfig(agent: LibraryAgent): SitrepItemData | null {
+function buildSitrepFromConfig(
+  agent: LibraryAgent,
+  scheduledWithinMs?: number,
+): SitrepItemData | null {
   if (agent.has_external_trigger) {
     return {
       id: `${agent.id}-listening`,
@@ -155,6 +159,9 @@ function buildSitrepFromConfig(agent: LibraryAgent): SitrepItemData | null {
   }
 
   if (agent.is_scheduled || agent.recommended_schedule_cron) {
+    if (!isNextRunWithin(agent.next_scheduled_run, scheduledWithinMs)) {
+      return null;
+    }
     return {
       id: `${agent.id}-scheduled`,
       agentID: agent.id,
@@ -166,6 +173,16 @@ function buildSitrepFromConfig(agent: LibraryAgent): SitrepItemData | null {
   }
 
   return null;
+}
+
+function isNextRunWithin(
+  iso: string | undefined | null,
+  windowMs: number | undefined,
+): boolean {
+  if (windowMs === undefined) return true;
+  if (!iso) return false;
+  const diff = new Date(iso).getTime() - Date.now();
+  return diff >= 0 && diff <= windowMs;
 }
 
 function formatNextRun(iso: string | undefined | null): string {
