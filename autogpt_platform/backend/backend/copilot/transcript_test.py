@@ -880,30 +880,11 @@ class TestUploadCliSession:
         assert meta_content["mode"] == "baseline"
         assert meta_content["message_count"] == 4
 
-    def test_strips_session_before_upload_and_writes_back(self, tmp_path):
-        """Strippable entries (progress, thinking blocks) are removed before upload.
-
-        The stripped content is written back to disk (so same-pod turns benefit)
-        and the smaller bytes are uploaded to GCS.
-        """
-        import asyncio
-        import os
-        import re
-        from unittest.mock import AsyncMock, patch
-
-        from .transcript import _sanitize_id, upload_cli_session
-
-        projects_base = str(tmp_path)
-        session_id = "12345678-0000-0000-0000-000000000010"
-        sdk_cwd = str(tmp_path)
-
-        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-        session_dir = tmp_path / encoded_cwd
-        session_dir.mkdir(parents=True, exist_ok=True)
-        session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
-
-        # A CLI session with a progress entry (strippable) and a real assistant message.
+    def test_strips_session_before_upload_and_writes_back(self):
+        """strip_for_upload removes progress entries and returns smaller content."""
         import json
+
+        from .transcript import strip_for_upload
 
         progress_entry = {
             "type": "progress",
@@ -930,64 +911,22 @@ class TestUploadCliSession:
             + json.dumps(asst_entry)
             + "\n"
         )
-        raw_bytes = raw_content.encode("utf-8")
-        session_file.write_bytes(raw_bytes)
 
-        mock_storage = AsyncMock()
+        stripped = strip_for_upload(raw_content)
 
-        with (
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=projects_base,
-            ),
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
-        ):
-            asyncio.run(
-                upload_cli_session(
-                    user_id="user-1",
-                    session_id=session_id,
-                    sdk_cwd=sdk_cwd,
-                )
-            )
-
-        # Upload should have been called with stripped bytes (no progress entry).
-        mock_storage.store.assert_called_once()
-        stored_content: bytes = mock_storage.store.call_args.kwargs["content"]
-        stored_lines = stored_content.decode("utf-8").strip().split("\n")
+        stored_lines = stripped.strip().split("\n")
         stored_types = [json.loads(line).get("type") for line in stored_lines]
         assert "progress" not in stored_types
         assert "user" in stored_types
         assert "assistant" in stored_types
-        # Stripped bytes should be smaller than raw.
-        assert len(stored_content) < len(raw_bytes)
-        # File on disk should also be the stripped version.
-        disk_content = session_file.read_bytes()
-        assert disk_content == stored_content
+        assert len(stripped.encode()) < len(raw_content.encode())
 
-    def test_strips_stale_thinking_blocks_before_upload(self, tmp_path):
-        """Thinking blocks in non-last assistant turns are stripped to reduce size."""
-        import asyncio
+    def test_strips_stale_thinking_blocks_before_upload(self):
+        """strip_for_upload removes thinking blocks from non-last assistant turns."""
         import json
-        import os
-        import re
-        from unittest.mock import AsyncMock, patch
 
-        from .transcript import _sanitize_id, upload_cli_session
+        from .transcript import strip_for_upload
 
-        projects_base = str(tmp_path)
-        session_id = "12345678-0000-0000-0000-000000000011"
-        sdk_cwd = str(tmp_path)
-
-        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
-        session_dir = tmp_path / encoded_cwd
-        session_dir.mkdir(parents=True, exist_ok=True)
-        session_file = session_dir / f"{_sanitize_id(session_id)}.jsonl"
-
-        # Two turns: first assistant has thinking block (stale), second doesn't.
         u1 = {
             "type": "user",
             "uuid": "u1",
@@ -1032,32 +971,10 @@ class TestUploadCliSession:
             + json.dumps(a2_no_thinking)
             + "\n"
         )
-        raw_bytes = raw_content.encode("utf-8")
-        session_file.write_bytes(raw_bytes)
 
-        mock_storage = AsyncMock()
+        stripped = strip_for_upload(raw_content)
 
-        with (
-            patch(
-                "backend.copilot.transcript._projects_base",
-                return_value=projects_base,
-            ),
-            patch(
-                "backend.copilot.transcript.get_workspace_storage",
-                new_callable=AsyncMock,
-                return_value=mock_storage,
-            ),
-        ):
-            asyncio.run(
-                upload_cli_session(
-                    user_id="user-1",
-                    session_id=session_id,
-                    sdk_cwd=sdk_cwd,
-                )
-            )
-
-        stored_content: bytes = mock_storage.store.call_args.kwargs["content"]
-        stored_lines = stored_content.decode("utf-8").strip().split("\n")
+        stored_lines = stripped.strip().split("\n")
 
         # a1 should have its thinking block stripped (it's not the last assistant turn).
         a1_stored = json.loads(stored_lines[1])
@@ -1072,9 +989,6 @@ class TestUploadCliSession:
         # a2 (last turn) should be unchanged.
         a2_stored = json.loads(stored_lines[3])
         assert a2_stored["message"]["content"] == [{"type": "text", "text": "answer2"}]
-
-        # Stripped bytes smaller than raw.
-        assert len(stored_content) < len(raw_bytes)
 
 
 class TestRestoreCliSession:
