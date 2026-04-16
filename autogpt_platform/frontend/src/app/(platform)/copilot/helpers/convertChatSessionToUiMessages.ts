@@ -253,6 +253,11 @@ export function convertChatSessionMessagesToUiMessages(
       }
     }
 
+    // User messages must always be rendered, even with empty content, so the
+    // initial prompt is visible when reloading a session.
+    if (parts.length === 0 && msg.role === "user") {
+      parts.push({ type: "text", text: "", state: "done" });
+    }
     if (parts.length === 0) return;
 
     // Merge consecutive assistant messages into a single UIMessage

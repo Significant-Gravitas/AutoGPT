@@ -9,7 +9,11 @@ import {
 interface UseLoadMoreMessagesArgs {
   sessionId: string | null;
   initialOldestSequence: number | null;
+  initialNewestSequence: number | null;
   initialHasMore: boolean;
+  /** True when the initial page was loaded from sequence 0 forward (completed
+   *  sessions). False when loaded newest-first (active sessions). */
+  forwardPaginated: boolean;
   /** Raw messages from the initial page, used for cross-page tool output matching. */
   initialPageRawMessages: unknown[];
 }
@@ -20,15 +24,20 @@ const MAX_OLDER_MESSAGES = 2000;
 export function useLoadMoreMessages({
   sessionId,
   initialOldestSequence,
+  initialNewestSequence,
   initialHasMore,
+  forwardPaginated,
   initialPageRawMessages,
 }: UseLoadMoreMessagesArgs) {
-  // Store accumulated raw messages from all older pages (in ascending order).
+  // Accumulated raw messages from all extra pages (ascending order).
   // Re-converting them all together ensures tool outputs are matched across
   // inter-page boundaries.
-  const [olderRawMessages, setOlderRawMessages] = useState<unknown[]>([]);
+  const [pagedRawMessages, setPagedRawMessages] = useState<unknown[]>([]);
   const [oldestSequence, setOldestSequence] = useState<number | null>(
     initialOldestSequence,
+  );
+  const [newestSequence, setNewestSequence] = useState<number | null>(
+    initialNewestSequence,
   );
   const [hasMore, setHasMore] = useState(initialHasMore);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -46,7 +55,7 @@ export function useLoadMoreMessages({
   // The parent's `initialOldestSequence` drifts forward every time the
   // session query refetches (e.g. after a stream completes — see
   // `useCopilotStream` invalidation on `streaming → ready`). If we
-  // wiped `olderRawMessages` every time that happened, users who had
+  // wiped `pagedRawMessages` every time that happened, users who had
   // scrolled back would lose their loaded history on each new turn and
   // subsequent `loadMore` calls would fetch messages that overlap with
   // the AI SDK's retained state in `currentMessages`, producing visible
@@ -63,8 +72,9 @@ export function useLoadMoreMessages({
       // Session changed — full reset
       prevSessionIdRef.current = sessionId;
       prevInitialOldestRef.current = initialOldestSequence;
-      setOlderRawMessages([]);
+      setPagedRawMessages([]);
       setOldestSequence(initialOldestSequence);
+      setNewestSequence(initialNewestSequence);
       setHasMore(initialHasMore);
       setIsLoadingMore(false);
       isLoadingMoreRef.current = false;
@@ -75,49 +85,64 @@ export function useLoadMoreMessages({
 
     prevInitialOldestRef.current = initialOldestSequence;
 
-    // If we haven't paged back yet, mirror the parent so the first
+    // If we haven't paged yet, mirror the parent so the first
     // `loadMore` starts from the correct cursor.
-    if (olderRawMessages.length === 0) {
+    //
+    // When paged messages exist (pagedRawMessages.length > 0) we intentionally
+    // do NOT update `hasMore` or `newestSequence` from the parent.  A parent
+    // refetch (e.g. after a new turn completes) may carry a fresh
+    // `initialHasMore=true` or a larger `initialNewestSequence`, but those
+    // reflect the *initial* page window, not the forward-paged window we have
+    // already advanced into.  Overwriting the local cursor here would cause the
+    // next `loadMore` to re-fetch pages we already have.  The local cursor is
+    // advanced correctly inside `loadMore` itself via `setNewestSequence`.
+    if (pagedRawMessages.length === 0) {
       setOldestSequence(initialOldestSequence);
+      // Only regress the forward cursor if we haven't paged ahead yet —
+      // otherwise a parent refetch would reset a cursor we already advanced.
+      setNewestSequence((prev) =>
+        prev !== null && prev > (initialNewestSequence ?? -1)
+          ? prev
+          : initialNewestSequence,
+      );
       setHasMore(initialHasMore);
     }
-  }, [sessionId, initialOldestSequence, initialHasMore]);
+  }, [sessionId, initialOldestSequence, initialNewestSequence, initialHasMore]);
 
   // Convert all accumulated raw messages in one pass so tool outputs
-  // are matched across inter-page boundaries. Initial page tool outputs
-  // are included via extraToolOutputs to handle the boundary between
-  // the last older page and the initial/streaming page.
-  const olderMessages: UIMessage<unknown, UIDataTypes, UITools>[] =
+  // are matched across inter-page boundaries.
+  // For backward pagination only: include initial page tool outputs so older
+  // paged pages can match tool calls whose outputs landed in the initial page.
+  // For forward pagination this is unnecessary — tool calls in newer paged
+  // pages cannot have their outputs in the older initial page.
+  const pagedMessages: UIMessage<unknown, UIDataTypes, UITools>[] =
     useMemo(() => {
-      if (!sessionId || olderRawMessages.length === 0) return [];
+      if (!sessionId || pagedRawMessages.length === 0) return [];
       const extraToolOutputs =
-        initialPageRawMessages.length > 0
+        !forwardPaginated && initialPageRawMessages.length > 0
           ? extractToolOutputsFromRaw(initialPageRawMessages)
           : undefined;
       return convertChatSessionMessagesToUiMessages(
         sessionId,
-        olderRawMessages,
+        pagedRawMessages,
         { isComplete: true, extraToolOutputs },
       ).messages;
-    }, [sessionId, olderRawMessages, initialPageRawMessages]);
+    }, [sessionId, pagedRawMessages, initialPageRawMessages, forwardPaginated]);
 
   async function loadMore() {
-    if (
-      !sessionId ||
-      !hasMore ||
-      isLoadingMoreRef.current ||
-      oldestSequence === null
-    )
-      return;
+    if (!sessionId || !hasMore || isLoadingMoreRef.current) return;
+
+    const cursor = forwardPaginated ? newestSequence : oldestSequence;
+    if (cursor === null) return;
 
     const requestEpoch = epochRef.current;
     isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
-      const response = await getV2GetSession(sessionId, {
-        limit: 50,
-        before_sequence: oldestSequence,
-      });
+      const params = forwardPaginated
+        ? { limit: 50, after_sequence: cursor }
+        : { limit: 50, before_sequence: cursor };
+      const response = await getV2GetSession(sessionId, params);
 
       // Discard response if session/pagination was reset while awaiting
       if (epochRef.current !== requestEpoch) return;
@@ -136,18 +161,66 @@ export function useLoadMoreMessages({
       consecutiveErrorsRef.current = 0;
 
       const newRaw = (response.data.messages ?? []) as unknown[];
-      setOlderRawMessages((prev) => {
-        const merged = [...newRaw, ...prev];
+      // Estimate total after merge using the closure-captured pagedRawMessages.length.
+      // This is a safe approximation: worst case it's one page stale (one extra load
+      // allowed), but it avoids the React-18-batching pitfall where a functional
+      // updater's mutations are not visible until the next render.
+      const estimatedTotal = pagedRawMessages.length + newRaw.length;
+      setPagedRawMessages((prev) => {
+        // Forward: append to end. Backward: prepend to start.
+        const merged = forwardPaginated
+          ? [...prev, ...newRaw]
+          : [...newRaw, ...prev];
         if (merged.length > MAX_OLDER_MESSAGES) {
-          return merged.slice(merged.length - MAX_OLDER_MESSAGES);
+          // Backward: discard the oldest (front) items — user has scrolled far
+          // back and we shed the furthest history.
+          // Forward: discard the newest (tail) items — we only ever fetch
+          // forward, so the tail is the most recently appended page; shedding
+          // it means the sentinel stalls, which is safer than discarding the
+          // beginning of the conversation the user is here to read.
+          return forwardPaginated
+            ? merged.slice(0, MAX_OLDER_MESSAGES)
+            : merged.slice(merged.length - MAX_OLDER_MESSAGES);
         }
         return merged;
       });
-      setOldestSequence(response.data.oldest_sequence ?? null);
-      if (newRaw.length + olderRawMessages.length >= MAX_OLDER_MESSAGES) {
-        setHasMore(false);
+
+      if (forwardPaginated) {
+        const willTruncateForward = estimatedTotal > MAX_OLDER_MESSAGES;
+        if (willTruncateForward) {
+          // Truncation shed the newest tail. Advance the cursor to the last KEPT
+          // item's sequence so the sentinel re-fetches the discarded items next
+          // time rather than jumping past them.
+          // lastKeptIdx: index within newRaw of the last item that survives.
+          // prev contributes pagedRawMessages.length items; total kept = MAX.
+          const lastKeptIdx = MAX_OLDER_MESSAGES - 1 - pagedRawMessages.length;
+          if (lastKeptIdx >= 0 && lastKeptIdx < newRaw.length) {
+            const lastKeptMsg = newRaw[lastKeptIdx] as { sequence?: number };
+            if (typeof lastKeptMsg?.sequence === "number") {
+              setNewestSequence(lastKeptMsg.sequence);
+              setHasMore(true); // Discarded items still exist — keep sentinel active
+            } else {
+              // Sequence unavailable — fall back; truncated items will be lost
+              setNewestSequence(response.data.newest_sequence ?? null);
+              setHasMore(!!response.data.has_more_messages);
+            }
+          } else {
+            // All of newRaw was dropped (already at MAX_OLDER_MESSAGES cap).
+            // Stop to avoid an infinite re-fetch loop at the display cap.
+            setHasMore(false);
+          }
+        } else {
+          setNewestSequence(response.data.newest_sequence ?? null);
+          setHasMore(!!response.data.has_more_messages);
+        }
       } else {
-        setHasMore(!!response.data.has_more_messages);
+        setOldestSequence(response.data.oldest_sequence ?? null);
+        if (estimatedTotal >= MAX_OLDER_MESSAGES) {
+          // Backward: accumulated MAX_OLDER_MESSAGES — stop to avoid unbounded memory.
+          setHasMore(false);
+        } else {
+          setHasMore(!!response.data.has_more_messages);
+        }
       }
     } catch (error) {
       if (epochRef.current !== requestEpoch) return;
@@ -164,5 +237,22 @@ export function useLoadMoreMessages({
     }
   }
 
-  return { olderMessages, hasMore, isLoadingMore, loadMore };
+  function resetPaged() {
+    setPagedRawMessages([]);
+    setOldestSequence(initialOldestSequence);
+    setNewestSequence(initialNewestSequence);
+    // Set hasMore=false during the session-transition window so no loadMore
+    // fires with forward pagination (after_sequence) on the now-active session.
+    // The useEffect will restore hasMore from the parent after the refetch
+    // completes and forwardPaginated switches to false.
+    setHasMore(false);
+    // Clear the loading state so the spinner doesn't stay stuck if a loadMore
+    // was in flight when resetPaged was called.
+    setIsLoadingMore(false);
+    isLoadingMoreRef.current = false;
+    consecutiveErrorsRef.current = 0;
+    epochRef.current += 1;
+  }
+
+  return { pagedMessages, hasMore, isLoadingMore, loadMore, resetPaged };
 }
