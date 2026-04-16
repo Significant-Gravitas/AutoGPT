@@ -2489,9 +2489,7 @@ async def _restore_cli_session_for_turn(
     # session path, so we validate BEFORE any disk write.
     stripped = ""
     if cli_restore is not None and sdk_cwd:
-        stripped, ok = process_cli_restore(
-            cli_restore, sdk_cwd, session_id, log_prefix
-        )
+        stripped, ok = process_cli_restore(cli_restore, sdk_cwd, session_id, log_prefix)
         if not ok:
             result.transcript_covers_prefix = False
             cli_restore = None
