@@ -143,21 +143,12 @@ def test_stream_chat_rejects_too_many_file_ids():
     assert response.status_code == 422
 
 
-def _mock_stream_internals(
-    mocker: pytest_mock.MockerFixture,
-    *,
-    redis_set_returns: object = True,
-):
+def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
     """Mock the async internals of stream_chat_post so tests can exercise
-    validation and enrichment logic without needing Redis/RabbitMQ.
-
-    Args:
-        redis_set_returns: Value returned by the mocked Redis ``set`` call.
-            ``True`` (default) simulates a fresh key (new message);
-            ``None`` simulates a collision (duplicate blocked).
+    validation and enrichment logic without needing RabbitMQ.
 
     Returns:
-        A namespace with ``redis``, ``save``, and ``enqueue`` mock objects so
+        A namespace with ``save`` and ``enqueue`` mock objects so
         callers can make additional assertions about side-effects.
     """
     import types
@@ -168,7 +159,7 @@ def _mock_stream_internals(
     )
     mock_save = mocker.patch(
         "backend.api.features.chat.routes.append_and_save_message",
-        return_value=None,
+        return_value=MagicMock(),  # non-None = message was saved (not a duplicate)
     )
     mock_registry = mocker.MagicMock()
     mock_registry.create_session = mocker.AsyncMock(return_value=None)
@@ -184,15 +175,9 @@ def _mock_stream_internals(
         "backend.api.features.chat.routes.track_user_message",
         return_value=None,
     )
-    mock_redis = AsyncMock()
-    mock_redis.set = AsyncMock(return_value=redis_set_returns)
-    mocker.patch(
-        "backend.copilot.message_dedup.get_redis_async",
-        new_callable=AsyncMock,
-        return_value=mock_redis,
+    return types.SimpleNamespace(
+        save=mock_save, enqueue=mock_enqueue, registry=mock_registry
     )
-    ns = types.SimpleNamespace(redis=mock_redis, save=mock_save, enqueue=mock_enqueue)
-    return ns
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -219,6 +204,29 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     )
     # Should get past validation — 200 streaming response expected
     assert response.status_code == 200
+
+
+# ─── Duplicate message dedup ──────────────────────────────────────────
+
+
+def test_stream_chat_skips_enqueue_for_duplicate_message(
+    mocker: pytest_mock.MockerFixture,
+):
+    """When append_and_save_message returns None (duplicate detected),
+    enqueue_copilot_turn and stream_registry.create_session must NOT be called
+    to avoid double-processing and to prevent overwriting the active stream's
+    turn_id in Redis (which would cause reconnecting clients to miss the response)."""
+    mocks = _mock_stream_internals(mocker)
+    # Override save to return None — signalling a duplicate
+    mocks.save.return_value = None
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 200
+    mocks.enqueue.assert_not_called()
+    mocks.registry.create_session.assert_not_called()
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -1721,3 +1729,146 @@ def test_disconnect_stream_returns_404_when_session_missing(
 
     assert response.status_code == 404
     mock_disconnect.assert_not_awaited()
+
+
+# ─── GET /sessions/{session_id} — forward/backward pagination ──────────────────
+
+
+def _make_paginated_messages(
+    mocker: pytest_mock.MockerFixture, *, has_more: bool = False
+):
+    """Return a mock PaginatedMessages and configure the DB patch."""
+    from datetime import UTC, datetime
+
+    from backend.copilot.db import PaginatedMessages
+    from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetadata
+
+    now = datetime.now(UTC)
+    session_info = ChatSessionInfo(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        usage=[],
+        started_at=now,
+        updated_at=now,
+        metadata=ChatSessionMetadata(),
+    )
+    page = PaginatedMessages(
+        messages=[ChatMessage(role="user", content="hello", sequence=0)],
+        has_more=has_more,
+        oldest_sequence=0,
+        newest_sequence=0,
+        session=session_info,
+    )
+    mock_paginate = mocker.patch(
+        "backend.api.features.chat.routes.get_chat_messages_paginated",
+        new_callable=AsyncMock,
+        return_value=page,
+    )
+    return page, mock_paginate
+
+
+def test_get_session_completed_returns_forward_paginated(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Completed sessions (no active stream) return forward_paginated=True."""
+    _make_paginated_messages(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["forward_paginated"] is True
+    assert data["newest_sequence"] == 0
+
+
+def test_get_session_active_returns_backward_paginated(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Active sessions (with running stream) return forward_paginated=False."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _make_paginated_messages(mocker)
+    active = MagicMock(spec=ActiveSession)
+    active.turn_id = "turn-1"
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(active, "msg-1"),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["forward_paginated"] is False
+    assert data["active_stream"] is not None
+    assert data["active_stream"]["turn_id"] == "turn-1"
+
+
+def test_get_session_after_sequence_returns_forward_paginated(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """after_sequence param returns forward_paginated=True; no stream check needed."""
+    _, mock_paginate = _make_paginated_messages(mocker)
+
+    response = client.get("/sessions/sess-1?after_sequence=10")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["forward_paginated"] is True
+    call_kwargs = mock_paginate.call_args
+    assert call_kwargs.kwargs.get("after_sequence") == 10
+    assert call_kwargs.kwargs.get("before_sequence") is None
+
+
+def test_get_session_both_cursors_returns_400(
+    test_user_id: str,
+) -> None:
+    """Sending both before_sequence and after_sequence returns 400."""
+    response = client.get("/sessions/sess-1?before_sequence=5&after_sequence=10")
+
+    assert response.status_code == 400
+
+
+def test_get_session_toctou_refetch_when_session_completes_mid_request(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Race condition: session was active at pre-check but completes before DB fetch.
+
+    The route should detect the race via a post-fetch re-check, then re-fetch
+    from seq 0 so the initial prompt is always visible.
+    """
+    from backend.copilot.stream_registry import ActiveSession
+
+    page, mock_paginate = _make_paginated_messages(mocker)
+    active = MagicMock(spec=ActiveSession)
+    active.turn_id = "turn-1"
+
+    # First call: session appears active.  Second call: session has completed.
+    mock_get_active = mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        side_effect=[(active, "msg-1"), (None, None)],
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    # Post-race: session is now completed → forward_paginated=True, no stream
+    assert data["forward_paginated"] is True
+    assert data["active_stream"] is None
+    # The DB was queried twice: once newest-first, once from_start=True
+    assert mock_paginate.call_count == 2
+    assert mock_get_active.call_count == 2
+    second_call = mock_paginate.call_args_list[1]
+    assert second_call.kwargs.get("from_start") is True

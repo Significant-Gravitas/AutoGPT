@@ -93,6 +93,7 @@ export function CopilotPage() {
     hasMoreMessages,
     isLoadingMore,
     loadMore,
+    forwardPaginated,
     // Mobile drawer
     isMobile,
     isDrawerOpen,
@@ -217,6 +218,7 @@ export function CopilotPage() {
               hasMoreMessages={hasMoreMessages}
               isLoadingMore={isLoadingMore}
               onLoadMore={loadMore}
+              forwardPaginated={forwardPaginated}
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={handleDroppedFilesConsumed}
               historicalDurations={historicalDurations}

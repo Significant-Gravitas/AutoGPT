@@ -43,6 +43,25 @@ config = Config()
 integration_creds_manager = IntegrationCredentialsManager()
 
 
+async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[str, int]:
+    """Fetch execution counts per graph in a single batched query."""
+    if not graph_ids:
+        return {}
+    rows = await prisma.models.AgentGraphExecution.prisma().group_by(
+        by=["agentGraphId"],
+        where={
+            "userId": user_id,
+            "agentGraphId": {"in": graph_ids},
+            "isDeleted": False,
+        },
+        count=True,
+    )
+    return {
+        row["agentGraphId"]: int((row.get("_count") or {}).get("_all") or 0)
+        for row in rows
+    }
+
+
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
@@ -137,12 +156,18 @@ async def list_library_agents(
 
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
+    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
+    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
+
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
 
     for agent in library_agents:
         try:
-            library_agent = library_model.LibraryAgent.from_db(agent)
+            library_agent = library_model.LibraryAgent.from_db(
+                agent,
+                execution_count_override=execution_counts.get(agent.agentGraphId),
+            )
             valid_library_agents.append(library_agent)
         except Exception as e:
             # Skip this agent if there was an error
@@ -214,12 +239,18 @@ async def list_favorite_library_agents(
         f"Retrieved {len(library_agents)} favorite library agents for user #{user_id}"
     )
 
+    graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
+    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
+
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
 
     for agent in library_agents:
         try:
-            library_agent = library_model.LibraryAgent.from_db(agent)
+            library_agent = library_model.LibraryAgent.from_db(
+                agent,
+                execution_count_override=execution_counts.get(agent.agentGraphId),
+            )
             valid_library_agents.append(library_agent)
         except Exception as e:
             # Skip this agent if there was an error
