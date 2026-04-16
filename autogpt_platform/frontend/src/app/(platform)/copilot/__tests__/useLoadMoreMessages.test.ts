@@ -409,7 +409,8 @@ describe("useLoadMoreMessages", () => {
         await result.current.loadMore();
       });
 
-      // After truncation, hasMore is forced false (total ≥ MAX_OLDER_MESSAGES).
+      // Server returned has_more_messages=false, so hasMore=false.
+      // (Forward mode trusts the server regardless of local count.)
       expect(result.current.hasMore).toBe(false);
     });
   });
