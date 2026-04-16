@@ -8,7 +8,7 @@ Cross-mode transcript flow
 ==========================
 
 Both ``baseline/service.py`` (fast mode) and ``sdk/service.py`` (extended_thinking
-mode) read and write the same JSONL transcript store via
+mode) read and write the same CLI session store via
 ``backend.copilot.transcript.upload_transcript`` /
 ``download_transcript``.
 
@@ -250,8 +250,9 @@ class TestSdkToFastModeSwitch:
 
     @pytest.mark.asyncio
     async def test_scenario_s_baseline_loads_sdk_transcript(self):
-        """Scenario S: SDK-written transcript is accepted by baseline's load helper."""
+        """Scenario S: SDK-written CLI session is accepted by baseline's load helper."""
         from backend.copilot.baseline.service import _load_prior_transcript
+        from backend.copilot.model import ChatMessage
         from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
         from backend.copilot.transcript_builder import TranscriptBuilder
 
@@ -267,33 +268,41 @@ class TestSdkToFastModeSwitch:
         sdk_transcript = builder_sdk.to_jsonl()
 
         # Baseline session now has those 2 SDK messages + 1 new baseline message.
-        download = TranscriptDownload(content=sdk_transcript, message_count=2)
+        restore = TranscriptDownload(
+            content=sdk_transcript.encode("utf-8"), message_count=2, mode="sdk"
+        )
 
         baseline_builder = TranscriptBuilder()
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            covers = await _load_prior_transcript(
+            covers, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=3,  # 2 SDK + 1 new baseline
+                session_messages=[
+                    ChatMessage(role="user", content="sdk-question"),
+                    ChatMessage(role="assistant", content="sdk-answer"),
+                    ChatMessage(role="user", content="baseline-question"),
+                ],
                 transcript_builder=baseline_builder,
             )
 
-        # Transcript is valid and covers the prefix.
+        # CLI session is valid and covers the prefix.
         assert covers is True
+        assert dl is not None
         assert baseline_builder.entry_count == 2
 
     @pytest.mark.asyncio
     async def test_scenario_s_stale_sdk_transcript_not_loaded(self):
-        """Scenario S (stale): SDK transcript is stale — baseline does not load it.
+        """Scenario S (stale): SDK CLI session is stale — baseline does not load it.
 
-        If SDK mode produced more turns than the transcript captured (e.g.
-        upload failed on one turn), the baseline rejects the stale transcript
+        If SDK mode produced more turns than the session captured (e.g.
+        upload failed on one turn), the baseline rejects the stale session
         to avoid injecting an incomplete history.
         """
         from backend.copilot.baseline.service import _load_prior_transcript
+        from backend.copilot.model import ChatMessage
         from backend.copilot.transcript import STOP_REASON_END_TURN, TranscriptDownload
         from backend.copilot.transcript_builder import TranscriptBuilder
 
@@ -306,21 +315,33 @@ class TestSdkToFastModeSwitch:
         )
         sdk_transcript = builder_sdk.to_jsonl()
 
-        # Transcript covers only 2 messages but session has 10 (many SDK turns).
-        download = TranscriptDownload(content=sdk_transcript, message_count=2)
+        # Session covers only 2 messages but session has 10 (many SDK turns).
+        # With watermark=2 and 10 total messages, detect_gap will fill the gap
+        # by appending messages 2..8 (positions 2 to total-2).
+        restore = TranscriptDownload(
+            content=sdk_transcript.encode("utf-8"), message_count=2, mode="sdk"
+        )
+
+        # Build a session with 10 alternating user/assistant messages + current user
+        session_messages = [
+            ChatMessage(role="user" if i % 2 == 0 else "assistant", content=f"msg-{i}")
+            for i in range(10)
+        ]
 
         baseline_builder = TranscriptBuilder()
         with patch(
             "backend.copilot.baseline.service.download_transcript",
-            new=AsyncMock(return_value=download),
+            new=AsyncMock(return_value=restore),
         ):
-            covers = await _load_prior_transcript(
+            covers, dl = await _load_prior_transcript(
                 user_id="user-1",
                 session_id="session-1",
-                session_msg_count=10,
+                session_messages=session_messages,
                 transcript_builder=baseline_builder,
             )
 
-        # Stale transcript must be rejected.
-        assert covers is False
-        assert baseline_builder.is_empty
+        # With gap filling, covers is True and gap messages are appended.
+        assert covers is True
+        assert dl is not None
+        # 2 from transcript + 7 gap messages (positions 2..8, excluding last user turn)
+        assert baseline_builder.entry_count == 9

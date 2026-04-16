@@ -365,7 +365,7 @@ def create_security_hooks(
             trigger = _sanitize(str(input_data.get("trigger", "auto")), max_len=50)
             # Sanitize untrusted input: strip control chars for logging AND
             # for the value passed downstream.  read_compacted_entries()
-            # validates against _projects_base() as defence-in-depth, but
+            # validates against projects_base() as defence-in-depth, but
             # sanitizing here prevents log injection and rejects obviously
             # malformed paths early.
             transcript_path = _sanitize(

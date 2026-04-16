@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+import weakref
 
 from cachetools import TTLCache
 
@@ -13,8 +14,36 @@ logger = logging.getLogger(__name__)
 _GROUP_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 _MAX_GROUP_ID_LEN = 128
 
-_client_cache: TTLCache | None = None
-_cache_lock = asyncio.Lock()
+
+# Graphiti clients wrap redis.asyncio connections whose internal Futures are
+# pinned to the event loop they were first used on. The CoPilot executor runs
+# one asyncio loop per worker thread, so a process-wide client cache would
+# hand a loop-1-bound connection to a task running on loop 2 → RuntimeError
+# "got Future attached to a different loop". Scope the cache (and its lock)
+# per running loop so each loop gets its own clients.
+class _LoopState:
+    __slots__ = ("cache", "lock")
+
+    def __init__(self) -> None:
+        self.cache: TTLCache = _EvictingTTLCache(
+            maxsize=graphiti_config.client_cache_maxsize,
+            ttl=graphiti_config.client_cache_ttl,
+        )
+        self.lock = asyncio.Lock()
+
+
+_loop_state: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _get_loop_state() -> _LoopState:
+    loop = asyncio.get_running_loop()
+    state = _loop_state.get(loop)
+    if state is None:
+        state = _LoopState()
+        _loop_state[loop] = state
+    return state
 
 
 def derive_group_id(user_id: str) -> str:
@@ -88,13 +117,8 @@ class _EvictingTTLCache(TTLCache):
 
 
 def _get_cache() -> TTLCache:
-    global _client_cache
-    if _client_cache is None:
-        _client_cache = _EvictingTTLCache(
-            maxsize=graphiti_config.client_cache_maxsize,
-            ttl=graphiti_config.client_cache_ttl,
-        )
-    return _client_cache
+    """Return the client cache for the current running event loop."""
+    return _get_loop_state().cache
 
 
 async def get_graphiti_client(group_id: str):
@@ -113,9 +137,10 @@ async def get_graphiti_client(group_id: str):
 
     from .falkordb_driver import AutoGPTFalkorDriver
 
-    cache = _get_cache()
+    state = _get_loop_state()
+    cache = state.cache
 
-    async with _cache_lock:
+    async with state.lock:
         if group_id in cache:
             return cache[group_id]
 

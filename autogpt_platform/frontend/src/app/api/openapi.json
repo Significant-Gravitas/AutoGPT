@@ -1346,7 +1346,15 @@
                     {
                       "$ref": "#/components/schemas/MCPToolsDiscoveredResponse"
                     },
-                    { "$ref": "#/components/schemas/MCPToolOutputResponse" }
+                    { "$ref": "#/components/schemas/MCPToolOutputResponse" },
+                    { "$ref": "#/components/schemas/MemoryStoreResponse" },
+                    { "$ref": "#/components/schemas/MemorySearchResponse" },
+                    {
+                      "$ref": "#/components/schemas/MemoryForgetCandidatesResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
+                    }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -11525,6 +11533,103 @@
         "title": "MarketplaceListingCreator",
         "description": "Creator information for a marketplace listing."
       },
+      "MemoryForgetCandidatesResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_forget_candidates"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "candidates": {
+            "items": {
+              "additionalProperties": { "type": "string" },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Candidates"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemoryForgetCandidatesResponse",
+        "description": "Response with candidate memories to forget."
+      },
+      "MemoryForgetConfirmResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_forget_confirm"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "deleted_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Deleted Uuids"
+          },
+          "failed_uuids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Failed Uuids"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemoryForgetConfirmResponse",
+        "description": "Response after deleting specific memory edges."
+      },
+      "MemorySearchResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_search"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "facts": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Facts"
+          },
+          "recent_episodes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Recent Episodes"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "MemorySearchResponse",
+        "description": "Response when memories are searched."
+      },
+      "MemoryStoreResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "memory_store"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "memory_name": { "type": "string", "title": "Memory Name" }
+        },
+        "type": "object",
+        "required": ["message", "memory_name"],
+        "title": "MemoryStoreResponse",
+        "description": "Response when a memory is stored."
+      },
       "Message": {
         "properties": {
           "query": { "type": "string", "title": "Query" },
@@ -12921,7 +13026,9 @@
           "feature_request_search",
           "feature_request_created",
           "memory_store",
-          "memory_search"
+          "memory_search",
+          "memory_forget_candidates",
+          "memory_forget_confirm"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
