@@ -96,7 +96,6 @@ export function EditAgentForm({
             control={form.control}
             name="category"
             render={({ field }) => {
-              console.log("Edit Category field value:", field.value);
               return (
                 <Select
                   id={field.name}
