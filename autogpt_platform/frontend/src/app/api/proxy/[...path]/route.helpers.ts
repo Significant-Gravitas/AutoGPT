@@ -5,6 +5,7 @@ export function isWorkspaceDownloadRequest(path: string[]): boolean {
     path[0] === "api" &&
     path[1] === "workspace" &&
     path[2] === "files" &&
+    path[3] !== "" &&
     path[4] === "download"
   ) {
     return true;
@@ -16,7 +17,9 @@ export function isWorkspaceDownloadRequest(path: string[]): boolean {
     path[0] === "api" &&
     path[1] === "public" &&
     path[2] === "shared" &&
+    path[3] !== "" &&
     path[4] === "files" &&
+    path[5] !== "" &&
     path[6] === "download"
   ) {
     return true;

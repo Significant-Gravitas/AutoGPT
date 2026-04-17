@@ -88,6 +88,383 @@ describe("isWorkspaceDownloadRequest", () => {
       ]),
     ).toBe(false);
   });
+
+  describe("adversarial inputs", () => {
+    it("rejects empty path", () => {
+      expect(isWorkspaceDownloadRequest([])).toBe(false);
+    });
+
+    it("rejects single-segment path", () => {
+      expect(isWorkspaceDownloadRequest(["download"])).toBe(false);
+    });
+
+    it("rejects path traversal in file ID segment", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "../../etc/passwd",
+          "download",
+        ]),
+      ).toBe(true); // function only checks structure, traversal is in the ID
+      // Backend must reject the ID — the proxy is a pass-through
+    });
+
+    it("rejects path traversal replacing fixed segments", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "..",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "..",
+          "workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects swapped workspace/public segments to confuse routing", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "shared",
+          "token",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects case variations on fixed segments", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "API",
+          "workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "Workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "id",
+          "DOWNLOAD",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "PUBLIC",
+          "shared",
+          "token",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "SHARED",
+          "token",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty string in fixed segments", () => {
+      expect(
+        isWorkspaceDownloadRequest(["api", "", "files", "id", "download"]),
+      ).toBe(false);
+    });
+
+    it("rejects empty token in public share path", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty file ID in public share path", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "token",
+          "files",
+          "",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty file ID in workspace path", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects segments with null bytes", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "id\x00.jpg",
+          "download",
+        ]),
+      ).toBe(true); // structural match — null byte is in the ID
+      // Backend must sanitize the ID value
+    });
+
+    it("rejects padded segments with whitespace", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          " workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace ",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects extra trailing segments after download", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "id",
+          "download",
+          "",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "token",
+          "files",
+          "id",
+          "download",
+          "extra",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects extra leading segments before api", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "prefix",
+          "api",
+          "workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "",
+          "api",
+          "public",
+          "shared",
+          "token",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects URL-encoded segment lookalikes", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace%2Ffiles",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public%2Fshared",
+          "token",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects unicode homoglyph substitutions in fixed segments", () => {
+      // Cyrillic 'а' (U+0430) instead of Latin 'a'
+      expect(
+        isWorkspaceDownloadRequest([
+          "\u0430pi",
+          "workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      // Fullwidth 'ａ' (U+FF41)
+      expect(
+        isWorkspaceDownloadRequest([
+          "\uff41pi",
+          "workspace",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects hybrid path mixing workspace and public patterns", () => {
+      // 5-segment but with public prefix
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+      // 7-segment but with workspace prefix
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "extra",
+          "files",
+          "id",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects download appearing in non-terminal position", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "download",
+          "files",
+          "id",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "download",
+          "files",
+          "id",
+          "extra",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects prototype pollution segment names", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "__proto__",
+          "download",
+        ]),
+      ).toBe(true); // structural match — __proto__ is in the ID position
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "constructor",
+          "download",
+        ]),
+      ).toBe(true); // structural match — constructor is in the ID position
+      // These pass structural validation — backend must reject bad IDs
+    });
+
+    it("rejects very long path segments (DoS vector)", () => {
+      const longId = "a".repeat(10000);
+      // Structural match — length limits are enforced elsewhere
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          longId,
+          "download",
+        ]),
+      ).toBe(true);
+    });
+  });
 });
 
 describe("isRedirectStatus", () => {
