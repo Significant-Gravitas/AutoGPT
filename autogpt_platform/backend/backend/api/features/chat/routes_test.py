@@ -759,7 +759,7 @@ def test_disconnect_stream_returns_404_when_session_missing(
     mock_disconnect.assert_not_awaited()
 
 
-# ─── GET /sessions/{session_id} — forward/backward pagination ──────────────────
+# ─── GET /sessions/{session_id} — backward pagination ─────────────────────────
 
 
 def _make_paginated_messages(
@@ -784,7 +784,6 @@ def _make_paginated_messages(
         messages=[ChatMessage(role="user", content="hello", sequence=0)],
         has_more=has_more,
         oldest_sequence=0,
-        newest_sequence=0,
         session=session_info,
     )
     mock_paginate = mocker.patch(
@@ -795,11 +794,11 @@ def _make_paginated_messages(
     return page, mock_paginate
 
 
-def test_get_session_completed_returns_forward_paginated(
+def test_get_session_returns_backward_paginated(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """Completed sessions (no active stream) return forward_paginated=True."""
+    """All sessions use backward (newest-first) pagination."""
     _make_paginated_messages(mocker)
     mocker.patch(
         "backend.api.features.chat.routes.stream_registry.get_active_session",
@@ -811,92 +810,6 @@ def test_get_session_completed_returns_forward_paginated(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["forward_paginated"] is True
-    assert data["newest_sequence"] == 0
-
-
-def test_get_session_active_returns_backward_paginated(
-    mocker: pytest_mock.MockerFixture,
-    test_user_id: str,
-) -> None:
-    """Active sessions (with running stream) return forward_paginated=False."""
-    from backend.copilot.stream_registry import ActiveSession
-
-    _make_paginated_messages(mocker)
-    active = MagicMock(spec=ActiveSession)
-    active.turn_id = "turn-1"
-    mocker.patch(
-        "backend.api.features.chat.routes.stream_registry.get_active_session",
-        new_callable=AsyncMock,
-        return_value=(active, "msg-1"),
-    )
-
-    response = client.get("/sessions/sess-1")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["forward_paginated"] is False
-    assert data["active_stream"] is not None
-    assert data["active_stream"]["turn_id"] == "turn-1"
-
-
-def test_get_session_after_sequence_returns_forward_paginated(
-    mocker: pytest_mock.MockerFixture,
-    test_user_id: str,
-) -> None:
-    """after_sequence param returns forward_paginated=True; no stream check needed."""
-    _, mock_paginate = _make_paginated_messages(mocker)
-
-    response = client.get("/sessions/sess-1?after_sequence=10")
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["forward_paginated"] is True
-    call_kwargs = mock_paginate.call_args
-    assert call_kwargs.kwargs.get("after_sequence") == 10
-    assert call_kwargs.kwargs.get("before_sequence") is None
-
-
-def test_get_session_both_cursors_returns_400(
-    test_user_id: str,
-) -> None:
-    """Sending both before_sequence and after_sequence returns 400."""
-    response = client.get("/sessions/sess-1?before_sequence=5&after_sequence=10")
-
-    assert response.status_code == 400
-
-
-def test_get_session_toctou_refetch_when_session_completes_mid_request(
-    mocker: pytest_mock.MockerFixture,
-    test_user_id: str,
-) -> None:
-    """Race condition: session was active at pre-check but completes before DB fetch.
-
-    The route should detect the race via a post-fetch re-check, then re-fetch
-    from seq 0 so the initial prompt is always visible.
-    """
-    from backend.copilot.stream_registry import ActiveSession
-
-    page, mock_paginate = _make_paginated_messages(mocker)
-    active = MagicMock(spec=ActiveSession)
-    active.turn_id = "turn-1"
-
-    # First call: session appears active.  Second call: session has completed.
-    mock_get_active = mocker.patch(
-        "backend.api.features.chat.routes.stream_registry.get_active_session",
-        new_callable=AsyncMock,
-        side_effect=[(active, "msg-1"), (None, None)],
-    )
-
-    response = client.get("/sessions/sess-1")
-
-    assert response.status_code == 200
-    data = response.json()
-    # Post-race: session is now completed → forward_paginated=True, no stream
-    assert data["forward_paginated"] is True
-    assert data["active_stream"] is None
-    # The DB was queried twice: once newest-first, once from_start=True
-    assert mock_paginate.call_count == 2
-    assert mock_get_active.call_count == 2
-    second_call = mock_paginate.call_args_list[1]
-    assert second_call.kwargs.get("from_start") is True
+    assert data["oldest_sequence"] == 0
+    assert "forward_paginated" not in data
+    assert "newest_sequence" not in data

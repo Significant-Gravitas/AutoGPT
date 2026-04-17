@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotPage } from "../useCopilotPage";
 
@@ -70,8 +70,6 @@ function makeBaseChatSession(overrides: Record<string, unknown> = {}) {
     hasActiveStream: false,
     hasMoreMessages: false,
     oldestSequence: null,
-    newestSequence: null,
-    forwardPaginated: false,
     isLoadingSession: false,
     isSessionError: false,
     createSession: vi.fn(),
@@ -104,22 +102,19 @@ function makeBaseLoadMore(overrides: Record<string, unknown> = {}) {
     hasMore: false,
     isLoadingMore: false,
     loadMore: vi.fn(),
-    resetPaged: vi.fn(),
     ...overrides,
   };
 }
 
-describe("useCopilotPage — forwardPaginated message ordering", () => {
+describe("useCopilotPage — backward pagination message ordering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("prepends pagedMessages before currentMessages when forwardPaginated=false", () => {
+  it("prepends pagedMessages before currentMessages", () => {
     const pagedMsg = { id: "paged", role: "user" };
     const currentMsg = { id: "current", role: "assistant" };
-    mockUseChatSession.mockReturnValue(
-      makeBaseChatSession({ forwardPaginated: false }),
-    );
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
     mockUseCopilotStream.mockReturnValue(
       makeBaseCopilotStream({ messages: [currentMsg] }),
     );
@@ -132,71 +127,5 @@ describe("useCopilotPage — forwardPaginated message ordering", () => {
     // Backward: pagedMessages (older) come first
     expect(result.current.messages[0]).toEqual(pagedMsg);
     expect(result.current.messages[1]).toEqual(currentMsg);
-  });
-
-  it("appends pagedMessages after currentMessages when forwardPaginated=true", () => {
-    const pagedMsg = { id: "paged", role: "assistant" };
-    const currentMsg = { id: "current", role: "user" };
-    mockUseChatSession.mockReturnValue(
-      makeBaseChatSession({ forwardPaginated: true }),
-    );
-    mockUseCopilotStream.mockReturnValue(
-      makeBaseCopilotStream({ messages: [currentMsg] }),
-    );
-    mockUseLoadMoreMessages.mockReturnValue(
-      makeBaseLoadMore({ pagedMessages: [pagedMsg] }),
-    );
-
-    const { result } = renderHook(() => useCopilotPage());
-
-    // Forward: currentMessages (beginning of session) come first
-    expect(result.current.messages[0]).toEqual(currentMsg);
-    expect(result.current.messages[1]).toEqual(pagedMsg);
-  });
-
-  it("calls resetPaged when forwardPaginated transitions false→true with paged messages", async () => {
-    const mockResetPaged = vi.fn();
-    const pagedMsg = { id: "paged", role: "user" };
-
-    mockUseChatSession.mockReturnValue(
-      makeBaseChatSession({ forwardPaginated: false }),
-    );
-    mockUseCopilotStream.mockReturnValue(makeBaseCopilotStream());
-    mockUseLoadMoreMessages.mockReturnValue(
-      makeBaseLoadMore({
-        pagedMessages: [pagedMsg],
-        resetPaged: mockResetPaged,
-      }),
-    );
-
-    const { rerender } = renderHook(() => useCopilotPage());
-
-    // Simulate session completing — forwardPaginated flips to true
-    mockUseChatSession.mockReturnValue(
-      makeBaseChatSession({ forwardPaginated: true }),
-    );
-
-    act(() => {
-      rerender();
-    });
-
-    await waitFor(() => {
-      expect(mockResetPaged).toHaveBeenCalled();
-    });
-  });
-
-  it("does not call resetPaged when forwardPaginated is already true on mount", () => {
-    const mockResetPaged = vi.fn();
-    mockUseChatSession.mockReturnValue(
-      makeBaseChatSession({ forwardPaginated: true }),
-    );
-    mockUseCopilotStream.mockReturnValue(makeBaseCopilotStream());
-    mockUseLoadMoreMessages.mockReturnValue(
-      makeBaseLoadMore({ pagedMessages: [], resetPaged: mockResetPaged }),
-    );
-
-    renderHook(() => useCopilotPage());
-
-    expect(mockResetPaged).not.toHaveBeenCalled();
   });
 });

@@ -124,48 +124,22 @@ describe("ChatMessagesContainer", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders top sentinel when forwardPaginated is false (backward pagination)", () => {
-    render(<ChatMessagesContainer {...BASE_PROPS} forwardPaginated={false} />);
-    expect(
-      screen.getByRole("button", { name: /load older messages/i }),
-    ).toBeDefined();
-  });
-
-  it("renders top sentinel when forwardPaginated is undefined (default, backward)", () => {
+  it("renders top sentinel for backward pagination", () => {
     render(<ChatMessagesContainer {...BASE_PROPS} />);
     expect(
       screen.getByRole("button", { name: /load older messages/i }),
     ).toBeDefined();
   });
 
-  it("renders bottom sentinel when forwardPaginated is true (forward pagination)", () => {
-    render(<ChatMessagesContainer {...BASE_PROPS} forwardPaginated={true} />);
-    expect(
-      screen.getByRole("button", { name: /load newer messages/i }),
-    ).toBeDefined();
-  });
-
   it("hides sentinel when hasMoreMessages is false", () => {
-    render(
-      <ChatMessagesContainer
-        {...BASE_PROPS}
-        hasMoreMessages={false}
-        forwardPaginated={true}
-      />,
-    );
+    render(<ChatMessagesContainer {...BASE_PROPS} hasMoreMessages={false} />);
     expect(
       screen.queryByRole("button", { name: /load older messages/i }),
     ).toBeNull();
   });
 
   it("hides sentinel when onLoadMore is not provided", () => {
-    render(
-      <ChatMessagesContainer
-        {...BASE_PROPS}
-        onLoadMore={undefined}
-        forwardPaginated={true}
-      />,
-    );
+    render(<ChatMessagesContainer {...BASE_PROPS} onLoadMore={undefined} />);
     expect(
       screen.queryByRole("button", { name: /load older messages/i }),
     ).toBeNull();

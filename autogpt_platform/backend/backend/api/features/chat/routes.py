@@ -190,8 +190,6 @@ class SessionDetailResponse(BaseModel):
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
     has_more_messages: bool = False
     oldest_sequence: int | None = None
-    newest_sequence: int | None = None
-    forward_paginated: bool = False
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
@@ -456,113 +454,39 @@ async def update_session_title_route(
 async def get_session(
     session_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
-    limit: int = Query(
-        default=50,
-        ge=1,
-        le=200,
-        description="Maximum number of messages to return.",
-    ),
-    before_sequence: int | None = Query(
-        default=None,
-        ge=0,
-        description=(
-            "Backward pagination cursor. Return messages with sequence number "
-            "strictly less than this value. Used by active-session load-more. "
-            "Mutually exclusive with after_sequence."
-        ),
-    ),
-    after_sequence: int | None = Query(
-        default=None,
-        ge=0,
-        description=(
-            "Forward pagination cursor. Return messages with sequence number "
-            "strictly greater than this value. Used by completed-session load-more. "
-            "Mutually exclusive with before_sequence."
-        ),
-    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    before_sequence: int | None = Query(default=None, ge=0),
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
 
-    Supports cursor-based pagination via ``limit``, ``before_sequence``, and
-    ``after_sequence``. The two cursor parameters are mutually exclusive.
-
-    On the initial load (no cursor provided) of a completed session, messages
-    are returned in forward order starting from sequence 0 so the user always
-    sees their initial prompt.  Active sessions use the legacy newest-first
-    order so streaming context is preserved.
+    Supports cursor-based pagination via ``limit`` and ``before_sequence``.
+    When no pagination params are provided, returns the most recent messages.
     """
-    if before_sequence is not None and after_sequence is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="before_sequence and after_sequence are mutually exclusive",
-        )
-
-    is_initial_load = before_sequence is None and after_sequence is None
-
-    # Check active stream before the DB query on initial loads so we can
-    # choose the correct pagination direction (forward for completed sessions,
-    # newest-first for active ones).
-    active_session = None
-    last_message_id = None
-    if is_initial_load:
-        active_session, last_message_id = await stream_registry.get_active_session(
-            session_id, user_id
-        )
-
-    # Completed sessions on initial load start from sequence 0 so the user's
-    # initial prompt is always visible.  Active sessions keep the legacy
-    # newest-first behavior to preserve streaming context.
-    from_start = is_initial_load and active_session is None
-    forward_paginated = from_start or after_sequence is not None
-
     page = await get_chat_messages_paginated(
-        session_id,
-        limit,
-        before_sequence=before_sequence,
-        after_sequence=after_sequence,
-        from_start=from_start,
-        user_id=user_id,
+        session_id, limit, before_sequence, user_id=user_id
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
-
-    # Close the TOCTOU window: if the session was active at pre-check, re-verify
-    # after the DB fetch.  The session may have completed between the two awaits,
-    # which would have caused messages to be fetched newest-first even though the
-    # session is now complete.  Re-fetch from seq 0 so the initial prompt is
-    # always visible.
-    if is_initial_load and active_session is not None:
-        post_active, _ = await stream_registry.get_active_session(session_id, user_id)
-        if post_active is None:
-            active_session = None
-            last_message_id = None
-            from_start = True
-            forward_paginated = True
-            page = await get_chat_messages_paginated(
-                session_id,
-                limit,
-                before_sequence=None,
-                after_sequence=None,
-                from_start=True,
-                user_id=user_id,
-            )
-            if page is None:
-                raise NotFoundError(f"Session {session_id} not found.")
 
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
     ]
 
+    # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None
-    if active_session and last_message_id is not None:
-        active_stream_info = ActiveStreamInfo(
-            turn_id=active_session.turn_id,
-            last_message_id=last_message_id,
+    if before_sequence is None:
+        active_session, last_message_id = await stream_registry.get_active_session(
+            session_id, user_id
         )
+        if active_session:
+            active_stream_info = ActiveStreamInfo(
+                turn_id=active_session.turn_id,
+                last_message_id=last_message_id,
+            )
 
     # Skip session metadata on "load more" — frontend only needs messages
-    if not is_initial_load:
+    if before_sequence is not None:
         return SessionDetailResponse(
             id=page.session.session_id,
             created_at=page.session.started_at.isoformat(),
@@ -572,8 +496,6 @@ async def get_session(
             active_stream=None,
             has_more_messages=page.has_more,
             oldest_sequence=page.oldest_sequence,
-            newest_sequence=page.newest_sequence,
-            forward_paginated=forward_paginated,
             total_prompt_tokens=0,
             total_completion_tokens=0,
         )
@@ -590,8 +512,6 @@ async def get_session(
         active_stream=active_stream_info,
         has_more_messages=page.has_more,
         oldest_sequence=page.oldest_sequence,
-        newest_sequence=page.newest_sequence,
-        forward_paginated=forward_paginated,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
