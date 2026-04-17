@@ -267,7 +267,11 @@ async def test_visibility_expansion_reaches_seq_zero(
         # Boundary expansion
         [_make_msg(3, role="tool")],
         # Visibility expansion — finds user at seq 0
-        [_make_msg(2, role="tool"), _make_msg(1, role="tool"), _make_msg(0, role="user")],
+        [
+            _make_msg(2, role="tool"),
+            _make_msg(1, role="tool"),
+            _make_msg(0, role="user"),
+        ],
     ]
 
     page = await get_chat_messages_paginated(SESSION_ID, limit=2)
