@@ -108,6 +108,8 @@ type FetchResult = {
 };
 
 export async function downloadOutputs(items: DownloadItem[]) {
+  if (items.length === 0) return;
+
   const { default: JSZip } = await import("jszip");
   const zip = new JSZip();
   const usedFilenames = new Set<string>();
