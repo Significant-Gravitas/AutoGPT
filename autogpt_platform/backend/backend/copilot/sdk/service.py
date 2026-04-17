@@ -3817,19 +3817,18 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(_auto_pending_texts),
             )
-            # Process each pending message as its own turn so each gets a
-            # separate user bubble and response in the frontend.  The
-            # recursive call may itself drain further messages queued while
-            # this turn runs (via its own auto-continue tail).
-            for _auto_text in _auto_pending_texts:
-                async for event in stream_chat_completion_sdk(
-                    session_id=session_id,
-                    message=_auto_text,
-                    is_user_message=True,
-                    user_id=user_id,
-                    file_ids=None,
-                    permissions=permissions,
-                    mode=mode,
-                    model=model,
-                ):
-                    yield event
+            # Combine all pending messages into one turn so they are processed
+            # together rather than sequentially. The recursive call may itself
+            # drain further messages queued while this turn runs.
+            _auto_combined = "\n\n".join(_auto_pending_texts)
+            async for event in stream_chat_completion_sdk(
+                session_id=session_id,
+                message=_auto_combined,
+                is_user_message=True,
+                user_id=user_id,
+                file_ids=None,
+                permissions=permissions,
+                mode=mode,
+                model=model,
+            ):
+                yield event
