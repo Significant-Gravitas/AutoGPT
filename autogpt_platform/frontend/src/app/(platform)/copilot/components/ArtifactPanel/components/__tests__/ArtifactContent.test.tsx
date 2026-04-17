@@ -379,6 +379,115 @@ describe("ArtifactContent", () => {
     expect(retryButtons.length).toBeGreaterThan(0);
   });
 
+  // SECRT-2224: "try again doesn't do anything". The retry itself works — the
+  // user's complaint is that there's no visible feedback when the same error
+  // returns (e.g. a 404 for a deleted file). Clicking Try Again must flip the
+  // UI into the loading skeleton immediately so the user can tell their click
+  // registered, instead of the error UI re-flashing in place.
+  it("clicking Try Again shows the loading skeleton before the next fetch settles (SECRT-2224)", async () => {
+    let resolveSecond: (value: unknown) => void = () => {};
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            text: () => Promise.resolve("Not found"),
+          });
+        }
+        return new Promise((resolve) => {
+          resolveSecond = resolve;
+        });
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "retry-skeleton-001",
+      title: "flaky.html",
+      mimeType: "text/html",
+    });
+    const classification = makeClassification({ type: "html" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content");
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    // Before the second fetch resolves, the error must be gone and a skeleton
+    // visible (animate-pulse is the Skeleton component's signature class).
+    await waitFor(() => {
+      expect(screen.queryByText("Failed to load content")).toBeNull();
+      expect(container.querySelector('[class*="animate-pulse"]')).toBeTruthy();
+    });
+
+    // Let the second fetch complete so the test doesn't leak pending state.
+    resolveSecond({
+      ok: true,
+      text: () => Promise.resolve("<html><body>ok</body></html>"),
+    });
+  });
+
+  // SECRT-2224 end-to-end: Try Again actually recovers when the next fetch
+  // succeeds. Covers the full click → re-fetch → iframe-render loop.
+  it("clicking Try Again re-fetches and renders recovered HTML content (SECRT-2224)", async () => {
+    let callCount = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            text: () => Promise.resolve("Not found"),
+          });
+        }
+        return Promise.resolve({
+          ok: true,
+          text: () =>
+            Promise.resolve(
+              "<html><body><h1 id='ok'>recovered</h1></body></html>",
+            ),
+        });
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "retry-recover-001",
+      title: "flaky.html",
+      mimeType: "text/html",
+    });
+    const classification = makeClassification({ type: "html" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    await screen.findByText("Failed to load content");
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    await waitFor(() => {
+      const iframe = container.querySelector("iframe");
+      expect(iframe).toBeTruthy();
+      expect(iframe?.getAttribute("srcdoc")).toContain("recovered");
+    });
+    expect(screen.queryByText("Failed to load content")).toBeNull();
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+
   // ── HTML ──────────────────────────────────────────────────────────
 
   it("renders HTML content in sandboxed iframe", async () => {
