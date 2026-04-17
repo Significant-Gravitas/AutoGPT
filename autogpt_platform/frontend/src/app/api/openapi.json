@@ -10949,6 +10949,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
+          "is_scheduled": {
+            "type": "boolean",
+            "title": "Is Scheduled",
+            "description": "Whether this agent has active execution schedules",
+            "default": false
+          },
+          "next_scheduled_run": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Scheduled Run",
+            "description": "ISO 8601 timestamp of the next scheduled run, if any"
+          },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
           "marketplace_listing": {
             "anyOf": [

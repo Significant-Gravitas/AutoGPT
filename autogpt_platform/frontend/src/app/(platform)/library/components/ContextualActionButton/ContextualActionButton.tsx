@@ -63,6 +63,6 @@ const ACTION_CONFIG: Record<
   error: { label: "View error", icon: EyeIcon },
   listening: { label: "Reconnect", icon: ArrowsClockwiseIcon },
   running: { label: "Watch live", icon: MonitorPlayIcon },
-  idle: { label: "Start", icon: PlayIcon },
-  scheduled: { label: "Start", icon: ArrowCounterClockwiseIcon },
+  idle: { label: "View", icon: EyeIcon },
+  scheduled: { label: "View", icon: EyeIcon },
 };
