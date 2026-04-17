@@ -9,13 +9,16 @@ import {
 } from "./route.helpers";
 
 describe("isWorkspaceDownloadRequest", () => {
-  it("matches api/workspace/files/{id}/download pattern", () => {
+  const VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
+  const VALID_UUID_2 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+
+  it("matches api/workspace/files/{uuid}/download pattern", () => {
     expect(
       isWorkspaceDownloadRequest([
         "api",
         "workspace",
         "files",
-        "abc-123",
+        VALID_UUID,
         "download",
       ]),
     ).toBe(true);
@@ -30,7 +33,7 @@ describe("isWorkspaceDownloadRequest", () => {
         "api",
         "workspace",
         "files",
-        "id",
+        VALID_UUID,
         "download",
         "extra",
       ]),
@@ -43,7 +46,7 @@ describe("isWorkspaceDownloadRequest", () => {
         "v1",
         "workspace",
         "files",
-        "id",
+        VALID_UUID,
         "download",
       ]),
     ).toBe(false);
@@ -55,21 +58,21 @@ describe("isWorkspaceDownloadRequest", () => {
         "api",
         "workspace",
         "files",
-        "id",
+        VALID_UUID,
         "metadata",
       ]),
     ).toBe(false);
   });
 
-  it("matches api/public/shared/{token}/files/{id}/download pattern", () => {
+  it("matches api/public/shared/{uuid}/files/{uuid}/download pattern", () => {
     expect(
       isWorkspaceDownloadRequest([
         "api",
         "public",
         "shared",
-        "abc-token-123",
+        VALID_UUID,
         "files",
-        "file-456",
+        VALID_UUID_2,
         "download",
       ]),
     ).toBe(true);
@@ -81,12 +84,64 @@ describe("isWorkspaceDownloadRequest", () => {
         "api",
         "public",
         "shared",
-        "token",
+        VALID_UUID,
         "files",
-        "id",
+        VALID_UUID_2,
         "metadata",
       ]),
     ).toBe(false);
+  });
+
+  it("rejects non-UUID file ID in workspace path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "workspace",
+        "files",
+        "not-a-uuid",
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID token in public share path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "not-a-uuid",
+        "files",
+        VALID_UUID,
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID file ID in public share path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        VALID_UUID,
+        "files",
+        "not-a-uuid",
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("accepts uppercase hex in UUIDs", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "workspace",
+        "files",
+        "550E8400-E29B-41D4-A716-446655440000",
+        "download",
+      ]),
+    ).toBe(true);
   });
 
   describe("adversarial inputs", () => {
@@ -107,8 +162,21 @@ describe("isWorkspaceDownloadRequest", () => {
           "../../etc/passwd",
           "download",
         ]),
-      ).toBe(true); // function only checks structure, traversal is in the ID
-      // Backend must reject the ID — the proxy is a pass-through
+      ).toBe(false);
+    });
+
+    it("rejects path traversal in token segment", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "../../etc/passwd",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
     });
 
     it("rejects path traversal replacing fixed segments", () => {
@@ -117,7 +185,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "..",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -126,7 +194,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "..",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -138,7 +206,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "public",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -147,9 +215,9 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "workspace",
           "shared",
-          "token",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
         ]),
       ).toBe(false);
@@ -161,7 +229,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "API",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -170,7 +238,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "Workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -179,7 +247,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "DOWNLOAD",
         ]),
       ).toBe(false);
@@ -188,9 +256,9 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "PUBLIC",
           "shared",
-          "token",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
         ]),
       ).toBe(false);
@@ -199,9 +267,9 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "public",
           "SHARED",
-          "token",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
         ]),
       ).toBe(false);
@@ -209,7 +277,13 @@ describe("isWorkspaceDownloadRequest", () => {
 
     it("rejects empty string in fixed segments", () => {
       expect(
-        isWorkspaceDownloadRequest(["api", "", "files", "id", "download"]),
+        isWorkspaceDownloadRequest([
+          "api",
+          "",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
       ).toBe(false);
     });
 
@@ -221,7 +295,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "shared",
           "",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -233,7 +307,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "public",
           "shared",
-          "token",
+          VALID_UUID,
           "files",
           "",
           "download",
@@ -253,17 +327,108 @@ describe("isWorkspaceDownloadRequest", () => {
       ).toBe(false);
     });
 
-    it("rejects segments with null bytes", () => {
+    it("rejects UUID with null bytes injected", () => {
       expect(
         isWorkspaceDownloadRequest([
           "api",
           "workspace",
           "files",
-          "id\x00.jpg",
+          VALID_UUID + "\x00.jpg",
           "download",
         ]),
-      ).toBe(true); // structural match — null byte is in the ID
-      // Backend must sanitize the ID value
+      ).toBe(false);
+    });
+
+    it("rejects UUID with trailing garbage", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID + "-extra",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with leading garbage", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "prefix-" + VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects truncated UUIDs", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400-e29b-41d4",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID-length strings with wrong format", () => {
+      // Right length (36 chars) but missing hyphens
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400e29b41d4a716446655440000xxxx",
+          "download",
+        ]),
+      ).toBe(false);
+      // Hyphens in wrong positions
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e-8400e29b-41d4a716-44665544-0000",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with non-hex characters", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400-e29b-41d4-a716-44665544000g",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400-e29b-41d4-a716-44665544000!",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects SQL injection via ID segment", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "'; DROP TABLE files;--",
+          "download",
+        ]),
+      ).toBe(false);
     });
 
     it("rejects padded segments with whitespace", () => {
@@ -272,7 +437,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           " workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -281,7 +446,16 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "workspace ",
           "files",
-          "id",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          " " + VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -293,7 +467,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
           "",
         ]),
@@ -303,9 +477,9 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "public",
           "shared",
-          "token",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
           "extra",
         ]),
@@ -319,7 +493,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -329,9 +503,9 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "public",
           "shared",
-          "token",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
         ]),
       ).toBe(false);
@@ -342,7 +516,7 @@ describe("isWorkspaceDownloadRequest", () => {
         isWorkspaceDownloadRequest([
           "api",
           "workspace%2Ffiles",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -350,9 +524,9 @@ describe("isWorkspaceDownloadRequest", () => {
         isWorkspaceDownloadRequest([
           "api",
           "public%2Fshared",
-          "token",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
         ]),
       ).toBe(false);
@@ -365,7 +539,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "\u0430pi",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -375,7 +549,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "\uff41pi",
           "workspace",
           "files",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -388,7 +562,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "public",
           "shared",
-          "id",
+          VALID_UUID,
           "download",
         ]),
       ).toBe(false);
@@ -398,9 +572,9 @@ describe("isWorkspaceDownloadRequest", () => {
           "api",
           "workspace",
           "files",
-          "extra",
+          VALID_UUID,
           "files",
-          "id",
+          VALID_UUID_2,
           "download",
         ]),
       ).toBe(false);
@@ -413,7 +587,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "workspace",
           "download",
           "files",
-          "id",
+          VALID_UUID,
         ]),
       ).toBe(false);
       expect(
@@ -423,13 +597,13 @@ describe("isWorkspaceDownloadRequest", () => {
           "shared",
           "download",
           "files",
-          "id",
+          VALID_UUID,
           "extra",
         ]),
       ).toBe(false);
     });
 
-    it("rejects prototype pollution segment names", () => {
+    it("rejects prototype pollution segment names as IDs", () => {
       expect(
         isWorkspaceDownloadRequest([
           "api",
@@ -438,7 +612,7 @@ describe("isWorkspaceDownloadRequest", () => {
           "__proto__",
           "download",
         ]),
-      ).toBe(true); // structural match — __proto__ is in the ID position
+      ).toBe(false);
       expect(
         isWorkspaceDownloadRequest([
           "api",
@@ -447,13 +621,11 @@ describe("isWorkspaceDownloadRequest", () => {
           "constructor",
           "download",
         ]),
-      ).toBe(true); // structural match — constructor is in the ID position
-      // These pass structural validation — backend must reject bad IDs
+      ).toBe(false);
     });
 
     it("rejects very long path segments (DoS vector)", () => {
       const longId = "a".repeat(10000);
-      // Structural match — length limits are enforced elsewhere
       expect(
         isWorkspaceDownloadRequest([
           "api",
@@ -462,7 +634,44 @@ describe("isWorkspaceDownloadRequest", () => {
           longId,
           "download",
         ]),
-      ).toBe(true);
+      ).toBe(false);
+    });
+
+    it("rejects UUID with embedded path separators", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400/e29b-41d4-a716-446655440000",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID-shaped strings with unicode hyphens", () => {
+      // EN DASH (U+2013) instead of HYPHEN-MINUS
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400\u2013e29b\u201341d4\u2013a716\u2013446655440000",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects SSRF-style payloads in ID position", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "http://169.254.169.254",
+          "download",
+        ]),
+      ).toBe(false);
     });
   });
 });

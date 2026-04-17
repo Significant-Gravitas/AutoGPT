@@ -1,3 +1,5 @@
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function isWorkspaceDownloadRequest(path: string[]): boolean {
   // api/workspace/files/{id}/download
   if (
@@ -5,7 +7,7 @@ export function isWorkspaceDownloadRequest(path: string[]): boolean {
     path[0] === "api" &&
     path[1] === "workspace" &&
     path[2] === "files" &&
-    path[3] !== "" &&
+    UUID_RE.test(path[3]) &&
     path[4] === "download"
   ) {
     return true;
@@ -17,9 +19,9 @@ export function isWorkspaceDownloadRequest(path: string[]): boolean {
     path[0] === "api" &&
     path[1] === "public" &&
     path[2] === "shared" &&
-    path[3] !== "" &&
+    UUID_RE.test(path[3]) &&
     path[4] === "files" &&
-    path[5] !== "" &&
+    UUID_RE.test(path[5]) &&
     path[6] === "download"
   ) {
     return true;
