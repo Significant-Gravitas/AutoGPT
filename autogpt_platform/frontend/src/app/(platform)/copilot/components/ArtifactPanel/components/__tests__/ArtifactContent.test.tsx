@@ -199,6 +199,79 @@ describe("ArtifactContent", () => {
     });
   });
 
+  // SECRT-2221 integration: the classification-level fix (hi-res PNGs stop
+  // being size-gated) only matters if the end-to-end rendering pipeline
+  // actually reaches the <img> path. Pass in the real classifyArtifact
+  // result for a 25 MB .png and assert the panel renders an img element
+  // rather than routing to the download-only surface.
+  it("renders a 25 MB PNG through the <img> path, not download-only (SECRT-2221)", () => {
+    const artifact = makeArtifact({
+      id: "hires-png-001",
+      title: "poster.png",
+      mimeType: "image/png",
+      sourceUrl: "/api/proxy/api/workspace/files/hires-png-001/download",
+      sizeBytes: 25 * 1024 * 1024,
+    });
+    const classification = classifyArtifact(
+      artifact.mimeType,
+      artifact.title,
+      artifact.sizeBytes,
+    );
+    expect(classification.type).toBe("image");
+    expect(classification.openable).toBe(true);
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    const img = container.querySelector("img");
+    expect(img).toBeTruthy();
+    expect(img?.getAttribute("src")).toBe(artifact.sourceUrl);
+  });
+
+  // SECRT-2221: image retry appends a cache-busting query so the browser
+  // can't reuse a previously-failed response. Without this, a transient
+  // 5xx that gets negative-cached keeps showing "Failed to load image" no
+  // matter how many times the user clicks Try again.
+  it("image retry appends a cache-busting query so the browser re-fetches (SECRT-2221)", async () => {
+    const artifact = makeArtifact({
+      id: "img-cachebust",
+      title: "hires.png",
+      mimeType: "image/png",
+      sourceUrl: "/api/proxy/api/workspace/files/img-cachebust/download",
+    });
+    const classification = makeClassification({ type: "image" });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    const firstImg = container.querySelector("img");
+    const firstSrc = firstImg?.getAttribute("src");
+    expect(firstSrc).toBe(artifact.sourceUrl);
+
+    fireEvent.error(firstImg!);
+    await waitFor(() => {
+      expect(screen.queryByText("Failed to load image")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    await waitFor(() => {
+      const nextImg = container.querySelector("img");
+      const nextSrc = nextImg?.getAttribute("src") ?? "";
+      expect(nextSrc).not.toBe(firstSrc);
+      expect(nextSrc.startsWith(artifact.sourceUrl)).toBe(true);
+    });
+  });
+
   // ── Video ─────────────────────────────────────────────────────────
 
   it("renders video artifact with video tag and controls", () => {

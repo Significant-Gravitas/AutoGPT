@@ -71,9 +71,18 @@ function ArtifactContentLoader({
   );
 }
 
+function withCacheBust(src: string, nonce: number): string {
+  if (nonce === 0) return src;
+  const sep = src.includes("?") ? "&" : "?";
+  return `${src}${sep}_retry=${nonce}`;
+}
+
 function ArtifactImage({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  // Incremented on every Try Again so the URL changes and the browser
+  // can't reuse a negative-cached response (SECRT-2221).
+  const [retryNonce, setRetryNonce] = useState(0);
 
   if (error) {
     return (
@@ -87,6 +96,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
           onClick={() => {
             setError(false);
             setLoaded(false);
+            setRetryNonce((n) => n + 1);
           }}
           className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
@@ -103,7 +113,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
       )}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={src}
+        src={withCacheBust(src, retryNonce)}
         alt={alt}
         className={`max-h-full max-w-full object-contain transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
         onLoad={() => setLoaded(true)}
@@ -116,6 +126,7 @@ function ArtifactImage({ src, alt }: { src: string; alt: string }) {
 function ArtifactVideo({ src }: { src: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
 
   if (error) {
     return (
@@ -129,6 +140,7 @@ function ArtifactVideo({ src }: { src: string }) {
           onClick={() => {
             setError(false);
             setLoaded(false);
+            setRetryNonce((n) => n + 1);
           }}
           className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
         >
@@ -144,7 +156,7 @@ function ArtifactVideo({ src }: { src: string }) {
         <Skeleton className="absolute inset-4 h-[calc(100%-2rem)] w-[calc(100%-2rem)] rounded-md" />
       )}
       <video
-        src={src}
+        src={withCacheBust(src, retryNonce)}
         controls
         preload="metadata"
         className={`max-h-full max-w-full rounded-md transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
