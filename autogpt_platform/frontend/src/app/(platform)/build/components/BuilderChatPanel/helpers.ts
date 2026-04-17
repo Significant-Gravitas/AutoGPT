@@ -1,5 +1,6 @@
 import type { CustomNode } from "../FlowEditor/nodes/CustomNode/CustomNode";
 import type { CustomEdge } from "../FlowEditor/edges/CustomEdge";
+import { getNodeDisplayTitle } from "../FlowEditor/nodes/CustomNode/helpers";
 
 /** Maximum nodes serialized into the AI context to prevent token overruns. */
 const MAX_NODES = 100;
@@ -144,18 +145,16 @@ export function getActionKey(action: GraphAction): string {
 
 /**
  * Resolves the display name for a node: prefers the user-customized name,
- * falls back to the block title, then to the raw ID.
+ * then agent name from hardcodedValues, then block title, then fallback ID.
+ * Delegates to `getNodeDisplayTitle` for the 3-tier resolution logic.
  * Shared between `serializeGraphForChat` and `ActionItem` to avoid duplication.
  */
 export function getNodeDisplayName(
   node: CustomNode | undefined,
   fallback: string,
 ): string {
-  return (
-    (node?.data.metadata?.customized_name as string | undefined) ||
-    node?.data.title ||
-    fallback
-  );
+  if (!node) return fallback;
+  return getNodeDisplayTitle(node.data) || fallback;
 }
 
 /**
