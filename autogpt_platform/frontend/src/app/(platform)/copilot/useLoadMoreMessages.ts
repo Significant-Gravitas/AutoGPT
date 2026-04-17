@@ -37,9 +37,7 @@ export function useLoadMoreMessages({
   // Epoch counter to discard stale loadMore responses after a reset
   const epochRef = useRef(0);
 
-  // Track the sessionId and initial cursor to reset state on change
   const prevSessionIdRef = useRef(sessionId);
-  const prevInitialOldestRef = useRef(initialOldestSequence);
 
   // Sync initial values from parent when they change.
   //
@@ -62,7 +60,6 @@ export function useLoadMoreMessages({
     if (prevSessionIdRef.current !== sessionId) {
       // Session changed — full reset
       prevSessionIdRef.current = sessionId;
-      prevInitialOldestRef.current = initialOldestSequence;
       setPagedRawMessages([]);
       setOldestSequence(initialOldestSequence);
       setHasMore(initialHasMore);
@@ -72,8 +69,6 @@ export function useLoadMoreMessages({
       epochRef.current += 1;
       return;
     }
-
-    prevInitialOldestRef.current = initialOldestSequence;
 
     // If we haven't paged yet, mirror the parent so the first
     // `loadMore` starts from the correct cursor.

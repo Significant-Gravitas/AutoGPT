@@ -1516,11 +1516,9 @@
               "type": "integer",
               "maximum": 200,
               "minimum": 1,
-              "description": "Maximum number of messages to return.",
               "default": 50,
               "title": "Limit"
-            },
-            "description": "Maximum number of messages to return."
+            }
           },
           {
             "name": "before_sequence",
