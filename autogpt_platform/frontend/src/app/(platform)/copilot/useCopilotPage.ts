@@ -113,13 +113,31 @@ export function useCopilotPage() {
   // the current page.
   const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
 
-  // During auto-continue, the SDK receives a new StreamStart for Turn 2 while
-  // Turn 1's assistant message is still in the array. The recursive call may
-  // replay earlier content, creating duplicate assistant messages with different
-  // IDs but identical or subset text. Remove the earlier one if its text parts
-  // are entirely contained in a later assistant message within the same turn.
+  // The Claude Agent SDK replays earlier turn content when starting a new
+  // turn. So Turn N's assistant message may accumulate Turn 1...N-1 content
+  // as a PREFIX before the actual Turn N response. Remove an earlier
+  // assistant message if its content parts are a strict prefix of a later
+  // assistant's parts (i.e. the later one replays + extends it).
   const messages = useMemo(() => {
     const deduped = deduplicateMessages(rawMessages);
+
+    // Fingerprint each assistant message's parts (tool calls + text)
+    const fingerprint = (msg: UIMessage): string[] =>
+      (msg.parts ?? []).map((p) => {
+        if ("text" in p && p.text) return `text:${p.text}`;
+        if ("toolCallId" in p && p.toolCallId) return `tool:${p.toolCallId}`;
+        return JSON.stringify(p);
+      });
+
+    const isPrefixOf = (earlier: string[], later: string[]): boolean => {
+      if (earlier.length === 0) return false;
+      if (earlier.length >= later.length) return false;
+      for (let k = 0; k < earlier.length; k++) {
+        if (earlier[k] !== later[k]) return false;
+      }
+      return true;
+    };
+
     const result: UIMessage[] = [];
     for (let i = 0; i < deduped.length; i++) {
       const msg = deduped[i];
@@ -127,25 +145,19 @@ export function useCopilotPage() {
         result.push(msg);
         continue;
       }
-      const textParts = (msg.parts ?? [])
-        .filter((p) => p.type === "text")
-        .map((p) => (p as { type: "text"; text: string }).text);
-      let isSubset = false;
+      const myFp = fingerprint(msg);
+      let isReplayed = false;
+      // Look at all later assistant messages (across user boundaries too)
+      // to catch Claude CLI replay that spans multiple turns.
       for (let j = i + 1; j < deduped.length; j++) {
-        if (deduped[j].role === "user") break;
         if (deduped[j].role !== "assistant") continue;
-        const laterTexts = (deduped[j].parts ?? [])
-          .filter((p) => p.type === "text")
-          .map((p) => (p as { type: "text"; text: string }).text);
-        if (
-          textParts.length > 0 &&
-          textParts.every((t) => laterTexts.includes(t))
-        ) {
-          isSubset = true;
+        const laterFp = fingerprint(deduped[j]);
+        if (isPrefixOf(myFp, laterFp)) {
+          isReplayed = true;
           break;
         }
       }
-      if (!isSubset) result.push(msg);
+      if (!isReplayed) result.push(msg);
     }
     return result;
   }, [rawMessages]);
