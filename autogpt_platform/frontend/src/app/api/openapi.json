@@ -1498,7 +1498,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.\n\nArgs:\n    session_id: The unique identifier for the desired chat session.\n    user_id: The authenticated user's ID.\n    limit: Maximum number of messages to return (1-200, default 50).\n    before_sequence: Return messages with sequence < this value (cursor).\n\nReturns:\n    SessionDetailResponse: Details for the requested session, including\n        active_stream info and pagination metadata.",
+        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -10931,6 +10931,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
+          "is_scheduled": {
+            "type": "boolean",
+            "title": "Is Scheduled",
+            "description": "Whether this agent has active execution schedules",
+            "default": false
+          },
+          "next_scheduled_run": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Scheduled Run",
+            "description": "ISO 8601 timestamp of the next scheduled run, if any"
+          },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
           "marketplace_listing": {
             "anyOf": [
@@ -14122,16 +14133,29 @@
       },
       "SubscriptionStatusResponse": {
         "properties": {
-          "tier": { "type": "string", "title": "Tier" },
+          "tier": {
+            "type": "string",
+            "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+            "title": "Tier"
+          },
           "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
           "tier_costs": {
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs"
+          },
+          "proration_credit_cents": {
+            "type": "integer",
+            "title": "Proration Credit Cents"
           }
         },
         "type": "object",
-        "required": ["tier", "monthly_cost", "tier_costs"],
+        "required": [
+          "tier",
+          "monthly_cost",
+          "tier_costs",
+          "proration_credit_cents"
+        ],
         "title": "SubscriptionStatusResponse"
       },
       "SubscriptionTier": {

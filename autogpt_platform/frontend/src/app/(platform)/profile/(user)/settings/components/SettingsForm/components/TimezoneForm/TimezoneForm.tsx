@@ -33,7 +33,6 @@ type Props = {
 };
 
 export function TimezoneForm({ user, currentTimezone = "not-set" }: Props) {
-  console.log("currentTimezone", currentTimezone);
   // If timezone is not set, try to detect it from the browser
   const effectiveTimezone = React.useMemo(() => {
     if (currentTimezone === "not-set") {

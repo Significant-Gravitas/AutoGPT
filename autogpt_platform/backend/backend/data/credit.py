@@ -1,10 +1,13 @@
+import asyncio
 import logging
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 import stripe
+from fastapi.concurrency import run_in_threadpool
 from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
@@ -31,6 +34,7 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventModel, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.notifications import queue_notification_async
+from backend.util.cache import cached
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 from backend.util.json import SafeJson, dumps
@@ -432,7 +436,7 @@ class UserCreditBase(ABC):
             current_balance, _ = await self._get_credits(user_id)
             if current_balance >= ceiling_balance:
                 raise ValueError(
-                    f"You already have enough balance of ${current_balance/100}, top-up is not required when you already have at least ${ceiling_balance/100}"
+                    f"You already have enough balance of ${current_balance / 100}, top-up is not required when you already have at least ${ceiling_balance / 100}"
                 )
 
         # Single unified atomic operation for all transaction types using UserBalance
@@ -571,7 +575,7 @@ class UserCreditBase(ABC):
         if amount < 0 and fail_insufficient_credits:
             current_balance, _ = await self._get_credits(user_id)
             raise InsufficientBalanceError(
-                message=f"Insufficient balance of ${current_balance/100}, where this will cost ${abs(amount)/100}",
+                message=f"Insufficient balance of ${current_balance / 100}, where this will cost ${abs(amount) / 100}",
                 user_id=user_id,
                 balance=current_balance,
                 amount=amount,
@@ -582,7 +586,6 @@ class UserCreditBase(ABC):
 
 
 class UserCredit(UserCreditBase):
-
     async def _send_refund_notification(
         self,
         notification_request: RefundRequestData,
@@ -734,7 +737,7 @@ class UserCredit(UserCreditBase):
         )
         if request.amount <= 0 or request.amount > transaction.amount:
             raise AssertionError(
-                f"Invalid amount to deduct ${request.amount/100} from ${transaction.amount/100} top-up"
+                f"Invalid amount to deduct ${request.amount / 100} from ${transaction.amount / 100} top-up"
             )
 
         balance, _ = await self._add_transaction(
@@ -788,12 +791,12 @@ class UserCredit(UserCreditBase):
 
         # If the user has enough balance, just let them win the dispute.
         if balance - amount >= settings.config.refund_credit_tolerance_threshold:
-            logger.warning(f"Accepting dispute from {user_id} for ${amount/100}")
+            logger.warning(f"Accepting dispute from {user_id} for ${amount / 100}")
             dispute.close()
             return
 
         logger.warning(
-            f"Adding extra info for dispute from {user_id} for ${amount/100}"
+            f"Adding extra info for dispute from {user_id} for ${amount / 100}"
         )
         # Retrieve recent transaction history to support our evidence.
         # This provides a concise timeline that shows service usage and proper credit application.
@@ -1237,14 +1240,23 @@ async def get_stripe_customer_id(user_id: str) -> str:
     if user.stripe_customer_id:
         return user.stripe_customer_id
 
-    customer = stripe.Customer.create(
+    # Race protection: two concurrent calls (e.g. user double-clicks "Upgrade",
+    # or any retried request) would each pass the check above and create their
+    # own Stripe Customer, leaving an orphaned billable customer in Stripe.
+    # Pass an idempotency_key so Stripe collapses concurrent + retried calls
+    # into the same Customer object server-side. The 24h Stripe idempotency
+    # window comfortably covers any realistic in-flight retry scenario.
+    customer = await run_in_threadpool(
+        stripe.Customer.create,
         name=user.name or "",
         email=user.email,
         metadata={"user_id": user_id},
+        idempotency_key=f"customer-create-{user_id}",
     )
     await User.prisma().update(
         where={"id": user_id}, data={"stripeCustomerId": customer.id}
     )
+    get_user_by_id.cache_delete(user_id)
     return customer.id
 
 
@@ -1263,23 +1275,203 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
         data={"subscriptionTier": tier},
     )
     get_user_by_id.cache_delete(user_id)
+    # Also invalidate the rate-limit tier cache so CoPilot picks up the new
+    # tier immediately rather than waiting up to 5 minutes for the TTL to expire.
+    from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
+
+    get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
 
 
-async def cancel_stripe_subscription(user_id: str) -> None:
-    """Cancel all active Stripe subscriptions for a user (called on downgrade to FREE)."""
-    customer_id = await get_stripe_customer_id(user_id)
-    subscriptions = stripe.Subscription.list(
-        customer=customer_id, status="active", limit=10
-    )
-    for sub in subscriptions.auto_paging_iter():
-        try:
-            stripe.Subscription.cancel(sub["id"])
-        except stripe.StripeError:
-            logger.warning(
-                "cancel_stripe_subscription: failed to cancel sub %s for user %s",
-                sub["id"],
-                user_id,
+async def _cancel_customer_subscriptions(
+    customer_id: str,
+    exclude_sub_id: str | None = None,
+    at_period_end: bool = False,
+) -> int:
+    """Cancel all billable Stripe subscriptions for a customer, optionally excluding one.
+
+    Cancels both ``active`` and ``trialing`` subscriptions, since trialing subs will
+    start billing once the trial ends and must be cleaned up on downgrade/upgrade to
+    avoid double-charging or charging users who intended to cancel.
+
+    When ``at_period_end=True``, schedules cancellation at the end of the current
+    billing period instead of cancelling immediately — the user keeps their tier
+    until the period ends, then ``customer.subscription.deleted`` fires and the
+    webhook downgrades them to FREE.
+
+    Wraps every synchronous Stripe SDK call with run_in_threadpool so the async event
+    loop is never blocked. Raises stripe.StripeError on list/cancel failure so callers
+    that need strict consistency can react; cleanup callers can catch and log instead.
+
+    Returns the number of subscriptions cancelled/scheduled for cancellation.
+    """
+    # Query active and trialing separately; Stripe's list API accepts a single status
+    # filter at a time (no OR), and we explicitly want to skip canceled/incomplete/
+    # past_due subs rather than filter them out client-side via status="all".
+    seen_ids: set[str] = set()
+    for status in ("active", "trialing"):
+        subscriptions = await run_in_threadpool(
+            stripe.Subscription.list, customer=customer_id, status=status, limit=10
+        )
+        # Iterate only the first page (up to 10); avoid auto_paging_iter which would
+        # trigger additional sync HTTP calls inside the event loop.
+        if subscriptions.has_more:
+            logger.error(
+                "_cancel_customer_subscriptions: customer %s has more than 10 %s"
+                " subscriptions — only the first page was processed; remaining"
+                " subscriptions were NOT cancelled",
+                customer_id,
+                status,
             )
+        for sub in subscriptions.data:
+            sub_id = sub["id"]
+            if exclude_sub_id and sub_id == exclude_sub_id:
+                continue
+            if sub_id in seen_ids:
+                continue
+            seen_ids.add(sub_id)
+            if at_period_end:
+                await run_in_threadpool(
+                    stripe.Subscription.modify, sub_id, cancel_at_period_end=True
+                )
+            else:
+                await run_in_threadpool(stripe.Subscription.cancel, sub_id)
+    return len(seen_ids)
+
+
+async def cancel_stripe_subscription(user_id: str) -> bool:
+    """Schedule cancellation of all active/trialing Stripe subscriptions at period end.
+
+    The subscription stays active until the end of the billing period so the user
+    keeps their tier for the time they already paid for. The ``customer.subscription.deleted``
+    webhook fires at period end and downgrades the DB tier to FREE.
+
+    Returns True if at least one subscription was found and scheduled for cancellation,
+    False if the customer had no active/trialing subscriptions (e.g., admin-granted tier
+    with no associated Stripe subscription). When False, the caller should update the
+    DB tier directly since no webhook will fire to do it.
+
+    Raises stripe.StripeError if any modification fails, so the caller can avoid
+    updating the DB tier when Stripe is inconsistent.
+    """
+    # Guard: only proceed if the user already has a Stripe customer ID.  Calling
+    # get_stripe_customer_id for a user who has never had a paid subscription would
+    # create an orphaned, potentially-billable Stripe Customer object — we avoid that
+    # by returning False early so the caller can downgrade the DB tier directly.
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return False
+
+    customer_id = user.stripe_customer_id
+    try:
+        cancelled_count = await _cancel_customer_subscriptions(
+            customer_id, at_period_end=True
+        )
+        return cancelled_count > 0
+    except stripe.StripeError:
+        logger.warning(
+            "cancel_stripe_subscription: Stripe error while cancelling subs for user %s",
+            user_id,
+        )
+        raise
+
+
+async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> int:
+    """Return the prorated credit (in cents) the user would receive if they upgraded now.
+
+    Fetches the user's active Stripe subscription to determine how many seconds
+    remain in the current billing period, then calculates the unused portion of
+    the monthly cost. Returns 0 for FREE/ENTERPRISE users or when no active sub
+    is found.
+    """
+    if monthly_cost_cents <= 0:
+        return 0
+    # Guard: only query Stripe if the user already has a customer ID.  Admin-granted
+    # paid tiers have no Stripe record; calling get_stripe_customer_id would create an
+    # orphaned customer on every billing-page load for those users.
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return 0
+    try:
+        customer_id = user.stripe_customer_id
+        subscriptions = await run_in_threadpool(
+            stripe.Subscription.list, customer=customer_id, status="active", limit=1
+        )
+        if not subscriptions.data:
+            return 0
+        sub = subscriptions.data[0]
+        period_start: int = sub["current_period_start"]
+        period_end: int = sub["current_period_end"]
+        now = int(time.time())
+        total_seconds = period_end - period_start
+        remaining_seconds = max(period_end - now, 0)
+        if total_seconds <= 0:
+            return 0
+        return int(monthly_cost_cents * remaining_seconds / total_seconds)
+    except Exception:
+        logger.warning(
+            "get_proration_credit_cents: failed to compute proration for user %s",
+            user_id,
+        )
+        return 0
+
+
+async def modify_stripe_subscription_for_tier(
+    user_id: str, tier: SubscriptionTier
+) -> bool:
+    """Modify an existing Stripe subscription to a new paid tier using proration.
+
+    For paid→paid tier changes (e.g. PRO↔BUSINESS), modifying the existing
+    subscription is preferable to cancelling + creating a new one via Checkout:
+    Stripe handles proration automatically, crediting unused time on the old plan
+    and charging the pro-rated amount for the new plan in the same billing cycle.
+
+    Returns:
+        True  — a subscription was found and modified successfully.
+        False — no active/trialing subscription exists (e.g. admin-granted tier or
+                first-time paid signup); caller should fall back to Checkout.
+
+    Raises stripe.StripeError on API failures so callers can propagate a 502.
+    Raises ValueError when no Stripe price ID is configured for the tier.
+    """
+    price_id = await get_subscription_price_id(tier)
+    if not price_id:
+        raise ValueError(f"No Stripe price ID configured for tier {tier}")
+
+    # Guard: only proceed if the user already has a Stripe customer ID.  Calling
+    # get_stripe_customer_id for a user with no Stripe record (e.g. admin-granted tier)
+    # would create an orphaned customer object if the subsequent Subscription.list call
+    # fails.  Return False early so the API layer falls back to Checkout instead.
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return False
+
+    customer_id = user.stripe_customer_id
+    for status in ("active", "trialing"):
+        subscriptions = await run_in_threadpool(
+            stripe.Subscription.list, customer=customer_id, status=status, limit=1
+        )
+        if not subscriptions.data:
+            continue
+        sub = subscriptions.data[0]
+        sub_id = sub["id"]
+        items = sub.get("items", {}).get("data", [])
+        if not items:
+            continue
+        item_id = items[0]["id"]
+        await run_in_threadpool(
+            stripe.Subscription.modify,
+            sub_id,
+            items=[{"id": item_id, "price": price_id}],
+            proration_behavior="create_prorations",
+        )
+        logger.info(
+            "modify_stripe_subscription_for_tier: modified sub %s for user %s → %s",
+            sub_id,
+            user_id,
+            tier,
+        )
+        return True
+    return False
 
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
@@ -1291,8 +1483,19 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
+@cached(ttl_seconds=60, maxsize=8, cache_none=False)
 async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
-    """Return Stripe Price ID for a tier from LaunchDarkly. None = not configured."""
+    """Return Stripe Price ID for a tier from LaunchDarkly, cached for 60 seconds.
+
+    Price IDs are LaunchDarkly flag values that change only at deploy time.
+    Caching for 60 seconds avoids hitting the LD SDK on every webhook delivery
+    and every GET /credits/subscription page load (called 2x per request).
+
+    ``cache_none=False`` prevents a transient LD failure from caching ``None``
+    and blocking subscription upgrades for the full 60-second TTL window.
+    A tier with no configured flag (FREE, ENTERPRISE) returns ``None`` from an
+    O(1) dict lookup before hitting LD, so the extra LD call is never made.
+    """
     flag_map = {
         SubscriptionTier.PRO: Flag.STRIPE_PRICE_PRO,
         SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_BUSINESS,
@@ -1300,7 +1503,7 @@ async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
     flag = flag_map.get(tier)
     if flag is None:
         return None
-    price_id = await get_feature_flag_value(flag.value, user_id="", default="")
+    price_id = await get_feature_flag_value(flag.value, user_id="system", default="")
     return price_id if isinstance(price_id, str) and price_id else None
 
 
@@ -1315,7 +1518,8 @@ async def create_subscription_checkout(
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
     customer_id = await get_stripe_customer_id(user_id)
-    session = stripe.checkout.Session.create(
+    session = await run_in_threadpool(
+        stripe.checkout.Session.create,
         customer=customer_id,
         mode="subscription",
         line_items=[{"price": price_id, "quantity": 1}],
@@ -1323,26 +1527,111 @@ async def create_subscription_checkout(
         cancel_url=cancel_url,
         subscription_data={"metadata": {"user_id": user_id, "tier": tier.value}},
     )
-    return session.url or ""
+    if not session.url:
+        # An empty checkout URL for a paid upgrade is always an error; surfacing it
+        # as ValueError means the API handler returns 422 instead of silently
+        # redirecting the client to an empty URL.
+        raise ValueError("Stripe did not return a checkout session URL")
+    return session.url
+
+
+async def _cleanup_stale_subscriptions(customer_id: str, new_sub_id: str) -> None:
+    """Best-effort cancel of any active subs for the customer other than new_sub_id.
+
+    Called from the webhook handler after a new subscription becomes active. Failures
+    are logged but not raised so a transient Stripe error doesn't crash the webhook —
+    a periodic reconciliation job is the intended backstop for persistent drift.
+
+    NOTE: until that reconcile job lands, a failure here means the user is silently
+    billed for two simultaneous subscriptions. The error log below is intentionally
+    `logger.exception` so it surfaces in Sentry with the customer/sub IDs needed to
+    manually reconcile, and the metric `stripe_stale_subscription_cleanup_failed`
+    is bumped so on-call can alert on persistent drift.
+    TODO(#stripe-reconcile-job): replace this best-effort cleanup with a periodic
+    reconciliation job that queries Stripe for customers with >1 active sub.
+    """
+    try:
+        await _cancel_customer_subscriptions(customer_id, exclude_sub_id=new_sub_id)
+    except stripe.StripeError:
+        # Use exception() (not warning) so this surfaces as an error in Sentry —
+        # any failure here means a paid-to-paid upgrade may have left the user
+        # with two simultaneous active subscriptions.
+        logger.exception(
+            "stripe_stale_subscription_cleanup_failed: customer=%s new_sub=%s —"
+            " user may be billed for two simultaneous subscriptions; manual"
+            " reconciliation required",
+            customer_id,
+            new_sub_id,
+        )
 
 
 async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
-    """Update User.subscriptionTier from a Stripe subscription object."""
-    customer_id = stripe_subscription["customer"]
+    """Update User.subscriptionTier from a Stripe subscription object.
+
+    Expected shape of stripe_subscription (subset of Stripe's Subscription object):
+        customer: str                  — Stripe customer ID
+        status:   str                  — "active" | "trialing" | "canceled" | ...
+        id:       str                  — Stripe subscription ID
+        items.data[].price.id: str     — Stripe price ID identifying the tier
+    """
+    customer_id = stripe_subscription.get("customer")
+    if not customer_id:
+        logger.warning(
+            "sync_subscription_from_stripe: missing 'customer' field in event, "
+            "skipping (keys: %s)",
+            list(stripe_subscription.keys()),
+        )
+        return
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if not user:
         logger.warning(
             "sync_subscription_from_stripe: no user for customer %s", customer_id
         )
         return
+    # Cross-check: if the subscription carries a metadata.user_id (set during
+    # Checkout Session creation), verify it matches the user we found via
+    # stripeCustomerId.  A mismatch indicates a customer↔user mapping
+    # inconsistency — updating the wrong user's tier would be a data-corruption
+    # bug, so we log loudly and bail out.  Absence of metadata.user_id (e.g.
+    # subscriptions created outside the Checkout flow) is not an error — we
+    # simply skip the check and proceed with the customer-ID-based lookup.
+    metadata = stripe_subscription.get("metadata") or {}
+    metadata_user_id = metadata.get("user_id") if isinstance(metadata, dict) else None
+    if metadata_user_id and metadata_user_id != user.id:
+        logger.error(
+            "sync_subscription_from_stripe: metadata.user_id=%s does not match"
+            " user.id=%s found via stripeCustomerId=%s — refusing to update tier"
+            " to avoid corrupting the wrong user's subscription state",
+            metadata_user_id,
+            user.id,
+            customer_id,
+        )
+        return
+    # ENTERPRISE tiers are admin-managed. Never let a Stripe webhook flip an
+    # ENTERPRISE user to a different tier — if a user on ENTERPRISE somehow has
+    # a self-service Stripe sub, it's a data-consistency issue for an operator,
+    # not something the webhook should automatically "fix".
+    current_tier = user.subscriptionTier or SubscriptionTier.FREE
+    if current_tier == SubscriptionTier.ENTERPRISE:
+        logger.warning(
+            "sync_subscription_from_stripe: refusing to overwrite ENTERPRISE tier"
+            " for user %s (customer %s); event status=%s",
+            user.id,
+            customer_id,
+            stripe_subscription.get("status", ""),
+        )
+        return
     status = stripe_subscription.get("status", "")
+    new_sub_id = stripe_subscription.get("id", "")
     if status in ("active", "trialing"):
         price_id = ""
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
             price_id = items[0].get("price", {}).get("id", "")
-        pro_price = await get_subscription_price_id(SubscriptionTier.PRO)
-        biz_price = await get_subscription_price_id(SubscriptionTier.BUSINESS)
+        pro_price, biz_price = await asyncio.gather(
+            get_subscription_price_id(SubscriptionTier.PRO),
+            get_subscription_price_id(SubscriptionTier.BUSINESS),
+        )
         if price_id and pro_price and price_id == pro_price:
             tier = SubscriptionTier.PRO
         elif price_id and biz_price and price_id == biz_price:
@@ -1359,8 +1648,204 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             )
             return
     else:
+        # A subscription was cancelled or ended. DO NOT unconditionally downgrade
+        # to FREE — Stripe does not guarantee webhook delivery order, so a
+        # `customer.subscription.deleted` for the OLD sub can arrive after we've
+        # already processed `customer.subscription.created` for a new paid sub.
+        # Ask Stripe whether any OTHER active/trialing subs exist for this
+        # customer; if they do, keep the user's current tier (the other sub's
+        # own event will/has already set the correct tier).
+        try:
+            other_subs_active, other_subs_trialing = await asyncio.gather(
+                run_in_threadpool(
+                    stripe.Subscription.list,
+                    customer=customer_id,
+                    status="active",
+                    limit=10,
+                ),
+                run_in_threadpool(
+                    stripe.Subscription.list,
+                    customer=customer_id,
+                    status="trialing",
+                    limit=10,
+                ),
+            )
+        except stripe.StripeError:
+            logger.warning(
+                "sync_subscription_from_stripe: could not verify other active"
+                " subs for customer %s on cancel event %s; preserving current"
+                " tier to avoid an unsafe downgrade",
+                customer_id,
+                new_sub_id,
+            )
+            return
+        # Filter out the cancelled subscription to check if other active subs
+        # exist. When new_sub_id is empty (malformed event with no 'id' field),
+        # we cannot safely exclude any sub — preserve current tier to avoid
+        # an unsafe downgrade on a malformed webhook payload.
+        if not new_sub_id:
+            logger.warning(
+                "sync_subscription_from_stripe: cancel event missing 'id' field"
+                " for customer %s; preserving current tier",
+                customer_id,
+            )
+            return
+        other_active_ids = {sub["id"] for sub in other_subs_active.data} - {new_sub_id}
+        other_trialing_ids = {sub["id"] for sub in other_subs_trialing.data} - {
+            new_sub_id
+        }
+        still_has_active_sub = bool(other_active_ids or other_trialing_ids)
+        if still_has_active_sub:
+            logger.info(
+                "sync_subscription_from_stripe: sub %s cancelled but customer %s"
+                " still has another active sub; keeping tier %s",
+                new_sub_id,
+                customer_id,
+                current_tier.value,
+            )
+            return
         tier = SubscriptionTier.FREE
+    # Idempotency: Stripe retries webhooks on delivery failure, and several event
+    # types map to the same final tier. Skip the DB write + cache invalidation
+    # when the tier is already correct to avoid redundant writes on replay.
+    if current_tier == tier:
+        return
+    # When a new subscription becomes active (e.g. paid-to-paid tier upgrade
+    # via a fresh Checkout Session), cancel any OTHER active subscriptions for
+    # the same customer so the user isn't billed twice. We do this in the
+    # webhook rather than the API handler so that abandoning the checkout
+    # doesn't leave the user without a subscription.
+    # IMPORTANT: this runs AFTER the idempotency check above so that webhook
+    # replays for an already-applied event do NOT trigger another cleanup round
+    # (which could otherwise cancel a legitimately new subscription the user
+    # signed up for between the original event and its replay).
+    if status in ("active", "trialing") and new_sub_id:
+        # NOTE: paid-to-paid upgrade race (e.g. PRO → BUSINESS):
+        # _cleanup_stale_subscriptions cancels the old PRO sub before
+        # set_subscription_tier writes BUSINESS to the DB.  If Stripe delivers
+        # the PRO `customer.subscription.deleted` event concurrently and it
+        # processes after the PRO cancel but before set_subscription_tier
+        # commits, the user could momentarily appear as FREE in the DB.
+        # This window is very short in practice (two sequential awaits),
+        # but is a known limitation of the current webhook-driven approach.
+        # A future improvement would be to write the new tier first, then
+        # cancel the old sub.
+        await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+
+
+async def handle_subscription_payment_failure(invoice: dict) -> None:
+    """Handle a failed Stripe subscription payment.
+
+    Tries to cover the invoice amount from the user's credit balance.
+
+    - Balance sufficient  → deduct from balance, then pay the Stripe invoice so
+      Stripe stops retrying it. The sub stays intact and the user keeps their tier.
+    - Balance insufficient → cancel Stripe sub immediately, downgrade to FREE.
+      Cancelling here avoids further Stripe retries on an invoice we cannot cover.
+    """
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        logger.warning(
+            "handle_subscription_payment_failure: missing customer in invoice; skipping"
+        )
+        return
+
+    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    if not user:
+        logger.warning(
+            "handle_subscription_payment_failure: no user found for customer %s",
+            customer_id,
+        )
+        return
+
+    current_tier = user.subscriptionTier or SubscriptionTier.FREE
+    if current_tier == SubscriptionTier.ENTERPRISE:
+        logger.warning(
+            "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
+            " (customer %s) — tier is admin-managed",
+            user.id,
+            customer_id,
+        )
+        return
+
+    amount_due: int = invoice.get("amount_due", 0)
+    sub_id: str = invoice.get("subscription", "")
+    invoice_id: str = invoice.get("id", "")
+
+    if amount_due <= 0:
+        logger.info(
+            "handle_subscription_payment_failure: amount_due=%d for user %s;"
+            " nothing to deduct",
+            amount_due,
+            user.id,
+        )
+        return
+
+    credit_model = UserCredit()
+    try:
+        await credit_model._add_transaction(
+            user_id=user.id,
+            amount=-amount_due,
+            transaction_type=CreditTransactionType.SUBSCRIPTION,
+            fail_insufficient_credits=True,
+            # Use invoice_id as the idempotency key so that Stripe webhook retries
+            # (e.g. on a transient stripe.Invoice.pay failure) do not double-charge.
+            transaction_key=invoice_id or None,
+            metadata=SafeJson(
+                {
+                    "stripe_customer_id": customer_id,
+                    "stripe_subscription_id": sub_id,
+                    "reason": "subscription_payment_failure_covered_by_balance",
+                }
+            ),
+        )
+        # Balance covered the invoice. Pay the Stripe invoice so Stripe's dunning
+        # system stops retrying it — without this call Stripe would retry automatically
+        # and re-trigger this webhook, causing double-deductions each retry cycle.
+        if invoice_id:
+            try:
+                await run_in_threadpool(stripe.Invoice.pay, invoice_id)
+            except stripe.StripeError:
+                logger.warning(
+                    "handle_subscription_payment_failure: balance deducted for user"
+                    " %s but failed to mark invoice %s as paid; Stripe may retry",
+                    user.id,
+                    invoice_id,
+                )
+        logger.info(
+            "handle_subscription_payment_failure: deducted %d cents from balance"
+            " for user %s; Stripe invoice %s paid, sub %s intact, tier preserved",
+            amount_due,
+            user.id,
+            invoice_id,
+            sub_id,
+        )
+    except InsufficientBalanceError:
+        # Balance insufficient — cancel Stripe subscription first, then downgrade DB.
+        # Order matters: if we downgrade the DB first and the Stripe cancel fails, the
+        # user is permanently stuck on FREE while Stripe continues billing them.
+        # Cancelling Stripe first is safe: if the DB write then fails, the webhook
+        # customer.subscription.deleted will fire and correct the tier eventually.
+        logger.info(
+            "handle_subscription_payment_failure: insufficient balance for user %s;"
+            " cancelling Stripe sub %s then downgrading to FREE",
+            user.id,
+            sub_id,
+        )
+        try:
+            await _cancel_customer_subscriptions(customer_id)
+        except stripe.StripeError:
+            logger.warning(
+                "handle_subscription_payment_failure: failed to cancel Stripe sub %s"
+                " for user %s (customer %s); skipping tier downgrade to avoid"
+                " inconsistency — Stripe may continue retrying the invoice",
+                sub_id,
+                user.id,
+                customer_id,
+            )
+            return
+        await set_subscription_tier(user.id, SubscriptionTier.FREE)
 
 
 async def admin_get_user_history(

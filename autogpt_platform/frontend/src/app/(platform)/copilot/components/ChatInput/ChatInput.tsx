@@ -86,11 +86,11 @@ export function ChatInput({
       title:
         next === "advanced"
           ? "Switched to Advanced model"
-          : "Switched to Standard model",
+          : "Switched to Balanced model",
       description:
         next === "advanced"
           ? "Using the highest-capability model."
-          : "Using the balanced standard model.",
+          : "Using the balanced default model.",
     });
   }
 
