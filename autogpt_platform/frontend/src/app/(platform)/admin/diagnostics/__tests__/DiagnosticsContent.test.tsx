@@ -1,9 +1,4 @@
-import {
-  render,
-  screen,
-  cleanup,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiagnosticsContent } from "../components/DiagnosticsContent";
 
