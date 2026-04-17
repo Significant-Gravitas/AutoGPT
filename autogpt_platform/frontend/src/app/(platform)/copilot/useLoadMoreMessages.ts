@@ -135,6 +135,9 @@ export function useLoadMoreMessages({
         return merged;
       });
 
+      // Note: after truncation, oldest_sequence may reference a dropped
+      // message. This is safe because we also set hasMore=false below,
+      // preventing further loads with the stale cursor.
       setOldestSequence(response.data.oldest_sequence ?? null);
       if (estimatedTotal >= MAX_OLDER_MESSAGES) {
         setHasMore(false);

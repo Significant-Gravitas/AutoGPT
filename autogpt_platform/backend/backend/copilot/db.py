@@ -175,8 +175,7 @@ async def _expand_tool_boundary(
         )
     if boundary_msgs:
         results = boundary_msgs + results
-        if boundary_msgs[0].sequence > 0:
-            has_more = True
+        has_more = boundary_msgs[0].sequence > 0
     return results, has_more
 
 
@@ -226,8 +225,7 @@ async def _expand_for_visibility(
     prepend.reverse()
     if prepend:
         results = prepend + results
-        if prepend[0].sequence > 0:
-            has_more = True
+        has_more = prepend[0].sequence > 0
     return results, has_more
 
 
