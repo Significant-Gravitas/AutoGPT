@@ -58,19 +58,27 @@ router = fastapi.APIRouter(
 )
 
 
-def _create_streaming_response(content: bytes, file: WorkspaceFile) -> Response:
+def _create_streaming_response(
+    content: bytes, file: WorkspaceFile, *, inline: bool = False
+) -> Response:
     """Create a streaming response for file content."""
+    if inline:
+        disposition = f'inline; filename="{file.name}"'
+    else:
+        disposition = _sanitize_filename_for_header(file.name)
     return Response(
         content=content,
         media_type=file.mime_type,
         headers={
-            "Content-Disposition": _sanitize_filename_for_header(file.name),
+            "Content-Disposition": disposition,
             "Content-Length": str(len(content)),
         },
     )
 
 
-async def _create_file_download_response(file: WorkspaceFile) -> Response:
+async def _create_file_download_response(
+    file: WorkspaceFile, *, inline: bool = False
+) -> Response:
     """
     Create a download response for a workspace file.
 
@@ -82,7 +90,7 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
     # For local storage, stream the file directly
     if file.storage_path.startswith("local://"):
         content = await storage.retrieve(file.storage_path)
-        return _create_streaming_response(content, file)
+        return _create_streaming_response(content, file, inline=inline)
 
     # For GCS, try to redirect to signed URL, fall back to streaming
     try:
@@ -90,7 +98,7 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
         # If we got back an API path (fallback), stream directly instead
         if url.startswith("/api/"):
             content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file)
+            return _create_streaming_response(content, file, inline=inline)
         return fastapi.responses.RedirectResponse(url=url, status_code=302)
     except Exception as e:
         # Log the signed URL failure with context
@@ -102,7 +110,7 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
         # Fall back to streaming directly from GCS
         try:
             content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file)
+            return _create_streaming_response(content, file, inline=inline)
         except Exception as fallback_error:
             logger.error(
                 f"Fallback streaming also failed for file {file.id} "

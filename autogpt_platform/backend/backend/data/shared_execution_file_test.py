@@ -1,7 +1,5 @@
 """Tests for SharedExecutionFile workspace URI extraction logic."""
 
-import pytest
-
 from backend.data.execution import _extract_workspace_file_ids
 
 
