@@ -4,8 +4,6 @@ import {
   EyeIcon,
   ArrowsClockwiseIcon,
   MonitorPlayIcon,
-  PlayIcon,
-  ArrowCounterClockwiseIcon,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
@@ -63,6 +61,6 @@ const ACTION_CONFIG: Record<
   error: { label: "View error", icon: EyeIcon },
   listening: { label: "Reconnect", icon: ArrowsClockwiseIcon },
   running: { label: "Watch live", icon: MonitorPlayIcon },
-  idle: { label: "Start", icon: PlayIcon },
-  scheduled: { label: "Start", icon: ArrowCounterClockwiseIcon },
+  idle: { label: "View", icon: EyeIcon },
+  scheduled: { label: "View", icon: EyeIcon },
 };
