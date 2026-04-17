@@ -423,20 +423,33 @@ async def subscribe_to_session(
         extra={"json_fields": {**log_meta, "duration_ms": hgetall_time}},
     )
 
-    # RACE CONDITION FIX: If session not found, retry once after small delay
-    # This handles the case where subscribe_to_session is called immediately
-    # after create_session but before Redis propagates the write
+    # RACE CONDITION FIX: If session not found, retry with backoff.
+    # Duplicate requests skip create_session and subscribe immediately; the
+    # original request's create_session (a Redis hset) may not have completed
+    # yet. 3 × 100ms gives a 300ms window which covers DB-write latency on the
+    # original request before the hset even starts.
     if not meta:
-        logger.warning(
-            "[TIMING] Session not found on first attempt, retrying after 50ms delay",
-            extra={"json_fields": {**log_meta}},
-        )
-        await asyncio.sleep(0.05)  # 50ms
-        meta = await redis.hgetall(meta_key)  # type: ignore[misc]
-        if not meta:
+        _max_retries = 3
+        _retry_delay = 0.1  # 100ms per attempt
+        for attempt in range(_max_retries):
+            logger.warning(
+                f"[TIMING] Session not found (attempt {attempt + 1}/{_max_retries}), "
+                f"retrying after {int(_retry_delay * 1000)}ms",
+                extra={"json_fields": {**log_meta, "attempt": attempt + 1}},
+            )
+            await asyncio.sleep(_retry_delay)
+            meta = await redis.hgetall(meta_key)  # type: ignore[misc]
+            if meta:
+                logger.info(
+                    f"[TIMING] Session found after {attempt + 1} retries",
+                    extra={"json_fields": {**log_meta, "attempts": attempt + 1}},
+                )
+                break
+        else:
             elapsed = (time.perf_counter() - start_time) * 1000
             logger.info(
-                f"[TIMING] Session still not found in Redis after retry ({elapsed:.1f}ms total)",
+                f"[TIMING] Session still not found in Redis after {_max_retries} retries "
+                f"({elapsed:.1f}ms total)",
                 extra={
                     "json_fields": {
                         **log_meta,
@@ -446,10 +459,6 @@ async def subscribe_to_session(
                 },
             )
             return None
-        logger.info(
-            "[TIMING] Session found after retry",
-            extra={"json_fields": {**log_meta}},
-        )
 
     # Note: Redis client uses decode_responses=True, so keys are strings
     session_status = meta.get("status", "")
