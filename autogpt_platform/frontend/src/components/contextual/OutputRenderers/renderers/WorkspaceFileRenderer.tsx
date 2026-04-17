@@ -39,7 +39,7 @@ const audioMimeTypes = [
 
 function buildDownloadURL(fileID: string, shareToken?: string): string {
   if (shareToken) {
-    return `/api/proxy/api/v1/public/shared/${shareToken}/files/${fileID}/download`;
+    return `/api/proxy/api/public/shared/${shareToken}/files/${fileID}/download`;
   }
   return `/api/proxy/api/workspace/files/${fileID}/download`;
 }

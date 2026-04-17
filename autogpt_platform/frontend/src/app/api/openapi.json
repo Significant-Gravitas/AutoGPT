@@ -6154,6 +6154,46 @@
         }
       }
     },
+    "/api/public/shared/{share_token}/files/{file_id}/download": {
+      "get": {
+        "tags": ["v1"],
+        "summary": "Download Shared File",
+        "description": "Download a workspace file from a shared execution (no auth required).\n\nValidates that the file was explicitly exposed when sharing was enabled.\nReturns a uniform 404 for all failure modes to prevent enumeration attacks.",
+        "operationId": "getV1DownloadSharedFile",
+        "parameters": [
+          {
+            "name": "share_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "Share Token"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/review/action": {
       "post": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],

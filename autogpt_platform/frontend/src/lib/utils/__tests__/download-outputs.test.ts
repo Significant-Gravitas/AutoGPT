@@ -336,7 +336,7 @@ describe("downloadOutputs", () => {
     const items = [
       makeRenderer({
         downloadData:
-          "/api/proxy/api/v1/public/shared/abc-token/files/file-123/download",
+          "/api/proxy/api/public/shared/abc-token/files/file-123/download",
         downloadFilename: "shared-image.png",
       }),
     ];
@@ -344,7 +344,7 @@ describe("downloadOutputs", () => {
     await downloadOutputs(items);
 
     expect(fetch).toHaveBeenCalledWith(
-      "/api/proxy/api/v1/public/shared/abc-token/files/file-123/download",
+      "/api/proxy/api/public/shared/abc-token/files/file-123/download",
       { mode: "cors" },
     );
     expect(mockZipFile).toHaveBeenCalledWith("shared-image.png", mockBlob);
