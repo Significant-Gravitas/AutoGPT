@@ -673,7 +673,9 @@ class TestCreateStreamingResponse:
 
         file = _make_file(name="data.bin", mime_type="application/octet-stream")
         response = _create_streaming_response(b"binary-data", file)
-        assert response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
+        assert (
+            response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
+        )
         assert response.headers["Content-Type"] == "application/octet-stream"
         assert response.headers["Content-Length"] == "11"
         assert response.body == b"binary-data"
@@ -752,7 +754,9 @@ class TestCreateFileDownloadResponse:
         from backend.api.features.workspace.routes import create_file_download_response
 
         mock_storage = AsyncMock()
-        mock_storage.get_download_url.return_value = "https://storage.googleapis.com/signed-url"
+        mock_storage.get_download_url.return_value = (
+            "https://storage.googleapis.com/signed-url"
+        )
         mocker.patch(
             "backend.api.features.workspace.routes.get_workspace_storage",
             return_value=mock_storage,
@@ -761,7 +765,9 @@ class TestCreateFileDownloadResponse:
         file = _make_file(storage_path="gcs://bucket/file.pdf")
         response = await create_file_download_response(file)
         assert response.status_code == 302
-        assert response.headers["location"] == "https://storage.googleapis.com/signed-url"
+        assert (
+            response.headers["location"] == "https://storage.googleapis.com/signed-url"
+        )
 
     @pytest.mark.asyncio
     async def test_gcs_api_fallback_streams_directly(self, mocker):

@@ -46,9 +46,11 @@ def _mock_download_response(**kwargs):
             content=b"\x89PNG",
             media_type="image/png",
             headers={
-                "Content-Disposition": 'inline; filename="image.png"'
-                if inline
-                else 'attachment; filename="image.png"',
+                "Content-Disposition": (
+                    'inline; filename="image.png"'
+                    if inline
+                    else 'attachment; filename="image.png"'
+                ),
                 "Content-Length": "4",
             },
         )
