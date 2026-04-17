@@ -115,13 +115,14 @@ export function useCopilotPage() {
 
   // The Claude Agent SDK replays earlier turn content when starting a new
   // turn. So Turn N's assistant message may accumulate Turn 1...N-1 content
-  // as a PREFIX before the actual Turn N response. Remove an earlier
-  // assistant message if its content parts are a strict prefix of a later
-  // assistant's parts (i.e. the later one replays + extends it).
+  // as a PREFIX before the actual Turn N response. Strip the replayed prefix
+  // from the LATER message (instead of dropping the earlier one) so each
+  // turn's content stays anchored under its own user bubble — otherwise a
+  // queued/promoted user message inserted before Turn N would visually
+  // appear above Turn 1's replayed content.
   const messages = useMemo(() => {
     const deduped = deduplicateMessages(rawMessages);
 
-    // Fingerprint each assistant message's parts (tool calls + text)
     const fingerprint = (msg: UIMessage): string[] =>
       (msg.parts ?? []).map((p) => {
         if ("text" in p && p.text) return `text:${p.text}`;
@@ -146,18 +147,27 @@ export function useCopilotPage() {
         continue;
       }
       const myFp = fingerprint(msg);
-      let isReplayed = false;
-      // Look at all later assistant messages (across user boundaries too)
-      // to catch Claude CLI replay that spans multiple turns.
-      for (let j = i + 1; j < deduped.length; j++) {
+      // Find the longest strict-prefix match from an earlier assistant
+      // message — that's the content Claude CLI replayed into this turn.
+      let stripLen = 0;
+      for (let j = 0; j < i; j++) {
         if (deduped[j].role !== "assistant") continue;
-        const laterFp = fingerprint(deduped[j]);
-        if (isPrefixOf(myFp, laterFp)) {
-          isReplayed = true;
-          break;
+        const earlierFp = fingerprint(deduped[j]);
+        if (earlierFp.length > stripLen && isPrefixOf(earlierFp, myFp)) {
+          stripLen = earlierFp.length;
         }
       }
-      if (!isReplayed) result.push(msg);
+      if (stripLen > 0) {
+        const trimmedParts = (msg.parts ?? []).slice(stripLen);
+        if (trimmedParts.length === 0) {
+          // Fully replayed (rare — later message is identical to earlier);
+          // drop it so we don't render an empty bubble.
+          continue;
+        }
+        result.push({ ...msg, parts: trimmedParts });
+      } else {
+        result.push(msg);
+      }
     }
     return result;
   }, [rawMessages]);
@@ -421,19 +431,22 @@ export function useCopilotPage() {
 
   // Promote queued chips to real user bubbles when the backend consumes them.
   //
-  // Detection signals:
-  // 1. submitted → streaming: turn-start drain merged chips into the current
-  //    message. Clear chips (they're part of the combined user bubble now).
-  // 2. New assistant message during streaming + chips exist: auto-continue
-  //    started processing a queued message. Promote the chip to a real user
-  //    bubble by inserting it into the SDK's messages before the new assistant
-  //    message, then remove the chip.
+  // The backend now combines ALL pending messages into a single auto-continue
+  // turn (joined by "\n\n"), so we promote all chips at once into one user
+  // bubble that matches the combined message the backend persists to the DB.
   //
-  // In both cases, peek the buffer first — if it still has items, keep them.
+  // Detection:
+  // - submitted → streaming: turn-start drain merged chips into the CURRENT
+  //   user message. Clear chips once the buffer is empty.
+  // - Auto-continue is detected by observing a SECOND new assistant ID after
+  //   the first one for this chain of turns. The first-new is Turn 1's
+  //   assistant (created when status goes submitted→streaming). Any later
+  //   new assistant ID while still streaming must be the auto-continue turn.
   const prevStatusForQueueRef = useRef(status);
-  const seenAssistantIdsRef = useRef(
+  const seenAssistantIdsRef = useRef<Set<string>>(
     new Set(messages.filter((m) => m.role === "assistant").map((m) => m.id)),
   );
+  const hasSeenTurnStartAssistantRef = useRef(false);
   const queuedMessagesRef = useRef(queuedMessages);
   queuedMessagesRef.current = queuedMessages;
 
@@ -441,7 +454,6 @@ export function useCopilotPage() {
     const prevStatus = prevStatusForQueueRef.current;
     prevStatusForQueueRef.current = status;
 
-    // Track new assistant message IDs
     const currentAssistantIds = messages
       .filter((m) => m.role === "assistant")
       .map((m) => m.id);
@@ -454,13 +466,16 @@ export function useCopilotPage() {
 
     const isTurnStarting = prevStatus === "submitted" && status === "streaming";
     const isActive = status === "streaming" || status === "submitted";
-    const hasChips = queuedMessagesRef.current.length > 0;
-    const autoContinueStarted =
-      isActive && newAssistantIds.length > 0 && !isTurnStarting && hasChips;
+    const becameIdle =
+      (prevStatus === "streaming" || prevStatus === "submitted") &&
+      (status === "ready" || status === "error");
 
     if (isTurnStarting) {
+      // Reset the "seen first assistant for this turn" marker so we can
+      // distinguish Turn 1's assistant from the auto-continue one.
+      hasSeenTurnStartAssistantRef.current = false;
       // Turn-start drain: chips were merged into the submitted message.
-      // Peek and clear if buffer is empty.
+      // Peek the buffer — clear chips only if the backend drained them.
       void getV2GetPendingMessages(sessionId).then((res) => {
         if (res.status === 200 && res.data.count === 0) {
           setQueuedMessages([]);
@@ -468,43 +483,56 @@ export function useCopilotPage() {
       });
     }
 
-    if (autoContinueStarted) {
-      // Auto-continue: each new assistant message = one queued message
-      // being processed. Insert ONE chip (FIFO) as a user bubble BEFORE
-      // each new assistant message. This prevents the SDK's tool calls
-      // from bunching together without user bubbles to separate them.
-      const chips = queuedMessagesRef.current;
-      const toPromote = chips.slice(0, newAssistantIds.length);
-      const remaining = chips.slice(newAssistantIds.length);
-
-      if (toPromote.length > 0) {
-        setMessages((prev) => {
-          const result = [...prev];
-          toPromote.forEach((content, i) => {
-            const assistantId = newAssistantIds[i];
-            const assistantIdx = result.findIndex((m) => m.id === assistantId);
-            const entry = {
-              id: `promoted-${assistantId}`,
-              role: "user" as const,
-              parts: [
-                {
-                  type: "text" as const,
-                  text: content,
-                  state: "done" as const,
-                },
-              ],
-            };
-            if (assistantIdx !== -1) {
-              result.splice(assistantIdx, 0, entry);
-            } else {
-              result.push(entry);
-            }
-          });
-          return result;
-        });
-        setQueuedMessages(remaining);
-      }
+    if (becameIdle) {
+      // Stream ended — hydration will replace messages with DB state.
+      hasSeenTurnStartAssistantRef.current = false;
     }
+
+    if (!isActive || newAssistantIds.length === 0) return;
+
+    const hasChips = queuedMessagesRef.current.length > 0;
+
+    if (!hasSeenTurnStartAssistantRef.current) {
+      // First assistant ID for this stream chain = Turn 1. Mark and return —
+      // do NOT promote chips (chips are for AFTER Turn 1 completes).
+      hasSeenTurnStartAssistantRef.current = true;
+      // If more than one new ID appeared in a single render (rare — Turn 1
+      // plus the auto-continue turn both land in the same batch), fall
+      // through using the 2nd+ IDs below.
+      if (newAssistantIds.length <= 1) return;
+    }
+
+    if (!hasChips) return;
+
+    // Auto-continue detected: promote ALL chips as one combined user bubble
+    // matching the backend's "\n\n".join(texts). Insert immediately before
+    // the first auto-continue assistant ID so it sits between Turn 1 and
+    // Turn 2 visually.
+    const autoContinueId = hasSeenTurnStartAssistantRef.current
+      ? newAssistantIds[0]
+      : newAssistantIds[1];
+    const chips = queuedMessagesRef.current;
+    const combinedText = chips.join("\n\n");
+
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === `promoted-${autoContinueId}`)) return prev;
+      const result = [...prev];
+      const idx = result.findIndex((m) => m.id === autoContinueId);
+      const insertAt = idx === -1 ? result.length : idx;
+      result.splice(insertAt, 0, {
+        id: `promoted-${autoContinueId}`,
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: combinedText,
+            state: "done" as const,
+          },
+        ],
+      });
+      return result;
+    });
+    setQueuedMessages([]);
   }, [messages, status, sessionId, setMessages]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
