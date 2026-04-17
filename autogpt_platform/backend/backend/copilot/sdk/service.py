@@ -3812,28 +3812,24 @@ async def stream_chat_completion_sdk(
     if not ended_with_stream_error:
         _auto_pending_texts = await drain_pending_safe(session_id, log_prefix)
         if _auto_pending_texts:
-            # Flatten multiple queued messages into a single string.
-            # stream_chat_completion_sdk takes a single ``message`` string, so
-            # multiple pending messages must be joined here.  This means they
-            # land as one ChatMessage in the DB rather than N separate rows
-            # (unlike the turn-start drain which inserts them individually).
-            # The trade-off is accepted: auto-continue is triggered only when
-            # messages arrive after the turn-start drain window closes, which
-            # is uncommon, and the model still sees all the content in order.
-            auto_message = "\n\n".join(_auto_pending_texts)
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",
                 log_prefix,
                 len(_auto_pending_texts),
             )
-            async for event in stream_chat_completion_sdk(
-                session_id=session_id,
-                message=auto_message,
-                is_user_message=True,
-                user_id=user_id,
-                file_ids=None,
-                permissions=permissions,
-                mode=mode,
-                model=model,
-            ):
-                yield event
+            # Process each pending message as its own turn so each gets a
+            # separate user bubble and response in the frontend.  The
+            # recursive call may itself drain further messages queued while
+            # this turn runs (via its own auto-continue tail).
+            for _auto_text in _auto_pending_texts:
+                async for event in stream_chat_completion_sdk(
+                    session_id=session_id,
+                    message=_auto_text,
+                    is_user_message=True,
+                    user_id=user_id,
+                    file_ids=None,
+                    permissions=permissions,
+                    mode=mode,
+                    model=model,
+                ):
+                    yield event
