@@ -322,42 +322,33 @@ describe("downloadOutputs", () => {
     expect(mockZipFile).toHaveBeenCalledWith("image2.jpg", mockBlob);
   });
 
-  // xfail: workspace file download endpoint (GET /api/workspace/files/{id}/download)
-  // requires authentication via get_user_id. On the public share page, visitors are
-  // unauthenticated, so workspace file fetches return 401/403. The backend needs a
-  // public endpoint that validates the share token and serves workspace files belonging
-  // to the shared execution. Until then, workspace images render (browser resolves
-  // relative URLs with cookies) but zip download fails for unauthenticated users.
-  it.fails(
-    "workspace file downloads succeed without auth (share page scenario)",
-    async () => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn().mockResolvedValue({
-          ok: false,
-          status: 401,
-          headers: new Headers(),
-          blob: vi.fn(),
-        }),
-      );
+  it("fetches public share endpoint URLs for workspace files", async () => {
+    const mockBlob = new Blob(["shared-image-data"]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        headers: new Headers({ "content-length": "17" }),
+        blob: () => Promise.resolve(mockBlob),
+      }),
+    );
 
-      const items = [
-        makeRenderer({
-          downloadData: "/api/proxy/api/workspace/files/shared-file/download",
-          downloadFilename: "shared-image.png",
-        }),
-      ];
+    const items = [
+      makeRenderer({
+        downloadData:
+          "/api/proxy/api/v1/public/shared/abc-token/files/file-123/download",
+        downloadFilename: "shared-image.png",
+      }),
+    ];
 
-      await downloadOutputs(items);
+    await downloadOutputs(items);
 
-      // This should include the file, not skip it — but currently the 401
-      // causes fetchFileAsBlob to return null. Needs backend public endpoint.
-      expect(mockZipFile).toHaveBeenCalledWith(
-        "shared-image.png",
-        expect.anything(),
-      );
-    },
-  );
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/proxy/api/v1/public/shared/abc-token/files/file-123/download",
+      { mode: "cors" },
+    );
+    expect(mockZipFile).toHaveBeenCalledWith("shared-image.png", mockBlob);
+  });
 
   it("rejects files over content-length before buffering", async () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});

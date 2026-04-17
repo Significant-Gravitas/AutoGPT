@@ -200,8 +200,30 @@ model UserWorkspaceFile {
 
   metadata Json @default("{}")
 
+  SharedExecutionFiles SharedExecutionFile[]
+
   @@unique([workspaceId, path])
   @@index([workspaceId, isDeleted])
+}
+
+// Tracks which workspace files are exposed via a shared execution.
+// Created when sharing is enabled, deleted when sharing is disabled.
+// The public file download endpoint validates against this table.
+model SharedExecutionFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  executionId String
+  Execution   AgentGraphExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  fileId String
+  File   UserWorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  shareToken String
+
+  @@unique([shareToken, fileId])
+  @@index([shareToken])
+  @@index([executionId])
 }
 
 model BuilderSearchHistory {
@@ -585,9 +607,10 @@ model AgentGraphExecution {
   ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
 
   // Sharing fields
-  isShared   Boolean   @default(false)
-  shareToken String?   @unique
-  sharedAt   DateTime?
+  isShared             Boolean                @default(false)
+  shareToken           String?                @unique
+  sharedAt             DateTime?
+  SharedExecutionFiles SharedExecutionFile[]
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])

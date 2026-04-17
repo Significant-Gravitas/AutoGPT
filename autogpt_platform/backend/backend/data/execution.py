@@ -24,6 +24,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
+    SharedExecutionFile,
 )
 from prisma.types import (
     AgentGraphExecutionUpdateManyMutationInput,
@@ -1536,6 +1537,103 @@ async def get_graph_execution_by_share_token(
         created_at=execution.createdAt,
         outputs=outputs,
     )
+
+
+def _extract_workspace_file_ids(outputs: CompletedBlockOutput) -> set[str]:
+    """Extract workspace file IDs from execution outputs.
+
+    Scans all output values for workspace:// URI strings and extracts
+    the file IDs. Only matches values that are plain strings starting
+    with workspace://, not substrings within larger text.
+    """
+    file_ids: set[str] = set()
+
+    def _scan(value: Any) -> None:
+        if isinstance(value, str) and value.startswith("workspace://"):
+            raw = value.removeprefix("workspace://")
+            file_ref = raw.split("#", 1)[0] if "#" in raw else raw
+            if file_ref and not file_ref.startswith("/"):
+                file_ids.add(file_ref)
+        elif isinstance(value, list):
+            for item in value:
+                _scan(item)
+        elif isinstance(value, dict):
+            for v in value.values():
+                _scan(v)
+
+    for output_values in outputs.values():
+        if isinstance(output_values, list):
+            for val in output_values:
+                _scan(val)
+        else:
+            _scan(output_values)
+
+    return file_ids
+
+
+async def create_shared_execution_files(
+    execution_id: str,
+    share_token: str,
+    outputs: CompletedBlockOutput,
+) -> int:
+    """Scan execution outputs for workspace files and create allowlist records.
+
+    Returns the number of records created.
+    """
+    file_ids = _extract_workspace_file_ids(outputs)
+    if not file_ids:
+        return 0
+
+    created = 0
+    for file_id in file_ids:
+        try:
+            await SharedExecutionFile.prisma().create(
+                data={
+                    "executionId": execution_id,
+                    "fileId": file_id,
+                    "shareToken": share_token,
+                }
+            )
+            created += 1
+        except Exception:
+            # File ID might not exist in workspace — skip gracefully.
+            # This handles the case where an output string looks like a
+            # workspace URI but doesn't reference a real file.
+            logger.debug(
+                f"Skipping shared file record for {file_id}: "
+                f"file may not exist in workspace"
+            )
+    return created
+
+
+async def delete_shared_execution_files(execution_id: str) -> int:
+    """Delete all shared file records for an execution.
+
+    Returns the number of records deleted.
+    """
+    result = await SharedExecutionFile.prisma().delete_many(
+        where={"executionId": execution_id}
+    )
+    return result
+
+
+async def get_shared_execution_file(
+    share_token: str,
+    file_id: str,
+) -> str | None:
+    """Look up a file ID in the shared execution file allowlist.
+
+    Returns the execution ID if the file is in the allowlist, None otherwise.
+    Uses a single query and returns a uniform None for all failure modes
+    to prevent timing-based enumeration attacks.
+    """
+    record = await SharedExecutionFile.prisma().find_first(
+        where={
+            "shareToken": share_token,
+            "fileId": file_id,
+        }
+    )
+    return record.executionId if record else None
 
 
 async def get_frequently_executed_graphs(

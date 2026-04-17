@@ -1649,6 +1649,13 @@ async def enable_execution_sharing(
         shared_at=datetime.now(timezone.utc),
     )
 
+    # Create allowlist of workspace files referenced in outputs
+    await execution_db.create_shared_execution_files(
+        execution_id=graph_exec_id,
+        share_token=share_token,
+        outputs=execution.outputs,
+    )
+
     # Return the share URL
     frontend_url = settings.config.frontend_base_url or "http://localhost:3000"
     share_url = f"{frontend_url}/share/{share_token}"
@@ -1674,6 +1681,9 @@ async def disable_execution_sharing(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
+    # Remove shared file allowlist records
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Remove share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1697,6 +1707,38 @@ async def get_shared_execution(
         raise HTTPException(status_code=404, detail="Shared execution not found")
 
     return execution
+
+
+@v1_router.get("/public/shared/{share_token}/files/{file_id}/download")
+async def download_shared_file(
+    share_token: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+    file_id: Annotated[str, Path],
+) -> Response:
+    """Download a workspace file from a shared execution (no auth required).
+
+    Validates that the file was explicitly exposed when sharing was enabled.
+    Returns a uniform 404 for all failure modes to prevent enumeration attacks.
+    """
+    from backend.api.features.workspace.routes import _create_file_download_response
+    from backend.data.workspace import get_workspace_file_by_id
+
+    # Single-query validation against the allowlist
+    execution_id = await execution_db.get_shared_execution_file(
+        share_token=share_token, file_id=file_id
+    )
+    if not execution_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Look up the actual file (no workspace scoping needed — the allowlist
+    # already validated that this file belongs to the shared execution)
+    file = await get_workspace_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return await _create_file_download_response(file)
 
 
 ########################################################
