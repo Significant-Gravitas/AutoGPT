@@ -421,28 +421,43 @@ export function useCopilotStream({
 
   // Hydrate messages from REST API when not actively streaming.
   // After streaming ends, the SDK's messages may contain duplicates or
-  // misordered entries from the auto-continue SSE replay. The DB has the
-  // correct state. Force-replace on the streaming→ready transition so the
-  // display matches the DB immediately (without needing a page refresh).
+  // misordered entries from the Claude CLI replay. The DB has the correct
+  // state.
+  //
+  // Timing: status becomes "ready" BEFORE onFinish's refetchSession
+  // completes (the refetch has a 500ms delay plus the DB round-trip).
+  // We use a ref flag set on streaming→ready that persists across renders
+  // until hydratedMessages actually refreshes with the DB's final state.
   const prevHydrationStatusRef = useRef(status);
+  const needsForceHydrateRef = useRef(false);
+
+  // Track status transitions — set the flag when streaming ends.
   useEffect(() => {
     const wasStreaming =
       prevHydrationStatusRef.current === "streaming" ||
       prevHydrationStatusRef.current === "submitted";
     const isNowIdle = status === "ready" || status === "error";
     prevHydrationStatusRef.current = status;
+    if (wasStreaming && isNowIdle) {
+      needsForceHydrateRef.current = true;
+    }
+  }, [status]);
 
+  // Apply hydration when data is available.
+  useEffect(() => {
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
 
+    if (needsForceHydrateRef.current) {
+      // Force-replace with fresh DB data — clears any garbled SDK state
+      // from the streaming session (CLI replay, auto-continue merging).
+      setMessages(deduplicateMessages(hydratedMessages));
+      needsForceHydrateRef.current = false;
+      return;
+    }
+
     setMessages((prev) => {
-      // Force-replace when transitioning from streaming to ready — the
-      // hydrated data is the source of truth and the SDK state may have
-      // accumulated replay duplicates or wrong ordering.
-      if (wasStreaming && isNowIdle) {
-        return deduplicateMessages(hydratedMessages);
-      }
       if (prev.length >= hydratedMessages.length) return prev;
       return deduplicateMessages(hydratedMessages);
     });
