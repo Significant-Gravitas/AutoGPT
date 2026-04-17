@@ -60,6 +60,34 @@ describe("isWorkspaceDownloadRequest", () => {
       ]),
     ).toBe(false);
   });
+
+  it("matches api/public/shared/{token}/files/{id}/download pattern", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "abc-token-123",
+        "files",
+        "file-456",
+        "download",
+      ]),
+    ).toBe(true);
+  });
+
+  it("rejects public shared paths not ending with download", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "token",
+        "files",
+        "id",
+        "metadata",
+      ]),
+    ).toBe(false);
+  });
 });
 
 describe("isRedirectStatus", () => {
