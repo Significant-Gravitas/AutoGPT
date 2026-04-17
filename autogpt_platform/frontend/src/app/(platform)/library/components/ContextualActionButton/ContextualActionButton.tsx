@@ -4,8 +4,6 @@ import {
   EyeIcon,
   ArrowsClockwiseIcon,
   MonitorPlayIcon,
-  PlayIcon,
-  ArrowCounterClockwiseIcon,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
