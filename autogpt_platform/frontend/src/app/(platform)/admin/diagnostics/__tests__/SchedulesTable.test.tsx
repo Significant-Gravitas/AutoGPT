@@ -1,0 +1,141 @@
+import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { SchedulesTable } from "../components/SchedulesTable";
+
+const mockAllSchedulesQuery = vi.fn();
+const mockOrphanedSchedulesQuery = vi.fn();
+const mockCleanupOrphaned = vi.fn();
+
+vi.mock("@/app/api/__generated__/endpoints/admin/admin", () => ({
+  useGetV2ListAllUserSchedules: (...args: unknown[]) =>
+    mockAllSchedulesQuery(...args),
+  useGetV2ListOrphanedSchedules: (...args: unknown[]) =>
+    mockOrphanedSchedulesQuery(...args),
+  usePostV2CleanupOrphanedSchedules: () => ({
+    mutateAsync: mockCleanupOrphaned,
+    isPending: false,
+  }),
+}));
+
+function defaultQueryReturn(overrides = {}) {
+  return {
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+    ...overrides,
+  };
+}
+
+function withSchedules(
+  schedules: Record<string, unknown>[],
+  total: number,
+  overrides = {},
+) {
+  return defaultQueryReturn({
+    data: { data: { schedules, total } },
+    ...overrides,
+  });
+}
+
+const sampleSchedule = {
+  schedule_id: "sched-001",
+  schedule_name: "Daily Agent Run",
+  graph_id: "graph-123",
+  graph_name: "My Agent",
+  graph_version: 1,
+  user_id: "user-abc",
+  user_email: "alice@example.com",
+  cron: "0 9 * * *",
+  timezone: "America/New_York",
+  next_run_time: "2026-04-17T13:00:00Z",
+};
+
+const diagnosticsData = {
+  total_orphaned: 3,
+  user_schedules: 10,
+};
+
+function setupDefaultMocks() {
+  mockAllSchedulesQuery.mockReturnValue(defaultQueryReturn());
+  mockOrphanedSchedulesQuery.mockReturnValue(defaultQueryReturn());
+}
+
+afterEach(() => {
+  cleanup();
+  mockAllSchedulesQuery.mockReset();
+  mockOrphanedSchedulesQuery.mockReset();
+  mockCleanupOrphaned.mockReset();
+});
+
+describe("SchedulesTable", () => {
+  it("shows empty state when no schedules", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([], 0));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("No schedules found")).toBeDefined();
+  });
+
+  it("renders schedule rows", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Daily Agent Run")).toBeDefined();
+    expect(screen.getByText("alice@example.com")).toBeDefined();
+    expect(screen.getByText("0 9 * * *")).toBeDefined();
+    expect(screen.getByText("America/New_York")).toBeDefined();
+  });
+
+  it("renders tab triggers with counts", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([], 0));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("All Schedules (10)")).toBeDefined();
+    expect(screen.getByText("Orphaned (3)")).toBeDefined();
+  });
+
+  it("shows loading spinner", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(
+      defaultQueryReturn({ isLoading: true }),
+    );
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(document.querySelector(".animate-spin")).toBeDefined();
+  });
+
+  it("renders graph version", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("v1")).toBeDefined();
+  });
+
+  it("shows unknown for missing graph name", () => {
+    setupDefaultMocks();
+    const noGraphSchedule = { ...sampleSchedule, graph_name: undefined };
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([noGraphSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Unknown")).toBeDefined();
+  });
+
+  it("renders without diagnostics data", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([], 0));
+    render(<SchedulesTable />);
+    expect(screen.getByText("All Schedules")).toBeDefined();
+    expect(screen.getByText("Orphaned")).toBeDefined();
+  });
+
+  it("renders pagination for many schedules", () => {
+    setupDefaultMocks();
+    const schedules = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleSchedule,
+      schedule_id: `sched-${i}`,
+    }));
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 25));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
+    expect(screen.getByText("Previous")).toBeDefined();
+    expect(screen.getByText("Next")).toBeDefined();
+  });
+});

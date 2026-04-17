@@ -1,0 +1,219 @@
+import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ExecutionsTable } from "../components/ExecutionsTable";
+
+const mockRunningQuery = vi.fn();
+const mockOrphanedQuery = vi.fn();
+const mockFailedQuery = vi.fn();
+const mockLongRunningQuery = vi.fn();
+const mockStuckQueuedQuery = vi.fn();
+const mockInvalidQuery = vi.fn();
+const mockStopSingle = vi.fn();
+const mockStopMultiple = vi.fn();
+const mockStopAllLongRunning = vi.fn();
+const mockCleanupOrphaned = vi.fn();
+const mockCleanupAllOrphaned = vi.fn();
+const mockCleanupAllStuckQueued = vi.fn();
+const mockRequeueSingle = vi.fn();
+const mockRequeueMultiple = vi.fn();
+const mockRequeueAllStuck = vi.fn();
+
+vi.mock("@/app/api/__generated__/endpoints/admin/admin", () => ({
+  useGetV2ListRunningExecutions: (...args: unknown[]) =>
+    mockRunningQuery(...args),
+  useGetV2ListOrphanedExecutions: (...args: unknown[]) =>
+    mockOrphanedQuery(...args),
+  useGetV2ListFailedExecutions: (...args: unknown[]) =>
+    mockFailedQuery(...args),
+  useGetV2ListLongRunningExecutions: (...args: unknown[]) =>
+    mockLongRunningQuery(...args),
+  useGetV2ListStuckQueuedExecutions: (...args: unknown[]) =>
+    mockStuckQueuedQuery(...args),
+  useGetV2ListInvalidExecutions: (...args: unknown[]) =>
+    mockInvalidQuery(...args),
+  usePostV2StopSingleExecution: () => ({
+    mutateAsync: mockStopSingle,
+    isPending: false,
+  }),
+  usePostV2StopMultipleExecutions: () => ({
+    mutateAsync: mockStopMultiple,
+    isPending: false,
+  }),
+  usePostV2StopAllLongRunningExecutions: () => ({
+    mutateAsync: mockStopAllLongRunning,
+    isPending: false,
+  }),
+  usePostV2CleanupOrphanedExecutions: () => ({
+    mutateAsync: mockCleanupOrphaned,
+    isPending: false,
+  }),
+  usePostV2CleanupAllOrphanedExecutions: () => ({
+    mutateAsync: mockCleanupAllOrphaned,
+    isPending: false,
+  }),
+  usePostV2CleanupAllStuckQueuedExecutions: () => ({
+    mutateAsync: mockCleanupAllStuckQueued,
+    isPending: false,
+  }),
+  usePostV2RequeueStuckExecution: () => ({
+    mutateAsync: mockRequeueSingle,
+    isPending: false,
+  }),
+  usePostV2RequeueMultipleStuckExecutions: () => ({
+    mutateAsync: mockRequeueMultiple,
+    isPending: false,
+  }),
+  usePostV2RequeueAllStuckQueuedExecutions: () => ({
+    mutateAsync: mockRequeueAllStuck,
+    isPending: false,
+  }),
+}));
+
+function defaultQueryReturn(overrides = {}) {
+  return {
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+    ...overrides,
+  };
+}
+
+function withExecutions(
+  executions: Record<string, unknown>[],
+  total: number,
+  overrides = {},
+) {
+  return defaultQueryReturn({
+    data: { data: { executions, total } },
+    ...overrides,
+  });
+}
+
+const sampleExecution = {
+  execution_id: "exec-001",
+  graph_id: "graph-123",
+  graph_name: "Test Agent",
+  graph_version: 1,
+  user_id: "user-abc",
+  user_email: "alice@example.com",
+  status: "RUNNING",
+  created_at: "2026-04-16T10:00:00Z",
+  started_at: "2026-04-16T10:01:00Z",
+  queue_status: null,
+};
+
+const diagnosticsData = {
+  orphaned_running: 2,
+  orphaned_queued: 1,
+  failed_count_24h: 5,
+  stuck_running_24h: 3,
+  stuck_queued_1h: 2,
+  invalid_queued_with_start: 1,
+  invalid_running_without_start: 1,
+};
+
+function setupDefaultMocks() {
+  mockRunningQuery.mockReturnValue(defaultQueryReturn());
+  mockOrphanedQuery.mockReturnValue(defaultQueryReturn());
+  mockFailedQuery.mockReturnValue(defaultQueryReturn());
+  mockLongRunningQuery.mockReturnValue(defaultQueryReturn());
+  mockStuckQueuedQuery.mockReturnValue(defaultQueryReturn());
+  mockInvalidQuery.mockReturnValue(defaultQueryReturn());
+}
+
+afterEach(() => {
+  cleanup();
+  mockRunningQuery.mockReset();
+  mockOrphanedQuery.mockReset();
+  mockFailedQuery.mockReset();
+  mockLongRunningQuery.mockReset();
+  mockStuckQueuedQuery.mockReset();
+  mockInvalidQuery.mockReset();
+});
+
+describe("ExecutionsTable", () => {
+  it("shows empty state when no executions", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([], 0));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("No running executions")).toBeDefined();
+  });
+
+  it("renders execution rows in all tab", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Test Agent")).toBeDefined();
+    expect(screen.getByText("alice@example.com")).toBeDefined();
+    expect(screen.getByText("RUNNING")).toBeDefined();
+  });
+
+  it("shows loading spinner", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(defaultQueryReturn({ isLoading: true }));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(document.querySelector(".animate-spin")).toBeDefined();
+  });
+
+  it("renders tab triggers with counts from diagnostics data", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([], 0));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/Orphaned/)).toBeDefined();
+    expect(screen.getByText(/Failed/)).toBeDefined();
+    expect(screen.getByText(/Long-Running/)).toBeDefined();
+    expect(screen.getByText(/Stuck Queued/)).toBeDefined();
+    expect(screen.getByText(/Invalid/)).toBeDefined();
+  });
+
+  it("renders error state", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(
+      defaultQueryReturn({ error: { status: 500, message: "Server down" } }),
+    );
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Try Again")).toBeDefined();
+  });
+
+  it("renders failed execution with error message", () => {
+    setupDefaultMocks();
+    const failedExec = {
+      ...sampleExecution,
+      execution_id: "exec-fail-1",
+      status: "FAILED",
+      failed_at: "2026-04-16T12:00:00Z",
+      error_message: "Out of memory",
+    };
+    mockRunningQuery.mockReturnValue(withExecutions([], 0));
+    mockFailedQuery.mockReturnValue(withExecutions([failedExec], 1));
+    render(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="failed" />,
+    );
+    expect(screen.getByText("Out of memory")).toBeDefined();
+  });
+
+  it("renders pagination when total exceeds page size", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 25));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
+    expect(screen.getByText("Previous")).toBeDefined();
+    expect(screen.getByText("Next")).toBeDefined();
+  });
+
+  it("shows unknown for null user email", () => {
+    setupDefaultMocks();
+    const noEmailExec = {
+      ...sampleExecution,
+      user_email: null,
+    };
+    mockRunningQuery.mockReturnValue(withExecutions([noEmailExec], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Unknown")).toBeDefined();
+  });
+});
