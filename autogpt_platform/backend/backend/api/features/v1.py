@@ -1717,6 +1717,7 @@ async def get_shared_execution(
 @v1_router.get(
     "/public/shared/{share_token}/files/{file_id}/download",
     summary="Download a file from a shared execution",
+    operation_id="download_shared_file",
     tags=["graphs"],
 )
 async def download_shared_file(
