@@ -6175,7 +6175,11 @@
             "name": "file_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "File Id" }
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+              "title": "File Id"
+            }
           }
         ],
         "responses": {

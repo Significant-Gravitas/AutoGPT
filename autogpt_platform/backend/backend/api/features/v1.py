@@ -1642,6 +1642,10 @@ async def enable_execution_sharing(
     # Generate a unique share token
     share_token = str(uuid.uuid4())
 
+    # Remove stale allowlist records before updating the token — prevents a
+    # window where old records + new token could coexist.
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Update the execution with share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1650,9 +1654,6 @@ async def enable_execution_sharing(
         share_token=share_token,
         shared_at=datetime.now(timezone.utc),
     )
-
-    # Remove any stale allowlist records from a previous share token
-    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
 
     # Create allowlist of workspace files referenced in outputs
     await execution_db.create_shared_execution_files(
@@ -1725,7 +1726,10 @@ async def download_shared_file(
         str,
         Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
     ],
-    file_id: Annotated[str, Path],
+    file_id: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
 ) -> Response:
     """Download a workspace file from a shared execution (no auth required).
 
