@@ -174,14 +174,18 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
-- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before asking them to connect it.
+- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
 - If the token changes mid-session (e.g. user reconnects with a new token),
   run `gh auth setup-git` to re-register the credential helper.
-- If `gh` or `git` fails with an authentication error (e.g. "authentication
-  required", "could not read Username", or exit code 128), call
+- **MANDATORY:** You MUST run `gh auth status` before EVER calling
+  `connect_integration(provider="github")`. If it shows `Logged in`,
+  proceed directly — no integration connection needed. Never skip this check.
+- If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
+  authentication error (e.g. "authentication required", "could not read
+  Username", or exit code 128), THEN call
   `connect_integration(provider="github")` to surface the GitHub credentials
   setup card so the user can connect their account. Once connected, retry
   the operation.
