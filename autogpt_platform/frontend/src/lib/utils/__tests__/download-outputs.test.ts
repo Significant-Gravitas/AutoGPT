@@ -77,10 +77,23 @@ describe("getUniqueFilename", () => {
 
 const mockZipFile = vi.fn();
 const mockGenerateAsync = vi.fn();
+let mockZipFiles: Record<string, { async: () => Promise<Blob> }> = {};
 
 vi.mock("jszip", () => ({
   default: class MockJSZip {
-    file = mockZipFile;
+    files = mockZipFiles;
+    file = (...args: unknown[]) => {
+      if (typeof args[0] === "string" && args[1] !== undefined) {
+        const content = args[1];
+        mockZipFiles[args[0] as string] = {
+          async: () =>
+            Promise.resolve(
+              content instanceof Blob ? content : new Blob([String(content)]),
+            ),
+        };
+      }
+      mockZipFile(...args);
+    };
     generateAsync = mockGenerateAsync;
   },
 }));
@@ -119,6 +132,7 @@ function makeRenderer(overrides: {
 describe("downloadOutputs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockZipFiles = {};
     mockGenerateAsync.mockResolvedValue(new Blob(["zip-content"]));
     vi.stubGlobal(
       "URL",
@@ -141,7 +155,8 @@ describe("downloadOutputs", () => {
       "combined_output.txt",
       "Hello\n\n---\n\nWorld",
     );
-    expect(mockGenerateAsync).toHaveBeenCalledWith({ type: "blob" });
+    // Single file in zip → downloaded directly, no zip generation
+    expect(mockGenerateAsync).not.toHaveBeenCalled();
   });
 
   it("includes direct blob data in the zip", async () => {
@@ -378,5 +393,31 @@ describe("downloadOutputs", () => {
       expect.stringContaining("file too large"),
     );
     consoleSpy.mockRestore();
+  });
+
+  it("downloads single file directly without zip wrapping", async () => {
+    const blob = new Blob(["single file"]);
+    const items = [
+      makeRenderer({ downloadData: blob, downloadFilename: "photo.png" }),
+    ];
+
+    await downloadOutputs(items);
+
+    expect(mockZipFile).toHaveBeenCalledWith("photo.png", blob);
+    expect(mockGenerateAsync).not.toHaveBeenCalled();
+    expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  it("uses zip when multiple files are present", async () => {
+    const blob1 = new Blob(["file1"]);
+    const blob2 = new Blob(["file2"]);
+    const items = [
+      makeRenderer({ downloadData: blob1, downloadFilename: "a.png" }),
+      makeRenderer({ downloadData: blob2, downloadFilename: "b.png" }),
+    ];
+
+    await downloadOutputs(items);
+
+    expect(mockGenerateAsync).toHaveBeenCalledWith({ type: "blob" });
   });
 });

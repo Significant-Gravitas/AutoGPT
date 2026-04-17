@@ -243,10 +243,23 @@ export async function downloadOutputs(items: DownloadItem[]) {
     hasFiles = true;
   }
 
-  if (hasFiles) {
-    const zipBlob = await zip.generateAsync({ type: "blob" });
-    downloadBlob(zipBlob, "outputs.zip");
+  if (!hasFiles) return;
+
+  // Single-file shortcut: download directly instead of wrapping in a zip
+  if (
+    zip.files &&
+    Object.keys(zip.files).length === 1 &&
+    unfetchableUrls.length === 0
+  ) {
+    const onlyFilename = Object.keys(zip.files)[0];
+    const entry = zip.files[onlyFilename];
+    const content = await entry.async("blob");
+    downloadBlob(content, onlyFilename);
+    return;
   }
+
+  const zipBlob = await zip.generateAsync({ type: "blob" });
+  downloadBlob(zipBlob, "outputs.zip");
 }
 
 function downloadBlob(blob: Blob, filename: string) {

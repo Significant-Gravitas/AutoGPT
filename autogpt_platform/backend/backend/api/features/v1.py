@@ -1649,6 +1649,9 @@ async def enable_execution_sharing(
         shared_at=datetime.now(timezone.utc),
     )
 
+    # Remove any stale allowlist records from a previous share token
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Create allowlist of workspace files referenced in outputs
     await execution_db.create_shared_execution_files(
         execution_id=graph_exec_id,
@@ -1709,7 +1712,11 @@ async def get_shared_execution(
     return execution
 
 
-@v1_router.get("/public/shared/{share_token}/files/{file_id}/download")
+@v1_router.get(
+    "/public/shared/{share_token}/files/{file_id}/download",
+    summary="Download a file from a shared execution",
+    tags=["graphs"],
+)
 async def download_shared_file(
     share_token: Annotated[
         str,
