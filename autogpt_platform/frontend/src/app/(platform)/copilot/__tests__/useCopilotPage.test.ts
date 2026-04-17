@@ -35,6 +35,9 @@ vi.mock("../store", () => ({
 vi.mock("../helpers/convertChatSessionToUiMessages", () => ({
   concatWithAssistantMerge: (a: unknown[], b: unknown[]) => [...a, ...b],
 }));
+vi.mock("../helpers", () => ({
+  deduplicateMessages: (msgs: unknown[]) => msgs,
+}));
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   useDeleteV2DeleteSession: () => ({ mutate: vi.fn(), isPending: false }),
   useGetV2ListSessions: () => ({ data: undefined, isLoading: false }),
