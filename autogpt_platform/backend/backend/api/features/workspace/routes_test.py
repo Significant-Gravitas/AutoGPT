@@ -662,3 +662,153 @@ class TestSanitizeFilenameForHeader:
 
         result = _sanitize_filename_for_header("")
         assert result == 'attachment; filename=""'
+
+
+# -- _create_streaming_response tests --
+
+
+class TestCreateStreamingResponse:
+    def test_attachment_disposition_by_default(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="data.bin", mime_type="application/octet-stream")
+        response = _create_streaming_response(b"binary-data", file)
+        assert response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
+        assert response.headers["Content-Type"] == "application/octet-stream"
+        assert response.headers["Content-Length"] == "11"
+        assert response.body == b"binary-data"
+
+    def test_inline_disposition(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="photo.png", mime_type="image/png")
+        response = _create_streaming_response(b"\x89PNG", file, inline=True)
+        assert response.headers["Content-Disposition"] == 'inline; filename="photo.png"'
+        assert response.headers["Content-Type"] == "image/png"
+
+    def test_inline_sanitizes_filename(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name='evil"\r\n.txt', mime_type="text/plain")
+        response = _create_streaming_response(b"data", file, inline=True)
+        assert "\r" not in response.headers["Content-Disposition"]
+        assert "\n" not in response.headers["Content-Disposition"]
+        assert "inline" in response.headers["Content-Disposition"]
+
+    def test_content_length_matches_body(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        content = b"x" * 1000
+        file = _make_file(name="big.bin", mime_type="application/octet-stream")
+        response = _create_streaming_response(content, file)
+        assert response.headers["Content-Length"] == "1000"
+
+
+# -- create_file_download_response tests --
+
+
+class TestCreateFileDownloadResponse:
+    @pytest.mark.asyncio
+    async def test_local_storage_returns_streaming_response(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.return_value = b"file contents"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(
+            storage_path="local://uploads/test.txt",
+            mime_type="text/plain",
+        )
+        response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"file contents"
+        assert "attachment" in response.headers["Content-Disposition"]
+
+    @pytest.mark.asyncio
+    async def test_local_storage_inline(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.return_value = b"\x89PNG"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(
+            storage_path="local://uploads/photo.png",
+            mime_type="image/png",
+            name="photo.png",
+        )
+        response = await create_file_download_response(file, inline=True)
+        assert "inline" in response.headers["Content-Disposition"]
+
+    @pytest.mark.asyncio
+    async def test_gcs_redirect(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = "https://storage.googleapis.com/signed-url"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.pdf")
+        response = await create_file_download_response(file)
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://storage.googleapis.com/signed-url"
+
+    @pytest.mark.asyncio
+    async def test_gcs_api_fallback_streams_directly(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = "/api/fallback"
+        mock_storage.retrieve.return_value = b"fallback content"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"fallback content"
+
+    @pytest.mark.asyncio
+    async def test_gcs_signed_url_failure_falls_back_to_streaming(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.side_effect = RuntimeError("GCS error")
+        mock_storage.retrieve.return_value = b"streamed"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"streamed"
+
+    @pytest.mark.asyncio
+    async def test_gcs_total_failure_raises(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.side_effect = RuntimeError("GCS error")
+        mock_storage.retrieve.side_effect = RuntimeError("Also failed")
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        with pytest.raises(RuntimeError, match="Also failed"):
+            await create_file_download_response(file)
