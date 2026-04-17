@@ -19,6 +19,7 @@ from typing import (
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
+from prisma.errors import ForeignKeyViolationError, UniqueViolationError
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
@@ -1595,13 +1596,12 @@ async def create_shared_execution_files(
                 }
             )
             created += 1
-        except Exception:
-            # File ID might not exist in workspace — skip gracefully.
-            # This handles the case where an output string looks like a
-            # workspace URI but doesn't reference a real file.
+        except (ForeignKeyViolationError, UniqueViolationError):
+            # ForeignKeyViolationError: file_id doesn't exist in workspace
+            # UniqueViolationError: record already exists (idempotent)
             logger.debug(
                 f"Skipping shared file record for {file_id}: "
-                f"file may not exist in workspace"
+                f"file may not exist or record already exists"
             )
     return created
 

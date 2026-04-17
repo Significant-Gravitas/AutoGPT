@@ -600,3 +600,65 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
     mock_instance.list_files.assert_called_once_with(
         limit=11, offset=50, include_all_sessions=True
     )
+
+
+# -- _sanitize_filename_for_header tests --
+
+
+class TestSanitizeFilenameForHeader:
+    def test_simple_ascii_attachment(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        assert _sanitize_filename_for_header("report.pdf") == (
+            'attachment; filename="report.pdf"'
+        )
+
+    def test_inline_disposition(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        assert _sanitize_filename_for_header("image.png", disposition="inline") == (
+            'inline; filename="image.png"'
+        )
+
+    def test_strips_cr_lf_null(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("a\rb\nc\x00d.txt")
+        assert "\r" not in result
+        assert "\n" not in result
+        assert "\x00" not in result
+        assert 'filename="abcd.txt"' in result
+
+    def test_escapes_quotes(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header('file"name.txt')
+        assert 'filename="file\\"name.txt"' in result
+
+    def test_header_injection_blocked(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("evil.txt\r\nX-Injected: true")
+        # CR/LF stripped — the remaining text is safely inside the quoted value
+        assert "\r" not in result
+        assert "\n" not in result
+        assert result == 'attachment; filename="evil.txtX-Injected: true"'
+
+    def test_unicode_uses_rfc5987(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("日本語.pdf")
+        assert "filename*=UTF-8''" in result
+        assert "attachment" in result
+
+    def test_unicode_inline(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("图片.png", disposition="inline")
+        assert result.startswith("inline; filename*=UTF-8''")
+
+    def test_empty_filename(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("")
+        assert result == 'attachment; filename=""'
