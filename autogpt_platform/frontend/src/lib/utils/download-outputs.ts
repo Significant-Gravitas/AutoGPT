@@ -159,7 +159,8 @@ export async function downloadOutputs(items: DownloadItem[]) {
         if (typeof downloadContent.data === "string") {
           if (
             downloadContent.data.startsWith("http://") ||
-            downloadContent.data.startsWith("https://")
+            downloadContent.data.startsWith("https://") ||
+            downloadContent.data.startsWith("/")
           ) {
             sourceUrl = downloadContent.data;
             blob = await fetchFileAsBlob(downloadContent.data);
