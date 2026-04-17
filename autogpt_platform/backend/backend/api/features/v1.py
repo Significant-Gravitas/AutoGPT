@@ -30,6 +30,7 @@ from pydantic import BaseModel
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -92,6 +93,7 @@ from backend.data.user import (
     update_user_notification_preference,
     update_user_timezone,
 )
+from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -1729,9 +1731,6 @@ async def download_shared_file(
     Validates that the file was explicitly exposed when sharing was enabled.
     Returns a uniform 404 for all failure modes to prevent enumeration attacks.
     """
-    from backend.api.features.workspace.routes import _create_file_download_response
-    from backend.data.workspace import get_workspace_file_by_id
-
     # Single-query validation against the allowlist
     execution_id = await execution_db.get_shared_execution_file(
         share_token=share_token, file_id=file_id
@@ -1745,7 +1744,7 @@ async def download_shared_file(
     if not file:
         raise HTTPException(status_code=404, detail="Not found")
 
-    return await _create_file_download_response(file, inline=True)
+    return await create_file_download_response(file, inline=True)
 
 
 ########################################################
