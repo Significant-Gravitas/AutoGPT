@@ -11,10 +11,11 @@ import { uploadFileDirect } from "@/lib/direct-upload";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
-import type { FileUIPart } from "ai";
+import type { FileUIPart, UIMessage } from "ai";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import { deduplicateMessages } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
@@ -110,7 +111,44 @@ export function useCopilotPage() {
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
-  const messages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+
+  // During auto-continue, the SDK receives a new StreamStart for Turn 2 while
+  // Turn 1's assistant message is still in the array. The recursive call may
+  // replay earlier content, creating duplicate assistant messages with different
+  // IDs but identical or subset text. Remove the earlier one if its text parts
+  // are entirely contained in a later assistant message within the same turn.
+  const messages = useMemo(() => {
+    const deduped = deduplicateMessages(rawMessages);
+    const result: UIMessage[] = [];
+    for (let i = 0; i < deduped.length; i++) {
+      const msg = deduped[i];
+      if (msg.role !== "assistant") {
+        result.push(msg);
+        continue;
+      }
+      const textParts = (msg.parts ?? [])
+        .filter((p) => p.type === "text")
+        .map((p) => (p as { type: "text"; text: string }).text);
+      let isSubset = false;
+      for (let j = i + 1; j < deduped.length; j++) {
+        if (deduped[j].role === "user") break;
+        if (deduped[j].role !== "assistant") continue;
+        const laterTexts = (deduped[j].parts ?? [])
+          .filter((p) => p.type === "text")
+          .map((p) => (p as { type: "text"; text: string }).text);
+        if (
+          textParts.length > 0 &&
+          textParts.every((t) => laterTexts.includes(t))
+        ) {
+          isSubset = true;
+          break;
+        }
+      }
+      if (!isSubset) result.push(msg);
+    }
+    return result;
+  }, [rawMessages]);
 
   useCopilotNotifications(sessionId);
 
