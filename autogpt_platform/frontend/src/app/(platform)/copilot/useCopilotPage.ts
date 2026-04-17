@@ -457,48 +457,41 @@ export function useCopilotPage() {
     }
 
     if (autoContinueStarted) {
-      // Auto-continue consumed queued messages. Promote chips to real user
-      // bubbles by inserting them before the new assistant message in the
-      // SDK's messages array.
-      const chipsToPromote = [...queuedMessagesRef.current];
+      // Auto-continue: each new assistant message = one queued message
+      // being processed. Insert ONE chip (FIFO) as a user bubble BEFORE
+      // each new assistant message. This prevents the SDK's tool calls
+      // from bunching together without user bubbles to separate them.
+      const chips = queuedMessagesRef.current;
+      const toPromote = chips.slice(0, newAssistantIds.length);
+      const remaining = chips.slice(newAssistantIds.length);
 
-      // Peek: only promote if buffer is actually drained
-      void getV2GetPendingMessages(sessionId).then((res) => {
-        if (res.status !== 200) return;
-        const stillQueued = res.data.count > 0 ? res.data.messages : [];
-
-        // Chips that were consumed (not still in buffer)
-        const consumed = chipsToPromote.filter((c) => !stillQueued.includes(c));
-        if (consumed.length === 0) return;
-
-        // Insert consumed chips as real user messages before the last
-        // assistant message (the one auto-continue just created)
+      if (toPromote.length > 0) {
         setMessages((prev) => {
-          const entries = consumed.map((content, i) => ({
-            id: `promoted-${Date.now()}-${i}`,
-            role: "user" as const,
-            parts: [
-              {
-                type: "text" as const,
-                text: content,
-                state: "done" as const,
-              },
-            ],
-          }));
-          const lastAssistantIdx = prev.findLastIndex(
-            (m) => m.role === "assistant",
-          );
-          if (lastAssistantIdx === -1) return [...prev, ...entries];
-          return [
-            ...prev.slice(0, lastAssistantIdx),
-            ...entries,
-            ...prev.slice(lastAssistantIdx),
-          ];
+          const result = [...prev];
+          toPromote.forEach((content, i) => {
+            const assistantId = newAssistantIds[i];
+            const assistantIdx = result.findIndex((m) => m.id === assistantId);
+            const entry = {
+              id: `promoted-${assistantId}`,
+              role: "user" as const,
+              parts: [
+                {
+                  type: "text" as const,
+                  text: content,
+                  state: "done" as const,
+                },
+              ],
+            };
+            if (assistantIdx !== -1) {
+              result.splice(assistantIdx, 0, entry);
+            } else {
+              result.push(entry);
+            }
+          });
+          return result;
         });
-
-        // Update chips: keep only those still in buffer
-        setQueuedMessages(stillQueued);
-      });
+        setQueuedMessages(remaining);
+      }
     }
   }, [messages, status, sessionId, setMessages]);
 
