@@ -1,4 +1,9 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SchedulesTable } from "../components/SchedulesTable";
 
@@ -137,5 +142,59 @@ describe("SchedulesTable", () => {
     expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
     expect(screen.getByText("Previous")).toBeDefined();
     expect(screen.getByText("Next")).toBeDefined();
+  });
+
+  it("copies user ID to clipboard on click", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    fireEvent.click(screen.getByText("user-abc".substring(0, 8) + "..."));
+    expect(writeText).toHaveBeenCalledWith("user-abc");
+    vi.unstubAllGlobals();
+  });
+
+  it("shows unknown for null user email", () => {
+    setupDefaultMocks();
+    const noEmailSchedule = { ...sampleSchedule, user_email: null };
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([noEmailSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Unknown")).toBeDefined();
+  });
+
+  it("renders cron expression in code block", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const codeEl = screen.getByText("0 9 * * *");
+    expect(codeEl.tagName.toLowerCase()).toBe("code");
+  });
+
+  it("renders next run time as date string", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const dateStr = new Date("2026-04-17T13:00:00Z").toLocaleString();
+    expect(screen.getByText(dateStr)).toBeDefined();
+  });
+
+  it("shows not scheduled for missing next run time", () => {
+    setupDefaultMocks();
+    const noRunTime = { ...sampleSchedule, next_run_time: null };
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([noRunTime], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Not scheduled")).toBeDefined();
+  });
+
+  it("renders table headers", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Name")).toBeDefined();
+    expect(screen.getByText("Graph")).toBeDefined();
+    expect(screen.getByText("User")).toBeDefined();
+    expect(screen.getByText("Cron")).toBeDefined();
+    expect(screen.getByText("Next Run")).toBeDefined();
   });
 });
