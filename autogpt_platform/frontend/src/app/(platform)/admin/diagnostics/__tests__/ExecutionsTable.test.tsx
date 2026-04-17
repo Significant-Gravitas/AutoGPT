@@ -353,4 +353,139 @@ describe("ExecutionsTable", () => {
     render(<ExecutionsTable />);
     expect(screen.getByText(/All/)).toBeDefined();
   });
+
+  it("renders stuck-queued bulk action buttons when total > 0", () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 5));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    expect(screen.getByText(/Cleanup All \(5\)/)).toBeDefined();
+    expect(screen.getByText(/Requeue All \(5\)/)).toBeDefined();
+  });
+
+  it("renders long-running stop all button when total > 0", () => {
+    setupDefaultMocks();
+    mockLongRunningQuery.mockReturnValue(withExecutions([sampleExecution], 3));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="long-running"
+      />,
+    );
+    expect(screen.getByText(/Stop All Long-Running \(3\)/)).toBeDefined();
+  });
+
+  it("shows invalid state read-only banner", () => {
+    setupDefaultMocks();
+    mockInvalidQuery.mockReturnValue(withExecutions([], 0));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="invalid"
+      />,
+    );
+    expect(
+      screen.getByText(
+        /Read-only: Invalid states require manual investigation/,
+      ),
+    ).toBeDefined();
+  });
+
+  it("shows view-only message in failed tab with no selection", () => {
+    setupDefaultMocks();
+    const failedExec = {
+      ...sampleExecution,
+      status: "FAILED",
+      error_message: "err",
+    };
+    mockFailedQuery.mockReturnValue(withExecutions([failedExec], 1));
+    render(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="failed" />,
+    );
+    expect(screen.getByText("View-only (select to delete)")).toBeDefined();
+  });
+
+  it("renders table column headers", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Execution ID")).toBeDefined();
+    expect(screen.getByText("Agent Name")).toBeDefined();
+    expect(screen.getByText("Version")).toBeDefined();
+    expect(screen.getByText("User")).toBeDefined();
+    expect(screen.getByText("Status")).toBeDefined();
+    expect(screen.getByText("Age")).toBeDefined();
+  });
+
+  it("renders failed tab with error column header", () => {
+    setupDefaultMocks();
+    const failedExec = {
+      ...sampleExecution,
+      status: "FAILED",
+      failed_at: "2026-04-16T12:00:00Z",
+      error_message: "Timeout",
+    };
+    mockFailedQuery.mockReturnValue(withExecutions([failedExec], 1));
+    render(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="failed" />,
+    );
+    expect(screen.getByText("Error Message")).toBeDefined();
+    expect(screen.getByText("Timeout")).toBeDefined();
+  });
+
+  it("renders no error message text when error_message is null", () => {
+    setupDefaultMocks();
+    const failedNoMsg = {
+      ...sampleExecution,
+      status: "FAILED",
+      failed_at: "2026-04-16T12:00:00Z",
+      error_message: null,
+    };
+    mockFailedQuery.mockReturnValue(withExecutions([failedNoMsg], 1));
+    render(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="failed" />,
+    );
+    expect(screen.getByText("No error message")).toBeDefined();
+  });
+
+  it("renders started_at as dash when null in non-failed tab", () => {
+    setupDefaultMocks();
+    const noStart = { ...sampleExecution, started_at: null };
+    mockRunningQuery.mockReturnValue(withExecutions([noStart], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const dashes = screen.getAllByText("-");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders failed_at as dash when null in failed tab", () => {
+    setupDefaultMocks();
+    const failedNoDate = {
+      ...sampleExecution,
+      status: "FAILED",
+      failed_at: null,
+      error_message: "err",
+    };
+    mockFailedQuery.mockReturnValue(withExecutions([failedNoDate], 1));
+    render(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="failed" />,
+    );
+    const dashes = screen.getAllByText("-");
+    expect(dashes.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders Executions card title", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([], 0));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText("Executions")).toBeDefined();
+  });
 });
