@@ -86,16 +86,6 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     return sessionQuery.data.data.oldest_sequence ?? null;
   }, [sessionQuery.data]);
 
-  const newestSequence = useMemo(() => {
-    if (sessionQuery.data?.status !== 200) return null;
-    return sessionQuery.data.data.newest_sequence ?? null;
-  }, [sessionQuery.data]);
-
-  const forwardPaginated = useMemo(() => {
-    if (sessionQuery.data?.status !== 200) return false;
-    return !!sessionQuery.data.data.forward_paginated;
-  }, [sessionQuery.data]);
-
   // Memoize so the effect in useCopilotPage doesn't infinite-loop on a new
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
@@ -195,8 +185,6 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,
-    newestSequence,
-    forwardPaginated,
     isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
     createSession,

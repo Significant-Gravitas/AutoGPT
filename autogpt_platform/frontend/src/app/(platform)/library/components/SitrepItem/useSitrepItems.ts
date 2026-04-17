@@ -19,21 +19,32 @@ import {
 export function useSitrepItems(
   agents: LibraryAgent[],
   maxItems: number,
+  scheduledWithinMs?: number,
 ): SitrepItemData[] {
   const { data: executions } = useGetV1ListAllExecutions({
     query: { select: okData },
   });
 
   return useMemo(() => {
-    if (!executions || agents.length === 0) return [];
+    if (agents.length === 0) return [];
 
     const graphIdToAgent = new Map(agents.map((a) => [a.graph_id, a]));
-    const agentExecutions = groupByAgent(executions, graphIdToAgent);
+    const agentExecutions = groupByAgent(executions ?? [], graphIdToAgent);
     const items: SitrepItemData[] = [];
+    const coveredAgentIds = new Set<string>();
 
     for (const [agent, execs] of agentExecutions) {
       const item = buildSitrepFromExecutions(agent, execs);
-      if (item) items.push(item);
+      if (item) {
+        items.push(item);
+        coveredAgentIds.add(agent.id);
+      }
+    }
+
+    for (const agent of agents) {
+      if (coveredAgentIds.has(agent.id)) continue;
+      const configItem = buildSitrepFromConfig(agent, scheduledWithinMs);
+      if (configItem) items.push(configItem);
     }
 
     const order: Record<SitrepPriority, number> = {
@@ -48,7 +59,7 @@ export function useSitrepItems(
     items.sort((a, b) => order[a.priority] - order[b.priority]);
 
     return items.slice(0, maxItems);
-  }, [agents, executions, maxItems]);
+  }, [agents, executions, maxItems, scheduledWithinMs]);
 }
 
 function groupByAgent(
@@ -130,4 +141,58 @@ function buildSitrepFromExecutions(
   }
 
   return null;
+}
+
+function buildSitrepFromConfig(
+  agent: LibraryAgent,
+  scheduledWithinMs?: number,
+): SitrepItemData | null {
+  if (agent.has_external_trigger) {
+    return {
+      id: `${agent.id}-listening`,
+      agentID: agent.id,
+      agentName: agent.name,
+      priority: "listening",
+      message: "Waiting for trigger event",
+      status: "listening",
+    };
+  }
+
+  if (agent.is_scheduled || agent.recommended_schedule_cron) {
+    if (!isNextRunWithin(agent.next_scheduled_run, scheduledWithinMs)) {
+      return null;
+    }
+    return {
+      id: `${agent.id}-scheduled`,
+      agentID: agent.id,
+      agentName: agent.name,
+      priority: "scheduled",
+      message: formatNextRun(agent.next_scheduled_run),
+      status: "scheduled",
+    };
+  }
+
+  return null;
+}
+
+function isNextRunWithin(
+  iso: string | undefined | null,
+  windowMs: number | undefined,
+): boolean {
+  if (windowMs === undefined) return true;
+  if (!iso) return false;
+  const diff = new Date(iso).getTime() - Date.now();
+  return diff <= windowMs;
+}
+
+function formatNextRun(iso: string | undefined | null): string {
+  if (!iso) return "Has a scheduled run";
+  const diff = new Date(iso).getTime() - Date.now();
+  const minutes = Math.round(diff / 60_000);
+  if (minutes <= 0) return "Scheduled to run soon";
+  if (minutes < 60) return `Scheduled to run in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Scheduled to run in ${hours}h`;
+  const days = Math.round(hours / 24);
+  return `Scheduled to run in ${days}d`;
 }

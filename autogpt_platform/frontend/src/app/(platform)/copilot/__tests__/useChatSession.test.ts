@@ -48,75 +48,40 @@ function makeQueryResult(data: object | null) {
   };
 }
 
-describe("useChatSession — newestSequence and forwardPaginated", () => {
+describe("useChatSession — pagination metadata", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("returns null / false when no session data", () => {
+  it("returns null for oldestSequence when no session data", () => {
     mockUseGetV2GetSession.mockReturnValue(makeQueryResult(null));
     const { result } = renderHook(() => useChatSession());
-    expect(result.current.newestSequence).toBeNull();
-    expect(result.current.forwardPaginated).toBe(false);
+    expect(result.current.oldestSequence).toBeNull();
   });
 
-  it("returns newestSequence from session data", () => {
-    mockUseGetV2GetSession.mockReturnValue(
-      makeQueryResult({
-        messages: [],
-        has_more_messages: true,
-        oldest_sequence: 0,
-        newest_sequence: 99,
-        forward_paginated: false,
-        active_stream: null,
-      }),
-    );
-    const { result } = renderHook(() => useChatSession());
-    expect(result.current.newestSequence).toBe(99);
-  });
-
-  it("returns null for newestSequence when field is missing", () => {
-    mockUseGetV2GetSession.mockReturnValue(
-      makeQueryResult({
-        messages: [],
-        has_more_messages: false,
-        oldest_sequence: 0,
-        newest_sequence: null,
-        forward_paginated: false,
-        active_stream: null,
-      }),
-    );
-    const { result } = renderHook(() => useChatSession());
-    expect(result.current.newestSequence).toBeNull();
-  });
-
-  it("returns forwardPaginated=true when session is forward-paginated", () => {
-    mockUseGetV2GetSession.mockReturnValue(
-      makeQueryResult({
-        messages: [],
-        has_more_messages: true,
-        oldest_sequence: 0,
-        newest_sequence: 49,
-        forward_paginated: true,
-        active_stream: null,
-      }),
-    );
-    const { result } = renderHook(() => useChatSession());
-    expect(result.current.forwardPaginated).toBe(true);
-  });
-
-  it("returns forwardPaginated=false when session is backward-paginated", () => {
+  it("returns oldestSequence from session data", () => {
     mockUseGetV2GetSession.mockReturnValue(
       makeQueryResult({
         messages: [],
         has_more_messages: true,
         oldest_sequence: 50,
-        newest_sequence: 99,
-        forward_paginated: false,
         active_stream: null,
       }),
     );
     const { result } = renderHook(() => useChatSession());
-    expect(result.current.forwardPaginated).toBe(false);
+    expect(result.current.oldestSequence).toBe(50);
+  });
+
+  it("returns hasMoreMessages from session data", () => {
+    mockUseGetV2GetSession.mockReturnValue(
+      makeQueryResult({
+        messages: [],
+        has_more_messages: true,
+        oldest_sequence: 0,
+        active_stream: null,
+      }),
+    );
+    const { result } = renderHook(() => useChatSession());
+    expect(result.current.hasMoreMessages).toBe(true);
   });
 });

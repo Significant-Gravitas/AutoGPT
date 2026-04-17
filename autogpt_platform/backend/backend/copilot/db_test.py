@@ -175,185 +175,136 @@ async def test_no_where_on_messages_without_before_sequence(
     assert "where" not in include["Messages"]
 
 
-# ---------- Forward pagination (from_start / after_sequence) ----------
+# ---------- Visibility guarantee ----------
 
 
 @pytest.mark.asyncio
-async def test_from_start_uses_asc_order_no_where(
+async def test_visibility_expands_when_all_tool_messages(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """from_start=True queries messages in ASC order with no where filter."""
-    find_first, _ = mock_db
+    """When the entire page is tool messages, expand backward to find
+    at least one visible (user/assistant) message so the chat isn't blank."""
+    find_first, find_many = mock_db
+    # Newest 3 messages are all tool messages (DESC → reversed to ASC)
     find_first.return_value = _make_session(
-        messages=[_make_msg(0), _make_msg(1), _make_msg(2)],
+        messages=[
+            _make_msg(12, role="tool"),
+            _make_msg(11, role="tool"),
+            _make_msg(10, role="tool"),
+        ],
     )
+    # Boundary expansion finds the owning assistant first (boundary fix),
+    # then visibility expansion finds a user message further back
+    find_many.side_effect = [
+        # First call: boundary fix (oldest msg is tool → find owner)
+        [_make_msg(9, role="tool"), _make_msg(8, role="tool")],
+        # Second call: visibility expansion (still all tool → find visible)
+        [_make_msg(7, role="tool"), _make_msg(6, role="assistant")],
+    ]
 
-    await get_chat_messages_paginated(SESSION_ID, limit=50, from_start=True)
-
-    call_kwargs = find_first.call_args
-    include = call_kwargs.kwargs.get("include") or call_kwargs[1].get("include")
-    assert include["Messages"]["order_by"] == {"sequence": "asc"}
-    assert "where" not in include["Messages"]
-
-
-@pytest.mark.asyncio
-async def test_from_start_returns_messages_ascending(
-    mock_db: tuple[AsyncMock, AsyncMock],
-):
-    """from_start=True returns messages in ascending sequence order."""
-    find_first, _ = mock_db
-    find_first.return_value = _make_session(
-        messages=[_make_msg(0), _make_msg(1), _make_msg(2)],
-    )
-
-    page = await get_chat_messages_paginated(SESSION_ID, limit=50, from_start=True)
+    page = await get_chat_messages_paginated(SESSION_ID, limit=3)
 
     assert page is not None
-    assert [m.sequence for m in page.messages] == [0, 1, 2]
-    assert (
-        page.oldest_sequence is None
-    )  # None in forward mode — not a valid backward cursor
-    assert page.newest_sequence == 2
-    assert page.has_more is False
-
-
-@pytest.mark.asyncio
-async def test_from_start_has_more_when_results_exceed_limit(
-    mock_db: tuple[AsyncMock, AsyncMock],
-):
-    """from_start=True sets has_more when DB returns more than limit items."""
-    find_first, _ = mock_db
-    find_first.return_value = _make_session(
-        messages=[_make_msg(0), _make_msg(1), _make_msg(2)],
-    )
-
-    page = await get_chat_messages_paginated(SESSION_ID, limit=2, from_start=True)
-
-    assert page is not None
+    # Should include the expanded messages + original tool messages
+    roles = [m.role for m in page.messages]
+    assert "assistant" in roles or "user" in roles
     assert page.has_more is True
-    assert [m.sequence for m in page.messages] == [0, 1]
-    assert page.newest_sequence == 1
 
 
 @pytest.mark.asyncio
-async def test_after_sequence_uses_gt_filter_asc_order(
+async def test_no_visibility_expansion_when_visible_messages_present(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """after_sequence adds a sequence > N where clause and uses ASC order."""
-    find_first, _ = mock_db
+    """No visibility expansion needed when page already has visible messages."""
+    find_first, find_many = mock_db
+    # Page has an assistant message among tool messages
     find_first.return_value = _make_session(
-        messages=[_make_msg(11), _make_msg(12)],
+        messages=[
+            _make_msg(5, role="tool"),
+            _make_msg(4, role="assistant"),
+            _make_msg(3, role="user"),
+        ],
     )
 
-    await get_chat_messages_paginated(SESSION_ID, limit=50, after_sequence=10)
-
-    call_kwargs = find_first.call_args
-    include = call_kwargs.kwargs.get("include") or call_kwargs[1].get("include")
-    assert include["Messages"]["order_by"] == {"sequence": "asc"}
-    assert include["Messages"]["where"] == {"sequence": {"gt": 10}}
-
-
-@pytest.mark.asyncio
-async def test_after_sequence_returns_messages_in_order(
-    mock_db: tuple[AsyncMock, AsyncMock],
-):
-    """after_sequence returns only messages with sequence > cursor, ascending."""
-    find_first, _ = mock_db
-    find_first.return_value = _make_session(
-        messages=[_make_msg(11), _make_msg(12), _make_msg(13)],
-    )
-
-    page = await get_chat_messages_paginated(SESSION_ID, limit=50, after_sequence=10)
+    page = await get_chat_messages_paginated(SESSION_ID, limit=3)
 
     assert page is not None
-    assert [m.sequence for m in page.messages] == [11, 12, 13]
-    assert (
-        page.oldest_sequence is None
-    )  # None in forward mode — not a valid backward cursor
-    assert page.newest_sequence == 13
-    assert page.has_more is False
+    # Boundary expansion might fire (oldest is tool), but NOT visibility
+    assert [m.sequence for m in page.messages][0] <= 3
 
 
 @pytest.mark.asyncio
-async def test_newest_sequence_none_for_backward_mode(
+async def test_visibility_no_expansion_when_no_earlier_messages(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """newest_sequence is None in backward mode — it is not a valid forward cursor."""
-    find_first, _ = mock_db
-    find_first.return_value = _make_session(
-        messages=[_make_msg(5), _make_msg(4), _make_msg(3)],
-    )
-
-    page = await get_chat_messages_paginated(SESSION_ID, limit=50)
-
-    assert page is not None
-    assert page.newest_sequence is None
-    assert page.oldest_sequence == 3
-
-
-@pytest.mark.asyncio
-async def test_forward_mode_no_boundary_expansion(
-    mock_db: tuple[AsyncMock, AsyncMock],
-):
-    """Forward pagination never triggers backward boundary expansion."""
+    """When the page is all tool messages but there are no earlier messages
+    in the DB, visibility expansion returns early without changes."""
     find_first, find_many = mock_db
     find_first.return_value = _make_session(
-        messages=[_make_msg(0, role="tool"), _make_msg(1, role="tool")],
+        messages=[_make_msg(1, role="tool"), _make_msg(0, role="tool")],
     )
+    # Boundary expansion: no earlier messages
+    # Visibility expansion: no earlier messages
+    find_many.side_effect = [[], []]
 
-    await get_chat_messages_paginated(SESSION_ID, limit=50, from_start=True)
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
 
-    assert find_many.call_count == 0
+    assert page is not None
+    assert all(m.role == "tool" for m in page.messages)
 
 
 @pytest.mark.asyncio
-async def test_forward_tail_boundary_trims_trailing_tool_messages(
+async def test_visibility_expansion_reaches_seq_zero(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """Forward pages that end with tool messages are trimmed to the owning
-    assistant so the next after_sequence page doesn't start mid-tool-group."""
-    find_first, _ = mock_db
-    # DB returns 4 messages ASC: assistant at 0, tool at 1, tool at 2, tool at 3
+    """When visibility expansion finds a visible message at sequence 0,
+    has_more should be False."""
+    find_first, find_many = mock_db
     find_first.return_value = _make_session(
-        messages=[
-            _make_msg(0, role="assistant"),
+        messages=[_make_msg(5, role="tool"), _make_msg(4, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(3, role="tool")],
+        # Visibility expansion — finds user at seq 0
+        [
+            _make_msg(2, role="tool"),
             _make_msg(1, role="tool"),
-            _make_msg(2, role="tool"),
-            _make_msg(3, role="tool"),
+            _make_msg(0, role="user"),
         ],
-    )
+    ]
 
-    page = await get_chat_messages_paginated(SESSION_ID, limit=10, from_start=True)
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
 
     assert page is not None
-    # Page should be trimmed to end at the assistant message
-    assert [m.sequence for m in page.messages] == [0]
-    assert page.newest_sequence == 0
-    # has_more must be True so the client fetches the tool messages on next page
-    assert page.has_more is True
+    assert page.messages[0].role == "user"
+    assert page.messages[0].sequence == 0
+    assert page.has_more is False
 
 
 @pytest.mark.asyncio
-async def test_forward_tail_boundary_no_trim_when_last_not_tool(
+async def test_visibility_expansion_with_user_id(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
-    """Forward pages that end with a non-tool message are not trimmed."""
-    find_first, _ = mock_db
+    """Visibility expansion passes user_id filter to the boundary query."""
+    find_first, find_many = mock_db
     find_first.return_value = _make_session(
-        messages=[
-            _make_msg(0, role="user"),
-            _make_msg(1, role="assistant"),
-            _make_msg(2, role="tool"),
-            _make_msg(3, role="assistant"),
-        ],
+        messages=[_make_msg(10, role="tool")],
     )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(9, role="tool")],
+        # Visibility expansion
+        [_make_msg(8, role="assistant")],
+    ]
 
-    page = await get_chat_messages_paginated(SESSION_ID, limit=10, from_start=True)
+    await get_chat_messages_paginated(SESSION_ID, limit=1, user_id="user-abc")
 
-    assert page is not None
-    assert [m.sequence for m in page.messages] == [0, 1, 2, 3]
-    assert page.newest_sequence == 3
-    assert page.has_more is False
+    # Both find_many calls should include the user_id session filter
+    for call in find_many.call_args_list:
+        where = call.kwargs.get("where") or call[1].get("where")
+        assert "Session" in where
+        assert where["Session"] == {"is": {"userId": "user-abc"}}
 
 
 @pytest.mark.asyncio
@@ -510,7 +461,8 @@ async def test_boundary_expansion_warns_when_no_owner_found(
 
     with patch("backend.copilot.db.logger") as mock_logger:
         page = await get_chat_messages_paginated(SESSION_ID, limit=5)
-        mock_logger.warning.assert_called_once()
+        # Two warnings: boundary expansion + visibility expansion (all tool msgs)
+        assert mock_logger.warning.call_count == 2
 
     assert page is not None
     assert page.messages[0].role == "tool"

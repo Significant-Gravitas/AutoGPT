@@ -172,36 +172,6 @@ describe("LoadMoreSentinel", () => {
     expect(mockScrollEl.scrollTop).toBe(200);
   });
 
-  it("does NOT adjust scroll when adjustScroll=false (forward pagination)", () => {
-    mockScrollEl.scrollHeight = 100;
-    mockScrollEl.scrollTop = 50;
-    const onLoadMore = vi.fn();
-    const { rerender } = render(
-      <LoadMoreSentinel
-        hasMore={true}
-        isLoading={false}
-        messageCount={5}
-        onLoadMore={onLoadMore}
-        adjustScroll={false}
-      />,
-    );
-    // Fire observer to capture snapshot.
-    MockIntersectionObserver.lastCallback?.([{ isIntersecting: true }]);
-    // Simulate DOM growing from appended newer messages (forward load-more).
-    mockScrollEl.scrollHeight = 300;
-    rerender(
-      <LoadMoreSentinel
-        hasMore={true}
-        isLoading={false}
-        messageCount={10}
-        onLoadMore={onLoadMore}
-        adjustScroll={false}
-      />,
-    );
-    // scrollTop should remain unchanged — no jump for forward pagination.
-    expect(mockScrollEl.scrollTop).toBe(50);
-  });
-
   it("ignores same-frame duplicate triggers until isLoading transitions", () => {
     const onLoadMore = vi.fn();
     const { rerender } = render(
