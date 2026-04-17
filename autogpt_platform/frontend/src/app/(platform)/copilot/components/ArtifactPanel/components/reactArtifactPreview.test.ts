@@ -116,4 +116,11 @@ describe("buildReactArtifactSrcDoc", () => {
     expect(doc).toContain("/^[A-Z]/.test(name)");
     expect(doc).toContain("wrapWithProviders");
   });
+
+  it("injects the fragment-link interceptor so #anchor clicks stay inside the iframe (regression)", () => {
+    const doc = buildReactArtifactSrcDoc("module.exports = {};", "A", STYLES);
+    expect(doc).toContain("__fragmentLinkInterceptor");
+    expect(doc).toContain('a[href^="#"]');
+    expect(doc).toContain("scrollIntoView");
+  });
 });

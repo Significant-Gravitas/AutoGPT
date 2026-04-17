@@ -412,6 +412,41 @@ describe("ArtifactContent", () => {
     expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
   });
 
+  it("injects the fragment-link interceptor into HTML artifact iframes (regression)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: () =>
+          Promise.resolve(
+            '<html><head></head><body><a href="#x">x</a><div id="x">x</div></body></html>',
+          ),
+      }),
+    );
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={makeArtifact({
+          id: "html-frag",
+          title: "page.html",
+          mimeType: "text/html",
+        })}
+        isSourceView={false}
+        classification={makeClassification({ type: "html" })}
+      />,
+    );
+
+    await screen.findByTitle("page.html");
+    const srcdoc = container.querySelector("iframe")?.getAttribute("srcdoc");
+    expect(srcdoc).toBeTruthy();
+    // Markers unique to FRAGMENT_LINK_INTERCEPTOR_SCRIPT — if any of these
+    // disappear, the interceptor is no longer being injected and fragment
+    // links will navigate the parent URL again.
+    expect(srcdoc).toContain("__fragmentLinkInterceptor");
+    expect(srcdoc).toContain('a[href^="#"]');
+    expect(srcdoc).toContain("scrollIntoView");
+  });
+
   // ── Source view ───────────────────────────────────────────────────
 
   it("renders source view as pre tag", async () => {
@@ -922,6 +957,164 @@ describe("ArtifactContent", () => {
       );
     },
   );
+
+  // ── Error boundary ────────────────────────────────────────────────
+
+  it("shows a visible error instead of crashing when the renderer throws", async () => {
+    const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const originalImpl = vi
+      .mocked(ArtifactReactPreview)
+      .getMockImplementation();
+    vi.mocked(ArtifactReactPreview).mockImplementation(() => {
+      throw new Error("boom in renderer");
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve("source"),
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "crash-001",
+      title: "broken.tsx",
+      mimeType: "text/tsx",
+    });
+    const classification = makeClassification({ type: "react" });
+
+    render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={classification}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/This artifact couldn't be rendered/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/boom in renderer/)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /copy error details/i }),
+    ).toBeTruthy();
+
+    if (originalImpl) {
+      vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+    }
+    consoleErr.mockRestore();
+  });
+
+  it("copies artifact title, type, and error to the clipboard", async () => {
+    const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      writable: true,
+      configurable: true,
+    });
+
+    const originalImpl = vi
+      .mocked(ArtifactReactPreview)
+      .getMockImplementation();
+    vi.mocked(ArtifactReactPreview).mockImplementation(() => {
+      throw new Error("jsx parse failed at line 42");
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve("source"),
+      }),
+    );
+
+    render(
+      <ArtifactContent
+        artifact={makeArtifact({
+          id: "crash-002",
+          title: "report.tsx",
+          mimeType: "text/tsx",
+        })}
+        isSourceView={false}
+        classification={makeClassification({ type: "react" })}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /copy error details/i }),
+    );
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
+    });
+    const payload = writeText.mock.calls[0]![0] as string;
+    expect(payload).toContain("report.tsx");
+    expect(payload).toContain("react");
+    expect(payload).toContain("jsx parse failed at line 42");
+
+    if (originalImpl) {
+      vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+    }
+    consoleErr.mockRestore();
+  });
+
+  it("renders the user-reported plotly HTML artifact into a sandboxed iframe", async () => {
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AutoGPT Beta Launch Interactive Report</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root { --bg: #f8f9fa; --primary: #6c5ce7; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<header><h1>\u{1F4CA} AutoGPT Beta Launch Interactive Report</h1></header>
+<div class="chart-container" id="globalActivationChart"></div>
+<script>
+  function showTab(tabId, groupId) {
+    const group = document.getElementById(groupId);
+    group.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+  }
+  Plotly.newPlot('globalActivationChart', [{ type: 'pie', values: [1, 2] }], {});
+</script>
+</body>
+</html>`;
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(html),
+      }),
+    );
+
+    const artifact = makeArtifact({
+      id: "html-big-report",
+      title: "report.html",
+      mimeType: "text/html",
+    });
+
+    const { container } = render(
+      <ArtifactContent
+        artifact={artifact}
+        isSourceView={false}
+        classification={makeClassification({ type: "html" })}
+      />,
+    );
+
+    await screen.findByTitle("report.html");
+    const iframe = container.querySelector("iframe");
+    expect(iframe).toBeTruthy();
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(screen.queryByText(/couldn't be rendered/i)).toBeNull();
+  });
 
   it("falls back to pre tag when no renderer matches", async () => {
     const { globalRegistry } = await import(

@@ -6,9 +6,11 @@ import { Suspense, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ArtifactRef } from "../../../store";
 import type { ArtifactClassification } from "../helpers";
+import { ArtifactErrorBoundary } from "./ArtifactErrorBoundary";
 import { ArtifactReactPreview } from "./ArtifactReactPreview";
 import { ArtifactSkeleton } from "./ArtifactSkeleton";
 import {
+  FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
   TAILWIND_CDN_URL,
   wrapWithHeadInjection,
 } from "@/lib/iframe-sandbox-csp";
@@ -53,13 +55,18 @@ function ArtifactContentLoader({
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <ArtifactRenderer
-        artifact={artifact}
-        content={content}
-        pdfUrl={pdfUrl}
-        isSourceView={isSourceView}
-        classification={classification}
-      />
+      <ArtifactErrorBoundary
+        artifactTitle={artifact.title}
+        artifactType={classification.type}
+      >
+        <ArtifactRenderer
+          artifact={artifact}
+          content={content}
+          pdfUrl={pdfUrl}
+          isSourceView={isSourceView}
+          classification={classification}
+        />
+      </ArtifactErrorBoundary>
     </div>
   );
 }
@@ -200,7 +207,10 @@ function ArtifactRenderer({
   if (classification.type === "html") {
     // Inject Tailwind CDN — no CSP (see iframe-sandbox-csp.ts for why)
     const tailwindScript = `<script src="${TAILWIND_CDN_URL}"></script>`;
-    const wrapped = wrapWithHeadInjection(content, tailwindScript);
+    const wrapped = wrapWithHeadInjection(
+      content,
+      tailwindScript + FRAGMENT_LINK_INTERCEPTOR_SCRIPT,
+    );
     return (
       <iframe
         sandbox="allow-scripts"
