@@ -567,6 +567,7 @@ export function useCopilotStream({
 
   return {
     messages,
+    setMessages,
     sendMessage,
     stop,
     status,

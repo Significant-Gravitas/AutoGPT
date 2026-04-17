@@ -69,6 +69,7 @@ export function useCopilotPage() {
 
   const {
     messages: currentMessages,
+    setMessages,
     sendMessage,
     stop,
     status,
@@ -368,48 +369,100 @@ export function useCopilotPage() {
     });
   }, [status, sessionId]);
 
-  // Clear the queued indicator at the two points where the backend has
-  // provably consumed pending messages:
+  // Promote queued chips to real user bubbles when the backend consumes them.
   //
-  // 1. submitted → streaming: the turn-start drain has already run and the
-  //    LLM is actively responding. Messages merged into the current user turn
-  //    will never appear as separate bubbles, so the indicator must go now —
-  //    keeping it visible while the assistant responds causes the text to look
-  //    duplicated (once in the combined user bubble, once in the queue chip).
+  // Detection signals:
+  // 1. submitted → streaming: turn-start drain merged chips into the current
+  //    message. Clear chips (they're part of the combined user bubble now).
+  // 2. New assistant message during streaming + chips exist: auto-continue
+  //    started processing a queued message. Promote the chip to a real user
+  //    bubble by inserting it into the SDK's messages before the new assistant
+  //    message, then remove the chip.
   //
-  // 2. A new USER message appears during streaming: the SDK auto-continue path
-  //    drained the buffer and started a new turn, injecting a fresh user
-  //    message. Clearing here covers the mid-turn inject case too.
-  //
-  // In both cases we peek the buffer first — if it still has items (e.g. a
-  // message was queued between the drain and this render), we keep them.
+  // In both cases, peek the buffer first — if it still has items, keep them.
   const prevStatusForQueueRef = useRef(status);
-  const prevUserMessageCountRef = useRef(
-    messages.filter((m) => m.role === "user").length,
+  const seenAssistantIdsRef = useRef(
+    new Set(messages.filter((m) => m.role === "assistant").map((m) => m.id)),
   );
+  const queuedMessagesRef = useRef(queuedMessages);
+  queuedMessagesRef.current = queuedMessages;
+
   useEffect(() => {
     const prevStatus = prevStatusForQueueRef.current;
     prevStatusForQueueRef.current = status;
 
-    const userMessageCount = messages.filter((m) => m.role === "user").length;
-    const prevUserMessageCount = prevUserMessageCountRef.current;
-    prevUserMessageCountRef.current = userMessageCount;
+    // Track new assistant message IDs
+    const currentAssistantIds = messages
+      .filter((m) => m.role === "assistant")
+      .map((m) => m.id);
+    const newAssistantIds = currentAssistantIds.filter(
+      (id) => !seenAssistantIdsRef.current.has(id),
+    );
+    currentAssistantIds.forEach((id) => seenAssistantIdsRef.current.add(id));
 
     if (!sessionId) return;
 
     const isTurnStarting = prevStatus === "submitted" && status === "streaming";
     const isActive = status === "streaming" || status === "submitted";
-    const newUserMessageDuringStreaming =
-      isActive && userMessageCount > prevUserMessageCount;
+    const hasChips = queuedMessagesRef.current.length > 0;
+    const autoContinueStarted =
+      isActive && newAssistantIds.length > 0 && !isTurnStarting && hasChips;
 
-    if (isTurnStarting || newUserMessageDuringStreaming) {
+    if (isTurnStarting) {
+      // Turn-start drain: chips were merged into the submitted message.
+      // Peek and clear if buffer is empty.
       void getV2GetPendingMessages(sessionId).then((res) => {
         if (res.status === 200 && res.data.count === 0) {
           setQueuedMessages([]);
         }
       });
     }
-  }, [messages, status, sessionId]);
+
+    if (autoContinueStarted) {
+      // Auto-continue consumed queued messages. Promote chips to real user
+      // bubbles by inserting them before the new assistant message in the
+      // SDK's messages array.
+      const chipsToPromote = [...queuedMessagesRef.current];
+
+      // Peek: only promote if buffer is actually drained
+      void getV2GetPendingMessages(sessionId).then((res) => {
+        if (res.status !== 200) return;
+        const stillQueued = res.data.count > 0 ? res.data.messages : [];
+
+        // Chips that were consumed (not still in buffer)
+        const consumed = chipsToPromote.filter((c) => !stillQueued.includes(c));
+        if (consumed.length === 0) return;
+
+        // Insert consumed chips as real user messages before the last
+        // assistant message (the one auto-continue just created)
+        setMessages((prev) => {
+          const entries = consumed.map((content, i) => ({
+            id: `promoted-${Date.now()}-${i}`,
+            role: "user" as const,
+            parts: [
+              {
+                type: "text" as const,
+                text: content,
+                state: "done" as const,
+              },
+            ],
+          }));
+          const lastAssistantIdx = prev.findLastIndex(
+            (m) => m.role === "assistant",
+          );
+          if (lastAssistantIdx === -1) return [...prev, ...entries];
+          return [
+            ...prev.slice(0, lastAssistantIdx),
+            ...entries,
+            ...prev.slice(lastAssistantIdx),
+          ];
+        });
+
+        // Update chips: keep only those still in buffer
+        setQueuedMessages(stillQueued);
+      });
+    }
+  }, [messages, status, sessionId, setMessages]);
 
   // Start title polling when stream ends cleanly — sidebar title animates in
   const titlePollRef = useRef<ReturnType<typeof setInterval>>();
