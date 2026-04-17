@@ -63,11 +63,18 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
     }
 
 
-async def _fetch_schedule_info(user_id: str) -> dict[str, str]:
-    """Fetch a map of graph_id → earliest next_run_time ISO string."""
+async def _fetch_schedule_info(
+    user_id: str, graph_id: Optional[str] = None
+) -> dict[str, str]:
+    """Fetch a map of graph_id → earliest next_run_time ISO string.
+
+    When `graph_id` is provided, the scheduler query is narrowed to that graph,
+    which is cheaper for single-agent lookups (detail page, post-update, etc.).
+    """
     try:
         scheduler_client = get_scheduler_client()
         schedules = await scheduler_client.get_execution_schedules(
+            graph_id=graph_id,
             user_id=user_id,
         )
         earliest: dict[str, tuple[datetime, str]] = {}
@@ -358,6 +365,12 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 where={"userId": store_listing.owningUserId}
             )
 
+    schedule_info = (
+        await _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id)
+        if library_agent.AgentGraph
+        else {}
+    )
+
     return library_model.LibraryAgent.from_db(
         library_agent,
         sub_graphs=(
@@ -367,6 +380,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         ),
         store_listing=store_listing,
         profile=profile,
+        schedule_info=schedule_info,
     )
 
 
@@ -402,7 +416,10 @@ async def get_library_agent_by_store_version_id(
         },
         include=library_agent_include(user_id),
     )
-    return library_model.LibraryAgent.from_db(agent) if agent else None
+    if not agent:
+        return None
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
 
 
 async def get_library_agent_by_graph_id(
@@ -431,7 +448,10 @@ async def get_library_agent_by_graph_id(
     assert agent.AgentGraph  # make type checker happy
     # Include sub-graphs so we can make a full credentials input schema
     sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-    return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    return library_model.LibraryAgent.from_db(
+        agent, sub_graphs=sub_graphs, schedule_info=schedule_info
+    )
 
 
 async def add_generated_agent_image(
@@ -573,7 +593,11 @@ async def create_library_agent(
     for agent, graph in zip(library_agents, graph_entries):
         asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
 
-    return [library_model.LibraryAgent.from_db(agent) for agent in library_agents]
+    schedule_info = await _fetch_schedule_info(user_id)
+    return [
+        library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+        for agent in library_agents
+    ]
 
 
 async def update_agent_version_in_library(
@@ -635,7 +659,8 @@ async def update_agent_version_in_library(
             f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
         )
 
-    return library_model.LibraryAgent.from_db(lib)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent_graph_id)
+    return library_model.LibraryAgent.from_db(lib, schedule_info=schedule_info)
 
 
 async def create_graph_in_library(
@@ -1540,7 +1565,11 @@ async def bulk_move_agents_to_folder(
         ),
     )
 
-    return [library_model.LibraryAgent.from_db(agent) for agent in agents]
+    schedule_info = await _fetch_schedule_info(user_id)
+    return [
+        library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+        for agent in agents
+    ]
 
 
 def collect_tree_ids(
