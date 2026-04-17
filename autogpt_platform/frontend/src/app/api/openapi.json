@@ -6156,10 +6156,10 @@
     },
     "/api/public/shared/{share_token}/files/{file_id}/download": {
       "get": {
-        "tags": ["v1"],
-        "summary": "Download Shared File",
+        "tags": ["v1", "graphs"],
+        "summary": "Download a file from a shared execution",
         "description": "Download a workspace file from a shared execution (no auth required).\n\nValidates that the file was explicitly exposed when sharing was enabled.\nReturns a uniform 404 for all failure modes to prevent enumeration attacks.",
-        "operationId": "getV1DownloadSharedFile",
+        "operationId": "getV1Download a file from a shared execution",
         "parameters": [
           {
             "name": "share_token",
