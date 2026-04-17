@@ -419,12 +419,30 @@ export function useCopilotStream({
     };
   }, [refetchSession, setMessages]);
 
-  // Hydrate messages from REST API when not actively streaming
+  // Hydrate messages from REST API when not actively streaming.
+  // After streaming ends, the SDK's messages may contain duplicates or
+  // misordered entries from the auto-continue SSE replay. The DB has the
+  // correct state. Force-replace on the streaming→ready transition so the
+  // display matches the DB immediately (without needing a page refresh).
+  const prevHydrationStatusRef = useRef(status);
   useEffect(() => {
+    const wasStreaming =
+      prevHydrationStatusRef.current === "streaming" ||
+      prevHydrationStatusRef.current === "submitted";
+    const isNowIdle = status === "ready" || status === "error";
+    prevHydrationStatusRef.current = status;
+
     if (!hydratedMessages || hydratedMessages.length === 0) return;
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
+
     setMessages((prev) => {
+      // Force-replace when transitioning from streaming to ready — the
+      // hydrated data is the source of truth and the SDK state may have
+      // accumulated replay duplicates or wrong ordering.
+      if (wasStreaming && isNowIdle) {
+        return deduplicateMessages(hydratedMessages);
+      }
       if (prev.length >= hydratedMessages.length) return prev;
       return deduplicateMessages(hydratedMessages);
     });
