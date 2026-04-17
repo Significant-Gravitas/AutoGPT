@@ -880,6 +880,116 @@ class TestUploadCliSession:
         assert meta_content["mode"] == "baseline"
         assert meta_content["message_count"] == 4
 
+    def test_strips_session_before_upload_and_writes_back(self):
+        """strip_for_upload removes progress entries and returns smaller content."""
+        import json
+
+        from .transcript import strip_for_upload
+
+        progress_entry = {
+            "type": "progress",
+            "uuid": "p1",
+            "parentUuid": "u1",
+            "data": {"type": "bash_progress", "stdout": "running..."},
+        }
+        user_entry = {
+            "type": "user",
+            "uuid": "u1",
+            "message": {"role": "user", "content": "hello"},
+        }
+        asst_entry = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {"role": "assistant", "content": "world"},
+        }
+        raw_content = (
+            json.dumps(progress_entry)
+            + "\n"
+            + json.dumps(user_entry)
+            + "\n"
+            + json.dumps(asst_entry)
+            + "\n"
+        )
+
+        stripped = strip_for_upload(raw_content)
+
+        stored_lines = stripped.strip().split("\n")
+        stored_types = [json.loads(line).get("type") for line in stored_lines]
+        assert "progress" not in stored_types
+        assert "user" in stored_types
+        assert "assistant" in stored_types
+        assert len(stripped.encode()) < len(raw_content.encode())
+
+    def test_strips_stale_thinking_blocks_before_upload(self):
+        """strip_for_upload removes thinking blocks from non-last assistant turns."""
+        import json
+
+        from .transcript import strip_for_upload
+
+        u1 = {
+            "type": "user",
+            "uuid": "u1",
+            "message": {"role": "user", "content": "q1"},
+        }
+        a1_with_thinking = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "id": "msg_a1",
+                "role": "assistant",
+                "content": [
+                    {"type": "thinking", "thinking": "A" * 5000},
+                    {"type": "text", "text": "answer1"},
+                ],
+            },
+        }
+        u2 = {
+            "type": "user",
+            "uuid": "u2",
+            "parentUuid": "a1",
+            "message": {"role": "user", "content": "q2"},
+        }
+        a2_no_thinking = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "u2",
+            "message": {
+                "id": "msg_a2",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "answer2"}],
+            },
+        }
+        raw_content = (
+            json.dumps(u1)
+            + "\n"
+            + json.dumps(a1_with_thinking)
+            + "\n"
+            + json.dumps(u2)
+            + "\n"
+            + json.dumps(a2_no_thinking)
+            + "\n"
+        )
+
+        stripped = strip_for_upload(raw_content)
+
+        stored_lines = stripped.strip().split("\n")
+
+        # a1 should have its thinking block stripped (it's not the last assistant turn).
+        a1_stored = json.loads(stored_lines[1])
+        a1_content = a1_stored["message"]["content"]
+        assert all(
+            b["type"] != "thinking" for b in a1_content
+        ), "stale thinking block should be stripped from a1"
+        assert any(
+            b["type"] == "text" for b in a1_content
+        ), "text block should be kept in a1"
+
+        # a2 (last turn) should be unchanged.
+        a2_stored = json.loads(stored_lines[3])
+        assert a2_stored["message"]["content"] == [{"type": "text", "text": "answer2"}]
+
 
 class TestRestoreCliSession:
     def test_returns_none_when_file_not_found_in_storage(self):

@@ -133,21 +133,12 @@ def test_stream_chat_rejects_too_many_file_ids():
     assert response.status_code == 422
 
 
-def _mock_stream_internals(
-    mocker: pytest_mock.MockerFixture,
-    *,
-    redis_set_returns: object = True,
-):
+def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
     """Mock the async internals of stream_chat_post so tests can exercise
-    validation and enrichment logic without needing Redis/RabbitMQ.
-
-    Args:
-        redis_set_returns: Value returned by the mocked Redis ``set`` call.
-            ``True`` (default) simulates a fresh key (new message);
-            ``None`` simulates a collision (duplicate blocked).
+    validation and enrichment logic without needing RabbitMQ.
 
     Returns:
-        A namespace with ``redis``, ``save``, and ``enqueue`` mock objects so
+        A namespace with ``save`` and ``enqueue`` mock objects so
         callers can make additional assertions about side-effects.
     """
     import types
@@ -158,7 +149,7 @@ def _mock_stream_internals(
     )
     mock_save = mocker.patch(
         "backend.api.features.chat.routes.append_and_save_message",
-        return_value=None,
+        return_value=MagicMock(),  # non-None = message was saved (not a duplicate)
     )
     mock_registry = mocker.MagicMock()
     mock_registry.create_session = mocker.AsyncMock(return_value=None)
@@ -174,15 +165,9 @@ def _mock_stream_internals(
         "backend.api.features.chat.routes.track_user_message",
         return_value=None,
     )
-    mock_redis = AsyncMock()
-    mock_redis.set = AsyncMock(return_value=redis_set_returns)
-    mocker.patch(
-        "backend.copilot.message_dedup.get_redis_async",
-        new_callable=AsyncMock,
-        return_value=mock_redis,
+    return types.SimpleNamespace(
+        save=mock_save, enqueue=mock_enqueue, registry=mock_registry
     )
-    ns = types.SimpleNamespace(redis=mock_redis, save=mock_save, enqueue=mock_enqueue)
-    return ns
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
@@ -209,6 +194,29 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     )
     # Should get past validation — 200 streaming response expected
     assert response.status_code == 200
+
+
+# ─── Duplicate message dedup ──────────────────────────────────────────
+
+
+def test_stream_chat_skips_enqueue_for_duplicate_message(
+    mocker: pytest_mock.MockerFixture,
+):
+    """When append_and_save_message returns None (duplicate detected),
+    enqueue_copilot_turn and stream_registry.create_session must NOT be called
+    to avoid double-processing and to prevent overwriting the active stream's
+    turn_id in Redis (which would cause reconnecting clients to miss the response)."""
+    mocks = _mock_stream_internals(mocker)
+    # Override save to return None — signalling a duplicate
+    mocks.save.return_value = None
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 200
+    mocks.enqueue.assert_not_called()
+    mocks.registry.create_session.assert_not_called()
 
 
 # ─── UUID format filtering ─────────────────────────────────────────────
@@ -706,237 +714,6 @@ class TestStripInjectedContext:
         assert result["content"] == "hello"
 
 
-# ─── Idempotency / duplicate-POST guard ──────────────────────────────
-
-
-def test_stream_chat_blocks_duplicate_post_returns_empty_sse(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """A second POST with the same message within the 30-s window must return
-    an empty SSE stream (StreamFinish + [DONE]) so the frontend marks the
-    turn complete without creating a ghost response."""
-    # redis_set_returns=None simulates a collision: the NX key already exists.
-    ns = _mock_stream_internals(mocker, redis_set_returns=None)
-
-    response = client.post(
-        "/sessions/sess-dup/stream",
-        json={"message": "duplicate message", "is_user_message": True},
-    )
-
-    assert response.status_code == 200
-    body = response.text
-    # The response must contain StreamFinish (type=finish) and the SSE [DONE] terminator.
-    assert '"finish"' in body
-    assert "[DONE]" in body
-    # The empty SSE response must include the AI SDK protocol header so the
-    # frontend treats it as a valid stream and marks the turn complete.
-    assert response.headers.get("x-vercel-ai-ui-message-stream") == "v1"
-    # The duplicate guard must prevent save/enqueue side effects.
-    ns.save.assert_not_called()
-    ns.enqueue.assert_not_called()
-
-
-def test_stream_chat_first_post_proceeds_normally(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """The first POST (Redis NX key set successfully) must proceed through the
-    normal streaming path — no early return."""
-    ns = _mock_stream_internals(mocker, redis_set_returns=True)
-
-    response = client.post(
-        "/sessions/sess-new/stream",
-        json={"message": "first message", "is_user_message": True},
-    )
-
-    assert response.status_code == 200
-    # Redis set must have been called once with the NX flag.
-    ns.redis.set.assert_called_once()
-    call_kwargs = ns.redis.set.call_args
-    assert call_kwargs.kwargs.get("nx") is True
-
-
-def test_stream_chat_dedup_skipped_for_non_user_messages(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """System/assistant messages (is_user_message=False) bypass the dedup
-    guard — they are injected programmatically and must always be processed."""
-    ns = _mock_stream_internals(mocker, redis_set_returns=None)
-
-    response = client.post(
-        "/sessions/sess-sys/stream",
-        json={"message": "system context", "is_user_message": False},
-    )
-
-    # Even though redis_set_returns=None (would block a user message),
-    # the endpoint must proceed because is_user_message=False.
-    assert response.status_code == 200
-    ns.redis.set.assert_not_called()
-
-
-def test_stream_chat_dedup_hash_uses_original_message_not_mutated(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """The dedup hash must be computed from the original request message,
-    not the mutated version that has the [Attached files] block appended.
-    A file_id is sent so the route actually appends the [Attached files] block,
-    exercising the mutation path — the hash must still match the original text."""
-    import hashlib
-
-    ns = _mock_stream_internals(mocker, redis_set_returns=True)
-
-    file_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    # Mock workspace + prisma so the attachment block is actually appended.
-    mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
-        return_value=type("W", (), {"id": "ws-1"})(),
-    )
-    fake_file = type(
-        "F",
-        (),
-        {
-            "id": file_id,
-            "name": "doc.pdf",
-            "mimeType": "application/pdf",
-            "sizeBytes": 1024,
-        },
-    )()
-    mock_prisma = mocker.MagicMock()
-    mock_prisma.find_many = mocker.AsyncMock(return_value=[fake_file])
-    mocker.patch(
-        "prisma.models.UserWorkspaceFile.prisma",
-        return_value=mock_prisma,
-    )
-
-    response = client.post(
-        "/sessions/sess-hash/stream",
-        json={
-            "message": "plain message",
-            "is_user_message": True,
-            "file_ids": [file_id],
-        },
-    )
-
-    assert response.status_code == 200
-    ns.redis.set.assert_called_once()
-    call_args = ns.redis.set.call_args
-    dedup_key = call_args.args[0]
-
-    # Hash must use the original message + sorted file IDs, not the mutated text.
-    expected_hash = hashlib.sha256(
-        f"sess-hash:plain message:{file_id}".encode()
-    ).hexdigest()[:16]
-    expected_key = f"chat:msg_dedup:sess-hash:{expected_hash}"
-    assert dedup_key == expected_key, (
-        f"Dedup key {dedup_key!r} does not match expected {expected_key!r} — "
-        "hash may be using mutated message or wrong inputs"
-    )
-
-
-def test_stream_chat_dedup_key_released_after_stream_finish(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """The dedup Redis key must be deleted after the turn completes (when
-    subscriber_queue is None the route yields StreamFinish immediately and
-    should release the key so the user can re-send the same message)."""
-    from unittest.mock import AsyncMock as _AsyncMock
-
-    # Set up all internals manually so we can control subscribe_to_session.
-    mocker.patch(
-        "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.append_and_save_message",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.enqueue_copilot_turn",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.track_user_message",
-        return_value=None,
-    )
-    mock_registry = mocker.MagicMock()
-    mock_registry.create_session = _AsyncMock(return_value=None)
-    # None → early-finish path: StreamFinish yielded immediately, dedup key released.
-    mock_registry.subscribe_to_session = _AsyncMock(return_value=None)
-    mocker.patch(
-        "backend.api.features.chat.routes.stream_registry",
-        mock_registry,
-    )
-    mock_redis = mocker.AsyncMock()
-    mock_redis.set = _AsyncMock(return_value=True)
-    mocker.patch(
-        "backend.copilot.message_dedup.get_redis_async",
-        new_callable=_AsyncMock,
-        return_value=mock_redis,
-    )
-
-    response = client.post(
-        "/sessions/sess-finish/stream",
-        json={"message": "hello", "is_user_message": True},
-    )
-
-    assert response.status_code == 200
-    body = response.text
-    assert '"finish"' in body
-    # The dedup key must be released so intentional re-sends are allowed.
-    mock_redis.delete.assert_called_once()
-
-
-def test_stream_chat_dedup_key_released_even_when_redis_delete_raises(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """The route must not crash when the dedup Redis delete fails on the
-    subscriber_queue-is-None early-finish path (except Exception: pass)."""
-    from unittest.mock import AsyncMock as _AsyncMock
-
-    mocker.patch(
-        "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.append_and_save_message",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.enqueue_copilot_turn",
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.chat.routes.track_user_message",
-        return_value=None,
-    )
-    mock_registry = mocker.MagicMock()
-    mock_registry.create_session = _AsyncMock(return_value=None)
-    mock_registry.subscribe_to_session = _AsyncMock(return_value=None)
-    mocker.patch(
-        "backend.api.features.chat.routes.stream_registry",
-        mock_registry,
-    )
-    mock_redis = mocker.AsyncMock()
-    mock_redis.set = _AsyncMock(return_value=True)
-    # Make the delete raise so the except-pass branch is exercised.
-    mock_redis.delete = _AsyncMock(side_effect=RuntimeError("redis gone"))
-    mocker.patch(
-        "backend.copilot.message_dedup.get_redis_async",
-        new_callable=_AsyncMock,
-        return_value=mock_redis,
-    )
-
-    # Should not raise even though delete fails.
-    response = client.post(
-        "/sessions/sess-finish-err/stream",
-        json={"message": "hello", "is_user_message": True},
-    )
-
-    assert response.status_code == 200
-    assert '"finish"' in response.text
-    # delete must have been attempted — the except-pass branch silenced the error.
-    mock_redis.delete.assert_called_once()
-
-
 # ─── DELETE /sessions/{id}/stream — disconnect listeners ──────────────
 
 
@@ -980,3 +757,146 @@ def test_disconnect_stream_returns_404_when_session_missing(
 
     assert response.status_code == 404
     mock_disconnect.assert_not_awaited()
+
+
+# ─── GET /sessions/{session_id} — forward/backward pagination ──────────────────
+
+
+def _make_paginated_messages(
+    mocker: pytest_mock.MockerFixture, *, has_more: bool = False
+):
+    """Return a mock PaginatedMessages and configure the DB patch."""
+    from datetime import UTC, datetime
+
+    from backend.copilot.db import PaginatedMessages
+    from backend.copilot.model import ChatMessage, ChatSessionInfo, ChatSessionMetadata
+
+    now = datetime.now(UTC)
+    session_info = ChatSessionInfo(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        usage=[],
+        started_at=now,
+        updated_at=now,
+        metadata=ChatSessionMetadata(),
+    )
+    page = PaginatedMessages(
+        messages=[ChatMessage(role="user", content="hello", sequence=0)],
+        has_more=has_more,
+        oldest_sequence=0,
+        newest_sequence=0,
+        session=session_info,
+    )
+    mock_paginate = mocker.patch(
+        "backend.api.features.chat.routes.get_chat_messages_paginated",
+        new_callable=AsyncMock,
+        return_value=page,
+    )
+    return page, mock_paginate
+
+
+def test_get_session_completed_returns_forward_paginated(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Completed sessions (no active stream) return forward_paginated=True."""
+    _make_paginated_messages(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["forward_paginated"] is True
+    assert data["newest_sequence"] == 0
+
+
+def test_get_session_active_returns_backward_paginated(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Active sessions (with running stream) return forward_paginated=False."""
+    from backend.copilot.stream_registry import ActiveSession
+
+    _make_paginated_messages(mocker)
+    active = MagicMock(spec=ActiveSession)
+    active.turn_id = "turn-1"
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(active, "msg-1"),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["forward_paginated"] is False
+    assert data["active_stream"] is not None
+    assert data["active_stream"]["turn_id"] == "turn-1"
+
+
+def test_get_session_after_sequence_returns_forward_paginated(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """after_sequence param returns forward_paginated=True; no stream check needed."""
+    _, mock_paginate = _make_paginated_messages(mocker)
+
+    response = client.get("/sessions/sess-1?after_sequence=10")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["forward_paginated"] is True
+    call_kwargs = mock_paginate.call_args
+    assert call_kwargs.kwargs.get("after_sequence") == 10
+    assert call_kwargs.kwargs.get("before_sequence") is None
+
+
+def test_get_session_both_cursors_returns_400(
+    test_user_id: str,
+) -> None:
+    """Sending both before_sequence and after_sequence returns 400."""
+    response = client.get("/sessions/sess-1?before_sequence=5&after_sequence=10")
+
+    assert response.status_code == 400
+
+
+def test_get_session_toctou_refetch_when_session_completes_mid_request(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """Race condition: session was active at pre-check but completes before DB fetch.
+
+    The route should detect the race via a post-fetch re-check, then re-fetch
+    from seq 0 so the initial prompt is always visible.
+    """
+    from backend.copilot.stream_registry import ActiveSession
+
+    page, mock_paginate = _make_paginated_messages(mocker)
+    active = MagicMock(spec=ActiveSession)
+    active.turn_id = "turn-1"
+
+    # First call: session appears active.  Second call: session has completed.
+    mock_get_active = mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        side_effect=[(active, "msg-1"), (None, None)],
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    data = response.json()
+    # Post-race: session is now completed → forward_paginated=True, no stream
+    assert data["forward_paginated"] is True
+    assert data["active_stream"] is None
+    # The DB was queried twice: once newest-first, once from_start=True
+    assert mock_paginate.call_count == 2
+    assert mock_get_active.call_count == 2
+    second_call = mock_paginate.call_args_list[1]
+    assert second_call.kwargs.get("from_start") is True

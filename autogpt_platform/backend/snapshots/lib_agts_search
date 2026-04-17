@@ -40,6 +40,8 @@
       "folder_id": null,
       "folder_name": null,
       "recommended_schedule_cron": null,
+      "is_scheduled": false,
+      "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false
@@ -86,6 +88,8 @@
       "folder_id": null,
       "folder_name": null,
       "recommended_schedule_cron": null,
+      "is_scheduled": false,
+      "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
         "sensitive_action_safe_mode": false
