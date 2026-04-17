@@ -10,6 +10,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 
+from prisma.errors import UniqueViolationError
 from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 
 from backend.data.db import transaction
@@ -283,14 +284,10 @@ async def confirm_server_link(token: str, user_id: str) -> ConfirmLinkResponse:
                     "serverName": link_token.serverName,
                 }
             )
-    except (LinkAlreadyExistsError, LinkTokenExpiredError, LinkFlowMismatchError):
-        raise
-    except Exception as exc:
-        if "unique" in str(exc).lower():
-            raise LinkAlreadyExistsError(
-                "This server was just linked by another request."
-            ) from exc
-        raise
+    except UniqueViolationError as exc:
+        raise LinkAlreadyExistsError(
+            "This server was just linked by another request."
+        ) from exc
 
     logger.info(
         "Linked %s server %s to user ...%s",
@@ -345,14 +342,10 @@ async def confirm_user_link(token: str, user_id: str) -> ConfirmUserLinkResponse
                     "platformUsername": link_token.platformUsername,
                 }
             )
-    except (LinkAlreadyExistsError, LinkTokenExpiredError, LinkFlowMismatchError):
-        raise
-    except Exception as exc:
-        if "unique" in str(exc).lower():
-            raise LinkAlreadyExistsError(
-                "Your DMs were just linked by another request."
-            ) from exc
-        raise
+    except UniqueViolationError as exc:
+        raise LinkAlreadyExistsError(
+            "Your DMs were just linked by another request."
+        ) from exc
 
     logger.info(
         "Linked %s DMs to AutoGPT user ...%s", link_token.platform, user_id[-8:]
