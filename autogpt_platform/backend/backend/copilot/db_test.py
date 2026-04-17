@@ -234,6 +234,76 @@ async def test_no_visibility_expansion_when_visible_messages_present(
 
 
 @pytest.mark.asyncio
+async def test_visibility_no_expansion_when_no_earlier_messages(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When the page is all tool messages but there are no earlier messages
+    in the DB, visibility expansion returns early without changes."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(1, role="tool"), _make_msg(0, role="tool")],
+    )
+    # Boundary expansion: no earlier messages
+    # Visibility expansion: no earlier messages
+    find_many.side_effect = [[], []]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
+
+    assert page is not None
+    assert all(m.role == "tool" for m in page.messages)
+
+
+@pytest.mark.asyncio
+async def test_visibility_expansion_reaches_seq_zero(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When visibility expansion finds a visible message at sequence 0,
+    has_more should be False."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(5, role="tool"), _make_msg(4, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(3, role="tool")],
+        # Visibility expansion — finds user at seq 0
+        [_make_msg(2, role="tool"), _make_msg(1, role="tool"), _make_msg(0, role="user")],
+    ]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
+
+    assert page is not None
+    assert page.messages[0].role == "user"
+    assert page.messages[0].sequence == 0
+    assert page.has_more is False
+
+
+@pytest.mark.asyncio
+async def test_visibility_expansion_with_user_id(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """Visibility expansion passes user_id filter to the boundary query."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(10, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(9, role="tool")],
+        # Visibility expansion
+        [_make_msg(8, role="assistant")],
+    ]
+
+    await get_chat_messages_paginated(SESSION_ID, limit=1, user_id="user-abc")
+
+    # Both find_many calls should include the user_id session filter
+    for call in find_many.call_args_list:
+        where = call.kwargs.get("where") or call[1].get("where")
+        assert "Session" in where
+        assert where["Session"] == {"is": {"userId": "user-abc"}}
+
+
+@pytest.mark.asyncio
 async def test_user_id_filter_applied_to_session_where(
     mock_db: tuple[AsyncMock, AsyncMock],
 ):
