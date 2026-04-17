@@ -222,33 +222,33 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             ) AS queued_db_count,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'RUNNING'
-                AND "createdAt" < $1
+                AND "createdAt" < $1::timestamp
             ) AS orphaned_running,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'QUEUED'
-                AND "createdAt" < $1
+                AND "createdAt" < $1::timestamp
             ) AS orphaned_queued,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'FAILED'
-                AND "updatedAt" >= $2
+                AND "updatedAt" >= $2::timestamp
             ) AS failed_count_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'FAILED'
-                AND "updatedAt" >= $1
+                AND "updatedAt" >= $1::timestamp
             ) AS failed_count_24h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'RUNNING'
                 AND "startedAt" IS NOT NULL
-                AND "startedAt" < $1
+                AND "startedAt" < $1::timestamp
             ) AS stuck_running_24h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'RUNNING'
                 AND "startedAt" IS NOT NULL
-                AND "startedAt" < $2
+                AND "startedAt" < $2::timestamp
             ) AS stuck_running_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'QUEUED'
-                AND "createdAt" < $2
+                AND "createdAt" < $2::timestamp
             ) AS stuck_queued_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'QUEUED'
@@ -264,11 +264,11 @@ async def get_execution_diagnostics() -> ExecutionDiagnosticsSummary:
             ) AS invalid_running_without_start,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'COMPLETED'
-                AND "updatedAt" >= $2
+                AND "updatedAt" >= $2::timestamp
             ) AS completed_1h,
             COUNT(*) FILTER (
                 WHERE "executionStatus" = 'COMPLETED'
-                AND "updatedAt" >= $1
+                AND "updatedAt" >= $1::timestamp
             ) AS completed_24h
         FROM {schema_prefix}"AgentGraphExecution"
         WHERE "isDeleted" = false
