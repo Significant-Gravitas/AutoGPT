@@ -140,7 +140,9 @@ class TestRunBlockFiltering:
     async def test_block_denied_by_permissions_returns_error(self):
         """A block denied by CopilotPermissions returns an ErrorResponse."""
         session = make_session(user_id=_TEST_USER_ID)
-        block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+        # NB: must not match any id in COPILOT_EXCLUDED_BLOCK_IDS — we want
+        # the permissions guard to fire, not the exclusion guard.
+        block_id = "11111111-2222-3333-4444-555555555555"
         standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
 
         perms = CopilotPermissions(blocks=[block_id], blocks_exclude=True)
@@ -645,3 +647,230 @@ class TestRunBlockSensitiveAction:
 
         assert isinstance(response, BlockOutputResponse)
         assert response.success is True
+
+
+class TestExecuteBlockTimeout:
+    """``execute_block`` caps the block's generator consumption at
+    MAX_TOOL_WAIT_SECONDS and must:
+      1. Return an actionable ErrorResponse pointing at run_agent / run_sub_session.
+      2. Log a ``copilot_tool_timeout`` warning (SECRT-2247 part 3).
+      3. Still charge credits when outputs were produced before the timeout
+         (sentry r3105079148 — cancellation must not leak billing)."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_timeout_returns_error_and_logs(self, caplog):
+        import asyncio
+        import logging
+
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = MagicMock()
+        mock_block.name = "SlowBlock"
+        mock_block.id = "slow-block-id"
+        mock_block.input_schema = MagicMock()
+        mock_block.input_schema.jsonschema.return_value = {
+            "properties": {},
+            "required": [],
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {}
+
+        async def _hang(_input, **_kwargs):
+            await asyncio.sleep(10)
+            yield "never", "never"
+
+        mock_block.execute = _hang
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-1")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(0, {}),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.MAX_TOOL_WAIT_SECONDS",
+                0.05,
+            ),
+            caplog.at_level(logging.WARNING, logger="backend.copilot.tools.helpers"),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="slow-block-id",
+                input_data={"x": 1},
+                user_id="u-1",
+                session_id="s-1",
+                node_exec_id="n-1",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert "single-tool wait cap" in response.message
+        assert "run_agent" in response.message
+        assert any(
+            "copilot_tool_timeout" in record.getMessage() for record in caplog.records
+        ), "timeout must emit a grep-friendly log line for SECRT-2247 part 3"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_cancellation_after_output_still_charges_credits(self):
+        """Regression for sentry r3105079148 — wait_for's CancelledError
+        bypassed credit charging; fix uses a shielded finally. One output
+        emitted, then timeout: spend_credits must still be called once."""
+        import asyncio
+
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = MagicMock()
+        mock_block.name = "CostlyBlock"
+        mock_block.id = "costly-block-id"
+        mock_block.input_schema = MagicMock()
+        mock_block.input_schema.jsonschema.return_value = {
+            "properties": {},
+            "required": [],
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {}
+
+        # Generator: emit ONE output (simulating a side-effectful API call),
+        # then hang — execute_block's internal wait_for cancels us.
+        async def _one_output_then_hang(_input, **_kw):
+            yield "result", "side effect happened"
+            await asyncio.sleep(10)
+            yield "extra", "should never arrive"
+
+        mock_block.execute = _one_output_then_hang
+
+        charged: dict[str, object] = {}
+
+        class _FakeCreditDB:
+            async def get_credits(self, _user_id: str) -> int:
+                return 10_000
+
+            async def spend_credits(self, **kwargs):
+                charged["last"] = kwargs
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-1")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_FakeCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(5, {}),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.MAX_TOOL_WAIT_SECONDS",
+                0.2,
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="costly-block-id",
+                input_data={},
+                user_id="u-42",
+                session_id="s-42",
+                node_exec_id="n-42",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        # Cap fired → response is the timeout ErrorResponse
+        assert isinstance(response, ErrorResponse)
+        assert "single-tool wait cap" in response.message
+
+        # Critical: billing ran via the shielded finally despite the cancellation
+        assert charged.get("last") is not None, (
+            "Credits were NOT charged after cancellation — billing leak "
+            "(sentry r3105079148)"
+        )
+        assert charged["last"]["user_id"] == "u-42"
+        assert charged["last"]["cost"] == 5
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_double_charge_on_cancellation_during_charge(self):
+        """Regression for sentry r3105216985 — if the caller cancels during
+        the normal-path credit charge, the finally must NOT charge a second
+        time. The fix marks charge_handled BEFORE awaiting spend_credits."""
+        import asyncio
+
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = MagicMock()
+        mock_block.name = "OnceOnlyBlock"
+        mock_block.id = "once-only-id"
+        mock_block.input_schema = MagicMock()
+        mock_block.input_schema.jsonschema.return_value = {
+            "properties": {},
+            "required": [],
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {}
+
+        async def _one_then_done(_input, **_kw):
+            yield "result", "done"
+
+        mock_block.execute = _one_then_done
+
+        spend_calls: list[dict] = []
+
+        class _CountingCreditDB:
+            async def get_credits(self, _user_id: str) -> int:
+                return 10_000
+
+            async def spend_credits(self, **kwargs):
+                # Cooperative suspension so an outer cancellation can
+                # theoretically interleave — shield should still make this
+                # complete exactly once.
+                await asyncio.sleep(0)
+                spend_calls.append(kwargs)
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-1")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_CountingCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(7, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="once-only-id",
+                input_data={},
+                user_id="u-single",
+                session_id="s-single",
+                node_exec_id="n-single",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
+        assert len(spend_calls) == 1, (
+            f"spend_credits must be called exactly once, got {len(spend_calls)} "
+            "(double-charge — sentry r3105216985)"
+        )

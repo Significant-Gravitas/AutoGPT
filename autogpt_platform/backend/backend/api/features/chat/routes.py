@@ -2,15 +2,13 @@
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
-from fastapi.responses import StreamingResponse
-from prisma.models import UserWorkspaceFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
@@ -29,6 +27,12 @@ from backend.copilot.model import (
     get_user_sessions,
     update_session_title,
 )
+from backend.copilot.pending_message_helpers import (
+    QueuePendingMessageResponse,
+    is_turn_in_flight,
+    queue_pending_for_http,
+)
+from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -75,7 +79,7 @@ from backend.copilot.tracking import track_user_message
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import get_or_create_workspace
+from backend.data.workspace import build_files_block, resolve_workspace_files
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
 
@@ -84,10 +88,6 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
-
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
 
 
 async def _validate_and_get_session(
@@ -151,6 +151,19 @@ class StreamChatRequest(BaseModel):
     )
 
 
+class PeekPendingMessagesResponse(BaseModel):
+    """Response for the pending-message peek (GET) endpoint.
+
+    Returns a read-only view of the pending buffer — messages are NOT
+    consumed.  The frontend uses this to restore the queued-message
+    indicator after a page refresh and to decide when to clear it once
+    a turn has ended.
+    """
+
+    messages: list[str]
+    count: int
+
+
 class CreateSessionRequest(BaseModel):
     """Request model for creating a new chat session.
 
@@ -190,8 +203,6 @@ class SessionDetailResponse(BaseModel):
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
     has_more_messages: bool = False
     oldest_sequence: int | None = None
-    newest_sequence: int | None = None
-    forward_paginated: bool = False
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
@@ -456,113 +467,39 @@ async def update_session_title_route(
 async def get_session(
     session_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
-    limit: int = Query(
-        default=50,
-        ge=1,
-        le=200,
-        description="Maximum number of messages to return.",
-    ),
-    before_sequence: int | None = Query(
-        default=None,
-        ge=0,
-        description=(
-            "Backward pagination cursor. Return messages with sequence number "
-            "strictly less than this value. Used by active-session load-more. "
-            "Mutually exclusive with after_sequence."
-        ),
-    ),
-    after_sequence: int | None = Query(
-        default=None,
-        ge=0,
-        description=(
-            "Forward pagination cursor. Return messages with sequence number "
-            "strictly greater than this value. Used by completed-session load-more. "
-            "Mutually exclusive with before_sequence."
-        ),
-    ),
+    limit: int = Query(default=50, ge=1, le=200),
+    before_sequence: int | None = Query(default=None, ge=0),
 ) -> SessionDetailResponse:
     """
     Retrieve the details of a specific chat session.
 
-    Supports cursor-based pagination via ``limit``, ``before_sequence``, and
-    ``after_sequence``. The two cursor parameters are mutually exclusive.
-
-    On the initial load (no cursor provided) of a completed session, messages
-    are returned in forward order starting from sequence 0 so the user always
-    sees their initial prompt.  Active sessions use the legacy newest-first
-    order so streaming context is preserved.
+    Supports cursor-based pagination via ``limit`` and ``before_sequence``.
+    When no pagination params are provided, returns the most recent messages.
     """
-    if before_sequence is not None and after_sequence is not None:
-        raise HTTPException(
-            status_code=400,
-            detail="before_sequence and after_sequence are mutually exclusive",
-        )
-
-    is_initial_load = before_sequence is None and after_sequence is None
-
-    # Check active stream before the DB query on initial loads so we can
-    # choose the correct pagination direction (forward for completed sessions,
-    # newest-first for active ones).
-    active_session = None
-    last_message_id = None
-    if is_initial_load:
-        active_session, last_message_id = await stream_registry.get_active_session(
-            session_id, user_id
-        )
-
-    # Completed sessions on initial load start from sequence 0 so the user's
-    # initial prompt is always visible.  Active sessions keep the legacy
-    # newest-first behavior to preserve streaming context.
-    from_start = is_initial_load and active_session is None
-    forward_paginated = from_start or after_sequence is not None
-
     page = await get_chat_messages_paginated(
-        session_id,
-        limit,
-        before_sequence=before_sequence,
-        after_sequence=after_sequence,
-        from_start=from_start,
-        user_id=user_id,
+        session_id, limit, before_sequence, user_id=user_id
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
-
-    # Close the TOCTOU window: if the session was active at pre-check, re-verify
-    # after the DB fetch.  The session may have completed between the two awaits,
-    # which would have caused messages to be fetched newest-first even though the
-    # session is now complete.  Re-fetch from seq 0 so the initial prompt is
-    # always visible.
-    if is_initial_load and active_session is not None:
-        post_active, _ = await stream_registry.get_active_session(session_id, user_id)
-        if post_active is None:
-            active_session = None
-            last_message_id = None
-            from_start = True
-            forward_paginated = True
-            page = await get_chat_messages_paginated(
-                session_id,
-                limit,
-                before_sequence=None,
-                after_sequence=None,
-                from_start=True,
-                user_id=user_id,
-            )
-            if page is None:
-                raise NotFoundError(f"Session {session_id} not found.")
 
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
     ]
 
+    # Only check active stream on initial load (not on "load more" requests)
     active_stream_info = None
-    if active_session and last_message_id is not None:
-        active_stream_info = ActiveStreamInfo(
-            turn_id=active_session.turn_id,
-            last_message_id=last_message_id,
+    if before_sequence is None:
+        active_session, last_message_id = await stream_registry.get_active_session(
+            session_id, user_id
         )
+        if active_session:
+            active_stream_info = ActiveStreamInfo(
+                turn_id=active_session.turn_id,
+                last_message_id=last_message_id,
+            )
 
     # Skip session metadata on "load more" — frontend only needs messages
-    if not is_initial_load:
+    if before_sequence is not None:
         return SessionDetailResponse(
             id=page.session.session_id,
             created_at=page.session.started_at.isoformat(),
@@ -572,8 +509,6 @@ async def get_session(
             active_stream=None,
             has_more_messages=page.has_more,
             oldest_sequence=page.oldest_sequence,
-            newest_sequence=page.newest_sequence,
-            forward_paginated=forward_paginated,
             total_prompt_tokens=0,
             total_completion_tokens=0,
         )
@@ -590,8 +525,6 @@ async def get_session(
         active_stream=active_stream_info,
         has_more_messages=page.has_more,
         oldest_sequence=page.oldest_sequence,
-        newest_sequence=page.newest_sequence,
-        forward_paginated=forward_paginated,
         total_prompt_tokens=total_prompt,
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
@@ -844,36 +777,52 @@ async def cancel_session_task(
 
 @router.post(
     "/sessions/{session_id}/stream",
+    responses={
+        202: {
+            "model": QueuePendingMessageResponse,
+            "description": (
+                "Session has a turn in flight — message queued into the pending "
+                "buffer and will be picked up between tool-call rounds by the "
+                "executor currently processing the turn."
+            ),
+        },
+        404: {"description": "Session not found or access denied"},
+        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+    },
 )
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
 ):
-    """
-    Stream chat responses for a session (POST with context support).
+    """Start a new turn OR queue a follow-up — decided server-side.
 
-    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
-      - Text fragments as they are generated
-      - Tool call UI elements (if invoked)
-      - Tool execution results
+    - **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)
+      with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).
+      The generation runs in a background task that survives client disconnects;
+      reconnect via ``GET /sessions/{session_id}/stream`` to resume.
 
-    The AI generation runs in a background task that continues even if the client disconnects.
-    All chunks are written to a per-turn Redis stream for reconnection support. If the client
-    disconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.
+    - **Session has a turn in flight**: pushes the message into the per-session
+      pending buffer and returns ``202 application/json`` with
+      ``QueuePendingMessageResponse``.  The executor running the current turn
+      drains the buffer between tool-call rounds (baseline) or at the start of
+      the next turn (SDK).  Clients should detect the 202 and surface the
+      message as a queued-chip in the UI.
 
     Args:
-        session_id: The chat session identifier to associate with the streamed messages.
-        request: Request body containing message, is_user_message, and optional context.
+        session_id: The chat session identifier.
+        request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
-
     """
     import asyncio
     import time
 
     stream_start_time = time.perf_counter()
+    # Wall-clock arrival time, propagated to the executor so the turn-start
+    # drain can order pending messages relative to this request (pending
+    # pushed BEFORE this instant were typed earlier; pending pushed AFTER
+    # are race-path follow-ups typed while /stream was still processing).
+    request_arrival_at = time.time()
     log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
@@ -882,6 +831,26 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     await _validate_and_get_session(session_id, user_id)
+
+    # Self-defensive queue-fallback: if a turn is already running, don't race
+    # it on the cluster lock — drop the message into the pending buffer and
+    # return 202 so the caller can render a chip.  Both UI chips and autopilot
+    # block follow-ups route through this path; keeping the decision on the
+    # server means every caller gets uniform behaviour.
+    if (
+        request.is_user_message
+        and request.message
+        and await is_turn_in_flight(session_id)
+    ):
+        response = await queue_pending_for_http(
+            session_id=session_id,
+            user_id=user_id,
+            message=request.message,
+            context=request.context,
+            file_ids=request.file_ids,
+        )
+        return JSONResponse(status_code=202, content=response.model_dump())
+
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
@@ -912,33 +881,10 @@ async def stream_chat_post(
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
     sanitized_file_ids: list[str] | None = None
-    if request.file_ids and user_id:
-        # Filter to valid UUIDs only to prevent DB abuse
-        valid_ids = [fid for fid in request.file_ids if _UUID_RE.match(fid)]
-
-        if valid_ids:
-            workspace = await get_or_create_workspace(user_id)
-            # Batch query instead of N+1
-            files = await UserWorkspaceFile.prisma().find_many(
-                where={
-                    "id": {"in": valid_ids},
-                    "workspaceId": workspace.id,
-                    "isDeleted": False,
-                }
-            )
-            # Only keep IDs that actually exist in the user's workspace
-            sanitized_file_ids = [wf.id for wf in files] or None
-            file_lines: list[str] = [
-                f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
-                for wf in files
-            ]
-            if file_lines:
-                files_block = (
-                    "\n\n[Attached files]\n"
-                    + "\n".join(file_lines)
-                    + "\nUse read_workspace_file with the file_id to access file contents."
-                )
-                request.message += files_block
+    if request.file_ids:
+        files = await resolve_workspace_files(user_id, request.file_ids)
+        sanitized_file_ids = [wf.id for wf in files] or None
+        request.message += build_files_block(files)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
@@ -997,6 +943,7 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            request_arrival_at=request_arrival_at,
         )
     else:
         logger.info(
@@ -1144,6 +1091,31 @@ async def stream_chat_post(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
             "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
         },
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/messages/pending",
+    response_model=PeekPendingMessagesResponse,
+    responses={
+        404: {"description": "Session not found or access denied"},
+    },
+)
+async def get_pending_messages(
+    session_id: str,
+    user_id: str = Security(auth.get_user_id),
+):
+    """Peek at the pending-message buffer without consuming it.
+
+    Returns the current contents of the session's pending message buffer
+    so the frontend can restore the queued-message indicator after a page
+    refresh and clear it correctly once a turn drains the buffer.
+    """
+    await _validate_and_get_session(session_id, user_id)
+    pending = await peek_pending_messages(session_id)
+    return PeekPendingMessagesResponse(
+        messages=[m.content for m in pending],
+        count=len(pending),
     )
 
 

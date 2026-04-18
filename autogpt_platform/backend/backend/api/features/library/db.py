@@ -1,6 +1,7 @@
 import asyncio
 import itertools
 import logging
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import fastapi
@@ -60,6 +61,46 @@ async def _fetch_execution_counts(user_id: str, graph_ids: list[str]) -> dict[st
         row["agentGraphId"]: int((row.get("_count") or {}).get("_all") or 0)
         for row in rows
     }
+
+
+async def _fetch_schedule_info(
+    user_id: str, graph_id: Optional[str] = None
+) -> dict[str, str]:
+    """Fetch a map of graph_id → earliest next_run_time ISO string.
+
+    When `graph_id` is provided, the scheduler query is narrowed to that graph,
+    which is cheaper for single-agent lookups (detail page, post-update, etc.).
+    """
+    try:
+        scheduler_client = get_scheduler_client()
+        schedules = await scheduler_client.get_execution_schedules(
+            graph_id=graph_id,
+            user_id=user_id,
+        )
+        earliest: dict[str, tuple[datetime, str]] = {}
+        for s in schedules:
+            parsed = _parse_iso_datetime(s.next_run_time)
+            if parsed is None:
+                continue
+            current = earliest.get(s.graph_id)
+            if current is None or parsed < current[0]:
+                earliest[s.graph_id] = (parsed, s.next_run_time)
+        return {graph_id: iso for graph_id, (_, iso) in earliest.items()}
+    except Exception:
+        logger.warning("Failed to fetch schedules for library agents", exc_info=True)
+        return {}
+
+
+def _parse_iso_datetime(value: str) -> Optional[datetime]:
+    """Parse an ISO 8601 datetime, tolerating `Z` and naive forms (assumed UTC)."""
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        logger.warning("Failed to parse schedule next_run_time: %s", value)
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 async def list_library_agents(
@@ -157,7 +198,10 @@ async def list_library_agents(
     logger.debug(f"Retrieved {len(library_agents)} library agents for user #{user_id}")
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
+    execution_counts, schedule_info = await asyncio.gather(
+        _fetch_execution_counts(user_id, graph_ids),
+        _fetch_schedule_info(user_id),
+    )
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -167,6 +211,7 @@ async def list_library_agents(
             library_agent = library_model.LibraryAgent.from_db(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
+                schedule_info=schedule_info,
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -240,7 +285,10 @@ async def list_favorite_library_agents(
     )
 
     graph_ids = [a.agentGraphId for a in library_agents if a.agentGraphId]
-    execution_counts = await _fetch_execution_counts(user_id, graph_ids)
+    execution_counts, schedule_info = await asyncio.gather(
+        _fetch_execution_counts(user_id, graph_ids),
+        _fetch_schedule_info(user_id),
+    )
 
     # Only pass valid agents to the response
     valid_library_agents: list[library_model.LibraryAgent] = []
@@ -250,6 +298,7 @@ async def list_favorite_library_agents(
             library_agent = library_model.LibraryAgent.from_db(
                 agent,
                 execution_count_override=execution_counts.get(agent.agentGraphId),
+                schedule_info=schedule_info,
             )
             valid_library_agents.append(library_agent)
         except Exception as e:
@@ -316,6 +365,12 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 where={"userId": store_listing.owningUserId}
             )
 
+    schedule_info = (
+        await _fetch_schedule_info(user_id, graph_id=library_agent.AgentGraph.id)
+        if library_agent.AgentGraph
+        else {}
+    )
+
     return library_model.LibraryAgent.from_db(
         library_agent,
         sub_graphs=(
@@ -325,6 +380,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         ),
         store_listing=store_listing,
         profile=profile,
+        schedule_info=schedule_info,
     )
 
 
@@ -360,7 +416,10 @@ async def get_library_agent_by_store_version_id(
         },
         include=library_agent_include(user_id),
     )
-    return library_model.LibraryAgent.from_db(agent) if agent else None
+    if not agent:
+        return None
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    return library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
 
 
 async def get_library_agent_by_graph_id(
@@ -389,7 +448,10 @@ async def get_library_agent_by_graph_id(
     assert agent.AgentGraph  # make type checker happy
     # Include sub-graphs so we can make a full credentials input schema
     sub_graphs = await graph_db.get_sub_graphs(agent.AgentGraph)
-    return library_model.LibraryAgent.from_db(agent, sub_graphs=sub_graphs)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent.agentGraphId)
+    return library_model.LibraryAgent.from_db(
+        agent, sub_graphs=sub_graphs, schedule_info=schedule_info
+    )
 
 
 async def add_generated_agent_image(
@@ -531,7 +593,11 @@ async def create_library_agent(
     for agent, graph in zip(library_agents, graph_entries):
         asyncio.create_task(add_generated_agent_image(graph, user_id, agent.id))
 
-    return [library_model.LibraryAgent.from_db(agent) for agent in library_agents]
+    schedule_info = await _fetch_schedule_info(user_id)
+    return [
+        library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+        for agent in library_agents
+    ]
 
 
 async def update_agent_version_in_library(
@@ -593,7 +659,8 @@ async def update_agent_version_in_library(
             f"Failed to update library agent for {agent_graph_id} v{agent_graph_version}"
         )
 
-    return library_model.LibraryAgent.from_db(lib)
+    schedule_info = await _fetch_schedule_info(user_id, graph_id=agent_graph_id)
+    return library_model.LibraryAgent.from_db(lib, schedule_info=schedule_info)
 
 
 async def create_graph_in_library(
@@ -1498,7 +1565,11 @@ async def bulk_move_agents_to_folder(
         ),
     )
 
-    return [library_model.LibraryAgent.from_db(agent) for agent in agents]
+    schedule_info = await _fetch_schedule_info(user_id)
+    return [
+        library_model.LibraryAgent.from_db(agent, schedule_info=schedule_info)
+        for agent in agents
+    ]
 
 
 def collect_tree_ids(

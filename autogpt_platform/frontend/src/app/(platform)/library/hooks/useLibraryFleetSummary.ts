@@ -94,7 +94,7 @@ export function useLibraryFleetSummary(
         summary.error += 1;
       } else if (agent.has_external_trigger) {
         summary.listening += 1;
-      } else if (agent.recommended_schedule_cron) {
+      } else if (agent.is_scheduled || agent.recommended_schedule_cron) {
         summary.scheduled += 1;
       } else {
         summary.idle += 1;

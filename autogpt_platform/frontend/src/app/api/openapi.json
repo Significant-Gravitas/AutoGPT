@@ -1498,7 +1498,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Session",
-        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit``, ``before_sequence``, and\n``after_sequence``. The two cursor parameters are mutually exclusive.\n\nOn the initial load (no cursor provided) of a completed session, messages\nare returned in forward order starting from sequence 0 so the user always\nsees their initial prompt.  Active sessions use the legacy newest-first\norder so streaming context is preserved.",
+        "description": "Retrieve the details of a specific chat session.\n\nSupports cursor-based pagination via ``limit`` and ``before_sequence``.\nWhen no pagination params are provided, returns the most recent messages.",
         "operationId": "getV2GetSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1516,11 +1516,9 @@
               "type": "integer",
               "maximum": 200,
               "minimum": 1,
-              "description": "Maximum number of messages to return.",
               "default": 50,
               "title": "Limit"
-            },
-            "description": "Maximum number of messages to return."
+            }
           },
           {
             "name": "before_sequence",
@@ -1531,24 +1529,8 @@
                 { "type": "integer", "minimum": 0 },
                 { "type": "null" }
               ],
-              "description": "Backward pagination cursor. Return messages with sequence number strictly less than this value. Used by active-session load-more. Mutually exclusive with after_sequence.",
               "title": "Before Sequence"
-            },
-            "description": "Backward pagination cursor. Return messages with sequence number strictly less than this value. Used by active-session load-more. Mutually exclusive with after_sequence."
-          },
-          {
-            "name": "after_sequence",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                { "type": "integer", "minimum": 0 },
-                { "type": "null" }
-              ],
-              "description": "Forward pagination cursor. Return messages with sequence number strictly greater than this value. Used by completed-session load-more. Mutually exclusive with before_sequence.",
-              "title": "After Sequence"
-            },
-            "description": "Forward pagination cursor. Return messages with sequence number strictly greater than this value. Used by completed-session load-more. Mutually exclusive with before_sequence."
+            }
           }
         ],
         "responses": {
@@ -1658,6 +1640,47 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/messages/pending": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Pending Messages",
+        "description": "Peek at the pending-message buffer without consuming it.\n\nReturns the current contents of the session's pending message buffer\nso the frontend can restore the queued-message indicator after a page\nrefresh and clear it correctly once a turn drains the buffer.",
+        "operationId": "getV2GetPendingMessages",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PeekPendingMessagesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/stream": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
@@ -1723,7 +1746,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Start a new turn OR queue a follow-up — decided server-side.\n\n- **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)\n  with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).\n  The generation runs in a background task that survives client disconnects;\n  reconnect via ``GET /sessions/{session_id}/stream`` to resume.\n\n- **Session has a turn in flight**: pushes the message into the per-session\n  pending buffer and returns ``202 application/json`` with\n  ``QueuePendingMessageResponse``.  The executor running the current turn\n  drains the buffer between tool-call rounds (baseline) or at the start of\n  the next turn (SDK).  Clients should detect the 202 and surface the\n  message as a queued-chip in the UI.\n\nArgs:\n    session_id: The chat session identifier.\n    request: Request body with message, is_user_message, and optional context.\n    user_id: Authenticated user ID.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1747,9 +1770,20 @@
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
           },
+          "202": {
+            "description": "Session has a turn in flight — message queued into the pending buffer and will be picked up between tool-call rounds by the executor currently processing the turn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePendingMessageResponse"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1757,6 +1791,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "429": {
+            "description": "Token rate-limit or call-frequency cap exceeded"
           }
         }
       }
@@ -10949,6 +10986,17 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Recommended Schedule Cron"
           },
+          "is_scheduled": {
+            "type": "boolean",
+            "title": "Is Scheduled",
+            "description": "Whether this agent has active execution schedules",
+            "default": false
+          },
+          "next_scheduled_run": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Next Scheduled Run",
+            "description": "ISO 8601 timestamp of the next scheduled run, if any"
+          },
           "settings": { "$ref": "#/components/schemas/GraphSettings" },
           "marketplace_listing": {
             "anyOf": [
@@ -12198,6 +12246,20 @@
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
+      "PeekPendingMessagesResponse": {
+        "properties": {
+          "messages": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Messages"
+          },
+          "count": { "type": "integer", "title": "Count" }
+        },
+        "type": "object",
+        "required": ["messages", "count"],
+        "title": "PeekPendingMessagesResponse",
+        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
+      },
       "PendingHumanReviewModel": {
         "properties": {
           "node_exec_id": {
@@ -12907,6 +12969,20 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "QueuePendingMessageResponse": {
+        "properties": {
+          "buffer_length": { "type": "integer", "title": "Buffer Length" },
+          "max_buffer_length": {
+            "type": "integer",
+            "title": "Max Buffer Length"
+          },
+          "turn_in_flight": { "type": "boolean", "title": "Turn In Flight" }
+        },
+        "type": "object",
+        "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
+        "title": "QueuePendingMessageResponse",
+        "description": "Response returned by ``POST /stream`` with status 202 when a message\nis queued because the session already has a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback.  Always ``True``\n  for responses from ``POST /stream`` with status 202."
+      },
       "RateLimitResetResponse": {
         "properties": {
           "success": { "type": "boolean", "title": "Success" },
@@ -13290,15 +13366,6 @@
           "oldest_sequence": {
             "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Oldest Sequence"
-          },
-          "newest_sequence": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Newest Sequence"
-          },
-          "forward_paginated": {
-            "type": "boolean",
-            "title": "Forward Paginated",
-            "default": false
           },
           "total_prompt_tokens": {
             "type": "integer",
