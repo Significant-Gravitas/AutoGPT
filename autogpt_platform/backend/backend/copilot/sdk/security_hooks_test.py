@@ -699,3 +699,160 @@ async def test_subagent_hooks_sanitize_inputs(_subagent_hooks, caplog):
         assert "\u202a" not in record.message
         assert "\u200b" not in record.message
     assert "/tmp/maliciouspath" in caplog.text
+
+
+# -- PostToolUse: mid-turn pending-message drain ------------------------------
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_post_tool_use_injects_followup_additional_context(
+    monkeypatch,
+):
+    """Queued messages drain into ``additionalContext`` for any tool."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot import context as ctx_mod
+    from backend.copilot import pending_messages as pm_module
+
+    session = MagicMock()
+    session.session_id = "sess-post-inject"
+    ctx_mod.set_execution_context(
+        user_id="u1",
+        session=session,
+        sandbox=None,
+        sdk_cwd=SDK_CWD,
+    )
+
+    async def fake_drain(_session_id: str):
+        assert _session_id == "sess-post-inject"
+        return [pm_module.PendingMessage(content="please also do X")]
+
+    async def fake_stash(_session_id, _messages):
+        return None
+
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+    )
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.stash_pending_for_persist", fake_stash
+    )
+
+    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    post = hooks["PostToolUse"][0].hooks[0]
+
+    result = await post(
+        {
+            "tool_name": "WebSearch",  # built-in — the path the old wrapper missed
+            "tool_response": "search results here",
+        },
+        tool_use_id="tu-web-1",
+        context={},
+    )
+
+    injected = result.get("hookSpecificOutput", {})
+    assert injected.get("hookEventName") == "PostToolUse"
+    assert "<user_follow_up>" in injected.get("additionalContext", "")
+    assert "please also do X" in injected.get("additionalContext", "")
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_post_tool_use_no_pending_returns_empty(monkeypatch):
+    from unittest.mock import MagicMock
+
+    from backend.copilot import context as ctx_mod
+
+    session = MagicMock()
+    session.session_id = "sess-post-empty"
+    ctx_mod.set_execution_context(
+        user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
+    )
+
+    async def fake_drain(_session_id: str):
+        return []
+
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+    )
+
+    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    post = hooks["PostToolUse"][0].hooks[0]
+
+    result = await post(
+        {"tool_name": "mcp__copilot__run_block", "tool_response": "ok"},
+        tool_use_id="tu-mcp-1",
+        context={},
+    )
+
+    # No additionalContext means Claude gets the tool_result verbatim.
+    assert "hookSpecificOutput" not in result
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_post_tool_use_drain_failure_returns_empty(monkeypatch):
+    """A Redis blip must not corrupt the hook response."""
+    from unittest.mock import MagicMock
+
+    from backend.copilot import context as ctx_mod
+
+    session = MagicMock()
+    session.session_id = "sess-post-fail"
+    ctx_mod.set_execution_context(
+        user_id="u1", session=session, sandbox=None, sdk_cwd=SDK_CWD
+    )
+
+    async def failing_drain(_session_id: str):
+        raise RuntimeError("redis down")
+
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages", failing_drain
+    )
+
+    hooks = create_security_hooks(user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2)
+    post = hooks["PostToolUse"][0].hooks[0]
+
+    result = await post(
+        {"tool_name": "Read", "tool_response": "file body"},
+        tool_use_id="tu-read-1",
+        context={},
+    )
+
+    assert "hookSpecificOutput" not in result
+
+
+@pytest.mark.skipif(not _sdk_available(), reason="claude_agent_sdk not installed")
+@pytest.mark.asyncio
+async def test_post_tool_use_no_session_skips_drain(monkeypatch):
+    from backend.copilot import context as ctx_mod
+
+    ctx_mod.set_execution_context(
+        user_id=None,
+        session=None,  # type: ignore[arg-type]
+        sandbox=None,
+        sdk_cwd=SDK_CWD,
+    )
+
+    drain_called = False
+
+    async def fake_drain(_session_id: str):
+        nonlocal drain_called
+        drain_called = True
+        return []
+
+    monkeypatch.setattr(
+        "backend.copilot.pending_messages.drain_pending_messages", fake_drain
+    )
+
+    hooks = create_security_hooks(user_id=None, sdk_cwd=SDK_CWD, max_subtasks=2)
+    post = hooks["PostToolUse"][0].hooks[0]
+
+    result = await post(
+        {"tool_name": "WebSearch", "tool_response": "x"},
+        tool_use_id="tu-x",
+        context={},
+    )
+
+    assert drain_called is False
+    assert "hookSpecificOutput" not in result

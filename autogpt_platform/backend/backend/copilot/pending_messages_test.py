@@ -17,6 +17,7 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     PendingMessageContext,
     clear_pending_messages,
+    drain_and_format_for_injection,
     drain_pending_for_persist,
     drain_pending_messages,
     format_pending_as_followup,
@@ -561,3 +562,53 @@ async def test_stash_for_persist_swallows_redis_failure(
 
     # Must NOT raise.
     await stash_pending_for_persist("sess-broken", [PendingMessage(content="lost")])
+
+
+# ── drain_and_format_for_injection: shared entry point ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_happy_path(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Queued messages drain into a ready-to-inject <user_follow_up> block
+    AND are stashed on the persist queue for UI row hand-off."""
+    await push_pending_message("sess-share", PendingMessage(content="do X also"))
+
+    result = await drain_and_format_for_injection("sess-share", log_prefix="[TEST]")
+
+    assert "<user_follow_up>" in result
+    assert "do X also" in result
+    # Primary buffer drained.
+    assert await peek_pending_count("sess-share") == 0
+    # Persist queue got a copy for the UI.
+    persisted = await drain_pending_for_persist("sess-share")
+    assert len(persisted) == 1
+    assert persisted[0].content == "do X also"
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_empty_returns_empty(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await drain_and_format_for_injection("sess-empty", log_prefix="[TEST]") == ""
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_swallows_redis_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _broken() -> Any:
+        raise ConnectionError("down")
+
+    monkeypatch.setattr(pm_module, "get_redis_async", _broken)
+
+    # Must NOT raise — broken Redis becomes "nothing to inject".
+    assert (
+        await drain_and_format_for_injection("sess-broken", log_prefix="[TEST]") == ""
+    )
+
+
+@pytest.mark.asyncio
+async def test_drain_and_format_for_injection_missing_session_id() -> None:
+    assert await drain_and_format_for_injection("", log_prefix="[TEST]") == ""
