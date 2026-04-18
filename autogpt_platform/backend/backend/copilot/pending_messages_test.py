@@ -256,12 +256,15 @@ def test_format_followup_total_cap_drops_overflow() -> None:
 
 def test_format_followup_total_cap_marker_counts_dropped() -> None:
     """The marker should name the exact number of dropped messages."""
-    # Three 3 KB messages: first fits, then adding the second overflows.
-    messages = [PendingMessage(content="X" * 3_000) for _ in range(3)]
+    # Each 3 KB message gets capped to 2 KB first; with ~2 KB per entry and a
+    # 6 KB total cap, roughly two entries fit and the rest are dropped.
+    messages = [PendingMessage(content="X" * 3_000) for _ in range(5)]
     out = format_pending_as_followup(messages)
     assert "Message 1:" in out
-    # With a 6 KB total cap, only message 1 fits; 2 should be dropped.
-    assert "[2 more message(s) truncated]" in out
+    assert "Message 2:" in out
+    # Message 3 would push total past 6 KB; marker should report exactly how
+    # many were left out (here: messages 3, 4, 5 → 3 dropped).
+    assert "[3 more message(s) truncated]" in out
 
 
 def test_format_followup_empty_returns_empty_string() -> None:
