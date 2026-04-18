@@ -23,6 +23,7 @@ from backend.copilot.permissions import (
     validate_block_identifiers,
 )
 from backend.data.model import SchemaField
+from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -46,8 +47,22 @@ _AUTOPILOT_TOOL_NAME = "autopilot_block"
 _AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = 6 * 60 * 60  # 6 hours
 
 
-class SubAgentRecursionError(RuntimeError):
-    """Raised when the sub-agent nesting depth limit is exceeded."""
+class SubAgentRecursionError(BlockExecutionError):
+    """Raised when the AutoPilot sub-agent nesting depth limit is exceeded.
+
+    Inherits :class:`BlockExecutionError` — this is a known, handled
+    runtime failure at the block level (caller nested AutoPilotBlocks
+    beyond the configured limit). Surfaces with the block_name /
+    block_id the block framework expects, instead of being wrapped in
+    ``BlockUnknownError``.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            block_name="AutoPilotBlock",
+            block_id=AUTOPILOT_BLOCK_ID,
+        )
 
 
 class ToolCallEntry(TypedDict):

@@ -22,6 +22,7 @@ import logging
 import time
 from typing import Any
 
+from backend.copilot import stream_registry
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.sdk.session_waiter import (
@@ -165,13 +166,19 @@ class GetSubSessionResultTool(BaseTool):
                 elapsed_seconds=0.0,
             )
 
-        # If the sub's last turn is already terminal (assistant message
-        # with content / tool_calls), skip the subscription entirely and
-        # rebuild the aggregated result from the persisted messages.
-        # Otherwise, subscribe to stream_registry and wait for the
-        # terminal event or the cap.
+        # If a turn is currently running for this session (stream registry
+        # meta shows status=running), we can NOT short-circuit on the
+        # persisted last assistant message — that message belongs to a
+        # PRIOR turn, and surfacing it here would hand the caller stale
+        # data while the new turn is mid-flight (sentry r3105409601).
+        # Only short-circuit when there's no active turn AND the last
+        # persisted message already looks terminal.
         effective_wait = max(0, min(wait_if_running, MAX_SUB_SESSION_WAIT_SECONDS))
-        terminal_result = _already_terminal_result(sub)
+        registry_session = await stream_registry.get_session(inner_session_id)
+        turn_in_flight = registry_session is not None and (
+            getattr(registry_session, "status", "") == "running"
+        )
+        terminal_result = None if turn_in_flight else _already_terminal_result(sub)
         outcome: SessionOutcome
         result: SessionResult
         if terminal_result is not None:

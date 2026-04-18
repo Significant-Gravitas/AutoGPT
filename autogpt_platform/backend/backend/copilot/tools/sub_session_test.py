@@ -328,9 +328,16 @@ class TestGetSubSessionResult:
         async def fake_get(_sid):
             return sub
 
+        async def no_active_session(_sid):
+            return None
+
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.get_chat_session",
             fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
         )
 
         r = await GetSubSessionResultTool()._execute(
@@ -354,9 +361,16 @@ class TestGetSubSessionResult:
         async def fake_get(_sid):
             return sub
 
+        async def no_active_session(_sid):
+            return None
+
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.get_chat_session",
             fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
         )
 
         res = SessionResult()
@@ -375,9 +389,10 @@ class TestGetSubSessionResult:
 
     @pytest.mark.asyncio
     async def test_already_terminal_skips_waiter(self, monkeypatch, mock_waiter):
-        """If the sub's last message is already terminal, the tool returns
-        'completed' without ever calling wait_for_session_result — it
-        rebuilds the response from the persisted message instead."""
+        """If the sub's last message is already terminal AND no turn is
+        in flight, the tool returns 'completed' without ever calling
+        wait_for_session_result — it rebuilds the response from the
+        persisted message instead."""
         sub = MagicMock(user_id="alice")
         assistant = MagicMock()
         assistant.role = "assistant"
@@ -388,9 +403,16 @@ class TestGetSubSessionResult:
         async def fake_get(_sid):
             return sub
 
+        async def no_active_session(_sid):
+            return None
+
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.get_chat_session",
             fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            no_active_session,
         )
 
         r = await GetSubSessionResultTool()._execute(
@@ -403,6 +425,52 @@ class TestGetSubSessionResult:
         assert r.status == "completed"
         assert r.response == "already done"
         mock_waiter.result_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_resume_turn_in_flight_does_not_return_stale(
+        self, monkeypatch, mock_waiter
+    ):
+        """Regression for sentry r3105409601: on a resumed session whose
+        stream_registry status is 'running' (new turn is mid-flight) the
+        tool must NOT short-circuit to the prior turn's terminal message.
+        It subscribes to the stream like a normal running-session poll."""
+        # DB state reflects the PREVIOUS turn's terminal assistant message.
+        prior = MagicMock()
+        prior.role = "assistant"
+        prior.content = "OLD stale result"
+        prior.tool_calls = None
+        sub = MagicMock(user_id="alice", messages=[prior])
+
+        async def fake_get(_sid):
+            return sub
+
+        running_meta = MagicMock(status="running")
+
+        async def active_registry(_sid):
+            return running_meta
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.get_chat_session",
+            fake_get,
+        )
+        monkeypatch.setattr(
+            "backend.copilot.tools.get_sub_session_result.stream_registry.get_session",
+            active_registry,
+        )
+
+        r = await GetSubSessionResultTool()._execute(
+            user_id="alice",
+            session=_session("alice"),
+            sub_session_id="inner-11",
+            wait_if_running=30,
+        )
+        # The waiter must have been awaited — stale short-circuit was skipped.
+        mock_waiter.result_mock.assert_awaited_once()
+        assert isinstance(r, SubSessionStatusResponse)
+        # Default mock_waiter.result_mock.return_value = ("running", SessionResult())
+        assert r.status == "running"
+        # And crucially NOT the stale content.
+        assert r.response is None or r.response == ""
 
     @pytest.mark.asyncio
     async def test_cancel_publishes_cancel_event(
