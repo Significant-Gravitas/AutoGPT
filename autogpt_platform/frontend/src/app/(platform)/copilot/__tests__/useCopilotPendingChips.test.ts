@@ -16,7 +16,11 @@ function user(id: string, text?: string): UIMessage {
     id,
     role: "user",
     parts: [
-      { type: "text" as const, text: text ?? `user-${id}`, state: "done" as const },
+      {
+        type: "text" as const,
+        text: text ?? `user-${id}`,
+        state: "done" as const,
+      },
     ],
   };
 }
@@ -38,7 +42,10 @@ function assistant(id: string, text?: string): UIMessage {
 describe("useCopilotPendingChips", () => {
   beforeEach(() => {
     peekMock.mockReset();
-    peekMock.mockResolvedValue({ status: 200, data: { count: 0, messages: [] } });
+    peekMock.mockResolvedValue({
+      status: 200,
+      data: { count: 0, messages: [] },
+    });
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -148,7 +155,11 @@ describe("useCopilotPendingChips", () => {
 
     // A SECOND new assistant id appears → auto-continue detected.
     rerender({
-      messages: [user("u1"), assistant("a1", "turn1"), assistant("a2", "turn2")],
+      messages: [
+        user("u1"),
+        assistant("a1", "turn1"),
+        assistant("a2", "turn2"),
+      ],
     });
 
     // setMessages was called with an updater that inserts the promoted bubble.
@@ -209,9 +220,7 @@ describe("useCopilotPendingChips", () => {
     const promotedCall = setMessages.mock.calls.find(([arg]) => {
       if (typeof arg !== "function") return false;
       const updated = (arg as (p: UIMessage[]) => UIMessage[])([]);
-      return updated.some((m) =>
-        m.id.startsWith("promoted-midturn-"),
-      );
+      return updated.some((m) => m.id.startsWith("promoted-midturn-"));
     });
     expect(promotedCall).toBeDefined();
     // And remaining chips cleared.

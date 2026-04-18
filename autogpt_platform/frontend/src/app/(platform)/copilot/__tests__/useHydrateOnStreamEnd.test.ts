@@ -10,7 +10,11 @@ function msg(id: string, text?: string): UIMessage {
     id,
     role: "assistant",
     parts: [
-      { type: "text" as const, text: text ?? `text-${id}`, state: "done" as const },
+      {
+        type: "text" as const,
+        text: text ?? `text-${id}`,
+        state: "done" as const,
+      },
     ],
   };
 }
