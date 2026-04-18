@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Manual E2E Test
@@ -248,7 +248,87 @@ docker ps --format "{{.Names}}" | grep -E "rest_server|executor|copilot|websocke
 done
 ```
 
-### 3e. Build and start
+**Native mode also:** when running the app natively (see 3e-native), kill any stray host processes and free the app ports before starting — otherwise `poetry run app` and `pnpm dev` will fail to bind.
+
+```bash
+# Kill stray native app processes from prior runs
+pkill -9 -f "python.*backend" 2>/dev/null || true
+pkill -9 -f "poetry run app" 2>/dev/null || true
+pkill -9 -f "next-server|next dev" 2>/dev/null || true
+
+# Free app ports (errors per port are ignored — port may simply be unused)
+for port in 3000 8006 8001 8002 8005 8008; do
+  lsof -ti :$port -sTCP:LISTEN | xargs -r kill -9 2>/dev/null || true
+done
+```
+
+### 3e-native. Run the app natively (PREFERRED for iterative dev)
+
+Native mode runs infra (postgres, supabase, redis, rabbitmq, clamav) in docker but runs the backend and frontend directly on the host. This avoids the 3-8 minute `docker compose build` cycle on every backend change — code edits are picked up on process restart (seconds) instead of a full image rebuild.
+
+**When to prefer native mode (default for this skill):**
+- Iterative dev/debug loops where you're editing backend or frontend code between test runs
+- Any PR that touches Python/TS source but not Dockerfiles, compose config, or infra images
+- Fast repro of a failing scenario — restart `poetry run app` in a couple of seconds
+
+**When to prefer docker mode (3e fallback):**
+- Testing changes to `Dockerfile`, `docker-compose.yml`, or base images
+- Production-parity smoke tests (exact container env, networking, volumes)
+- CI-equivalent runs where you need the exact image that'll ship
+
+**Note on 3b (copilot auth):** in native mode, the runtime `npm install -g @anthropic-ai/claude-code` step is NOT required. The `claude_agent_sdk` bundled CLI ships with the poetry venv and is on `PATH` when you run commands via `poetry run`. The OAuth token extraction still applies (same `refresh_claude_token.sh` call).
+
+**Preamble:** before starting native, run the kill-stray + free-ports block from 3c's "Native mode also" subsection.
+
+**1. Start infra only (one-time per session):**
+
+```bash
+cd $PLATFORM_DIR && docker compose --profile local up deps --detach --remove-orphans --build
+```
+
+This brings up postgres/supabase/redis/rabbitmq/clamav and skips all app services.
+
+**2. Start the backend natively:**
+
+```bash
+cd $BACKEND_DIR && (poetry run app 2>&1 | tee .ign.application.logs) &
+```
+
+`poetry run app` spawns **all** app subprocesses — `rest_server`, `executor`, `copilot_executor`, `websocket`, `scheduler`, `notification_server`, `database_manager` — inside ONE parent process. No separate containers, no separate terminals. The `.ign.application.logs` prefix is already gitignored.
+
+**3. Wait for the backend on :8006 BEFORE starting the frontend.** This ordering matters — the frontend's `pnpm dev` startup invokes `generate-api-queries`, which fetches `/openapi.json` from the backend. If the backend isn't listening yet, `pnpm dev` fails immediately.
+
+```bash
+for i in $(seq 1 60); do
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8006/docs 2>/dev/null)" = "200" ]; then
+    echo "Backend ready"
+    break
+  fi
+  sleep 2
+done
+```
+
+**4. Start the frontend natively:**
+
+```bash
+cd $FRONTEND_DIR && (pnpm dev 2>&1 | tee .ign.frontend.logs) &
+```
+
+**5. Wait for the frontend on :3000:**
+
+```bash
+for i in $(seq 1 60); do
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000 2>/dev/null)" = "200" ]; then
+    echo "Frontend ready"
+    break
+  fi
+  sleep 2
+done
+```
+
+Once both are up, skip 3e/3f and go straight to **3g/3h** (feature flags / test user creation).
+
+### 3e. Build and start (docker — fallback)
 
 ```bash
 cd $PLATFORM_DIR && docker compose build --no-cache 2>&1 | tail -20
@@ -441,6 +521,22 @@ agent-browser --session-name pr-test snapshot | grep "text:"
 - `/marketplace` — Marketplace
 
 ### Checking logs
+
+**Native mode:** when running via `poetry run app` + `pnpm dev`, all app logs stream to the `.ign.*.logs` files written by the `tee` pipes in 3e-native. `rest_server`, `executor`, `copilot_executor`, `websocket`, `scheduler`, `notification_server`, and `database_manager` are all subprocesses of the single `poetry run app` parent, so their output is interleaved in `.ign.application.logs`.
+
+```bash
+# Backend (all app subprocesses interleaved)
+tail -f $BACKEND_DIR/.ign.application.logs
+
+# Frontend (Next.js dev server)
+tail -f $FRONTEND_DIR/.ign.frontend.logs
+
+# Filter for errors across either log
+grep -iE "error|exception|traceback" $BACKEND_DIR/.ign.application.logs | tail -20
+grep -iE "error|exception|traceback" $FRONTEND_DIR/.ign.frontend.logs | tail -20
+```
+
+**Docker mode:**
 
 ```bash
 # Backend REST server
