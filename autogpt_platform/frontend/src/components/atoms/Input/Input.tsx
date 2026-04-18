@@ -76,7 +76,7 @@ export function Input({
     // Base styles
     "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none w-full",
     "font-normal text-black",
-    "placeholder:font-normal placeholder:text-zinc-400",
+    "placeholder:font-normal placeholder:text-zinc-500",
     // Focus and hover states
     "focus:border-purple-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-purple-400 focus:ring-offset-0",
     className,
