@@ -11,6 +11,7 @@ import pytest
 from backend.copilot import config as cfg_mod
 
 from .service import (
+    _IDLE_TIMEOUT_SECONDS,
     _build_system_prompt_value,
     _is_sdk_disconnect_error,
     _normalize_model_name,
@@ -719,3 +720,13 @@ class TestSystemPromptPreset:
             use_claude_code_subscription=False,
         )
         assert cfg.claude_agent_cross_user_prompt_cache is False
+
+
+class TestIdleTimeoutConstant:
+    """SECRT-2247: long-running work now uses async start+poll pattern
+    (run_sub_session / run_agent), so no single MCP tool call ever blocks
+    the stream close to the idle limit. The plain 10-min cap from the
+    original code is restored."""
+
+    def test_idle_timeout_is_10_min(self):
+        assert _IDLE_TIMEOUT_SECONDS == 10 * 60

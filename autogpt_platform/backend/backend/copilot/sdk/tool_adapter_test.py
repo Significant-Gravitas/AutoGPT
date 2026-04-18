@@ -251,7 +251,10 @@ class TestTruncationAndStashIntegration:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_tool(name: str, output: str = "result") -> MagicMock:
+def _make_mock_tool(
+    name: str,
+    output: str = "result",
+) -> MagicMock:
     """Return a BaseTool mock that returns a successful StreamToolOutputAvailable."""
     tool = MagicMock()
     tool.name = name
@@ -334,6 +337,38 @@ class TestCreateToolHandler:
         await handler({"block_id": "b2"})
 
         assert mock_tool.execute.await_count == 2
+
+
+class TestToolInlineExecution:
+    """Tools run inline to completion — no per-handler timeout, no parking."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_tool_runs_to_completion_regardless_of_duration(self):
+        """A tool that takes a while still runs inline; the handler does not
+        park, cancel, or wrap it in a timeout. The stream-level idle timer
+        (in _run_stream_attempt) is what pauses while tool calls are pending."""
+
+        async def slow_but_completes(*_args, **_kwargs):
+            await asyncio.sleep(0.1)
+            return StreamToolOutputAvailable(
+                toolCallId="t1",
+                output="final-result",
+                toolName="slow_tool",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("slow_tool")
+        mock_tool.execute = AsyncMock(side_effect=slow_but_completes)
+
+        handler = create_tool_handler(mock_tool)
+        result = await handler({})
+
+        assert result["isError"] is False
+        assert "final-result" in result["content"][0]["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -873,7 +908,9 @@ class TestStripLlmFields:
         """
         dry_run_session = MagicMock()
         dry_run_session.dry_run = True
-        set_execution_context(user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -906,7 +943,9 @@ class TestStripLlmFields:
         """
         normal_session = MagicMock()
         normal_session.dry_run = False
-        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         full_payload = '{"message": "simulated", "is_dry_run": true}'
 

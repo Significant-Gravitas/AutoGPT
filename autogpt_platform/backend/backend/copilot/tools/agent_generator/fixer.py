@@ -1325,7 +1325,7 @@ class AgentFixer:
         """
         if not library_agents:
             logger.debug(
-                "fix_agent_executor_blocks: No library_agents provided, " "skipping"
+                "fix_agent_executor_blocks: No library_agents provided, skipping"
             )
             return agent
 
@@ -1390,7 +1390,7 @@ class AgentFixer:
             if "user_id" not in input_default:
                 input_default["user_id"] = ""
                 self.add_fix_log(
-                    f"Fixed AgentExecutorBlock {node_id}: Added missing " f"user_id"
+                    f"Fixed AgentExecutorBlock {node_id}: Added missing user_id"
                 )
 
             # Ensure inputs is present
@@ -1689,8 +1689,7 @@ class AgentFixer:
                 if field not in input_default or input_default[field] is None:
                     input_default[field] = default_value
                     self.add_fix_log(
-                        f"OrchestratorBlock {node_id}: "
-                        f"Set {field}={default_value!r}"
+                        f"OrchestratorBlock {node_id}: Set {field}={default_value!r}"
                     )
 
         return agent

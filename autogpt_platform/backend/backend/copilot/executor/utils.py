@@ -10,6 +10,7 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import CopilotLlmModel, CopilotMode
+from backend.copilot.permissions import CopilotPermissions
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 
@@ -163,6 +164,11 @@ class CoPilotExecutionEntry(BaseModel):
     model: CopilotLlmModel | None = None
     """Per-request model tier: 'standard' or 'advanced'. None = server default."""
 
+    permissions: CopilotPermissions | None = None
+    """Capability filter inherited from a parent run (e.g. ``run_sub_session``
+    forwards its parent's permissions so the sub can't escalate). ``None``
+    means the worker applies no filter."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -184,6 +190,7 @@ async def enqueue_copilot_turn(
     file_ids: list[str] | None = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    permissions: CopilotPermissions | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -197,6 +204,8 @@ async def enqueue_copilot_turn(
         file_ids: Optional workspace file IDs attached to the user's message
         mode: Autopilot mode override ('fast' or 'extended_thinking'). None = server default.
         model: Per-request model tier ('standard' or 'advanced'). None = server default.
+        permissions: Capability filter inherited from a parent run (sub-AutoPilot).
+            None = no filter.
     """
     from backend.util.clients import get_async_copilot_queue
 
@@ -210,6 +219,7 @@ async def enqueue_copilot_turn(
         file_ids=file_ids,
         mode=mode,
         model=model,
+        permissions=permissions,
     )
 
     queue_client = await get_async_copilot_queue()

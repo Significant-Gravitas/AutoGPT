@@ -222,6 +222,10 @@ class CoPilotProcessor:
         Shuts down the workspace storage instance that belongs to this
         worker's event loop, ensuring ``aiohttp.ClientSession.close()``
         runs on the same loop that created the session.
+
+        Sub-AutoPilots are enqueued on the copilot_execution queue, so
+        rolling deploys survive via RabbitMQ redelivery — no bespoke
+        shutdown notifier needed.
         """
         coro = shutdown_workspace_storage()
         try:
@@ -352,6 +356,7 @@ class CoPilotProcessor:
                 file_ids=entry.file_ids,
                 mode=effective_mode,
                 model=entry.model,
+                permissions=entry.permissions,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,

@@ -25,6 +25,20 @@ def _mock_stream_fn(*events):
     return _gen
 
 
+@pytest.fixture(autouse=True)
+def _idle_session():
+    """Keep tests hermetic: default the in-flight check to ``False`` so the
+    queue-on-busy branch is never taken unless a test explicitly overrides
+    it (see ``test_queued_result_when_turn_in_flight``).  Without this the
+    real helper would try to reach Redis via ``get_redis_async`` and fail
+    on loop-affinity errors in test runs."""
+    with patch(
+        "backend.copilot.sdk.collect.is_turn_in_flight",
+        new=AsyncMock(return_value=False),
+    ):
+        yield
+
+
 @pytest.fixture
 def mock_registry():
     """Patch stream_registry module used by collect."""
