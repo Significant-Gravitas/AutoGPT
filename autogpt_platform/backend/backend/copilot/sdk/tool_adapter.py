@@ -67,18 +67,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Max MCP response size in chars. 50K chars ≈ 12K tokens.
+# Max MCP response size in chars — sized to the Claude CLI's internal cap.
 #
-# NOTE (down from 100K): the Claude CLI has an internal tool_result size cap
-# around ~80K chars — when an MCP response exceeds that, the CLI replaces the
-# ENTIRE result with a synthetic "Error: result (N characters) exceeds maximum"
-# user message, so Claude never sees the actual output (and loses any
-# `<user_follow_up>` injection that lived inside it).  50K keeps a safety margin
-# for the follow-up block (up to ~6K) plus CLI overhead so the combined payload
-# stays well below the CLI cap.  The SDK reads oversized results back from the
-# tool-results/ disk file via read_tool_result, so the full content is still
-# reachable when needed.
-_MCP_MAX_CHARS = 50_000
+# The CLI has a default ``maxResultSizeChars = 1e5`` (100K chars) annotation
+# for MCP tool results, but the actual trigger is TOKEN-based (see
+# ``sizeEstimateTokens`` in the bundled CLI at ``tengu_mcp_large_result_handled``)
+# and fires around 20–25K tokens.  For JSON-heavy tool output (~3–4 chars/token)
+# that lands anywhere from ~60K to ~100K chars in practice; we've observed the
+# error path at 81K chars in production.  When it fires, the CLI persists the
+# full output to disk and REPLACES the returned content with a synthetic
+# ``"Error: result (N characters) exceeds maximum allowed tokens. Output has
+# been saved to …"`` message — which destroys any `<user_follow_up>` block
+# we injected.
+#
+# 70K gives us headroom below the observed 81K trigger and leaves ~6K for the
+# follow-up injection plus CLI wire overhead.  Oversized content is still
+# reachable via ``read_tool_result`` against the persisted disk file; only
+# the inline reply to this specific call is truncated.
+_MCP_MAX_CHARS = 70_000
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"

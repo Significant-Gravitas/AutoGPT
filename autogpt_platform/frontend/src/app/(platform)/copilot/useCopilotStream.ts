@@ -20,6 +20,7 @@ import {
   disconnectSessionStream,
 } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
+import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -419,67 +420,15 @@ export function useCopilotStream({
     };
   }, [refetchSession, setMessages]);
 
-  // Hydrate messages from REST API when not actively streaming.
-  // After streaming ends, the SDK's messages may contain duplicates or
-  // misordered entries from the Claude CLI replay. The DB has the correct
-  // state.
-  //
-  // Timing: status becomes "ready" BEFORE the cache-invalidation refetch
-  // completes (it takes a 500 ms delay plus the DB round-trip). We capture
-  // the hydratedMessages reference that was current at the streaming→ready
-  // moment and refuse to force-hydrate until a NEW reference arrives —
-  // that's React Query swapping in fresh post-turn data. Without this guard
-  // the effect fires with STALE hydratedMessages, replaces the AI SDK
-  // messages with pre-turn data, and loses the newly-persisted rows until
-  // something else triggers a re-render that happens to flow past the
-  // length check below.
-  const prevHydrationStatusRef = useRef(status);
-  const needsForceHydrateRef = useRef(false);
-  const forceHydrateStaleRef = useRef<typeof hydratedMessages | null>(null);
-
-  // Track status transitions — set the flag when streaming ends.
-  useEffect(() => {
-    const wasStreaming =
-      prevHydrationStatusRef.current === "streaming" ||
-      prevHydrationStatusRef.current === "submitted";
-    const isNowIdle = status === "ready" || status === "error";
-    prevHydrationStatusRef.current = status;
-    if (wasStreaming && isNowIdle) {
-      needsForceHydrateRef.current = true;
-      // Remember the stale hydratedMessages reference so we can wait for
-      // React Query to swap in fresh data before replacing.
-      forceHydrateStaleRef.current = hydratedMessages ?? null;
-    }
-  }, [status, hydratedMessages]);
-
-  // Apply hydration when data is available.
-  useEffect(() => {
-    if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    if (isReconnectScheduled) return;
-
-    if (needsForceHydrateRef.current) {
-      if (
-        forceHydrateStaleRef.current !== null &&
-        hydratedMessages === forceHydrateStaleRef.current
-      ) {
-        // Same reference as when the status transitioned — React Query
-        // has not finished the post-turn refetch yet. Wait for it.
-        return;
-      }
-      // Fresh data — replace, clearing any garbled SDK state from the
-      // streaming session (CLI replay, auto-continue merging).
-      setMessages(deduplicateMessages(hydratedMessages));
-      needsForceHydrateRef.current = false;
-      forceHydrateStaleRef.current = null;
-      return;
-    }
-
-    setMessages((prev) => {
-      if (prev.length >= hydratedMessages.length) return prev;
-      return deduplicateMessages(hydratedMessages);
-    });
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
+  // After-stream hydration — force-replace AI-SDK state with the DB's view
+  // once React Query has actually refetched, then keep length-gated top-ups
+  // working for pagination. See useHydrateOnStreamEnd for the timing dance.
+  useHydrateOnStreamEnd({
+    status,
+    hydratedMessages,
+    isReconnectScheduled,
+    setMessages,
+  });
 
   // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
