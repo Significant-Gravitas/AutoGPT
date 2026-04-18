@@ -39,7 +39,9 @@ describe("formatToolName", () => {
 
   it("uses friendly display name for sub-AutoPilot tools", () => {
     expect(formatToolName("run_sub_session")).toBe("Sub-AutoPilot");
-    expect(formatToolName("get_sub_session_result")).toBe("Sub-AutoPilot result");
+    expect(formatToolName("get_sub_session_result")).toBe(
+      "Sub-AutoPilot result",
+    );
   });
 
   it("uses the 'Action' label for run_block (frontend parlance)", () => {
