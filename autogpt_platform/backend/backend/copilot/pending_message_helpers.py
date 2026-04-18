@@ -134,9 +134,7 @@ async def queue_pending_for_http(
         files = await resolve_workspace_files(user_id, file_ids)
         sanitized_file_ids = [wf.id for wf in files] or None
 
-    queue_context = (
-        PendingMessageContext.model_validate(context) if context else None
-    )
+    queue_context = PendingMessageContext.model_validate(context) if context else None
     return await queue_user_message(
         session_id=session_id,
         message=message,
