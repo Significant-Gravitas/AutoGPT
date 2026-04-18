@@ -51,7 +51,6 @@ from ..constants import (
     COPILOT_RETRYABLE_ERROR_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
     STOPPED_BY_USER_MARKER,
-    STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
@@ -186,13 +185,14 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 )
 
 # Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
-# arrives for this many seconds. Derived from MAX_TOOL_WAIT_SECONDS so the
-# invariant "no single tool blocks close to this long" holds by construction —
-# long-running tools use the async "start + poll" pattern (initial tool returns
-# with a handle, polling tool waits in ≤MAX_TOOL_WAIT_SECONDS chunks), so an
-# idle of 2× that genuinely means the SDK itself is stuck.
-_IDLE_TIMEOUT_SECONDS = STREAM_IDLE_TIMEOUT_SECONDS
-
+# arrives for this many seconds AND no tool call is currently pending. If the
+# agent is waiting on a legitimately long tool (sub-AutoPilot, graph run, long
+# build), we skip this check — the tool is actively working even though no
+# SDK messages are flowing. The timer only counts toward firing while the SDK
+# itself is idle between turns with nothing to do. This is the fix for
+# SECRT-2247: the old behavior killed long tool calls at 10 min even though
+# they were making real progress.
+_IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
@@ -2388,14 +2388,21 @@ async def _run_stream_attempt(
                     yield ev
                 yield StreamHeartbeat()
 
-                # Idle timeout: abort if the SDK has been silent for too long.
-                # Long-running tools use the async "start + poll" pattern so
-                # the MCP handler never blocks longer than the poll cap (5 min)
-                # — a 10-min gap here means the SDK itself is stuck.
+                # Idle timeout: skip while any tool call is pending — the
+                # agent is legitimately waiting on a long-running tool (e.g.
+                # sub-AutoPilot, graph execution, long build). The idle timer
+                # only fires when the SDK itself is idle with nothing to do.
+                # Reset the clock on every heartbeat while tools are active so
+                # we don't accumulate a false "idle" that kills the run.
+                if state.adapter.has_unresolved_tool_calls:
+                    _last_real_msg_time = time.monotonic()
+                    continue
+
                 idle_seconds = time.monotonic() - _last_real_msg_time
                 if idle_seconds >= _IDLE_TIMEOUT_SECONDS:
                     logger.error(
-                        "%s Idle timeout after %.0fs — aborting stream",
+                        "%s Idle timeout after %.0fs with no active tool "
+                        "calls — aborting stream",
                         ctx.log_prefix,
                         idle_seconds,
                     )
