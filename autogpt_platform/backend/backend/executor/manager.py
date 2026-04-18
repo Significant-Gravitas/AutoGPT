@@ -23,7 +23,6 @@ from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
-from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
@@ -39,6 +38,7 @@ from backend.data.execution import (
 from backend.data.graph import Link, Node
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
