@@ -929,3 +929,226 @@ class TestStripLlmFields:
         stashed = pop_pending_tool_output("fake_tool_normal")
         assert stashed is not None
         assert '"is_dry_run": true' in stashed
+
+
+class TestTruncatingWrapperUserFollowUpInjection:
+    """Mid-turn drain: pending Redis messages get injected at the HEAD of the
+    tool output inside a <user_follow_up> block."""
+
+    @pytest.mark.asyncio
+    async def test_pending_injected_at_head_of_output(self, monkeypatch):
+        from backend.copilot import pending_messages as pm_module
+
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-inject-head"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        drained = [pm_module.PendingMessage(content="also check pricing")]
+
+        async def fake_drain(_session_id: str):
+            assert _session_id == "sess-inject-head"
+            return drained
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": "TOOL_OUTPUT_BODY"}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_inject")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        # Follow-up block must come BEFORE tool output.
+        fu_idx = text.find("<user_follow_up>")
+        body_idx = text.find("TOOL_OUTPUT_BODY")
+        assert fu_idx != -1
+        assert body_idx != -1
+        assert fu_idx < body_idx
+        assert "also check pricing" in text
+        assert "</user_follow_up>" in text
+
+    @pytest.mark.asyncio
+    async def test_no_pending_no_modification(self, monkeypatch):
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-empty"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def fake_drain(_session_id: str):
+            return []
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": "CLEAN_OUTPUT"}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_empty")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        assert text == "CLEAN_OUTPUT"
+        assert "<user_follow_up>" not in text
+
+    @pytest.mark.asyncio
+    async def test_drain_failure_leaves_output_untouched(self, monkeypatch):
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-drain-fail"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def failing_drain(_session_id: str):
+            raise RuntimeError("redis down")
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            failing_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": "STILL_WORKS"}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_drainfail")
+        result = await wrapper({})
+
+        # Tool result must be returned unmodified when drain fails — a
+        # broken Redis must never corrupt tool output.
+        assert result["content"][0]["text"] == "STILL_WORKS"
+        assert "<user_follow_up>" not in result["content"][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_isError_tool_still_receives_followup(self, monkeypatch):
+        """A tool that failed should still surface the user's follow-up so
+        Claude can reason about both the failure and the new instruction."""
+        from backend.copilot import pending_messages as pm_module
+
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-err-inject"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def fake_drain(_session_id: str):
+            return [pm_module.PendingMessage(content="skip that, try Y")]
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": "FAIL_REASON"}],
+                "isError": True,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_err")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        assert "<user_follow_up>" in text
+        assert "skip that, try Y" in text
+        assert result["isError"] is True
+
+    @pytest.mark.asyncio
+    async def test_multiple_pending_numbered(self, monkeypatch):
+        from backend.copilot import pending_messages as pm_module
+
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-multi"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def fake_drain(_session_id: str):
+            return [
+                pm_module.PendingMessage(content="first"),
+                pm_module.PendingMessage(content="second"),
+                pm_module.PendingMessage(content="third"),
+            ]
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "X"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_multi")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        assert "Message 1:\nfirst" in text
+        assert "Message 2:\nsecond" in text
+        assert "Message 3:\nthird" in text
+
+    @pytest.mark.asyncio
+    async def test_long_pending_content_capped(self, monkeypatch):
+        from backend.copilot import pending_messages as pm_module
+
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-long"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        huge = "A" * 5000  # > 2000 cap
+
+        async def fake_drain(_session_id: str):
+            return [pm_module.PendingMessage(content=huge)]
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "T"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_long")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        assert "[truncated]" in text
+        # No more than cap + overhead of ellipsis marker
+        assert text.count("A") <= 2_000 + 10
+
+    @pytest.mark.asyncio
+    async def test_no_session_skips_drain(self, monkeypatch):
+        """When the tool runs without a session (edge case: out-of-band
+        execution), drain must not be attempted."""
+        set_execution_context(user_id=None, session=None, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        drain_called = False
+
+        async def fake_drain(_session_id: str):
+            nonlocal drain_called
+            drain_called = True
+            return []
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {"content": [{"type": "text", "text": "OK"}], "isError": False}
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_nosession")
+        result = await wrapper({})
+
+        assert not drain_called
+        assert result["content"][0]["text"] == "OK"

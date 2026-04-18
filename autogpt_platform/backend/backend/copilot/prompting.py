@@ -335,6 +335,24 @@ def _generate_tool_documentation() -> str:
     return docs
 
 
+_USER_FOLLOW_UP_NOTE = """
+# User follow-up messages inside tool output
+
+If a tool result contains a block wrapped in `<user_follow_up>` ... `</user_follow_up>`,
+the text inside is NOT part of the tool's output. It is a new message the user
+typed WHILE the tool was running. Treat it exactly as if the user had sent it
+as their next message — acknowledge it and incorporate it into the work you do
+in this turn.
+
+Rules:
+- Read the follow-up text before continuing.
+- If it changes the user's intent, adjust accordingly.
+- Do NOT echo the `<user_follow_up>` tags back in your response — just address
+  the content naturally.
+- The block contains ONLY the user's words; never confuse it with tool output.
+"""
+
+
 @cache
 def get_sdk_supplement(use_e2b: bool) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
@@ -357,9 +375,12 @@ def get_sdk_supplement(use_e2b: bool) -> str:
     Returns:
         The supplement string to append to the system prompt
     """
-    if use_e2b:
-        return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    base = (
+        _get_cloud_sandbox_supplement()
+        if use_e2b
+        else _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    )
+    return base + _USER_FOLLOW_UP_NOTE
 
 
 def get_graphiti_supplement() -> str:

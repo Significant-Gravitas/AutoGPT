@@ -235,6 +235,46 @@ async def clear_pending_messages(session_id: str) -> None:
     await redis.delete(_buffer_key(session_id))
 
 
+# Per-message cap for inline tool-boundary injection.  Keeps the follow-up
+# block from crowding out the actual tool output on large inputs.  Queued
+# messages longer than this are truncated with an ellipsis marker.
+_FOLLOWUP_CONTENT_MAX_CHARS = 2_000
+
+
+def format_pending_as_followup(pending: list[PendingMessage]) -> str:
+    """Render drained pending messages as a ``<user_follow_up>`` block.
+
+    Used by the SDK tool-boundary injection path to surface queued user
+    text inside a tool result so the model reads it on the next LLM round,
+    without starting a separate turn.  Wrapped in a stable XML-style tag so
+    the shared system-prompt supplement can teach the model to treat the
+    contents as the user's continuation of their request, not as tool
+    output.  Each message is capped to keep the block bounded even if the
+    user pastes long content.
+    """
+    if not pending:
+        return ""
+    rendered: list[str] = []
+    for idx, pm in enumerate(pending, start=1):
+        text = pm.content
+        if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
+            text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
+        rendered.append(f"Message {idx}:\n{text}")
+        if pm.context and pm.context.url:
+            rendered[-1] += f"\n[Page URL: {pm.context.url}]"
+        if pm.file_ids:
+            rendered[-1] += "\n[Attached files: " + ", ".join(pm.file_ids) + "]"
+    body = "\n\n".join(rendered)
+    return (
+        "<user_follow_up>\n"
+        "The user sent the following message(s) while this tool was running. "
+        "Treat them as a continuation of their current request — acknowledge "
+        "and act on them in your next response. Do not echo these tags back.\n\n"
+        f"{body}\n"
+        "</user_follow_up>"
+    )
+
+
 def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     """Shape a ``PendingMessage`` into the OpenAI-format user message dict.
 
