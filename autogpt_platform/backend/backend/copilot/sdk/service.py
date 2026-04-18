@@ -3124,15 +3124,18 @@ async def stream_chat_completion_sdk(
         # lost between LPOP and clear.  File IDs and context are
         # preserved via format_pending_as_user_message.
         #
-        # The drained content is appended after ``current_message`` so the
-        # user's submitted message remains the leading context (better UX: the
-        # user's primary intent appears first, queued follow-ups trail it).
-        # The already-saved user message in the DB is updated via
-        # update_message_content_by_sequence to include the pending texts,
-        # avoiding a duplicate INSERT that would occur if we used
-        # insert_pending_before_last + persist_session_safe (routes.py has
-        # already saved the user message at sequence N before the executor
-        # runs, so an incremental upsert would write a second copy at N+1).
+        # The drained content is combined in chronological (typing) order:
+        # pending messages were queued DURING the previous turn, so they
+        # were typed BEFORE the current /stream message.  Putting pending
+        # first — ``pending → current`` — matches the order the user
+        # actually sent them and avoids the "I typed A then B but it shows
+        # up as B then A" confusion.  The already-saved user message in
+        # the DB is updated via update_message_content_by_sequence to
+        # include the pending texts, avoiding a duplicate INSERT that
+        # would occur if we used insert_pending_before_last +
+        # persist_session_safe (routes.py has already saved the user
+        # message at sequence N before the executor runs, so an
+        # incremental upsert would write a second copy at N+1).
         pending_texts = await drain_pending_safe(session_id, log_prefix)
         if pending_texts:
             logger.info(
@@ -3140,10 +3143,11 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(pending_texts),
             )
-            # Append so the user's submitted message is the primary context;
-            # queued follow-ups trail it: current → pending.
+            # Chronological order: pending first (older, typed during the
+            # previous turn), current second (newer, just typed to start
+            # this turn).  Matches what the user saw in the chat input.
             if current_message.strip():
-                current_message = current_message + "\n\n" + "\n\n".join(pending_texts)
+                current_message = "\n\n".join(pending_texts) + "\n\n" + current_message
             else:
                 current_message = "\n\n".join(pending_texts)
             # Update the in-memory content of the already-saved user message
