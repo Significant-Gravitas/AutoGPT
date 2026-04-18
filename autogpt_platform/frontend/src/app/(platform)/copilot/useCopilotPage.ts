@@ -541,6 +541,59 @@ export function useCopilotPage() {
     setQueuedMessages([]);
   }, [messages, status, sessionId, setMessages]);
 
+  // Mid-turn drain detection: SDK tool wrapper drains the pending buffer at
+  // a tool boundary and the service-layer persist adds the follow-up as a
+  // real user row in session.messages — but this does NOT emit an SSE event,
+  // so the AI SDK's live messages list never hears about it and the chip
+  // keeps rendering on the client until a hard refresh hydrates from DB.
+  //
+  // Fix: while the stream is active AND we still have chips locally, poll
+  // the backend buffer. If it drops to zero we know the backend drained
+  // (either via the MCP wrapper on a tool boundary, or via turn-end
+  // auto-continue) — promote chips locally as a user bubble so the UI
+  // matches the persisted DB state in real time. Force-hydrate after stream
+  // end will later replace the promoted bubble with the real DB row (same
+  // content, no flicker).
+  useEffect(() => {
+    if (!sessionId) return;
+    if (status !== "streaming" && status !== "submitted") return;
+    if (queuedMessages.length === 0) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await getV2GetPendingMessages(sessionId);
+        if (res.status !== 200 || res.data.count !== 0) return;
+        if (queuedMessagesRef.current.length === 0) return;
+        const combined = queuedMessagesRef.current.join("\n\n");
+        setMessages((prev) => {
+          // Don't double-promote: the turn-end auto-continue promotion uses
+          // `promoted-${assistantId}` ids, so any id prefix match is enough.
+          if (prev.some((m) => m.id.startsWith("promoted-"))) return prev;
+          return [
+            ...prev,
+            {
+              id: `promoted-midturn-${Date.now()}`,
+              role: "user" as const,
+              parts: [
+                {
+                  type: "text" as const,
+                  text: combined,
+                  state: "done" as const,
+                },
+              ],
+            },
+          ];
+        });
+        setQueuedMessages([]);
+      } catch {
+        // Poll failures are harmless — we try again on the next tick or
+        // fall back to hydration-on-stream-end.
+      }
+    }, 2_000);
+
+    return () => clearInterval(interval);
+  }, [sessionId, status, queuedMessages.length, setMessages]);
+
   // Start title polling when stream ends cleanly — sidebar title animates in
   const titlePollRef = useRef<ReturnType<typeof setInterval>>();
   const prevStatusRef = useRef(status);
