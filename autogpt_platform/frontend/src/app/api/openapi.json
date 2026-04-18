@@ -1679,58 +1679,6 @@
             }
           }
         }
-      },
-      "post": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Queue Pending Message",
-        "description": "Queue a new user message into an in-flight copilot turn.\n\nWhen a user sends a follow-up message while a turn is still\nstreaming, we don't want to block them or start a separate turn —\nthis endpoint appends the message to a per-session pending buffer.\nThe executor currently running the turn (baseline path) drains the\nbuffer between tool-call rounds and appends the message to the\nconversation before the next LLM call.  On the SDK path the buffer\nis drained at the *start* of the next turn (the long-lived\n``ClaudeSDKClient.receive_response`` iterator returns after a\n``ResultMessage`` so there is no safe point to inject mid-stream\ninto an existing connection).\n\nReturns 202.  Enforces the same per-user daily/weekly token rate\nlimit as the regular ``/stream`` endpoint so a client can't bypass\nit by batching messages through here.",
-        "operationId": "postV2QueuePendingMessage",
-        "security": [{ "HTTPBearerJWT": [] }],
-        "parameters": [
-          {
-            "name": "session_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Session Id" }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/QueuePendingMessageRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueuePendingMessageResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "404": { "description": "Session not found or access denied" },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          },
-          "429": {
-            "description": "Token rate-limit or call-frequency cap exceeded"
-          }
-        }
       }
     },
     "/api/chat/sessions/{session_id}/stream": {
@@ -1798,7 +1746,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Stream chat responses for a session (POST with context support).\n\nStreams the AI/completion responses in real time over Server-Sent Events (SSE), including:\n  - Text fragments as they are generated\n  - Tool call UI elements (if invoked)\n  - Tool execution results\n\nThe AI generation runs in a background task that continues even if the client disconnects.\nAll chunks are written to a per-turn Redis stream for reconnection support. If the client\ndisconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.\n\nArgs:\n    session_id: The chat session identifier to associate with the streamed messages.\n    request: Request body containing message, is_user_message, and optional context.\n    user_id: Authenticated user ID.\nReturns:\n    StreamingResponse: SSE-formatted response chunks.",
+        "description": "Start a new turn OR queue a follow-up — decided server-side.\n\n- **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)\n  with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).\n  The generation runs in a background task that survives client disconnects;\n  reconnect via ``GET /sessions/{session_id}/stream`` to resume.\n\n- **Session has a turn in flight**: pushes the message into the per-session\n  pending buffer and returns ``202 application/json`` with\n  ``QueuePendingMessageResponse``.  The executor running the current turn\n  drains the buffer between tool-call rounds (baseline) or at the start of\n  the next turn (SDK).  Clients should detect the 202 and surface the\n  message as a queued-chip in the UI.\n\nArgs:\n    session_id: The chat session identifier.\n    request: Request body with message, is_user_message, and optional context.\n    user_id: Authenticated user ID.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -1822,9 +1770,20 @@
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
           },
+          "202": {
+            "description": "Session has a turn in flight — message queued into the pending buffer and will be picked up between tool-call rounds by the executor currently processing the turn.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePendingMessageResponse"
+                }
+              }
+            }
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Session not found or access denied" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -1832,6 +1791,9 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
+          },
+          "429": {
+            "description": "Token rate-limit or call-frequency cap exceeded"
           }
         }
       }
@@ -12412,28 +12374,6 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
-      "PendingMessageContext": {
-        "properties": {
-          "url": {
-            "anyOf": [
-              { "type": "string", "maxLength": 2000 },
-              { "type": "null" }
-            ],
-            "title": "Url"
-          },
-          "content": {
-            "anyOf": [
-              { "type": "string", "maxLength": 32000 },
-              { "type": "null" }
-            ],
-            "title": "Content"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "PendingMessageContext",
-        "description": "Structured page context attached to a pending message."
-      },
       "PlatformCostDashboard": {
         "properties": {
           "by_provider": {
@@ -13029,39 +12969,6 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
-      "QueuePendingMessageRequest": {
-        "properties": {
-          "message": {
-            "type": "string",
-            "maxLength": 32000,
-            "minLength": 1,
-            "title": "Message"
-          },
-          "context": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/PendingMessageContext" },
-              { "type": "null" }
-            ],
-            "description": "Optional page context with 'url' and 'content' fields."
-          },
-          "file_ids": {
-            "anyOf": [
-              {
-                "items": { "type": "string" },
-                "type": "array",
-                "maxItems": 20
-              },
-              { "type": "null" }
-            ],
-            "title": "File Ids"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["message"],
-        "title": "QueuePendingMessageRequest",
-        "description": "Request model for queueing a message into an in-flight turn.\n\nUnlike ``StreamChatRequest`` this endpoint does **not** start a new\nturn — the message is appended to a per-session pending buffer that\nthe executor currently processing the turn will drain between tool\nrounds."
-      },
       "QueuePendingMessageResponse": {
         "properties": {
           "buffer_length": { "type": "integer", "title": "Buffer Length" },
@@ -13074,7 +12981,7 @@
         "type": "object",
         "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
         "title": "QueuePendingMessageResponse",
-        "description": "Response for the pending-message endpoint.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback.  Even when\n  ``False`` the message is still queued: the next turn drains it."
+        "description": "Response returned by ``POST /stream`` with status 202 when a message\nis queued because the session already has a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback.  Always ``True``\n  for responses from ``POST /stream`` with status 202."
       },
       "RateLimitResetResponse": {
         "properties": {

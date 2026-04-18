@@ -12,11 +12,14 @@ from typing import TYPE_CHECKING, Callable
 
 from backend.copilot.model import ChatMessage, upsert_chat_session
 from backend.copilot.pending_messages import (
+    MAX_PENDING_MESSAGES,
     PendingMessage,
+    PendingMessageContext,
     drain_pending_messages,
     format_pending_as_user_message,
     push_pending_message,
 )
+from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
 
@@ -32,6 +35,62 @@ logger = logging.getLogger(__name__)
 PENDING_CALL_LIMIT = 30
 PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
+
+
+async def is_turn_in_flight(session_id: str) -> bool:
+    """Return ``True`` when a copilot turn is actively running for *session_id*.
+
+    Used by the unified POST /stream entry point and the autopilot block so
+    a second message arriving while an earlier turn is still executing gets
+    queued into the pending buffer instead of racing the in-flight turn on
+    the cluster lock.
+    """
+    active = await get_active_session_meta(session_id)
+    return active is not None and active.status == "running"
+
+
+class QueueResult:
+    """Return shape of ``queue_user_message``.
+
+    Mirrors the old ``QueuePendingMessageResponse`` so the HTTP handler can
+    serialise it 1:1 and the autopilot block can surface the same fields.
+    """
+
+    __slots__ = ("buffer_length", "max_buffer_length", "turn_in_flight")
+
+    def __init__(
+        self, buffer_length: int, max_buffer_length: int, turn_in_flight: bool
+    ) -> None:
+        self.buffer_length = buffer_length
+        self.max_buffer_length = max_buffer_length
+        self.turn_in_flight = turn_in_flight
+
+
+async def queue_user_message(
+    *,
+    session_id: str,
+    message: str,
+    context: PendingMessageContext | None = None,
+    file_ids: list[str] | None = None,
+) -> QueueResult:
+    """Push *message* into the per-session pending buffer.
+
+    The shared primitive for "a message arrived while a turn is in flight" —
+    called from the unified POST /stream handler and the autopilot block.
+    Call-frequency rate limiting is the caller's responsibility (HTTP path
+    enforces it; internal block callers skip it).
+    """
+    pending = PendingMessage(
+        content=message,
+        file_ids=file_ids or [],
+        context=context,
+    )
+    new_len = await push_pending_message(session_id, pending)
+    return QueueResult(
+        buffer_length=new_len,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=await is_turn_in_flight(session_id),
+    )
 
 
 async def check_pending_call_rate(user_id: str) -> int:
