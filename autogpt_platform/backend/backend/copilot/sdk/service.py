@@ -63,6 +63,7 @@ from ..model import (
 )
 from ..pending_message_helpers import (
     drain_pending_safe,
+    persist_session_safe,
 )
 from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
@@ -2666,18 +2667,37 @@ async def stream_chat_completion_sdk(
     if message:
         message = strip_user_context_tags(message)
 
-    if maybe_append_user_message(session, message, is_user_message):
-        if is_user_message:
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(message or ""),
-            )
+    _user_message_appended = maybe_append_user_message(
+        session, message, is_user_message
+    )
+    if _user_message_appended and is_user_message:
+        track_user_message(
+            user_id=user_id,
+            session_id=session_id,
+            message_length=len(message or ""),
+        )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
     # Turn = number of user messages (1-based), computed AFTER appending the new message.
     turn = sum(1 for m in session.messages if m.role == "user")
     log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
+
+    # Persist the appended user message to DB immediately so page refreshes
+    # during a long-running turn (e.g. auto-continue whose sleep/bash call
+    # blocks for minutes) show the user bubble. routes.py pre-saves the
+    # user message before direct POSTs so maybe_append_user_message returns
+    # False there (duplicate) — this branch only fires for internal callers
+    # that did NOT pre-save, most notably the auto-continue recursive call
+    # below.
+    if _user_message_appended and is_user_message:
+        try:
+            await persist_session_safe(session, log_prefix)
+        except Exception:
+            logger.warning(
+                "%s Failed to persist user message eagerly",
+                log_prefix,
+                exc_info=True,
+            )
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
