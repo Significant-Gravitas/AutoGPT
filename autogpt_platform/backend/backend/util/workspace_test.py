@@ -156,3 +156,33 @@ async def test_write_file_overwrite_exhausted_retries_raises_and_cleans_up(
             )
 
     mock_storage.delete.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_write_file_overwrite_ghost_row_freed_then_retry_succeeds(
+    manager, mock_storage, mock_db
+):
+    """overwrite=True + ghost soft-deleted row → free path → retry succeeds."""
+    created_file = _make_workspace_file()
+    ghost_file = _make_workspace_file(id="ghost-id")
+
+    # First call (active lookup) returns None; second call (include_deleted) returns ghost
+    mock_db.get_workspace_file_by_path.side_effect = [None, ghost_file]
+    mock_db.free_deleted_path = AsyncMock(return_value=True)
+    mock_db.create_workspace_file.side_effect = [_unique_violation(), created_file]
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            return_value=mock_storage,
+        ),
+        patch("backend.util.workspace.workspace_db", return_value=mock_db),
+        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
+    ):
+        result = await manager.write_file(
+            filename="test.txt", content=b"hello", overwrite=True
+        )
+
+    assert result == created_file
+    mock_db.free_deleted_path.assert_called_once_with("ghost-id", "ws-123")
+    mock_storage.delete.assert_not_called()
