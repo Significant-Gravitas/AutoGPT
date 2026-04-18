@@ -22,7 +22,6 @@ coverage:
           - platform-backend
       platform-frontend:
         target: 80%
-        informational: true
         flags:
           - platform-frontend
       autogpt-libs:
