@@ -262,13 +262,19 @@ export class LibraryPage extends BasePage {
   async clickOpenInBuilder(agent: Agent): Promise<void> {
     console.log(`clicking open in builder for agent: ${agent.name}`);
 
-    const { getId } = getSelectors(this.page);
-    const agentCard = getId("library-agent-card").filter({
-      hasText: agent.name,
+    const agentCard = this.page
+      .getByTestId("library-agent-card")
+      .filter({ hasText: agent.name });
+
+    // The "Edit agent" link is inside the three-dot dropdown menu.
+    // Open the menu first, then click the builder link.
+    const menuTrigger = agentCard.getByRole("button", {
+      name: "More actions",
     });
-    const builderLink = getId(
+    await menuTrigger.first().click();
+
+    const builderLink = this.page.getByTestId(
       "library-agent-card-open-in-builder-link",
-      agentCard,
     );
     await builderLink.first().click();
   }

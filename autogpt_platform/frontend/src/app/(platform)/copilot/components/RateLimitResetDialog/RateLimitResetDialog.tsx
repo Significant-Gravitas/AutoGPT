@@ -6,6 +6,9 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
+import { formatCents } from "../usageHelpers";
+
+export { formatCents };
 
 interface Props {
   isOpen: boolean;
@@ -16,10 +19,6 @@ interface Props {
   hasInsufficientCredits?: boolean;
   isBillingEnabled?: boolean;
   onCreditChange?: () => void;
-}
-
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function RateLimitResetDialog({

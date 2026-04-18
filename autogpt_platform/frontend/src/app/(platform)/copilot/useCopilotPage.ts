@@ -84,7 +84,7 @@ export function useCopilotPage() {
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
-  const { olderMessages, hasMore, isLoadingMore, loadMore } =
+  const { pagedMessages, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
       initialOldestSequence: oldestSequence,
@@ -92,10 +92,11 @@ export function useCopilotPage() {
       initialPageRawMessages: rawSessionMessages,
     });
 
-  // Combine older (paginated) messages with current page messages,
-  // merging consecutive assistant UIMessages at the page boundary so
-  // reasoning + response parts stay in a single bubble.
-  const messages = concatWithAssistantMerge(olderMessages, currentMessages);
+  // Combine paginated messages with current page messages, merging consecutive
+  // assistant UIMessages at the page boundary so reasoning + response parts
+  // stay in a single bubble. Paged messages are older history prepended before
+  // the current page.
+  const messages = concatWithAssistantMerge(pagedMessages, currentMessages);
 
   useCopilotNotifications(sessionId);
 

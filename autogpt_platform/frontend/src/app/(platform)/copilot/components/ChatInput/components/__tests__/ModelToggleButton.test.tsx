@@ -1,8 +1,19 @@
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import {
+  render as rtlRender,
+  screen,
+  fireEvent,
+  cleanup,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ModelToggleButton } from "../ModelToggleButton";
 
 afterEach(cleanup);
+
+function render(ui: ReactElement) {
+  return rtlRender(<TooltipProvider>{ui}</TooltipProvider>);
+}
 
 describe("ModelToggleButton", () => {
   it("shows no text label when model is standard", () => {
@@ -31,7 +42,7 @@ describe("ModelToggleButton", () => {
 
   it("sets aria-pressed=true for advanced", () => {
     render(<ModelToggleButton model="advanced" onToggle={vi.fn()} />);
-    const btn = screen.getByLabelText("Switch to Standard model");
+    const btn = screen.getByLabelText("Switch to Balanced model");
     expect(btn.getAttribute("aria-pressed")).toBe("true");
   });
 });

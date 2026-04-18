@@ -65,6 +65,11 @@ async def test_get_library_agents(mocker):
     )
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
     # Call function
     result = await db.list_library_agents("test-user")
 
@@ -353,3 +358,136 @@ async def test_create_library_agent_uses_upsert():
     # Verify update branch restores soft-deleted/archived agents
     assert data["update"]["isDeleted"] is False
     assert data["update"]["isArchived"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_favorite_library_agents(mocker):
+    mock_library_agents = [
+        prisma.models.LibraryAgent(
+            id="fav1",
+            userId="test-user",
+            agentGraphId="agent-fav",
+            settings="{}",  # type: ignore
+            agentGraphVersion=1,
+            isCreatedByUser=False,
+            isDeleted=False,
+            isArchived=False,
+            createdAt=datetime.now(),
+            updatedAt=datetime.now(),
+            isFavorite=True,
+            useGraphIsActiveVersion=True,
+            AgentGraph=prisma.models.AgentGraph(
+                id="agent-fav",
+                version=1,
+                name="Favorite Agent",
+                description="My Favorite",
+                userId="other-user",
+                isActive=True,
+                createdAt=datetime.now(),
+            ),
+        )
+    ]
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=mock_library_agents
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={"agent-fav": 7}),
+    )
+
+    result = await db.list_favorite_library_agents("test-user")
+
+    assert len(result.agents) == 1
+    assert result.agents[0].id == "fav1"
+    assert result.agents[0].name == "Favorite Agent"
+    assert result.agents[0].graph_id == "agent-fav"
+    assert result.pagination.total_items == 1
+    assert result.pagination.total_pages == 1
+    assert result.pagination.current_page == 1
+    assert result.pagination.page_size == 50
+
+
+@pytest.mark.asyncio
+async def test_list_library_agents_skips_failed_agent(mocker):
+    """Agents that fail parsing should be skipped — covers the except branch."""
+    mock_library_agents = [
+        prisma.models.LibraryAgent(
+            id="ua-bad",
+            userId="test-user",
+            agentGraphId="agent-bad",
+            settings="{}",  # type: ignore
+            agentGraphVersion=1,
+            isCreatedByUser=False,
+            isDeleted=False,
+            isArchived=False,
+            createdAt=datetime.now(),
+            updatedAt=datetime.now(),
+            isFavorite=False,
+            useGraphIsActiveVersion=True,
+            AgentGraph=prisma.models.AgentGraph(
+                id="agent-bad",
+                version=1,
+                name="Bad Agent",
+                description="",
+                userId="other-user",
+                isActive=True,
+                createdAt=datetime.now(),
+            ),
+        )
+    ]
+
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mocker.AsyncMock(
+        return_value=mock_library_agents
+    )
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+    mocker.patch(
+        "backend.api.features.library.model.LibraryAgent.from_db",
+        side_effect=Exception("parse error"),
+    )
+
+    result = await db.list_library_agents("test-user")
+
+    assert len(result.agents) == 0
+    assert result.pagination.total_items == 1
+
+
+@pytest.mark.asyncio
+async def test_fetch_execution_counts_empty_graph_ids():
+    result = await db._fetch_execution_counts("user-1", [])
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_execution_counts_uses_group_by(mocker):
+    mock_prisma = mocker.patch("prisma.models.AgentGraphExecution.prisma")
+    mock_prisma.return_value.group_by = mocker.AsyncMock(
+        return_value=[
+            {"agentGraphId": "graph-1", "_count": {"_all": 5}},
+            {"agentGraphId": "graph-2", "_count": {"_all": 2}},
+        ]
+    )
+
+    result = await db._fetch_execution_counts(
+        "user-1", ["graph-1", "graph-2", "graph-3"]
+    )
+
+    assert result == {"graph-1": 5, "graph-2": 2}
+    mock_prisma.return_value.group_by.assert_called_once_with(
+        by=["agentGraphId"],
+        where={
+            "userId": "user-1",
+            "agentGraphId": {"in": ["graph-1", "graph-2", "graph-3"]},
+            "isDeleted": False,
+        },
+        count=True,
+    )

@@ -73,6 +73,31 @@ def _get_redis() -> Redis:
     return r
 
 
+class _MissingType:
+    """Singleton sentinel type — distinct from ``None`` (a valid cached value).
+
+    Using a dedicated class (instead of ``Any = object()``) lets mypy prove
+    that comparisons ``result is _MISSING`` narrow the type correctly and
+    prevents accidental use of the sentinel where a real value is expected.
+    """
+
+    _instance: "_MissingType | None" = None
+
+    def __new__(cls) -> "_MissingType":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:
+        return "<MISSING>"
+
+
+# Sentinel returned by ``_get_from_memory`` / ``_get_from_redis`` to mean
+# "no entry exists" — distinct from a cached ``None`` value, which is a
+# valid result for callers that opt into caching it.
+_MISSING = _MissingType()
+
+
 @dataclass
 class CachedValue:
     """Wrapper for cached values with timestamp to avoid tuple ambiguity."""
@@ -160,6 +185,7 @@ def cached(
     ttl_seconds: int,
     shared_cache: bool = False,
     refresh_ttl_on_get: bool = False,
+    cache_none: bool = True,
 ) -> Callable[[Callable[P, R]], CachedFunction[P, R]]:
     """
     Thundering herd safe cache decorator for both sync and async functions.
@@ -172,6 +198,10 @@ def cached(
         ttl_seconds: Time to live in seconds. Required - entries must expire.
         shared_cache: If True, use Redis for cross-process caching
         refresh_ttl_on_get: If True, refresh TTL when cache entry is accessed (LRU behavior)
+        cache_none: If True (default) ``None`` is cached like any other value.
+            Set to ``False`` for functions that return ``None`` to signal a
+            transient error and should be re-tried on the next call without
+            poisoning the cache (e.g. external API calls that may fail).
 
     Returns:
         Decorated function with caching capabilities
@@ -184,6 +214,12 @@ def cached(
         @cached(ttl_seconds=600, shared_cache=True, refresh_ttl_on_get=True)
         async def expensive_async_operation(param: str) -> dict:
             return {"result": param}
+
+        @cached(ttl_seconds=300, cache_none=False)
+        async def fetch_external(id: str) -> dict | None:
+            # Returns None on transient error — won't be stored,
+            # next call retries instead of returning the stale None.
+            ...
     """
 
     def decorator(target_func: Callable[P, R]) -> CachedFunction[P, R]:
@@ -191,8 +227,13 @@ def cached(
         cache_storage: dict[tuple, CachedValue] = {}
         _event_loop_locks: dict[Any, asyncio.Lock] = {}
 
-        def _get_from_redis(redis_key: str) -> Any | None:
+        def _get_from_redis(redis_key: str) -> Any:
             """Get value from Redis, optionally refreshing TTL.
+
+            Returns the cached value (which may be ``None``) on a hit, or the
+            module-level ``_MISSING`` sentinel on a miss / corrupt entry.
+            Callers must compare with ``is _MISSING`` so cached ``None`` values
+            are not mistaken for misses.
 
             Values are expected to carry an HMAC-SHA256 prefix for integrity
             verification.  Unsigned (legacy) or tampered entries are silently
@@ -213,11 +254,11 @@ def cached(
                             f"for {func_name}, discarding entry: "
                             "possible tampering or legacy unsigned value"
                         )
-                        return None
+                        return _MISSING
                     return pickle.loads(payload)
             except Exception as e:
                 logger.error(f"Redis error during cache check for {func_name}: {e}")
-            return None
+            return _MISSING
 
         def _set_to_redis(redis_key: str, value: Any) -> None:
             """Set HMAC-signed pickled value in Redis with TTL."""
@@ -227,8 +268,13 @@ def cached(
             except Exception as e:
                 logger.error(f"Redis error storing cache for {func_name}: {e}")
 
-        def _get_from_memory(key: tuple) -> Any | None:
-            """Get value from in-memory cache, checking TTL."""
+        def _get_from_memory(key: tuple) -> Any:
+            """Get value from in-memory cache, checking TTL.
+
+            Returns the cached value (which may be ``None``) on a hit, or the
+            ``_MISSING`` sentinel on a miss / TTL expiry. See
+            ``_get_from_redis`` for the rationale.
+            """
             if key in cache_storage:
                 cached_data = cache_storage[key]
                 if time.time() - cached_data.timestamp < ttl_seconds:
@@ -236,7 +282,7 @@ def cached(
                         f"Cache hit for {func_name} args: {key[0]} kwargs: {key[1]}"
                     )
                     return cached_data.result
-            return None
+            return _MISSING
 
         def _set_to_memory(key: tuple, value: Any) -> None:
             """Set value in in-memory cache with timestamp."""
@@ -270,11 +316,11 @@ def cached(
                 # Fast path: check cache without lock
                 if shared_cache:
                     result = _get_from_redis(redis_key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
                 else:
                     result = _get_from_memory(key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
 
                 # Slow path: acquire lock for cache miss/expiry
@@ -282,22 +328,24 @@ def cached(
                     # Double-check: another coroutine might have populated cache
                     if shared_cache:
                         result = _get_from_redis(redis_key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
                     else:
                         result = _get_from_memory(key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
 
                     # Cache miss - execute function
                     logger.debug(f"Cache miss for {func_name}")
                     result = await target_func(*args, **kwargs)
 
-                    # Store result
-                    if shared_cache:
-                        _set_to_redis(redis_key, result)
-                    else:
-                        _set_to_memory(key, result)
+                    # Store result (skip ``None`` if the caller opted out of
+                    # caching it — used for transient-error sentinels).
+                    if cache_none or result is not None:
+                        if shared_cache:
+                            _set_to_redis(redis_key, result)
+                        else:
+                            _set_to_memory(key, result)
 
                     return result
 
@@ -315,11 +363,11 @@ def cached(
                 # Fast path: check cache without lock
                 if shared_cache:
                     result = _get_from_redis(redis_key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
                 else:
                     result = _get_from_memory(key)
-                    if result is not None:
+                    if result is not _MISSING:
                         return result
 
                 # Slow path: acquire lock for cache miss/expiry
@@ -327,22 +375,24 @@ def cached(
                     # Double-check: another thread might have populated cache
                     if shared_cache:
                         result = _get_from_redis(redis_key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
                     else:
                         result = _get_from_memory(key)
-                        if result is not None:
+                        if result is not _MISSING:
                             return result
 
                     # Cache miss - execute function
                     logger.debug(f"Cache miss for {func_name}")
                     result = target_func(*args, **kwargs)
 
-                    # Store result
-                    if shared_cache:
-                        _set_to_redis(redis_key, result)
-                    else:
-                        _set_to_memory(key, result)
+                    # Store result (skip ``None`` if the caller opted out of
+                    # caching it — used for transient-error sentinels).
+                    if cache_none or result is not None:
+                        if shared_cache:
+                            _set_to_redis(redis_key, result)
+                        else:
+                            _set_to_memory(key, result)
 
                     return result
 

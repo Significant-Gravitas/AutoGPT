@@ -6,8 +6,6 @@ export function useNavbar() {
   const { isLoggedIn, isUserLoading } = useSupabase();
   const logoutInProgress = isLogoutInProgress();
 
-  console.log("isLoggedIn", isLoggedIn);
-
   const {
     data: profileResponse,
     isLoading: isProfileLoading,
