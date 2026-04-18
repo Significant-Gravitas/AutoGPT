@@ -128,12 +128,12 @@ export function useCopilotPage() {
     // differ between turns even when the replayed content is the same. Using
     // just the type string (plus text/toolCallId) keeps the strict-prefix match
     // stable so Turn N replay of Turn N-1's assistant content is detected.
+    // AI SDK v5 parts all carry a `type` discriminator, so no JSON fallback.
     const fingerprint = (msg: UIMessage): string[] =>
       (msg.parts ?? []).map((p) => {
         if ("text" in p && p.text) return `text:${p.text}`;
         if ("toolCallId" in p && p.toolCallId) return `tool:${p.toolCallId}`;
-        if ("type" in p && typeof p.type === "string") return `type:${p.type}`;
-        return JSON.stringify(p);
+        return `type:${p.type}`;
       });
 
     const isPrefixOf = (earlier: string[], later: string[]): boolean => {
@@ -145,6 +145,10 @@ export function useCopilotPage() {
       return true;
     };
 
+    // Pre-compute fingerprints once so the inner strict-prefix scan doesn't
+    // redo the work for every (i, j) pair.
+    const fingerprints = deduped.map(fingerprint);
+
     const result: UIMessage[] = [];
     for (let i = 0; i < deduped.length; i++) {
       const msg = deduped[i];
@@ -152,13 +156,13 @@ export function useCopilotPage() {
         result.push(msg);
         continue;
       }
-      const myFp = fingerprint(msg);
+      const myFp = fingerprints[i];
       // Find the longest strict-prefix match from an earlier assistant
       // message — that's the content Claude CLI replayed into this turn.
       let stripLen = 0;
       for (let j = 0; j < i; j++) {
         if (deduped[j].role !== "assistant") continue;
-        const earlierFp = fingerprint(deduped[j]);
+        const earlierFp = fingerprints[j];
         if (earlierFp.length > stripLen && isPrefixOf(earlierFp, myFp)) {
           stripLen = earlierFp.length;
         }
@@ -411,9 +415,16 @@ export function useCopilotPage() {
   // load/change and whenever a turn ends (the backend drains at turn start
   // and auto-continue, so the buffer may shrink without frontend action).
   const prevQueuePeekSessionIdRef = useRef<string | null>(sessionId);
+  const hasSeenTurnStartAssistantRef = useRef(false);
   useEffect(() => {
     const sessionChanged = prevQueuePeekSessionIdRef.current !== sessionId;
     prevQueuePeekSessionIdRef.current = sessionId;
+
+    if (sessionChanged) {
+      // Reset per-stream promotion state so stale chips from the previous
+      // session don't promote onto the first assistant of the new session.
+      hasSeenTurnStartAssistantRef.current = false;
+    }
 
     if (!sessionId) {
       setQueuedMessages([]);
@@ -446,7 +457,6 @@ export function useCopilotPage() {
   const seenAssistantIdsRef = useRef<Set<string>>(
     new Set(messages.filter((m) => m.role === "assistant").map((m) => m.id)),
   );
-  const hasSeenTurnStartAssistantRef = useRef(false);
   const queuedMessagesRef = useRef(queuedMessages);
   queuedMessagesRef.current = queuedMessages;
 

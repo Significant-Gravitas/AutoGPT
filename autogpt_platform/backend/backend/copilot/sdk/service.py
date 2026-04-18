@@ -2690,14 +2690,7 @@ async def stream_chat_completion_sdk(
     # that did NOT pre-save, most notably the auto-continue recursive call
     # below.
     if _user_message_appended and is_user_message:
-        try:
-            await persist_session_safe(session, log_prefix)
-        except Exception:
-            logger.warning(
-                "%s Failed to persist user message eagerly",
-                log_prefix,
-                exc_info=True,
-            )
+        await persist_session_safe(session, log_prefix)
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
