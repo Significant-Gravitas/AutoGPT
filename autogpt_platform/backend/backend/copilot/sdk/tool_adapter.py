@@ -616,6 +616,18 @@ def _make_truncating_wrapper(
         else:
             _clear_tool_failures(tool_name)
 
+        # Stash BEFORE stripping AND BEFORE follow-up injection so the
+        # frontend SSE stream receives the CLEAN tool output (parseable as
+        # JSON, e.g. {"stdout": "...", "exit_code": 0}).  The frontend's
+        # bash/tool widgets run JSON.parse on this — if we stashed the
+        # text with ``<user_follow_up>`` prepended the parse would fail
+        # and widgets would fall back to a raw text dump, hiding stdout
+        # and exit code.
+        if not truncated.get("isError"):
+            text = _text_from_mcp_result(truncated)
+            if text:
+                stash_pending_tool_output(tool_name, text)
+
         # Mid-turn drain: if the user queued follow-up messages while this
         # tool was running, inject them at the HEAD of the output inside a
         # <user_follow_up> block so Claude reads them on the next LLM
@@ -623,10 +635,16 @@ def _make_truncating_wrapper(
         # equivalent of baseline's between-rounds drain — it reaches the
         # model at the earliest protocol-safe point within a turn.
         #
-        # Placement is head-first so the 100 KB truncate above (and the
-        # >80 KB persist-to-workspace step in BaseTool.execute) cannot
-        # silently eat the follow-up.  Drain runs AFTER truncation so an
-        # injection failure cannot corrupt the tool output itself.
+        # IMPORTANT: this runs AFTER the stash above so the follow-up
+        # block only reaches Claude (via the wrapper's return value ->
+        # SDK -> CLI session JSONL for --resume) and NEVER reaches the
+        # frontend, which expects clean JSON from the stash.
+        #
+        # Placement inside the content block is head-first so the 100 KB
+        # truncate above (and the >80 KB persist-to-workspace step in
+        # BaseTool.execute) cannot silently eat the follow-up.  Drain
+        # failures are swallowed so a broken Redis cannot corrupt tool
+        # output.
         if session is not None and session.session_id:
             try:
                 pending = await drain_pending_messages(session.session_id)
@@ -648,9 +666,6 @@ def _make_truncating_wrapper(
                     tool_name,
                     session.session_id,
                 )
-                # Prepend to the first text content block.  If the result
-                # shape is unexpected, append a new text block rather than
-                # silently dropping the follow-up.
                 content_blocks = truncated.get("content")
                 if isinstance(content_blocks, list) and content_blocks:
                     first = content_blocks[0]
@@ -660,13 +675,6 @@ def _make_truncating_wrapper(
                         content_blocks.insert(0, {"type": "text", "text": followup})
                 else:
                     truncated["content"] = [{"type": "text", "text": followup}]
-
-        # Stash BEFORE stripping so the frontend SSE stream receives
-        # the full output including _STRIP_FROM_LLM fields (e.g. is_dry_run).
-        if not truncated.get("isError"):
-            text = _text_from_mcp_result(truncated)
-            if text:
-                stash_pending_tool_output(tool_name, text)
 
         # Strip is_dry_run only when the session itself is in dry_run mode.
         # In that case the LLM must not know it is simulating — it should act

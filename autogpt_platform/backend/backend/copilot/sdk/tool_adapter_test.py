@@ -975,6 +975,53 @@ class TestTruncatingWrapperUserFollowUpInjection:
         assert "</user_follow_up>" in text
 
     @pytest.mark.asyncio
+    async def test_stash_stays_clean_of_followup_tags(self, monkeypatch):
+        """Frontend-facing stash must NOT contain <user_follow_up> tags —
+        the bash-output widget does JSON.parse() and prepending the block
+        would break stdout/exit-code rendering. The injection must ONLY
+        reach Claude (via the wrapper return value) and never the stash."""
+        from backend.copilot import pending_messages as pm_module
+
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-stash-clean"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def fake_drain(_session_id: str):
+            return [pm_module.PendingMessage(content="follow-up text X")]
+
+        monkeypatch.setattr(
+            "backend.copilot.sdk.tool_adapter.drain_pending_messages",
+            fake_drain,
+        )
+
+        clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": clean_json}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_stash_clean")
+        llm_result = await wrapper({})
+
+        # Wrapper return value (goes to Claude via SDK) HAS the follow-up.
+        llm_text = llm_result["content"][0]["text"]
+        assert "<user_follow_up>" in llm_text
+        assert "follow-up text X" in llm_text
+
+        # Stash (goes to frontend SSE) must NOT have the follow-up — it
+        # must stay as clean parseable JSON so the bash widget renders.
+        stashed = pop_pending_tool_output("fake_tool_stash_clean")
+        assert stashed is not None
+        assert "<user_follow_up>" not in stashed
+        assert stashed == clean_json
+        # Sanity check: the clean stash is still valid JSON.
+        parsed = json.loads(stashed)
+        assert parsed["exit_code"] == 0
+
+    @pytest.mark.asyncio
     async def test_no_pending_no_modification(self, monkeypatch):
         session = MagicMock()
         session.dry_run = False
