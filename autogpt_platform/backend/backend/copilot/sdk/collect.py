@@ -16,18 +16,12 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from backend.copilot.permissions import CopilotPermissions
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from redis.exceptions import RedisError
 
 from .. import stream_registry
-from ..response_model import (
-    StreamError,
-    StreamTextDelta,
-    StreamToolInputAvailable,
-    StreamToolOutputAvailable,
-    StreamUsage,
-)
 from .service import stream_chat_completion_sdk
+from .stream_accumulator import EventAccumulator, process_event
 
 logger = logging.getLogger(__name__)
 
@@ -111,61 +105,6 @@ async def _registry_session(
             )
 
 
-class _ToolCallEntry(BaseModel):
-    """A single tool call observed during stream consumption."""
-
-    tool_call_id: str
-    tool_name: str
-    input: Any
-    output: Any = None
-    success: bool | None = None
-
-
-class _EventAccumulator(BaseModel):
-    """Mutable accumulator for stream events."""
-
-    response_parts: list[str] = Field(default_factory=list)
-    tool_calls: list[_ToolCallEntry] = Field(default_factory=list)
-    tool_calls_by_id: dict[str, _ToolCallEntry] = Field(default_factory=dict)
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-
-
-def _process_event(event: object, acc: _EventAccumulator) -> str | None:
-    """Process a single stream event and return error_msg if StreamError.
-
-    Uses structural pattern matching for dispatch per project guidelines.
-    """
-    match event:
-        case StreamTextDelta(delta=delta):
-            acc.response_parts.append(delta)
-        case StreamToolInputAvailable() as e:
-            entry = _ToolCallEntry(
-                tool_call_id=e.toolCallId,
-                tool_name=e.toolName,
-                input=e.input,
-            )
-            acc.tool_calls.append(entry)
-            acc.tool_calls_by_id[e.toolCallId] = entry
-        case StreamToolOutputAvailable() as e:
-            if tc := acc.tool_calls_by_id.get(e.toolCallId):
-                tc.output = e.output
-                tc.success = e.success
-            else:
-                logger.debug(
-                    "Received tool output for unknown tool_call_id: %s",
-                    e.toolCallId,
-                )
-        case StreamUsage() as e:
-            acc.prompt_tokens += e.prompt_tokens
-            acc.completion_tokens += e.completion_tokens
-            acc.total_tokens += e.total_tokens
-        case StreamError(errorText=err):
-            return err
-    return None
-
-
 async def collect_copilot_response(
     *,
     session_id: str,
@@ -210,9 +149,9 @@ async def collect_copilot_response(
                 stream=raw_stream,
             )
 
-            acc = _EventAccumulator()
+            acc = EventAccumulator()
             async for event in published_stream:
-                if err := _process_event(event, acc):
+                if err := process_event(event, acc):
                     handle.error_msg = err
                     # stream_and_publish skips StreamError events, so
                     # mark_session_completed must publish the error to Redis.

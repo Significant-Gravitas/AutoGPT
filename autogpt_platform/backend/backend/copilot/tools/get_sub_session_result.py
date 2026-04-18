@@ -1,16 +1,17 @@
 """Poll / wait on / cancel a sub-AutoPilot started by ``run_sub_session``.
 
-Companion to :mod:`run_sub_session`. Both tools operate on the sub's
+Companion to :mod:`run_sub_session`. Operates on the sub's
 ``ChatSession`` directly — there is no separate registry. Ownership is
 re-verified on every call by loading the ChatSession and comparing its
 ``user_id`` against the authenticated caller.
 
 * **Wait** — subscribe to ``stream_registry`` for the session and drain
   until ``StreamFinish`` / ``StreamError`` (terminal) or the per-call
-  cap fires. On cap fire, return ``status="running"`` with the sub's
-  session_id so the agent can re-poll.
-* **Just check** — ``wait_if_running=0`` skips the subscription and
-  returns whatever the session currently shows.
+  cap fires. On terminal, the aggregated :class:`SessionResult` comes
+  back in memory — no DB round-trip for the response content.
+* **Just check** — ``wait_if_running=0`` skips the subscription. If the
+  sub's last assistant message already looks terminal, returns
+  ``completed`` with that content.
 * **Cancel** — fan out a ``CancelCoPilotEvent`` on the shared cancel
   exchange. Whichever worker is running the sub breaks out of its
   stream and finalises the session as ``failed``.
@@ -21,13 +22,14 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
-    wait_for_session_completion,
+    SessionResult,
+    wait_for_session_result,
 )
+from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
 from .base import BaseTool
 from .models import (
@@ -38,8 +40,8 @@ from .models import (
 )
 from .run_sub_session import (
     MAX_SUB_SESSION_WAIT_SECONDS,
-    _response_from_outcome,
     _sub_session_link,
+    response_from_outcome,
 )
 
 logger = logging.getLogger(__name__)
@@ -144,13 +146,12 @@ class GetSubSessionResultTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        link = _sub_session_link(inner_session_id)
         started_at = time.monotonic()
 
         if cancel:
             # Fan out the cancel event. Whichever worker is running the
             # sub will break out of its stream and finalise the session
-            # as failed. We return "cancelled" immediately; the sub may
+            # as failed. Return "cancelled" immediately; the sub may
             # still emit a little more output before the worker notices,
             # but the agent doesn't need to wait for that.
             await enqueue_cancel_task(inner_session_id)
@@ -160,34 +161,38 @@ class GetSubSessionResultTool(BaseTool):
                 status="cancelled",
                 sub_session_id=inner_session_id,
                 sub_autopilot_session_id=inner_session_id,
-                sub_autopilot_session_link=link,
+                sub_autopilot_session_link=_sub_session_link(inner_session_id),
                 elapsed_seconds=0.0,
             )
 
         # If the sub's last turn is already terminal (assistant message
-        # present with no pending user message), skip the wait entirely.
+        # with content / tool_calls), skip the subscription entirely and
+        # rebuild the aggregated result from the persisted messages.
         # Otherwise, subscribe to stream_registry and wait for the
         # terminal event or the cap.
         effective_wait = max(0, min(wait_if_running, MAX_SUB_SESSION_WAIT_SECONDS))
+        terminal_result = _already_terminal_result(sub)
         outcome: SessionOutcome
-        if _looks_terminal(sub):
-            outcome = "completed"
+        result: SessionResult
+        if terminal_result is not None:
+            outcome, result = "completed", terminal_result
         elif effective_wait > 0:
-            outcome = await wait_for_session_completion(
+            outcome, result = await wait_for_session_result(
                 session_id=inner_session_id,
                 user_id=user_id,
                 timeout=effective_wait,
             )
         else:
-            outcome = "running"
+            outcome, result = "running", SessionResult()
 
         elapsed = time.monotonic() - started_at
 
         if outcome == "running" and include_progress:
             # Running + caller wants progress — hand-assemble the response
-            # with progress attached. (`_response_from_outcome` doesn't
-            # carry the progress snapshot.)
+            # with the progress snapshot attached. response_from_outcome
+            # doesn't carry progress, so we build the response here.
             progress = await _build_progress_snapshot(inner_session_id)
+            link = _sub_session_link(inner_session_id)
             return SubSessionStatusResponse(
                 message=(
                     f"Sub-AutoPilot still running after {elapsed:.0f}s."
@@ -203,29 +208,48 @@ class GetSubSessionResultTool(BaseTool):
                 progress=progress,
             )
 
-        response = await _response_from_outcome(
+        return response_from_outcome(
             outcome=outcome,
+            result=result,
             inner_session_id=inner_session_id,
-            parent_session=session,
+            parent_session_id=session.session_id,
             elapsed=elapsed,
         )
-        return response
 
 
-def _looks_terminal(sub: ChatSession) -> bool:
-    """Cheap check for "has the sub's latest turn already finished?".
+def _already_terminal_result(sub: ChatSession) -> SessionResult | None:
+    """Rebuild the aggregated result from the sub's persisted last turn,
+    when the last message is a terminal assistant message.
 
-    Returns True when the last assistant message carries content. This
-    avoids subscribing to stream_registry for a session whose terminal
-    event fired before we arrived (common when the agent polls long
-    after the sub actually completed).
+    Lets ``get_sub_session_result`` short-circuit the subscribe+wait
+    when the agent polls well after the sub actually finished (a common
+    case when the user pauses and later asks "what's the result?").
+    Returns ``None`` if the last message isn't terminal.
     """
     if not sub.messages:
-        return False
+        return None
     last = sub.messages[-1]
     if last.role != "assistant":
-        return False
-    return bool(last.content) or bool(last.tool_calls)
+        return None
+    if not last.content and not last.tool_calls:
+        return None
+    result = SessionResult()
+    result.response_text = last.content or ""
+    # Persisted tool calls are OpenAI-shape dicts; translate to
+    # ToolCallEntry so the downstream ``response_from_outcome`` can
+    # ``.model_dump()`` them uniformly with the live-drain path.
+    for tc in last.tool_calls or []:
+        fn = tc.get("function") or {}
+        result.tool_calls.append(
+            ToolCallEntry(
+                tool_call_id=tc.get("id", ""),
+                tool_name=fn.get("name") or tc.get("name") or "",
+                input=fn.get("arguments") or tc.get("arguments") or tc.get("input"),
+                output=tc.get("output"),
+                success=tc.get("success"),
+            )
+        )
+    return result
 
 
 async def _build_progress_snapshot(

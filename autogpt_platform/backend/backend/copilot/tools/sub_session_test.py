@@ -33,16 +33,19 @@ def _session(user_id: str = "u", session_id: str = "s1") -> MagicMock:
 
 @pytest.fixture
 def mock_queue(monkeypatch):
-    """Patch the enqueue helpers + the stream-registry session creator so
-    tests don't need RabbitMQ or Redis. Returns a dict of the mocks so
+    """Patch the enqueue helpers + the stream-registry session creator at
+    the source modules (session_waiter / get_sub_session_result) so tests
+    don't need RabbitMQ or Redis. Returns a dict of the mocks so
     individual tests can assert on them.
     """
     enqueue_turn = AsyncMock()
     enqueue_cancel = AsyncMock()
     create_session = AsyncMock()
 
+    # run_sub_session calls enqueue_copilot_turn via session_waiter's
+    # run_copilot_turn_via_queue helper — patch at the helper's source.
     monkeypatch.setattr(
-        "backend.copilot.tools.run_sub_session.enqueue_copilot_turn",
+        "backend.copilot.sdk.session_waiter.enqueue_copilot_turn",
         enqueue_turn,
     )
     monkeypatch.setattr(
@@ -50,7 +53,7 @@ def mock_queue(monkeypatch):
         enqueue_cancel,
     )
     monkeypatch.setattr(
-        "backend.copilot.tools.run_sub_session.stream_registry.create_session",
+        "backend.copilot.sdk.session_waiter.stream_registry.create_session",
         create_session,
     )
     return {
@@ -62,19 +65,26 @@ def mock_queue(monkeypatch):
 
 @pytest.fixture
 def mock_waiter(monkeypatch):
-    """Patch wait_for_session_completion in both tool modules. The waiter
-    takes keyword-only args (session_id, user_id, timeout) and returns a
-    SessionOutcome string."""
-    waiter = AsyncMock(return_value="running")
+    """Patch the queue-backed primitive and the lightweight waiter so
+    tests can drive outcome + result deterministically. Returns the
+    ``run_copilot_turn_via_queue`` mock (used by run_sub_session) and
+    the ``wait_for_session_result`` mock (used by get_sub_session_result)
+    wired to return ``("running", SessionResult())`` by default."""
+    from backend.copilot.sdk.session_waiter import SessionResult
+
+    turn_mock = AsyncMock(return_value=("running", SessionResult()))
+    result_mock = AsyncMock(return_value=("running", SessionResult()))
     monkeypatch.setattr(
-        "backend.copilot.tools.run_sub_session.wait_for_session_completion",
-        waiter,
+        "backend.copilot.tools.run_sub_session.run_copilot_turn_via_queue",
+        turn_mock,
     )
     monkeypatch.setattr(
-        "backend.copilot.tools.get_sub_session_result.wait_for_session_completion",
-        waiter,
+        "backend.copilot.tools.get_sub_session_result.wait_for_session_result",
+        result_mock,
     )
-    return waiter
+    # Single handle with both attrs for tests that only care about one.
+    turn_mock.result_mock = result_mock
+    return turn_mock
 
 
 @pytest.fixture
@@ -177,8 +187,8 @@ class TestRunSubSession:
     async def test_forwards_parent_permissions_to_queue(
         self, monkeypatch, mock_queue, mock_waiter, mock_model
     ):
-        """The parent's CopilotPermissions must be passed on the enqueued
-        CoPilotExecutionEntry so the worker applies the same filter."""
+        """The parent's CopilotPermissions must be passed through to the
+        queue primitive so the worker applies the same filter."""
         from backend.copilot.permissions import CopilotPermissions
 
         perms = CopilotPermissions(tools=["run_block"], tools_exclude=False)
@@ -192,16 +202,16 @@ class TestRunSubSession:
             prompt="hi",
             wait_for_result=0,
         )
-        mock_queue["enqueue_turn"].assert_awaited_once()
-        kwargs = mock_queue["enqueue_turn"].await_args.kwargs
-        assert kwargs["permissions"] is perms
+        mock_waiter.assert_awaited_once()
+        assert mock_waiter.await_args.kwargs["permissions"] is perms
 
     @pytest.mark.asyncio
     async def test_wait_for_result_zero_returns_running(
         self, mock_queue, mock_waiter, mock_model
     ):
-        """wait_for_result=0 must skip wait_for_session_completion entirely
-        and return status=running so the caller polls."""
+        """wait_for_result=0 still dispatches the job (so the sub starts)
+        but the primitive returns 'running' immediately because timeout=0,
+        and the tool surfaces that to the caller."""
         r = await RunSubSessionTool()._execute(
             user_id="alice",
             session=_session("alice"),
@@ -212,30 +222,31 @@ class TestRunSubSession:
         assert r.status == "running"
         assert r.sub_session_id == r.sub_autopilot_session_id == "inner-1"
         assert r.sub_autopilot_session_link == "/copilot?sessionId=inner-1"
-        mock_waiter.assert_not_awaited()
+        mock_waiter.assert_awaited_once()
+        assert mock_waiter.await_args.kwargs["timeout"] == 0
 
     @pytest.mark.asyncio
     async def test_wait_for_result_completed_returns_final_response(
-        self, monkeypatch, mock_queue, mock_waiter, mock_model
+        self, mock_queue, mock_waiter, mock_model
     ):
-        """When the waiter returns 'completed', the tool reads the sub's
-        last assistant message for response_text + tool_calls."""
-        mock_waiter.return_value = "completed"
+        """When the queue primitive returns 'completed' + a SessionResult,
+        the tool surfaces response_text + tool_calls directly — no DB
+        round-trip needed for the content."""
+        from backend.copilot.sdk.session_waiter import SessionResult
+        from backend.copilot.sdk.stream_accumulator import ToolCallEntry
 
-        async def fake_get(session_id: str):
-            sess = MagicMock()
-            sess.session_id = session_id
-            sess.user_id = "alice"
-            assistant = MagicMock()
-            assistant.role = "assistant"
-            assistant.content = "the answer"
-            assistant.tool_calls = [{"function": {"name": "foo"}}]
-            sess.messages = [assistant]
-            return sess
-
-        monkeypatch.setattr(
-            "backend.copilot.tools.run_sub_session.get_chat_session", fake_get
-        )
+        res = SessionResult()
+        res.response_text = "the answer"
+        res.tool_calls = [
+            ToolCallEntry(
+                tool_call_id="tc-1",
+                tool_name="foo",
+                input={"x": 1},
+                output="ok",
+                success=True,
+            )
+        ]
+        mock_waiter.return_value = ("completed", res)
 
         r = await RunSubSessionTool()._execute(
             user_id="alice",
@@ -246,12 +257,14 @@ class TestRunSubSession:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "completed"
         assert r.response == "the answer"
-        assert r.tool_calls == [{"function": {"name": "foo"}}]
+        assert r.tool_calls is not None and len(r.tool_calls) == 1
+        assert r.tool_calls[0]["tool_name"] == "foo"
         mock_waiter.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_wait_clamps_above_maximum(self, mock_queue, mock_waiter, mock_model):
-        """wait_for_result values above the cap are clamped."""
+        """wait_for_result values above the cap are clamped before being
+        passed to the queue primitive."""
         await RunSubSessionTool()._execute(
             user_id="alice",
             session=_session("alice"),
@@ -319,7 +332,6 @@ class TestGetSubSessionResult:
             "backend.copilot.tools.get_sub_session_result.get_chat_session",
             fake_get,
         )
-        mock_waiter.return_value = "running"
 
         r = await GetSubSessionResultTool()._execute(
             user_id="alice",
@@ -330,36 +342,26 @@ class TestGetSubSessionResult:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "running"
         assert r.sub_session_id == "inner-7"
-        mock_waiter.assert_awaited_once()
+        mock_waiter.result_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_wait_returns_completed_with_response(self, monkeypatch, mock_waiter):
-        """'completed' outcome reads the sub's last assistant message."""
-        running_sub = MagicMock(user_id="alice", messages=[])
-        final_sub = MagicMock(user_id="alice")
-        final_assistant = MagicMock()
-        final_assistant.role = "assistant"
-        final_assistant.content = "done"
-        final_assistant.tool_calls = None
-        final_sub.messages = [final_assistant]
+        """'completed' outcome surfaces the SessionResult directly."""
+        from backend.copilot.sdk.session_waiter import SessionResult
 
-        calls = {"n": 0}
+        sub = MagicMock(user_id="alice", messages=[])  # not terminal-looking
 
         async def fake_get(_sid):
-            calls["n"] += 1
-            # First call (ownership check) sees no messages; second call
-            # (after the waiter returns completed) sees the terminal one.
-            return running_sub if calls["n"] == 1 else final_sub
+            return sub
 
         monkeypatch.setattr(
             "backend.copilot.tools.get_sub_session_result.get_chat_session",
             fake_get,
         )
-        monkeypatch.setattr(
-            "backend.copilot.tools.run_sub_session.get_chat_session",
-            fake_get,
-        )
-        mock_waiter.return_value = "completed"
+
+        res = SessionResult()
+        res.response_text = "done"
+        mock_waiter.result_mock.return_value = ("completed", res)
 
         r = await GetSubSessionResultTool()._execute(
             user_id="alice",
@@ -374,7 +376,8 @@ class TestGetSubSessionResult:
     @pytest.mark.asyncio
     async def test_already_terminal_skips_waiter(self, monkeypatch, mock_waiter):
         """If the sub's last message is already terminal, the tool returns
-        'completed' without ever calling wait_for_session_completion."""
+        'completed' without ever calling wait_for_session_result — it
+        rebuilds the response from the persisted message instead."""
         sub = MagicMock(user_id="alice")
         assistant = MagicMock()
         assistant.role = "assistant"
@@ -389,10 +392,6 @@ class TestGetSubSessionResult:
             "backend.copilot.tools.get_sub_session_result.get_chat_session",
             fake_get,
         )
-        monkeypatch.setattr(
-            "backend.copilot.tools.run_sub_session.get_chat_session",
-            fake_get,
-        )
 
         r = await GetSubSessionResultTool()._execute(
             user_id="alice",
@@ -403,7 +402,7 @@ class TestGetSubSessionResult:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "completed"
         assert r.response == "already done"
-        mock_waiter.assert_not_awaited()
+        mock_waiter.result_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cancel_publishes_cancel_event(
@@ -430,4 +429,4 @@ class TestGetSubSessionResult:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "cancelled"
         mock_queue["enqueue_cancel"].assert_awaited_once_with("inner-5")
-        mock_waiter.assert_not_awaited()
+        mock_waiter.result_mock.assert_not_awaited()

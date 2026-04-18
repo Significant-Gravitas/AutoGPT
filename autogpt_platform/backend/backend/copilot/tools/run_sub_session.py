@@ -2,45 +2,38 @@
 
 Mirror-image of ``run_agent`` + ``view_agent_output`` for copilot turns:
 
-1. The tool creates (or validates ownership of) an inner ``ChatSession``,
-   creates a stream-registry session meta record, and enqueues a
-   ``CoPilotExecutionEntry`` on the copilot execution queue.
+1. The tool creates (or validates ownership of) an inner ``ChatSession``
+   and calls :func:`run_copilot_turn_via_queue` — the shared primitive
+   that creates the stream-registry session meta, enqueues a
+   ``CoPilotExecutionEntry``, and waits on the Redis stream until the
+   terminal event arrives or the cap fires.
 2. Any available ``copilot_executor`` worker claims the job, runs
    ``collect_copilot_response`` to completion, and publishes the final
    ``StreamFinish`` event on the session's Redis stream.
-3. The tool optionally waits up to ``wait_for_result`` seconds (capped at
-   :data:`MAX_SUB_SESSION_WAIT_SECONDS`, 5 min) by subscribing to that
-   stream. If the terminal event arrives in that window, the tool reads
-   the sub's last assistant message and returns ``status="completed"``
-   inline. Otherwise it returns ``status="running"`` + the sub's
-   ``session_id``; the agent polls via :mod:`get_sub_session_result`.
+3. If the terminal event arrives in the wait window, the aggregated
+   :class:`SessionResult` (response text, tool calls, usage) comes back
+   in memory — no DB round-trip. Otherwise the tool returns
+   ``status="running"`` + the sub's ``session_id`` and the agent polls
+   via :mod:`get_sub_session_result`.
 
-Compared to the previous in-process ``asyncio.Task`` implementation,
-queue-backed execution gives us:
-
-* **Deploy/crash resilience** — RabbitMQ redelivers the job if a worker
-  dies mid-run, so a 30-minute sub survives a rolling deploy.
-* **Natural load balancing** — parallel subs from one user fan out across
-  workers instead of pinning one event loop.
-* **Uniform conversation model** — a sub is just another copilot turn;
-  no bespoke task registry, shield dance, or abandoned-task cap.
-* **No cross-process cancellation gymnastics** — cancel is a fan-out
-  event on the existing ``copilot_cancel`` exchange.
+Compared to the prior in-process ``asyncio.Task`` implementation this
+gives us deploy/crash resilience, natural load balancing across
+workers, and a uniform conversation model — a sub is just another
+copilot turn routed through the same queue and event bus as every
+other turn.
 """
 
 import logging
 import time
-import uuid
 from typing import Any
 
-from backend.copilot import stream_registry
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions
-from backend.copilot.executor.utils import enqueue_copilot_turn
 from backend.copilot.model import ChatSession, create_chat_session, get_chat_session
 from backend.copilot.sdk.session_waiter import (
     SessionOutcome,
-    wait_for_session_completion,
+    SessionResult,
+    run_copilot_turn_via_queue,
 )
 
 from .base import BaseTool
@@ -157,44 +150,23 @@ class RunSubSessionTool(BaseTool):
         if system_context.strip():
             effective_prompt = f"[System Context: {system_context.strip()}]\n\n{prompt}"
 
-        # Propagate the parent's capability filter so the sub can't escalate
-        # past whatever the parent was restricted to.
-        inherited_permissions = get_current_permissions()
-
-        # Create a stream_registry meta record for the sub's turn, then
-        # enqueue the job. Any worker picks it up; we wait on the shared
-        # Redis stream for the terminal event.
-        turn_id = str(uuid.uuid4())
-        await stream_registry.create_session(
-            session_id=inner_session_id,
-            user_id=user_id,
-            tool_call_id=f"sub:{session.session_id}" if session.session_id else "sub",
-            tool_name="run_sub_session",
-            turn_id=turn_id,
-        )
-        await enqueue_copilot_turn(
+        cap = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
+        started_at = time.monotonic()
+        outcome, result = await run_copilot_turn_via_queue(
             session_id=inner_session_id,
             user_id=user_id,
             message=effective_prompt,
-            turn_id=turn_id,
-            permissions=inherited_permissions,
+            timeout=cap,
+            permissions=get_current_permissions(),
+            tool_call_id=(f"sub:{session.session_id}" if session.session_id else "sub"),
+            tool_name="run_sub_session",
         )
-
-        cap = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
-        started_at = time.monotonic()
-        outcome: SessionOutcome = "running"
-        if cap > 0:
-            outcome = await wait_for_session_completion(
-                session_id=inner_session_id,
-                user_id=user_id,
-                timeout=cap,
-            )
         elapsed = time.monotonic() - started_at
-
-        return await _response_from_outcome(
+        return response_from_outcome(
             outcome=outcome,
+            result=result,
             inner_session_id=inner_session_id,
-            parent_session=session,
+            parent_session_id=session.session_id,
             elapsed=elapsed,
         )
 
@@ -211,19 +183,20 @@ def _sub_session_link(inner_session_id: str | None) -> str | None:
     return f"/copilot?sessionId={inner_session_id}"
 
 
-async def _response_from_outcome(
+def response_from_outcome(
     *,
     outcome: SessionOutcome,
+    result: SessionResult,
     inner_session_id: str,
-    parent_session: ChatSession,
+    parent_session_id: str | None,
     elapsed: float,
 ) -> SubSessionStatusResponse:
-    """Translate a ``SessionOutcome`` + the sub's ChatSession state into the
+    """Translate a ``(SessionOutcome, SessionResult)`` tuple into the
     ``SubSessionStatusResponse`` contract the LLM sees.
 
-    ``completed`` reads the sub's last assistant message for the response
-    text + tool_calls. ``failed`` returns the error with the same handles.
-    ``running`` returns the polling handles so the agent can resume.
+    ``completed`` surfaces the aggregated response text + tool calls.
+    ``failed`` returns the error marker with the same handles.
+    ``running`` returns just the polling handles so the agent can resume.
     """
     link = _sub_session_link(inner_session_id)
     if outcome == "running":
@@ -234,7 +207,7 @@ async def _response_from_outcome(
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect progress."
             ),
-            session_id=parent_session.session_id,
+            session_id=parent_session_id,
             status="running",
             sub_session_id=inner_session_id,
             sub_autopilot_session_id=inner_session_id,
@@ -245,7 +218,7 @@ async def _response_from_outcome(
     if outcome == "failed":
         return SubSessionStatusResponse(
             message="Sub-AutoPilot failed. See the sub's transcript for details.",
-            session_id=parent_session.session_id,
+            session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,
             sub_autopilot_session_id=inner_session_id,
@@ -253,26 +226,15 @@ async def _response_from_outcome(
             elapsed_seconds=round(elapsed, 2),
         )
 
-    # completed — load the sub's last assistant turn for the content.
-    response_text = ""
-    tool_calls: list[dict[str, Any]] = []
-    sub = await get_chat_session(inner_session_id)
-    if sub is not None:
-        last_assistant = next(
-            (m for m in reversed(sub.messages) if m.role == "assistant"), None
-        )
-        if last_assistant is not None:
-            response_text = last_assistant.content or ""
-            tool_calls = list(last_assistant.tool_calls or [])
-
+    # completed
     return SubSessionStatusResponse(
         message=f"Sub-AutoPilot completed.{f' View at {link}.' if link else ''}",
-        session_id=parent_session.session_id,
+        session_id=parent_session_id,
         status="completed",
         sub_session_id=inner_session_id,
         sub_autopilot_session_id=inner_session_id,
         sub_autopilot_session_link=link,
-        response=response_text,
-        tool_calls=tool_calls,
+        response=result.response_text,
+        tool_calls=[tc.model_dump() for tc in result.tool_calls],
         elapsed_seconds=round(elapsed, 2),
     )
