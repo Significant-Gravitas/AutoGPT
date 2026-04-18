@@ -304,7 +304,8 @@ class SubSessionStatusResponse(ToolResponseBase):
         default=None,
         description=(
             "The session_id of the sub-AutoPilot conversation. Use with "
-            "``run_sub_session(..., session_id=<this>)`` to continue it."
+            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
+            "to continue it."
         ),
     )
     tool_calls: list[dict[str, Any]] | None = Field(

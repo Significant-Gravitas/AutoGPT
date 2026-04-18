@@ -137,6 +137,115 @@ class TestRunSubSession:
         assert isinstance(r, ErrorResponse)
 
     @pytest.mark.asyncio
+    async def test_resume_with_other_users_session_id_rejected(self, monkeypatch):
+        """sub_autopilot_session_id must belong to the caller — prevents
+        one user hijacking another user's session via run_sub_session."""
+        other_session = MagicMock()
+        other_session.user_id = "bob"
+        other_session.session_id = "bob-session"
+
+        async def fake_get_chat_session(session_id: str):
+            if session_id == "bob-session":
+                return other_session
+            return None
+
+        monkeypatch.setattr(
+            "backend.copilot.model.get_chat_session",
+            fake_get_chat_session,
+        )
+
+        tool = RunSubSessionTool()
+        r = await tool._execute(
+            user_id="alice",
+            session=_session(),
+            prompt="hi",
+            sub_autopilot_session_id="bob-session",
+            wait_for_result=0,
+        )
+        assert isinstance(r, ErrorResponse)
+        assert "not a session you own" in r.message
+
+    @pytest.mark.asyncio
+    async def test_propagates_dry_run_to_sub(self, monkeypatch):
+        """Parent session.dry_run is inherited by the created sub — a sub
+        spawned inside a dry-run conversation must not silently escalate
+        to a real run."""
+        captured_kwargs: dict = {}
+
+        async def fake_create(user_id: str, *, dry_run: bool):
+            captured_kwargs["dry_run"] = dry_run
+            sess = MagicMock()
+            sess.session_id = "inner-dry"
+            return sess
+
+        # Override the autouse fixture's patch for this test.
+        monkeypatch.setattr(
+            "backend.copilot.model.create_chat_session",
+            fake_create,
+        )
+
+        async def fake_run(**_kwargs):
+            return _SubAutopilotResult(
+                session_id="inner-dry", response_text="", tool_calls=[]
+            )
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session._run_sub_autopilot",
+            fake_run,
+        )
+
+        parent = _session()
+        parent.dry_run = True
+
+        tool = RunSubSessionTool()
+        await tool._execute(
+            user_id="alice",
+            session=parent,
+            prompt="hi",
+            wait_for_result=2,
+        )
+        assert captured_kwargs["dry_run"] is True
+
+    @pytest.mark.asyncio
+    async def test_forwards_parent_permissions_to_sub(self, monkeypatch):
+        """CopilotPermissions set on the parent context are forwarded to the
+        spawned sub so the sub can't escalate past the parent's capability
+        filter."""
+        from backend.copilot.context import _current_permissions
+        from backend.copilot.permissions import CopilotPermissions
+
+        captured_permissions: list = []
+
+        async def fake_run(**kwargs):
+            captured_permissions.append(kwargs.get("permissions"))
+            return _SubAutopilotResult(
+                session_id="inner-1",
+                response_text="ok",
+                tool_calls=[],
+            )
+
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session._run_sub_autopilot",
+            fake_run,
+        )
+
+        parent_perms = CopilotPermissions(tools=["bash_exec"], tools_exclude=True)
+        token = _current_permissions.set(parent_perms)
+        try:
+            tool = RunSubSessionTool()
+            await tool._execute(
+                user_id="alice",
+                session=_session(),
+                prompt="hi",
+                wait_for_result=2,
+            )
+        finally:
+            _current_permissions.reset(token)
+
+        assert len(captured_permissions) == 1
+        assert captured_permissions[0] is parent_perms
+
+    @pytest.mark.asyncio
     async def test_wait_for_result_returns_completed(self, monkeypatch):
         async def fake_run(**_kwargs):
             await asyncio.sleep(0.05)

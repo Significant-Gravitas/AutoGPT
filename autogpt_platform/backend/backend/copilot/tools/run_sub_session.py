@@ -22,9 +22,13 @@ import asyncio
 import dataclasses
 import logging
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
+
+if TYPE_CHECKING:
+    from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.sub_session_registry import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     prune_finished,
@@ -136,18 +140,40 @@ class RunSubSessionTool(BaseTool):
         # Resolve the sub's ChatSession id BEFORE spawning the task so we
         # can surface it immediately in the response and also pass it to
         # get_sub_session_result for progress peeks while the sub runs.
-        from backend.copilot.model import create_chat_session  # noqa: PLC0415
+        # Resume-path MUST verify ownership to prevent one user reusing
+        # another user's session_id as the "sub" session.
+        from backend.copilot.model import (  # noqa: PLC0415
+            create_chat_session,
+            get_chat_session,
+        )
 
         sub_session_param = sub_autopilot_session_id.strip()
         if sub_session_param:
+            owned = await get_chat_session(sub_session_param)
+            if owned is None or owned.user_id != user_id:
+                return ErrorResponse(
+                    message=(
+                        f"sub_autopilot_session_id {sub_session_param} is not "
+                        "a session you own. Leave empty to start a fresh sub, "
+                        "or pass a session_id returned by a previous "
+                        "run_sub_session call of yours."
+                    ),
+                    session_id=session.session_id,
+                )
             inner_session_id = sub_session_param
         else:
-            new_session = await create_chat_session(user_id, dry_run=False)
+            # Inherit parent's dry_run so a sub spawned inside a dry-run
+            # conversation doesn't silently escalate to a live run.
+            new_session = await create_chat_session(user_id, dry_run=session.dry_run)
             inner_session_id = new_session.session_id
 
         effective_prompt = prompt
         if system_context.strip():
             effective_prompt = f"[System Context: {system_context.strip()}]\n\n{prompt}"
+
+        # Propagate the parent's capability filter so the sub can't escalate
+        # (e.g. call blocks or tools the parent was restricted from).
+        inherited_permissions = get_current_permissions()
 
         # Spawn the sub-AutoPilot work as an asyncio.Task so it can outlive
         # the current request. Wrapping the await in asyncio.shield below
@@ -158,17 +184,25 @@ class RunSubSessionTool(BaseTool):
                 user_id=user_id,
                 inner_session_id=inner_session_id,
                 effective_prompt=effective_prompt,
+                permissions=inherited_permissions,
             ),
             name=f"sub-session:{session.session_id}",
         )
 
-        sub_session_id = register_sub_session(
-            task=task,
-            user_id=user_id,
-            parent_session_id=session.session_id or "",
-            prompt=prompt,
-            inner_session_id=inner_session_id,
-        )
+        # Register immediately so the task has a strong ref and survives
+        # request teardown. Cancel the orphaned task if registry insertion
+        # fails (e.g. session-cap hit, exotic errors) so we don't leak.
+        try:
+            sub_session_id = register_sub_session(
+                task=task,
+                user_id=user_id,
+                parent_session_id=session.session_id or "",
+                prompt=prompt,
+                inner_session_id=inner_session_id,
+            )
+        except Exception:
+            task.cancel()
+            raise
 
         cap = max(0, min(wait_for_result, MAX_SUB_SESSION_WAIT_SECONDS))
         started_at = time.monotonic()
@@ -198,6 +232,7 @@ async def _run_sub_autopilot(
     user_id: str,
     inner_session_id: str,
     effective_prompt: str,
+    permissions: "CopilotPermissions | None" = None,
 ):
     """Entry point for the spawned sub-AutoPilot task.
 
@@ -207,7 +242,9 @@ async def _run_sub_autopilot(
 
     The caller has already created (or chosen) ``inner_session_id`` so
     progress polling via ``get_sub_session_result`` can find the session
-    even while the task is still in flight.
+    even while the task is still in flight. ``permissions`` is the parent
+    stream's capability filter; forwarding it prevents the sub from
+    escalating past whatever the parent was restricted to.
     """
     from backend.copilot.sdk.collect import (  # noqa: PLC0415; avoid circular import at module load
         collect_copilot_response,
@@ -217,6 +254,7 @@ async def _run_sub_autopilot(
         session_id=inner_session_id,
         message=effective_prompt,
         user_id=user_id,
+        permissions=permissions,
     )
     return _SubAutopilotResult(
         session_id=inner_session_id,
