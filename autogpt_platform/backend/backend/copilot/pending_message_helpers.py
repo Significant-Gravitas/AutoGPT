@@ -134,6 +134,12 @@ async def queue_pending_for_http(
         files = await resolve_workspace_files(user_id, file_ids)
         sanitized_file_ids = [wf.id for wf in files] or None
 
+    # ``PendingMessageContext`` uses the default ``extra='ignore'`` so
+    # unknown keys in the loose HTTP-level ``context`` dict are silently
+    # dropped rather than raising ``ValidationError`` + 500ing (sentry
+    # r3105553772).  The strict mode would only help protect against
+    # typos, but the upstream ``StreamChatRequest.context: dict[str, str]``
+    # is already schemaless, so the strict mode adds no real safety.
     queue_context = PendingMessageContext.model_validate(context) if context else None
     return await queue_user_message(
         session_id=session_id,

@@ -62,8 +62,17 @@ _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 _NOTIFY_PAYLOAD = "1"
 
 
-class PendingMessageContext(BaseModel, extra="forbid"):
-    """Structured page context attached to a pending message."""
+class PendingMessageContext(BaseModel):
+    """Structured page context attached to a pending message.
+
+    Default ``extra='ignore'`` (pydantic's default): unknown keys from
+    the loose HTTP-level ``StreamChatRequest.context: dict[str, str]``
+    are silently dropped rather than raising ``ValidationError`` on
+    forward-compat additions.  The strict ``extra='forbid'`` mode was
+    removed after sentry r3105553772 — strict validation at this
+    boundary only added a 500 footgun; the upstream request model is
+    already schemaless so strict mode protects nothing.
+    """
 
     url: str | None = Field(default=None, max_length=2_000)
     content: str | None = Field(default=None, max_length=32_000)
