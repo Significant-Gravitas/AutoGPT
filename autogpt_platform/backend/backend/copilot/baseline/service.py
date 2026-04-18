@@ -1068,18 +1068,16 @@ async def stream_chat_completion_baseline(
     # Append user message to transcript after context injection below so the
     # transcript receives the prefixed message when user context is available.
 
-    # Mirror any messages drained at turn start (see above) into the
-    # transcript builder ONLY when no prior transcript was loaded.
-    # When a transcript was loaded, detect_gap already appended these
-    # messages (they are in session.messages after the watermark but
-    # before the current user turn), so appending them again would
-    # produce a malformed double-entry in the uploaded transcript.
-    # When transcript_download is None (no GCS transcript, or first
-    # turn where _load_prior_transcript was never called), detect_gap
-    # never ran, so this explicit mirror is required.
-    if transcript_download is None:
-        for _drained_content in drained_at_start_content:
-            transcript_builder.append_user(content=_drained_content)
+    # NOTE: drained pending messages are folded into the current user
+    # message's content (see the turn-start drain above), so the single
+    # ``transcript_builder.append_user`` call below (covered by the
+    # ``if message and is_user_message`` branch that appends
+    # ``user_message_for_transcript or message``) already records the
+    # combined text in the transcript. Do NOT also append drained items
+    # individually here — on the ``transcript_download is None`` path
+    # that would produce N separate pending entries plus the combined
+    # entry, duplicating the pending content in the JSONL uploaded for
+    # the next turn's ``--resume``.
 
     # Generate title for new sessions
     if is_user_message and not session.title:
