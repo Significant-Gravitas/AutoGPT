@@ -194,6 +194,18 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # they were making real progress.
 _IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
 
+
+def _should_pause_idle_timer(adapter: SDKResponseAdapter) -> bool:
+    """Whether the stream-level idle timer should pause on this heartbeat.
+
+    Pauses whenever any tool call is still pending — the agent is legitimately
+    waiting on that tool's result, even though no SDK messages are flowing.
+    Extracted so the skip condition can be unit-tested in isolation from the
+    full ``_run_stream_attempt`` integration path (see service_test).
+    """
+    return adapter.has_unresolved_tool_calls
+
+
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
 # the backoff retry from firing because ``_next_transient_backoff`` returns
@@ -2388,13 +2400,11 @@ async def _run_stream_attempt(
                     yield ev
                 yield StreamHeartbeat()
 
-                # Idle timeout: skip while any tool call is pending — the
-                # agent is legitimately waiting on a long-running tool (e.g.
-                # sub-AutoPilot, graph execution, long build). The idle timer
-                # only fires when the SDK itself is idle with nothing to do.
-                # Reset the clock on every heartbeat while tools are active so
-                # we don't accumulate a false "idle" that kills the run.
-                if state.adapter.has_unresolved_tool_calls:
+                # Idle timeout: skip while any tool call is pending (see
+                # _should_pause_idle_timer). The agent is legitimately waiting
+                # on a long-running tool; reset the clock so we don't fire a
+                # false idle and kill the run.
+                if _should_pause_idle_timer(state.adapter):
                     _last_real_msg_time = time.monotonic()
                     continue
 

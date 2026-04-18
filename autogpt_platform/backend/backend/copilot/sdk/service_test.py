@@ -20,6 +20,7 @@ from .service import (
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
+    _should_pause_idle_timer,
 )
 
 
@@ -907,16 +908,6 @@ class TestSystemPromptPreset:
         assert cfg.claude_agent_cross_user_prompt_cache is False
 
 
-class TestIdleTimeoutConstant:
-    """SECRT-2247: long-running work now uses async start+poll pattern
-    (run_sub_session / run_agent), so no single MCP tool call ever blocks
-    the stream close to the idle limit. The plain 10-min cap from the
-    original code is restored."""
-
-    def test_idle_timeout_is_10_min(self):
-        assert _IDLE_TIMEOUT_SECONDS == 10 * 60
-
-
 # ---------------------------------------------------------------------------
 # _RetryState.observed_model — Moonshot cost-override input
 # ---------------------------------------------------------------------------
@@ -1137,3 +1128,51 @@ class TestMoonshotHelperReexports:
         from .service import _override_cost_for_moonshot
 
         assert _override_cost_for_moonshot is canonical
+
+
+class TestIdleTimerPause:
+    """SECRT-2247: idle timer must pause while any tool call is pending, so a
+    legitimately long-running tool (sub-AutoPilot, graph execution, long build)
+    doesn't trip the 30-min safety net."""
+
+    def _make_adapter(self, current: dict, resolved: set):
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+
+        adapter = SDKResponseAdapter(session_id="test")
+        adapter.current_tool_calls = current
+        adapter.resolved_tool_calls = resolved
+        return adapter
+
+    def test_pauses_with_unresolved_tool_call(self):
+        adapter = self._make_adapter(
+            current={"t1": {"name": "run_block"}},
+            resolved=set(),
+        )
+        assert _should_pause_idle_timer(adapter) is True
+
+    def test_does_not_pause_when_all_tools_resolved(self):
+        adapter = self._make_adapter(
+            current={"t1": {"name": "find_agent"}},
+            resolved={"t1"},
+        )
+        assert _should_pause_idle_timer(adapter) is False
+
+    def test_does_not_pause_with_no_tool_calls(self):
+        adapter = self._make_adapter(current={}, resolved=set())
+        assert _should_pause_idle_timer(adapter) is False
+
+    def test_pauses_with_mixed_resolved_and_pending(self):
+        adapter = self._make_adapter(
+            current={
+                "t1": {"name": "find_agent"},
+                "t2": {"name": "run_block"},
+            },
+            resolved={"t1"},
+        )
+        assert _should_pause_idle_timer(adapter) is True
+
+    def test_idle_timeout_is_raised_from_10_to_30_min(self):
+        # Regression guard: the old 10-min value killed long tool calls
+        # (SECRT-2247). New value is 30 min AND only fires when nothing is
+        # pending (see _should_pause_idle_timer).
+        assert _IDLE_TIMEOUT_SECONDS == 30 * 60
