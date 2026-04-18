@@ -184,26 +184,30 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
     "Try breaking your request into smaller parts."
 )
 
-# Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
-# arrives for this many seconds AND no tool call is currently pending. If the
-# agent is waiting on a legitimately long tool (sub-AutoPilot, graph run, long
-# build), we skip this check — the tool is actively working even though no
-# SDK messages are flowing. The timer only counts toward firing while the SDK
-# itself is idle between turns with nothing to do. This is the fix for
-# SECRT-2247: the old behavior killed long tool calls at 10 min even though
-# they were making real progress.
+# Idle timeout thresholds — two regimes:
+#   - Between turns, no tool call pending → _IDLE_TIMEOUT_SECONDS (30 min).
+#     Fires when the SDK itself is stuck with nothing to do.
+#   - Tool call pending (agent waiting on a legitimately long operation such
+#     as a sub-AutoPilot or graph run) → _HUNG_TOOL_CAP_SECONDS (2 hours).
+#     Fires only for truly wedged tools; allows ~45-min sub-AutoPilots.
+# Two-regime design is the fix for SECRT-2247: old behavior killed long tool
+# calls at 10 min; unlimited wait would leak resources on a hung tool (e.g.
+# TCP hang) per Sentry review feedback.
 _IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+_HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60  # 2 hours
 
 
-def _should_pause_idle_timer(adapter: SDKResponseAdapter) -> bool:
-    """Whether the stream-level idle timer should pause on this heartbeat.
+def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
+    """Pick the idle-timeout threshold for the current heartbeat.
 
-    Pauses whenever any tool call is still pending — the agent is legitimately
-    waiting on that tool's result, even though no SDK messages are flowing.
-    Extracted so the skip condition can be unit-tested in isolation from the
-    full ``_run_stream_attempt`` integration path (see service_test).
+    Returns ``_HUNG_TOOL_CAP_SECONDS`` (longer) whenever any tool call is
+    still pending, so a legitimately long operation isn't killed. Returns
+    ``_IDLE_TIMEOUT_SECONDS`` (shorter) when nothing is pending — the SDK
+    itself is idle with no work in flight.
     """
-    return adapter.has_unresolved_tool_calls
+    if adapter.has_unresolved_tool_calls:
+        return _HUNG_TOOL_CAP_SECONDS
+    return _IDLE_TIMEOUT_SECONDS
 
 
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
@@ -2400,21 +2404,22 @@ async def _run_stream_attempt(
                     yield ev
                 yield StreamHeartbeat()
 
-                # Idle timeout: skip while any tool call is pending (see
-                # _should_pause_idle_timer). The agent is legitimately waiting
-                # on a long-running tool; reset the clock so we don't fire a
-                # false idle and kill the run.
-                if _should_pause_idle_timer(state.adapter):
-                    _last_real_msg_time = time.monotonic()
-                    continue
-
+                # Idle timeout: pick a threshold based on whether a tool call
+                # is pending (_idle_timeout_threshold). Short threshold when
+                # the SDK is truly idle; long threshold while legitimately
+                # waiting on a tool. We never reset the clock — even a pending
+                # tool has a hard cap so a hung tool doesn't leak resources
+                # forever.
                 idle_seconds = time.monotonic() - _last_real_msg_time
-                if idle_seconds >= _IDLE_TIMEOUT_SECONDS:
+                threshold = _idle_timeout_threshold(state.adapter)
+                if idle_seconds >= threshold:
                     logger.error(
-                        "%s Idle timeout after %.0fs with no active tool "
-                        "calls — aborting stream",
+                        "%s Idle timeout after %.0fs (threshold=%ds, "
+                        "tool_pending=%s) — aborting stream",
                         ctx.log_prefix,
                         idle_seconds,
+                        threshold,
+                        state.adapter.has_unresolved_tool_calls,
                     )
                     stream_error_msg = (
                         "The session has been idle for too long. Please try again."

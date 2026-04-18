@@ -12,15 +12,16 @@ import pytest
 from backend.copilot import config as cfg_mod
 
 from .service import (
+    _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _build_system_prompt_value,
+    _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
-    _should_pause_idle_timer,
 )
 
 
@@ -1130,10 +1131,11 @@ class TestMoonshotHelperReexports:
         assert _override_cost_for_moonshot is canonical
 
 
-class TestIdleTimerPause:
-    """SECRT-2247: idle timer must pause while any tool call is pending, so a
-    legitimately long-running tool (sub-AutoPilot, graph execution, long build)
-    doesn't trip the 30-min safety net."""
+class TestIdleTimeoutThreshold:
+    """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
+    fires when the SDK is idle with no tool pending. The longer 2-hour cap
+    applies while any tool call is pending so a 45-min sub-AutoPilot isn't
+    killed, but a truly hung tool still eventually frees session resources."""
 
     def _make_adapter(self, current: dict, resolved: set):
         from backend.copilot.sdk.response_adapter import SDKResponseAdapter
@@ -1143,25 +1145,25 @@ class TestIdleTimerPause:
         adapter.resolved_tool_calls = resolved
         return adapter
 
-    def test_pauses_with_unresolved_tool_call(self):
+    def test_threshold_uses_long_cap_with_unresolved_tool_call(self):
         adapter = self._make_adapter(
             current={"t1": {"name": "run_block"}},
             resolved=set(),
         )
-        assert _should_pause_idle_timer(adapter) is True
+        assert _idle_timeout_threshold(adapter) == _HUNG_TOOL_CAP_SECONDS
 
-    def test_does_not_pause_when_all_tools_resolved(self):
+    def test_threshold_uses_short_cap_when_all_tools_resolved(self):
         adapter = self._make_adapter(
             current={"t1": {"name": "find_agent"}},
             resolved={"t1"},
         )
-        assert _should_pause_idle_timer(adapter) is False
+        assert _idle_timeout_threshold(adapter) == _IDLE_TIMEOUT_SECONDS
 
-    def test_does_not_pause_with_no_tool_calls(self):
+    def test_threshold_uses_short_cap_with_no_tool_calls(self):
         adapter = self._make_adapter(current={}, resolved=set())
-        assert _should_pause_idle_timer(adapter) is False
+        assert _idle_timeout_threshold(adapter) == _IDLE_TIMEOUT_SECONDS
 
-    def test_pauses_with_mixed_resolved_and_pending(self):
+    def test_threshold_uses_long_cap_with_mixed_resolved_and_pending(self):
         adapter = self._make_adapter(
             current={
                 "t1": {"name": "find_agent"},
@@ -1169,10 +1171,19 @@ class TestIdleTimerPause:
             },
             resolved={"t1"},
         )
-        assert _should_pause_idle_timer(adapter) is True
+        assert _idle_timeout_threshold(adapter) == _HUNG_TOOL_CAP_SECONDS
 
-    def test_idle_timeout_is_raised_from_10_to_30_min(self):
+    def test_idle_timeout_is_30_min_not_the_old_10(self):
         # Regression guard: the old 10-min value killed long tool calls
-        # (SECRT-2247). New value is 30 min AND only fires when nothing is
-        # pending (see _should_pause_idle_timer).
+        # (SECRT-2247). New idle-without-tools cap is 30 min.
         assert _IDLE_TIMEOUT_SECONDS == 30 * 60
+
+    def test_hung_tool_cap_is_2_hours(self):
+        # Hard cap protects against a hung tool leaking resources forever.
+        # 2 hours is plenty for any legitimate sub-AutoPilot or graph run.
+        assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
+
+    def test_long_cap_is_strictly_longer_than_short_cap(self):
+        # The whole point of the two-regime design: pending tools get more
+        # patience than pure idle.
+        assert _HUNG_TOOL_CAP_SECONDS > _IDLE_TIMEOUT_SECONDS
