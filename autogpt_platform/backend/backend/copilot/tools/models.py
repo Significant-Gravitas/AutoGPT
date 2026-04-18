@@ -308,6 +308,14 @@ class SubSessionStatusResponse(ToolResponseBase):
             "to continue it."
         ),
     )
+    sub_autopilot_session_link: str | None = Field(
+        default=None,
+        description=(
+            "Relative URL the user can click to open the sub-AutoPilot "
+            "conversation in the CoPilot UI. Always set when "
+            "``sub_autopilot_session_id`` is set."
+        ),
+    )
     tool_calls: list[dict[str, Any]] | None = Field(
         default=None,
         description="Tool calls made during the sub-AutoPilot run.",

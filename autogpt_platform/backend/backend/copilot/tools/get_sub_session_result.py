@@ -26,7 +26,7 @@ from .models import (
     SubSessionStatusResponse,
     ToolResponseBase,
 )
-from .run_sub_session import _response_from_task  # reuse the mapping
+from .run_sub_session import _response_from_task, _sub_session_link  # reuse the mapping
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,8 @@ class GetSubSessionResultTool(BaseTool):
 
         task: asyncio.Task = entry["task"]
 
+        inner_session_id = entry.get("inner_session_id")
+
         if cancel:
             # Race guard: if the task finished before the cancel was
             # requested, prefer returning the real result over "cancelled".
@@ -138,6 +140,8 @@ class GetSubSessionResultTool(BaseTool):
                 session_id=session.session_id,
                 status="cancelled",
                 sub_session_id=sub_session_id,
+                sub_autopilot_session_id=inner_session_id,
+                sub_autopilot_session_link=_sub_session_link(inner_session_id),
                 elapsed_seconds=round(time.monotonic() - entry["started_at"], 2),
             )
 
@@ -158,16 +162,19 @@ class GetSubSessionResultTool(BaseTool):
         elapsed = time.monotonic() - entry["started_at"]
         progress = None
         if include_progress:
-            progress = await _build_progress_snapshot(entry.get("inner_session_id"))
+            progress = await _build_progress_snapshot(inner_session_id)
+        link = _sub_session_link(inner_session_id)
+        link_hint = f" Watch live at {link}." if link else ""
         return SubSessionStatusResponse(
             message=(
-                f"Sub-AutoPilot still running after {elapsed:.0f}s "
-                "total. Call again to keep waiting, or cancel=true to abort."
+                f"Sub-AutoPilot still running after {elapsed:.0f}s total.{link_hint} "
+                "Call again to keep waiting, or cancel=true to abort."
             ),
             session_id=session.session_id,
             status="running",
             sub_session_id=sub_session_id,
-            sub_autopilot_session_id=entry.get("inner_session_id"),
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
             progress=progress,
         )
@@ -236,6 +243,7 @@ def _finalize(
         sub_session_id=sub_session_id,
         session=session,
         elapsed=elapsed,
+        inner_session_id_when_running=entry.get("inner_session_id"),
     )
     # Terminal state consumed — drop from registry (prune_finished would
     # catch it eventually anyway, but explicit removal keeps it tight).

@@ -27,6 +27,24 @@ COMPACTION_DONE_MSG = "Earlier messages were summarized to fit within context li
 COMPACTION_TOOL_NAME = "context_compaction"
 
 
+# ---------------------------------------------------------------------------
+# Tool / stream timing budget
+# ---------------------------------------------------------------------------
+# Max seconds any single MCP tool call may block the stream before returning
+# a "still running" handle. Shared by run_agent (wait_for_result),
+# view_agent_output (wait_if_running), run_sub_session (wait_for_result),
+# get_sub_session_result (wait_if_running), and run_block (hard cap).
+#
+# Chosen so the stream idle timeout (2× this) always has headroom — a tool
+# that returns right at the cap can't race the idle watchdog.
+MAX_TOOL_WAIT_SECONDS = 5 * 60  # 5 minutes
+
+# Idle-stream watchdog: abort the SDK stream if no meaningful event arrives
+# for this long. Derived from MAX_TOOL_WAIT_SECONDS so the invariant
+# "no tool blocks >= idle_timeout" holds by construction.
+STREAM_IDLE_TIMEOUT_SECONDS = MAX_TOOL_WAIT_SECONDS * 2  # 10 minutes
+
+
 def is_copilot_synthetic_id(id_value: str) -> bool:
     """Check if an ID is a CoPilot synthetic ID (not from a real graph execution)."""
     return id_value.startswith(COPILOT_SYNTHETIC_ID_PREFIX)

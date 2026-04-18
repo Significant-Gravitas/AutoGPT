@@ -49,6 +49,7 @@ from ..constants import (
     COPILOT_RETRYABLE_ERROR_PREFIX,
     COPILOT_SYSTEM_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli, get_workspace_manager
@@ -162,13 +163,12 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 )
 
 # Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
-# arrives for this many seconds. No tool call should block the MCP handler for
-# close to this long — long-running tools (sub-AutoPilot, graph execution) use
-# the async "start + poll" pattern: the initial tool returns quickly with a
-# handle, and a polling tool (get_sub_session_result / view_agent_output) waits
-# for completion in bounded chunks (≤300s). So a 10-min idle here genuinely
-# means the SDK itself is stuck, not a legitimate long-running operation.
-_IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
+# arrives for this many seconds. Derived from MAX_TOOL_WAIT_SECONDS so the
+# invariant "no single tool blocks close to this long" holds by construction —
+# long-running tools use the async "start + poll" pattern (initial tool returns
+# with a handle, polling tool waits in ≤MAX_TOOL_WAIT_SECONDS chunks), so an
+# idle of 2× that genuinely means the SDK itself is stuck.
+_IDLE_TIMEOUT_SECONDS = STREAM_IDLE_TIMEOUT_SECONDS
 
 
 # Event types that are ephemeral / cosmetic and must NOT be counted toward

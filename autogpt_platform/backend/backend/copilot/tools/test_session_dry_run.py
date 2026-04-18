@@ -77,7 +77,9 @@ class TestRunBlockToolSessionDryRun:
             patch(
                 "backend.copilot.tools.run_block.prepare_block_for_execution"
             ) as mock_prep,
-            patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
+            patch(
+                "backend.copilot.tools.run_block.execute_block_with_cap"
+            ) as mock_exec,
             patch(
                 "backend.copilot.tools.run_block.get_current_permissions",
                 return_value=None,
@@ -122,7 +124,9 @@ class TestRunBlockToolSessionDryRun:
             patch(
                 "backend.copilot.tools.run_block.prepare_block_for_execution"
             ) as mock_prep,
-            patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
+            patch(
+                "backend.copilot.tools.run_block.execute_block_with_cap"
+            ) as mock_exec,
             patch(
                 "backend.copilot.tools.run_block.get_current_permissions",
                 return_value=None,

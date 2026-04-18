@@ -24,13 +24,14 @@ import time
 import uuid
 from typing import Any
 
+from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
+
 logger = logging.getLogger(__name__)
 
-# Max wait for a single get_sub_session_result call. Short enough that the
-# stream's 10-min idle timeout still makes sense; long enough to amortise the
-# agent's polling cadence. Matches run_agent's wait_for_result / agent_output's
-# wait_if_running caps for consistency.
-MAX_SUB_SESSION_WAIT_SECONDS = 5 * 60  # 5 minutes
+# Max wait for a single get_sub_session_result call. Shared with every other
+# long-running tool (run_agent, view_agent_output, run_block) so the stream
+# idle timeout's 2× headroom holds uniformly.
+MAX_SUB_SESSION_WAIT_SECONDS = MAX_TOOL_WAIT_SECONDS
 
 # Retention for terminal entries after they finish. Gives the requesting agent
 # a window to retrieve the result even if it's late to poll.
@@ -189,6 +190,97 @@ def _mark_finished(sub_session_id: str) -> None:
     entry = _sub_sessions.get(sub_session_id)
     if entry is not None and entry["finished_at"] is None:
         entry["finished_at"] = time.monotonic()
+
+
+async def notify_shutdown_and_cancel_all(reason: str) -> int:
+    """Graceful-shutdown hook: cancel every running sub-session and write a
+    visible error marker into each sub's ChatSession.
+
+    Called from the copilot_executor cleanup path when the worker is going
+    down. Without this, a user who reopens a sub's conversation would see
+    a stalled turn with no explanation — the sub's task was running in the
+    dying process, so its final result was never written.
+
+    The error marker uses the retryable prefix so the frontend renders a
+    "Try Again" button — users typically just want to resume the sub-
+    AutoPilot with the same prompt.
+
+    Returns the number of running sub-sessions that were notified. Safe to
+    call when the registry is empty (returns 0).
+    """
+    # Delayed imports to avoid import cycles (model → service → tools → registry).
+    from backend.copilot.constants import (  # noqa: PLC0415
+        COPILOT_RETRYABLE_ERROR_PREFIX,
+    )
+    from backend.copilot.model import (  # noqa: PLC0415
+        ChatMessage,
+        get_chat_session,
+        upsert_chat_session,
+    )
+
+    # Sub-AutoPilot tasks are pinned to the worker-loop that spawned them.
+    # If notify_shutdown is called per-worker (copilot_executor cleanup),
+    # filter to entries owned by the current loop so we don't try to cancel
+    # tasks from a different worker's loop (which would race that worker's
+    # own cleanup).
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:  # pragma: no cover — must be called from async ctx
+        current_loop = None
+
+    running: list[tuple[str, dict[str, Any]]] = []
+    for sid, entry in _sub_sessions.items():
+        if entry["finished_at"] is not None or entry["task"].done():
+            continue
+        if current_loop is not None and entry["task"].get_loop() is not current_loop:
+            continue
+        running.append((sid, entry))
+    if not running:
+        return 0
+
+    logger.warning(
+        "notify_shutdown: terminating %d running sub-session(s): %s",
+        len(running),
+        reason,
+    )
+
+    display_msg = (
+        "Sub-AutoPilot was terminated because its host process shut down "
+        f"({reason}). The last user message is preserved — click retry to "
+        "resume."
+    )
+
+    notified = 0
+    for sid, entry in running:
+        task: asyncio.Task = entry["task"]
+        if not task.done():
+            task.cancel()
+        inner_session_id = entry.get("inner_session_id")
+        if not inner_session_id:
+            _sub_sessions.pop(sid, None)
+            continue
+        try:
+            inner = await get_chat_session(inner_session_id)
+            if inner is None:
+                continue
+            inner.messages.append(
+                ChatMessage(
+                    role="assistant",
+                    content=f"{COPILOT_RETRYABLE_ERROR_PREFIX} {display_msg}",
+                )
+            )
+            await upsert_chat_session(inner)
+            notified += 1
+        except Exception as exc:  # pragma: no cover — best-effort on shutdown
+            logger.error(
+                "notify_shutdown: failed to mark sub %s (inner=%s): %s",
+                sid,
+                inner_session_id,
+                exc,
+            )
+        finally:
+            _sub_sessions.pop(sid, None)
+    return notified
 
 
 # Test-only helper — production code should not need to reset the registry.

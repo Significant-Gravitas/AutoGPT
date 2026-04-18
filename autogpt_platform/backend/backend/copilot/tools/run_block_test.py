@@ -647,3 +647,68 @@ class TestRunBlockSensitiveAction:
 
         assert isinstance(response, BlockOutputResponse)
         assert response.success is True
+
+
+class TestRunBlockTimeout:
+    """``run_block`` must cap a single block's execution at MAX_TOOL_WAIT_SECONDS
+    and return an actionable error if a block exceeds it — keeps the stream
+    idle timer safe from a wedged block."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_block_exceeding_cap_returns_timeout_error(self):
+        import asyncio as _asyncio
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        async def _hang(**_kwargs):
+            await _asyncio.sleep(10)  # never completes within the patched cap
+            raise AssertionError("unreachable — cap should cancel us")
+
+        mock_block = make_mock_block(
+            block_id="slow-block-id",
+            name="SlowBlock",
+            block_type=BlockType.STANDARD,
+        )
+
+        prep = MagicMock()
+        prep.block = mock_block
+        prep.input_data = {}
+        prep.matched_credentials = {}
+        prep.synthetic_node_id = "node-1"
+        prep.provided_input_keys = {"_nonempty"}
+        prep.required_non_credential_keys = set()
+
+        with (
+            patch(
+                "backend.copilot.tools.run_block.prepare_block_for_execution",
+                return_value=prep,
+            ),
+            patch(
+                "backend.copilot.tools.run_block.check_hitl_review",
+                return_value=("node-exec-id", {}),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.execute_block",
+                side_effect=_hang,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.MAX_TOOL_WAIT_SECONDS",
+                0.05,
+            ),
+            patch(
+                "backend.copilot.tools.run_block.get_current_permissions",
+                return_value=None,
+            ),
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="slow-block-id",
+                input_data={"x": 1},
+                dry_run=False,
+            )
+
+        assert isinstance(response, ErrorResponse)
+        assert "single-tool wait cap" in response.message
+        assert "run_agent" in response.message  # redirect hint

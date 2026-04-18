@@ -1,5 +1,6 @@
 """Shared helpers for chat tools."""
 
+import asyncio
 import logging
 import uuid
 from collections import defaultdict
@@ -14,6 +15,7 @@ from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
+    MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
@@ -285,6 +287,34 @@ async def execute_block(
             message=f"Failed to execute block: {str(e)}",
             error=str(e),
             session_id=session_id,
+        )
+
+
+async def execute_block_with_cap(**kwargs: Any) -> ToolResponseBase:
+    """Run ``execute_block`` under the shared MCP wait cap.
+
+    A single block is expected to finish within ``MAX_TOOL_WAIT_SECONDS``. If
+    it doesn't, the MCP handler would block the stream close to the idle
+    timeout; so we cancel the block and redirect the caller at the async
+    start+poll tools (``run_agent`` / ``run_sub_session``) that are designed
+    for long-running work.
+    """
+    try:
+        return await asyncio.wait_for(
+            execute_block(**kwargs),
+            timeout=MAX_TOOL_WAIT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        block_name = getattr(kwargs.get("block"), "name", "block")
+        return ErrorResponse(
+            message=(
+                f"Block '{block_name}' exceeded the "
+                f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and was cancelled. "
+                "Long-running work should go through run_agent (graph "
+                "executions) or run_sub_session (sub-AutoPilot tasks) — those "
+                "use async start+poll so nothing blocks the chat stream."
+            ),
+            session_id=kwargs.get("session_id"),
         )
 
 

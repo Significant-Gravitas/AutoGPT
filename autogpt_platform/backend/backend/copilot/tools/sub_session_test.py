@@ -10,6 +10,7 @@ from backend.copilot.sdk.sub_session_registry import (
     MAX_SUB_SESSION_WAIT_SECONDS,
     _reset_for_test,
     get_sub_session,
+    notify_shutdown_and_cancel_all,
     prune_finished,
     register_sub_session,
 )
@@ -122,6 +123,63 @@ class TestRegistry:
         _sub_sessions[sid]["finished_at"] = time.monotonic() - (60 * 60)
         assert prune_finished() == 1
         assert get_sub_session(sid, "alice") is None
+
+    @pytest.mark.asyncio
+    async def test_notify_shutdown_cancels_and_marks_sessions(self, monkeypatch):
+        """notify_shutdown_and_cancel_all cancels in-flight tasks AND writes a
+        retryable error marker into the sub's ChatSession so the user sees
+        what happened when they reopen the conversation."""
+
+        async def hang():
+            await asyncio.sleep(60)
+
+        task = asyncio.create_task(hang())
+        sid = register_sub_session(
+            task, "alice", "parent-sess", "do thing", "inner-sess"
+        )
+
+        # Stub the model layer so the test doesn't hit the real DB / Redis.
+        from backend.copilot.constants import COPILOT_RETRYABLE_ERROR_PREFIX
+        from backend.copilot.model import ChatMessage
+
+        class _InnerSessionStub:
+            def __init__(self):
+                self.messages: list[ChatMessage] = []
+
+        inner = _InnerSessionStub()
+        persisted: list[object] = []
+
+        async def fake_get(session_id: str):
+            assert session_id == "inner-sess"
+            return inner
+
+        async def fake_upsert(session):
+            persisted.append(session)
+            return session
+
+        monkeypatch.setattr("backend.copilot.model.get_chat_session", fake_get)
+        monkeypatch.setattr("backend.copilot.model.upsert_chat_session", fake_upsert)
+
+        notified = await notify_shutdown_and_cancel_all(reason="test shutdown")
+
+        assert notified == 1
+        # Task must be cancelled.
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert task.cancelled()
+        # Entry must be evicted (shutdown is terminal).
+        assert get_sub_session(sid, "alice") is None
+        # Inner session must carry a retryable error marker the frontend can render.
+        assert len(inner.messages) == 1
+        marker = inner.messages[0]
+        assert marker.role == "assistant"
+        assert marker.content.startswith(COPILOT_RETRYABLE_ERROR_PREFIX)
+        assert "test shutdown" in marker.content
+        assert persisted == [inner]
+
+    @pytest.mark.asyncio
+    async def test_notify_shutdown_is_noop_when_registry_empty(self):
+        assert await notify_shutdown_and_cancel_all("nothing here") == 0
 
 
 # ---------------------------------------------------------------------------

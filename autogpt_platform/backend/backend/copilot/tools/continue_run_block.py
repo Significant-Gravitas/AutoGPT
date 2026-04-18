@@ -15,7 +15,7 @@ from backend.copilot.model import ChatSession
 from backend.data.db_accessors import review_db
 
 from .base import BaseTool
-from .helpers import execute_block, resolve_block_credentials
+from .helpers import execute_block_with_cap, resolve_block_credentials
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -137,7 +137,7 @@ class ContinueRunBlockTool(BaseTool):
         # dry_run=False is safe here: run_block's dry-run fast-path (line ~241)
         # skips HITL entirely, so continue_run_block is never called during a
         # dry run — only real executions reach the human review gate.
-        result = await execute_block(
+        result = await execute_block_with_cap(
             block=block,
             block_id=block_id,
             input_data=input_data,

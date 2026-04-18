@@ -263,6 +263,18 @@ async def _run_sub_autopilot(
     )
 
 
+def _sub_session_link(inner_session_id: str | None) -> str | None:
+    """Build the CoPilot UI URL for a sub-AutoPilot session.
+
+    Kept in one place so the format stays consistent across the
+    running/completed/error/cancelled paths, and so the frontend only has
+    one contract to honour.
+    """
+    if not inner_session_id:
+        return None
+    return f"/copilot?sessionId={inner_session_id}"
+
+
 def _response_from_task(
     *,
     task: asyncio.Task,
@@ -280,9 +292,11 @@ def _response_from_task(
     conversation once the sub completes.
     """
     if not task.done():
+        link = _sub_session_link(inner_session_id_when_running)
+        link_hint = f" Watch live at {link}." if link else ""
         return SubSessionStatusResponse(
             message=(
-                f"Sub-AutoPilot is still running after {elapsed:.0f}s. "
+                f"Sub-AutoPilot is still running after {elapsed:.0f}s.{link_hint} "
                 "Call get_sub_session_result (optionally with "
                 "include_progress=true) to wait, poll, or inspect "
                 "progress."
@@ -291,6 +305,7 @@ def _response_from_task(
             status="running",
             sub_session_id=sub_session_id,
             sub_autopilot_session_id=inner_session_id_when_running,
+            sub_autopilot_session_link=link,
             elapsed_seconds=round(elapsed, 2),
         )
 
@@ -300,6 +315,8 @@ def _response_from_task(
             session_id=session.session_id,
             status="cancelled",
             sub_session_id=sub_session_id,
+            sub_autopilot_session_id=inner_session_id_when_running,
+            sub_autopilot_session_link=_sub_session_link(inner_session_id_when_running),
             elapsed_seconds=round(elapsed, 2),
         )
 
@@ -316,17 +333,20 @@ def _response_from_task(
             session_id=session.session_id,
             status="error",
             sub_session_id=sub_session_id,
+            sub_autopilot_session_id=inner_session_id_when_running,
+            sub_autopilot_session_link=_sub_session_link(inner_session_id_when_running),
             error=str(exc),
             elapsed_seconds=round(elapsed, 2),
         )
 
     result = task.result()
     return SubSessionStatusResponse(
-        message="Sub-AutoPilot completed.",
+        message=f"Sub-AutoPilot completed. View at {_sub_session_link(result.session_id)}.",
         session_id=session.session_id,
         status="completed",
         sub_session_id=sub_session_id,
         sub_autopilot_session_id=result.session_id,
+        sub_autopilot_session_link=_sub_session_link(result.session_id),
         response=result.response_text,
         tool_calls=result.tool_calls,
         elapsed_seconds=round(elapsed, 2),

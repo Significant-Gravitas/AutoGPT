@@ -219,14 +219,39 @@ class CoPilotProcessor:
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
 
-        Shuts down the workspace storage instance that belongs to this
-        worker's event loop, ensuring ``aiohttp.ClientSession.close()``
-        runs on the same loop that created the session.
+        Runs two coroutines on the worker's own event loop (sub-AutoPilot
+        tasks and aiohttp sessions are both loop-bound):
+
+        1. ``notify_shutdown_and_cancel_all`` — cancels any sub-AutoPilot
+           tasks that this worker spawned and writes a retryable error
+           marker into each sub's ChatSession so the user sees what
+           happened instead of a silently stalled turn.
+        2. ``shutdown_workspace_storage`` — closes aiohttp sessions.
         """
-        coro = shutdown_workspace_storage()
+        from backend.copilot.sdk.sub_session_registry import (  # noqa: PLC0415
+            notify_shutdown_and_cancel_all,
+        )
+
+        async def _worker_cleanup() -> None:
+            try:
+                notified = await notify_shutdown_and_cancel_all(
+                    reason=f"copilot_executor worker {self.tid} shutdown"
+                )
+                if notified:
+                    logger.info(
+                        f"[CoPilotExecutor] Worker {self.tid} notified "
+                        f"{notified} sub-session(s) of shutdown"
+                    )
+            except Exception as exc:  # pragma: no cover — best-effort on shutdown
+                logger.warning(
+                    f"[CoPilotExecutor] Worker {self.tid} sub-session notify error: {exc}"
+                )
+            await shutdown_workspace_storage()
+
+        coro = _worker_cleanup()
         try:
             future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
-            future.result(timeout=5)
+            future.result(timeout=10)
         except Exception as e:
             coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
