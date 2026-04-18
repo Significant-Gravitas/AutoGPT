@@ -85,9 +85,7 @@ class RunSubSessionTool(BaseTool):
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
-                    "description": (
-                        "Continue/queue-into a prior sub; empty = new."
-                    ),
+                    "description": ("Continue/queue-into a prior sub; empty = new."),
                     "default": "",
                 },
                 "wait_for_result": {
