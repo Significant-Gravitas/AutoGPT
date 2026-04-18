@@ -800,3 +800,77 @@ class TestExecuteBlockTimeout:
         )
         assert charged["last"]["user_id"] == "u-42"
         assert charged["last"]["cost"] == 5
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_no_double_charge_on_cancellation_during_charge(self):
+        """Regression for sentry r3105216985 — if the caller cancels during
+        the normal-path credit charge, the finally must NOT charge a second
+        time. The fix marks charge_handled BEFORE awaiting spend_credits."""
+        import asyncio
+
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = MagicMock()
+        mock_block.name = "OnceOnlyBlock"
+        mock_block.id = "once-only-id"
+        mock_block.input_schema = MagicMock()
+        mock_block.input_schema.jsonschema.return_value = {
+            "properties": {},
+            "required": [],
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {}
+
+        async def _one_then_done(_input, **_kw):
+            yield "result", "done"
+
+        mock_block.execute = _one_then_done
+
+        spend_calls: list[dict] = []
+
+        class _CountingCreditDB:
+            async def get_credits(self, _user_id: str) -> int:
+                return 10_000
+
+            async def spend_credits(self, **kwargs):
+                # Cooperative suspension so an outer cancellation can
+                # theoretically interleave — shield should still make this
+                # complete exactly once.
+                await asyncio.sleep(0)
+                spend_calls.append(kwargs)
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-1")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_CountingCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(7, {}),
+            ),
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="once-only-id",
+                input_data={},
+                user_id="u-single",
+                session_id="s-single",
+                node_exec_id="n-single",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(response, BlockOutputResponse)
+        assert response.success is True
+        assert len(spend_calls) == 1, (
+            f"spend_credits must be called exactly once, got {len(spend_calls)} "
+            "(double-charge — sentry r3105216985)"
+        )

@@ -284,27 +284,33 @@ async def execute_block(
         # still settles billing via asyncio.shield — external side effects
         # may already have landed and the user should be charged for them.
         outputs: dict[str, list[Any]] = defaultdict(list)
-        charged = False
+        charge_handled = False
         try:
             await asyncio.wait_for(
                 _collect_block_outputs(block, input_data, exec_kwargs, outputs),
                 timeout=MAX_TOOL_WAIT_SECONDS,
             )
 
-            # Normal (non-cancelled) path: charge before returning.
+            # Normal (non-cancelled) path. Mark charge_handled BEFORE the
+            # await so an outer cancellation landing mid-charge can't race
+            # the finally block into a double-charge. asyncio.shield keeps
+            # the spend running to completion even if the outer awaitable
+            # is cancelled.
             if has_cost:
-                await _charge_block_credits(
-                    _credit_db,
-                    user_id=user_id,
-                    block_name=block.name,
-                    block_id=block_id,
-                    node_exec_id=node_exec_id,
-                    cost=cost,
-                    cost_filter=cost_filter,
-                    synthetic_graph_id=synthetic_graph_id,
-                    synthetic_node_id=synthetic_node_id,
+                charge_handled = True
+                await asyncio.shield(
+                    _charge_block_credits(
+                        _credit_db,
+                        user_id=user_id,
+                        block_name=block.name,
+                        block_id=block_id,
+                        node_exec_id=node_exec_id,
+                        cost=cost,
+                        cost_filter=cost_filter,
+                        synthetic_graph_id=synthetic_graph_id,
+                        synthetic_node_id=synthetic_node_id,
+                    )
                 )
-                charged = True
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
@@ -345,10 +351,10 @@ async def execute_block(
             # the generator. Normal `except Exception` doesn't catch it, so
             # without this finally a cancelled block would skip credit
             # charging entirely while external side effects still landed.
-            # Charge only when we collected at least one output AND the
-            # normal path didn't already charge. shield protects the spend
-            # call from the same cancellation that's tearing us down.
-            if has_cost and outputs and not charged:
+            # Only run when the normal-path charge was NOT reached (the flag
+            # is set before the await, so any cancellation during charge still
+            # sets it and avoids double-billing — r3105216985).
+            if has_cost and outputs and not charge_handled:
                 await asyncio.shield(
                     _charge_block_credits(
                         _credit_db,
