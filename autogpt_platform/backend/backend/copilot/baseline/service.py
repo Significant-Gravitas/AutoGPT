@@ -42,6 +42,7 @@ from backend.copilot.pending_message_helpers import (
 from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
+    push_pending_message,
 )
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
@@ -1380,6 +1381,16 @@ async def stream_chat_completion_baseline(
                 # final-text dedup doesn't re-append rounds already persisted.
                 state._flushed_assistant_text_len = len(state.assistant_text)
 
+                # Persist the assistant/tool flush BEFORE the pending append
+                # so a later pending-persist failure can roll back the
+                # pending rows without also discarding LLM output.
+                session = await persist_session_safe(session, "[Baseline]")
+
+                # Anchors for rollback if the next persist fails.
+                _pending_session_anchor = len(session.messages)
+                _pending_openai_anchor = len(openai_messages)
+                _pending_transcript_anchor = len(transcript_builder._entries)
+
                 for pm in pending:
                     # ``format_pending_as_user_message`` embeds file
                     # attachments and context URL/page content into the
@@ -1400,6 +1411,34 @@ async def stream_chat_completion_baseline(
                     openai_messages.append(formatted)
                     transcript_builder.append_user(content=content_for_db)
                 session = await persist_session_safe(session, "[Baseline]")
+
+                # Roll back the pending append if persist silently failed:
+                # ghost rows with sequence=None would trip the next turn's
+                # "no sequence" assertion in the turn-start drain and cause
+                # the freshly-popped Redis items to be permanently lost.
+                # Re-queue the original PendingMessage objects so the next
+                # turn's drain re-processes them with metadata intact.
+                _newly_appended = session.messages[_pending_session_anchor:]
+                if any(m.sequence is None for m in _newly_appended):
+                    logger.warning(
+                        "[Baseline] Mid-loop pending persist did not back-fill "
+                        "sequences (likely transient DB failure); rolling back "
+                        "%d row(s) and re-queueing to Redis",
+                        len(pending),
+                    )
+                    del session.messages[_pending_session_anchor:]
+                    del openai_messages[_pending_openai_anchor:]
+                    del transcript_builder._entries[_pending_transcript_anchor:]
+                    for _pm in pending:
+                        try:
+                            await push_pending_message(session_id, _pm)
+                        except Exception:
+                            logger.exception(
+                                "[Baseline] Failed to re-queue mid-loop "
+                                "pending message after rollback"
+                            )
+                    continue  # skip the info log below — we rolled back
+
                 logger.info(
                     "[Baseline] Injected %d pending message(s) into "
                     "session %s mid-turn",
