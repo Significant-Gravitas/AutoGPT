@@ -246,10 +246,13 @@ async def clear_pending_messages(session_id: str) -> None:
     await redis.delete(_buffer_key(session_id))
 
 
-# Per-message cap for inline tool-boundary injection.  Keeps the follow-up
-# block from crowding out the actual tool output on large inputs.  Queued
-# messages longer than this are truncated with an ellipsis marker.
+# Per-message and total-block caps for inline tool-boundary injection.
+# Per-message keeps a single long paste from dominating; the total cap
+# keeps the follow-up block small relative to the 100 KB MCP truncation
+# boundary so tool output always stays the larger share of the wrapper
+# return value.
 _FOLLOWUP_CONTENT_MAX_CHARS = 2_000
+_FOLLOWUP_TOTAL_MAX_CHARS = 6_000
 
 
 def _persist_queue_key(session_id: str) -> str:
@@ -347,15 +350,24 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     if not pending:
         return ""
     rendered: list[str] = []
+    total_chars = 0
+    dropped = 0
     for idx, pm in enumerate(pending, start=1):
         text = pm.content
         if len(text) > _FOLLOWUP_CONTENT_MAX_CHARS:
             text = text[:_FOLLOWUP_CONTENT_MAX_CHARS] + "… [truncated]"
-        rendered.append(f"Message {idx}:\n{text}")
+        entry = f"Message {idx}:\n{text}"
         if pm.context and pm.context.url:
-            rendered[-1] += f"\n[Page URL: {pm.context.url}]"
+            entry += f"\n[Page URL: {pm.context.url}]"
         if pm.file_ids:
-            rendered[-1] += "\n[Attached files: " + ", ".join(pm.file_ids) + "]"
+            entry += "\n[Attached files: " + ", ".join(pm.file_ids) + "]"
+        if total_chars + len(entry) > _FOLLOWUP_TOTAL_MAX_CHARS:
+            dropped = len(pending) - idx + 1
+            break
+        rendered.append(entry)
+        total_chars += len(entry)
+    if dropped:
+        rendered.append(f"… [{dropped} more message(s) truncated]")
     body = "\n\n".join(rendered)
     return (
         "<user_follow_up>\n"

@@ -2305,33 +2305,31 @@ async def _run_stream_attempt(
                 # the PRIMARY pending buffer so the next turn-start drain
                 # picks them up if this persist silently fails.
                 if isinstance(response, StreamToolOutputAvailable):
-                    _sid = ctx.session.session_id
-                    _followup_drained = await drain_pending_for_persist(_sid)
-                    if _followup_drained:
-                        _anchor_session_len = len(ctx.session.messages)
-                        _anchor_transcript_len = len(state.transcript_builder._entries)
-                        for _pm in _followup_drained:
+                    sid = ctx.session.session_id
+                    followup_drained = await drain_pending_for_persist(sid)
+                    if followup_drained:
+                        session_anchor = len(ctx.session.messages)
+                        transcript_snapshot = state.transcript_builder.snapshot()
+                        for pm in followup_drained:
                             ctx.session.messages.append(
-                                ChatMessage(role="user", content=_pm.content)
+                                ChatMessage(role="user", content=pm.content)
                             )
-                            state.transcript_builder.append_user(content=_pm.content)
+                            state.transcript_builder.append_user(content=pm.content)
                         await persist_session_safe(ctx.session, ctx.log_prefix)
-                        _newly_appended = ctx.session.messages[_anchor_session_len:]
-                        if any(m.sequence is None for m in _newly_appended):
+                        newly_appended = ctx.session.messages[session_anchor:]
+                        if any(m.sequence is None for m in newly_appended):
                             logger.warning(
                                 "%s Mid-turn follow-up persist did not "
                                 "back-fill sequences; rolling back %d row(s) "
                                 "and re-queueing into the primary buffer",
                                 ctx.log_prefix,
-                                len(_followup_drained),
+                                len(followup_drained),
                             )
-                            del ctx.session.messages[_anchor_session_len:]
-                            del state.transcript_builder._entries[
-                                _anchor_transcript_len:
-                            ]
-                            for _pm in _followup_drained:
+                            del ctx.session.messages[session_anchor:]
+                            state.transcript_builder.restore(transcript_snapshot)
+                            for pm in followup_drained:
                                 try:
-                                    await push_pending_message(_sid, _pm)
+                                    await push_pending_message(sid, pm)
                                 except Exception:
                                     logger.exception(
                                         "%s re-queue on mid-turn "
@@ -2343,7 +2341,7 @@ async def _run_stream_attempt(
                                 "%s Persisted %d mid-turn follow-up user "
                                 "row(s) after tool_result",
                                 ctx.log_prefix,
-                                len(_followup_drained),
+                                len(followup_drained),
                             )
 
             # Append assistant entry AFTER convert_message so that
