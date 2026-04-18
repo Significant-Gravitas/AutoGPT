@@ -167,3 +167,224 @@ async def test_persist_session_safe_returns_original_on_error(
 
     result = await persist_session_safe(original, "[Test]")
     assert result is original
+
+
+# ── persist_pending_as_user_rows ───────────────────────────────────────
+
+
+class _FakeTranscript:
+    """Minimal TranscriptBuilder shim — records append_user + snapshot/restore."""
+
+    def __init__(self) -> None:
+        self.entries: list[str] = []
+
+    def append_user(self, content: str, uuid: str | None = None) -> None:
+        self.entries.append(content)
+
+    def snapshot(self) -> list[str]:
+        return list(self.entries)
+
+    def restore(self, snap: list[str]) -> None:
+        self.entries = list(snap)
+
+
+def _make_chat_message_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Any:
+    """Return a simple ChatMessage stand-in that tracks sequence."""
+
+    class _Msg:
+        def __init__(self, role: str, content: str) -> None:
+            self.role = role
+            self.content = content
+            self.sequence: int | None = None
+
+    monkeypatch.setattr(helpers_module, "ChatMessage", _Msg)
+    return _Msg
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_empty_list_is_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.messages = []
+    tb = _FakeTranscript()
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", AsyncMock())
+    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+
+    ok = await persist_pending_as_user_rows(session, tb, [], log_prefix="[T]")
+    assert ok is True
+    assert session.messages == []
+    assert tb.entries == []
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_happy_path_appends_and_returns_true(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+    tb = _FakeTranscript()
+
+    async def _fake_upsert(sess: Any) -> Any:
+        # Simulate the DB back-filling sequence numbers on success.
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+    push_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "push_pending_message", push_mock)
+
+    pending = [PM(content="a"), PM(content="b")]
+    ok = await persist_pending_as_user_rows(session, tb, pending, log_prefix="[T]")
+    assert ok is True
+    assert [m.content for m in session.messages] == ["a", "b"]
+    assert tb.entries == ["a", "b"]
+    push_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_rollback_when_sequence_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    # Prior state — anchor point is len(messages) before the helper runs.
+    session.messages = []
+    tb = _FakeTranscript()
+    tb.entries = ["earlier-entry"]
+
+    async def _fake_upsert_fails_silently(sess: Any) -> Any:
+        # Simulate the "persist swallowed the error" branch — sequences stay None.
+        return sess
+
+    monkeypatch.setattr(
+        helpers_module, "upsert_chat_session", _fake_upsert_fails_silently
+    )
+    push_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "push_pending_message", push_mock)
+
+    pending = [PM(content="a"), PM(content="b")]
+    ok = await persist_pending_as_user_rows(session, tb, pending, log_prefix="[T]")
+
+    assert ok is False
+    # Rollback: session.messages trimmed to anchor, transcript restored.
+    assert session.messages == []
+    assert tb.entries == ["earlier-entry"]
+    # Both pending messages re-queued.
+    assert push_mock.await_count == 2
+    assert push_mock.await_args_list[0].args[1] is pending[0]
+    assert push_mock.await_args_list[1].args[1] is pending[1]
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_rollback_calls_on_rollback_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Baseline's openai_messages trim runs via the on_rollback hook."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+    tb = _FakeTranscript()
+
+    async def _fails(sess: Any) -> Any:
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fails)
+    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+
+    on_rollback_calls: list[int] = []
+
+    def _on_rollback(anchor: int) -> None:
+        on_rollback_calls.append(anchor)
+
+    await persist_pending_as_user_rows(
+        session,
+        tb,
+        [PM(content="x")],
+        log_prefix="[T]",
+        on_rollback=_on_rollback,
+    )
+    assert on_rollback_calls == [0]
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_uses_custom_content_of(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+    tb = _FakeTranscript()
+
+    async def _ok(sess: Any) -> Any:
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _ok)
+    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+
+    await persist_pending_as_user_rows(
+        session,
+        tb,
+        [PM(content="raw")],
+        log_prefix="[T]",
+        content_of=lambda pm: f"FORMATTED:{pm.content}",
+    )
+    assert session.messages[0].content == "FORMATTED:raw"
+    assert tb.entries == ["FORMATTED:raw"]
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_swallows_requeue_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken push_pending_message on rollback must not raise upward —
+    the rollback still needs to trim state even if re-queue fails."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+    tb = _FakeTranscript()
+
+    async def _fails(sess: Any) -> Any:
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fails)
+    monkeypatch.setattr(
+        helpers_module,
+        "push_pending_message",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    )
+
+    ok = await persist_pending_as_user_rows(
+        session, tb, [PM(content="x")], log_prefix="[T]"
+    )
+    # Still returns False (rolled back) — exception was logged + swallowed.
+    assert ok is False

@@ -37,12 +37,12 @@ from backend.copilot.model import (
 )
 from backend.copilot.pending_message_helpers import (
     drain_pending_safe,
+    persist_pending_as_user_rows,
     persist_session_safe,
 )
 from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
-    push_pending_message,
 )
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
@@ -1386,64 +1386,33 @@ async def stream_chat_completion_baseline(
                 # pending rows without also discarding LLM output.
                 session = await persist_session_safe(session, "[Baseline]")
 
-                # Anchors for rollback if the next persist fails.
-                _pending_session_anchor = len(session.messages)
-                _pending_openai_anchor = len(openai_messages)
-                _pending_transcript_snapshot = transcript_builder.snapshot()
-
+                # ``format_pending_as_user_message`` embeds file attachments
+                # and context URL/page content into the content string so
+                # the in-session transcript is a faithful copy of what the
+                # model actually saw.  We also mirror each push into
+                # ``openai_messages`` so the model's next LLM round sees it.
+                #
+                # Pre-compute the formatted dicts once so both the openai
+                # messages append and the content_of lookup inside the
+                # shared helper use the same string — and so ``on_rollback``
+                # can trim ``openai_messages`` to the recorded anchor.
+                formatted_by_pm = {
+                    id(pm): format_pending_as_user_message(pm) for pm in pending
+                }
+                _openai_anchor = len(openai_messages)
                 for pm in pending:
-                    # ``format_pending_as_user_message`` embeds file
-                    # attachments and context URL/page content into the
-                    # content string so the in-session transcript is
-                    # a faithful copy of what the model actually saw.
-                    formatted = format_pending_as_user_message(pm)
-                    content_for_db = formatted["content"]
-                    # Append directly, bypassing maybe_append_user_message's
-                    # trailing-duplicate dedup. Scope of safety: this drain is
-                    # the ONLY caller of drain_pending_messages (LPOP) for this
-                    # turn — there is no outer retry loop above that would
-                    # replay the same drained batch, so each popped item is
-                    # guaranteed to reach session exactly once. Future callers
-                    # that add retry semantics must NOT reuse this bypass.
-                    session.messages.append(
-                        ChatMessage(role="user", content=content_for_db)
-                    )
-                    openai_messages.append(formatted)
-                    transcript_builder.append_user(content=content_for_db)
-                session = await persist_session_safe(session, "[Baseline]")
+                    openai_messages.append(formatted_by_pm[id(pm)])
 
-                # Roll back the pending append if persist silently failed:
-                # ghost rows with sequence=None would trip the next turn's
-                # "no sequence" assertion in the turn-start drain and cause
-                # the freshly-popped Redis items to be permanently lost.
-                # Re-queue the original PendingMessage objects so the next
-                # turn's drain re-processes them with metadata intact.
-                _newly_appended = session.messages[_pending_session_anchor:]
-                if any(m.sequence is None for m in _newly_appended):
-                    logger.warning(
-                        "[Baseline] Mid-loop pending persist did not back-fill "
-                        "sequences (likely transient DB failure); rolling back "
-                        "%d row(s) and re-queueing to Redis",
-                        len(pending),
-                    )
-                    del session.messages[_pending_session_anchor:]
-                    del openai_messages[_pending_openai_anchor:]
-                    transcript_builder.restore(_pending_transcript_snapshot)
-                    for _pm in pending:
-                        try:
-                            await push_pending_message(session_id, _pm)
-                        except Exception:
-                            logger.exception(
-                                "[Baseline] Failed to re-queue mid-loop "
-                                "pending message after rollback"
-                            )
-                    continue  # skip the info log below — we rolled back
+                def _trim_openai_on_rollback(_session_anchor: int) -> None:
+                    del openai_messages[_openai_anchor:]
 
-                logger.info(
-                    "[Baseline] Injected %d pending message(s) into "
-                    "session %s mid-turn",
-                    len(pending),
-                    session_id,
+                await persist_pending_as_user_rows(
+                    session,
+                    transcript_builder,
+                    pending,
+                    log_prefix="[Baseline]",
+                    content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
+                    on_rollback=_trim_openai_on_rollback,
                 )
 
         if loop_result and not loop_result.finished_naturally:
