@@ -367,6 +367,46 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
     )
 
 
+async def drain_and_format_for_injection(
+    session_id: str,
+    *,
+    log_prefix: str,
+) -> str:
+    """Drain the pending buffer and produce a ``<user_follow_up>`` block.
+
+    Shared entry point for every mid-turn injection site (``PostToolUse``
+    hook for MCP + built-in tools, baseline between-rounds drain, etc.).
+    Also stashes the drained messages on the persist queue so the service
+    layer appends a real user row after the tool_result it rode in on —
+    giving the UI a correctly-ordered bubble.
+
+    Returns an empty string if nothing was queued or Redis failed; callers
+    can pass the result straight to ``additionalContext``.
+    """
+    if not session_id:
+        return ""
+    try:
+        pending = await drain_pending_messages(session_id)
+    except Exception:
+        logger.warning(
+            "%s drain_pending_messages failed (session=%s); skipping injection",
+            log_prefix,
+            session_id,
+            exc_info=True,
+        )
+        return ""
+    if not pending:
+        return ""
+    logger.info(
+        "%s Injected %d user follow-up(s) into tool output (session=%s)",
+        log_prefix,
+        len(pending),
+        session_id,
+    )
+    await stash_pending_for_persist(session_id, pending)
+    return format_pending_as_followup(pending)
+
+
 def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     """Shape a ``PendingMessage`` into the OpenAI-format user message dict.
 

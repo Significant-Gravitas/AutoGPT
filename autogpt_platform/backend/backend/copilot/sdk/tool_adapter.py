@@ -28,11 +28,6 @@ from backend.copilot.context import (
     is_sdk_tool_path,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.pending_messages import (
-    drain_pending_messages,
-    format_pending_as_followup,
-    stash_pending_for_persist,
-)
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
@@ -630,78 +625,16 @@ def _make_truncating_wrapper(
         else:
             _clear_tool_failures(tool_name)
 
-        # Stash BEFORE stripping AND BEFORE follow-up injection so the
-        # frontend SSE stream receives the CLEAN tool output (parseable as
-        # JSON, e.g. {"stdout": "...", "exit_code": 0}).  The frontend's
-        # bash/tool widgets run JSON.parse on this — if we stashed the
-        # text with ``<user_follow_up>`` prepended the parse would fail
-        # and widgets would fall back to a raw text dump, hiding stdout
-        # and exit code.
+        # Stash the raw tool output for the frontend SSE stream so widgets
+        # (bash, tool viewers) receive clean JSON.  Mid-turn user follow-up
+        # injection for MCP + built-in tools is now handled uniformly by
+        # the ``PostToolUse`` hook via ``additionalContext`` so Claude sees
+        # the follow-up attached to the tool_result without mutating the
+        # frontend-facing payload.
         if not truncated.get("isError"):
             text = _text_from_mcp_result(truncated)
             if text:
                 stash_pending_tool_output(tool_name, text)
-
-        # Mid-turn drain: if the user queued follow-up messages while this
-        # tool was running, inject them at the HEAD of the output inside a
-        # <user_follow_up> block so Claude reads them on the next LLM
-        # round of the SAME turn (no new turn required).  This is the SDK
-        # equivalent of baseline's between-rounds drain — it reaches the
-        # model at the earliest protocol-safe point within a turn.
-        #
-        # IMPORTANT: this runs AFTER the stash above so the follow-up
-        # block only reaches Claude (via the wrapper's return value ->
-        # SDK -> CLI session JSONL for --resume) and NEVER reaches the
-        # frontend, which expects clean JSON from the stash.
-        #
-        # Placement inside the content block is head-first so the 100 KB
-        # truncate above (and the >80 KB persist-to-workspace step in
-        # BaseTool.execute) cannot silently eat the follow-up.  Drain
-        # failures are swallowed so a broken Redis cannot corrupt tool
-        # output.
-        if session is not None and session.session_id:
-            try:
-                pending = await drain_pending_messages(session.session_id)
-            except Exception:
-                logger.warning(
-                    "[MCP] drain_pending_messages failed at tool boundary "
-                    "(tool=%s, session=%s); skipping injection",
-                    tool_name,
-                    session.session_id,
-                    exc_info=True,
-                )
-                pending = []
-            if pending:
-                followup = format_pending_as_followup(pending)
-                logger.info(
-                    "[MCP] Injected %d user follow-up(s) into %s tool output "
-                    "(session=%s)",
-                    len(pending),
-                    tool_name,
-                    session.session_id,
-                )
-                content_blocks = truncated.get("content")
-                if isinstance(content_blocks, list) and content_blocks:
-                    first = content_blocks[0]
-                    if isinstance(first, dict) and first.get("type") == "text":
-                        first["text"] = followup + "\n\n" + first.get("text", "")
-                    else:
-                        content_blocks.insert(0, {"type": "text", "text": followup})
-                else:
-                    truncated["content"] = [{"type": "text", "text": followup}]
-
-                # Stash the drained PendingMessages on a secondary Redis
-                # queue so sdk/service.py's StreamToolOutputAvailable
-                # dispatch can pop them and append a real user row to
-                # session.messages right AFTER the tool_result row.  This
-                # is the UI-observability half of the feature: Claude
-                # already saw the follow-up via the tool-output injection
-                # above, and now the UI gets a proper user bubble in the
-                # correct chronological position.  If this stash or the
-                # downstream persist fails, the downstream rollback path
-                # re-queues into the primary pending buffer so the next
-                # turn-start drain picks them up.
-                await stash_pending_for_persist(session.session_id, pending)
 
         # Strip is_dry_run only when the session itself is in dry_run mode.
         # In that case the LLM must not know it is simulating — it should act
