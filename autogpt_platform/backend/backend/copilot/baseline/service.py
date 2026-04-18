@@ -978,10 +978,13 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_content),
             session_id,
         )
-        # Append so the user's submitted message is the primary context;
-        # queued follow-ups trail it: current → pending.
+        # Combine in chronological (typing) order: pending messages were
+        # queued DURING the previous turn, so they were typed BEFORE the
+        # current /stream message.  Putting pending first — ``pending →
+        # current`` — matches what the user saw in the chat input and
+        # preserves the ordering they intended.
         if message and message.strip():
-            message = message + "\n\n" + "\n\n".join(drained_at_start_content)
+            message = "\n\n".join(drained_at_start_content) + "\n\n" + message
         else:
             message = "\n\n".join(drained_at_start_content)
         # Update the in-memory content of the already-saved user message
