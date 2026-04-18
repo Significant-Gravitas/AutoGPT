@@ -25,8 +25,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "REQUIRED: call get_agent_building_guide once per session "
-            "before this tool — this tool will refuse otherwise."
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property

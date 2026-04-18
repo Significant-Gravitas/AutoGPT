@@ -27,8 +27,7 @@ class FixAgentGraphTool(BaseTool):
             "double curly brace escaping, AddToList/AddToDictionary prerequisites, credentials, "
             "node spacing, AI model defaults, link static properties, and type mismatches. "
             "Returns fixed JSON and list of fixes applied. "
-            "REQUIRED: call get_agent_building_guide once per session before this tool — "
-            "this tool will refuse otherwise."
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property

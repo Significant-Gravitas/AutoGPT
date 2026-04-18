@@ -26,8 +26,7 @@ class ValidateAgentGraphTool(BaseTool):
             "Validate agent JSON for correctness: block_ids, links, required fields, "
             "type compatibility, nested sink notation, prompt brace escaping, "
             "and AgentExecutorBlock configs. On failure, use fix_agent_graph to auto-fix. "
-            "REQUIRED: call get_agent_building_guide once per session before this tool — "
-            "this tool will refuse otherwise."
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
