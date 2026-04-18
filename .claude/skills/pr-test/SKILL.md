@@ -180,6 +180,94 @@ Based on the PR analysis, write a test plan to `$RESULTS_DIR/test-plan.md`:
 
 **Be critical** — include edge cases, error paths, and security checks. Every scenario MUST specify what screenshots to take and what state to verify.
 
+## Step 3.0: Claim the testing lock (coordinate parallel agents)
+
+Multiple worktrees share the same host — Docker infra (postgres, redis, clamav), app ports (3000/8006/…), and the test user. Two agents running `/pr-test` concurrently will corrupt each other's state (connection-pool exhaustion, port binds failing silently, cross-test assertions). Use the root-worktree lock file to take turns.
+
+### Lock file contract
+
+Path (**always** the root worktree so all siblings see it): `/Users/majdyz/Code/AutoGPT/.ign.testing.lock`
+
+Body (one `key=value` per line):
+```
+holder=<pr-XXXXX-purpose>
+pid=<pid-or-"self">
+started=<iso8601>
+heartbeat=<iso8601, updated every ~2 min>
+worktree=<full path>
+branch=<branch name>
+intent=<one-line description + rough duration>
+```
+
+### Claim
+
+```bash
+LOCK=/Users/majdyz/Code/AutoGPT/.ign.testing.lock
+NOW=$(date -u +%Y-%m-%dT%H:%MZ)
+STALE_AFTER_MIN=5
+
+if [ -f "$LOCK" ]; then
+  HB=$(grep '^heartbeat=' "$LOCK" | cut -d= -f2)
+  HB_EPOCH=$(date -j -f '%Y-%m-%dT%H:%MZ' "$HB" +%s 2>/dev/null || date -d "$HB" +%s 2>/dev/null || echo 0)
+  AGE_MIN=$(( ( $(date -u +%s) - HB_EPOCH ) / 60 ))
+  if [ "$AGE_MIN" -gt "$STALE_AFTER_MIN" ]; then
+    echo "WARN: stale lock (${AGE_MIN}m old) — reclaiming"
+    cat "$LOCK" | sed 's/^/  stale: /'
+  else
+    echo "Another agent holds the lock:"; cat "$LOCK"
+    echo "Wait until released or resume after $((STALE_AFTER_MIN - AGE_MIN))m."
+    exit 1
+  fi
+fi
+
+cat > "$LOCK" <<EOF
+holder=pr-${PR_NUMBER}-e2e
+pid=self
+started=$NOW
+heartbeat=$NOW
+worktree=$WORKTREE_PATH
+branch=$(cd $WORKTREE_PATH && git branch --show-current)
+intent=E2E test PR #${PR_NUMBER}, native mode, ~60min
+EOF
+echo "Lock claimed"
+```
+
+### Heartbeat (MUST run in background during the whole test)
+
+Without a heartbeat a crashed agent keeps the lock forever. Run this as a background process right after claim:
+
+```bash
+(while true; do
+   sleep 120
+   [ -f "$LOCK" ] || exit 0   # lock released → exit heartbeat
+   perl -i -pe "s/^heartbeat=.*/heartbeat=$(date -u +%Y-%m-%dT%H:%MZ)/" "$LOCK"
+ done) &
+HEARTBEAT_PID=$!
+echo "$HEARTBEAT_PID" > /tmp/pr-test-heartbeat.pid
+```
+
+### Release (always — even on failure)
+
+```bash
+kill "$HEARTBEAT_PID" 2>/dev/null
+rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock" \
+    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+```
+
+Use a `trap` so release runs even on `exit 1`:
+```bash
+trap 'kill "$HEARTBEAT_PID" 2>/dev/null; rm -f "$LOCK"' EXIT INT TERM
+```
+
+### Shared status log
+
+`/Users/majdyz/Code/AutoGPT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
+```bash
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] <message>" \
+    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+```
+
 ## Step 3: Environment setup
 
 ### 3a. Copy .env files from the root worktree
@@ -276,7 +364,7 @@ Native mode runs infra (postgres, supabase, redis, rabbitmq, clamav) in docker b
 - Production-parity smoke tests (exact container env, networking, volumes)
 - CI-equivalent runs where you need the exact image that'll ship
 
-**Note on 3b (copilot auth):** in native mode, the runtime `npm install -g @anthropic-ai/claude-code` step is NOT required. The `claude_agent_sdk` bundled CLI ships with the poetry venv and is on `PATH` when you run commands via `poetry run`. The OAuth token extraction still applies (same `refresh_claude_token.sh` call).
+**Note on 3b (copilot auth):** no npm install anywhere. `poetry install` pulls in `claude_agent_sdk`, which ships its own Claude CLI binary — available on `PATH` whenever you run commands via `poetry run` (native) OR whenever the copilot_executor container is built from its Poetry lockfile (docker). The OAuth token extraction still applies (same `refresh_claude_token.sh` call).
 
 **Preamble:** before starting native, run the kill-stray + free-ports block from 3c's "Native mode also" subsection.
 
@@ -972,9 +1060,15 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 ### Problem: Frontend shows cookie banner blocking interaction
 **Fix:** `agent-browser click 'text=Accept All'` before other interactions.
 
-### Problem: Container loses npm packages after rebuild
-**Cause:** `docker compose up --build` rebuilds the image, losing runtime installs.
-**Fix:** Add packages to the Dockerfile instead of installing at runtime.
+### Problem: Claude CLI not found in copilot_executor container
+**Symptom:** Copilot logs say `claude: command not found` or similar when starting an SDK turn.
+**Cause:** Image was built without `poetry install` (stale base layer, or Dockerfile bypass). The SDK CLI ships inside the `claude_agent_sdk` Poetry dep — it is NOT an npm package.
+**Fix:** Rebuild the image cleanly: `docker compose build --no-cache copilot_executor && docker compose up -d copilot_executor`. Do NOT `docker exec ... npm install -g @anthropic-ai/claude-code` — that is outdated guidance and will pollute the container with a second CLI that the SDK won't use.
+
+### Problem: agent-browser screenshot hangs / times out
+**Symptom:** `agent-browser screenshot` exits with code 124 even on `about:blank`.
+**Cause:** Stuck CDP connection or Chromium process tree. Seen on macOS when a prior `/pr-test` left a zombie Chrome for Testing.
+**Fix:** `pkill -9 -f "agent-browser|chromium|Chrome for Testing" && sleep 2`, then reopen the browser with a fresh `--session-name`. If still failing, verify via `agent-browser eval` + `agent-browser snapshot` (DOM state) instead of relying on PNGs — the feature under test is the same.
 
 ### Problem: Services not starting after `docker compose up`
 **Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If supabase-db isn't healthy: `docker restart supabase-db && sleep 10`.
