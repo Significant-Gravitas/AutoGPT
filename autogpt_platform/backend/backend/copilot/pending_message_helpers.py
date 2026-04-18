@@ -200,6 +200,45 @@ def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
     return [format_pending_as_user_message(pm)["content"] for pm in pending]
 
 
+def combine_pending_with_current(
+    pending: list[PendingMessage],
+    current_message: str | None,
+    *,
+    request_arrival_at: float,
+) -> str:
+    """Order pending messages around *current_message* by typing time.
+
+    Pending messages whose ``enqueued_at`` is strictly greater than
+    ``request_arrival_at`` were typed AFTER the user hit enter to start
+    the current turn (the "race" path: queued into the pending buffer
+    while ``/stream`` was still processing on the server).  They belong
+    chronologically AFTER the current message.
+
+    Pending messages whose ``enqueued_at`` is less than or equal to
+    ``request_arrival_at`` were typed BEFORE the current turn — usually
+    from a prior in-flight window that auto-continue didn't consume.
+    They belong BEFORE the current message.
+
+    Stable-sort within each bucket preserves enqueue order for messages
+    typed in the same phase.  Legacy ``PendingMessage`` objects with no
+    ``enqueued_at`` (written by older workers, defaulted to 0.0) sort as
+    "before everything" — the pre-fix behaviour, which is a safe default
+    for the rare queue entries that outlived a deploy.
+    """
+    before: list[PendingMessage] = []
+    after: list[PendingMessage] = []
+    for pm in pending:
+        if request_arrival_at > 0 and pm.enqueued_at > request_arrival_at:
+            after.append(pm)
+        else:
+            before.append(pm)
+    parts = pending_texts_from(before)
+    if current_message and current_message.strip():
+        parts.append(current_message)
+    parts.extend(pending_texts_from(after))
+    return "\n\n".join(parts)
+
+
 def insert_pending_before_last(session: "ChatSession", texts: list[str]) -> None:
     """Insert pending messages into *session* just before the last message.
 

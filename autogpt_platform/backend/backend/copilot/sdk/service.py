@@ -63,6 +63,7 @@ from ..model import (
     upsert_chat_session,
 )
 from ..pending_message_helpers import (
+    combine_pending_with_current,
     drain_pending_safe,
     pending_texts_from,
     persist_pending_as_user_rows,
@@ -2696,6 +2697,7 @@ async def stream_chat_completion_sdk(
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    request_arrival_at: float = 0.0,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -3148,14 +3150,18 @@ async def stream_chat_completion_sdk(
                 log_prefix,
                 len(pending_messages),
             )
+            # Chronological combine: items typed BEFORE this request
+            # arrived go ahead of ``current_message``; items typed AFTER
+            # (race path, queued while /stream was still processing) go
+            # after.  ``pending_texts`` is kept around because downstream
+            # code (the executor's update_message_content_by_sequence
+            # call) needs the pre-combine list.
             pending_texts = pending_texts_from(pending_messages)
-            # Chronological order: pending first (older, typed during the
-            # previous turn), current second (newer, just typed to start
-            # this turn).  Matches what the user saw in the chat input.
-            if current_message.strip():
-                current_message = "\n\n".join(pending_texts) + "\n\n" + current_message
-            else:
-                current_message = "\n\n".join(pending_texts)
+            current_message = combine_pending_with_current(
+                pending_messages,
+                current_message,
+                request_arrival_at=request_arrival_at,
+            )
             # Update the in-memory content of the already-saved user message
             # and persist that update to the DB by sequence number.  This
             # avoids inserting an extra row — the user message was already

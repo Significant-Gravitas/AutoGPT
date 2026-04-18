@@ -36,6 +36,7 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.pending_message_helpers import (
+    combine_pending_with_current,
     drain_pending_safe,
     pending_texts_from,
     persist_pending_as_user_rows,
@@ -927,6 +928,7 @@ async def stream_chat_completion_baseline(
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
+    request_arrival_at: float = 0.0,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -980,15 +982,15 @@ async def stream_chat_completion_baseline(
             session_id,
         )
         drained_at_start_content = pending_texts_from(drained_at_start_pending)
-        # Combine in chronological (typing) order: pending messages were
-        # queued DURING the previous turn, so they were typed BEFORE the
-        # current /stream message.  Putting pending first — ``pending →
-        # current`` — matches what the user saw in the chat input and
-        # preserves the ordering they intended.
-        if message and message.strip():
-            message = "\n\n".join(drained_at_start_content) + "\n\n" + message
-        else:
-            message = "\n\n".join(drained_at_start_content)
+        # Chronological combine: pending typed BEFORE this /stream
+        # request's arrival go ahead of ``message``; race-path follow-ups
+        # typed AFTER (queued while /stream was still processing) go
+        # after.  See ``combine_pending_with_current`` for details.
+        message = combine_pending_with_current(
+            drained_at_start_pending,
+            message,
+            request_arrival_at=request_arrival_at,
+        )
         # Update the in-memory content of the already-saved user message
         # and persist that update by sequence number.
         last_user_msg = next(

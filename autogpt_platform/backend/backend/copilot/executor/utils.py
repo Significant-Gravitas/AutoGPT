@@ -169,6 +169,15 @@ class CoPilotExecutionEntry(BaseModel):
     forwards its parent's permissions so the sub can't escalate). ``None``
     means the worker applies no filter."""
 
+    request_arrival_at: float = 0.0
+    """Unix-epoch seconds (server clock) when the originating HTTP
+    ``/stream`` request arrived.  The executor's turn-start drain uses
+    this to decide whether each pending message was typed BEFORE or AFTER
+    the turn's ``current`` message, and orders the combined user bubble
+    chronologically.  Defaults to ``0.0`` for backward compatibility with
+    queue messages written before this field existed (they sort as "all
+    pending before current" — the pre-fix behaviour)."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -191,6 +200,7 @@ async def enqueue_copilot_turn(
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
+    request_arrival_at: float = 0.0,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -220,6 +230,7 @@ async def enqueue_copilot_turn(
         mode=mode,
         model=model,
         permissions=permissions,
+        request_arrival_at=request_arrival_at,
     )
 
     queue_client = await get_async_copilot_queue()

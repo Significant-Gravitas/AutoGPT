@@ -9,6 +9,7 @@ from backend.copilot import pending_message_helpers as helpers_module
 from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
     check_pending_call_rate,
+    combine_pending_with_current,
     drain_pending_safe,
     insert_pending_before_last,
     persist_session_safe,
@@ -66,16 +67,24 @@ async def test_check_pending_call_rate_at_limit(
 
 
 @pytest.mark.asyncio
-async def test_drain_pending_safe_returns_content_strings(
+async def test_drain_pending_safe_returns_pending_messages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    msgs = [PendingMessage(content="hello"), PendingMessage(content="world")]
+    """``drain_pending_safe`` now returns the structured ``PendingMessage``
+    objects (not pre-formatted strings) so the auto-continue re-queue path
+    can preserve ``file_ids`` / ``context`` on rollback."""
+    msgs = [
+        PendingMessage(content="hello", file_ids=["f1"]),
+        PendingMessage(content="world"),
+    ]
     monkeypatch.setattr(
         helpers_module, "drain_pending_messages", AsyncMock(return_value=msgs)
     )
 
     result = await drain_pending_safe("sess-1")
-    assert result == ["hello", "world"]
+    assert result == msgs
+    # Structured metadata survives — the bug r3105523410 guard.
+    assert result[0].file_ids == ["f1"]
 
 
 @pytest.mark.asyncio
@@ -100,6 +109,79 @@ async def test_drain_pending_safe_empty_buffer(monkeypatch: pytest.MonkeyPatch) 
 
     result = await drain_pending_safe("sess-1")
     assert result == []
+
+
+# ── combine_pending_with_current ───────────────────────────────────────
+
+
+def test_combine_before_current_when_pending_older() -> None:
+    """Pending typed before the /stream request → goes ahead of current
+    (prior-turn / inter-turn case)."""
+    pending = [
+        PendingMessage(content="older_a", enqueued_at=100.0),
+        PendingMessage(content="older_b", enqueued_at=110.0),
+    ]
+    result = combine_pending_with_current(
+        pending, "current_msg", request_arrival_at=120.0
+    )
+    assert result == "older_a\n\nolder_b\n\ncurrent_msg"
+
+
+def test_combine_after_current_when_pending_newer() -> None:
+    """Pending queued AFTER the /stream request arrived → goes after
+    current.  This is the race path where user hits enter twice in quick
+    succession (second press goes through the queue endpoint while the
+    first /stream is still processing)."""
+    pending = [
+        PendingMessage(content="race_followup", enqueued_at=125.0),
+    ]
+    result = combine_pending_with_current(
+        pending, "current_msg", request_arrival_at=120.0
+    )
+    assert result == "current_msg\n\nrace_followup"
+
+
+def test_combine_mixed_before_and_after() -> None:
+    """Mixed bucket: older items first, current, then newer race items."""
+    pending = [
+        PendingMessage(content="way_older", enqueued_at=50.0),
+        PendingMessage(content="race_fast_follow", enqueued_at=125.0),
+        PendingMessage(content="also_older", enqueued_at=80.0),
+    ]
+    result = combine_pending_with_current(
+        pending, "current_msg", request_arrival_at=120.0
+    )
+    # Enqueue order preserved within each bucket (stable partition).
+    assert result == "way_older\n\nalso_older\n\ncurrent_msg\n\nrace_fast_follow"
+
+
+def test_combine_no_current_joins_pending() -> None:
+    """Auto-continue case: no current message, just drained pending."""
+    pending = [PendingMessage(content="a"), PendingMessage(content="b")]
+    result = combine_pending_with_current(pending, None, request_arrival_at=0.0)
+    assert result == "a\n\nb"
+
+
+def test_combine_legacy_zero_timestamp_sorts_before() -> None:
+    """A ``PendingMessage`` from before this field existed (default 0.0)
+    should sort as "before everything" — safe pre-fix behaviour."""
+    pending = [PendingMessage(content="legacy", enqueued_at=0.0)]
+    result = combine_pending_with_current(
+        pending, "current_msg", request_arrival_at=120.0
+    )
+    assert result == "legacy\n\ncurrent_msg"
+
+
+def test_combine_missing_request_arrival_falls_back_to_before() -> None:
+    """If the HTTP handler didn't stamp ``request_arrival_at`` (0.0
+    default — older queue entries) the combine degrades gracefully to
+    the pre-fix behaviour: all pending goes before current."""
+    pending = [
+        PendingMessage(content="a", enqueued_at=500.0),
+        PendingMessage(content="b", enqueued_at=1000.0),
+    ]
+    result = combine_pending_with_current(pending, "current", request_arrival_at=0.0)
+    assert result == "a\n\nb\n\ncurrent"
 
 
 # ── insert_pending_before_last ─────────────────────────────────────────

@@ -23,6 +23,7 @@ buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
 
 import json
 import logging
+import time
 from typing import Any, cast
 
 from pydantic import BaseModel, Field, ValidationError
@@ -74,6 +75,15 @@ class PendingMessage(BaseModel):
     content: str = Field(min_length=1, max_length=32_000)
     file_ids: list[str] = Field(default_factory=list, max_length=20)
     context: PendingMessageContext | None = None
+    # Wall-clock time (unix seconds, float) the message was queued by the
+    # user.  Used by the turn-start drain to order pending relative to the
+    # turn's ``current`` message: items typed *before* the current's
+    # /stream arrival go ahead of it; items typed *after* (race path,
+    # queued while the /stream HTTP request was still processing) go
+    # after.  Defaults to 0.0 for backward compatibility with entries
+    # written before this field existed — those sort as "before everything"
+    # which matches the pre-fix behaviour.
+    enqueued_at: float = Field(default_factory=time.time)
 
 
 def _buffer_key(session_id: str) -> str:

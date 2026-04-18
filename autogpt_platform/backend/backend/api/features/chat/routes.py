@@ -818,6 +818,11 @@ async def stream_chat_post(
     import time
 
     stream_start_time = time.perf_counter()
+    # Wall-clock arrival time, propagated to the executor so the turn-start
+    # drain can order pending messages relative to this request (pending
+    # pushed BEFORE this instant were typed earlier; pending pushed AFTER
+    # are race-path follow-ups typed while /stream was still processing).
+    request_arrival_at = time.time()
     log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
@@ -938,6 +943,7 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            request_arrival_at=request_arrival_at,
         )
     else:
         logger.info(
