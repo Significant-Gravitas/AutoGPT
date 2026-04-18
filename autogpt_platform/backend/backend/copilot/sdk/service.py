@@ -2690,8 +2690,25 @@ async def stream_chat_completion_sdk(
     # False there (duplicate) — this branch only fires for internal callers
     # that did NOT pre-save, most notably the auto-continue recursive call
     # below.
+    #
+    # If the persist fails, roll back the in-memory append: otherwise
+    # session.messages[-1] carries a ``sequence=None`` ghost row, and a
+    # later turn-start drain (from a pending message queued during this
+    # turn) would trip the "no sequence" RuntimeError and crash the turn.
     if _user_message_appended and is_user_message:
         await persist_session_safe(session, log_prefix)
+        if session.messages and session.messages[-1].sequence is None:
+            # Eager persist swallowed a transient DB failure and left the
+            # in-memory append without a sequence. Roll back so the session
+            # stays consistent with the DB and raise so the caller can
+            # re-queue any drained content. Without this, a later
+            # turn-start drain would trip the "no sequence" RuntimeError
+            # and lose the fresh pending messages it just LPOPed.
+            session.messages.pop()
+            raise RuntimeError(
+                f"{log_prefix} Eager persist of user message failed; "
+                f"in-memory append rolled back"
+            )
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -3848,44 +3865,54 @@ async def stream_chat_completion_sdk(
             # competing stream's turn-start drain picks them up.
             _auto_requeued = False
             _first_auto_event = True
-            async for event in stream_chat_completion_sdk(
-                session_id=session_id,
-                message=_auto_combined,
-                is_user_message=True,
-                user_id=user_id,
-                file_ids=None,
-                permissions=permissions,
-                mode=mode,
-                model=model,
-            ):
-                if _first_auto_event:
-                    _first_auto_event = False
-                    if (
-                        isinstance(event, StreamError)
-                        and getattr(event, "code", None) == "stream_already_active"
-                    ):
-                        logger.warning(
-                            "%s Auto-continue lost lock race; re-queueing "
-                            "%d drained message(s) so the active stream can "
-                            "process them",
-                            log_prefix,
-                            len(_auto_pending_texts),
+
+            async def _requeue_drained(reason: str) -> None:
+                logger.warning(
+                    "%s Auto-continue %s; re-queueing %d drained message(s)",
+                    log_prefix,
+                    reason,
+                    len(_auto_pending_texts),
+                )
+                for _text in _auto_pending_texts:
+                    try:
+                        await push_pending_message(
+                            session_id, PendingMessage(content=_text)
                         )
-                        for _text in _auto_pending_texts:
-                            try:
-                                await push_pending_message(
-                                    session_id, PendingMessage(content=_text)
-                                )
-                            except Exception:
-                                logger.exception(
-                                    "%s Failed to re-queue auto-continue "
-                                    "message after lock race",
-                                    log_prefix,
-                                )
-                        _auto_requeued = True
-                        # Suppress the stale "already active" error — the
-                        # competing stream will emit its own events.
-                        continue
-                yield event
+                    except Exception:
+                        logger.exception(
+                            "%s Failed to re-queue auto-continue message",
+                            log_prefix,
+                        )
+
+            try:
+                async for event in stream_chat_completion_sdk(
+                    session_id=session_id,
+                    message=_auto_combined,
+                    is_user_message=True,
+                    user_id=user_id,
+                    file_ids=None,
+                    permissions=permissions,
+                    mode=mode,
+                    model=model,
+                ):
+                    if _first_auto_event:
+                        _first_auto_event = False
+                        if (
+                            isinstance(event, StreamError)
+                            and getattr(event, "code", None) == "stream_already_active"
+                        ):
+                            await _requeue_drained("lost lock race")
+                            _auto_requeued = True
+                            # Suppress the stale "already active" error —
+                            # the competing stream will emit its own events.
+                            continue
+                    yield event
+            except Exception:
+                # Eager-persist rollback or any other failure inside the
+                # recursive call before messages were consumed. Push the
+                # drained texts back so the next turn picks them up.
+                if not _auto_requeued:
+                    await _requeue_drained("raised during recursive call")
+                raise
             if _auto_requeued:
                 return
