@@ -355,30 +355,11 @@ class AutoPilotBlock(Block):
                     f"{session_id}"
                 )
 
-            # If the session already had a turn in flight when we dispatched,
-            # ``run_copilot_turn_via_queue`` pushed the message onto the
-            # pending buffer instead of starting a second turn.  Surface a
-            # descriptive response + empty tool_calls/history so downstream
-            # blocks can treat the run as deferred — the executor running
-            # the earlier turn drains the buffer on its next round.
-            if result.queued:
-                queued_response = (
-                    f"[AutoPilot] Message queued into session {session_id}; "
-                    f"{result.pending_buffer_length} message(s) now pending. "
-                    "The existing turn will pick it up on the next drain."
-                )
-                return (
-                    queued_response,
-                    [],
-                    json.dumps(
-                        [{"role": "user", "content": effective_prompt}],
-                        default=str,
-                    ),
-                    session_id,
-                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                )
-
             # Build a lightweight conversation summary from the aggregated data.
+            # When ``result.queued`` is True the prompt rode on an already-
+            # in-flight turn (``run_copilot_turn_via_queue`` queued it and
+            # waited on the existing turn's stream); the aggregated result
+            # is still valid, so the same rendering path applies.
             turn_messages: list[dict[str, Any]] = [
                 {"role": "user", "content": effective_prompt},
             ]
