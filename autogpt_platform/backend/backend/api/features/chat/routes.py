@@ -28,16 +28,11 @@ from backend.copilot.model import (
     update_session_title,
 )
 from backend.copilot.pending_message_helpers import (
-    PENDING_CALL_LIMIT,
-    PENDING_CALL_WINDOW_SECONDS,
-    check_pending_call_rate,
+    QueuePendingMessageResponse,
     is_turn_in_flight,
-    queue_user_message,
+    queue_pending_for_http,
 )
-from backend.copilot.pending_messages import (
-    PendingMessageContext,
-    peek_pending_messages,
-)
+from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -154,23 +149,6 @@ class StreamChatRequest(BaseModel):
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",
     )
-
-
-class QueuePendingMessageResponse(BaseModel):
-    """Response returned by ``POST /stream`` with status 202 when a message
-    is queued because the session already has a turn in flight.
-
-    - ``buffer_length``: how many messages are now in the session's
-      pending buffer (after this push)
-    - ``max_buffer_length``: the per-session cap (server-side constant)
-    - ``turn_in_flight``: ``True`` if a copilot turn was running when
-      we checked — purely informational for UX feedback.  Always ``True``
-      for responses from ``POST /stream`` with status 202.
-    """
-
-    buffer_length: int
-    max_buffer_length: int
-    turn_in_flight: bool
 
 
 class PeekPendingMessagesResponse(BaseModel):
@@ -859,46 +837,14 @@ async def stream_chat_post(
         and request.message
         and await is_turn_in_flight(session_id)
     ):
-        # Call-frequency cap — prevent rapid-fire pushes that would bypass
-        # the token-budget check (which fires per-turn, not per-push).
-        call_count = await check_pending_call_rate(user_id)
-        if call_count > PENDING_CALL_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    f"Too many queued message requests this minute: limit is "
-                    f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
-                    "across all sessions"
-                ),
-            )
-        # Sanitise file IDs to the user's own workspace — mirrors the
-        # non-queued path below so injected follow-ups can't surface other
-        # users' files.
-        sanitized_queue_file_ids: list[str] = []
-        if request.file_ids:
-            files = await resolve_workspace_files(user_id, request.file_ids)
-            sanitized_queue_file_ids = [wf.id for wf in files]
-        # StreamChatRequest.context is a raw {url, content} dict for backward
-        # compat; the pending buffer stores it as a typed PendingMessageContext.
-        queue_context = (
-            PendingMessageContext.model_validate(request.context)
-            if request.context
-            else None
-        )
-        result = await queue_user_message(
+        response = await queue_pending_for_http(
             session_id=session_id,
+            user_id=user_id,
             message=request.message,
-            context=queue_context,
-            file_ids=sanitized_queue_file_ids or None,
+            context=request.context,
+            file_ids=request.file_ids,
         )
-        return JSONResponse(
-            status_code=202,
-            content=QueuePendingMessageResponse(
-                buffer_length=result.buffer_length,
-                max_buffer_length=result.max_buffer_length,
-                turn_in_flight=result.turn_in_flight,
-            ).model_dump(),
-        )
+        return JSONResponse(status_code=202, content=response.model_dump())
 
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",

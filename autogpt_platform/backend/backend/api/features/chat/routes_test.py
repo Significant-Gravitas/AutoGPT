@@ -738,10 +738,12 @@ def test_stream_queue_converts_context_dict_to_pending_context(
     typed PendingMessageContext before being pushed onto the buffer."""
     _mock_stream_queue_internals(mocker)
     queue_spy = mocker.patch(
-        "backend.api.features.chat.routes.queue_user_message",
+        "backend.copilot.pending_message_helpers.queue_user_message",
         new_callable=AsyncMock,
     )
-    queue_spy.return_value = mocker.MagicMock(
+    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+
+    queue_spy.return_value = QueuePendingMessageResponse(
         buffer_length=1, max_buffer_length=10, turn_in_flight=True
     )
 
@@ -770,10 +772,12 @@ def test_stream_queue_passes_none_context_when_omitted(
     """When request.context is omitted, the queue call receives context=None."""
     _mock_stream_queue_internals(mocker)
     queue_spy = mocker.patch(
-        "backend.api.features.chat.routes.queue_user_message",
+        "backend.copilot.pending_message_helpers.queue_user_message",
         new_callable=AsyncMock,
     )
-    queue_spy.return_value = mocker.MagicMock(
+    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+
+    queue_spy.return_value = QueuePendingMessageResponse(
         buffer_length=1, max_buffer_length=10, turn_in_flight=True
     )
 

@@ -10,6 +10,9 @@ routes.py stays free of Redis/Lua details.
 import logging
 from typing import TYPE_CHECKING, Callable
 
+from fastapi import HTTPException
+from pydantic import BaseModel
+
 from backend.copilot.model import ChatMessage, upsert_chat_session
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
@@ -22,6 +25,7 @@ from backend.copilot.pending_messages import (
 from backend.copilot.stream_registry import get_session as get_active_session_meta
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
+from backend.data.workspace import resolve_workspace_files
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
@@ -49,21 +53,21 @@ async def is_turn_in_flight(session_id: str) -> bool:
     return active is not None and active.status == "running"
 
 
-class QueueResult:
-    """Return shape of ``queue_user_message``.
+class QueuePendingMessageResponse(BaseModel):
+    """Response returned by ``POST /stream`` with status 202 when a message
+    is queued because the session already has a turn in flight.
 
-    Mirrors the old ``QueuePendingMessageResponse`` so the HTTP handler can
-    serialise it 1:1 and the autopilot block can surface the same fields.
+    - ``buffer_length``: how many messages are now in the session's
+      pending buffer (after this push)
+    - ``max_buffer_length``: the per-session cap (server-side constant)
+    - ``turn_in_flight``: ``True`` if a copilot turn was running when
+      we checked — purely informational for UX feedback.  Always ``True``
+      for responses from ``POST /stream`` with status 202.
     """
 
-    __slots__ = ("buffer_length", "max_buffer_length", "turn_in_flight")
-
-    def __init__(
-        self, buffer_length: int, max_buffer_length: int, turn_in_flight: bool
-    ) -> None:
-        self.buffer_length = buffer_length
-        self.max_buffer_length = max_buffer_length
-        self.turn_in_flight = turn_in_flight
+    buffer_length: int
+    max_buffer_length: int
+    turn_in_flight: bool
 
 
 async def queue_user_message(
@@ -72,7 +76,7 @@ async def queue_user_message(
     message: str,
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
-) -> QueueResult:
+) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
     The shared primitive for "a message arrived while a turn is in flight" —
@@ -86,10 +90,58 @@ async def queue_user_message(
         context=context,
     )
     new_len = await push_pending_message(session_id, pending)
-    return QueueResult(
+    return QueuePendingMessageResponse(
         buffer_length=new_len,
         max_buffer_length=MAX_PENDING_MESSAGES,
         turn_in_flight=await is_turn_in_flight(session_id),
+    )
+
+
+async def queue_pending_for_http(
+    *,
+    session_id: str,
+    user_id: str,
+    message: str,
+    context: dict[str, str] | None,
+    file_ids: list[str] | None,
+) -> QueuePendingMessageResponse:
+    """HTTP-facing wrapper around :func:`queue_user_message`.
+
+    Owns the HTTP-only concerns that sat inline in ``stream_chat_post``:
+
+    1. Per-user call-rate cap (429 on overflow).
+    2. File-ID sanitisation against the user's own workspace.
+    3. ``{url, content}`` dict → ``PendingMessageContext`` coercion.
+    4. Push via ``queue_user_message``.
+
+    Raises :class:`HTTPException` with status 429 if the rate cap is hit;
+    otherwise returns the ``QueuePendingMessageResponse`` the handler can
+    serialise 1:1 into the 202 body.
+    """
+    call_count = await check_pending_call_rate(user_id)
+    if call_count > PENDING_CALL_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Too many queued message requests this minute: limit is "
+                f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
+                "across all sessions"
+            ),
+        )
+
+    sanitized_file_ids: list[str] | None = None
+    if file_ids:
+        files = await resolve_workspace_files(user_id, file_ids)
+        sanitized_file_ids = [wf.id for wf in files] or None
+
+    queue_context = (
+        PendingMessageContext.model_validate(context) if context else None
+    )
+    return await queue_user_message(
+        session_id=session_id,
+        message=message,
+        context=queue_context,
+        file_ids=sanitized_file_ids,
     )
 
 
