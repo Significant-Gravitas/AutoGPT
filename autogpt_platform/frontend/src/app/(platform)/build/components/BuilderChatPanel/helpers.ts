@@ -157,6 +157,28 @@ export function buildSeedPrompt(summary: string, userMessage: string): string {
   // full user message. Trimming the summary (lowest priority) rather than the
   // user message means a very long sendRawMessage call is never silently cut.
   const fixedOverhead = INSTRUCTIONS.length + INSTRUCTIONS_SUFFIX.length;
+
+  // If the user message alone (plus fixed overhead) exceeds the backend limit,
+  // truncate the user message explicitly with a visible notice rather than
+  // letting the final `.slice()` silently chop its tail. Graph context is
+  // dropped entirely in this case since there's no room for it.
+  if (fixedOverhead + userMessage.length > MAX_BACKEND_MESSAGE_CHARS) {
+    const makeUserNotice = (n: number) =>
+      `\n\n(Your message was truncated at ${n} characters to fit the backend limit.)`;
+    const availableForUser = Math.max(
+      0,
+      MAX_BACKEND_MESSAGE_CHARS - fixedOverhead,
+    );
+    const estimatedUserNotice = makeUserNotice(availableForUser);
+    const userLimit = Math.max(
+      0,
+      availableForUser - estimatedUserNotice.length,
+    );
+    const userNotice = makeUserNotice(userLimit);
+    const truncatedUser = userMessage.slice(0, userLimit) + userNotice;
+    return INSTRUCTIONS + INSTRUCTIONS_SUFFIX + truncatedUser;
+  }
+
   const availableForSummary =
     MAX_BACKEND_MESSAGE_CHARS - fixedOverhead - userMessage.length;
 
@@ -185,14 +207,11 @@ export function buildSeedPrompt(summary: string, userMessage: string): string {
     }
   }
 
-  // Safety clamp: if fixedOverhead alone exceeds the limit (should not happen
-  // in practice), the slice ensures we never send a malformed oversized message.
-  return (
-    INSTRUCTIONS +
-    cappedSummary +
-    INSTRUCTIONS_SUFFIX +
-    userMessage
-  ).slice(0, MAX_BACKEND_MESSAGE_CHARS);
+  // By construction `fixedOverhead + cappedSummary.length + userMessage.length`
+  // ≤ MAX_BACKEND_MESSAGE_CHARS at this point, so a final `.slice()` would be a
+  // no-op. No safety clamp needed — any branch that could overflow is handled
+  // explicitly above with a visible notice.
+  return INSTRUCTIONS + cappedSummary + INSTRUCTIONS_SUFFIX + userMessage;
 }
 
 /**

@@ -145,6 +145,20 @@ describe("buildSeedPrompt", () => {
     expect(result).toContain(userMsg);
     expect(result).toContain("Graph context truncated");
   });
+
+  it("explicitly truncates the user message with a visible notice when it alone overflows", () => {
+    // When userMessage + fixedOverhead exceeds MAX_BACKEND_MESSAGE_CHARS, the
+    // message must be explicitly truncated with a user-visible notice — NOT
+    // silently chopped by a final `.slice()`. This is the failure mode that
+    // the sentry bot flagged on line 195.
+    const hugeUserMsg = "U".repeat(MAX_BACKEND_MESSAGE_CHARS);
+    const result = buildSeedPrompt("tiny summary", hugeUserMsg);
+    expect(result.length).toBeLessThanOrEqual(MAX_BACKEND_MESSAGE_CHARS);
+    // A visible notice must be emitted so the user knows their message was cut.
+    expect(result).toContain("Your message was truncated");
+    // Graph context is dropped to make room — it is lower priority than user input.
+    expect(result).not.toContain("tiny summary");
+  });
 });
 
 describe("serializeGraphForChat – XML injection prevention", () => {
