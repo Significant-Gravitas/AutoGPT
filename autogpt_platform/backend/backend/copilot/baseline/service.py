@@ -988,17 +988,21 @@ async def stream_chat_completion_baseline(
         last_user_msg = next(
             (m for m in reversed(session.messages) if m.role == "user"), None
         )
-        if last_user_msg is not None:
-            last_user_msg.content = message
-            if last_user_msg.sequence is not None:
-                await chat_db().update_message_content_by_sequence(
-                    session_id, last_user_msg.sequence, message
-                )
-            else:
-                logger.warning(
-                    "[Baseline] Last user message has no sequence number; "
-                    "pending injection cannot be persisted to DB"
-                )
+        if last_user_msg is None or last_user_msg.sequence is None:
+            # Defensive: routes.py always pre-saves the user message with a
+            # sequence before dispatch, so this is unreachable under normal
+            # flow. Raising instead of a warning-and-continue avoids silent
+            # data loss (in-memory message diverges from the DB row, so the
+            # queued chip would disappear from the UI after refresh without
+            # a corresponding bubble).
+            raise RuntimeError(
+                f"[Baseline] Cannot persist turn-start pending injection: "
+                f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
+            )
+        last_user_msg.content = message
+        await chat_db().update_message_content_by_sequence(
+            session_id, last_user_msg.sequence, message
+        )
 
     # Select model based on the per-request mode.  'fast' downgrades to
     # the cheaper/faster model; everything else keeps the default.
@@ -1385,10 +1389,13 @@ async def stream_chat_completion_baseline(
                     # a faithful copy of what the model actually saw.
                     formatted = format_pending_as_user_message(pm)
                     content_for_db = formatted["content"]
-                    # Append directly — pending messages are atomically-popped
-                    # from Redis and are never stale-cache duplicates, so the
-                    # maybe_append_user_message dedup is wrong here and would
-                    # cause openai_messages/transcript to diverge from session.
+                    # Append directly, bypassing maybe_append_user_message's
+                    # trailing-duplicate dedup. Scope of safety: this drain is
+                    # the ONLY caller of drain_pending_messages (LPOP) for this
+                    # turn — there is no outer retry loop above that would
+                    # replay the same drained batch, so each popped item is
+                    # guaranteed to reach session exactly once. Future callers
+                    # that add retry semantics must NOT reuse this bypass.
                     session.messages.append(
                         ChatMessage(role="user", content=content_for_db)
                     )
