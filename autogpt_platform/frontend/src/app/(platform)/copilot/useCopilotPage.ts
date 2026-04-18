@@ -123,10 +123,16 @@ export function useCopilotPage() {
   const messages = useMemo(() => {
     const deduped = deduplicateMessages(rawMessages);
 
+    // Fingerprint by semantic content only — the per-part `type` (step-start,
+    // step-finish, reasoning, etc.) may carry generated IDs or timestamps that
+    // differ between turns even when the replayed content is the same. Using
+    // just the type string (plus text/toolCallId) keeps the strict-prefix match
+    // stable so Turn N replay of Turn N-1's assistant content is detected.
     const fingerprint = (msg: UIMessage): string[] =>
       (msg.parts ?? []).map((p) => {
         if ("text" in p && p.text) return `text:${p.text}`;
         if ("toolCallId" in p && p.toolCallId) return `tool:${p.toolCallId}`;
+        if ("type" in p && typeof p.type === "string") return `type:${p.type}`;
         return JSON.stringify(p);
       });
 
