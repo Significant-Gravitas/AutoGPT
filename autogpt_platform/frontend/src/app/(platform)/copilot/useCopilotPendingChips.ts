@@ -43,18 +43,13 @@ export function useCopilotPendingChips({
 }: Args) {
   const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
 
-  // Mirror state into refs so async callbacks and interval ticks always
-  // read the latest values without re-subscribing on every change.
-  const queuedRef = useRef(queuedMessages);
-  queuedRef.current = queuedMessages;
-
-  usePeekSync({ sessionId, status, setQueuedMessages });
+  usePeekOnBoundary({ sessionId, status, setQueuedMessages });
 
   useAutoContinuePromotion({
     sessionId,
     status,
     messages,
-    queuedRef,
+    queuedMessages,
     setMessages,
     setQueuedMessages,
   });
@@ -62,8 +57,7 @@ export function useCopilotPendingChips({
   useMidTurnDrainPromotion({
     sessionId,
     status,
-    queuedLen: queuedMessages.length,
-    queuedRef,
+    queuedMessages,
     setMessages,
     setQueuedMessages,
   });
@@ -77,9 +71,11 @@ export function useCopilotPendingChips({
 
 // ── 1. Peek sync ───────────────────────────────────────────────────────
 // Restore chips from Redis on session load + any time a turn ends (the
-// backend may have drained; we reconcile with server truth).
+// backend may have drained; we reconcile with server truth).  Also
+// re-peeks on `submitted → streaming` so turn-start drains reconcile
+// without a separate effect — one edge-triggered peek covers both cases.
 
-function usePeekSync({
+function usePeekOnBoundary({
   sessionId,
   status,
   setQueuedMessages,
@@ -89,10 +85,13 @@ function usePeekSync({
   setQueuedMessages: (v: string[]) => void;
 }) {
   const prevSessionIdRef = useRef<string | null>(sessionId);
+  const prevStatusRef = useRef<ChatStatus>(status);
 
   useEffect(() => {
+    const prevStatus = prevStatusRef.current;
     const sessionChanged = prevSessionIdRef.current !== sessionId;
     prevSessionIdRef.current = sessionId;
+    prevStatusRef.current = status;
 
     // Clear any stale chips from the previous session before the peek
     // resolves — otherwise the new session briefly shows the old session's
@@ -100,13 +99,27 @@ function usePeekSync({
     if (sessionChanged) setQueuedMessages([]);
 
     if (!sessionId) return;
+
     const isIdle = status === "ready" || status === "error";
-    if (!sessionChanged && !isIdle) return;
+    const turnStarting = prevStatus === "submitted" && status === "streaming";
+
+    // Peek on: session-change, idle (covers both first-mount-in-idle and
+    // becameIdle transitions), and turn-start drain.  One effect, three
+    // edges — replaces the previous split between usePeekSync and the
+    // auto-continue effect's duplicate turn-start peek.
+    if (!sessionChanged && !isIdle && !turnStarting) return;
 
     void getV2GetPendingMessages(sessionId).then((res) => {
-      setQueuedMessages(
-        res.status === 200 && res.data.count > 0 ? res.data.messages : [],
-      );
+      if (res.status !== 200) return;
+      // Turn-start drain path: only clear if the backend really emptied
+      // the buffer.  A non-zero count means our chips survived the drain
+      // (e.g. the turn is still consuming them mid-round) — keep them.
+      if (turnStarting && !sessionChanged) {
+        if (res.data.count === 0) setQueuedMessages([]);
+        return;
+      }
+      // Session-load or idle-after-turn: replace with server truth.
+      setQueuedMessages(res.data.count > 0 ? res.data.messages : []);
     });
   }, [sessionId, status, setQueuedMessages]);
 }
@@ -115,103 +128,76 @@ function usePeekSync({
 // When the backend auto-continues (a SECOND new assistant ID appears in
 // the same stream chain), combine chips into one user bubble and insert
 // it just before that assistant — matching the DB's chronological order.
+//
+// Tracking model: remember the FIRST assistant id seen after
+// `submitted → streaming` (that's Turn 1's opener).  Any later new
+// assistant id in the same chain is the auto-continue.  Reset on every
+// turn boundary.
 
 function useAutoContinuePromotion({
   sessionId,
   status,
   messages,
-  queuedRef,
+  queuedMessages,
   setMessages,
   setQueuedMessages,
 }: {
   sessionId: string | null;
   status: ChatStatus;
   messages: UIMessage[];
-  queuedRef: React.RefObject<string[]>;
+  queuedMessages: string[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueuedMessages: (v: string[]) => void;
 }) {
   const prevStatusRef = useRef(status);
-  const seenAssistantIdsRef = useRef<Set<string>>(
-    new Set(messages.filter((m) => m.role === "assistant").map((m) => m.id)),
-  );
-  // Tracks whether we've already credited "Turn 1's assistant" so the next
-  // new assistant id in the same chain is treated as the auto-continue.
-  const sawTurnOpenerRef = useRef(false);
+  // The opener is the first assistant id observed after a turn starts.
+  // Any LATER assistant id in the same chain is the auto-continue.
+  // Reset to null on every turn boundary (turn-start or becameIdle) so
+  // the next chain starts fresh.
+  const openerAssistantIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
     prevStatusRef.current = status;
 
-    const newAssistantIds = absorbNewAssistantIds(
-      messages,
-      seenAssistantIdsRef.current,
-    );
-
-    if (!sessionId) return;
-
     const turnStarting = prevStatus === "submitted" && status === "streaming";
-    if (turnStarting) {
-      sawTurnOpenerRef.current = false;
-      // Turn-start drain: chips got merged into the submitted message.
-      // Peek once — clear chips only if the backend really drained them.
-      void getV2GetPendingMessages(sessionId).then((res) => {
-        if (res.status === 200 && res.data.count === 0) setQueuedMessages([]);
-      });
-    }
-
     const becameIdle =
       (prevStatus === "streaming" || prevStatus === "submitted") &&
       (status === "ready" || status === "error");
-    if (becameIdle) sawTurnOpenerRef.current = false;
+    if (turnStarting || becameIdle) {
+      openerAssistantIdRef.current = null;
+    }
 
+    if (!sessionId) return;
     const isActive = status === "streaming" || status === "submitted";
-    if (!isActive || newAssistantIds.length === 0) return;
+    if (!isActive) return;
 
-    const autoContinueId = pickAutoContinueId(
-      newAssistantIds,
-      sawTurnOpenerRef,
-    );
-    if (autoContinueId === null) return;
-    if ((queuedRef.current ?? []).length === 0) return;
+    const assistantIds = messages
+      .filter((m) => m.role === "assistant")
+      .map((m) => m.id);
+    if (assistantIds.length === 0) return;
 
-    promoteBeforeAssistant(
-      setMessages,
-      autoContinueId,
-      queuedRef.current ?? [],
-    );
+    const latest = assistantIds[assistantIds.length - 1];
+    // First assistant id of this chain — it's Turn 1's opener.
+    if (openerAssistantIdRef.current === null) {
+      openerAssistantIdRef.current = latest;
+      return;
+    }
+    // Same id as opener — no new assistant yet, wait.
+    if (latest === openerAssistantIdRef.current) return;
+    // A different id means the backend auto-continued.
+    if (queuedMessages.length === 0) return;
+
+    promoteBeforeAssistant(setMessages, latest, queuedMessages);
     setQueuedMessages([]);
-  }, [messages, status, sessionId, queuedRef, setMessages, setQueuedMessages]);
-}
-
-/** Return new assistant ids never seen before, and remember them. */
-function absorbNewAssistantIds(
-  messages: UIMessage[],
-  seen: Set<string>,
-): string[] {
-  const current = messages
-    .filter((m) => m.role === "assistant")
-    .map((m) => m.id);
-  const fresh = current.filter((id) => !seen.has(id));
-  current.forEach((id) => seen.add(id));
-  return fresh;
-}
-
-/**
- * The first new assistant of a stream is Turn 1's opener (not an auto-
- * continue). Remember it the first time, then treat any subsequent new
- * assistant in the same chain as the auto-continue.
- */
-function pickAutoContinueId(
-  newIds: string[],
-  sawOpenerRef: React.MutableRefObject<boolean>,
-): string | null {
-  if (sawOpenerRef.current) return newIds[0];
-  sawOpenerRef.current = true;
-  // If opener + auto-continue landed in the same render batch, drop the
-  // opener and treat the next id as the auto-continue. Otherwise wait
-  // for the next render.
-  return newIds.length >= 2 ? newIds[1] : null;
+  }, [
+    messages,
+    status,
+    sessionId,
+    queuedMessages,
+    setMessages,
+    setQueuedMessages,
+  ]);
 }
 
 function promoteBeforeAssistant(
@@ -234,37 +220,40 @@ function promoteBeforeAssistant(
 // emitting an SSE event, so the client doesn't know until we poll. On
 // every poll, if the backend count dropped below our local chip count,
 // promote the difference and keep the remainder as chips.
+//
+// TODO(followup): replace the 2s poll with an SSE event pushed from the
+// backend at drain time — the MCP wrapper already knows when it drains,
+// so a single "pending:drained" event would let us drop this effect
+// entirely.  Tracked separately from this PR.
 
 function useMidTurnDrainPromotion({
   sessionId,
   status,
-  queuedLen,
-  queuedRef,
+  queuedMessages,
   setMessages,
   setQueuedMessages,
 }: {
   sessionId: string | null;
   status: ChatStatus;
-  queuedLen: number;
-  queuedRef: React.RefObject<string[]>;
+  queuedMessages: string[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueuedMessages: (v: string[]) => void;
 }) {
   useEffect(() => {
     if (!sessionId) return;
     const isActive = status === "streaming" || status === "submitted";
-    if (!isActive || queuedLen === 0) return;
+    if (!isActive || queuedMessages.length === 0) return;
 
     const interval = setInterval(() => {
       void pollBackendAndPromote(
         sessionId,
-        queuedRef.current ?? [],
+        queuedMessages,
         setMessages,
         setQueuedMessages,
       );
     }, MID_TURN_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queuedLen, queuedRef, setMessages, setQueuedMessages]);
+  }, [sessionId, status, queuedMessages, setMessages, setQueuedMessages]);
 }
 
 async function pollBackendAndPromote(
