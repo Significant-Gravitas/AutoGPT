@@ -17,7 +17,6 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-from backend.copilot.sdk.sub_session_registry import notify_shutdown_and_cancel_all
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -220,36 +219,18 @@ class CoPilotProcessor:
     def cleanup(self):
         """Clean up event-loop-bound resources before the loop is destroyed.
 
-        Runs two coroutines on the worker's own event loop (sub-AutoPilot
-        tasks and aiohttp sessions are both loop-bound):
+        Shuts down the workspace storage instance that belongs to this
+        worker's event loop, ensuring ``aiohttp.ClientSession.close()``
+        runs on the same loop that created the session.
 
-        1. ``notify_shutdown_and_cancel_all`` — cancels any sub-AutoPilot
-           tasks that this worker spawned and writes a retryable error
-           marker into each sub's ChatSession so the user sees what
-           happened instead of a silently stalled turn.
-        2. ``shutdown_workspace_storage`` — closes aiohttp sessions.
+        Sub-AutoPilots are enqueued on the copilot_execution queue, so
+        rolling deploys survive via RabbitMQ redelivery — no bespoke
+        shutdown notifier needed.
         """
-
-        async def _worker_cleanup() -> None:
-            try:
-                notified = await notify_shutdown_and_cancel_all(
-                    reason=f"copilot_executor worker {self.tid} shutdown"
-                )
-                if notified:
-                    logger.info(
-                        f"[CoPilotExecutor] Worker {self.tid} notified "
-                        f"{notified} sub-session(s) of shutdown"
-                    )
-            except Exception as exc:  # pragma: no cover — best-effort on shutdown
-                logger.warning(
-                    f"[CoPilotExecutor] Worker {self.tid} sub-session notify error: {exc}"
-                )
-            await shutdown_workspace_storage()
-
-        coro = _worker_cleanup()
+        coro = shutdown_workspace_storage()
         try:
             future = asyncio.run_coroutine_threadsafe(coro, self.execution_loop)
-            future.result(timeout=10)
+            future.result(timeout=5)
         except Exception as e:
             coro.close()  # Prevent "coroutine was never awaited" warning
             error_msg = str(e) or type(e).__name__
@@ -375,6 +356,7 @@ class CoPilotProcessor:
                 file_ids=entry.file_ids,
                 mode=effective_mode,
                 model=entry.model,
+                permissions=entry.permissions,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,
