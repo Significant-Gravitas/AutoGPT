@@ -1,10 +1,12 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useCopilotPage } from "../useCopilotPage";
 
 const mockUseChatSession = vi.fn();
 const mockUseCopilotStream = vi.fn();
 const mockUseLoadMoreMessages = vi.fn();
+const mockPostV2QueuePendingMessage = vi.fn();
+const mockToast = vi.fn();
 
 vi.mock("../useChatSession", () => ({
   useChatSession: (...args: unknown[]) => mockUseChatSession(...args),
@@ -46,9 +48,11 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     status: 200,
     data: { count: 0, messages: [] },
   }),
+  postV2QueuePendingMessage: (...args: unknown[]) =>
+    mockPostV2QueuePendingMessage(...args),
 }));
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  toast: vi.fn(),
+  toast: (...args: unknown[]) => mockToast(...args),
 }));
 vi.mock("@/lib/direct-upload", () => ({
   uploadFileDirect: vi.fn(),
@@ -134,5 +138,73 @@ describe("useCopilotPage — backward pagination message ordering", () => {
     // Backward: pagedMessages (older) come first
     expect(result.current.messages[0]).toEqual(pagedMsg);
     expect(result.current.messages[1]).toEqual(currentMsg);
+  });
+});
+
+describe("useCopilotPage — onSend queue-in-flight path", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("rejects attaching files while a turn is in flight", async () => {
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({ status: "streaming" }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    const bigFile = new File(["x"], "doc.txt", { type: "text/plain" });
+    await act(async () => {
+      await result.current.onSend("hello", [bigFile]);
+    });
+
+    expect(mockPostV2QueuePendingMessage).not.toHaveBeenCalled();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Please wait to attach files" }),
+    );
+  });
+
+  it("queues a text-only message via postV2QueuePendingMessage when in flight", async () => {
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({ status: "streaming" }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+    mockPostV2QueuePendingMessage.mockResolvedValue({ status: 202 });
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    await act(async () => {
+      await result.current.onSend("follow-up");
+    });
+
+    expect(mockPostV2QueuePendingMessage).toHaveBeenCalledWith("sess-1", {
+      message: "follow-up",
+    });
+    // appendChip should have been called, bringing the chip into queuedMessages.
+    await waitFor(() => {
+      expect(result.current.queuedMessages).toContain("follow-up");
+    });
+  });
+
+  it("surfaces a toast and rethrows when the queue POST fails", async () => {
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({ status: "streaming" }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+    mockPostV2QueuePendingMessage.mockRejectedValue(new Error("boom"));
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    await act(async () => {
+      await expect(result.current.onSend("follow-up")).rejects.toThrow(/boom/);
+    });
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Could not queue message" }),
+    );
   });
 });
