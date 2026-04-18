@@ -29,6 +29,7 @@ export default function IconButton(props: AutogptIconButtonProps) {
     iconType: _iconType,
     ...otherProps
   } = props;
+  const title = (otherProps as { title?: string }).title;
 
   return (
     <Button
@@ -36,6 +37,7 @@ export default function IconButton(props: AutogptIconButtonProps) {
       variant="secondary"
       className={cn(className, "w-fit border border-zinc-200 p-1.5 px-4")}
       {...otherProps}
+      aria-label={title}
       type="button"
     >
       {icon}

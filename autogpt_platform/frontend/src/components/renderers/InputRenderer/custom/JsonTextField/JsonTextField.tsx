@@ -96,6 +96,7 @@ export const JsonTextField = (props: FieldProps) => {
               onClick={handleModalOpen}
               type="button"
               className="p-1"
+              aria-label="Expand JSON input"
             >
               <ArrowsOutIcon className="size-4" />
             </Button>

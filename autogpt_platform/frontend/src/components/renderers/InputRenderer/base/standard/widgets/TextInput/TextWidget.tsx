@@ -133,6 +133,7 @@ export default function TextWidget(props: WidgetProps) {
                 onClick={handleModalOpen}
                 type="button"
                 className="p-1"
+                aria-label="Expand input"
               >
                 <ArrowsOutIcon className="size-4" />
               </Button>

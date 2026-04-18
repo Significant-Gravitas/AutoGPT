@@ -99,6 +99,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
                 isCopied &&
                   "border-green-400 bg-green-100 hover:border-green-400 hover:bg-green-200",
               )}
+              aria-label={isCopied ? "Copied to clipboard" : "Copy to clipboard"}
             >
               {isCopied ? (
                 <CheckIcon size={16} className="text-green-600" />
