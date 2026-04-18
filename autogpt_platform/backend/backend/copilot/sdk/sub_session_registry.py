@@ -36,6 +36,13 @@ MAX_SUB_SESSION_WAIT_SECONDS = 5 * 60  # 5 minutes
 # a window to retrieve the result even if it's late to poll.
 _TERMINAL_TTL_SECONDS = 30 * 60  # 30 minutes
 
+# Absolute ceiling on how long a running sub-session may stay alive in the
+# registry. A sub that the agent stopped polling (tab closed, session
+# abandoned) still runs until it completes or trips this cap. Tuned well
+# above any legitimate AutoPilot run so it only catches genuinely wedged
+# tasks. 6h is arbitrary but > 99th percentile of real sub-AutoPilots.
+_RUNNING_MAX_AGE_SECONDS = 6 * 60 * 60  # 6 hours
+
 # Process-wide registry. Survives stream teardown.
 # sub_session_id → {
 #     "task": asyncio.Task[...],
@@ -125,24 +132,56 @@ def cancel_sub_session(sub_session_id: str, user_id: str) -> bool:
 
 
 def prune_finished(now: float | None = None) -> int:
-    """Evict finished entries older than ``_TERMINAL_TTL_SECONDS``.
+    """Evict stale entries from the registry.
 
-    Returns the number evicted. Called opportunistically from the tool
-    handlers; not driven by a timer.
+    Two kinds of stale:
+      1. Terminal entries older than ``_TERMINAL_TTL_SECONDS`` — pruned
+         silently (result was retrievable for the retention window).
+      2. Running entries older than ``_RUNNING_MAX_AGE_SECONDS`` — cancelled
+         AND evicted. Catches subs the agent stopped polling (tab closed
+         mid-session) so they don't pile up in the process registry forever.
+
+    Returns the total number of entries evicted. Called opportunistically
+    from the tool handlers; not driven by a timer.
     """
     if now is None:
         now = time.monotonic()
-    stale = [
-        sid
-        for sid, e in _sub_sessions.items()
-        if e["finished_at"] is not None
-        and now - e["finished_at"] >= _TERMINAL_TTL_SECONDS
-    ]
-    for sid in stale:
+
+    terminal_stale: list[str] = []
+    running_stale: list[str] = []
+    for sid, entry in _sub_sessions.items():
+        if entry["finished_at"] is not None:
+            if now - entry["finished_at"] >= _TERMINAL_TTL_SECONDS:
+                terminal_stale.append(sid)
+        elif now - entry["started_at"] >= _RUNNING_MAX_AGE_SECONDS:
+            running_stale.append(sid)
+
+    for sid in running_stale:
+        entry = _sub_sessions.get(sid)
+        if entry is None:
+            continue
+        task: asyncio.Task = entry["task"]
+        if not task.done():
+            task.cancel()
         _sub_sessions.pop(sid, None)
-    if stale:
-        logger.info("Pruned %d terminal sub-session entries", len(stale))
-    return len(stale)
+        logger.warning(
+            "Cancelled abandoned sub-session %s (tool=%s, age=%.0fs)",
+            sid,
+            entry["tool_name"] if "tool_name" in entry else "sub-session",
+            now - entry["started_at"],
+        )
+
+    for sid in terminal_stale:
+        _sub_sessions.pop(sid, None)
+
+    total = len(terminal_stale) + len(running_stale)
+    if total:
+        logger.info(
+            "Pruned sub-session registry: %d terminal, %d abandoned",
+            len(terminal_stale),
+            len(running_stale),
+        )
+    return total
 
 
 def _mark_finished(sub_session_id: str) -> None:

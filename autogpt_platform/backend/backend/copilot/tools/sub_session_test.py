@@ -69,6 +69,39 @@ class TestRegistry:
             await task
 
     @pytest.mark.asyncio
+    async def test_prune_cancels_abandoned_running_tasks(self):
+        """A sub the agent stopped polling would otherwise live forever in
+        the registry. prune_finished enforces a hard age cap for running
+        tasks and cancels + evicts them."""
+        import time as _time
+
+        from backend.copilot.sdk.sub_session_registry import (
+            _sub_sessions,
+            prune_finished,
+        )
+
+        async def hang():
+            await asyncio.sleep(60)
+
+        task = asyncio.create_task(hang())
+        await asyncio.sleep(0)
+        sid = register_sub_session(task, "alice", "sess", "do thing", "inner-sess-id")
+
+        # Fresh sub — prune should not touch it yet.
+        assert prune_finished() == 0
+        assert get_sub_session(sid, "alice") is not None
+
+        # Simulate the sub having run for 7h with no polls.
+        _sub_sessions[sid]["started_at"] = _time.monotonic() - (7 * 60 * 60)
+        assert prune_finished() == 1
+        assert get_sub_session(sid, "alice") is None
+
+        # The real task was cancelled as part of the eviction.
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert task.cancelled()
+
+    @pytest.mark.asyncio
     async def test_prune_drops_old_terminal_entries(self):
         async def quick():
             return "done"
