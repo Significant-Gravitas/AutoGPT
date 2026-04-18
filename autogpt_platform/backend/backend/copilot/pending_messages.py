@@ -221,14 +221,16 @@ async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     return messages
 
 
-async def clear_pending_messages(session_id: str) -> None:
-    """Drop the session's pending buffer.
+async def _clear_pending_messages_unsafe(session_id: str) -> None:
+    """Drop the session's pending buffer — **not** the normal turn cleanup.
 
-    Not called by the normal turn flow — the atomic ``LPOP`` drain at
-    turn start is the primary consumer, and any push that arrives
-    after the drain window belongs to the next turn by definition.
-    Retained as an operator/debug escape hatch for manually clearing a
-    stuck session and as a fixture in the unit tests.
+    Named ``_unsafe`` because reaching for this at turn end drops queued
+    follow-ups on the floor instead of running them (the bug fixed by
+    commit b64be73).  The atomic ``LPOP`` drain at turn start is the
+    primary consumer; anything pushed after the drain window belongs to
+    the next turn by definition.  Retained only as an operator/debug
+    escape hatch for manually clearing a stuck session and as a fixture
+    in the unit tests.
     """
     redis = await get_redis_async()
     await redis.delete(_buffer_key(session_id))
