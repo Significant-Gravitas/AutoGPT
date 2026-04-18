@@ -60,16 +60,8 @@ export function Input({
   const isPasswordType = props.type === "password";
   const inputType = showPassword ? "text" : props.type;
 
-  function handleMouseDown() {
-    setShowPassword(true);
-  }
-
-  function handleMouseUp() {
-    setShowPassword(false);
-  }
-
-  function handleMouseLeave() {
-    setShowPassword(false);
+  function handleTogglePassword() {
+    setShowPassword((prev) => !prev);
   }
 
   const baseStyles = cn(
@@ -193,11 +185,11 @@ export function Input({
       {isPasswordType && (
         <button
           type="button"
-          onMouseDown={handleMouseDown}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600"
-          aria-label="Press and hold to show password"
+          onClick={handleTogglePassword}
+          disabled={props.disabled}
+          className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400 transition-colors hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={showPassword ? "Hide password" : "Show password"}
+          aria-pressed={showPassword}
         >
           {showPassword ? <Eye size={16} /> : <EyeSlash size={16} />}
         </button>
