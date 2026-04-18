@@ -162,9 +162,14 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 )
 
 # Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
-# arrives for this many seconds. This catches hung tool calls (e.g. WebSearch
-# hanging on a search provider that never responds).
+# arrives for this many seconds. No tool call should block the MCP handler for
+# close to this long — long-running tools (sub-AutoPilot, graph execution) use
+# the async "start + poll" pattern: the initial tool returns quickly with a
+# handle, and a polling tool (get_sub_session_result / view_agent_output) waits
+# for completion in bounded chunks (≤300s). So a 10-min idle here genuinely
+# means the SDK itself is stuck, not a legitimate long-running operation.
 _IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
+
 
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
@@ -1932,20 +1937,19 @@ async def _run_stream_attempt(
                     yield ev
                 yield StreamHeartbeat()
 
-                # Idle timeout: if no real SDK message for too long, a tool
-                # call is likely hung (e.g. WebSearch provider not responding).
+                # Idle timeout: abort if the SDK has been silent for too long.
+                # Long-running tools use the async "start + poll" pattern so
+                # the MCP handler never blocks longer than the poll cap (5 min)
+                # — a 10-min gap here means the SDK itself is stuck.
                 idle_seconds = time.monotonic() - _last_real_msg_time
                 if idle_seconds >= _IDLE_TIMEOUT_SECONDS:
                     logger.error(
-                        "%s Idle timeout after %.0fs with no SDK message — "
-                        "aborting stream (likely hung tool call)",
+                        "%s Idle timeout after %.0fs — aborting stream",
                         ctx.log_prefix,
                         idle_seconds,
                     )
                     stream_error_msg = (
-                        "A tool call appears to be stuck "
-                        "(no response for 10 minutes). "
-                        "Please try again."
+                        "The session has been idle for too long. Please try again."
                     )
                     stream_error_code = "idle_timeout"
                     _append_error_marker(ctx.session, stream_error_msg, retryable=True)

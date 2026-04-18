@@ -140,7 +140,9 @@ class TestRunBlockFiltering:
     async def test_block_denied_by_permissions_returns_error(self):
         """A block denied by CopilotPermissions returns an ErrorResponse."""
         session = make_session(user_id=_TEST_USER_ID)
-        block_id = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+        # NB: must not match any id in COPILOT_EXCLUDED_BLOCK_IDS — we want
+        # the permissions guard to fire, not the exclusion guard.
+        block_id = "11111111-2222-3333-4444-555555555555"
         standard_block = make_mock_block(block_id, "HTTP Request", BlockType.STANDARD)
 
         perms = CopilotPermissions(blocks=[block_id], blocks_exclude=True)

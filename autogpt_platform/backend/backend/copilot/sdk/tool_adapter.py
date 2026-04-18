@@ -248,7 +248,14 @@ async def _execute_tool_sync(
     session: ChatSession,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a tool synchronously and return MCP-formatted response."""
+    """Execute a tool inline and return an MCP-formatted response.
+
+    The call runs to completion — no per-handler timeout, no parking. The
+    stream-level idle timer in ``_run_stream_attempt`` pauses while a tool
+    is pending, so a long sub-AutoPilot / graph execution doesn't trip the
+    30-min idle safety net (SECRT-2247). A genuine hang is handled by the
+    broader session lifecycle (user closes the tab / cancel endpoint).
+    """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
