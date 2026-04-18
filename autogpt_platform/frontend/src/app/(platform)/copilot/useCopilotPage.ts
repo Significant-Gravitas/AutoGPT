@@ -114,40 +114,27 @@ export function useCopilotPage() {
   const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
 
   // The Claude Agent SDK replays earlier turn content when starting a new
-  // turn. So Turn N's assistant message may accumulate Turn 1...N-1 content
-  // as a PREFIX before the actual Turn N response. Strip the replayed prefix
-  // from the LATER message (instead of dropping the earlier one) so each
-  // turn's content stays anchored under its own user bubble — otherwise a
-  // queued/promoted user message inserted before Turn N would visually
-  // appear above Turn 1's replayed content.
+  // turn (via --resume). So Turn N's assistant message accumulates Turn 1..N-1
+  // text as a LEADING PREFIX before the actual Turn N response. Strip the
+  // replayed leading text from Turn N so each turn stays anchored under its
+  // own user bubble and the UI does not show the same greeting twice.
+  //
+  // We compare by concatenated text content rather than by part index
+  // because the replay interleaves step-start / step-finish boundary parts
+  // whose ordering differs between the original and replayed rendering,
+  // making a part-level strict-prefix match unreliable. Tool call IDs in
+  // the parts array differ between a real call and its replay too, but
+  // Claude typically only replays TEXT content at the top of the next
+  // turn, so text-only comparison catches the common case cleanly.
   const messages = useMemo(() => {
     const deduped = deduplicateMessages(rawMessages);
 
-    // Fingerprint by semantic content only — the per-part `type` (step-start,
-    // step-finish, reasoning, etc.) may carry generated IDs or timestamps that
-    // differ between turns even when the replayed content is the same. Using
-    // just the type string (plus text/toolCallId) keeps the strict-prefix match
-    // stable so Turn N replay of Turn N-1's assistant content is detected.
-    // AI SDK v5 parts all carry a `type` discriminator, so no JSON fallback.
-    const fingerprint = (msg: UIMessage): string[] =>
-      (msg.parts ?? []).map((p) => {
-        if ("text" in p && p.text) return `text:${p.text}`;
-        if ("toolCallId" in p && p.toolCallId) return `tool:${p.toolCallId}`;
-        return `type:${p.type}`;
-      });
+    const textOf = (msg: UIMessage): string =>
+      (msg.parts ?? [])
+        .map((p) => ("text" in p && typeof p.text === "string" ? p.text : ""))
+        .join("");
 
-    const isPrefixOf = (earlier: string[], later: string[]): boolean => {
-      if (earlier.length === 0) return false;
-      if (earlier.length >= later.length) return false;
-      for (let k = 0; k < earlier.length; k++) {
-        if (earlier[k] !== later[k]) return false;
-      }
-      return true;
-    };
-
-    // Pre-compute fingerprints once so the inner strict-prefix scan doesn't
-    // redo the work for every (i, j) pair.
-    const fingerprints = deduped.map(fingerprint);
+    const texts = deduped.map(textOf);
 
     const result: UIMessage[] = [];
     for (let i = 0; i < deduped.length; i++) {
@@ -156,28 +143,95 @@ export function useCopilotPage() {
         result.push(msg);
         continue;
       }
-      const myFp = fingerprints[i];
-      // Find the longest strict-prefix match from an earlier assistant
-      // message — that's the content Claude CLI replayed into this turn.
+      const myText = texts[i];
+      if (!myText) {
+        result.push(msg);
+        continue;
+      }
+
+      // Find the longest earlier-assistant text that is a leading prefix of
+      // this message's concatenated text. Three cases:
+      //
+      // - earlier == my full text  → pure replay; drop this message.
+      // - earlier is a strict prefix of my text  → "replay + new content";
+      //   strip the earlier portion so only the new content renders.
+      // - my text is a strict prefix of earlier (the streaming replay is
+      //   still catching up to the earlier full text)  → drop this
+      //   message until it grows past. Without this the user sees the
+      //   same greeting twice while the resume-replay streams in.
       let stripLen = 0;
+      let fullyReplayed = false;
       for (let j = 0; j < i; j++) {
         if (deduped[j].role !== "assistant") continue;
-        const earlierFp = fingerprints[j];
-        if (earlierFp.length > stripLen && isPrefixOf(earlierFp, myFp)) {
-          stripLen = earlierFp.length;
+        const earlierText = texts[j];
+        if (!earlierText) continue;
+
+        if (myText.startsWith(earlierText)) {
+          if (earlierText.length >= stripLen) {
+            if (earlierText.length === myText.length) {
+              fullyReplayed = true;
+              stripLen = earlierText.length;
+            } else {
+              stripLen = earlierText.length;
+              fullyReplayed = false;
+            }
+          }
+        } else if (earlierText.startsWith(myText)) {
+          // Streaming replay is still building up content that matches
+          // an earlier message's prefix. Drop to avoid the duplicate
+          // flash; once my text exceeds earlier this branch stops
+          // firing and the regular prefix-strip takes over.
+          fullyReplayed = true;
+          break;
         }
       }
-      if (stripLen > 0) {
-        const trimmedParts = (msg.parts ?? []).slice(stripLen);
-        if (trimmedParts.length === 0) {
-          // Fully replayed (rare — later message is identical to earlier);
-          // drop it so we don't render an empty bubble.
+
+      if (fullyReplayed) {
+        // Turn N's assistant is an exact replay of an earlier one (no new
+        // content yet, or Claude is still mid-stream). Drop so the UI
+        // doesn't show the same text twice.
+        continue;
+      }
+
+      if (stripLen === 0) {
+        result.push(msg);
+        continue;
+      }
+
+      // Strip the leading `stripLen` characters of text from my parts,
+      // consuming text parts left-to-right. Non-text parts (step-start,
+      // step-finish, tool-*) are preserved unchanged so tool widgets and
+      // step boundaries render normally.
+      const trimmedParts: UIMessage["parts"] = [];
+      let remaining = stripLen;
+      for (const part of msg.parts ?? []) {
+        if (remaining === 0) {
+          trimmedParts.push(part);
           continue;
         }
-        result.push({ ...msg, parts: trimmedParts });
-      } else {
-        result.push(msg);
+        if ("text" in part && typeof part.text === "string") {
+          if (part.text.length <= remaining) {
+            remaining -= part.text.length;
+            // Drop this text part entirely.
+            continue;
+          }
+          trimmedParts.push({ ...part, text: part.text.slice(remaining) });
+          remaining = 0;
+        } else {
+          trimmedParts.push(part);
+        }
       }
+
+      if (
+        trimmedParts.length === 0 ||
+        trimmedParts.every(
+          (p) =>
+            "text" in p && typeof p.text === "string" && p.text.length === 0,
+        )
+      ) {
+        continue;
+      }
+      result.push({ ...msg, parts: trimmedParts });
     }
     return result;
   }, [rawMessages]);
