@@ -1389,7 +1389,7 @@ async def stream_chat_completion_baseline(
                 # Anchors for rollback if the next persist fails.
                 _pending_session_anchor = len(session.messages)
                 _pending_openai_anchor = len(openai_messages)
-                _pending_transcript_anchor = len(transcript_builder._entries)
+                _pending_transcript_snapshot = transcript_builder.snapshot()
 
                 for pm in pending:
                     # ``format_pending_as_user_message`` embeds file
@@ -1428,7 +1428,7 @@ async def stream_chat_completion_baseline(
                     )
                     del session.messages[_pending_session_anchor:]
                     del openai_messages[_pending_openai_anchor:]
-                    del transcript_builder._entries[_pending_transcript_anchor:]
+                    transcript_builder.restore(_pending_transcript_snapshot)
                     for _pm in pending:
                         try:
                             await push_pending_message(session_id, _pm)
