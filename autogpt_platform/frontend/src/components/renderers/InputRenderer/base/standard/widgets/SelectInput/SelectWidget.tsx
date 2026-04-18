@@ -42,8 +42,11 @@ export const SelectWidget = (props: WidgetProps) => {
           onValuesChange={onChange}
           className="w-full"
         >
-          <MultiSelectorTrigger aria-label={accessibleLabel || undefined}>
-            <MultiSelectorInput placeholder="Select options..." />
+          <MultiSelectorTrigger>
+            <MultiSelectorInput
+              aria-label={accessibleLabel || undefined}
+              placeholder="Select options..."
+            />
           </MultiSelectorTrigger>
           <MultiSelectorContent>
             <MultiSelectorList>
