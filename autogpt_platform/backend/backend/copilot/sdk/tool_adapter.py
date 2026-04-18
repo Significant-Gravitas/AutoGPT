@@ -31,6 +31,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_followup,
+    stash_pending_for_persist,
 )
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
@@ -675,6 +676,19 @@ def _make_truncating_wrapper(
                         content_blocks.insert(0, {"type": "text", "text": followup})
                 else:
                     truncated["content"] = [{"type": "text", "text": followup}]
+
+                # Stash the drained PendingMessages on a secondary Redis
+                # queue so sdk/service.py's StreamToolOutputAvailable
+                # dispatch can pop them and append a real user row to
+                # session.messages right AFTER the tool_result row.  This
+                # is the UI-observability half of the feature: Claude
+                # already saw the follow-up via the tool-output injection
+                # above, and now the UI gets a proper user bubble in the
+                # correct chronological position.  If this stash or the
+                # downstream persist fails, the downstream rollback path
+                # re-queues into the primary pending buffer so the next
+                # turn-start drain picks them up.
+                await stash_pending_for_persist(session.session_id, pending)
 
         # Strip is_dry_run only when the session itself is in dry_run mode.
         # In that case the LLM must not know it is simulating — it should act

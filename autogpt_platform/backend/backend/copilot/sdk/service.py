@@ -65,7 +65,11 @@ from ..pending_message_helpers import (
     drain_pending_safe,
     persist_session_safe,
 )
-from ..pending_messages import PendingMessage, push_pending_message
+from ..pending_messages import (
+    PendingMessage,
+    drain_pending_for_persist,
+    push_pending_message,
+)
 from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
 from ..rate_limit import get_user_tier
@@ -2287,6 +2291,60 @@ async def _run_stream_attempt(
                 )
                 if dispatched is not None:
                     yield dispatched
+
+                # Mid-turn follow-up persistence: the MCP tool wrapper drains
+                # the primary pending buffer and stashes the drained
+                # PendingMessages into the per-session persist queue.  Claude
+                # has already seen them via the <user_follow_up> block
+                # injected into the tool output.  Now — right after the
+                # tool_result row has been appended to session.messages — we
+                # pop the persist queue and append a real user ChatMessage
+                # so the UI renders a proper user bubble in the correct
+                # chronological position (after the tool_result, before the
+                # assistant's continuing response).  Rollback re-queues into
+                # the PRIMARY pending buffer so the next turn-start drain
+                # picks them up if this persist silently fails.
+                if isinstance(response, StreamToolOutputAvailable):
+                    _sid = ctx.session.session_id
+                    _followup_drained = await drain_pending_for_persist(_sid)
+                    if _followup_drained:
+                        _anchor_session_len = len(ctx.session.messages)
+                        _anchor_transcript_len = len(state.transcript_builder._entries)
+                        for _pm in _followup_drained:
+                            ctx.session.messages.append(
+                                ChatMessage(role="user", content=_pm.content)
+                            )
+                            state.transcript_builder.append_user(content=_pm.content)
+                        await persist_session_safe(ctx.session, ctx.log_prefix)
+                        _newly_appended = ctx.session.messages[_anchor_session_len:]
+                        if any(m.sequence is None for m in _newly_appended):
+                            logger.warning(
+                                "%s Mid-turn follow-up persist did not "
+                                "back-fill sequences; rolling back %d row(s) "
+                                "and re-queueing into the primary buffer",
+                                ctx.log_prefix,
+                                len(_followup_drained),
+                            )
+                            del ctx.session.messages[_anchor_session_len:]
+                            del state.transcript_builder._entries[
+                                _anchor_transcript_len:
+                            ]
+                            for _pm in _followup_drained:
+                                try:
+                                    await push_pending_message(_sid, _pm)
+                                except Exception:
+                                    logger.exception(
+                                        "%s re-queue on mid-turn "
+                                        "follow-up rollback failed",
+                                        ctx.log_prefix,
+                                    )
+                        else:
+                            logger.info(
+                                "%s Persisted %d mid-turn follow-up user "
+                                "row(s) after tool_result",
+                                ctx.log_prefix,
+                                len(_followup_drained),
+                            )
 
             # Append assistant entry AFTER convert_message so that
             # any stashed tool results from the previous turn are

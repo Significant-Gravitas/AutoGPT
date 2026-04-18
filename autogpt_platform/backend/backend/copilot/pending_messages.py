@@ -44,6 +44,17 @@ _PENDING_KEY_PREFIX = "copilot:pending:"
 _PENDING_CHANNEL_PREFIX = "copilot:pending:notify:"
 _PENDING_TTL_SECONDS = 3600  # 1 hour — matches stream_ttl default
 
+# Secondary queue that carries drained-but-awaiting-persist PendingMessages
+# from the MCP tool wrapper (which drains the primary buffer and injects
+# into tool output for the LLM) to sdk/service.py's _dispatch_response
+# handler for StreamToolOutputAvailable, which pops and persists them as a
+# separate user row chronologically after the tool_result row.  This is the
+# hand-off between "Claude saw the follow-up mid-turn" (wrapper) and "UI
+# renders a user bubble for it" (service).  Rollback path re-queues into
+# the PRIMARY buffer so the next turn-start drain picks them up if the
+# user-row persist fails.
+_PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
+
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
 # message as a wake-up hint; the value itself is not meaningful.
 _NOTIFY_PAYLOAD = "1"
@@ -239,6 +250,87 @@ async def clear_pending_messages(session_id: str) -> None:
 # block from crowding out the actual tool output on large inputs.  Queued
 # messages longer than this are truncated with an ellipsis marker.
 _FOLLOWUP_CONTENT_MAX_CHARS = 2_000
+
+
+def _persist_queue_key(session_id: str) -> str:
+    return f"{_PERSIST_QUEUE_KEY_PREFIX}{session_id}"
+
+
+async def stash_pending_for_persist(
+    session_id: str,
+    messages: list[PendingMessage],
+) -> None:
+    """Enqueue drained PendingMessages for UI-row persistence.
+
+    Writes each message as a JSON payload to
+    ``copilot:pending-persist:{session_id}``.  The SDK service's
+    tool-result dispatch handler LPOPs this queue right after appending
+    the tool_result row to ``session.messages``, so the resulting user
+    row lands at the correct chronological position (after the tool
+    output the follow-up was drained against).
+
+    Fire-and-forget on Redis failures: a stash failure means Claude
+    still saw the follow-up in tool output (the injection step ran
+    first), so the only consequence is a missing UI bubble.  Logged
+    so it can be spotted.
+    """
+    if not messages:
+        return
+    try:
+        redis = await get_redis_async()
+        key = _persist_queue_key(session_id)
+        payloads = [m.model_dump_json() for m in messages]
+        await redis.rpush(key, *payloads)  # type: ignore[misc]
+        await redis.expire(key, _PENDING_TTL_SECONDS)  # type: ignore[misc]
+    except Exception:
+        logger.warning(
+            "pending_messages: failed to stash %d message(s) for persist "
+            "(session=%s); UI will miss the follow-up bubble but Claude "
+            "already saw the content in tool output",
+            len(messages),
+            session_id,
+            exc_info=True,
+        )
+
+
+async def drain_pending_for_persist(session_id: str) -> list[PendingMessage]:
+    """Atomically drain the persist queue for *session_id*.
+
+    Returns the queued ``PendingMessage`` objects in enqueue order (oldest
+    first).  Returns ``[]`` on any error so the service-layer caller can
+    always treat the result as a plain list.  Called by sdk/service.py
+    after appending a tool_result row to ``session.messages``.
+    """
+    try:
+        redis = await get_redis_async()
+        key = _persist_queue_key(session_id)
+        lpop_result = await redis.lpop(  # type: ignore[assignment]
+            key, MAX_PENDING_MESSAGES
+        )
+    except Exception:
+        logger.warning(
+            "pending_messages: drain_pending_for_persist failed for session=%s",
+            session_id,
+            exc_info=True,
+        )
+        return []
+    if not lpop_result:
+        return []
+    raw_popped: list[Any] = list(lpop_result)
+    messages: list[PendingMessage] = []
+    for item in raw_popped:
+        try:
+            messages.append(
+                PendingMessage.model_validate(json.loads(_decode_redis_item(item)))
+            )
+        except (json.JSONDecodeError, ValidationError, TypeError, ValueError) as e:
+            logger.warning(
+                "pending_messages: dropping malformed persist-queue entry "
+                "for %s: %s",
+                session_id,
+                e,
+            )
+    return messages
 
 
 def format_pending_as_followup(pending: list[PendingMessage]) -> str:

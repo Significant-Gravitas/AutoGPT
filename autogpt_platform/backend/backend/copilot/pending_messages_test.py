@@ -17,11 +17,13 @@ from backend.copilot.pending_messages import (
     PendingMessage,
     PendingMessageContext,
     clear_pending_messages,
+    drain_pending_for_persist,
     drain_pending_messages,
     format_pending_as_user_message,
     peek_pending_count,
     peek_pending_messages,
     push_pending_message,
+    stash_pending_for_persist,
 )
 
 # ── Fake Redis ──────────────────────────────────────────────────────
@@ -376,3 +378,98 @@ async def test_peek_pending_messages_skips_malformed_entries(
     assert len(peeked) == 2
     assert peeked[0].content == "valid peek"
     assert peeked[1].content == "also valid peek"
+
+
+# ── Persist queue (mid-turn follow-up UI bubble hand-off) ───────────
+
+
+@pytest.mark.asyncio
+async def test_stash_for_persist_enqueues_and_drain_pops_in_order(
+    fake_redis: _FakeRedis,
+) -> None:
+    """stash_pending_for_persist writes messages under the persist key;
+    drain_pending_for_persist LPOPs them in enqueue order."""
+    msgs = [
+        PendingMessage(content="first mid-turn follow-up"),
+        PendingMessage(content="second"),
+    ]
+    await stash_pending_for_persist("sess-persist", msgs)
+
+    # Stored under the distinct persist key, NOT the primary buffer.
+    assert "copilot:pending-persist:sess-persist" in fake_redis.lists
+    assert "copilot:pending:sess-persist" not in fake_redis.lists
+
+    drained = await drain_pending_for_persist("sess-persist")
+    assert len(drained) == 2
+    assert drained[0].content == "first mid-turn follow-up"
+    assert drained[1].content == "second"
+
+    # Queue is empty after drain.
+    assert await drain_pending_for_persist("sess-persist") == []
+
+
+@pytest.mark.asyncio
+async def test_stash_for_persist_empty_list_is_noop(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Passing an empty list must NOT create a Redis key (would leak
+    empty persist entries and require a drain for no reason)."""
+    await stash_pending_for_persist("sess-noop", [])
+    assert "copilot:pending-persist:sess-noop" not in fake_redis.lists
+
+
+@pytest.mark.asyncio
+async def test_drain_pending_for_persist_missing_key_returns_empty(
+    fake_redis: _FakeRedis,
+) -> None:
+    assert await drain_pending_for_persist("never-stashed") == []
+
+
+@pytest.mark.asyncio
+async def test_drain_pending_for_persist_skips_malformed(
+    fake_redis: _FakeRedis,
+) -> None:
+    fake_redis.lists["copilot:pending-persist:bad"] = [
+        json.dumps({"content": "good one"}),
+        "not json",
+        json.dumps({"content": "another good one"}),
+    ]
+    result = await drain_pending_for_persist("bad")
+    assert [m.content for m in result] == ["good one", "another good one"]
+
+
+@pytest.mark.asyncio
+async def test_persist_queue_isolated_from_primary_buffer(
+    fake_redis: _FakeRedis,
+) -> None:
+    """Draining the persist queue must NOT touch the primary pending
+    buffer (and vice versa) — they serve different lifecycles."""
+    # Seed the primary buffer with one entry.
+    await push_pending_message("sess-iso", PendingMessage(content="primary"))
+    # Stash a separate entry on the persist queue.
+    await stash_pending_for_persist("sess-iso", [PendingMessage(content="persist")])
+
+    drained_persist = await drain_pending_for_persist("sess-iso")
+    assert [m.content for m in drained_persist] == ["persist"]
+
+    # Primary buffer untouched.
+    assert await peek_pending_count("sess-iso") == 1
+    drained_primary = await drain_pending_messages("sess-iso")
+    assert [m.content for m in drained_primary] == ["primary"]
+
+
+@pytest.mark.asyncio
+async def test_stash_for_persist_swallows_redis_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken Redis during stash must not raise — Claude has already
+    seen the follow-up via tool output; the only fallout is a missing
+    UI bubble, which we log and move on."""
+
+    async def _broken_redis() -> Any:
+        raise ConnectionError("redis down")
+
+    monkeypatch.setattr(pm_module, "get_redis_async", _broken_redis)
+
+    # Must NOT raise.
+    await stash_pending_for_persist("sess-broken", [PendingMessage(content="lost")])
