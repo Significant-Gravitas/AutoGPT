@@ -345,20 +345,20 @@ describe("BuilderChatPanel", () => {
     expect(screen.queryByLabelText("Undo last applied change")).toBeNull();
   });
 
-  it("hides the seed message from the chat UI", () => {
+  // The seed prompt is assembled at the transport layer (in useSessionManager's
+  // prepareSendMessagesRequest), so it never enters the `messages` array the UI
+  // renders. A user message that happens to start with the same opening sentence
+  // must still be shown — the previous prefix filter would have incorrectly hidden it.
+  it("shows a user message that happens to start with the seed prompt prefix", () => {
+    const collidingText = `${SEED_PROMPT_PREFIX} — user actually typed this`;
     mockUseBuilderChatPanel.mockReturnValue(
       makeMockHook({
         isOpen: true,
         messages: [
           {
-            id: "seed",
+            id: "user1",
             role: "user",
-            parts: [
-              {
-                type: "text",
-                text: `${SEED_PROMPT_PREFIX} Here is the current graph...`,
-              },
-            ],
+            parts: [{ type: "text", text: collidingText }],
           },
           {
             id: "reply",
@@ -369,7 +369,7 @@ describe("BuilderChatPanel", () => {
       }),
     );
     render(<BuilderChatPanel />);
-    expect(screen.queryByText(SEED_PROMPT_PREFIX, { exact: false })).toBeNull();
+    expect(screen.getByText(collidingText)).toBeDefined();
     expect(screen.getByText("I see you have an empty graph.")).toBeDefined();
   });
 

@@ -3,11 +3,7 @@ import { ChatCircle, SpinnerGap } from "@phosphor-icons/react";
 import { ToolUIPart } from "ai";
 import { MessagePartRenderer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/components/MessagePartRenderer";
 import type { CustomNode } from "../../FlowEditor/nodes/CustomNode/CustomNode";
-import {
-  GraphAction,
-  SEED_PROMPT_PREFIX,
-  extractTextFromParts,
-} from "../helpers";
+import { GraphAction, extractTextFromParts } from "../helpers";
 import type { useBuilderChatPanel } from "../useBuilderChatPanel";
 import { ActionList } from "./ActionList";
 import { TypingIndicator } from "./TypingIndicator";
@@ -78,10 +74,13 @@ export function MessageList({
   messagesEndRef,
   isStreaming,
 }: Props) {
+  // The seed prompt is now prepended at the transport layer (inside
+  // prepareSendMessagesRequest in useSessionManager), so it never appears in
+  // the `messages` array the UI renders. No SEED_PROMPT_PREFIX filter needed
+  // here — filtering by prefix would incorrectly hide any user message that
+  // happens to start with the same opening sentence.
   const visibleMessages = messages.filter((msg) => {
     const text = extractTextFromParts(msg.parts);
-    if (msg.role === "user" && text.startsWith(SEED_PROMPT_PREFIX))
-      return false;
     return (
       Boolean(text) ||
       (msg.role === "assistant" &&
