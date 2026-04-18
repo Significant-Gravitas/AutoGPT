@@ -28,6 +28,10 @@ from backend.copilot.context import (
     is_sdk_tool_path,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.pending_messages import (
+    drain_pending_messages,
+    format_pending_as_followup,
+)
 from backend.copilot.sdk.file_ref import (
     FileRefExpansionError,
     expand_file_refs_in_args,
@@ -611,6 +615,51 @@ def _make_truncating_wrapper(
             _record_tool_failure(tool_name, original_args)
         else:
             _clear_tool_failures(tool_name)
+
+        # Mid-turn drain: if the user queued follow-up messages while this
+        # tool was running, inject them at the HEAD of the output inside a
+        # <user_follow_up> block so Claude reads them on the next LLM
+        # round of the SAME turn (no new turn required).  This is the SDK
+        # equivalent of baseline's between-rounds drain — it reaches the
+        # model at the earliest protocol-safe point within a turn.
+        #
+        # Placement is head-first so the 100 KB truncate above (and the
+        # >80 KB persist-to-workspace step in BaseTool.execute) cannot
+        # silently eat the follow-up.  Drain runs AFTER truncation so an
+        # injection failure cannot corrupt the tool output itself.
+        if session is not None and session.session_id:
+            try:
+                pending = await drain_pending_messages(session.session_id)
+            except Exception:
+                logger.warning(
+                    "[MCP] drain_pending_messages failed at tool boundary "
+                    "(tool=%s, session=%s); skipping injection",
+                    tool_name,
+                    session.session_id,
+                    exc_info=True,
+                )
+                pending = []
+            if pending:
+                followup = format_pending_as_followup(pending)
+                logger.info(
+                    "[MCP] Injected %d user follow-up(s) into %s tool output "
+                    "(session=%s)",
+                    len(pending),
+                    tool_name,
+                    session.session_id,
+                )
+                # Prepend to the first text content block.  If the result
+                # shape is unexpected, append a new text block rather than
+                # silently dropping the follow-up.
+                content_blocks = truncated.get("content")
+                if isinstance(content_blocks, list) and content_blocks:
+                    first = content_blocks[0]
+                    if isinstance(first, dict) and first.get("type") == "text":
+                        first["text"] = followup + "\n\n" + first.get("text", "")
+                    else:
+                        content_blocks.insert(0, {"type": "text", "text": followup})
+                else:
+                    truncated["content"] = [{"type": "text", "text": followup}]
 
         # Stash BEFORE stripping so the frontend SSE stream receives
         # the full output including _STRIP_FROM_LLM fields (e.g. is_dry_run).
