@@ -407,33 +407,27 @@ export function useCopilotPage() {
   const sessions =
     sessionsResponse?.status === 200 ? sessionsResponse.data.sessions : [];
 
-  // When a session loads (or changes), restore any queued messages from the
-  // backend buffer so the indicator survives a page refresh.
+  // Sync the queued-messages indicator with the backend buffer on session
+  // load/change and whenever a turn ends (the backend drains at turn start
+  // and auto-continue, so the buffer may shrink without frontend action).
+  const prevQueuePeekSessionIdRef = useRef<string | null>(sessionId);
   useEffect(() => {
-    if (!sessionId) {
-      setQueuedMessages([]);
-      return;
-    }
-    void getV2GetPendingMessages(sessionId).then((res) => {
-      setQueuedMessages(
-        res.status === 200 && res.data.count > 0 ? res.data.messages : [],
-      );
-    });
-  }, [sessionId]);
+    const sessionChanged = prevQueuePeekSessionIdRef.current !== sessionId;
+    prevQueuePeekSessionIdRef.current = sessionId;
 
-  // When a turn ends, peek the buffer to sync the indicator.
-  useEffect(() => {
-    if (status !== "ready" && status !== "error") return;
     if (!sessionId) {
       setQueuedMessages([]);
       return;
     }
+    const isIdle = status === "ready" || status === "error";
+    if (!sessionChanged && !isIdle) return;
+
     void getV2GetPendingMessages(sessionId).then((res) => {
       setQueuedMessages(
         res.status === 200 && res.data.count > 0 ? res.data.messages : [],
       );
     });
-  }, [status, sessionId]);
+  }, [sessionId, status]);
 
   // Promote queued chips to real user bubbles when the backend consumes them.
   //
@@ -496,29 +490,26 @@ export function useCopilotPage() {
 
     if (!isActive || newAssistantIds.length === 0) return;
 
-    const hasChips = queuedMessagesRef.current.length > 0;
-
+    // The first new assistant of a stream chain is Turn 1's opener — not an
+    // auto-continue. Remember it, then wait for the next new assistant.
+    let candidateIds = newAssistantIds;
     if (!hasSeenTurnStartAssistantRef.current) {
-      // First assistant ID for this stream chain = Turn 1. Mark and return —
-      // do NOT promote chips (chips are for AFTER Turn 1 completes).
       hasSeenTurnStartAssistantRef.current = true;
-      // If more than one new ID appeared in a single render (rare — Turn 1
-      // plus the auto-continue turn both land in the same batch), fall
-      // through using the 2nd+ IDs below.
-      if (newAssistantIds.length <= 1) return;
+      // If Turn 1 plus its auto-continue assistant land in the same render
+      // batch, drop the first and treat the rest as auto-continue. Otherwise
+      // wait for the next render.
+      if (candidateIds.length === 1) return;
+      candidateIds = candidateIds.slice(1);
     }
 
-    if (!hasChips) return;
+    if (queuedMessagesRef.current.length === 0) return;
 
     // Auto-continue detected: promote ALL chips as one combined user bubble
     // matching the backend's "\n\n".join(texts). Insert immediately before
-    // the first auto-continue assistant ID so it sits between Turn 1 and
-    // Turn 2 visually.
-    const autoContinueId = hasSeenTurnStartAssistantRef.current
-      ? newAssistantIds[0]
-      : newAssistantIds[1];
-    const chips = queuedMessagesRef.current;
-    const combinedText = chips.join("\n\n");
+    // the auto-continue assistant ID so it sits between Turn N and Turn N+1
+    // visually.
+    const autoContinueId = candidateIds[0];
+    const combinedText = queuedMessagesRef.current.join("\n\n");
 
     setMessages((prev) => {
       if (prev.some((m) => m.id === `promoted-${autoContinueId}`)) return prev;
