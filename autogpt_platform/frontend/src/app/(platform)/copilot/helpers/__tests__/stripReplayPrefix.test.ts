@@ -102,7 +102,11 @@ describe("stripReplayPrefix", () => {
           state: "output-available" as const,
           output: "ok",
         },
-        { type: "text" as const, text: " world + extra", state: "done" as const },
+        {
+          type: "text" as const,
+          text: " world + extra",
+          state: "done" as const,
+        },
       ],
     };
     const msgs: UIMessage[] = [
