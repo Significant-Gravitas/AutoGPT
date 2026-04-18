@@ -2304,7 +2304,16 @@ async def _run_stream_attempt(
                 # assistant's continuing response).  Rollback re-queues into
                 # the PRIMARY pending buffer so the next turn-start drain
                 # picks them up if this persist silently fails.
-                if isinstance(response, StreamToolOutputAvailable):
+                # Only run the follow-up persist if the tool_result row was
+                # actually appended by _dispatch_response (currently always
+                # true for this variant, but we guard so a future refactor
+                # that conditionally skips the append can't silently land
+                # a user row before a missing tool_result).
+                if (
+                    isinstance(response, StreamToolOutputAvailable)
+                    and dispatched is not None
+                    and acc.has_tool_results
+                ):
                     sid = ctx.session.session_id
                     followup_drained = await drain_pending_for_persist(sid)
                     if followup_drained:

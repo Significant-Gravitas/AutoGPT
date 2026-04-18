@@ -616,29 +616,34 @@ export function useCopilotPage() {
     const interval = setInterval(async () => {
       try {
         const res = await getV2GetPendingMessages(sessionId);
-        if (res.status !== 200 || res.data.count !== 0) return;
-        if (queuedMessagesRef.current.length === 0) return;
-        const combined = queuedMessagesRef.current.join("\n\n");
-        setMessages((prev) => {
-          // Don't double-promote: the turn-end auto-continue promotion uses
-          // `promoted-${assistantId}` ids, so any id prefix match is enough.
-          if (prev.some((m) => m.id.startsWith("promoted-"))) return prev;
-          return [
-            ...prev,
-            {
-              id: `promoted-midturn-${crypto.randomUUID()}`,
-              role: "user" as const,
-              parts: [
-                {
-                  type: "text" as const,
-                  text: combined,
-                  state: "done" as const,
-                },
-              ],
-            },
-          ];
-        });
-        setQueuedMessages([]);
+        if (res.status !== 200) return;
+        const backendCount = res.data.count;
+        const localChips = queuedMessagesRef.current;
+        if (localChips.length === 0) return;
+        // Partial drain: backend holds fewer than we have locally. Promote
+        // the difference (oldest first — matches the LPOP order on drain)
+        // and keep the remainder as chips so the user sees which ones are
+        // still buffered.
+        if (backendCount >= localChips.length) return;
+        const drainedCount = localChips.length - backendCount;
+        const drainedTexts = localChips.slice(0, drainedCount);
+        const remaining = localChips.slice(drainedCount);
+        const combined = drainedTexts.join("\n\n");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `promoted-midturn-${crypto.randomUUID()}`,
+            role: "user" as const,
+            parts: [
+              {
+                type: "text" as const,
+                text: combined,
+                state: "done" as const,
+              },
+            ],
+          },
+        ]);
+        setQueuedMessages(remaining);
       } catch {
         // Poll failures are harmless — we try again on the next tick or
         // fall back to hydration-on-stream-end.
