@@ -424,12 +424,18 @@ export function useCopilotStream({
   // misordered entries from the Claude CLI replay. The DB has the correct
   // state.
   //
-  // Timing: status becomes "ready" BEFORE onFinish's refetchSession
-  // completes (the refetch has a 500ms delay plus the DB round-trip).
-  // We use a ref flag set on streaming→ready that persists across renders
-  // until hydratedMessages actually refreshes with the DB's final state.
+  // Timing: status becomes "ready" BEFORE the cache-invalidation refetch
+  // completes (it takes a 500 ms delay plus the DB round-trip). We capture
+  // the hydratedMessages reference that was current at the streaming→ready
+  // moment and refuse to force-hydrate until a NEW reference arrives —
+  // that's React Query swapping in fresh post-turn data. Without this guard
+  // the effect fires with STALE hydratedMessages, replaces the AI SDK
+  // messages with pre-turn data, and loses the newly-persisted rows until
+  // something else triggers a re-render that happens to flow past the
+  // length check below.
   const prevHydrationStatusRef = useRef(status);
   const needsForceHydrateRef = useRef(false);
+  const forceHydrateStaleRef = useRef<typeof hydratedMessages | null>(null);
 
   // Track status transitions — set the flag when streaming ends.
   useEffect(() => {
@@ -440,8 +446,11 @@ export function useCopilotStream({
     prevHydrationStatusRef.current = status;
     if (wasStreaming && isNowIdle) {
       needsForceHydrateRef.current = true;
+      // Remember the stale hydratedMessages reference so we can wait for
+      // React Query to swap in fresh data before replacing.
+      forceHydrateStaleRef.current = hydratedMessages ?? null;
     }
-  }, [status]);
+  }, [status, hydratedMessages]);
 
   // Apply hydration when data is available.
   useEffect(() => {
@@ -450,10 +459,19 @@ export function useCopilotStream({
     if (isReconnectScheduled) return;
 
     if (needsForceHydrateRef.current) {
-      // Force-replace with fresh DB data — clears any garbled SDK state
-      // from the streaming session (CLI replay, auto-continue merging).
+      if (
+        forceHydrateStaleRef.current !== null &&
+        hydratedMessages === forceHydrateStaleRef.current
+      ) {
+        // Same reference as when the status transitioned — React Query
+        // has not finished the post-turn refetch yet. Wait for it.
+        return;
+      }
+      // Fresh data — replace, clearing any garbled SDK state from the
+      // streaming session (CLI replay, auto-continue merging).
       setMessages(deduplicateMessages(hydratedMessages));
       needsForceHydrateRef.current = false;
+      forceHydrateStaleRef.current = null;
       return;
     }
 
