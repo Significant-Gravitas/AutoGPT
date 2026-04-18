@@ -458,9 +458,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert len(call_log) == 1, (
-            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
-        )
+        assert (
+            len(call_log) == 1
+        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):

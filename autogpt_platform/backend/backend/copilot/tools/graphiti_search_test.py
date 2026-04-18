@@ -29,9 +29,9 @@ class TestFilterEpisodesByScopeTruncation:
         )
         # Requesting real:global scope — this project:crm episode should be excluded
         results = _filter_episodes_by_scope([ep], "real:global")
-        assert results == [], (
-            f"project-scoped episode leaked into global results: {results}"
-        )
+        assert (
+            results == []
+        ), f"project-scoped episode leaked into global results: {results}"
 
     def test_short_envelope_filtered_correctly(self) -> None:
         """Short envelopes (under 500 chars) are parsed correctly."""

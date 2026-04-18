@@ -109,7 +109,8 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             # Extended consumer timeout for long-running LLM operations
             # Default 30-minute timeout is insufficient for extended thinking
             # and agent generation which can take 30+ minutes
-            "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS * 1000,
+            "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS
+            * 1000,
         },
     )
     cancel_queue = Queue(

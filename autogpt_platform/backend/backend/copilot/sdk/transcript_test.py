@@ -1419,17 +1419,17 @@ class TestProcessCliRestore:
 
         written_bytes = session_file.read_bytes()
         # The written bytes must be the stripped version (no progress entry)
-        assert b"progress" not in written_bytes, (
-            "Raw bytes with progress entry should not have been written"
-        )
-        assert b"hello" in written_bytes, (
-            "Stripped content should still contain assistant turn"
-        )
+        assert (
+            b"progress" not in written_bytes
+        ), "Raw bytes with progress entry should not have been written"
+        assert (
+            b"hello" in written_bytes
+        ), "Stripped content should still contain assistant turn"
 
         # Written bytes must equal the stripped string re-encoded
-        assert written_bytes == stripped_str.encode("utf-8"), (
-            "Written bytes must equal stripped content"
-        )
+        assert written_bytes == stripped_str.encode(
+            "utf-8"
+        ), "Written bytes must equal stripped content"
 
     def test_invalid_content_returns_false(self):
         """Content that fails validation after strip returns (empty, False)."""
@@ -1533,7 +1533,7 @@ class TestReadCliSessionFromDisk:
 
         # Must return stripped bytes (not raw, not None) so GCS gets the clean version
         assert result is not None
-        assert b"progress" not in result, (
-            "Stripped bytes must not contain progress entry"
-        )
+        assert (
+            b"progress" not in result
+        ), "Stripped bytes must not contain progress entry"
         assert b"hello" in result, "Stripped bytes should contain assistant turn"

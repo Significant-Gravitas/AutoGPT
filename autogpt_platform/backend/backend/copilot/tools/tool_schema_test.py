@@ -59,12 +59,12 @@ class TestToolSchema:
         params = schema["function"].get("parameters", {})
         properties = params.get("properties", {})
         for prop_name, prop_def in properties.items():
-            assert "type" in prop_def, (
-                f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
-            )
-            assert "description" in prop_def, (
-                f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
-            )
+            assert (
+                "type" in prop_def
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'type'"
+            assert (
+                "description" in prop_def
+            ), f"Tool '{tool_name}', property '{prop_name}' is missing 'description'"
 
 
 def test_browser_act_action_enum_complete() -> None:

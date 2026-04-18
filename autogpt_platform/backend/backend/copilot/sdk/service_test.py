@@ -238,9 +238,9 @@ class TestPromptSupplement:
         for tool_name, tool in TOOL_REGISTRY.items():
             if not tool.is_available:
                 continue
-            assert f"`{tool_name}`" in docs, (
-                f"Tool '{tool_name}' missing from baseline supplement"
-            )
+            assert (
+                f"`{tool_name}`" in docs
+            ), f"Tool '{tool_name}' missing from baseline supplement"
 
     def test_pause_task_scheduled_before_transcript_upload(self):
         """Pause is scheduled as a background task before transcript upload begins.

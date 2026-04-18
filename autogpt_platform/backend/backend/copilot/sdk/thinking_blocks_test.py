@@ -453,12 +453,12 @@ class TestCompactTranscriptThinkingBlocks:
 
         # The last assistant must have the thinking blocks preserved
         block_types = [b["type"] for b in last_content]
-        assert "thinking" in block_types, (
-            "thinking block missing from last assistant message"
-        )
-        assert "redacted_thinking" in block_types, (
-            "redacted_thinking block missing from last assistant message"
-        )
+        assert (
+            "thinking" in block_types
+        ), "thinking block missing from last assistant message"
+        assert (
+            "redacted_thinking" in block_types
+        ), "redacted_thinking block missing from last assistant message"
         assert "text" in block_types
 
         # Verify the thinking block content is value-identical
@@ -507,12 +507,12 @@ class TestCompactTranscriptThinkingBlocks:
         for msg in captured_messages:
             if msg["role"] == "assistant":
                 content = msg.get("content", "")
-                assert "I should list the files." not in content, (
-                    "Old thinking block content leaked into compression input"
-                )
-                assert "Good, I see two Python files." not in content, (
-                    "Old thinking block content leaked into compression input"
-                )
+                assert (
+                    "I should list the files." not in content
+                ), "Old thinking block content leaked into compression input"
+                assert (
+                    "Good, I see two Python files." not in content
+                ), "Old thinking block content leaked into compression input"
 
     @pytest.mark.asyncio
     async def test_trailing_user_message_after_last_assistant(self, mock_chat_config):
@@ -562,9 +562,9 @@ class TestCompactTranscriptThinkingBlocks:
         assert last_content is not None
         assert isinstance(last_content, list)
         block_types = [b["type"] for b in last_content]
-        assert "thinking" in block_types, (
-            "thinking block lost from last assistant despite trailing user msg"
-        )
+        assert (
+            "thinking" in block_types
+        ), "thinking block lost from last assistant despite trailing user msg"
 
     @pytest.mark.asyncio
     async def test_single_assistant_with_thinking_preserved(self, mock_chat_config):
