@@ -80,6 +80,17 @@ class _FakeRedis:
             return 1
         return 0
 
+    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
+        # Minimal Lua-shim that understands the _PUSH_LUA script used by
+        # push_pending_message: RPUSH + LTRIM -max -1 + EXPIRE + LLEN.
+        # Keys first, then args. numkeys is always 1 here.
+        key = args[0]
+        payload, max_items_s, _ttl_s = args[1], args[2], args[3]
+        await self.rpush(key, payload)
+        await self.ltrim(key, -int(max_items_s), -1)
+        await self.expire(key, int(_ttl_s))
+        return await self.llen(key)
+
 
 @pytest.fixture()
 def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
