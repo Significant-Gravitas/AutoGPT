@@ -83,16 +83,62 @@ class _FakeRedis:
             return 1
         return 0
 
-    async def eval(self, script: str, numkeys: int, *args: Any) -> int:
-        # Minimal Lua-shim that understands the _PUSH_LUA script used by
-        # push_pending_message: RPUSH + LTRIM -max -1 + EXPIRE + LLEN.
-        # Keys first, then args. numkeys is always 1 here.
-        key = args[0]
-        payload, max_items_s, _ttl_s = args[1], args[2], args[3]
-        await self.rpush(key, payload)
-        await self.ltrim(key, -int(max_items_s), -1)
-        await self.expire(key, int(_ttl_s))
-        return await self.llen(key)
+    def pipeline(self, transaction: bool = True) -> "_FakePipeline":
+        # Returns a fake pipeline that records ops and replays them in
+        # order on ``execute()``.  Used by ``capped_rpush`` (push_pending_message)
+        # and ``incr_with_ttl`` (call-rate check) via MULTI/EXEC.
+        return _FakePipeline(self)
+
+    async def incr(self, key: str) -> int:
+        # Used by incr_with_ttl's pipeline.
+        current = int(self.lists.get(key, [0])[0]) if self.lists.get(key) else 0
+        current += 1
+        # We abuse the same lists dict for simple counters — store [count].
+        self.lists[key] = [str(current)]
+        return current
+
+
+class _FakePipeline:
+    """Async pipeline shim matching the redis-py MULTI/EXEC surface."""
+
+    def __init__(self, parent: "_FakeRedis") -> None:
+        self._parent = parent
+        self._ops: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+    # Each method just records the op; dispatching happens in execute().
+    def rpush(self, key: str, *values: Any) -> "_FakePipeline":
+        self._ops.append(("rpush", (key, *values), {}))
+        return self
+
+    def ltrim(self, key: str, start: int, stop: int) -> "_FakePipeline":
+        self._ops.append(("ltrim", (key, start, stop), {}))
+        return self
+
+    def expire(self, key: str, seconds: int, **kw: Any) -> "_FakePipeline":
+        self._ops.append(("expire", (key, seconds), kw))
+        return self
+
+    def llen(self, key: str) -> "_FakePipeline":
+        self._ops.append(("llen", (key,), {}))
+        return self
+
+    def incr(self, key: str) -> "_FakePipeline":
+        self._ops.append(("incr", (key,), {}))
+        return self
+
+    async def execute(self) -> list[Any]:
+        results: list[Any] = []
+        for name, args, _kw in self._ops:
+            fn = getattr(self._parent, name)
+            results.append(await fn(*args))
+        return results
+
+    # Support `async with pipeline() as pipe:` too.
+    async def __aenter__(self) -> "_FakePipeline":
+        return self
+
+    async def __aexit__(self, *a: Any) -> None:
+        return None
 
 
 @pytest.fixture()

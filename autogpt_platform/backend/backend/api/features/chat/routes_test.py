@@ -747,12 +747,15 @@ def _mock_pending_internals(
     )
     # Mock Redis for per-user call-frequency rate limit — patch where the
     # symbol is *used* (pending_message_helpers), not where it's defined.
-    mock_redis = mocker.MagicMock()
-    mock_redis.eval = mocker.AsyncMock(return_value=call_count)
     mocker.patch(
         "backend.copilot.pending_message_helpers.get_redis_async",
         new_callable=AsyncMock,
-        return_value=mock_redis,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.incr_with_ttl",
+        new_callable=AsyncMock,
+        return_value=call_count,
     )
     mocker.patch(
         "backend.api.features.chat.routes.track_user_message",

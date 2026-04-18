@@ -12,7 +12,6 @@ coverage:
       platform-frontend:
         target: auto
         threshold: 1%
-        informational: true
         flags:
           - platform-frontend
     patch:
@@ -22,7 +21,6 @@ coverage:
           - platform-backend
       platform-frontend:
         target: 80%
-        informational: true
         flags:
           - platform-frontend
       autogpt-libs:
@@ -79,10 +77,8 @@ component_management:
       statuses:
         - type: project
           target: auto
-          informational: true
         - type: patch
           target: 80%
-          informational: true
     - component_id: autogpt-libs
       name: "AutoGPT Libs"
       paths:
