@@ -148,6 +148,38 @@ describe("stripReplayPrefix", () => {
     expect(ids).toContain("a2");
   });
 
+  it("preserves non-text parts that follow the stripped text prefix", () => {
+    // a2 shares the leading "hello" text with a1, but has a non-text
+    // structural part after the text (e.g. a tool-call) — that part must
+    // survive the strip. Exercises the `remaining === 0` branch.
+    const msgs: UIMessage[] = [
+      user("u1", "hi"),
+      assistant("a1", "hello"),
+      user("u2", "more"),
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [
+          { type: "text" as const, text: "hello", state: "done" as const },
+          // Non-text part (opaque to stripLeadingTextChars) must be kept.
+          { type: "step-start" as const },
+          { type: "text" as const, text: "!", state: "done" as const },
+        ],
+      } as UIMessage,
+    ];
+
+    const result = stripReplayPrefix(msgs);
+    const a2 = result.find((m) => m.id === "a2")!;
+    const kinds = (a2.parts ?? []).map((p) => p.type);
+    // "hello" text is dropped; step-start + trailing "!" text remain.
+    expect(kinds).toEqual(["step-start", "text"]);
+    expect(textOf(a2)).toBe("!");
+  });
+
+  it("returns an empty result array for an empty input", () => {
+    expect(stripReplayPrefix([])).toEqual([]);
+  });
+
   it("handles the longest matching earlier assistant as the strip anchor", () => {
     // a3 matches a2's full text (which is longer than a1's). Should strip a2's
     // length, not a1's.

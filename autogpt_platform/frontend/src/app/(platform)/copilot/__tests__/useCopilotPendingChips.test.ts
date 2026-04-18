@@ -186,6 +186,116 @@ describe("useCopilotPendingChips", () => {
     expect(result.current.queuedMessages).toEqual([]);
   });
 
+  it("turn-start drain: peek count=0 clears chips once submitted→streaming", async () => {
+    const setMessages = vi.fn();
+    // Seed with chips via the idle-state peek so local state has them by
+    // the time we kick the submitted→streaming transition.
+    peekMock.mockResolvedValueOnce({
+      status: 200,
+      data: { count: 1, messages: ["local-chip"] },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ status }: { status: "ready" | "submitted" | "streaming" }) =>
+        useCopilotPendingChips({
+          sessionId: "s",
+          status,
+          messages: [],
+          setMessages,
+        }),
+      { initialProps: { status: "ready" as const } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.queuedMessages).toEqual(["local-chip"]);
+    });
+
+    rerender({ status: "submitted" });
+    // Backend really drained — count is 0.
+    peekMock.mockResolvedValue({
+      status: 200,
+      data: { count: 0, messages: [] },
+    });
+    rerender({ status: "streaming" });
+
+    await waitFor(() => {
+      expect(result.current.queuedMessages).toEqual([]);
+    });
+  });
+
+  it("turn-start drain: non-200 peek response does not clear chips", async () => {
+    const setMessages = vi.fn();
+    // Seed chips from the session-load peek so we don't race with a
+    // separate appendChip after idle-peek has already overwritten state.
+    peekMock.mockResolvedValueOnce({
+      status: 200,
+      data: { count: 1, messages: ["keep-me"] },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ status }: { status: "ready" | "submitted" | "streaming" }) =>
+        useCopilotPendingChips({
+          sessionId: "s",
+          status,
+          messages: [],
+          setMessages,
+        }),
+      { initialProps: { status: "ready" as const } },
+    );
+
+    await waitFor(() => {
+      expect(result.current.queuedMessages).toEqual(["keep-me"]);
+    });
+
+    rerender({ status: "submitted" });
+    // Turn-start peek returns an error status — the condition `count === 0`
+    // only fires on `status === 200`, so chips must stay.
+    peekMock.mockResolvedValue({ status: 500, data: undefined });
+    rerender({ status: "streaming" });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.queuedMessages).toEqual(["keep-me"]);
+  });
+
+  it("mid-turn poll: peek error is swallowed and chips are preserved", async () => {
+    vi.useFakeTimers();
+    const setMessages = vi.fn();
+    const { result } = renderHook(() =>
+      useCopilotPendingChips({
+        sessionId: "s",
+        status: "streaming",
+        messages: [user("u1"), assistant("a1")],
+        setMessages,
+      }),
+    );
+
+    act(() => {
+      result.current.appendChip("survives");
+    });
+
+    // Simulate a transient network failure on the peek.
+    peekMock.mockRejectedValue(new Error("network blip"));
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // No promotion happened, chips remain intact.
+    expect(result.current.queuedMessages).toEqual(["survives"]);
+    const promoteCall = setMessages.mock.calls.find(([arg]) => {
+      if (typeof arg !== "function") return false;
+      const updated = (arg as (p: UIMessage[]) => UIMessage[])([]);
+      return updated.some((m) => m.id.startsWith("promoted-"));
+    });
+    expect(promoteCall).toBeUndefined();
+  });
+
   it("mid-turn poll promotes drained chips when backend count drops", async () => {
     vi.useFakeTimers();
     const setMessages = vi.fn();
