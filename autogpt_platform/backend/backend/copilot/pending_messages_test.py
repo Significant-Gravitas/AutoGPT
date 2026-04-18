@@ -19,6 +19,7 @@ from backend.copilot.pending_messages import (
     clear_pending_messages,
     drain_pending_for_persist,
     drain_pending_messages,
+    format_pending_as_followup,
     format_pending_as_user_message,
     peek_pending_count,
     peek_pending_messages,
@@ -227,6 +228,44 @@ def test_format_pending_with_all_fields() -> None:
     assert "[Page content]\nheadline text" in body
     assert "file_id=f1" in body
     assert "file_id=f2" in body
+
+
+# ── Followup block caps ────────────────────────────────────────────
+
+
+def test_format_followup_single_message() -> None:
+    out = format_pending_as_followup([PendingMessage(content="hello")])
+    assert "<user_follow_up>" in out
+    assert "</user_follow_up>" in out
+    assert "Message 1:\nhello" in out
+
+
+def test_format_followup_total_cap_drops_overflow() -> None:
+    """10 × 2 KB messages must truncate past the total cap (~6 KB) with a
+    marker indicating how many were dropped."""
+    messages = [PendingMessage(content="A" * 2_000) for _ in range(10)]
+    out = format_pending_as_followup(messages)
+    # Block stays within the total cap (plus a little wrapper overhead).
+    # The body alone is capped at 6 KB; we allow generous overhead for the
+    # <user_follow_up> wrapper + headers.
+    assert len(out) < 8_000
+    assert "more message(s) truncated" in out
+    # The first message at least must be present.
+    assert "Message 1:" in out
+
+
+def test_format_followup_total_cap_marker_counts_dropped() -> None:
+    """The marker should name the exact number of dropped messages."""
+    # Three 3 KB messages: first fits, then adding the second overflows.
+    messages = [PendingMessage(content="X" * 3_000) for _ in range(3)]
+    out = format_pending_as_followup(messages)
+    assert "Message 1:" in out
+    # With a 6 KB total cap, only message 1 fits; 2 should be dropped.
+    assert "[2 more message(s) truncated]" in out
+
+
+def test_format_followup_empty_returns_empty_string() -> None:
+    assert format_pending_as_followup([]) == ""
 
 
 # ── Malformed payload handling ──────────────────────────────────────
