@@ -76,7 +76,7 @@ export const InputExpanderModal: FC<InputExpanderModalProps> = ({
           <Text variant="body">{description}</Text>
           <Input
             type="textarea"
-            label=""
+            label={title || "Edit value"}
             hideLabel
             id="input-expander-modal"
             value={tempValue}

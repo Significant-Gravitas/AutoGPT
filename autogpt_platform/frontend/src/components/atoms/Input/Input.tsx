@@ -113,7 +113,7 @@ export function Input({
               | undefined
           }
           rows={props.rows || 3}
-          {...(hideLabel ? { "aria-label": label } : {})}
+          {...(hideLabel && label ? { "aria-label": label } : {})}
           id={props.id}
           disabled={props.disabled}
           value={props.value}
@@ -149,7 +149,7 @@ export function Input({
           groupSeparator=","
           decimalSeparator="."
           allowNegativeValue
-          {...(hideLabel ? { "aria-label": label } : {})}
+          {...(hideLabel && label ? { "aria-label": label } : {})}
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}
@@ -180,7 +180,7 @@ export function Input({
         )}
         placeholder={placeholder || label}
         onChange={handleInputChange}
-        {...(hideLabel ? { "aria-label": label } : {})}
+        {...(hideLabel && label ? { "aria-label": label } : {})}
         {...props}
         type={inputType}
       />

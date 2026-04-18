@@ -82,7 +82,7 @@ export function Select({
     <BaseSelect value={value} onValueChange={onValueChange} disabled={disabled}>
       <SelectTrigger
         className={triggerStyles}
-        {...(hideLabel ? { "aria-label": label } : {})}
+        {...(hideLabel && label ? { "aria-label": label } : {})}
         id={id}
       >
         <SelectValue placeholder={placeholder || label} />

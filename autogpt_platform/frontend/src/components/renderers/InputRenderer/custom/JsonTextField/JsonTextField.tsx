@@ -77,7 +77,7 @@ export const JsonTextField = (props: FieldProps) => {
           id={fieldId}
           hideLabel={true}
           type="textarea"
-          label=""
+          label={title}
           size="small"
           wrapperClassName="mb-0 flex-1 "
           value={textValue}
