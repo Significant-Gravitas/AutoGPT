@@ -87,6 +87,69 @@ def get_inputs_from_schema(
     return results
 
 
+async def _charge_block_credits(
+    _credit_db: Any,
+    *,
+    user_id: str,
+    block_name: str,
+    block_id: str,
+    node_exec_id: str,
+    cost: int,
+    cost_filter: dict[str, Any],
+    synthetic_graph_id: str,
+    synthetic_node_id: str,
+) -> None:
+    """Charge credits for a block execution and log any billing leak.
+
+    Centralised so the normal-path charge and the cancellation-recovery charge
+    (see ``execute_block``'s finally) use the same metadata and the same
+    leak-logging contract.
+    """
+    try:
+        await _credit_db.spend_credits(
+            user_id=user_id,
+            cost=cost,
+            metadata=UsageTransactionMetadata(
+                graph_exec_id=synthetic_graph_id,
+                graph_id=synthetic_graph_id,
+                node_id=synthetic_node_id,
+                node_exec_id=node_exec_id,
+                block_id=block_id,
+                block=block_name,
+                input=cost_filter,
+                reason="copilot_block_execution",
+            ),
+        )
+    except Exception as e:
+        # Block already executed (with possible side effects). Never
+        # return ErrorResponse here — the user received output and
+        # deserves it. Log the billing failure for reconciliation.
+        leak_type = (
+            "INSUFFICIENT_BALANCE"
+            if isinstance(e, InsufficientBalanceError)
+            else "UNEXPECTED_ERROR"
+        )
+        logger.error(
+            "BILLING_LEAK[%s]: block executed but credit charge failed — "
+            "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
+            leak_type,
+            user_id,
+            block_id,
+            node_exec_id,
+            cost,
+            e,
+            extra={
+                "json_fields": {
+                    "billing_leak": True,
+                    "leak_type": leak_type,
+                    "user_id": user_id,
+                    "cost": str(cost),
+                }
+            },
+        )
+        raise
+
+
 async def execute_block(
     *,
     block: AnyBlockSchema,
@@ -212,67 +275,73 @@ async def execute_block(
                     session_id=session_id,
                 )
 
-        # Execute the block and collect outputs
+        # Execute the block and collect outputs. If the caller is cancelled
+        # mid-generator (e.g. execute_block_with_cap's asyncio.wait_for fires),
+        # the generator is torn down but the block may already have made side-
+        # effectful API calls. The finally below runs the billing settle even
+        # on CancelledError so we don't leak cost.
         outputs: dict[str, list[Any]] = defaultdict(list)
-        async for output_name, output_data in block.execute(
-            input_data,
-            **exec_kwargs,
-        ):
-            outputs[output_name].append(output_data)
+        charged = False
+        try:
+            async for output_name, output_data in block.execute(
+                input_data,
+                **exec_kwargs,
+            ):
+                outputs[output_name].append(output_data)
 
-        # Charge credits for block execution
-        if has_cost:
-            try:
-                await _credit_db.spend_credits(
+            # Normal (non-cancelled) path: charge before returning.
+            if has_cost:
+                await _charge_block_credits(
+                    _credit_db,
                     user_id=user_id,
+                    block_name=block.name,
+                    block_id=block_id,
+                    node_exec_id=node_exec_id,
                     cost=cost,
-                    metadata=UsageTransactionMetadata(
-                        graph_exec_id=synthetic_graph_id,
-                        graph_id=synthetic_graph_id,
-                        node_id=synthetic_node_id,
-                        node_exec_id=node_exec_id,
-                        block_id=block_id,
-                        block=block.name,
-                        input=cost_filter,
-                        reason="copilot_block_execution",
-                    ),
+                    cost_filter=cost_filter,
+                    synthetic_graph_id=synthetic_graph_id,
+                    synthetic_node_id=synthetic_node_id,
                 )
-            except Exception as e:
-                # Block already executed (with possible side effects). Never
-                # return ErrorResponse here — the user received output and
-                # deserves it. Log the billing failure for reconciliation.
-                leak_type = (
-                    "INSUFFICIENT_BALANCE"
-                    if isinstance(e, InsufficientBalanceError)
-                    else "UNEXPECTED_ERROR"
-                )
-                logger.error(
-                    "BILLING_LEAK[%s]: block executed but credit charge failed — "
-                    "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
-                    leak_type,
-                    user_id,
-                    block_id,
-                    node_exec_id,
-                    cost,
-                    e,
-                    extra={
-                        "json_fields": {
-                            "billing_leak": True,
-                            "leak_type": leak_type,
-                            "user_id": user_id,
-                            "cost": str(cost),
-                        }
-                    },
-                )
+                charged = True
 
-        return BlockOutputResponse(
-            message=f"Block '{block.name}' executed successfully",
-            block_id=block_id,
-            block_name=block.name,
-            outputs=dict(outputs),
-            success=True,
-            session_id=session_id,
-        )
+            return BlockOutputResponse(
+                message=f"Block '{block.name}' executed successfully",
+                block_id=block_id,
+                block_name=block.name,
+                outputs=dict(outputs),
+                success=True,
+                session_id=session_id,
+            )
+        finally:
+            # SECRT-2247 / sentry r3105079148: execute_block_with_cap wraps us
+            # in asyncio.wait_for, which raises CancelledError on timeout.
+            # Normal except Exception blocks don't catch CancelledError — so
+            # without this finally, a cancelled run would skip credit charging
+            # entirely while the block's external side effects still landed.
+            # Charge once, only when we collected at least one output (side
+            # effects likely happened) AND the normal charge didn't already
+            # run. asyncio.shield protects the spend call from the same
+            # cancellation that's tearing us down.
+            if has_cost and outputs and not charged:
+                try:
+                    await asyncio.shield(
+                        _charge_block_credits(
+                            _credit_db,
+                            user_id=user_id,
+                            block_name=block.name,
+                            block_id=block_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            synthetic_graph_id=synthetic_graph_id,
+                            synthetic_node_id=synthetic_node_id,
+                        )
+                    )
+                except Exception:
+                    # _charge_block_credits already logs BILLING_LEAK on its
+                    # own error path — swallowing here keeps the original
+                    # cancellation propagating.
+                    pass
 
     except BlockError as e:
         logger.warning("Block execution failed: %s", e)
@@ -305,7 +374,24 @@ async def execute_block_with_cap(**kwargs: Any) -> ToolResponseBase:
             timeout=MAX_TOOL_WAIT_SECONDS,
         )
     except asyncio.TimeoutError:
-        block_name = getattr(kwargs.get("block"), "name", "block")
+        block = kwargs.get("block")
+        block_name = getattr(block, "name", "block")
+        block_id = kwargs.get("block_id") or getattr(block, "id", "unknown")
+        # Structured record of tool-call timeouts (SECRT-2247 part 3). Lets us
+        # grep prod logs for `copilot_tool_timeout` to find tools that keep
+        # hitting the cap — candidates for either prompt tuning (so the LLM
+        # stops calling them with heavy payloads) or escalation to the async
+        # start+poll pattern (run_agent / run_sub_session).
+        logger.warning(
+            "copilot_tool_timeout tool=run_block block=%s block_id=%s "
+            "input_keys=%s user=%s session=%s cap_s=%d",
+            block_name,
+            block_id,
+            sorted((kwargs.get("input_data") or {}).keys()),
+            kwargs.get("user_id"),
+            kwargs.get("session_id"),
+            MAX_TOOL_WAIT_SECONDS,
+        )
         return ErrorResponse(
             message=(
                 f"Block '{block_name}' exceeded the "

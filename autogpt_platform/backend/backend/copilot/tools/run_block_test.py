@@ -712,3 +712,91 @@ class TestRunBlockTimeout:
         assert isinstance(response, ErrorResponse)
         assert "single-tool wait cap" in response.message
         assert "run_agent" in response.message  # redirect hint
+
+
+class TestExecuteBlockCancellationBilling:
+    """``execute_block`` must still charge credits on cancellation when outputs
+    were produced (SECRT-2247 / sentry r3105079148). Without this, a block that
+    makes external API calls and then gets cancelled by execute_block_with_cap's
+    timeout would silently leak cost."""
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_cancellation_after_output_still_charges_credits(self):
+        import asyncio as _asyncio
+
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.copilot.tools.helpers import execute_block
+
+        mock_block = MagicMock()
+        mock_block.name = "CostlyBlock"
+        mock_block.id = "costly-block-id"
+        mock_block.input_schema = MagicMock()
+        mock_block.input_schema.jsonschema.return_value = {
+            "properties": {},
+            "required": [],
+        }
+        mock_block.input_schema.get_credentials_fields.return_value = {}
+
+        # Generator: emit ONE output (simulating a side-effectful API call),
+        # then hang — the outer test will cancel us.
+        async def _one_output_then_hang(_input, **_kw):
+            yield "result", "side effect happened"
+            await _asyncio.sleep(10)
+            yield "extra", "should never arrive"
+
+        mock_block.execute = _one_output_then_hang
+
+        charged: dict[str, object] = {}
+
+        class _FakeCreditDB:
+            async def get_credits(self, _user_id: str) -> int:
+                return 10_000
+
+            async def spend_credits(self, **kwargs):
+                charged["last"] = kwargs
+
+        mock_workspace_db = MagicMock()
+        mock_workspace_db.get_or_create_workspace = AsyncMock(
+            return_value=MagicMock(id="ws-1")
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.workspace_db",
+                return_value=mock_workspace_db,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.credit_db",
+                return_value=_FakeCreditDB(),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(5, {}),  # has_cost=True, filter={}
+            ),
+        ):
+            coro = execute_block(
+                block=mock_block,
+                block_id="costly-block-id",
+                input_data={},
+                user_id="u-42",
+                session_id="s-42",
+                node_exec_id="n-42",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+            # Timeout fires mid-generator — CancelledError propagates into
+            # execute_block. Its finally must still run the charge.
+            with pytest.raises(_asyncio.TimeoutError):
+                await _asyncio.wait_for(coro, timeout=0.2)
+
+            # Allow any shielded charge to settle on the event loop.
+            await _asyncio.sleep(0.05)
+
+        assert charged.get("last") is not None, (
+            "Credits were NOT charged after cancellation — billing leak "
+            "(the bug flagged by sentry r3105079148)"
+        )
+        assert charged["last"]["user_id"] == "u-42"
+        assert charged["last"]["cost"] == 5
