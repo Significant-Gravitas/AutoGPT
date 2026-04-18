@@ -1727,7 +1727,12 @@ def _dispatch_response(
                 log_prefix,
                 response.toolCallId,
             )
-            return response
+            # Return None so the caller's ``if dispatched is not None: yield``
+            # short-circuits — the duplicate event stays off the SSE stream
+            # (so the frontend doesn't render a second widget) and the
+            # mid-turn follow-up persist doesn't double-fire (its guard is
+            # ``dispatched is not None``).
+            return None
         content = (
             response.output
             if isinstance(response.output, str)
