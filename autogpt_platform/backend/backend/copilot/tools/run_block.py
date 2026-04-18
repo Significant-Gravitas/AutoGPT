@@ -12,7 +12,7 @@ from .base import BaseTool
 from .helpers import (
     BlockPreparation,
     check_hitl_review,
-    execute_block_with_cap,
+    execute_block,
     prepare_block_for_execution,
 )
 from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
@@ -149,7 +149,7 @@ class RunBlockTool(BaseTool):
                 f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
                 f"{uuid.uuid4().hex[:8]}"
             )
-            return await execute_block_with_cap(
+            return await execute_block(
                 block=prep.block,
                 block_id=block_id,
                 input_data=prep.input_data,
@@ -199,7 +199,7 @@ class RunBlockTool(BaseTool):
             return hitl_or_err
         synthetic_node_exec_id, input_data = hitl_or_err
 
-        return await execute_block_with_cap(
+        return await execute_block(
             block=prep.block,
             block_id=block_id,
             input_data=input_data,

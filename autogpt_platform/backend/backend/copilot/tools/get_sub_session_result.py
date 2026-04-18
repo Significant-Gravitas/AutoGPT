@@ -6,13 +6,15 @@ to the authenticated user so cross-user access is impossible.
 """
 
 import asyncio
+import json
 import logging
 import time
 from typing import Any
 
-from backend.copilot.model import ChatSession
+from backend.copilot.model import ChatSession, get_chat_session
 from backend.copilot.sdk.sub_session_registry import (
     MAX_SUB_SESSION_WAIT_SECONDS,
+    SubSessionEntry,
     cancel_sub_session,
     get_sub_session,
     prune_finished,
@@ -125,9 +127,8 @@ class GetSubSessionResultTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        task: asyncio.Task = entry["task"]
-
-        inner_session_id = entry.get("inner_session_id")
+        task = entry.task
+        inner_session_id = entry.inner_session_id
 
         if cancel:
             # Race guard: if the task finished before the cancel was
@@ -142,7 +143,7 @@ class GetSubSessionResultTool(BaseTool):
                 sub_session_id=sub_session_id,
                 sub_autopilot_session_id=inner_session_id,
                 sub_autopilot_session_link=_sub_session_link(inner_session_id),
-                elapsed_seconds=round(time.monotonic() - entry["started_at"], 2),
+                elapsed_seconds=round(time.monotonic() - entry.started_at, 2),
             )
 
         if task.done():
@@ -159,7 +160,7 @@ class GetSubSessionResultTool(BaseTool):
             if task.done():
                 return _finalize(session, sub_session_id, entry, task)
 
-        elapsed = time.monotonic() - entry["started_at"]
+        elapsed = time.monotonic() - entry.started_at
         progress = None
         if include_progress:
             progress = await _build_progress_snapshot(inner_session_id)
@@ -191,13 +192,11 @@ async def _build_progress_snapshot(
     if not inner_session_id:
         return None
     try:
-        from backend.copilot.model import get_chat_session  # noqa: PLC0415
-
         sub = await get_chat_session(inner_session_id)
         if sub is None:
             return None
         messages = list(sub.messages)
-    except Exception as exc:  # pragma: no cover — best-effort peek
+    except Exception as exc:  # best-effort peek
         logger.debug(
             "Progress snapshot unavailable for sub %s: %s",
             inner_session_id,
@@ -211,9 +210,7 @@ async def _build_progress_snapshot(
         content = getattr(msg, "content", "") or ""
         if not isinstance(content, str):
             try:
-                import json as _json  # noqa: PLC0415
-
-                content = _json.dumps(content, default=str)
+                content = json.dumps(content, default=str)
             except (TypeError, ValueError):
                 content = str(content)
         if len(content) > _PROGRESS_CONTENT_PREVIEW_CHARS:
@@ -233,17 +230,17 @@ async def _build_progress_snapshot(
 def _finalize(
     session: ChatSession,
     sub_session_id: str,
-    entry: dict[str, Any],
+    entry: SubSessionEntry,
     task: asyncio.Task,
 ) -> ToolResponseBase:
     """Map a finished task to a response and unregister its entry."""
-    elapsed = time.monotonic() - entry["started_at"]
+    elapsed = time.monotonic() - entry.started_at
     response = _response_from_task(
         task=task,
         sub_session_id=sub_session_id,
         session=session,
         elapsed=elapsed,
-        inner_session_id_when_running=entry.get("inner_session_id"),
+        inner_session_id_when_running=entry.inner_session_id,
     )
     # Terminal state consumed — drop from registry (prune_finished would
     # catch it eventually anyway, but explicit removal keeps it tight).

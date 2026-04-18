@@ -106,9 +106,9 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
     # Call the production helper directly so this test is tied to the real
     # dict shape rather than a hand-rolled copy.
     preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
-    assert isinstance(
-        preset, dict
-    ), "_build_system_prompt_value must return a dict when caching is on"
+    assert isinstance(preset, dict), (
+        "_build_system_prompt_value must return a dict when caching is on"
+    )
 
     sdk_preset = cast(SystemPromptPreset, preset)
     opts = ClaudeAgentOptions(system_prompt=sdk_preset)

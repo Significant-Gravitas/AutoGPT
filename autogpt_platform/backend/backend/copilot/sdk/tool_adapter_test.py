@@ -458,9 +458,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert (
-            len(call_log) == 1
-        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        assert len(call_log) == 1, (
+            f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
+        )
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -908,7 +908,9 @@ class TestStripLlmFields:
         """
         dry_run_session = MagicMock()
         dry_run_session.dry_run = True
-        set_execution_context(user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -941,7 +943,9 @@ class TestStripLlmFields:
         """
         normal_session = MagicMock()
         normal_session.dry_run = False
-        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         full_payload = '{"message": "simulated", "is_dry_run": true}'
 

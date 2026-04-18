@@ -17,6 +17,7 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.sdk.sub_session_registry import notify_shutdown_and_cancel_all
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -228,9 +229,6 @@ class CoPilotProcessor:
            happened instead of a silently stalled turn.
         2. ``shutdown_workspace_storage`` — closes aiohttp sessions.
         """
-        from backend.copilot.sdk.sub_session_registry import (  # noqa: PLC0415
-            notify_shutdown_and_cancel_all,
-        )
 
         async def _worker_cleanup() -> None:
             try:

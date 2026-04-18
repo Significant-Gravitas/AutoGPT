@@ -22,7 +22,7 @@ import asyncio
 import logging
 import time
 import uuid
-from typing import Any
+from dataclasses import dataclass, field
 
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 
@@ -44,16 +44,22 @@ _TERMINAL_TTL_SECONDS = 30 * 60  # 30 minutes
 # tasks. 6h is arbitrary but > 99th percentile of real sub-AutoPilots.
 _RUNNING_MAX_AGE_SECONDS = 6 * 60 * 60  # 6 hours
 
+
+@dataclass
+class SubSessionEntry:
+    """A single registry entry — all per-sub state in one typed record."""
+
+    task: asyncio.Task
+    user_id: str
+    parent_session_id: str
+    inner_session_id: str
+    prompt_preview: str
+    started_at: float = field(default_factory=time.monotonic)
+    finished_at: float | None = None
+
+
 # Process-wide registry. Survives stream teardown.
-# sub_session_id → {
-#     "task": asyncio.Task[...],
-#     "user_id": str,
-#     "parent_session_id": str,
-#     "prompt_preview": str,
-#     "started_at": float,
-#     "finished_at": float | None,
-# }
-_sub_sessions: dict[str, dict[str, Any]] = {}
+_sub_sessions: dict[str, SubSessionEntry] = {}
 
 
 def register_sub_session(
@@ -73,15 +79,13 @@ def register_sub_session(
     teardown and is retrievable later.
     """
     sub_session_id = f"sub-{uuid.uuid4().hex[:12]}"
-    _sub_sessions[sub_session_id] = {
-        "task": task,
-        "user_id": user_id,
-        "parent_session_id": parent_session_id,
-        "inner_session_id": inner_session_id,
-        "prompt_preview": prompt[:200],
-        "started_at": time.monotonic(),
-        "finished_at": None,
-    }
+    _sub_sessions[sub_session_id] = SubSessionEntry(
+        task=task,
+        user_id=user_id,
+        parent_session_id=parent_session_id,
+        inner_session_id=inner_session_id,
+        prompt_preview=prompt[:200],
+    )
     # Record finished_at when the task completes so prune_finished can
     # evict it after _TERMINAL_TTL_SECONDS.
     task.add_done_callback(lambda _t, sid=sub_session_id: _mark_finished(sid))
@@ -94,7 +98,7 @@ def register_sub_session(
     return sub_session_id
 
 
-def get_sub_session(sub_session_id: str, user_id: str) -> dict[str, Any] | None:
+def get_sub_session(sub_session_id: str, user_id: str) -> SubSessionEntry | None:
     """Return the entry for *sub_session_id* if it belongs to *user_id*.
 
     Returns ``None`` when the entry doesn't exist or belongs to someone else
@@ -103,12 +107,12 @@ def get_sub_session(sub_session_id: str, user_id: str) -> dict[str, Any] | None:
     entry = _sub_sessions.get(sub_session_id)
     if entry is None:
         return None
-    if entry["user_id"] != user_id:
+    if entry.user_id != user_id:
         logger.warning(
             "User %s attempted to access sub-session %s owned by %s",
             user_id,
             sub_session_id,
-            entry["user_id"],
+            entry.user_id,
         )
         return None
     return entry
@@ -124,9 +128,8 @@ def cancel_sub_session(sub_session_id: str, user_id: str) -> bool:
     entry = get_sub_session(sub_session_id, user_id)
     if entry is None:
         return False
-    task: asyncio.Task = entry["task"]
-    if not task.done():
-        task.cancel()
+    if not entry.task.done():
+        entry.task.cancel()
     unregister_sub_session(sub_session_id)
     logger.info("Cancelled sub-session %s by user %s", sub_session_id, user_id)
     return True
@@ -151,25 +154,23 @@ def prune_finished(now: float | None = None) -> int:
     terminal_stale: list[str] = []
     running_stale: list[str] = []
     for sid, entry in _sub_sessions.items():
-        if entry["finished_at"] is not None:
-            if now - entry["finished_at"] >= _TERMINAL_TTL_SECONDS:
+        if entry.finished_at is not None:
+            if now - entry.finished_at >= _TERMINAL_TTL_SECONDS:
                 terminal_stale.append(sid)
-        elif now - entry["started_at"] >= _RUNNING_MAX_AGE_SECONDS:
+        elif now - entry.started_at >= _RUNNING_MAX_AGE_SECONDS:
             running_stale.append(sid)
 
     for sid in running_stale:
         entry = _sub_sessions.get(sid)
         if entry is None:
             continue
-        task: asyncio.Task = entry["task"]
-        if not task.done():
-            task.cancel()
+        if not entry.task.done():
+            entry.task.cancel()
         _sub_sessions.pop(sid, None)
         logger.warning(
-            "Cancelled abandoned sub-session %s (tool=%s, age=%.0fs)",
+            "Cancelled abandoned sub-session %s (age=%.0fs)",
             sid,
-            entry["tool_name"] if "tool_name" in entry else "sub-session",
-            now - entry["started_at"],
+            now - entry.started_at,
         )
 
     for sid in terminal_stale:
@@ -188,8 +189,8 @@ def prune_finished(now: float | None = None) -> int:
 def _mark_finished(sub_session_id: str) -> None:
     """Record the time a task completed so prune_finished can evict it later."""
     entry = _sub_sessions.get(sub_session_id)
-    if entry is not None and entry["finished_at"] is None:
-        entry["finished_at"] = time.monotonic()
+    if entry is not None and entry.finished_at is None:
+        entry.finished_at = time.monotonic()
 
 
 async def notify_shutdown_and_cancel_all(reason: str) -> int:
@@ -208,15 +209,10 @@ async def notify_shutdown_and_cancel_all(reason: str) -> int:
     Returns the number of running sub-sessions that were notified. Safe to
     call when the registry is empty (returns 0).
     """
-    # Delayed imports to avoid import cycles (model → service → tools → registry).
-    from backend.copilot.constants import (  # noqa: PLC0415
-        COPILOT_RETRYABLE_ERROR_PREFIX,
-    )
-    from backend.copilot.model import (  # noqa: PLC0415
-        ChatMessage,
-        get_chat_session,
-        upsert_chat_session,
-    )
+    # Delayed imports: model imports sdk.service, which imports tools, which
+    # imports this module — a module-load cycle. Importing here breaks it.
+    from backend.copilot.constants import COPILOT_RETRYABLE_ERROR_PREFIX
+    from backend.copilot.model import ChatMessage, get_chat_session, upsert_chat_session
 
     # Sub-AutoPilot tasks are pinned to the worker-loop that spawned them.
     # If notify_shutdown is called per-worker (copilot_executor cleanup),
@@ -224,15 +220,15 @@ async def notify_shutdown_and_cancel_all(reason: str) -> int:
     # tasks from a different worker's loop (which would race that worker's
     # own cleanup).
     try:
-        current_loop = asyncio.get_running_loop()
-    except RuntimeError:  # pragma: no cover — must be called from async ctx
+        current_loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
         current_loop = None
 
-    running: list[tuple[str, dict[str, Any]]] = []
+    running: list[tuple[str, SubSessionEntry]] = []
     for sid, entry in _sub_sessions.items():
-        if entry["finished_at"] is not None or entry["task"].done():
+        if entry.finished_at is not None or entry.task.done():
             continue
-        if current_loop is not None and entry["task"].get_loop() is not current_loop:
+        if current_loop is not None and entry.task.get_loop() is not current_loop:
             continue
         running.append((sid, entry))
     if not running:
@@ -252,15 +248,10 @@ async def notify_shutdown_and_cancel_all(reason: str) -> int:
 
     notified = 0
     for sid, entry in running:
-        task: asyncio.Task = entry["task"]
-        if not task.done():
-            task.cancel()
-        inner_session_id = entry.get("inner_session_id")
-        if not inner_session_id:
-            _sub_sessions.pop(sid, None)
-            continue
+        if not entry.task.done():
+            entry.task.cancel()
         try:
-            inner = await get_chat_session(inner_session_id)
+            inner = await get_chat_session(entry.inner_session_id)
             if inner is None:
                 continue
             inner.messages.append(
@@ -271,11 +262,11 @@ async def notify_shutdown_and_cancel_all(reason: str) -> int:
             )
             await upsert_chat_session(inner)
             notified += 1
-        except Exception as exc:  # pragma: no cover — best-effort on shutdown
+        except Exception as exc:  # best-effort on shutdown
             logger.error(
                 "notify_shutdown: failed to mark sub %s (inner=%s): %s",
                 sid,
-                inner_session_id,
+                entry.inner_session_id,
                 exc,
             )
         finally:

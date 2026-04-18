@@ -252,9 +252,9 @@ async def test_tool_navigate_returns_response(_close_tool_session):
     resp = await tool._execute(
         user_id=None, session=_TEST_SESSION, url="https://example.com"
     )
-    assert isinstance(
-        resp, BrowserNavigateResponse
-    ), f"Expected BrowserNavigateResponse, got: {resp}"
+    assert isinstance(resp, BrowserNavigateResponse), (
+        f"Expected BrowserNavigateResponse, got: {resp}"
+    )
     assert urlparse(resp.url).netloc == "example.com"
     assert resp.title, "Expected non-empty page title"
     assert resp.snapshot, "Expected non-empty accessibility snapshot"
@@ -275,9 +275,9 @@ async def test_tool_navigate_blocked_url(ssrf_url: str, _close_tool_session):
     """BrowserNavigateTool._execute rejects internal/private URLs (SSRF guard)."""
     tool = BrowserNavigateTool()
     resp = await tool._execute(user_id=None, session=_TEST_SESSION, url=ssrf_url)
-    assert isinstance(
-        resp, ErrorResponse
-    ), f"Expected ErrorResponse for SSRF URL {ssrf_url!r}, got: {resp}"
+    assert isinstance(resp, ErrorResponse), (
+        f"Expected ErrorResponse for SSRF URL {ssrf_url!r}, got: {resp}"
+    )
     assert resp.error == "blocked_url"
 
 
@@ -304,9 +304,9 @@ async def test_tool_act_scroll(_close_tool_session):
     resp = await act._execute(
         user_id=None, session=_TEST_SESSION, action="scroll", direction="down"
     )
-    assert isinstance(
-        resp, BrowserActResponse
-    ), f"Expected BrowserActResponse, got: {resp}"
+    assert isinstance(resp, BrowserActResponse), (
+        f"Expected BrowserActResponse, got: {resp}"
+    )
     assert resp.action == "scroll"
 
 

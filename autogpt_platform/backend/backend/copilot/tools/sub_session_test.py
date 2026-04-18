@@ -49,7 +49,7 @@ class TestRegistry:
         assert sid.startswith("sub-")
         entry = get_sub_session(sid, "alice")
         assert entry is not None
-        assert entry["user_id"] == "alice"
+        assert entry.user_id == "alice"
 
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -93,7 +93,7 @@ class TestRegistry:
         assert get_sub_session(sid, "alice") is not None
 
         # Simulate the sub having run for 7h with no polls.
-        _sub_sessions[sid]["started_at"] = _time.monotonic() - (7 * 60 * 60)
+        _sub_sessions[sid].started_at = _time.monotonic() - (7 * 60 * 60)
         assert prune_finished() == 1
         assert get_sub_session(sid, "alice") is None
 
@@ -120,7 +120,7 @@ class TestRegistry:
 
         from backend.copilot.sdk.sub_session_registry import _sub_sessions
 
-        _sub_sessions[sid]["finished_at"] = time.monotonic() - (60 * 60)
+        _sub_sessions[sid].finished_at = time.monotonic() - (60 * 60)
         assert prune_finished() == 1
         assert get_sub_session(sid, "alice") is None
 
@@ -387,11 +387,11 @@ class TestRunSubSession:
         # Sub-session survives — the task is registered and still going.
         entry = get_sub_session(r.sub_session_id, "alice")
         assert entry is not None
-        assert not entry["task"].done()
+        assert not entry.task.done()
 
-        entry["task"].cancel()
+        entry.task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
-            await entry["task"]
+            await entry.task
 
     @pytest.mark.asyncio
     async def test_clamps_wait_above_maximum(self, monkeypatch):
@@ -430,9 +430,9 @@ class TestRunSubSession:
 
         entry = get_sub_session(r.sub_session_id, "alice")
         if entry is not None:
-            entry["task"].cancel()
+            entry.task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
-                await entry["task"]
+                await entry.task
 
 
 # ---------------------------------------------------------------------------

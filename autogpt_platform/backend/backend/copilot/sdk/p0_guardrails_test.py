@@ -931,9 +931,9 @@ class TestLastResetAttemptGuard:
             transient_retries = 0  # must NOT execute
             _last_reset_attempt = attempt
 
-        assert (
-            transient_retries == 1
-        ), "transient_retries must not be reset when attempt has not changed"
+        assert transient_retries == 1, (
+            "transient_retries must not be reset when attempt has not changed"
+        )
 
     def test_counter_resets_on_new_attempt(self):
         """When attempt advances to 1, transient_retries must reset to 0."""
@@ -957,9 +957,9 @@ class TestLastResetAttemptGuard:
             transient_retries = 0
             _last_reset_attempt = attempt
 
-        assert (
-            transient_retries == 0
-        ), "transient_retries must reset to 0 when attempt advances"
+        assert transient_retries == 0, (
+            "transient_retries must reset to 0 when attempt advances"
+        )
         assert _last_reset_attempt == 1
 
 
@@ -1295,9 +1295,9 @@ class TestGenericExceptionTransientRetry:
                 events_yielded, transient_retries, max_transient_retries
             )
 
-        assert (
-            backoff is None
-        ), "retry must not be attempted when events have already been sent to the client"
+        assert backoff is None, (
+            "retry must not be attempted when events have already been sent to the client"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1472,9 +1472,9 @@ class TestSessionMessagesToTranscript:
 
         assert entries[0]["parentUuid"] == ""
         for i in range(1, len(entries)):
-            assert (
-                entries[i]["parentUuid"] == entries[i - 1]["uuid"]
-            ), f"Entry {i} parentUuid mismatch"
+            assert entries[i]["parentUuid"] == entries[i - 1]["uuid"], (
+                f"Entry {i} parentUuid mismatch"
+            )
 
     def test_invalid_tool_call_arguments_use_empty_input(self):
         """Malformed JSON in tool_call arguments must not raise — use empty dict."""

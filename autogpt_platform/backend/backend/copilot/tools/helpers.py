@@ -147,7 +147,9 @@ async def _charge_block_credits(
                 }
             },
         )
-        raise
+        # Intentionally swallow. Block already executed with possible side
+        # effects; the caller must still return BlockOutputResponse. The
+        # BILLING_LEAK log above is the signal for reconciliation.
 
 
 async def execute_block(
@@ -275,19 +277,19 @@ async def execute_block(
                     session_id=session_id,
                 )
 
-        # Execute the block and collect outputs. If the caller is cancelled
-        # mid-generator (e.g. execute_block_with_cap's asyncio.wait_for fires),
-        # the generator is torn down but the block may already have made side-
-        # effectful API calls. The finally below runs the billing settle even
-        # on CancelledError so we don't leak cost.
+        # Execute the block under the shared MCP wait cap. A block is
+        # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
+        # MCP handler would block the stream close to the idle timeout.
+        # wait_for cancels the generator on timeout, but the finally below
+        # still settles billing via asyncio.shield — external side effects
+        # may already have landed and the user should be charged for them.
         outputs: dict[str, list[Any]] = defaultdict(list)
         charged = False
         try:
-            async for output_name, output_data in block.execute(
-                input_data,
-                **exec_kwargs,
-            ):
-                outputs[output_name].append(output_data)
+            await asyncio.wait_for(
+                _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                timeout=MAX_TOOL_WAIT_SECONDS,
+            )
 
             # Normal (non-cancelled) path: charge before returning.
             if has_cost:
@@ -312,36 +314,54 @@ async def execute_block(
                 success=True,
                 session_id=session_id,
             )
+        except asyncio.TimeoutError:
+            # Structured record of tool-call timeouts (SECRT-2247 part 3).
+            # Grep prod logs for `copilot_tool_timeout` to find tools that
+            # keep hitting the cap — candidates for prompt tuning or
+            # escalation to the async start+poll pattern.
+            logger.warning(
+                "copilot_tool_timeout tool=run_block block=%s block_id=%s "
+                "input_keys=%s user=%s session=%s cap_s=%d",
+                block.name,
+                block_id,
+                sorted(input_data.keys()),
+                user_id,
+                session_id,
+                MAX_TOOL_WAIT_SECONDS,
+            )
+            return ErrorResponse(
+                message=(
+                    f"Block '{block.name}' exceeded the "
+                    f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and was "
+                    "cancelled. Long-running work should go through run_agent "
+                    "(graph executions) or run_sub_session (sub-AutoPilot "
+                    "tasks) — those use async start+poll so nothing blocks "
+                    "the chat stream."
+                ),
+                session_id=session_id,
+            )
         finally:
-            # SECRT-2247 / sentry r3105079148: execute_block_with_cap wraps us
-            # in asyncio.wait_for, which raises CancelledError on timeout.
-            # Normal except Exception blocks don't catch CancelledError — so
-            # without this finally, a cancelled run would skip credit charging
-            # entirely while the block's external side effects still landed.
-            # Charge once, only when we collected at least one output (side
-            # effects likely happened) AND the normal charge didn't already
-            # run. asyncio.shield protects the spend call from the same
-            # cancellation that's tearing us down.
+            # Sentry r3105079148: asyncio.wait_for raises CancelledError into
+            # the generator. Normal `except Exception` doesn't catch it, so
+            # without this finally a cancelled block would skip credit
+            # charging entirely while external side effects still landed.
+            # Charge only when we collected at least one output AND the
+            # normal path didn't already charge. shield protects the spend
+            # call from the same cancellation that's tearing us down.
             if has_cost and outputs and not charged:
-                try:
-                    await asyncio.shield(
-                        _charge_block_credits(
-                            _credit_db,
-                            user_id=user_id,
-                            block_name=block.name,
-                            block_id=block_id,
-                            node_exec_id=node_exec_id,
-                            cost=cost,
-                            cost_filter=cost_filter,
-                            synthetic_graph_id=synthetic_graph_id,
-                            synthetic_node_id=synthetic_node_id,
-                        )
+                await asyncio.shield(
+                    _charge_block_credits(
+                        _credit_db,
+                        user_id=user_id,
+                        block_name=block.name,
+                        block_id=block_id,
+                        node_exec_id=node_exec_id,
+                        cost=cost,
+                        cost_filter=cost_filter,
+                        synthetic_graph_id=synthetic_graph_id,
+                        synthetic_node_id=synthetic_node_id,
                     )
-                except Exception:
-                    # _charge_block_credits already logs BILLING_LEAK on its
-                    # own error path — swallowing here keeps the original
-                    # cancellation propagating.
-                    pass
+                )
 
     except BlockError as e:
         logger.warning("Block execution failed: %s", e)
@@ -359,49 +379,21 @@ async def execute_block(
         )
 
 
-async def execute_block_with_cap(**kwargs: Any) -> ToolResponseBase:
-    """Run ``execute_block`` under the shared MCP wait cap.
+async def _collect_block_outputs(
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    exec_kwargs: dict[str, Any],
+    outputs: dict[str, list[Any]],
+) -> None:
+    """Drive ``block.execute`` and append each emitted pair to *outputs*.
 
-    A single block is expected to finish within ``MAX_TOOL_WAIT_SECONDS``. If
-    it doesn't, the MCP handler would block the stream close to the idle
-    timeout; so we cancel the block and redirect the caller at the async
-    start+poll tools (``run_agent`` / ``run_sub_session``) that are designed
-    for long-running work.
+    Extracted so ``asyncio.wait_for`` can wrap exactly the generator-
+    consumption step; callers read ``outputs`` afterwards (including from
+    the cancellation path) to decide whether the block produced enough
+    side-effects to warrant billing.
     """
-    try:
-        return await asyncio.wait_for(
-            execute_block(**kwargs),
-            timeout=MAX_TOOL_WAIT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        block = kwargs.get("block")
-        block_name = getattr(block, "name", "block")
-        block_id = kwargs.get("block_id") or getattr(block, "id", "unknown")
-        # Structured record of tool-call timeouts (SECRT-2247 part 3). Lets us
-        # grep prod logs for `copilot_tool_timeout` to find tools that keep
-        # hitting the cap — candidates for either prompt tuning (so the LLM
-        # stops calling them with heavy payloads) or escalation to the async
-        # start+poll pattern (run_agent / run_sub_session).
-        logger.warning(
-            "copilot_tool_timeout tool=run_block block=%s block_id=%s "
-            "input_keys=%s user=%s session=%s cap_s=%d",
-            block_name,
-            block_id,
-            sorted((kwargs.get("input_data") or {}).keys()),
-            kwargs.get("user_id"),
-            kwargs.get("session_id"),
-            MAX_TOOL_WAIT_SECONDS,
-        )
-        return ErrorResponse(
-            message=(
-                f"Block '{block_name}' exceeded the "
-                f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and was cancelled. "
-                "Long-running work should go through run_agent (graph "
-                "executions) or run_sub_session (sub-AutoPilot tasks) — those "
-                "use async start+poll so nothing blocks the chat stream."
-            ),
-            session_id=kwargs.get("session_id"),
-        )
+    async for output_name, output_data in block.execute(input_data, **exec_kwargs):
+        outputs[output_name].append(output_data)
 
 
 async def resolve_block_credentials(
