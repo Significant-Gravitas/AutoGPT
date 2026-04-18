@@ -626,7 +626,7 @@ export function useCopilotPage() {
           return [
             ...prev,
             {
-              id: `promoted-midturn-${Date.now()}`,
+              id: `promoted-midturn-${crypto.randomUUID()}`,
               role: "user" as const,
               parts: [
                 {
