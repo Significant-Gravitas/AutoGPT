@@ -195,15 +195,21 @@ describe("useCopilotPendingChips", () => {
       data: { count: 1, messages: ["local-chip"] },
     });
 
-    const { result, rerender } = renderHook(
-      ({ status }: { status: "ready" | "submitted" | "streaming" }) =>
+    type StatusProps = {
+      status: "ready" | "submitted" | "streaming";
+    };
+    const { result, rerender } = renderHook<
+      ReturnType<typeof useCopilotPendingChips>,
+      StatusProps
+    >(
+      ({ status }) =>
         useCopilotPendingChips({
           sessionId: "s",
           status,
           messages: [],
           setMessages,
         }),
-      { initialProps: { status: "ready" as const } },
+      { initialProps: { status: "ready" } },
     );
 
     await waitFor(() => {
@@ -232,15 +238,21 @@ describe("useCopilotPendingChips", () => {
       data: { count: 1, messages: ["keep-me"] },
     });
 
-    const { result, rerender } = renderHook(
-      ({ status }: { status: "ready" | "submitted" | "streaming" }) =>
+    type StatusProps = {
+      status: "ready" | "submitted" | "streaming";
+    };
+    const { result, rerender } = renderHook<
+      ReturnType<typeof useCopilotPendingChips>,
+      StatusProps
+    >(
+      ({ status }) =>
         useCopilotPendingChips({
           sessionId: "s",
           status,
           messages: [],
           setMessages,
         }),
-      { initialProps: { status: "ready" as const } },
+      { initialProps: { status: "ready" } },
     );
 
     await waitFor(() => {
