@@ -85,10 +85,12 @@ describe("buildSeedPrompt", () => {
     const longSummary = "x".repeat(MAX_SEED_SUMMARY_CHARS + 100);
     const result = buildSeedPrompt(longSummary, "hello");
     expect(result).toContain("Graph context truncated");
-    // Summary portion is capped
-    expect(result.indexOf("x".repeat(MAX_SEED_SUMMARY_CHARS))).toBeGreaterThan(
-      -1,
-    );
+    // Slice limit is MAX_SEED_SUMMARY_CHARS minus the notice reservation
+    // (~100 chars) so the notice fits inside the summary budget without
+    // clipping the user message. The retained summary must be close to — but
+    // slightly below — MAX_SEED_SUMMARY_CHARS.
+    const xRun = "x".repeat(MAX_SEED_SUMMARY_CHARS - 200);
+    expect(result.indexOf(xRun)).toBeGreaterThan(-1);
   });
 
   it("does not truncate summary exactly at MAX_SEED_SUMMARY_CHARS", () => {
@@ -128,6 +130,20 @@ describe("buildSeedPrompt", () => {
     expect(result.length).toBeLessThan(MAX_BACKEND_MESSAGE_CHARS);
     expect(result).toContain("tiny graph");
     expect(result).toContain("short question");
+  });
+
+  it("does not silently truncate the user message when graph summary is capped", () => {
+    // Craft inputs so the summary-budget path is exercised AND the final output
+    // lands just under MAX_BACKEND_MESSAGE_CHARS. If the truncation notice
+    // isn't subtracted from the slice limit, the safety `.slice()` at the end
+    // trims the tail of `userMsg`, which must never happen.
+    const hugeSummary = "s".repeat(MAX_BACKEND_MESSAGE_CHARS);
+    const userMsg = "USERMSG_TAIL_MARKER";
+    const result = buildSeedPrompt(hugeSummary, userMsg);
+    expect(result.length).toBeLessThanOrEqual(MAX_BACKEND_MESSAGE_CHARS);
+    // The user message (including its tail) must appear intact.
+    expect(result).toContain(userMsg);
+    expect(result).toContain("Graph context truncated");
   });
 });
 
@@ -183,7 +199,9 @@ describe("serializeGraphForChat – XML injection prevention", () => {
   });
 });
 
-function makeNode(overrides: Partial<CustomNode["data"]> = {}): CustomNode {
+function makeAgentNode(
+  overrides: Partial<CustomNode["data"]> = {},
+): CustomNode {
   return {
     id: "node-1",
     data: {
@@ -209,26 +227,26 @@ describe("getNodeDisplayName", () => {
   });
 
   it("returns customized_name when set", () => {
-    const node = makeNode({
+    const node = makeAgentNode({
       metadata: { customized_name: "My Agent" } as any,
     });
     expect(getNodeDisplayName(node, "fallback")).toBe("My Agent");
   });
 
   it("returns agent_name with version via getNodeDisplayTitle delegation", () => {
-    const node = makeNode({
+    const node = makeAgentNode({
       hardcodedValues: { agent_name: "Researcher", graph_version: 3 },
     });
     expect(getNodeDisplayName(node, "fallback")).toBe("Researcher v3");
   });
 
   it("returns block title when no custom or agent name", () => {
-    const node = makeNode({ title: "SomeBlock" });
+    const node = makeAgentNode({ title: "SomeBlock" });
     expect(getNodeDisplayName(node, "fallback")).toBe("SomeBlock");
   });
 
   it("returns fallback when title is empty", () => {
-    const node = makeNode({ title: "" });
+    const node = makeAgentNode({ title: "" });
     expect(getNodeDisplayName(node, "fallback")).toBe("fallback");
   });
 });

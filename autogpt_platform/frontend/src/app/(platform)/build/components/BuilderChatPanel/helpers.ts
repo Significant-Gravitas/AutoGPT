@@ -165,12 +165,24 @@ export function buildSeedPrompt(summary: string, userMessage: string): string {
     // No room for graph context — omit it so the user message is preserved.
     cappedSummary = "";
   } else {
-    const limit = Math.min(availableForSummary, MAX_SEED_SUMMARY_CHARS);
-    cappedSummary =
-      summary.length > limit
-        ? summary.slice(0, limit) +
-          `\n\n(Graph context truncated at ${limit} characters — only a partial view of the graph is shown.)`
-        : summary;
+    const hardCap = Math.min(availableForSummary, MAX_SEED_SUMMARY_CHARS);
+    if (summary.length <= hardCap) {
+      cappedSummary = summary;
+    } else {
+      // The truncation notice is part of the summary we emit, so its length
+      // must be subtracted from the slice limit — otherwise the combined
+      // (summary + notice) overflows `hardCap`, the safety `.slice()` below
+      // trims the tail, and the user's message is silently cut off.
+      const makeNotice = (n: number) =>
+        `\n\n(Graph context truncated at ${n} characters — only a partial view of the graph is shown.)`;
+      // Two-step: estimate the notice using hardCap, then compute the real slice
+      // limit as hardCap minus that notice's length. The notice length changes by
+      // at most a digit when `limit` shrinks, so one re-evaluation is sufficient.
+      const estimatedNotice = makeNotice(hardCap);
+      const limit = Math.max(0, hardCap - estimatedNotice.length);
+      const notice = makeNotice(limit);
+      cappedSummary = summary.slice(0, limit) + notice;
+    }
   }
 
   // Safety clamp: if fixedOverhead alone exceeds the limit (should not happen
