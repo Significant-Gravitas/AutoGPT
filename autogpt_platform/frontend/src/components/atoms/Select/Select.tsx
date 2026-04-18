@@ -37,6 +37,7 @@ export interface SelectFieldProps {
   size?: "small" | "medium";
   renderItem?: (option: SelectOption) => React.ReactNode;
   wrapperClassName?: string;
+  "aria-describedby"?: string;
 }
 
 export function Select({
@@ -54,6 +55,7 @@ export function Select({
   size = "medium",
   renderItem,
   wrapperClassName,
+  "aria-describedby": ariaDescribedBy,
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
@@ -83,6 +85,7 @@ export function Select({
       <SelectTrigger
         className={triggerStyles}
         {...(hideLabel ? { "aria-label": label } : {})}
+        aria-describedby={ariaDescribedBy}
         id={id}
       >
         <SelectValue placeholder={placeholder || label} />

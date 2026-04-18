@@ -103,6 +103,7 @@ export default function TextWidget(props: WidgetProps) {
         placeholder={"Write your note here..."}
         required={props.required}
         disabled={props.disabled}
+        aria-describedby={`${props.id}-error`}
       />
     );
   }
@@ -123,6 +124,7 @@ export default function TextWidget(props: WidgetProps) {
           required={props.required}
           disabled={props.disabled}
           className={showExpandButton ? "pr-8" : ""}
+          aria-describedby={`${props.id}-error`}
         />
         {showExpandButton && (
           <Tooltip delayDuration={0}>

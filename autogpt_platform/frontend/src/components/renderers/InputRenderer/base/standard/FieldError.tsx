@@ -4,9 +4,11 @@ import { Text } from "@/components/atoms/Text/Text";
 export const FieldError = ({
   nodeId,
   fieldId,
+  id,
 }: {
   nodeId: string;
   fieldId: string;
+  id?: string;
 }) => {
   const nodeErrors = useNodeStore((state) => {
     const node = state.nodes.find((n) => n.id === nodeId);
@@ -16,7 +18,7 @@ export const FieldError = ({
     nodeErrors?.[fieldId] || nodeErrors?.[fieldId.replace(/_%_/g, ".")] || null;
 
   return (
-    <div>
+    <div id={id} aria-live="polite" aria-atomic="true">
       {fieldError && (
         <Text variant="small" className="mt-1 pl-4 !text-red-600">
           {fieldError}

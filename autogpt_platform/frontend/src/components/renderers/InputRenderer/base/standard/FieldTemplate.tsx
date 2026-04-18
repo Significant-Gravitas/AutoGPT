@@ -138,7 +138,11 @@ export default function FieldTemplate(props: FieldTemplateProps) {
         )}
         {shouldShowChildren && children}
 
-        <FieldError nodeId={nodeId} fieldId={cleanUpHandleId(id)} />
+        <FieldError
+          nodeId={nodeId}
+          fieldId={cleanUpHandleId(id)}
+          id={`${id}-error`}
+        />
       </div>
     </WrapIfAdditionalTemplate>
   );

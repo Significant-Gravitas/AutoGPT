@@ -11,6 +11,7 @@ export function CheckboxWidget(props: WidgetProps) {
       onCheckedChange={(checked) => onChange(checked)}
       disabled={disabled || readonly}
       autoFocus={autofocus}
+      aria-describedby={`${id}-error`}
     />
   );
 }

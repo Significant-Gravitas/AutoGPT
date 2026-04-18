@@ -41,6 +41,7 @@ export interface DateInputProps {
   error?: string;
   id?: string;
   size?: "default" | "small";
+  "aria-describedby"?: string;
 }
 
 export const DateInput = ({
@@ -56,6 +57,7 @@ export const DateInput = ({
   error,
   id,
   size = "default",
+  "aria-describedby": ariaDescribedBy,
 }: DateInputProps) => {
   const selected = React.useMemo(() => parseISODateString(value), [value]);
   const [open, setOpen] = React.useState(false);
@@ -117,6 +119,7 @@ export const DateInput = ({
             autoFocus={autoFocus}
             id={id}
             {...(hideLabel && label ? { "aria-label": label } : {})}
+            aria-describedby={ariaDescribedBy}
           >
             <CalendarIcon
               className={cn("mr-2", size === "default" ? "h-4 w-4" : "h-3 w-3")}

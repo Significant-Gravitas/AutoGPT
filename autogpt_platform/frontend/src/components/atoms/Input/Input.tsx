@@ -114,6 +114,7 @@ export function Input({
           }
           rows={props.rows || 3}
           {...(hideLabel ? { "aria-label": label } : {})}
+          aria-describedby={props["aria-describedby"]}
           id={props.id}
           disabled={props.disabled}
           value={props.value}
@@ -150,6 +151,7 @@ export function Input({
           decimalSeparator="."
           allowNegativeValue
           {...(hideLabel ? { "aria-label": label } : {})}
+          aria-describedby={props["aria-describedby"]}
           // Pass through common handlers
           onBlur={props.onBlur as any}
           onFocus={props.onFocus as any}

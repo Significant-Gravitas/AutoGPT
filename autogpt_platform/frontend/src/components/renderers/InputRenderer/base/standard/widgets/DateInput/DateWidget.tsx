@@ -29,6 +29,7 @@ export const DateWidget = (props: WidgetProps) => {
       disabled={disabled}
       readonly={readonly}
       autoFocus={autofocus}
+      aria-describedby={`${id}-error`}
     />
   );
 };

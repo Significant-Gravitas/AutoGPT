@@ -15,6 +15,7 @@ interface TimeInputProps {
   hint?: ReactNode;
   size?: "small" | "medium";
   wrapperClassName?: string;
+  "aria-describedby"?: string;
 }
 
 export const TimeInput: React.FC<TimeInputProps> = ({
@@ -30,6 +31,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
   hint,
   size = "medium",
   wrapperClassName,
+  "aria-describedby": ariaDescribedBy,
 }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onChange?.(e.target.value);
@@ -72,6 +74,7 @@ export const TimeInput: React.FC<TimeInputProps> = ({
         disabled={disabled}
         placeholder={placeholder || label}
         {...(hideLabel ? { "aria-label": label } : {})}
+        aria-describedby={ariaDescribedBy}
         id={id}
       />
     </div>

@@ -27,6 +27,7 @@ export const SelectWidget = (props: WidgetProps) => {
   const enumOptions = options.enumOptions || [];
   const type = mapJsonSchemaTypeToInputType(props.schema);
   const { size = "small" } = formContext || {};
+  const errorId = `${id}-error`;
 
   // Determine select size based on context
   const selectSize = size === "large" ? "medium" : "small";
@@ -39,7 +40,7 @@ export const SelectWidget = (props: WidgetProps) => {
           onValuesChange={onChange}
           className="w-full"
         >
-          <MultiSelectorTrigger>
+          <MultiSelectorTrigger aria-describedby={errorId}>
             <MultiSelectorInput placeholder="Select options..." />
           </MultiSelectorTrigger>
           <MultiSelectorContent>
@@ -71,6 +72,7 @@ export const SelectWidget = (props: WidgetProps) => {
         }
         wrapperClassName="!mb-0 "
         className={className}
+        aria-describedby={errorId}
       />
     );
   };
