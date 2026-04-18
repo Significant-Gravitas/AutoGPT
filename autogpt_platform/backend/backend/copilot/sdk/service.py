@@ -64,6 +64,7 @@ from ..model import (
 )
 from ..pending_message_helpers import (
     drain_pending_safe,
+    pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
@@ -3140,13 +3141,14 @@ async def stream_chat_completion_sdk(
         # persist_session_safe (routes.py has already saved the user
         # message at sequence N before the executor runs, so an
         # incremental upsert would write a second copy at N+1).
-        pending_texts = await drain_pending_safe(session_id, log_prefix)
-        if pending_texts:
+        pending_messages = await drain_pending_safe(session_id, log_prefix)
+        if pending_messages:
             logger.info(
                 "%s Draining %d pending message(s) at turn start",
                 log_prefix,
-                len(pending_texts),
+                len(pending_messages),
             )
+            pending_texts = pending_texts_from(pending_messages)
             # Chronological order: pending first (older, typed during the
             # previous turn), current second (newer, just typed to start
             # this turn).  Matches what the user saw in the chat input.
@@ -3937,25 +3939,27 @@ async def stream_chat_completion_sdk(
     # preserved in Redis for the next manual turn.
     # -------------------------------------------------------------------------
     if not ended_with_stream_error:
-        _auto_pending_texts = await drain_pending_safe(session_id, log_prefix)
-        if _auto_pending_texts:
+        _auto_pending_messages = await drain_pending_safe(session_id, log_prefix)
+        if _auto_pending_messages:
             logger.info(
                 "%s Auto-continuing with %d pending message(s) queued after turn start",
                 log_prefix,
-                len(_auto_pending_texts),
+                len(_auto_pending_messages),
             )
             # Combine all pending messages into one turn so they are processed
             # together rather than sequentially. The recursive call may itself
             # drain further messages queued while this turn runs.
-            _auto_combined = "\n\n".join(_auto_pending_texts)
+            _auto_combined = "\n\n".join(pending_texts_from(_auto_pending_messages))
             # Race guard: drain_pending_safe has already LPOPed the messages
             # from Redis. If another request acquires the session lock in the
             # window between our lock.release() above and the recursive call's
             # try_acquire() below, that recursive call exits with
-            # "stream_already_active" and the drained texts would be
+            # "stream_already_active" and the drained messages would be
             # permanently lost. Detect that sentinel on the first yielded
             # event and push the drained messages back to Redis so the
-            # competing stream's turn-start drain picks them up.
+            # competing stream's turn-start drain picks them up — preserving
+            # the original ``file_ids`` / ``context`` metadata (sentry
+            # r3105523410 — text-only requeue silently stripped it).
             _auto_requeued = False
             _first_auto_event = True
 
@@ -3964,13 +3968,11 @@ async def stream_chat_completion_sdk(
                     "%s Auto-continue %s; re-queueing %d drained message(s)",
                     log_prefix,
                     reason,
-                    len(_auto_pending_texts),
+                    len(_auto_pending_messages),
                 )
-                for _text in _auto_pending_texts:
+                for _pm in _auto_pending_messages:
                     try:
-                        await push_pending_message(
-                            session_id, PendingMessage(content=_text)
-                        )
+                        await push_pending_message(session_id, _pm)
                     except Exception:
                         logger.exception(
                             "%s Failed to re-queue auto-continue message",

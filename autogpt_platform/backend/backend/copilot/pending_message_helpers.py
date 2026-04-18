@@ -167,14 +167,20 @@ async def check_pending_call_rate(user_id: str) -> int:
         return 0
 
 
-async def drain_pending_safe(session_id: str, log_prefix: str = "") -> list[str]:
-    """Drain the pending buffer and return formatted content strings.
+async def drain_pending_safe(
+    session_id: str, log_prefix: str = ""
+) -> list[PendingMessage]:
+    """Drain the pending buffer and return the full ``PendingMessage`` objects.
 
-    Combines drain + format into one call.  Returns ``[]`` on any error
-    so callers can always treat the result as a plain list.
+    Returns ``[]`` on any Redis error so callers can always treat the
+    result as a plain list.  Callers that only need the rendered string
+    (turn-start injection, auto-continue combined prompt) wrap this with
+    :func:`pending_texts_from` — we return the structured objects so the
+    re-queue rollback path can preserve ``file_ids`` / ``context`` that
+    would otherwise be stripped by a text-only conversion.
     """
     try:
-        pending = await drain_pending_messages(session_id)
+        return await drain_pending_messages(session_id)
     except Exception:
         logger.warning(
             "%s drain_pending_messages failed, skipping",
@@ -182,6 +188,15 @@ async def drain_pending_safe(session_id: str, log_prefix: str = "") -> list[str]
             exc_info=True,
         )
         return []
+
+
+def pending_texts_from(pending: list[PendingMessage]) -> list[str]:
+    """Render a list of ``PendingMessage`` objects into plain text strings.
+
+    Shared helper for the two callers that need the rendered form:
+    turn-start injection (bundles the pending block into the user prompt)
+    and the auto-continue combined-message path.
+    """
     return [format_pending_as_user_message(pm)["content"] for pm in pending]
 
 
@@ -276,7 +291,23 @@ async def persist_pending_as_user_rows(
         session.messages.append(ChatMessage(role="user", content=content))
         transcript_builder.append_user(content=content)
 
-    session = await persist_session_safe(session, log_prefix)
+    # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
+    # when ``upsert_chat_session`` patches a concurrently-updated title).
+    # Do NOT reassign the caller's reference — the caller already pushed the
+    # rows into its own ``session.messages`` above, and rollback below MUST
+    # delete from that same list.  Inspect the returned object only to learn
+    # whether sequences were back-filled; if so, copy them onto the caller's
+    # objects so the session stays internally consistent for downstream
+    # ``append_and_save_message`` calls.
+    persisted = await persist_session_safe(session, log_prefix)
+    persisted_tail = persisted.messages[session_anchor:]
+    if len(persisted_tail) == len(pending) and all(
+        m.sequence is not None for m in persisted_tail
+    ):
+        for caller_msg, persisted_msg in zip(
+            session.messages[session_anchor:], persisted_tail
+        ):
+            caller_msg.sequence = persisted_msg.sequence
     newly_appended = session.messages[session_anchor:]
 
     if any(m.sequence is None for m in newly_appended):

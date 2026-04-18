@@ -37,6 +37,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.pending_message_helpers import (
     drain_pending_safe,
+    pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
@@ -971,13 +972,14 @@ async def stream_chat_completion_baseline(
     # inserting a new row, because routes.py has already saved the user message
     # before the executor picks up the turn (using insert_pending_before_last +
     # persist_session_safe would add a duplicate row at sequence N+1).
-    drained_at_start_content = await drain_pending_safe(session_id, "[Baseline]")
-    if drained_at_start_content:
+    drained_at_start_pending = await drain_pending_safe(session_id, "[Baseline]")
+    if drained_at_start_pending:
         logger.info(
             "[Baseline] Draining %d pending message(s) at turn start for session %s",
-            len(drained_at_start_content),
+            len(drained_at_start_pending),
             session_id,
         )
+        drained_at_start_content = pending_texts_from(drained_at_start_pending)
         # Combine in chronological (typing) order: pending messages were
         # queued DURING the previous turn, so they were typed BEFORE the
         # current /stream message.  Putting pending first — ``pending →
