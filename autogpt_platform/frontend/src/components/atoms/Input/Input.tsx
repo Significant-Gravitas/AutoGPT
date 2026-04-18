@@ -4,7 +4,7 @@ import {
 } from "@/components/__legacy__/ui/input";
 import { cn } from "@/lib/utils";
 import { Eye, EyeSlash } from "@phosphor-icons/react";
-import { ReactNode, useState } from "react";
+import { ReactNode, useRef, useState } from "react";
 import CurrencyInput from "react-currency-input-field";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
@@ -59,9 +59,22 @@ export function Input({
 
   const isPasswordType = props.type === "password";
   const inputType = showPassword ? "text" : props.type;
+  const passwordWrapperRef = useRef<HTMLDivElement>(null);
 
   function handleTogglePassword() {
     setShowPassword((prev) => !prev);
+  }
+
+  // Re-mask the password when focus leaves both the input and the toggle
+  // button (focus-within check). Clicking between the input and the reveal
+  // button keeps focus inside the wrapper so we don't flicker; navigating
+  // away re-masks so a revealed password doesn't linger after a failed
+  // submit or other abandoned flow.
+  function handleWrapperBlur(e: React.FocusEvent<HTMLDivElement>) {
+    if (!isPasswordType || !showPassword) return;
+    if (passwordWrapperRef.current?.contains(e.relatedTarget as Node | null))
+      return;
+    setShowPassword(false);
   }
 
   const baseStyles = cn(
@@ -180,7 +193,11 @@ export function Input({
   };
 
   const input = (
-    <div className={cn("relative w-full", wrapperClassName)}>
+    <div
+      ref={isPasswordType ? passwordWrapperRef : undefined}
+      onBlur={isPasswordType ? handleWrapperBlur : undefined}
+      className={cn("relative w-full", wrapperClassName)}
+    >
       {renderInput()}
       {isPasswordType && (
         <button
