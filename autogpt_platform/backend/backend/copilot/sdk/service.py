@@ -3062,18 +3062,21 @@ async def stream_chat_completion_sdk(
             last_user_msg = next(
                 (m for m in reversed(session.messages) if m.role == "user"), None
             )
-            if last_user_msg is not None:
-                last_user_msg.content = current_message
-                if last_user_msg.sequence is not None:
-                    await chat_db().update_message_content_by_sequence(
-                        session_id, last_user_msg.sequence, current_message
-                    )
-                else:
-                    logger.warning(
-                        "%s Last user message has no sequence number; "
-                        "pending injection cannot be persisted to DB",
-                        log_prefix,
-                    )
+            if last_user_msg is None or last_user_msg.sequence is None:
+                # Defensive: routes.py always pre-saves the user message with
+                # a sequence before dispatch, so this is unreachable under
+                # normal flow. Raising instead of a warning-and-continue
+                # avoids silent data loss (in-memory diverges from DB row,
+                # so the queued chip would disappear from the UI after
+                # refresh without a corresponding bubble).
+                raise RuntimeError(
+                    f"{log_prefix} Cannot persist turn-start pending injection: "
+                    f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
+                )
+            last_user_msg.content = current_message
+            await chat_db().update_message_content_by_sequence(
+                session_id, last_user_msg.sequence, current_message
+            )
 
         if not current_message.strip():
             yield StreamError(
