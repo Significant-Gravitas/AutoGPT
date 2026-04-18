@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
 from .. import stream_registry
+from ..pending_message_helpers import is_turn_in_flight, queue_user_message
 from ..response_model import (
     StreamError,
     StreamTextDelta,
@@ -43,6 +44,13 @@ class CopilotResult:
 
     Returned by :func:`collect_copilot_response` so callers don't need to
     implement their own event-loop over the raw stream events.
+
+    When the session already has a turn in flight, ``queued`` is set to
+    ``True`` and the message is pushed onto the pending buffer instead of
+    starting a new turn.  In that case ``response_text`` is empty and
+    ``tool_calls`` / token counts are zero — callers (e.g. the AutoPilot
+    block) should treat the run as deferred and surface the state to the
+    end user.
     """
 
     __slots__ = (
@@ -51,6 +59,8 @@ class CopilotResult:
         "prompt_tokens",
         "completion_tokens",
         "total_tokens",
+        "queued",
+        "pending_buffer_length",
     )
 
     def __init__(self) -> None:
@@ -59,6 +69,8 @@ class CopilotResult:
         self.prompt_tokens: int = 0
         self.completion_tokens: int = 0
         self.total_tokens: int = 0
+        self.queued: bool = False
+        self.pending_buffer_length: int = 0
 
 
 class _RegistryHandle(BaseModel):
@@ -194,6 +206,25 @@ async def collect_copilot_response(
     Raises:
         RuntimeError: If the stream yields a ``StreamError`` event.
     """
+    # Self-defensive queue-fallback (matches POST /stream).  If a turn is
+    # already running for this session, don't race it on the cluster lock —
+    # push this message into the pending buffer so the in-flight turn picks
+    # it up between tool-call rounds and return a queued-state result.
+    if is_user_message and await is_turn_in_flight(session_id):
+        logger.info(
+            "[collect] Session %s has a turn in flight; queueing AutoPilot "
+            "message into pending buffer instead of starting a new turn",
+            session_id[:12],
+        )
+        queue_state = await queue_user_message(
+            session_id=session_id,
+            message=message,
+        )
+        queued_result = CopilotResult()
+        queued_result.queued = True
+        queued_result.pending_buffer_length = queue_state.buffer_length
+        return queued_result
+
     turn_id = str(uuid.uuid4())
     async with _registry_session(session_id, user_id, turn_id) as handle:
         try:

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
@@ -31,14 +31,10 @@ from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
     PENDING_CALL_WINDOW_SECONDS,
     check_pending_call_rate,
+    is_turn_in_flight,
+    queue_user_message,
 )
-from backend.copilot.pending_messages import (
-    MAX_PENDING_MESSAGES,
-    PendingMessage,
-    PendingMessageContext,
-    peek_pending_messages,
-    push_pending_message,
-)
+from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -157,34 +153,16 @@ class StreamChatRequest(BaseModel):
     )
 
 
-class QueuePendingMessageRequest(BaseModel):
-    """Request model for queueing a message into an in-flight turn.
-
-    Unlike ``StreamChatRequest`` this endpoint does **not** start a new
-    turn — the message is appended to a per-session pending buffer that
-    the executor currently processing the turn will drain between tool
-    rounds.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    message: str = Field(min_length=1, max_length=32_000)
-    context: PendingMessageContext | None = Field(
-        default=None,
-        description="Optional page context with 'url' and 'content' fields.",
-    )
-    file_ids: list[str] | None = Field(default=None, max_length=20)
-
-
 class QueuePendingMessageResponse(BaseModel):
-    """Response for the pending-message endpoint.
+    """Response returned by ``POST /stream`` with status 202 when a message
+    is queued because the session already has a turn in flight.
 
     - ``buffer_length``: how many messages are now in the session's
       pending buffer (after this push)
     - ``max_buffer_length``: the per-session cap (server-side constant)
     - ``turn_in_flight``: ``True`` if a copilot turn was running when
-      we checked — purely informational for UX feedback.  Even when
-      ``False`` the message is still queued: the next turn drains it.
+      we checked — purely informational for UX feedback.  Always ``True``
+      for responses from ``POST /stream`` with status 202.
     """
 
     buffer_length: int
@@ -818,31 +796,42 @@ async def cancel_session_task(
 
 @router.post(
     "/sessions/{session_id}/stream",
+    responses={
+        202: {
+            "model": QueuePendingMessageResponse,
+            "description": (
+                "Session has a turn in flight — message queued into the pending "
+                "buffer and will be picked up between tool-call rounds by the "
+                "executor currently processing the turn."
+            ),
+        },
+        404: {"description": "Session not found or access denied"},
+        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+    },
 )
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
 ):
-    """
-    Stream chat responses for a session (POST with context support).
+    """Start a new turn OR queue a follow-up — decided server-side.
 
-    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
-      - Text fragments as they are generated
-      - Tool call UI elements (if invoked)
-      - Tool execution results
+    - **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)
+      with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).
+      The generation runs in a background task that survives client disconnects;
+      reconnect via ``GET /sessions/{session_id}/stream`` to resume.
 
-    The AI generation runs in a background task that continues even if the client disconnects.
-    All chunks are written to a per-turn Redis stream for reconnection support. If the client
-    disconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.
+    - **Session has a turn in flight**: pushes the message into the per-session
+      pending buffer and returns ``202 application/json`` with
+      ``QueuePendingMessageResponse``.  The executor running the current turn
+      drains the buffer between tool-call rounds (baseline) or at the start of
+      the next turn (SDK).  Clients should detect the 202 and surface the
+      message as a queued-chip in the UI.
 
     Args:
-        session_id: The chat session identifier to associate with the streamed messages.
-        request: Request body containing message, is_user_message, and optional context.
+        session_id: The chat session identifier.
+        request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
-
     """
     import asyncio
     import time
@@ -856,6 +845,51 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     await _validate_and_get_session(session_id, user_id)
+
+    # Self-defensive queue-fallback: if a turn is already running, don't race
+    # it on the cluster lock — drop the message into the pending buffer and
+    # return 202 so the caller can render a chip.  Both UI chips and autopilot
+    # block follow-ups route through this path; keeping the decision on the
+    # server means every caller gets uniform behaviour.
+    if (
+        request.is_user_message
+        and request.message
+        and await is_turn_in_flight(session_id)
+    ):
+        # Call-frequency cap — prevent rapid-fire pushes that would bypass
+        # the token-budget check (which fires per-turn, not per-push).
+        call_count = await check_pending_call_rate(user_id)
+        if call_count > PENDING_CALL_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Too many queued message requests this minute: limit is "
+                    f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
+                    "across all sessions"
+                ),
+            )
+        # Sanitise file IDs to the user's own workspace — mirrors the
+        # non-queued path below so injected follow-ups can't surface other
+        # users' files.
+        sanitized_queue_file_ids: list[str] = []
+        if request.file_ids:
+            files = await resolve_workspace_files(user_id, request.file_ids)
+            sanitized_queue_file_ids = [wf.id for wf in files]
+        result = await queue_user_message(
+            session_id=session_id,
+            message=request.message,
+            context=request.context,
+            file_ids=sanitized_queue_file_ids or None,
+        )
+        return JSONResponse(
+            status_code=202,
+            content=QueuePendingMessageResponse(
+                buffer_length=result.buffer_length,
+                max_buffer_length=result.max_buffer_length,
+                turn_in_flight=result.turn_in_flight,
+            ).model_dump(),
+        )
+
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
@@ -1120,116 +1154,6 @@ async def get_pending_messages(
     return PeekPendingMessagesResponse(
         messages=[m.content for m in pending],
         count=len(pending),
-    )
-
-
-@router.post(
-    "/sessions/{session_id}/messages/pending",
-    response_model=QueuePendingMessageResponse,
-    status_code=202,
-    responses={
-        404: {"description": "Session not found or access denied"},
-        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
-    },
-)
-async def queue_pending_message(
-    session_id: str,
-    request: QueuePendingMessageRequest,
-    user_id: str = Security(auth.get_user_id),
-):
-    """Queue a new user message into an in-flight copilot turn.
-
-    When a user sends a follow-up message while a turn is still
-    streaming, we don't want to block them or start a separate turn —
-    this endpoint appends the message to a per-session pending buffer.
-    The executor currently running the turn (baseline path) drains the
-    buffer between tool-call rounds and appends the message to the
-    conversation before the next LLM call.  On the SDK path the buffer
-    is drained at the *start* of the next turn (the long-lived
-    ``ClaudeSDKClient.receive_response`` iterator returns after a
-    ``ResultMessage`` so there is no safe point to inject mid-stream
-    into an existing connection).
-
-    Returns 202.  Enforces the same per-user daily/weekly token rate
-    limit as the regular ``/stream`` endpoint so a client can't bypass
-    it by batching messages through here.
-    """
-    await _validate_and_get_session(session_id, user_id)
-
-    # Pre-turn rate-limit check — mirrors stream_chat_post.  Without
-    # this, a client could bypass per-turn token limits by batching
-    # their extra context through this endpoint while a cheap stream
-    # is in flight.
-    # user_id is guaranteed non-empty by Security(auth.get_user_id) — no guard needed.
-    try:
-        daily_limit, weekly_limit, _tier = await get_global_rate_limits(
-            user_id, config.daily_token_limit, config.weekly_token_limit
-        )
-        await check_rate_limit(
-            user_id=user_id,
-            daily_token_limit=daily_limit,
-            weekly_token_limit=weekly_limit,
-        )
-    except RateLimitExceeded as e:
-        raise HTTPException(status_code=429, detail=str(e)) from e
-
-    # Call-frequency cap: prevent rapid-fire pushes that would bypass the
-    # token-budget check (which only fires per-turn, not per-push).
-    call_count = await check_pending_call_rate(user_id)
-    # check_pending_call_rate returns the count *after* incrementing, so
-    # rejecting at `> LIMIT` permits exactly LIMIT requests per window
-    # (the cap is inclusive).  Using `>=` would reject the LIMITth request.
-    if call_count > PENDING_CALL_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many pending message requests this minute: limit is {PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s across all sessions",
-        )
-
-    # Sanitise file IDs to the user's own workspace so injection doesn't
-    # surface other users' files.
-    sanitized_file_ids: list[str] = []
-    if request.file_ids:
-        files = await resolve_workspace_files(user_id, request.file_ids)
-        sanitized_file_ids = [wf.id for wf in files]
-        dropped = len(request.file_ids) - len(sanitized_file_ids)
-        if dropped:
-            logger.warning(
-                "queue_pending_message: dropped %d file id(s) not in "
-                "caller's workspace (session=%s)",
-                dropped,
-                session_id,
-            )
-
-    # Redis is the single source of truth for pending messages.  We do
-    # NOT persist to ``session.messages`` here — the drain-at-start
-    # path in the baseline/SDK executor is the sole writer for pending
-    # content.  Persisting both here AND in the drain would cause
-    # double injection (executor sees the message in ``session.messages``
-    # *and* drains it from Redis) unless we also dedupe.  The dedup in
-    # ``maybe_append_user_message`` only checks trailing same-role
-    # repeats, so relying on it is fragile.  Keeping the endpoint
-    # Redis-only avoids the whole consistency-bug class.
-    pending = PendingMessage(
-        content=request.message,
-        file_ids=sanitized_file_ids,
-        context=request.context,
-    )
-    buffer_length = await push_pending_message(session_id, pending)
-
-    track_user_message(
-        user_id=user_id,
-        session_id=session_id,
-        message_length=len(request.message),
-    )
-
-    # Check whether a turn is currently running for UX feedback.
-    active_session = await stream_registry.get_session(session_id)
-    turn_in_flight = bool(active_session and active_session.status == "running")
-
-    return QueuePendingMessageResponse(
-        buffer_length=buffer_length,
-        max_buffer_length=MAX_PENDING_MESSAGES,
-        turn_in_flight=turn_in_flight,
     )
 
 

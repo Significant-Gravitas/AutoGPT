@@ -1,6 +1,5 @@
 import {
   getGetV2ListSessionsQueryKey,
-  postV2QueuePendingMessage,
   useDeleteV2DeleteSession,
   useGetV2ListSessions,
   type getV2ListSessionsResponse,
@@ -14,6 +13,7 @@ import type { FileUIPart } from "ai";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
@@ -295,10 +295,13 @@ export function useCopilotPage() {
           return;
         }
 
-        // Queue the message into the pending buffer so it is picked up between
-        // tool-call rounds by the currently running executor turn.
+        // Queue the follow-up into the pending buffer.  Both queue and new-
+        // turn go through the same ``/stream`` endpoint; the server returns
+        // 202 for the queue path (pending buffer) and an SSE stream for the
+        // new-turn path.  Using a plain ``fetch`` here keeps the 202 JSON
+        // from confusing the AI SDK's stream parser.
         try {
-          await postV2QueuePendingMessage(sessionId, { message: trimmed });
+          await queueFollowUpMessage(sessionId, trimmed);
           appendChip(trimmed);
         } catch (err) {
           toast({

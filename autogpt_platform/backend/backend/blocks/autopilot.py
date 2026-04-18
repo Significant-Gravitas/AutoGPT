@@ -306,6 +306,29 @@ class AutoPilotBlock(Block):
                 permissions=effective_permissions,
             )
 
+            # If the session already had a turn in flight the message was
+            # pushed onto the pending buffer instead of starting a new turn.
+            # Surface a descriptive response + empty tool_calls/history so
+            # downstream blocks can treat the run as deferred without
+            # special-casing.  The executor running the earlier turn will
+            # drain the buffer when it next polls.
+            if result.queued:
+                queued_response = (
+                    f"[AutoPilot] Message queued into session {session_id}; "
+                    f"{result.pending_buffer_length} message(s) now pending. "
+                    "The existing turn will pick it up on the next drain."
+                )
+                return (
+                    queued_response,
+                    [],
+                    json.dumps(
+                        [{"role": "user", "content": effective_prompt}],
+                        default=str,
+                    ),
+                    session_id,
+                    {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+                )
+
             # Build a lightweight conversation summary from streamed data.
             turn_messages: list[dict[str, Any]] = [
                 {"role": "user", "content": effective_prompt},
