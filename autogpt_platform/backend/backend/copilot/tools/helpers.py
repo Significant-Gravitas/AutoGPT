@@ -655,3 +655,51 @@ def _resolve_discriminated_credentials(
         resolved[field_name] = effective_field_info
 
     return resolved
+
+
+# ---------------------------------------------------------------------------
+# Agent-generation gate
+# ---------------------------------------------------------------------------
+#
+# Tools that produce or modify agent JSON (create_agent, edit_agent,
+# validate_agent_graph, fix_agent_graph) require the parent agent to have
+# read the agent-building guide first — otherwise it tends to generate
+# JSON that doesn't match the current block schemas, link semantics, or
+# AgentExecutorBlock conventions, then waste turns fixing validation
+# errors.  ``require_guide_read`` returns an ``ErrorResponse`` the caller
+# should short-circuit with, or ``None`` when the guide has been read.
+
+
+_AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+
+
+def _guide_read_in_session(session: ChatSession) -> bool:
+    """True if this session's assistant messages include a guide tool call."""
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            name = tc.get("function", {}).get("name") or tc.get("name")
+            if name == _AGENT_GUIDE_TOOL_NAME:
+                return True
+    return False
+
+
+def require_guide_read(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Import inline to keep ``helpers.py`` free of tool-response imports.
+    """
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
+
+    if _guide_read_in_session(session):
+        return None
+    return ErrorResponse(
+        message=(
+            f"Call get_agent_building_guide first, then retry {tool_name}. "
+            "The guide documents required block ids, input/output schemas, "
+            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
+            "generating agent JSON without it produces schema mismatches."
+        ),
+        session_id=session.session_id,
+    )

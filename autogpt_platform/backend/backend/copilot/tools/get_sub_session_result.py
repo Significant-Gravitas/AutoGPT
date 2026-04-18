@@ -49,14 +49,10 @@ class GetSubSessionResultTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Retrieve the status or result of a sub-AutoPilot started by "
-            "run_sub_session. Block up to wait_if_running seconds for "
-            f"completion (max {MAX_SUB_SESSION_WAIT_SECONDS}, 0 = just "
-            "check), or pass cancel=true to abort it and discard the result. "
-            "Pass include_progress=true to peek at the sub's recent messages "
-            "while it's running (useful to report intermediate progress to "
-            "the user). Works across turns — you can reconnect to a running "
-            "sub-session from a later message in the same session."
+            "Poll / wait / cancel a sub-AutoPilot from run_sub_session. "
+            f"Waits up to wait_if_running sec (max {MAX_SUB_SESSION_WAIT_SECONDS}); "
+            "cancel=true aborts; include_progress=true returns recent messages "
+            "from the still-running sub. Works across turns."
         )
 
     @property
@@ -66,34 +62,27 @@ class GetSubSessionResultTool(BaseTool):
             "properties": {
                 "sub_session_id": {
                     "type": "string",
-                    "description": (
-                        "The id returned by run_sub_session " "(e.g. 'sub-abc123')."
-                    ),
+                    "description": "id from run_sub_session (e.g. 'sub-abc123').",
                 },
                 "wait_if_running": {
                     "type": "integer",
                     "description": (
-                        "Seconds to wait for completion. 0 = just check "
-                        "status. Values above "
-                        f"{MAX_SUB_SESSION_WAIT_SECONDS} are clamped."
+                        f"Seconds to wait. 0 = just check. Clamped to "
+                        f"{MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
                 },
                 "cancel": {
                     "type": "boolean",
                     "description": (
-                        "If true, cancel the sub-AutoPilot and discard its "
-                        "result. Takes precedence over wait_if_running."
+                        "Cancel the sub; takes precedence over wait_if_running."
                     ),
                     "default": False,
                 },
                 "include_progress": {
                     "type": "boolean",
                     "description": (
-                        "If true and the sub is still running, populate "
-                        "progress.last_messages with the most recent 5 "
-                        "messages from the sub's ChatSession so the agent "
-                        "can report intermediate progress to the user."
+                        "Populate progress.last_messages when status=running."
                     ),
                     "default": False,
                 },

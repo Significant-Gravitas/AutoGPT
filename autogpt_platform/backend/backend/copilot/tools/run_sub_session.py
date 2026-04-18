@@ -70,13 +70,10 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh sub-AutoPilot. Starts the run as a "
-            "background task that survives the current turn, then waits up "
-            f"to wait_for_result seconds (max {MAX_SUB_SESSION_WAIT_SECONDS}) "
-            "for completion. If the sub isn't done by then, returns "
-            "status='running' with a sub_session_id — call "
-            "get_sub_session_result to poll. Use for multi-step work that "
-            "benefits from an isolated AutoPilot context."
+            "Delegate a task to a fresh sub-AutoPilot. Runs as a background "
+            "task that survives the current turn. Waits up to wait_for_result "
+            f"sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). If not done, returns "
+            "status=running + sub_session_id — poll via get_sub_session_result."
         )
 
     @property
@@ -90,24 +87,21 @@ class RunSubSessionTool(BaseTool):
                 },
                 "system_context": {
                     "type": "string",
-                    "description": ("Optional extra context prepended to the prompt."),
+                    "description": "Optional context prepended to the prompt.",
                     "default": "",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue an existing sub-AutoPilot conversation by "
-                        "its session_id (from a previous run's output). "
-                        "Leave empty to start fresh."
+                        "Continue a prior sub via its session_id; empty = new."
                     ),
                     "default": "",
                 },
                 "wait_for_result": {
                     "type": "integer",
                     "description": (
-                        "Seconds to wait inline for the sub to finish. 0 = "
-                        "fire-and-return immediately (caller polls). Values "
-                        f"above {MAX_SUB_SESSION_WAIT_SECONDS} are clamped."
+                        "Seconds to wait inline. 0 = return immediately. "
+                        f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
                 },

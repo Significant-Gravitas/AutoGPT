@@ -7,6 +7,7 @@ from backend.copilot.model import ChatSession
 
 from .agent_generator.validation import AgentFixer, AgentValidator, get_blocks_as_dicts
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, FixResultResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,10 @@ class FixAgentGraphTool(BaseTool):
         **kwargs,
     ) -> ToolResponseBase:
         session_id = session.session_id if session else None
+
+        guide_gate = require_guide_read(session, "fix_agent_graph")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_json or not isinstance(agent_json, dict):
             return ErrorResponse(
