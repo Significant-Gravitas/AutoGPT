@@ -175,3 +175,69 @@ async def test_tool_calls_published_and_collected(mock_registry, stream_fn_patch
     assert result.tool_calls[0]["output"] == "file contents"
     assert result.tool_calls[0]["success"] is True
     assert result.response_text == "done"
+
+
+@pytest.mark.asyncio
+async def test_queued_result_when_turn_in_flight(mock_registry, stream_fn_patch):
+    """When a turn is already in flight the helper queues the message and
+    returns a CopilotResult flagged as queued without starting a new turn."""
+    queue_state = AsyncMock(
+        return_value=type(
+            "QR",
+            (),
+            {"buffer_length": 3, "max_buffer_length": 10, "turn_in_flight": True},
+        )()
+    )
+
+    with (
+        patch(
+            "backend.copilot.sdk.collect.is_turn_in_flight",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "backend.copilot.sdk.collect.queue_user_message",
+            new=queue_state,
+        ),
+        stream_fn_patch([StreamFinish()]),
+    ):
+        result = await collect_copilot_response(
+            session_id="sess-1",
+            message="follow-up",
+            user_id="user-1",
+        )
+
+    assert result.queued is True
+    assert result.pending_buffer_length == 3
+    assert result.response_text == ""
+    assert result.tool_calls == []
+    # Turn registry should NOT be engaged because the queue branch short-circuits.
+    mock_registry.create_session.assert_not_awaited()
+    mock_registry.mark_session_completed.assert_not_awaited()
+    queue_state.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_non_user_message_skips_queue_check(mock_registry, stream_fn_patch):
+    """is_user_message=False must bypass the queue-in-flight short-circuit
+    (autopilot may want to resume a turn without queueing the seed prompt)."""
+    events = [StreamTextDelta(id="t1", delta="ok"), StreamFinish()]
+    in_flight = AsyncMock(return_value=True)
+
+    with (
+        patch("backend.copilot.sdk.collect.is_turn_in_flight", new=in_flight),
+        patch(
+            "backend.copilot.sdk.collect.queue_user_message",
+            new=AsyncMock(),
+        ) as queue_mock,
+        stream_fn_patch(events),
+    ):
+        result = await collect_copilot_response(
+            session_id="sess-1",
+            message="seed",
+            user_id="user-1",
+            is_user_message=False,
+        )
+
+    assert result.queued is False
+    assert result.response_text == "ok"
+    queue_mock.assert_not_awaited()

@@ -34,7 +34,10 @@ from backend.copilot.pending_message_helpers import (
     is_turn_in_flight,
     queue_user_message,
 )
-from backend.copilot.pending_messages import peek_pending_messages
+from backend.copilot.pending_messages import (
+    PendingMessageContext,
+    peek_pending_messages,
+)
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -875,10 +878,17 @@ async def stream_chat_post(
         if request.file_ids:
             files = await resolve_workspace_files(user_id, request.file_ids)
             sanitized_queue_file_ids = [wf.id for wf in files]
+        # StreamChatRequest.context is a raw {url, content} dict for backward
+        # compat; the pending buffer stores it as a typed PendingMessageContext.
+        queue_context = (
+            PendingMessageContext.model_validate(request.context)
+            if request.context
+            else None
+        )
         result = await queue_user_message(
             session_id=session_id,
             message=request.message,
-            context=request.context,
+            context=queue_context,
             file_ids=sanitized_queue_file_ids or None,
         )
         return JSONResponse(

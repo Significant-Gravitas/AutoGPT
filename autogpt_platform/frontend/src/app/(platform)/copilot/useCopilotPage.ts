@@ -301,8 +301,14 @@ export function useCopilotPage() {
         // new-turn path.  Using a plain ``fetch`` here keeps the 202 JSON
         // from confusing the AI SDK's stream parser.
         try {
-          await queueFollowUpMessage(sessionId, trimmed);
-          appendChip(trimmed);
+          const result = await queueFollowUpMessage(sessionId, trimmed);
+          if (result.kind === "queued") {
+            appendChip(trimmed);
+          }
+          // kind === "raced_started_turn": the client thought a turn was in
+          // flight but the previous turn finished before the request landed.
+          // The server already kicked off a new turn; useHydrateOnStreamEnd
+          // will surface its output when it completes. No chip + no toast.
         } catch (err) {
           toast({
             title: "Could not queue message",

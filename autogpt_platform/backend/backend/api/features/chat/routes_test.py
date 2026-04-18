@@ -731,6 +731,62 @@ def test_stream_queue_call_frequency_limit_returns_429(
     assert "Too many queued message requests this minute" in response.json()["detail"]
 
 
+def test_stream_queue_converts_context_dict_to_pending_context(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """StreamChatRequest.context is a raw dict; must be coerced to the
+    typed PendingMessageContext before being pushed onto the buffer."""
+    _mock_stream_queue_internals(mocker)
+    queue_spy = mocker.patch(
+        "backend.api.features.chat.routes.queue_user_message",
+        new_callable=AsyncMock,
+    )
+    queue_spy.return_value = mocker.MagicMock(
+        buffer_length=1, max_buffer_length=10, turn_in_flight=True
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "hi",
+            "is_user_message": True,
+            "context": {"url": "https://example.test", "content": "body"},
+        },
+    )
+
+    assert response.status_code == 202
+    queue_spy.assert_awaited_once()
+    kwargs = queue_spy.await_args.kwargs
+    from backend.copilot.pending_messages import PendingMessageContext
+
+    assert isinstance(kwargs["context"], PendingMessageContext)
+    assert kwargs["context"].url == "https://example.test"
+    assert kwargs["context"].content == "body"
+
+
+def test_stream_queue_passes_none_context_when_omitted(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """When request.context is omitted, the queue call receives context=None."""
+    _mock_stream_queue_internals(mocker)
+    queue_spy = mocker.patch(
+        "backend.api.features.chat.routes.queue_user_message",
+        new_callable=AsyncMock,
+    )
+    queue_spy.return_value = mocker.MagicMock(
+        buffer_length=1, max_buffer_length=10, turn_in_flight=True
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hi", "is_user_message": True},
+    )
+
+    assert response.status_code == 202
+    queue_spy.assert_awaited_once()
+    assert queue_spy.await_args.kwargs["context"] is None
+
+
 # ─── get_pending_messages (GET /sessions/{session_id}/messages/pending) ─────
 
 

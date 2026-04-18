@@ -175,6 +175,7 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
     );
     mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
     mockQueueFollowUpMessage.mockResolvedValue({
+      kind: "queued",
       buffer_length: 1,
       max_buffer_length: 10,
       turn_in_flight: true,
@@ -194,6 +195,36 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
     await waitFor(() => {
       expect(result.current.queuedMessages).toContain("follow-up");
     });
+  });
+
+  it("does not append a chip or toast when the server raced and started a new turn", async () => {
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({ status: "streaming" }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+    mockQueueFollowUpMessage.mockResolvedValue({
+      kind: "raced_started_turn",
+      status: 200,
+    });
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    await act(async () => {
+      await result.current.onSend("follow-up");
+    });
+
+    expect(mockQueueFollowUpMessage).toHaveBeenCalledWith(
+      "sess-1",
+      "follow-up",
+    );
+    // No chip should appear — the server already started a new turn,
+    // useHydrateOnStreamEnd will surface the response.
+    expect(result.current.queuedMessages).not.toContain("follow-up");
+    // No misleading error toast either.
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Could not queue message" }),
+    );
   });
 
   it("surfaces a toast and rethrows when the queue POST fails", async () => {
