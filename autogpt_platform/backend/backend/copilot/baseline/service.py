@@ -1282,9 +1282,26 @@ async def stream_chat_completion_baseline(
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
     _bound_llm_caller = partial(_baseline_llm_caller, state=state)
-    _bound_tool_executor = partial(
-        _baseline_tool_executor, state=state, user_id=user_id, session=session
-    )
+
+    # ``session`` is reassigned after each mid-turn ``persist_session_safe``
+    # call (``upsert_chat_session`` returns a fresh ``model_copy``).  Holding
+    # the object via ``partial(session=session)`` would pin tool executions
+    # to the *original* object — any post-persist ``session.successful_agent_runs``
+    # mutation from a run_agent tool call would then land on the stale copy
+    # and be lost on the final persist.  Wrap in a 1-element holder and read
+    # the current binding lazily so the executor always sees the latest session.
+    _session_holder: list[ChatSession] = [session]
+
+    async def _bound_tool_executor(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        return await _baseline_tool_executor(
+            tool_call,
+            tools,
+            state=state,
+            user_id=user_id,
+            session=_session_holder[0],
+        )
 
     _bound_conversation_updater = partial(
         _baseline_conversation_updater,
@@ -1388,6 +1405,14 @@ async def stream_chat_completion_baseline(
                 # so a later pending-persist failure can roll back the
                 # pending rows without also discarding LLM output.
                 session = await persist_session_safe(session, "[Baseline]")
+                # ``upsert_chat_session`` may return a *new* ``ChatSession``
+                # instance (e.g. when a concurrent title update has written a
+                # newer title to Redis, it returns ``session.model_copy``).
+                # Keep ``_session_holder`` in sync so subsequent tool rounds
+                # executed via ``_bound_tool_executor`` see the fresh session
+                # — any tool-side mutations on the stale object would be
+                # discarded when the new one is persisted in the ``finally``.
+                _session_holder[0] = session
 
                 # ``format_pending_as_user_message`` embeds file attachments
                 # and context URL/page content into the content string so
