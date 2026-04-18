@@ -22,11 +22,10 @@ from backend.copilot.pending_messages import PendingMessage
 async def test_check_pending_call_rate_returns_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mock_redis = MagicMock()
-    mock_redis.eval = AsyncMock(return_value=3)
     monkeypatch.setattr(
-        helpers_module, "get_redis_async", AsyncMock(return_value=mock_redis)
+        helpers_module, "get_redis_async", AsyncMock(return_value=MagicMock())
     )
+    monkeypatch.setattr(helpers_module, "incr_with_ttl", AsyncMock(return_value=3))
 
     result = await check_pending_call_rate("user-1")
     assert result == 3
@@ -50,10 +49,13 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
 async def test_check_pending_call_rate_at_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mock_redis = MagicMock()
-    mock_redis.eval = AsyncMock(return_value=PENDING_CALL_LIMIT + 1)
     monkeypatch.setattr(
-        helpers_module, "get_redis_async", AsyncMock(return_value=mock_redis)
+        helpers_module, "get_redis_async", AsyncMock(return_value=MagicMock())
+    )
+    monkeypatch.setattr(
+        helpers_module,
+        "incr_with_ttl",
+        AsyncMock(return_value=PENDING_CALL_LIMIT + 1),
     )
 
     result = await check_pending_call_rate("user-1")

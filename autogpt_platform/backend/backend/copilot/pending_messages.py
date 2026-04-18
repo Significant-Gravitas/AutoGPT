@@ -28,6 +28,7 @@ from typing import Any, cast
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import capped_rpush
 
 logger = logging.getLogger(__name__)
 
@@ -93,14 +94,6 @@ def _decode_redis_item(item: Any) -> str:
     return item.decode("utf-8") if isinstance(item, bytes) else str(item)
 
 
-_PUSH_LUA = """
-redis.call('RPUSH', KEYS[1], ARGV[1])
-redis.call('LTRIM', KEYS[1], -tonumber(ARGV[2]), -1)
-redis.call('EXPIRE', KEYS[1], tonumber(ARGV[3]))
-return redis.call('LLEN', KEYS[1])
-"""
-
-
 async def push_pending_message(
     session_id: str,
     message: PendingMessage,
@@ -111,9 +104,10 @@ async def push_pending_message(
     trimming from the left (oldest) — the newest message always wins if
     the user has been typing faster than the copilot can drain.
 
-    Executed as a single Lua EVAL so RPUSH + LTRIM + EXPIRE + LLEN run
-    atomically in one round-trip; a concurrent drain (LPOP) can no longer
-    observe the list temporarily over ``MAX_PENDING_MESSAGES``.
+    Delegates to :func:`backend.data.redis_helpers.capped_rpush` so RPUSH
+    + LTRIM + EXPIRE + LLEN run atomically (MULTI/EXEC) in one round
+    trip; a concurrent drain (LPOP) can no longer observe the list
+    temporarily over ``MAX_PENDING_MESSAGES``.
 
     Note on durability: if the executor turn crashes after a push but before
     the drain window runs, the message remains in Redis until the TTL expires
@@ -125,18 +119,12 @@ async def push_pending_message(
     key = _buffer_key(session_id)
     payload = message.model_dump_json()
 
-    new_length = int(
-        await cast(
-            "Any",
-            redis.eval(
-                _PUSH_LUA,
-                1,
-                key,
-                payload,
-                str(MAX_PENDING_MESSAGES),
-                str(_PENDING_TTL_SECONDS),
-            ),
-        )
+    new_length = await capped_rpush(
+        redis,
+        key,
+        payload,
+        max_len=MAX_PENDING_MESSAGES,
+        ttl_seconds=_PENDING_TTL_SECONDS,
     )
 
     # Fire-and-forget notify.  Subscribers use this as a wake-up hint;

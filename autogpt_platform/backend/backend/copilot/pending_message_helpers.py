@@ -8,7 +8,7 @@ routes.py stays free of Redis/Lua details.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 
 from backend.copilot.model import ChatMessage, upsert_chat_session
 from backend.copilot.pending_messages import (
@@ -16,6 +16,7 @@ from backend.copilot.pending_messages import (
     format_pending_as_user_message,
 )
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import incr_with_ttl
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
@@ -28,18 +29,6 @@ logger = logging.getLogger(__name__)
 PENDING_CALL_LIMIT = 30
 PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
-
-# Atomic INCR + conditional EXPIRE.  Must be a single EVAL so the counter
-# can never be orphaned without a TTL (a bare INCR + separate EXPIRE can
-# leave the key permanent if the process dies between the two commands).
-# Fixed-window semantics: TTL is set only on the first push in the window.
-_CALL_INCR_LUA = """
-local count = redis.call('INCR', KEYS[1])
-if count == 1 then
-    redis.call('EXPIRE', KEYS[1], tonumber(ARGV[1]))
-end
-return count
-"""
 
 
 async def check_pending_call_rate(user_id: str) -> int:
@@ -57,18 +46,7 @@ async def check_pending_call_rate(user_id: str) -> int:
     try:
         redis = await get_redis_async()
         key = f"{_PENDING_CALL_KEY_PREFIX}{user_id}"
-        count = int(
-            await cast(
-                "Any",
-                redis.eval(
-                    _CALL_INCR_LUA,
-                    1,
-                    key,
-                    str(PENDING_CALL_WINDOW_SECONDS),
-                ),
-            )
-        )
-        return count
+        return await incr_with_ttl(redis, key, PENDING_CALL_WINDOW_SECONDS)
     except Exception:
         logger.warning(
             "pending_message_helpers: call-rate check failed for user=%s, failing open",

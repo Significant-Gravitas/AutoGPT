@@ -23,6 +23,7 @@ from backend.blocks._base import BlockSchema
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.mcp.block import MCPToolBlock
 from backend.data import redis_client as redis
+from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.data.block import BlockInput, BlockOutput, BlockOutputEntry
 from backend.data.dynamic_fields import parse_execution_output
 from backend.data.execution import (
@@ -1964,10 +1965,12 @@ def increment_execution_count(user_id: str) -> int:
     """
     Increment the execution count for a given user,
     this will be used to charge the user for the execution cost.
+
+    Uses :func:`incr_with_ttl_sync` so INCR and EXPIRE run atomically via
+    MULTI/EXEC — previously this was a bare INCR followed by a separate
+    EXPIRE which could orphan the counter (no TTL) if the process died
+    between the two commands.
     """
     r = redis.get_redis()
     k = f"uec:{user_id}"  # User Execution Count global key
-    counter = cast(int, r.incr(k))
-    if counter == 1:
-        r.expire(k, settings.config.execution_counter_expiration_time)
-    return counter
+    return incr_with_ttl_sync(r, k, settings.config.execution_counter_expiration_time)
