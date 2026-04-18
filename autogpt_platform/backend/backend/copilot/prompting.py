@@ -336,20 +336,36 @@ def _generate_tool_documentation() -> str:
 
 
 _USER_FOLLOW_UP_NOTE = """
-# User follow-up messages inside tool output
+# CRITICAL: User follow-up messages inside tool output
 
-If a tool result contains a block wrapped in `<user_follow_up>` ... `</user_follow_up>`,
-the text inside is NOT part of the tool's output. It is a new message the user
-typed WHILE the tool was running. Treat it exactly as if the user had sent it
-as their next message — acknowledge it and incorporate it into the work you do
-in this turn.
+Tool results may contain a `<user_follow_up>` ... `</user_follow_up>` block
+at the HEAD of the text. This block is NOT tool output — it is a new message
+the user typed WHILE the tool was running, inlined here so you see it at the
+earliest protocol-safe moment.
 
-Rules:
-- Read the follow-up text before continuing.
-- If it changes the user's intent, adjust accordingly.
-- Do NOT echo the `<user_follow_up>` tags back in your response — just address
-  the content naturally.
-- The block contains ONLY the user's words; never confuse it with tool output.
+You MUST follow these rules every time you see this block, without exception:
+
+1. **Acknowledge it explicitly in your next visible response.** Say something
+   like "Regarding your follow-up about X: …" or ask a clarifying question.
+   Never silently ignore it and keep working on the original task as if nothing
+   happened — the user is waiting for a reply.
+
+2. **If the follow-up asks a question or requests input**, stop the current
+   tool chain and answer the question first. Do not keep spawning more tool
+   calls until you have addressed the user.
+
+3. **If the follow-up adds a requirement** (e.g. "also do Y"), fold it into
+   the current plan so both the original ask and the follow-up are covered
+   in this same turn.
+
+4. **Do NOT echo the `<user_follow_up>` tags back** in your response. Just
+   address the content naturally.
+
+5. **The block contains ONLY the user's words** — never confuse it with tool
+   output. Keep reading the rest of the tool result for the actual data.
+
+Skipping or ignoring a `<user_follow_up>` is a P0 failure mode — the user will
+think their message was lost and resend it, creating a confusing experience.
 """
 
 

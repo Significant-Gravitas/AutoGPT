@@ -345,6 +345,15 @@ class _RetryState:
     # None = model-aware default.  Halved each retry for progressively more
     # aggressive compression (LLM summarize → truncate → middle-out → trim).
     target_tokens: int | None = None
+    # Count of user rows inserted MID-TURN by the follow-up persist path
+    # (``StreamToolOutputAvailable`` handler).  The CLI JSONL does NOT contain
+    # these as separate user entries — they are embedded inside tool_result
+    # text via the MCP wrapper injection, which the CLI may even strip when
+    # the tool output exceeds its internal size cap.  Tracking them separately
+    # lets the upload path subtract from ``message_count`` so the next turn's
+    # ``detect_gap`` picks them up as gap-fill entries instead of assuming the
+    # JSONL already covers them.
+    midturn_user_rows: int = 0
 
 
 @dataclass
@@ -1701,6 +1710,24 @@ def _dispatch_response(
             acc.has_appended_assistant = True
 
     elif isinstance(response, StreamToolOutputAvailable):
+        # Dedupe: the response adapter can emit the same tool_use_id more than
+        # once when the CLI re-delivers a ToolResultBlock (e.g. after a retry
+        # or when a parallel-tool UserMessage is processed alongside a flush).
+        # Guard at persistence time — the first emission already wrote the row
+        # (via the pop_pending_tool_output stash, so it has clean text), and a
+        # duplicate would land a second row with the raw MCP list fallback
+        # content (breaking frontend widgets and inflating conversation tokens).
+        already_persisted = any(
+            m.role == "tool" and m.tool_call_id == response.toolCallId
+            for m in ctx.session.messages
+        )
+        if already_persisted:
+            logger.info(
+                "%s Skipping duplicate tool_result for toolCallId=%s",
+                log_prefix,
+                response.toolCallId,
+            )
+            return response
         content = (
             response.output
             if isinstance(response.output, str)
@@ -2346,6 +2373,10 @@ async def _run_stream_attempt(
                                         ctx.log_prefix,
                                     )
                         else:
+                            # Record how many rows the CLI JSONL does NOT know
+                            # about so the upload path can adjust the watermark
+                            # and the next turn's detect_gap picks them up.
+                            state.midturn_user_rows += len(followup_drained)
                             logger.info(
                                 "%s Persisted %d mid-turn follow-up user "
                                 "row(s) after tool_result",
@@ -3872,7 +3903,19 @@ async def stream_chat_completion_sdk(
                     # That concern was addressed by the inflated-watermark fix
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
-                    _jsonl_covered = len(session.messages)
+                    #
+                    # Mid-turn follow-up user rows (persisted via the
+                    # StreamToolOutputAvailable handler) are NOT part of the CLI
+                    # JSONL — the CLI only knows them as embedded text inside a
+                    # tool_result, and even that embedding can be stripped by
+                    # the CLI's internal tool_result size cap.  Deduct them
+                    # from the watermark so detect_gap on the next turn
+                    # treats them as gap-fill entries and the model sees them
+                    # as real user messages instead of missing text.
+                    _midturn_offset = (
+                        state.midturn_user_rows if state is not None else 0
+                    )
+                    _jsonl_covered = len(session.messages) - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
