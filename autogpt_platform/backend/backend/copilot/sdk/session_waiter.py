@@ -60,8 +60,12 @@ async def wait_for_session_completion(
         # "not yet created" case before returning None.
         return "running"
 
-    deadline = asyncio.get_event_loop().time() + max(timeout, 0)
+    # ``subscribe_to_session`` spawned a background XREAD listener keyed by
+    # this queue — the finally unsubscribes on every exit path (cap fired,
+    # terminal event, caller cancellation) so we don't leak listener tasks
+    # / Redis connections across repeated polls (sentry r3105348640).
     try:
+        deadline = asyncio.get_event_loop().time() + max(timeout, 0)
         while True:
             remaining = deadline - asyncio.get_event_loop().time()
             if remaining <= 0:
@@ -73,3 +77,8 @@ async def wait_for_session_completion(
                 return "failed"
     except asyncio.TimeoutError:
         return "running"
+    finally:
+        await stream_registry.unsubscribe_from_session(
+            session_id=session_id,
+            subscriber_queue=queue,
+        )
