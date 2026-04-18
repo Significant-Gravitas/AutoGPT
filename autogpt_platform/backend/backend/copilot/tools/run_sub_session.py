@@ -8,7 +8,7 @@ Mirror-image of ``run_agent`` + ``view_agent_output`` for copilot turns:
    ``CoPilotExecutionEntry``, and waits on the Redis stream until the
    terminal event arrives or the cap fires.
 2. Any available ``copilot_executor`` worker claims the job, runs
-   ``collect_copilot_response`` to completion, and publishes the final
+   the SDK stream to completion, and publishes the final
    ``StreamFinish`` event on the session's Redis stream.
 3. If the terminal event arrives in the wait window, the aggregated
    :class:`SessionResult` (response text, tool calls, usage) comes back
@@ -64,22 +64,12 @@ class RunSubSessionTool(BaseTool):
         return (
             "Delegate a task to a sub-AutoPilot. Runs on the copilot executor "
             "queue — survives tab-close AND worker restarts. Waits up to "
-            f"wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}).\n\n"
-            "Outcomes:\n"
-            "  • status=completed → response + tool_calls ready.\n"
-            "  • status=running → sub is still working; poll with "
-            "get_sub_session_result.\n"
-            "  • status=queued → target session already had a turn running, "
-            "so your prompt was appended to its pending buffer and the "
-            "existing turn will pick it up on its next drain. Poll with "
-            "get_sub_session_result to see when it completes. This is how "
-            "you send a follow-up / additional instruction to a sub that is "
-            "currently executing.\n"
-            "  • status=error → sub failed.\n\n"
-            "To continue OR queue a message into an existing sub-session, "
-            "pass sub_autopilot_session_id=<prior id>. The server auto-"
-            "detects whether to start a fresh turn or append to the in-flight "
-            "one; you don't need to check liveness first."
+            f"wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). If not "
+            "done, returns status=running + sub_session_id — poll via "
+            "get_sub_session_result. Pass sub_autopilot_session_id=<prior id> "
+            "to continue OR queue-follow-up into an existing sub (status=queued "
+            "if it had a turn running; the existing turn picks up your prompt "
+            "on its next drain — no liveness pre-check needed)."
         )
 
     @property

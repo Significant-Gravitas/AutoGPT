@@ -2,17 +2,14 @@
 
 Consumes the same ``StreamBaseResponse`` events that fly over
 ``stream_registry`` (text deltas, tool i/o, usage, errors) and folds
-them into a single :class:`EventAccumulator` state. Two consumers:
+them into a single :class:`EventAccumulator` state.  Used by
+:func:`session_waiter.wait_for_session_result` to read events from a
+Redis Stream subscription so a different process can obtain the
+aggregated result for a session it didn't run.
 
-* :func:`collect.collect_copilot_response` — drives the SDK stream
-  directly on the worker that's running the turn.
-* :func:`session_waiter.wait_for_session_result` — reads the same
-  events from a Redis Stream subscription, so a different process can
-  obtain the same aggregated result for a session it didn't run.
-
-Keeping the dispatch in one place means both entry points agree on
-what "response_text", "tool_calls", and token counts mean without
-drifting apart as new event types are added.
+Keeping the dispatch in one place means new event types can be added
+without drifting callers apart on what "response_text", "tool_calls",
+or token counts mean.
 """
 
 from __future__ import annotations

@@ -2773,7 +2773,7 @@ async def stream_chat_completion_sdk(
     # later turn-start drain (from a pending message queued during this
     # turn) would trip the "no sequence" RuntimeError and crash the turn.
     if _user_message_appended and is_user_message:
-        await persist_session_safe(session, log_prefix)
+        session = await persist_session_safe(session, log_prefix)
         if session.messages and session.messages[-1].sequence is None:
             # Eager persist swallowed a transient DB failure and left the
             # in-memory append without a sequence. Roll back so the session

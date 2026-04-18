@@ -226,7 +226,7 @@ async def persist_pending_as_user_rows(
         session.messages.append(ChatMessage(role="user", content=content))
         transcript_builder.append_user(content=content)
 
-    await persist_session_safe(session, log_prefix)
+    session = await persist_session_safe(session, log_prefix)
     newly_appended = session.messages[session_anchor:]
 
     if any(m.sequence is None for m in newly_appended):

@@ -7,20 +7,12 @@ and ``AutoPilotBlock`` all delegate a copilot turn to the
 centralised primitive so every caller agrees on the dispatch shape,
 the event aggregation, and the cleanup contract.
 
-Two wait modes:
+:func:`wait_for_session_result` accumulates stream events into an
+:class:`EventAccumulator` so callers get back ``response_text`` /
+``tool_calls`` / token usage in memory without an extra DB round-trip.
 
-* :func:`wait_for_session_completion` — cheap "did it finish?" when the
-  caller only needs a ``SessionOutcome`` (``running`` / ``completed`` /
-  ``failed``). Used by ``get_sub_session_result`` when it only needs to
-  decide between returning the final ChatSession state or "still busy".
-* :func:`wait_for_session_result` — accumulates stream events into an
-  :class:`EventAccumulator` so the caller also gets back
-  ``response_text`` / ``tool_calls`` / token usage in memory, without
-  an extra DB round-trip. Used by the full-result callers
-  (``run_sub_session`` completed path, ``AutoPilotBlock.execute_copilot``).
-
-Plus :func:`run_copilot_turn_via_queue` — the one-shot "create session
-meta → enqueue → wait for result" sequence that every caller uses.
+:func:`run_copilot_turn_via_queue` is the one-shot "create session meta
+→ enqueue → wait for result" sequence every caller uses.
 """
 
 from __future__ import annotations
@@ -53,8 +45,7 @@ SessionOutcome = Literal["completed", "failed", "running", "queued"]
 @dataclass
 class SessionResult:
     """Aggregated result from a copilot session turn observed via
-    ``stream_registry``. Mirrors :class:`collect.CopilotResult` so both
-    in-process and cross-process consumers get the same shape.
+    ``stream_registry``.
 
     When ``queued`` is set, :func:`run_copilot_turn_via_queue` detected an
     in-flight turn on the target session and pushed the message onto the
@@ -68,30 +59,8 @@ class SessionResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
-    error_text: str | None = None
     queued: bool = False
     pending_buffer_length: int = 0
-
-
-async def wait_for_session_completion(
-    *,
-    session_id: str,
-    user_id: str | None,
-    timeout: float,
-) -> SessionOutcome:
-    """Return the outcome of the latest turn on *session_id* within *timeout*.
-
-    Light-weight variant of :func:`wait_for_session_result` — drops the
-    event aggregation so callers that only need to decide between "still
-    running" and "terminal" don't pay for building an accumulator.
-    """
-    outcome, _ = await _drain_until_terminal(
-        session_id=session_id,
-        user_id=user_id,
-        timeout=timeout,
-        accumulate=False,
-    )
-    return outcome
 
 
 async def wait_for_session_result(
@@ -100,69 +69,55 @@ async def wait_for_session_result(
     user_id: str | None,
     timeout: float,
 ) -> tuple[SessionOutcome, SessionResult]:
-    """Drain the session's stream events, aggregate them into a result.
+    """Drain the session's stream events and aggregate them into a result.
 
     Returns whatever has been observed at the cap (``running`` + partial
     result) or at the terminal event (``completed`` / ``failed`` + full
     result). Cleans up the subscriber listener on every exit path so
     long-running polls don't leak listeners (sentry r3105348640).
     """
-    outcome, acc = await _drain_until_terminal(
-        session_id=session_id,
-        user_id=user_id,
-        timeout=timeout,
-        accumulate=True,
-    )
-    result = SessionResult()
-    if acc is not None:
-        result.response_text = "".join(acc.response_parts)
-        result.tool_calls = list(acc.tool_calls)
-        result.prompt_tokens = acc.prompt_tokens
-        result.completion_tokens = acc.completion_tokens
-        result.total_tokens = acc.total_tokens
-    return outcome, result
-
-
-async def _drain_until_terminal(
-    *,
-    session_id: str,
-    user_id: str | None,
-    timeout: float,
-    accumulate: bool,
-) -> tuple[SessionOutcome, EventAccumulator | None]:
-    """Shared drain loop used by both wait helpers."""
     queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
     )
+    result = SessionResult()
     if queue is None:
         # Session meta not in Redis yet, or the caller doesn't own it.
         # ``subscribe_to_session`` already retried with backoff before
         # returning None.
-        return "running", (EventAccumulator() if accumulate else None)
+        return "running", result
 
-    acc = EventAccumulator() if accumulate else None
+    acc = EventAccumulator()
+    outcome: SessionOutcome = "running"
     try:
         loop = asyncio.get_event_loop()
         deadline = loop.time() + max(timeout, 0)
         while True:
             remaining = deadline - loop.time()
             if remaining <= 0:
-                return "running", acc
+                break
             event = await asyncio.wait_for(queue.get(), timeout=remaining)
-            if accumulate and acc is not None:
-                process_event(event, acc)
+            process_event(event, acc)
             if isinstance(event, StreamFinish):
-                return "completed", acc
+                outcome = "completed"
+                break
             if isinstance(event, StreamError):
-                return "failed", acc
+                outcome = "failed"
+                break
     except asyncio.TimeoutError:
-        return "running", acc
+        pass
     finally:
         await stream_registry.unsubscribe_from_session(
             session_id=session_id,
             subscriber_queue=queue,
         )
+
+    result.response_text = "".join(acc.response_parts)
+    result.tool_calls = list(acc.tool_calls)
+    result.prompt_tokens = acc.prompt_tokens
+    result.completion_tokens = acc.completion_tokens
+    result.total_tokens = acc.total_tokens
+    return outcome, result
 
 
 async def run_copilot_turn_via_queue(

@@ -4,7 +4,7 @@ Sub-AutoPilots are enqueued on the copilot_execution RabbitMQ queue and
 executed by any copilot_executor worker. The tools wait for completion
 by subscribing to ``stream_registry`` for the sub's ChatSession. These
 tests patch the three integration seams — ``enqueue_copilot_turn``,
-``wait_for_session_completion``, and ``stream_registry.create_session``
+``wait_for_session_result``, and ``stream_registry.create_session``
 — to exercise the tool logic without needing RabbitMQ or Redis.
 """
 
