@@ -62,14 +62,11 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a sub-AutoPilot. Runs on the copilot executor "
-            "queue — survives tab-close AND worker restarts. Waits up to "
-            f"wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). If not "
-            "done, returns status=running + sub_session_id — poll via "
-            "get_sub_session_result. Pass sub_autopilot_session_id=<prior id> "
-            "to continue OR queue-follow-up into an existing sub (status=queued "
-            "if it had a turn running; the existing turn picks up your prompt "
-            "on its next drain — no liveness pre-check needed)."
+            "Delegate a task to a fresh sub-AutoPilot. Runs on the copilot "
+            "executor queue — survives tab-close AND worker restarts. Waits "
+            f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
+            "If not done, returns status=running + sub_session_id — poll via "
+            "get_sub_session_result."
         )
 
     @property
@@ -89,11 +86,7 @@ class RunSubSessionTool(BaseTool):
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue or queue-into a prior sub via its "
-                        "session_id; empty = new sub. If the target sub is "
-                        "already running a turn, the prompt is queued into "
-                        "its pending buffer and the running turn picks it up "
-                        "on its next drain (status=queued in the response)."
+                        "Continue/queue-into a prior sub; empty = new."
                     ),
                     "default": "",
                 },
