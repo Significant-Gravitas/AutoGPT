@@ -1176,7 +1176,10 @@ async def queue_pending_message(
     # Call-frequency cap: prevent rapid-fire pushes that would bypass the
     # token-budget check (which only fires per-turn, not per-push).
     call_count = await check_pending_call_rate(user_id)
-    if call_count >= PENDING_CALL_LIMIT:
+    # check_pending_call_rate returns the count *after* incrementing, so
+    # rejecting at `> LIMIT` permits exactly LIMIT requests per window
+    # (the cap is inclusive).  Using `>=` would reject the LIMITth request.
+    if call_count > PENDING_CALL_LIMIT:
         raise HTTPException(
             status_code=429,
             detail=f"Too many pending message requests this minute: limit is {PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s across all sessions",

@@ -65,6 +65,7 @@ from ..pending_message_helpers import (
     drain_pending_safe,
     persist_session_safe,
 )
+from ..pending_messages import PendingMessage, push_pending_message
 from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
 from ..rate_limit import get_user_tier
@@ -3837,6 +3838,16 @@ async def stream_chat_completion_sdk(
             # together rather than sequentially. The recursive call may itself
             # drain further messages queued while this turn runs.
             _auto_combined = "\n\n".join(_auto_pending_texts)
+            # Race guard: drain_pending_safe has already LPOPed the messages
+            # from Redis. If another request acquires the session lock in the
+            # window between our lock.release() above and the recursive call's
+            # try_acquire() below, that recursive call exits with
+            # "stream_already_active" and the drained texts would be
+            # permanently lost. Detect that sentinel on the first yielded
+            # event and push the drained messages back to Redis so the
+            # competing stream's turn-start drain picks them up.
+            _auto_requeued = False
+            _first_auto_event = True
             async for event in stream_chat_completion_sdk(
                 session_id=session_id,
                 message=_auto_combined,
@@ -3847,4 +3858,34 @@ async def stream_chat_completion_sdk(
                 mode=mode,
                 model=model,
             ):
+                if _first_auto_event:
+                    _first_auto_event = False
+                    if (
+                        isinstance(event, StreamError)
+                        and getattr(event, "code", None) == "stream_already_active"
+                    ):
+                        logger.warning(
+                            "%s Auto-continue lost lock race; re-queueing "
+                            "%d drained message(s) so the active stream can "
+                            "process them",
+                            log_prefix,
+                            len(_auto_pending_texts),
+                        )
+                        for _text in _auto_pending_texts:
+                            try:
+                                await push_pending_message(
+                                    session_id, PendingMessage(content=_text)
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "%s Failed to re-queue auto-continue "
+                                    "message after lock race",
+                                    log_prefix,
+                                )
+                        _auto_requeued = True
+                        # Suppress the stale "already active" error — the
+                        # competing stream will emit its own events.
+                        continue
                 yield event
+            if _auto_requeued:
+                return
