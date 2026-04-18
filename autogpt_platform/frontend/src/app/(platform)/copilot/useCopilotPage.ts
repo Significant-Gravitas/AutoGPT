@@ -421,15 +421,14 @@ export function useCopilotPage() {
     prevQueuePeekSessionIdRef.current = sessionId;
 
     if (sessionChanged) {
-      // Reset per-stream promotion state so stale chips from the previous
-      // session don't promote onto the first assistant of the new session.
+      // Reset per-stream promotion state and clear any chips rendered for
+      // the previous session before the peek resolves — otherwise the new
+      // session briefly shows stale chips against its own messages.
       hasSeenTurnStartAssistantRef.current = false;
+      setQueuedMessages([]);
     }
 
-    if (!sessionId) {
-      setQueuedMessages([]);
-      return;
-    }
+    if (!sessionId) return;
     const isIdle = status === "ready" || status === "error";
     if (!sessionChanged && !isIdle) return;
 
