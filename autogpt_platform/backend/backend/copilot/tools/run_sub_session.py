@@ -62,11 +62,24 @@ class RunSubSessionTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delegate a task to a fresh sub-AutoPilot. Runs on the copilot "
-            "executor queue — survives tab-close AND worker restarts. Waits "
-            f"up to wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}). "
-            "If not done, returns status=running + sub_session_id — poll via "
-            "get_sub_session_result."
+            "Delegate a task to a sub-AutoPilot. Runs on the copilot executor "
+            "queue — survives tab-close AND worker restarts. Waits up to "
+            f"wait_for_result sec (max {MAX_SUB_SESSION_WAIT_SECONDS}).\n\n"
+            "Outcomes:\n"
+            "  • status=completed → response + tool_calls ready.\n"
+            "  • status=running → sub is still working; poll with "
+            "get_sub_session_result.\n"
+            "  • status=queued → target session already had a turn running, "
+            "so your prompt was appended to its pending buffer and the "
+            "existing turn will pick it up on its next drain. Poll with "
+            "get_sub_session_result to see when it completes. This is how "
+            "you send a follow-up / additional instruction to a sub that is "
+            "currently executing.\n"
+            "  • status=error → sub failed.\n\n"
+            "To continue OR queue a message into an existing sub-session, "
+            "pass sub_autopilot_session_id=<prior id>. The server auto-"
+            "detects whether to start a fresh turn or append to the in-flight "
+            "one; you don't need to check liveness first."
         )
 
     @property
@@ -86,7 +99,11 @@ class RunSubSessionTool(BaseTool):
                 "sub_autopilot_session_id": {
                     "type": "string",
                     "description": (
-                        "Continue a prior sub via its session_id; empty = new."
+                        "Continue or queue-into a prior sub via its "
+                        "session_id; empty = new sub. If the target sub is "
+                        "already running a turn, the prompt is queued into "
+                        "its pending buffer and the running turn picks it up "
+                        "on its next drain (status=queued in the response)."
                     ),
                     "default": "",
                 },
