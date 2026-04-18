@@ -124,13 +124,22 @@ def unregister_sub_session(sub_session_id: str) -> None:
 
 
 def cancel_sub_session(sub_session_id: str, user_id: str) -> bool:
-    """Cancel the task and drop the entry. Returns True if cancelled."""
+    """Cancel the task but keep the entry for the terminal retention window.
+
+    The entry is NOT dropped here — the task's done-callback records
+    ``finished_at`` and ``prune_finished`` evicts it after
+    ``_TERMINAL_TTL_SECONDS``. That way a caller polling again right
+    after cancelling still gets a proper "cancelled" response instead of
+    a bare "not found", which honours the docstring contract at the top
+    of this module.
+
+    Returns True if a cancel was initiated, False if no entry was found.
+    """
     entry = get_sub_session(sub_session_id, user_id)
     if entry is None:
         return False
     if not entry.task.done():
         entry.task.cancel()
-    unregister_sub_session(sub_session_id)
     logger.info("Cancelled sub-session %s by user %s", sub_session_id, user_id)
     return True
 

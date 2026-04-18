@@ -580,3 +580,34 @@ class TestGetSubSessionResult:
         assert isinstance(r, SubSessionStatusResponse)
         assert r.status == "completed"
         assert r.response == "already done"
+
+
+class TestCancelRetentionContract:
+    """`cancel_sub_session` must keep the entry in the registry so a caller
+    that polls again after cancel gets the terminal record, not a "not found"
+    (sentry r3105237509)."""
+
+    @pytest.mark.asyncio
+    async def test_cancelled_entry_is_retained_until_pruned(self):
+        from backend.copilot.sdk.sub_session_registry import cancel_sub_session
+
+        async def hang():
+            await asyncio.sleep(60)
+
+        task = asyncio.create_task(hang())
+        sid = register_sub_session(task, "alice", "sess", "x", "inner-sess-id")
+
+        assert cancel_sub_session(sid, "alice") is True
+
+        # Let the cancellation propagate so the done-callback records
+        # finished_at — the entry should still be here for a late poll.
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        assert task.cancelled()
+
+        still_there = get_sub_session(sid, "alice")
+        assert still_there is not None, (
+            "cancelled entry was dropped immediately — violates the "
+            "terminal-retention contract"
+        )
+        assert still_there.finished_at is not None

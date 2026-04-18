@@ -26,7 +26,9 @@ class FixAgentGraphTool(BaseTool):
             "Auto-fix common agent JSON issues: missing/invalid UUIDs, StoreValueBlock prerequisites, "
             "double curly brace escaping, AddToList/AddToDictionary prerequisites, credentials, "
             "node spacing, AI model defaults, link static properties, and type mismatches. "
-            "Returns fixed JSON and list of fixes applied."
+            "Returns fixed JSON and list of fixes applied. "
+            "REQUIRED: call get_agent_building_guide once per session before this tool — "
+            "this tool will refuse otherwise."
         )
 
     @property
