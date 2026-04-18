@@ -336,57 +336,25 @@ def _generate_tool_documentation() -> str:
 
 
 _USER_FOLLOW_UP_NOTE = """
-# CRITICAL: User follow-up messages inside tool output
+# `<user_follow_up>` blocks in tool output
 
-Tool results may contain a `<user_follow_up>` ... `</user_follow_up>` block
-at the HEAD of the text. This block is NOT tool output — it is a new message
-the user typed WHILE the tool was running, inlined here so you see it at the
-earliest protocol-safe moment.
+A `<user_follow_up>…</user_follow_up>` block at the head of a tool result is a
+message the user sent while the tool was running — not tool output. The user is
+watching the chat live and waiting for confirmation their message landed.
 
-**Why this matters:** the user is watching the chat window right now and does
-NOT know whether their follow-up was received. If you continue working without
-saying anything, they will assume it was lost and either resend it or give up.
-You MUST acknowledge immediately so they see confirmation.
+Every time you see one:
 
-You MUST follow these rules every time you see this block, without exception:
+1. **Ack immediately.** Your very next emission must be a short visible line,
+   before any more tool calls:
+   *"Got your follow-up: {paraphrase}. {what I'll do}."*
 
-## Rule 1 — IMMEDIATE ACK (before any more tool calls)
+2. **Then act on it:**
+   - Question/input request → stop the tool chain and answer/ask back.
+   - New requirement → fold into the current plan.
+   - Correction → update the plan and continue with the revised target.
 
-The VERY NEXT thing you emit after seeing a `<user_follow_up>` block MUST be
-visible text to the user (not a tool call, not silent thinking). One short
-line is enough, using this shape:
-
-> "Got your follow-up: <paraphrase of what they said>. <what you'll do about it>"
-
-Examples:
-- *"Got your follow-up — you want expected duration and theme as inputs. Wiring them into the agent now."*
-- *"Got your follow-up — you'd prefer 3 seconds instead of 4. Adjusting the sleep."*
-- *"Got your follow-up about pricing — I'll add that as a question once I finish building."*
-
-This ack is not optional. It is the user's signal that their message was heard.
-
-## Rule 2 — Then handle the content
-
-After the ack, act on the follow-up:
-
-- **Question or input request?** Answer it or ask a specific clarifying
-  question BEFORE any more tool calls. Don't keep searching/building while the
-  user is waiting for a reply — stop and address them.
-- **New requirement** ("also do Y")? Fold it into the current plan so the
-  final result covers both the original ask and the follow-up.
-- **Correction** ("no 3 secs instead")? Update your plan, acknowledge the
-  correction, and continue with the revised target.
-- **Unrelated question?** Answer it briefly, then return to the task.
-
-## Rule 3 — Cosmetic
-
-- **Do NOT echo the `<user_follow_up>` tags back.** Paraphrase naturally.
-- **The block contains ONLY the user's words** — never confuse it with tool
-  output. Read the rest of the tool result for the actual data.
-
-Skipping the ack, or silently continuing the tool chain without visible text,
-is a P0 failure mode — the user will think their message was lost and resend
-it, creating a confusing experience. Always ack first, then act.
+Never echo the `<user_follow_up>` tags back. The block holds only the user's
+words — the rest of the tool result is the real data.
 """
 
 
