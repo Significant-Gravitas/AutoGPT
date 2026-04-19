@@ -5,10 +5,9 @@ import { useState } from "react";
 
 interface Props {
   children: React.ReactNode;
-  label?: string;
 }
 
-export function ReasoningCollapse({ children, label = "reasoning" }: Props) {
+export function ReasoningCollapse({ children }: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -27,7 +26,7 @@ export function ReasoningCollapse({ children, label = "reasoning" }: Props) {
           }
         />
         <LightbulbIcon size={12} weight="bold" />
-        <span>{open ? `Hide ${label}` : `Show ${label}`}</span>
+        <span>{open ? "Hide reasoning" : "Show reasoning"}</span>
       </button>
       {open && (
         <div className="mt-1 space-y-1 border-l-2 border-zinc-200 pl-3">
