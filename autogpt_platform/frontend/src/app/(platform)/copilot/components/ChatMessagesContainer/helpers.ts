@@ -149,13 +149,10 @@ export function splitReasoningAndResponse(parts: MessagePart[]): {
   for (const part of rawReasoning) {
     if (isInteractiveToolPart(part)) {
       pinnedParts.push(part);
-    } else if (part.type === "reasoning" || part.type === "thinking") {
-      // Reasoning / thinking parts render their own collapsed block via
-      // ``MessagePartRenderer``.  Keep them out of the outer
-      // ``ReasoningCollapse`` so we don't nest two collapse triggers —
-      // pin them inline alongside the interactive parts instead.
-      pinnedParts.push(part);
     } else {
+      // Reasoning / thinking parts stay inside the outer "Show steps" modal
+      // alongside the tool-use timeline — their own inline accordion handles
+      // expansion inside the modal so there's no visual collision.
       reasoning.push(part);
     }
   }
