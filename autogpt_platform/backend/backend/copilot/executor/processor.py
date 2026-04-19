@@ -327,7 +327,15 @@ class CoPilotProcessor:
             else:
                 # Enforce server-side feature-flag gate so unauthorised
                 # users cannot force a mode by crafting the request.
-                effective_mode = await resolve_effective_mode(entry.mode, entry.user_id)
+                # Entries with ``force_mode=True`` (builder sessions) skip
+                # the gate — the mode is a server-side requirement, not a
+                # user opt-in.
+                if entry.force_mode:
+                    effective_mode = entry.mode
+                else:
+                    effective_mode = await resolve_effective_mode(
+                        entry.mode, entry.user_id
+                    )
                 use_sdk = await resolve_use_sdk_for_mode(
                     effective_mode,
                     entry.user_id,

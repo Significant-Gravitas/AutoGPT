@@ -110,8 +110,7 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             # Extended consumer timeout for long-running LLM operations
             # Default 30-minute timeout is insufficient for extended thinking
             # and agent generation which can take 30+ minutes
-            "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS
-            * 1000,
+            "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS * 1000,
         },
     )
     cancel_queue = Queue(
@@ -169,6 +168,12 @@ class CoPilotExecutionEntry(BaseModel):
     forwards its parent's permissions so the sub can't escalate). ``None``
     means the worker applies no filter."""
 
+    force_mode: bool = False
+    """When True, ``mode`` bypasses the server-side ``CHAT_MODE_OPTION``
+    feature gate.  Used by builder-bound sessions (which always run in
+    fast mode by product requirement) so users without the mode-toggle
+    flag still get fast-mode inside the builder panel."""
+
     request_arrival_at: float = 0.0
     """Unix-epoch seconds (server clock) when the originating HTTP
     ``/stream`` request arrived.  The executor's turn-start drain uses
@@ -200,6 +205,7 @@ async def enqueue_copilot_turn(
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
+    force_mode: bool = False,
     request_arrival_at: float = 0.0,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
@@ -230,6 +236,7 @@ async def enqueue_copilot_turn(
         mode=mode,
         model=model,
         permissions=permissions,
+        force_mode=force_mode,
         request_arrival_at=request_arrival_at,
     )
 
