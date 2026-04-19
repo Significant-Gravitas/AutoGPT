@@ -1675,3 +1675,68 @@ def test_get_session_returns_backward_paginated(
     assert data["oldest_sequence"] == 0
     assert "forward_paginated" not in data
     assert "newest_sequence" not in data
+
+
+# ─── POST /sessions/builder (get-or-create builder session) ─────────────
+
+
+def test_builder_session_creates_when_missing(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """POST /sessions/builder returns a new session bound to the given graph."""
+    from backend.copilot.model import ChatSession
+
+    async def _fake_get_or_create(user_id: str, graph_id: str) -> ChatSession:
+        return ChatSession.new(
+            user_id,
+            dry_run=False,
+            builder_graph_id=graph_id,
+        )
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new_callable=AsyncMock,
+        side_effect=_fake_get_or_create,
+    )
+
+    response = client.post("/sessions/builder", json={"graph_id": "graph-1"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["metadata"]["builder_graph_id"] == "graph-1"
+    assert body["metadata"]["dry_run"] is False
+
+
+def test_builder_session_rejects_empty_graph_id(
+    test_user_id: str,
+) -> None:
+    """``graph_id`` must be non-empty — empty strings fail validation."""
+    response = client.post("/sessions/builder", json={"graph_id": ""})
+    assert response.status_code == 422
+
+
+def test_builder_session_rejects_unknown_fields(
+    test_user_id: str,
+) -> None:
+    """Extra request fields are rejected (422) to prevent silent mis-use."""
+    response = client.post(
+        "/sessions/builder",
+        json={"graph_id": "graph-1", "unexpected": "x"},
+    )
+    assert response.status_code == 422
+
+
+def test_resolve_session_permissions_whitelists_builder_tools() -> None:
+    """``resolve_session_permissions`` returns a whitelist of edit_agent +
+    run_agent for builder-bound sessions, and ``None`` otherwise."""
+    from backend.copilot.model import ChatSession
+
+    unbound = ChatSession.new("u1", dry_run=False)
+    assert chat_routes.resolve_session_permissions(unbound) is None
+
+    bound = ChatSession.new("u1", dry_run=False, builder_graph_id="g1")
+    perms = chat_routes.resolve_session_permissions(bound)
+    assert perms is not None
+    assert perms.tools_exclude is False
+    assert sorted(perms.tools) == ["edit_agent", "run_agent"]
