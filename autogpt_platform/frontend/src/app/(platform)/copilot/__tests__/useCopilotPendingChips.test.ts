@@ -351,7 +351,7 @@ describe("useCopilotPendingChips", () => {
     // streams SSE deltas into ``messages[-1]``; if the last message is
     // a user bubble instead of the still-streaming assistant, every
     // subsequent chunk lands in the wrong slot and the UI freezes until
-    // a page refresh.  Observed on prod session 2664eff3.
+    // a page refresh.
     const streamingUpdater = promotedCall![0] as (
       prev: UIMessage[],
     ) => UIMessage[];
