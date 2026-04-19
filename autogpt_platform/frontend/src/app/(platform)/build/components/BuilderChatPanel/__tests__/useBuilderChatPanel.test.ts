@@ -75,6 +75,8 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
 }));
 
+const setQueryStatesMock = vi.fn();
+
 const defaultStream = {
   messages: [],
   setMessages: vi.fn(),
@@ -86,9 +88,10 @@ const defaultStream = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  setQueryStatesMock.mockReset();
   mockUseQueryStates.mockReturnValue([
     { flowID: null, flowExecutionID: null, flowVersion: null },
-    vi.fn(),
+    setQueryStatesMock,
   ]);
   mockUseGetV1GetSpecificGraph.mockReturnValue({
     data: null,
@@ -156,6 +159,158 @@ describe("useBuilderChatPanel", () => {
 
   it("exposes null revert target before any edit_agent turn", () => {
     const { result } = renderHook(() => useBuilderChatPanel());
+    expect(result.current.revertTargetVersion).toBeNull();
+  });
+
+  it("auto-creates a blank agent when opened with no flowID, writing the new id to the URL", async () => {
+    createNewGraph.mockResolvedValue({
+      status: 200,
+      data: { id: "graph-boot", version: 1 },
+    });
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowID: "graph-boot",
+        flowVersion: 1,
+      });
+    });
+  });
+
+  it("surfaces a destructive toast when the bootstrap mutation fails", async () => {
+    const toast = vi.fn();
+    const useToastMock = await import("@/components/molecules/Toast/use-toast");
+    (useToastMock.useToast as unknown as ReturnType<typeof vi.fn>) = vi
+      .fn()
+      .mockReturnValue({ toast });
+    createNewGraph.mockResolvedValue({ status: 500, data: null });
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalled();
+    });
+    // The hook catches and toasts; no throw should reach the test.
+    expect(result.current.isOpen).toBe(true);
+  });
+
+  it("sends the message directly when stream status is ready", async () => {
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "ready",
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-send" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-send", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-send");
+    });
+    await result.current.onSend("hello");
+    expect(sendMessage).toHaveBeenCalledWith({ text: "hello" });
+  });
+
+  it("no-ops onSend when no session is bound yet", async () => {
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "ready",
+    });
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await result.current.onSend("nobody home");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("no-ops onSend for empty/whitespace input even when session is live", async () => {
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "ready",
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-empty" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "g", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-empty");
+    });
+    await result.current.onSend("   ");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when handleRevert is called without a revert target", async () => {
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await result.current.handleRevert();
+    expect(setActiveVersion).not.toHaveBeenCalled();
+  });
+
+  it("forwards the bound graph_id on subsequent panel opens (no duplicate session create)", async () => {
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-stable" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-stable", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledTimes(1);
+    });
+    // Close + reopen should not re-bind while the same flowID + sessionId hold.
+    result.current.handleToggle();
+    rerender();
+    result.current.handleToggle();
+    rerender();
+    // Allow any pending effect microtasks to settle.
+    await Promise.resolve();
+    expect(createBuilderSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets session + revert state when flowID becomes null", async () => {
+    const setMessages = vi.fn();
+    mockUseCopilotStream.mockReturnValue({ ...defaultStream, setMessages });
+    // Start with a flowID so the session could bind, then drop it.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-A", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    // Flip to no flowID on the next render.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: null, flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    rerender();
+    await waitFor(() => {
+      expect(setMessages).toHaveBeenCalledWith([]);
+    });
+    expect(result.current.sessionId).toBeNull();
     expect(result.current.revertTargetVersion).toBeNull();
   });
 });
