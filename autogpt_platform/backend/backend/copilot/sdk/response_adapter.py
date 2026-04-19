@@ -282,6 +282,13 @@ class SDKResponseAdapter:
                 and not self._text_since_last_tool_result
                 and sdk_message.subtype == "success"
             ):
+                # UserMessage (tool_result) closed the last step, so we must
+                # open a fresh one before emitting any text — the AI SDK v5
+                # transport rejects text-delta chunks that aren't wrapped in
+                # start-step / finish-step.
+                if not self.step_open:
+                    responses.append(StreamStartStep())
+                    self.step_open = True
                 self._ensure_text_started(responses)
                 responses.append(
                     StreamTextDelta(

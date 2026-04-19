@@ -105,25 +105,9 @@ export function MessagePartRenderer({
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
-    case "reasoning":
-    case "thinking": {
-      // Render extended_thinking / "reasoning" content as a collapsed
-      // block — the user can click "Show reasoning" to expand.  We
-      // handle both names so:
-      //   - ``"reasoning"`` — live stream path: AI SDK's ``useChat``
-      //     accumulates our ``reasoning-*`` events into this part type.
-      //   - ``"thinking"`` — persisted path: our backend's
-      //     ``_format_sdk_content_blocks`` stores ``ThinkingBlock`` as
-      //     ``{type: "thinking", thinking: "..."}``, so on session
-      //     reload / shared-link the same text flows through here.
+    case "reasoning": {
       const reasoningText =
-        ("text" in part && typeof part.text === "string"
-          ? part.text
-          : undefined) ??
-        ("thinking" in part && typeof part.thinking === "string"
-          ? part.thinking
-          : undefined) ??
-        "";
+        "text" in part && typeof part.text === "string" ? part.text : "";
       if (!reasoningText.trim()) return null;
       return (
         <ReasoningCollapse key={key}>
