@@ -344,6 +344,7 @@ class DatabaseManager(AppService):
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
+    get_builder_session_by_graph_id = _(chat_db.get_builder_session_by_graph_id)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
@@ -545,6 +546,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_chat_messages_batch = d.add_chat_messages_batch
     get_user_chat_sessions = d.get_user_chat_sessions
     get_user_session_count = d.get_user_session_count
+    get_builder_session_by_graph_id = d.get_builder_session_by_graph_id
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content

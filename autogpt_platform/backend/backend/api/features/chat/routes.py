@@ -24,9 +24,11 @@ from backend.copilot.model import (
     create_chat_session,
     delete_chat_session,
     get_chat_session,
+    get_or_create_builder_session,
     get_user_sessions,
     update_session_title,
 )
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
     is_turn_in_flight,
@@ -99,6 +101,31 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
+
+
+# Tools exposed by builder-bound sessions.  Keep the set minimal — the
+# builder panel intentionally only offers direct-edit and run so the
+# assistant cannot drift into unrelated workflows (web search, file
+# tools, etc).  Adding a tool here widens the blast radius, so review
+# carefully.
+_BUILDER_SESSION_TOOLS: tuple[str, ...] = ("edit_agent", "run_agent")
+
+
+def resolve_session_permissions(
+    session: ChatSession,
+) -> CopilotPermissions | None:
+    """Return the capability filter implied by the session's metadata.
+
+    Builder sessions are whitelisted to the two builder tools.  Regular
+    sessions return ``None`` (no filter) so the existing behaviour is
+    untouched.
+    """
+    if session.metadata.builder_graph_id:
+        return CopilotPermissions(
+            tools=list(_BUILDER_SESSION_TOOLS),
+            tools_exclude=False,
+        )
+    return None
 
 
 router = APIRouter(
@@ -174,6 +201,21 @@ class CreateSessionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = False
+
+
+class BuilderSessionRequest(BaseModel):
+    """Request model for get-or-create builder sessions.
+
+    Each user has at most one session bound to a given ``graph_id`` —
+    the builder panel re-uses it across refreshes so the chat persists
+    with the agent.  Returning the existing session is safe because the
+    session is restricted via ``CopilotPermissions`` to the two builder
+    tools and cannot mutate any other agent.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    graph_id: str = Field(min_length=1, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -342,6 +384,32 @@ async def create_session(
 
     session = await create_chat_session(user_id, dry_run=dry_run)
 
+    return CreateSessionResponse(
+        id=session.session_id,
+        created_at=session.started_at.isoformat(),
+        user_id=session.user_id,
+        metadata=session.metadata,
+    )
+
+
+@router.post(
+    "/sessions/builder",
+)
+async def get_or_create_builder_session_endpoint(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    request: BuilderSessionRequest,
+) -> CreateSessionResponse:
+    """Get-or-create a chat session bound to a builder graph.
+
+    The builder panel calls this on mount so the chat persists across
+    refreshes and is scoped to the currently-opened agent.  If a session
+    already exists with ``metadata.builder_graph_id == graph_id`` for this
+    user, the existing session is returned; otherwise a new one is
+    created.  The session is restricted server-side to the
+    ``edit_agent`` and ``run_agent`` tools via the permissions injected
+    by the executor (see :func:`resolve_session_permissions`).
+    """
+    session = await get_or_create_builder_session(user_id, request.graph_id)
     return CreateSessionResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),
@@ -830,7 +898,8 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
+    builder_permissions = resolve_session_permissions(session)
 
     # Self-defensive queue-fallback: if a turn is already running, don't race
     # it on the cluster lock — drop the message into the pending buffer and
@@ -943,6 +1012,7 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
     else:

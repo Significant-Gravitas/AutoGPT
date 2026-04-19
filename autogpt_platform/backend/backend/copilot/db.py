@@ -479,6 +479,32 @@ async def get_user_session_count(user_id: str) -> int:
     return await PrismaChatSession.prisma().count(where={"userId": user_id})
 
 
+async def get_builder_session_by_graph_id(
+    user_id: str,
+    graph_id: str,
+) -> ChatSessionInfo | None:
+    """Find the user's chat session bound to *graph_id* via metadata.
+
+    Looks up the most recently updated session where
+    ``metadata->>'builder_graph_id' = graph_id`` and ``userId = user_id``.
+    Returns ``None`` if no such session exists.
+    """
+    rows = await db.query_raw_with_schema(
+        'SELECT "id" FROM {schema_prefix}"ChatSession" '
+        'WHERE "userId" = $1 '
+        "AND \"metadata\"->>'builder_graph_id' = $2 "
+        'ORDER BY "updatedAt" DESC LIMIT 1',
+        user_id,
+        graph_id,
+    )
+    if not rows:
+        return None
+    prisma_session = await PrismaChatSession.prisma().find_unique(
+        where={"id": rows[0]["id"]},
+    )
+    return ChatSessionInfo.from_db(prisma_session) if prisma_session else None
+
+
 async def delete_chat_session(session_id: str, user_id: str | None = None) -> bool:
     """Delete a chat session and all its messages.
 

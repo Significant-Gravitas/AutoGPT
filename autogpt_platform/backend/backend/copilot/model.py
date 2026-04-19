@@ -54,6 +54,12 @@ class ChatSessionMetadata(BaseModel):
 
     dry_run: bool = False
 
+    # Builder-panel binding: when set, the session is locked to the given
+    # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
+    # this graph and reject calls targeting a different agent.  Also used
+    # as a lookup key so refreshing the builder resumes the same chat.
+    builder_graph_id: str | None = None
+
 
 class ChatMessage(BaseModel):
     role: str
@@ -200,7 +206,13 @@ class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
 
     @classmethod
-    def new(cls, user_id: str, *, dry_run: bool) -> Self:
+    def new(
+        cls,
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+    ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -210,7 +222,10 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
-            metadata=ChatSessionMetadata(dry_run=dry_run),
+            metadata=ChatSessionMetadata(
+                dry_run=dry_run,
+                builder_graph_id=builder_graph_id,
+            ),
         )
 
     @classmethod
@@ -712,20 +727,32 @@ async def append_and_save_message(
         return session
 
 
-async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
+async def create_chat_session(
+    user_id: str,
+    *,
+    dry_run: bool,
+    builder_graph_id: str | None = None,
+) -> ChatSession:
     """Create a new chat session and persist it.
 
     Args:
         user_id: The authenticated user ID.
         dry_run: When True, run_block and run_agent tool calls in this
             session are forced to use dry-run simulation mode.
+        builder_graph_id: When set, locks the session to the given graph.
+            The builder panel uses this to bind a chat to the currently-
+            opened agent and to resume the same session on refresh.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
-    session = ChatSession.new(user_id, dry_run=dry_run)
+    session = ChatSession.new(
+        user_id,
+        dry_run=dry_run,
+        builder_graph_id=builder_graph_id,
+    )
 
     # Create in database first - fail fast if this fails
     try:
@@ -747,6 +774,32 @@ async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
         logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
     return session
+
+
+async def get_or_create_builder_session(
+    user_id: str,
+    graph_id: str,
+) -> ChatSession:
+    """Return the user's builder session for *graph_id*, creating it if absent.
+
+    Looks up any existing session where
+    ``metadata.builder_graph_id == graph_id``.  Matches are unique per
+    (user_id, graph_id) in practice because only this helper creates
+    builder-bound sessions.  If a match exists, the full :class:`ChatSession`
+    (with messages) is returned so refreshing ``/build?flowID=<g>``
+    restores the same chat.
+    """
+    existing_info = await chat_db().get_builder_session_by_graph_id(user_id, graph_id)
+    if existing_info is not None:
+        session = await get_chat_session(existing_info.session_id, user_id)
+        if session is not None:
+            return session
+
+    return await create_chat_session(
+        user_id,
+        dry_run=False,
+        builder_graph_id=graph_id,
+    )
 
 
 async def get_user_sessions(

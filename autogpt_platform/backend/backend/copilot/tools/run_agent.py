@@ -194,6 +194,18 @@ class RunAgentTool(BaseTool):
         has_slug = params.username_agent_slug and "/" in params.username_agent_slug
         has_library_id = bool(params.library_agent_id)
 
+        # Builder-bound sessions can omit the identifier — the tool defaults
+        # to the bound graph so the assistant doesn't have to pass around
+        # IDs the user never sees.
+        builder_graph_id = session.metadata.builder_graph_id if session else None
+        if builder_graph_id and user_id and not has_slug and not has_library_id:
+            library_agent = await library_db().get_library_agent_by_graph_id(
+                user_id, builder_graph_id
+            )
+            if library_agent:
+                params.library_agent_id = library_agent.id
+                has_library_id = True
+
         if not has_slug and not has_library_id:
             return ErrorResponse(
                 message=(
@@ -259,6 +271,21 @@ class RunAgentTool(BaseTool):
                 )
                 return ErrorResponse(
                     message=f"Agent '{identifier}' not found",
+                    session_id=session_id,
+                )
+
+            # Builder-bound sessions can only run their bound agent.  We
+            # resolve the graph first so the user sees a precise error that
+            # references the agent they actually asked to run, rather than
+            # pre-emptively rejecting every run request.
+            builder_graph_id = session.metadata.builder_graph_id if session else None
+            if builder_graph_id and graph.id != builder_graph_id:
+                return ErrorResponse(
+                    message=(
+                        "This chat is bound to the builder's current agent. "
+                        "Running a different agent is not allowed here."
+                    ),
+                    error="builder_session_graph_mismatch",
                     session_id=session_id,
                 )
 
