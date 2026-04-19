@@ -25,15 +25,7 @@ Understand the **Why / What / How** before addressing comments — you need cont
 gh pr view {N} --json body --jq '.body'
 ```
 
-> **GraphQL rate-limited or down?** `gh pr view` uses GraphQL under the hood and fails whenever GraphQL is unavailable — most commonly the per-user rate limit (trips fast on thread pagination), less commonly a real outage. Fall back to REST, which returns the full PR object:
->
-> ```bash
-> gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.body'           # == --json body
-> gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.base.ref'       # == --json baseRefName
-> gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.mergeable'      # == --json mergeable
-> ```
->
-> Note: REST `mergeable` returns `true|false|null`; GraphQL returns `MERGEABLE|CONFLICTING|UNKNOWN`. The `null` case maps to `UNKNOWN` — treat it the same (still computing; poll again). See "GitHub rate limits" below.
+> If GraphQL is rate-limited, `gh pr view` fails. See [GitHub rate limits](#github-rate-limits) for REST fallbacks.
 
 ## Fetch comments (all sources)
 
@@ -119,14 +111,7 @@ Only after this loop completes (all pages fetched, count confirmed) should you b
 
 **Filter to unresolved threads only** — skip any thread where `isResolved: true`. `comments(last: 1)` returns the most recent comment in the thread — act on that; it reflects the reviewer's final ask. Use the thread `id` (Relay global ID) to track threads across polls.
 
-> **GraphQL rate-limited (403 / "API rate limit already exceeded")?** Fall back to the REST inline-comments endpoint to keep reading + replying:
->
-> ```bash
-> gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate \
->   | jq '[.[] | {id, path, line, user: .user.login, body: .body[:200], in_reply_to_id}]'
-> ```
->
-> **Degraded mode — know the trade-off:** REST returns a flat list of inline comments. There is no thread grouping, no `isResolved` field, and no Relay thread IDs. You get comment bodies and `id` (the `databaseId`), which is enough to **read** and **reply** (replies are REST already — see below), but you cannot call `resolveReviewThread` over REST; there is no REST equivalent. Use the REST fallback to make progress on the fix → reply loop, then return to GraphQL for `resolveReviewThread` once the rate limit resets.
+> If GraphQL is rate-limited, see [GitHub rate limits](#github-rate-limits) for the REST fallback (flat comment list — no thread grouping or `isResolved`).
 
 ### 2. Top-level reviews — REST (MUST paginate)
 
@@ -177,8 +162,6 @@ FULL_SHA=$(git rev-parse HEAD)
 gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments/{ID}/replies \
   -f body="🤖 Fixed in [${FULL_SHA:0:9}](https://github.com/Significant-Gravitas/AutoGPT/commit/${FULL_SHA}): <description>"
 ```
-
-> **Reply posting is REST and unaffected by GraphQL rate limits.** The `/replies` endpoint uses REST, so even when GraphQL is exhausted you can still push fixes and post inline replies — only `resolveReviewThread` has to wait.
 
 | Comment type | How to reply |
 |---|---|
@@ -364,7 +347,9 @@ Three distinct rate limits exist — they have different causes, error shapes, a
 
 **Prevention:** Add `sleep 3` between individual thread reply API calls. When posting >20 replies, increase to `sleep 5`.
 
-**Detecting the GraphQL limit.** The `gh` CLI surfaces it on stderr with the exact string `GraphQL: API rate limit already exceeded for user ID <id>` and exits 1 — any `gh api graphql ...` **or** `gh pr view ...` call fails. Check current quota and reset time via the REST endpoint that reports GraphQL quota (this call is REST and still works whether GraphQL is rate-limited OR fully down):
+### Detection
+
+The `gh` CLI surfaces the GraphQL limit on stderr with the exact string `GraphQL: API rate limit already exceeded for user ID <id>` and exits 1 — any `gh api graphql ...` **or** `gh pr view ...` call fails. Check current quota and reset time via the REST endpoint that reports GraphQL quota (this call is REST and still works whether GraphQL is rate-limited OR fully down):
 
 ```bash
 gh api rate_limit --jq '.resources.graphql'   # { "limit": 5000, "used": 5000, "remaining": 0, "reset": 1729...}
@@ -374,19 +359,41 @@ gh api rate_limit --jq '.resources.graphql.reset' | xargs -I{} date -r {}
 
 Retry when `remaining > 0`. If you need to proceed sooner, sleep 2–5 min and probe again — the limit is per user, not per machine, so other concurrent agents under the same token also consume it.
 
-**When GraphQL is unavailable (rate-limited or outage) — what keeps working vs what doesn't:**
+### What keeps working
+
+When GraphQL is unavailable (rate-limited or outage):
 
 - **Keeps working (REST):** top-level reviews fetch, conversation comments fetch, all inline-comment replies, CI status (`gh pr checks`), and the `gh api rate_limit` probe.
-- **Degraded:** inline thread list — fall back to flat `/pulls/{N}/comments` REST, which drops thread grouping and `isResolved`.
+- **Degraded:** inline thread list — fall back to flat `/pulls/{N}/comments` REST, which drops thread grouping, `isResolved`, and Relay thread IDs. You still get comment bodies and the `databaseId` as `id`, enough to read and reply.
 - **Blocked:** `gh pr view`, the `resolveReviewThread` mutation, and any new `gh api graphql` queries — wait for the quota to reset.
 
-**Fall back to REST:**
-- PR metadata reads → `gh api repos/.../pulls/{N}` (see "Read the PR description")
-- Inline comments → `gh api repos/.../pulls/{N}/comments --paginate` (see "Fetch comments")
-- Replies → already REST, unaffected
-- `resolveReviewThread` → **no REST equivalent**; queue the thread IDs, resolve once GraphQL recovers (see "Resolving threads via GraphQL")
+### Fall back to REST
 
-**Recovery from secondary rate limit (403 abuse):**
+**PR metadata reads** — `gh pr view` uses GraphQL under the hood; use the REST pulls endpoint instead, which returns the full PR object:
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.body'           # == --json body
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.base.ref'       # == --json baseRefName
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N} --jq '.mergeable'      # == --json mergeable
+```
+
+Note: REST `mergeable` returns `true|false|null`; GraphQL returns `MERGEABLE|CONFLICTING|UNKNOWN`. The `null` case maps to `UNKNOWN` — treat it the same (still computing; poll again).
+
+**Inline comments (flat list)** — no thread grouping or `isResolved`, but enough to read and reply:
+
+```bash
+gh api repos/Significant-Gravitas/AutoGPT/pulls/{N}/comments --paginate \
+  | jq '[.[] | {id, path, line, user: .user.login, body: .body[:200], in_reply_to_id}]'
+```
+
+Use this degraded mode to make progress on the fix → reply loop, then return to GraphQL for `resolveReviewThread` once the rate limit resets.
+
+**Replies** — already REST-native (`/pulls/{N}/comments/{ID}/replies`); no change needed, use the same command as the main flow.
+
+**`resolveReviewThread`** — **no REST equivalent**; GitHub does not expose a REST endpoint for thread resolution. Queue the thread IDs needing resolution, wait for the GraphQL limit to reset, then run the resolve mutations in a batch (with `sleep 3` between calls, per the secondary-limit guidance).
+
+### Recovery from secondary rate limit (403 abuse)
+
 1. Stop all API writes immediately
 2. Wait **2 minutes minimum** (not 60s — secondary limits are stricter)
 3. Resume with `sleep 3` between each call
@@ -445,7 +452,7 @@ gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREA
 
 **Never call this mutation before committing the fix.** The orchestrator will verify actual unresolved counts via GraphQL after you output `ORCHESTRATOR:DONE` — false resolutions will be caught and you will be re-briefed.
 
-> **No REST equivalent.** `resolveReviewThread` is GraphQL-only — GitHub does not expose a REST endpoint for thread resolution. If GraphQL is rate-limited, finish the fix → push → reply loop via REST, **queue** the thread IDs needing resolution, wait for the GraphQL limit to reset (see "GitHub rate limits"), then run the resolve mutations in a batch (with `sleep 3` between calls, per the secondary-limit guidance).
+> `resolveReviewThread` is GraphQL-only — no REST equivalent. If GraphQL is rate-limited, see [GitHub rate limits](#github-rate-limits) for the queue-and-retry flow.
 
 ### Verify actual count before outputting ORCHESTRATOR:DONE
 
