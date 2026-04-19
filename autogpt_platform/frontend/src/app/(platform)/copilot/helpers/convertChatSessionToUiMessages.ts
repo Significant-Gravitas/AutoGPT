@@ -189,7 +189,7 @@ export function convertChatSessionMessagesToUiMessages(
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
   const durations = new Map<string, number>();
 
-  messages.forEach((msg) => {
+  messages.forEach((msg, idx) => {
     if (msg.role === "tool") return;
     if (
       msg.role !== "user" &&
@@ -290,7 +290,12 @@ export function convertChatSessionMessagesToUiMessages(
       return;
     }
 
-    const msgId = `${sessionId}-seq-${msg.sequence}`;
+    // Fall back to the loop index when sequence is unexpectedly absent so
+    // multiple sequence-less messages don't collide on the same React key.
+    const msgId =
+      msg.sequence != null
+        ? `${sessionId}-seq-${msg.sequence}`
+        : `${sessionId}-idx-${idx}`;
     uiMessages.push({
       id: msgId,
       role: uiRole,
