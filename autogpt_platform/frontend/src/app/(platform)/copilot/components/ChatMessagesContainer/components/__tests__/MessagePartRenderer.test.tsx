@@ -105,4 +105,31 @@ describe("MessagePartRenderer reasoning branch", () => {
     expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId("reasoning-collapse")).toBeNull();
   });
+
+  it("returns null when the reasoning part's text is not a string", () => {
+    const part = {
+      type: "reasoning",
+      text: 42,
+      state: "done",
+    } as unknown as Part;
+
+    const { container } = render(
+      <MessagePartRenderer part={part} messageID="m1" partIndex={0} />,
+    );
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId("reasoning-collapse")).toBeNull();
+  });
+
+  it("renders reasoning content when it contains non-whitespace surrounded by whitespace", () => {
+    const part = {
+      type: "reasoning",
+      text: "  reasoning-with-pad  ",
+      state: "done",
+    } as unknown as Part;
+
+    render(<MessagePartRenderer part={part} messageID="m2" partIndex={3} />);
+
+    const pre = screen.getByTestId("reasoning-collapse").querySelector("pre");
+    expect(pre?.textContent).toBe("  reasoning-with-pad  ");
+  });
 });

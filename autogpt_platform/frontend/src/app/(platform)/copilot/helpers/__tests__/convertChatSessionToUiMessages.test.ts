@@ -151,4 +151,67 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     const mergedId = result.messages[0].id;
     expect(result.durations.get(mergedId)).toBe(750);
   });
+
+  it("falls back to idx-based ids when sequence is null so sequence-less rows don't collide", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "first" },
+        { role: "assistant", content: "reply one" },
+        { role: "user", content: "second" },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(3);
+    const ids = result.messages.map((m) => m.id);
+    expect(new Set(ids).size).toBe(3);
+    for (const id of ids) {
+      expect(id.startsWith(`${SESSION_ID}-idx-`)).toBe(true);
+    }
+  });
+
+  it("uses sequence-based id when sequence is present and idx-based otherwise in the same list", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "seq-ed", sequence: 7 },
+        { role: "assistant", content: "no-seq reply" },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].id).toBe(`${SESSION_ID}-seq-7`);
+    expect(result.messages[1].id).toBe(`${SESSION_ID}-idx-1`);
+  });
+
+  it("skips role values that are neither user, assistant, tool, nor reasoning", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "system", content: "ignored", sequence: 0 },
+        { role: "assistant", content: "kept", sequence: 1 },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0].role).toBe("assistant");
+  });
+
+  it("captures duration_ms directly on a standalone assistant row (non-merged branch)", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "hi", sequence: 0 },
+        { role: "assistant", content: "reply", sequence: 1, duration_ms: 123 },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const assistantId = result.messages[1].id;
+    expect(result.durations.get(assistantId)).toBe(123);
+  });
 });
