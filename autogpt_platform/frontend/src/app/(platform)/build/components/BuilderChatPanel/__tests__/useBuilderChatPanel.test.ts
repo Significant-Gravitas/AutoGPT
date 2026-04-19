@@ -499,6 +499,52 @@ describe("useBuilderChatPanel", () => {
     expect(lastCall[0]).toHaveProperty("hydratedMessages");
   });
 
+  it("keeps the hydratedMessages reference stable across renders when session data is unchanged", async () => {
+    // Regression guard: an earlier version recomputed hydratedMessages on every
+    // render (no useMemo), which broke referential equality in
+    // useHydrateOnStreamEnd and caused an infinite setState loop (caught by
+    // React's max-update-depth guard, rendered through the builder
+    // ErrorBoundary as "Something went wrong"). Pin the reference here.
+    const sessionData = {
+      status: 200 as const,
+      data: {
+        id: "sess-stable",
+        messages: [{ role: "assistant", content: "hello" }],
+        active_stream: null,
+      },
+    };
+    mockUseGetV2GetSession.mockReturnValue({
+      data: sessionData,
+      refetch: vi.fn(),
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-stable" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-stable", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-stable");
+    });
+    const firstCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    const firstHydrated = firstCall[0].hydratedMessages;
+    rerender();
+    rerender();
+    const lastCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    expect(lastCall[0].hydratedMessages).toBe(firstHydrated);
+  });
+
   it("surfaces active_stream=true via hasActiveStream flag forwarded to the stream hook", async () => {
     mockUseGetV2GetSession.mockReturnValue({
       data: {

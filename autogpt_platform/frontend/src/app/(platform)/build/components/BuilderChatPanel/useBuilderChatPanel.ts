@@ -17,7 +17,7 @@ import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
 import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
 import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
@@ -76,14 +76,17 @@ export function useBuilderChatPanel({
       ? !!sessionQuery.data.data.active_stream
       : false;
 
-  const hydratedMessages: UiMessages | undefined =
-    sessionQuery.data?.status === 200 && sessionId
-      ? (convertChatSessionMessagesToUiMessages(
-          sessionId,
-          sessionQuery.data.data.messages ?? [],
-          { isComplete: !hasActiveStream },
-        ).messages as UiMessages)
-      : undefined;
+  // Memoize so the hydration effect in useCopilotStream doesn't infinite-loop
+  // on a new array reference every render. Re-derives only when query data,
+  // session id, or stream-active state changes.
+  const hydratedMessages = useMemo<UiMessages | undefined>(() => {
+    if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
+    return convertChatSessionMessagesToUiMessages(
+      sessionId,
+      sessionQuery.data.data.messages ?? [],
+      { isComplete: !hasActiveStream },
+    ).messages as UiMessages;
+  }, [sessionQuery.data, sessionId, hasActiveStream]);
 
   const { messages, setMessages, sendMessage, stop, status, error } =
     useCopilotStream({
