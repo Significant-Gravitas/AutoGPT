@@ -8,6 +8,7 @@ from claude_agent_sdk import (
     ResultMessage,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -19,6 +20,9 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -249,6 +253,84 @@ def test_result_success_emits_finish_step_and_finish():
     assert isinstance(results[0], StreamTextEnd)
     assert isinstance(results[1], StreamFinishStep)
     assert isinstance(results[2], StreamFinish)
+
+
+# -- Reasoning streaming -----------------------------------------------------
+
+
+def test_thinking_block_streams_as_reasoning():
+    """ThinkingBlock content streams as StreamReasoningDelta so the
+    frontend renders it via the ``Reasoning`` part (collapsed by
+    default) instead of dropping it silently."""
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[
+            ThinkingBlock(thinking="planning step 1", signature="sig"),
+        ],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    # Step + ReasoningStart + ReasoningDelta
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningStart" in types
+    assert any(
+        isinstance(r, StreamReasoningDelta) and r.delta == "planning step 1"
+        for r in results
+    )
+
+
+def test_text_after_thinking_closes_reasoning_and_opens_text():
+    """Reasoning and text are distinct UI parts — opening text must
+    emit ``ReasoningEnd`` first so the AI SDK transport doesn't merge
+    them into the same ``Reasoning`` part."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="warming up", signature="sig")],
+            model="test",
+        )
+    )
+    results = adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    types = [type(r).__name__ for r in results]
+    # ReasoningEnd must come before TextStart
+    re_idx = types.index("StreamReasoningEnd")
+    ts_idx = types.index("StreamTextStart")
+    assert re_idx < ts_idx
+
+
+def test_tool_use_after_thinking_closes_reasoning():
+    """Opening a tool also closes an open reasoning block."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="let me search", signature="sig")],
+            model="test",
+        )
+    )
+    results = adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+            ],
+            model="test",
+        )
+    )
+    types = [type(r).__name__ for r in results]
+    assert types.index("StreamReasoningEnd") < types.index("StreamToolInputStart")
+
+
+def test_empty_thinking_block_is_ignored():
+    """A ThinkingBlock with empty content shouldn't emit anything."""
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[ThinkingBlock(thinking="", signature="sig")],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    # Only the StepStart fires — no reasoning events.
+    assert [type(r).__name__ for r in results] == ["StreamStartStep"]
 
 
 def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_only():

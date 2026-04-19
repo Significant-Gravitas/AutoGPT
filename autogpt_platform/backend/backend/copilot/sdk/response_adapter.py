@@ -28,6 +28,9 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -56,6 +59,9 @@ class SDKResponseAdapter:
         self.text_block_id = str(uuid.uuid4())
         self.has_started_text = False
         self.has_ended_text = False
+        self.reasoning_block_id = str(uuid.uuid4())
+        self.has_started_reasoning = False
+        self.has_ended_reasoning = True
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
@@ -112,6 +118,10 @@ class SDKResponseAdapter:
             for block in sdk_message.content:
                 if isinstance(block, TextBlock):
                     if block.text:
+                        # Reasoning and text are distinct UI parts; close
+                        # any open reasoning block before opening text so
+                        # the AI SDK transport doesn't merge them.
+                        self._end_reasoning_if_open(responses)
                         self._ensure_text_started(responses)
                         responses.append(
                             StreamTextDelta(id=self.text_block_id, delta=block.text)
@@ -119,12 +129,32 @@ class SDKResponseAdapter:
                         self._text_since_last_tool_result = True
 
                 elif isinstance(block, ThinkingBlock):
-                    # Thinking blocks are preserved in the transcript but
-                    # not streamed to the frontend — skip silently.
-                    pass
+                    # Stream extended_thinking content as a reasoning
+                    # block.  The Vercel AI SDK's ``useChat`` transport
+                    # recognises ``reasoning-start`` / ``reasoning-delta``
+                    # / ``reasoning-end`` events and accumulates them into
+                    # a ``type: 'reasoning'`` UIMessage part the frontend
+                    # renders via ``ReasoningCollapse`` (collapsed by
+                    # default).  We also persist the text as a
+                    # ``type: 'thinking'`` part in ``session.messages`` via
+                    # ``_format_sdk_content_blocks``, so shared / reloaded
+                    # sessions see the same reasoning.  Without streaming
+                    # it live, extended_thinking turns that end
+                    # thinking-only left the UI stuck on "Thought for Xs"
+                    # with nothing rendered until a page refresh.
+                    if block.thinking:
+                        self._end_text_if_open(responses)
+                        self._ensure_reasoning_started(responses)
+                        responses.append(
+                            StreamReasoningDelta(
+                                id=self.reasoning_block_id,
+                                delta=block.thinking,
+                            )
+                        )
 
                 elif isinstance(block, ToolUseBlock):
                     self._end_text_if_open(responses)
+                    self._end_reasoning_if_open(responses)
 
                     # Strip MCP prefix so frontend sees "find_block"
                     # instead of "mcp__copilot__find_block".
@@ -231,6 +261,7 @@ class SDKResponseAdapter:
             # Close the current step after tool results — the next
             # AssistantMessage will open a new step for the continuation.
             if self.step_open:
+                self._end_reasoning_if_open(responses)
                 responses.append(StreamFinishStep())
                 self.step_open = False
 
@@ -259,6 +290,7 @@ class SDKResponseAdapter:
                     )
                 )
             self._end_text_if_open(responses)
+            self._end_reasoning_if_open(responses)
             # Close the step before finishing.
             if self.step_open:
                 responses.append(StreamFinishStep())
@@ -299,6 +331,26 @@ class SDKResponseAdapter:
         if self.has_started_text and not self.has_ended_text:
             responses.append(StreamTextEnd(id=self.text_block_id))
             self.has_ended_text = True
+
+    def _ensure_reasoning_started(self, responses: list[StreamBaseResponse]) -> None:
+        """Start (or restart) a reasoning block if needed.
+
+        Each ``ThinkingBlock`` the SDK emits gets its own streaming block
+        on the wire so the frontend can render a new ``Reasoning`` part
+        per LLM turn (rather than concatenating across the whole session).
+        """
+        if not self.has_started_reasoning or self.has_ended_reasoning:
+            if self.has_ended_reasoning:
+                self.reasoning_block_id = str(uuid.uuid4())
+                self.has_ended_reasoning = False
+            responses.append(StreamReasoningStart(id=self.reasoning_block_id))
+            self.has_started_reasoning = True
+
+    def _end_reasoning_if_open(self, responses: list[StreamBaseResponse]) -> None:
+        """End the current reasoning block if one is open."""
+        if self.has_started_reasoning and not self.has_ended_reasoning:
+            responses.append(StreamReasoningEnd(id=self.reasoning_block_id))
+            self.has_ended_reasoning = True
 
     def _flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
         """Emit outputs for tool calls that didn't receive a UserMessage result.
