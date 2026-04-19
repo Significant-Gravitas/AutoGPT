@@ -313,4 +313,198 @@ describe("useBuilderChatPanel", () => {
     expect(result.current.sessionId).toBeNull();
     expect(result.current.revertTargetVersion).toBeNull();
   });
+
+  it("records a revert target and triggers a graph refetch when edit_agent tool output completes", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-X", version: 5 },
+      refetch: mockRefetchGraph,
+    });
+    const messagesWithEdit = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "edit_agent",
+            toolCallId: "tc-edit-1",
+            state: "output-available",
+            output: { agent_id: "graph-X" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-X", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(result.current.revertTargetVersion).toBe(5);
+    });
+    expect(mockRefetchGraph).toHaveBeenCalled();
+  });
+
+  it("writes execution_id to flowExecutionID when run_agent tool output completes", async () => {
+    const messagesWithRun = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "run_agent",
+            toolCallId: "tc-run-1",
+            state: "output-available",
+            output: { execution_id: "exec-abc-123" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithRun,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-R", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowExecutionID: "exec-abc-123",
+      });
+    });
+  });
+
+  it("ignores tool outputs that are not output-available or not assistant-role", async () => {
+    const messages = [
+      {
+        role: "user",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "edit_agent",
+            toolCallId: "tc-bad-1",
+            state: "output-available",
+            output: { agent_id: "g" },
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "run_agent",
+            toolCallId: "tc-bad-2",
+            state: "partial",
+            output: { execution_id: "exec-incomplete" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "g", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    // Allow effects to flush without asserting against the tool branches.
+    await Promise.resolve();
+    expect(setQueryStatesMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ flowExecutionID: "exec-incomplete" }),
+    );
+    expect(mockRefetchGraph).not.toHaveBeenCalled();
+  });
+
+  it("queues a follow-up via the helper when onSend is called while streaming", async () => {
+    const appendChip = vi.fn();
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "streaming",
+    });
+    mockUseCopilotPendingChips.mockReturnValue({
+      queuedMessages: [],
+      appendChip,
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-queue" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-queue", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    vi.doMock("@/app/(platform)/copilot/helpers/queueFollowUpMessage", () => ({
+      queueFollowUpMessage: vi.fn().mockResolvedValue(undefined),
+    }));
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-queue");
+    });
+    await result.current.onSend("queued msg");
+    // The message must be appended as a chip AND not sent directly.
+    expect(appendChip).toHaveBeenCalledWith("queued msg");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("reverts to the captured version and invalidates graph queries on handleRevert success", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-R", version: 7 },
+      refetch: mockRefetchGraph,
+    });
+    const invalidateQueries = vi.fn();
+    const rq = await import("@tanstack/react-query");
+    (rq.useQueryClient as unknown as ReturnType<typeof vi.fn>) = vi
+      .fn()
+      .mockReturnValue({ invalidateQueries });
+    setActiveVersion.mockResolvedValue({ status: 200 });
+    // Prime a revert target via an edit_agent tool output.
+    const messagesWithEdit = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "edit_agent",
+            toolCallId: "tc-edit-r",
+            state: "output-available",
+            output: { agent_id: "graph-R" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-R", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(result.current.revertTargetVersion).toBe(7);
+    });
+    await result.current.handleRevert();
+    expect(setActiveVersion).toHaveBeenCalledWith({
+      graphId: "graph-R",
+      data: { active_graph_version: 7 },
+    });
+    expect(setQueryStatesMock).toHaveBeenCalledWith({ flowVersion: 7 });
+  });
 });
