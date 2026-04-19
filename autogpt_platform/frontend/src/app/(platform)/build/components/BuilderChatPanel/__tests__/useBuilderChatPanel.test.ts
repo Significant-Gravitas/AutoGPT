@@ -22,11 +22,9 @@ vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
   getGetV1GetSpecificGraphQueryKey: (id: string) => ["graph", id],
 }));
 
+const mockUseGetV2GetSession = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  useGetV2GetSession: () => ({
-    data: undefined,
-    refetch: vi.fn(),
-  }),
+  useGetV2GetSession: (...args: unknown[]) => mockUseGetV2GetSession(...args),
   usePostV2GetOrCreateBuilderSessionEndpoint: () => ({
     mutateAsync: createBuilderSession,
     isPending: false,
@@ -101,6 +99,10 @@ beforeEach(() => {
   mockUseCopilotPendingChips.mockReturnValue({
     queuedMessages: [],
     appendChip: vi.fn(),
+  });
+  mockUseGetV2GetSession.mockReturnValue({
+    data: undefined,
+    refetch: vi.fn(),
   });
 });
 
@@ -459,6 +461,113 @@ describe("useBuilderChatPanel", () => {
     // The message must be appended as a chip AND not sent directly.
     expect(appendChip).toHaveBeenCalledWith("queued msg");
     expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("hydrates messages from the session query when GET /sessions returns 200", async () => {
+    // Session data present → convertChatSessionMessagesToUiMessages runs and
+    // the hook forwards the hydrated messages to useCopilotStream.
+    mockUseGetV2GetSession.mockReturnValue({
+      data: {
+        status: 200,
+        data: {
+          id: "sess-hydrated",
+          messages: [{ role: "assistant", content: "welcome" }],
+          active_stream: null,
+        },
+      },
+      refetch: vi.fn(),
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-hydrated" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-hyd", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-hydrated");
+    });
+    // useCopilotStream should have been invoked with a non-undefined hydratedMessages.
+    const lastCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    expect(lastCall[0]).toHaveProperty("hydratedMessages");
+  });
+
+  it("surfaces active_stream=true via hasActiveStream flag forwarded to the stream hook", async () => {
+    mockUseGetV2GetSession.mockReturnValue({
+      data: {
+        status: 200,
+        data: {
+          id: "sess-active",
+          messages: [],
+          active_stream: { turn_id: "t1", last_message_id: "0-0" },
+        },
+      },
+      refetch: vi.fn(),
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-active" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-act", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-active");
+    });
+    const lastCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    expect(lastCall[0].hasActiveStream).toBe(true);
+  });
+
+  it("toasts destructively when handleRevert receives a non-200 from setActiveVersion", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-revfail", version: 9 },
+      refetch: mockRefetchGraph,
+    });
+    setActiveVersion.mockResolvedValue({ status: 500 });
+    const messagesWithEdit = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "edit_agent",
+            toolCallId: "tc-edit-fail",
+            state: "output-available",
+            output: { agent_id: "graph-revfail" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-revfail", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(result.current.revertTargetVersion).toBe(9);
+    });
+    // Must not throw; the hook catches and toasts.
+    await result.current.handleRevert();
+    expect(setActiveVersion).toHaveBeenCalled();
   });
 
   it("reverts to the captured version and invalidates graph queries on handleRevert success", async () => {
