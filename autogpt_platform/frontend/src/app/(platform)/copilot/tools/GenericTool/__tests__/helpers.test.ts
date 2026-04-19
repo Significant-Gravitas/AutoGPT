@@ -36,6 +36,23 @@ describe("formatToolName", () => {
   it("handles already capitalized names", () => {
     expect(formatToolName("WebSearch")).toBe("WebSearch");
   });
+
+  it("uses friendly display name for sub-AutoPilot tools", () => {
+    expect(formatToolName("run_sub_session")).toBe("Sub-AutoPilot");
+    expect(formatToolName("get_sub_session_result")).toBe(
+      "Sub-AutoPilot result",
+    );
+  });
+
+  it("uses the 'Action' label for run_block (frontend parlance)", () => {
+    expect(formatToolName("run_block")).toBe("Action");
+  });
+
+  it("strips redundant 'run_' prefix for other run_* tools", () => {
+    // "Running Run agent" reads awkwardly — the override produces
+    // "Running Agent".
+    expect(formatToolName("run_agent")).toBe("Agent");
+  });
 });
 
 describe("getToolCategory", () => {

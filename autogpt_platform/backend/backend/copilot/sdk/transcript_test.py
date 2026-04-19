@@ -297,13 +297,13 @@ class TestStripProgressEntries:
 
 class TestDeleteTranscript:
     @pytest.mark.asyncio
-    async def test_deletes_both_jsonl_and_meta(self):
-        """delete_transcript removes both the .jsonl and .meta.json files."""
+    async def test_deletes_cli_session_and_meta(self):
+        """delete_transcript removes the CLI session .jsonl and .meta.json."""
         mock_storage = AsyncMock()
         mock_storage.delete = AsyncMock()
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -323,7 +323,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -341,7 +341,7 @@ class TestDeleteTranscript:
         )
 
         with patch(
-            "backend.copilot.sdk.transcript.get_workspace_storage",
+            "backend.copilot.transcript.get_workspace_storage",
             new_callable=AsyncMock,
             return_value=mock_storage,
         ):
@@ -850,7 +850,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_no_client_uses_truncation(self):
         """Path (a): ``get_openai_client()`` returns None → truncation only."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated"}]
@@ -858,11 +858,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=None,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=truncation_result,
             ) as mock_compress,
@@ -885,7 +885,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_success_returns_llm_result(self):
         """Path (b): ``get_openai_client()`` returns a client → LLM compresses."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         llm_result = self._make_compress_result(
             True, [{"role": "user", "content": "LLM summary"}]
@@ -894,11 +894,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=mock_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 new_callable=AsyncMock,
                 return_value=llm_result,
             ) as mock_compress,
@@ -916,7 +916,7 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_failure_falls_back_to_truncation(self):
         """Path (c): LLM call raises → truncation fallback used instead."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated fallback"}]
@@ -932,11 +932,11 @@ class TestRunCompression:
 
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=mock_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_compress_side_effect,
             ),
         ):
@@ -953,14 +953,14 @@ class TestRunCompression:
     @pytest.mark.asyncio
     async def test_llm_timeout_falls_back_to_truncation(self):
         """Path (d): LLM call exceeds timeout → truncation fallback used."""
-        from .transcript import _run_compression
+        from backend.copilot.transcript import _run_compression
 
         truncation_result = self._make_compress_result(
             True, [{"role": "user", "content": "truncated after timeout"}]
         )
         call_count = [0]
 
-        async def _compress_side_effect(*, messages, model, client):
+        async def _compress_side_effect(*, messages, model, client, target_tokens=None):
             call_count[0] += 1
             if client is not None:
                 # Simulate a hang that exceeds the timeout
@@ -970,19 +970,19 @@ class TestRunCompression:
         fake_client = MagicMock()
         with (
             patch(
-                "backend.copilot.sdk.transcript.get_openai_client",
+                "backend.copilot.transcript.get_openai_client",
                 return_value=fake_client,
             ),
             patch(
-                "backend.copilot.sdk.transcript.compress_context",
+                "backend.copilot.transcript.compress_context",
                 side_effect=_compress_side_effect,
             ),
             patch(
-                "backend.copilot.sdk.transcript._COMPACTION_TIMEOUT_SECONDS",
+                "backend.copilot.transcript._COMPACTION_TIMEOUT_SECONDS",
                 0.05,
             ),
             patch(
-                "backend.copilot.sdk.transcript._TRUNCATION_TIMEOUT_SECONDS",
+                "backend.copilot.transcript._TRUNCATION_TIMEOUT_SECONDS",
                 5,
             ),
         ):
@@ -1007,7 +1007,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_removes_old_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories matching copilot pattern older than threshold are removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1015,7 +1015,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1039,12 +1039,12 @@ class TestCleanupStaleProjectDirs:
 
     def test_ignores_non_copilot_dirs(self, tmp_path, monkeypatch):
         """Directories not matching copilot pattern are left alone."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1062,7 +1062,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_ttl_boundary_not_removed(self, tmp_path, monkeypatch):
         """A directory exactly at the TTL boundary should NOT be removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1070,7 +1070,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1088,7 +1088,7 @@ class TestCleanupStaleProjectDirs:
 
     def test_skips_non_directory_entries(self, tmp_path, monkeypatch):
         """Regular files matching the copilot pattern are not removed."""
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1096,7 +1096,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1114,11 +1114,11 @@ class TestCleanupStaleProjectDirs:
 
     def test_missing_base_dir_returns_zero(self, tmp_path, monkeypatch):
         """If the projects base directory doesn't exist, return 0 gracefully."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         nonexistent = str(tmp_path / "does-not-exist" / "projects")
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: nonexistent,
         )
 
@@ -1129,7 +1129,7 @@ class TestCleanupStaleProjectDirs:
         """When encoded_cwd is supplied only that directory is swept."""
         import time
 
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1137,7 +1137,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1160,12 +1160,12 @@ class TestCleanupStaleProjectDirs:
 
     def test_scoped_fresh_dir_not_removed(self, tmp_path, monkeypatch):
         """Scoped sweep leaves a fresh directory alone."""
-        from backend.copilot.sdk.transcript import cleanup_stale_project_dirs
+        from backend.copilot.transcript import cleanup_stale_project_dirs
 
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1181,7 +1181,7 @@ class TestCleanupStaleProjectDirs:
         """Scoped sweep refuses to remove a non-copilot directory."""
         import time
 
-        from backend.copilot.sdk.transcript import (
+        from backend.copilot.transcript import (
             _STALE_PROJECT_DIR_SECONDS,
             cleanup_stale_project_dirs,
         )
@@ -1189,7 +1189,7 @@ class TestCleanupStaleProjectDirs:
         projects_dir = tmp_path / "projects"
         projects_dir.mkdir()
         monkeypatch.setattr(
-            "backend.copilot.sdk.transcript._projects_base",
+            "backend.copilot.transcript.projects_base",
             lambda: str(projects_dir),
         )
 
@@ -1368,3 +1368,172 @@ class TestStripStaleThinkingBlocks:
         # Both entries of last turn (msg_last) preserved
         assert lines[1]["message"]["content"][0]["type"] == "thinking"
         assert lines[2]["message"]["content"][0]["type"] == "text"
+
+
+class TestProcessCliRestore:
+    """``process_cli_restore`` validates, strips, and writes CLI session to disk."""
+
+    def test_writes_stripped_bytes_not_raw(self, tmp_path):
+        """Stripped bytes (not raw bytes) must be written to disk for --resume."""
+        import os
+        import re
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from backend.copilot.sdk.service import process_cli_restore
+        from backend.copilot.transcript import TranscriptDownload
+
+        session_id = "12345678-0000-0000-0000-abcdef000001"
+        sdk_cwd = str(tmp_path)
+        projects_base_dir = str(tmp_path)
+
+        # Build raw content with a strippable progress entry + a valid user/assistant pair
+        raw_content = (
+            '{"type":"progress","uuid":"p1","subtype":"agent_progress","parentUuid":null}\n'
+            '{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"hi"}}\n'
+            '{"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}\n'
+        )
+        raw_bytes = raw_content.encode("utf-8")
+        restore = TranscriptDownload(content=raw_bytes, message_count=2, mode="sdk")
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=projects_base_dir,
+            ),
+            patch(
+                "backend.copilot.transcript.projects_base",
+                return_value=projects_base_dir,
+            ),
+        ):
+            stripped_str, ok = process_cli_restore(
+                restore, sdk_cwd, session_id, "[Test]"
+            )
+
+        assert ok, "Expected successful restore"
+
+        # Find the written session file
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+        session_file = Path(projects_base_dir) / encoded_cwd / f"{session_id}.jsonl"
+        assert session_file.exists(), "Session file should have been written"
+
+        written_bytes = session_file.read_bytes()
+        # The written bytes must be the stripped version (no progress entry)
+        assert (
+            b"progress" not in written_bytes
+        ), "Raw bytes with progress entry should not have been written"
+        assert (
+            b"hello" in written_bytes
+        ), "Stripped content should still contain assistant turn"
+
+        # Written bytes must equal the stripped string re-encoded
+        assert written_bytes == stripped_str.encode(
+            "utf-8"
+        ), "Written bytes must equal stripped content"
+
+    def test_invalid_content_returns_false(self):
+        """Content that fails validation after strip returns (empty, False)."""
+        from backend.copilot.sdk.service import process_cli_restore
+        from backend.copilot.transcript import TranscriptDownload
+
+        # A single progress-only entry — stripped result will be empty/invalid
+        raw_content = '{"type":"progress","uuid":"p1","subtype":"agent_progress","parentUuid":null}\n'
+        restore = TranscriptDownload(
+            content=raw_content.encode("utf-8"), message_count=1, mode="sdk"
+        )
+
+        stripped_str, ok = process_cli_restore(
+            restore,
+            "/tmp/nonexistent-sdk-cwd",
+            "12345678-0000-0000-0000-000000000099",
+            "[Test]",
+        )
+
+        assert not ok
+        assert stripped_str == ""
+
+
+class TestReadCliSessionFromDisk:
+    """``read_cli_session_from_disk`` reads, strips, and optionally writes back the session."""
+
+    def _build_session_file(self, tmp_path, session_id: str):
+        """Build the session file path inside tmp_path using the same encoding as cli_session_path."""
+        import os
+        import re
+        from pathlib import Path
+
+        sdk_cwd = str(tmp_path)
+        encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
+        session_dir = Path(str(tmp_path)) / encoded_cwd
+        session_dir.mkdir(parents=True, exist_ok=True)
+        return sdk_cwd, session_dir / f"{session_id}.jsonl"
+
+    def test_returns_raw_bytes_for_invalid_utf8(self, tmp_path):
+        """Non-UTF-8 bytes trigger UnicodeDecodeError — returns raw bytes (upload-raw fallback)."""
+        from unittest.mock import patch
+
+        from backend.copilot.sdk.service import read_cli_session_from_disk
+
+        session_id = "12345678-0000-0000-0000-aabbccdd0001"
+        projects_base_dir = str(tmp_path)
+        sdk_cwd, session_file = self._build_session_file(tmp_path, session_id)
+
+        # Write raw invalid UTF-8 bytes
+        session_file.write_bytes(b"\xff\xfe invalid utf-8\n")
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=projects_base_dir,
+            ),
+            patch(
+                "backend.copilot.transcript.projects_base",
+                return_value=projects_base_dir,
+            ),
+        ):
+            result = read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
+
+        # UnicodeDecodeError path returns the raw bytes (upload-raw fallback)
+        assert result == b"\xff\xfe invalid utf-8\n"
+
+    def test_write_back_oserror_still_returns_stripped_bytes(self, tmp_path):
+        """OSError on write-back returns stripped bytes for GCS upload (not raw)."""
+        from unittest.mock import patch
+
+        from backend.copilot.sdk.service import read_cli_session_from_disk
+
+        session_id = "12345678-0000-0000-0000-aabbccdd0002"
+        projects_base_dir = str(tmp_path)
+        sdk_cwd, session_file = self._build_session_file(tmp_path, session_id)
+
+        # Content with a strippable progress entry so stripped_bytes < raw_bytes
+        raw_content = (
+            '{"type":"progress","uuid":"p1","subtype":"agent_progress","parentUuid":null}\n'
+            '{"type":"user","uuid":"u1","parentUuid":null,"message":{"role":"user","content":"hi"}}\n'
+            '{"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}\n'
+        )
+        session_file.write_bytes(raw_content.encode("utf-8"))
+        # Make the file read-only so write_bytes raises OSError on the write-back
+        session_file.chmod(0o444)
+
+        try:
+            with (
+                patch(
+                    "backend.copilot.sdk.service.projects_base",
+                    return_value=projects_base_dir,
+                ),
+                patch(
+                    "backend.copilot.transcript.projects_base",
+                    return_value=projects_base_dir,
+                ),
+            ):
+                result = read_cli_session_from_disk(sdk_cwd, session_id, "[Test]")
+        finally:
+            session_file.chmod(0o644)
+
+        # Must return stripped bytes (not raw, not None) so GCS gets the clean version
+        assert result is not None
+        assert (
+            b"progress" not in result
+        ), "Stripped bytes must not contain progress entry"
+        assert b"hello" in result, "Stripped bytes should contain assistant turn"

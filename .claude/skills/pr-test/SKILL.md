@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "[worktree path or PR number] — tests the PR in the given worktree. Optional flags: --fix (auto-fix issues found)"
 metadata:
   author: autogpt-team
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Manual E2E Test
@@ -180,6 +180,94 @@ Based on the PR analysis, write a test plan to `$RESULTS_DIR/test-plan.md`:
 
 **Be critical** — include edge cases, error paths, and security checks. Every scenario MUST specify what screenshots to take and what state to verify.
 
+## Step 3.0: Claim the testing lock (coordinate parallel agents)
+
+Multiple worktrees share the same host — Docker infra (postgres, redis, clamav), app ports (3000/8006/…), and the test user. Two agents running `/pr-test` concurrently will corrupt each other's state (connection-pool exhaustion, port binds failing silently, cross-test assertions). Use the root-worktree lock file to take turns.
+
+### Lock file contract
+
+Path (**always** the root worktree so all siblings see it): `/Users/majdyz/Code/AutoGPT/.ign.testing.lock`
+
+Body (one `key=value` per line):
+```
+holder=<pr-XXXXX-purpose>
+pid=<pid-or-"self">
+started=<iso8601>
+heartbeat=<iso8601, updated every ~2 min>
+worktree=<full path>
+branch=<branch name>
+intent=<one-line description + rough duration>
+```
+
+### Claim
+
+```bash
+LOCK=/Users/majdyz/Code/AutoGPT/.ign.testing.lock
+NOW=$(date -u +%Y-%m-%dT%H:%MZ)
+STALE_AFTER_MIN=5
+
+if [ -f "$LOCK" ]; then
+  HB=$(grep '^heartbeat=' "$LOCK" | cut -d= -f2)
+  HB_EPOCH=$(date -j -f '%Y-%m-%dT%H:%MZ' "$HB" +%s 2>/dev/null || date -d "$HB" +%s 2>/dev/null || echo 0)
+  AGE_MIN=$(( ( $(date -u +%s) - HB_EPOCH ) / 60 ))
+  if [ "$AGE_MIN" -gt "$STALE_AFTER_MIN" ]; then
+    echo "WARN: stale lock (${AGE_MIN}m old) — reclaiming"
+    cat "$LOCK" | sed 's/^/  stale: /'
+  else
+    echo "Another agent holds the lock:"; cat "$LOCK"
+    echo "Wait until released or resume after $((STALE_AFTER_MIN - AGE_MIN))m."
+    exit 1
+  fi
+fi
+
+cat > "$LOCK" <<EOF
+holder=pr-${PR_NUMBER}-e2e
+pid=self
+started=$NOW
+heartbeat=$NOW
+worktree=$WORKTREE_PATH
+branch=$(cd $WORKTREE_PATH && git branch --show-current)
+intent=E2E test PR #${PR_NUMBER}, native mode, ~60min
+EOF
+echo "Lock claimed"
+```
+
+### Heartbeat (MUST run in background during the whole test)
+
+Without a heartbeat a crashed agent keeps the lock forever. Run this as a background process right after claim:
+
+```bash
+(while true; do
+   sleep 120
+   [ -f "$LOCK" ] || exit 0   # lock released → exit heartbeat
+   perl -i -pe "s/^heartbeat=.*/heartbeat=$(date -u +%Y-%m-%dT%H:%MZ)/" "$LOCK"
+ done) &
+HEARTBEAT_PID=$!
+echo "$HEARTBEAT_PID" > /tmp/pr-test-heartbeat.pid
+```
+
+### Release (always — even on failure)
+
+```bash
+kill "$HEARTBEAT_PID" 2>/dev/null
+rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock" \
+    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+```
+
+Use a `trap` so release runs even on `exit 1`:
+```bash
+trap 'kill "$HEARTBEAT_PID" 2>/dev/null; rm -f "$LOCK"' EXIT INT TERM
+```
+
+### Shared status log
+
+`/Users/majdyz/Code/AutoGPT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
+```bash
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] <message>" \
+    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+```
+
 ## Step 3: Environment setup
 
 ### 3a. Copy .env files from the root worktree
@@ -248,7 +336,87 @@ docker ps --format "{{.Names}}" | grep -E "rest_server|executor|copilot|websocke
 done
 ```
 
-### 3e. Build and start
+**Native mode also:** when running the app natively (see 3e-native), kill any stray host processes and free the app ports before starting — otherwise `poetry run app` and `pnpm dev` will fail to bind.
+
+```bash
+# Kill stray native app processes from prior runs
+pkill -9 -f "python.*backend" 2>/dev/null || true
+pkill -9 -f "poetry run app" 2>/dev/null || true
+pkill -9 -f "next-server|next dev" 2>/dev/null || true
+
+# Free app ports (errors per port are ignored — port may simply be unused)
+for port in 3000 8006 8001 8002 8005 8008; do
+  lsof -ti :$port -sTCP:LISTEN | xargs -r kill -9 2>/dev/null || true
+done
+```
+
+### 3e-native. Run the app natively (PREFERRED for iterative dev)
+
+Native mode runs infra (postgres, supabase, redis, rabbitmq, clamav) in docker but runs the backend and frontend directly on the host. This avoids the 3-8 minute `docker compose build` cycle on every backend change — code edits are picked up on process restart (seconds) instead of a full image rebuild.
+
+**When to prefer native mode (default for this skill):**
+- Iterative dev/debug loops where you're editing backend or frontend code between test runs
+- Any PR that touches Python/TS source but not Dockerfiles, compose config, or infra images
+- Fast repro of a failing scenario — restart `poetry run app` in a couple of seconds
+
+**When to prefer docker mode (3e fallback):**
+- Testing changes to `Dockerfile`, `docker-compose.yml`, or base images
+- Production-parity smoke tests (exact container env, networking, volumes)
+- CI-equivalent runs where you need the exact image that'll ship
+
+**Note on 3b (copilot auth):** no npm install anywhere. `poetry install` pulls in `claude_agent_sdk`, which ships its own Claude CLI binary — available on `PATH` whenever you run commands via `poetry run` (native) OR whenever the copilot_executor container is built from its Poetry lockfile (docker). The OAuth token extraction still applies (same `refresh_claude_token.sh` call).
+
+**Preamble:** before starting native, run the kill-stray + free-ports block from 3c's "Native mode also" subsection.
+
+**1. Start infra only (one-time per session):**
+
+```bash
+cd $PLATFORM_DIR && docker compose --profile local up deps --detach --remove-orphans --build
+```
+
+This brings up postgres/supabase/redis/rabbitmq/clamav and skips all app services.
+
+**2. Start the backend natively:**
+
+```bash
+cd $BACKEND_DIR && (poetry run app 2>&1 | tee .ign.application.logs) &
+```
+
+`poetry run app` spawns **all** app subprocesses — `rest_server`, `executor`, `copilot_executor`, `websocket`, `scheduler`, `notification_server`, `database_manager` — inside ONE parent process. No separate containers, no separate terminals. The `.ign.application.logs` prefix is already gitignored.
+
+**3. Wait for the backend on :8006 BEFORE starting the frontend.** This ordering matters — the frontend's `pnpm dev` startup invokes `generate-api-queries`, which fetches `/openapi.json` from the backend. If the backend isn't listening yet, `pnpm dev` fails immediately.
+
+```bash
+for i in $(seq 1 60); do
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8006/docs 2>/dev/null)" = "200" ]; then
+    echo "Backend ready"
+    break
+  fi
+  sleep 2
+done
+```
+
+**4. Start the frontend natively:**
+
+```bash
+cd $FRONTEND_DIR && (pnpm dev 2>&1 | tee .ign.frontend.logs) &
+```
+
+**5. Wait for the frontend on :3000:**
+
+```bash
+for i in $(seq 1 60); do
+  if [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000 2>/dev/null)" = "200" ]; then
+    echo "Frontend ready"
+    break
+  fi
+  sleep 2
+done
+```
+
+Once both are up, skip 3e/3f and go straight to **3g/3h** (feature flags / test user creation).
+
+### 3e. Build and start (docker — fallback)
 
 ```bash
 cd $PLATFORM_DIR && docker compose build --no-cache 2>&1 | tail -20
@@ -308,6 +476,28 @@ TOKEN=$(curl -s -X POST 'http://localhost:8000/auth/v1/token?grant_type=password
 **Use this token for ALL API calls:**
 ```bash
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/api/...
+```
+
+### 3i. Disable onboarding for test user
+
+The frontend redirects to `/onboarding` when the `VISIT_COPILOT` step is not in `completedSteps`.
+Mark it complete via the backend API so every browser test lands on the real feature UI:
+
+```bash
+ONBOARDING_RESULT=$(curl -s --max-time 30 -X POST \
+  "http://localhost:8006/api/onboarding/step?step=VISIT_COPILOT" \
+  -H "Authorization: Bearer $TOKEN")
+echo "Onboarding bypass: $ONBOARDING_RESULT"
+
+# Verify it took effect
+ONBOARDING_STATUS=$(curl -s --max-time 30 \
+  "http://localhost:8006/api/onboarding/completed" \
+  -H "Authorization: Bearer $TOKEN" | jq -r '.is_completed')
+echo "Onboarding completed: $ONBOARDING_STATUS"
+if [ "$ONBOARDING_STATUS" != "true" ]; then
+  echo "ERROR: onboarding bypass failed — browser tests will hit /onboarding instead of the target feature. Investigate before proceeding."
+  exit 1
+fi
 ```
 
 ## Step 4: Run tests
@@ -419,6 +609,22 @@ agent-browser --session-name pr-test snapshot | grep "text:"
 - `/marketplace` — Marketplace
 
 ### Checking logs
+
+**Native mode:** when running via `poetry run app` + `pnpm dev`, all app logs stream to the `.ign.*.logs` files written by the `tee` pipes in 3e-native. `rest_server`, `executor`, `copilot_executor`, `websocket`, `scheduler`, `notification_server`, and `database_manager` are all subprocesses of the single `poetry run app` parent, so their output is interleaved in `.ign.application.logs`.
+
+```bash
+# Backend (all app subprocesses interleaved)
+tail -f $BACKEND_DIR/.ign.application.logs
+
+# Frontend (Next.js dev server)
+tail -f $FRONTEND_DIR/.ign.frontend.logs
+
+# Filter for errors across either log
+grep -iE "error|exception|traceback" $BACKEND_DIR/.ign.application.logs | tail -20
+grep -iE "error|exception|traceback" $FRONTEND_DIR/.ign.frontend.logs | tail -20
+```
+
+**Docker mode:**
 
 ```bash
 # Backend REST server
@@ -547,6 +753,8 @@ Upload screenshots to the PR using the GitHub Git API (no local git operations �
 
 **This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
+**CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
+
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
 REPO="Significant-Gravitas/AutoGPT"
@@ -584,15 +792,27 @@ TREE_JSON+=']'
 
 # Step 2: Create tree, commit, and branch ref
 TREE_SHA=$(echo "$TREE_JSON" | jq -c '{tree: .}' | gh api "repos/${REPO}/git/trees" --input - --jq '.sha')
-COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
-  -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
-  -f tree="$TREE_SHA" \
-  --jq '.sha')
+
+# Resolve parent commit so screenshots are chained, not orphan root commits
+PARENT_SHA=$(gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" --jq '.object.sha' 2>/dev/null || echo "")
+if [ -n "$PARENT_SHA" ]; then
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    -f "parents[]=$PARENT_SHA" \
+    --jq '.sha')
+else
+  COMMIT_SHA=$(gh api "repos/${REPO}/git/commits" \
+    -f message="test: add E2E test screenshots for PR #${PR_NUMBER}" \
+    -f tree="$TREE_SHA" \
+    --jq '.sha')
+fi
+
 gh api "repos/${REPO}/git/refs" \
   -f ref="refs/heads/${SCREENSHOTS_BRANCH}" \
   -f sha="$COMMIT_SHA" 2>/dev/null \
   || gh api "repos/${REPO}/git/refs/heads/${SCREENSHOTS_BRANCH}" \
-    -X PATCH -f sha="$COMMIT_SHA" -f force=true
+    -X PATCH -f sha="$COMMIT_SHA" -F force=true
 ```
 
 Then post the comment with **inline images AND explanations for each screenshot**:
@@ -658,6 +878,15 @@ INNEREOF
 
 gh api "repos/${REPO}/issues/$PR_NUMBER/comments" -F body=@"$COMMENT_FILE"
 rm -f "$COMMENT_FILE"
+
+# Verify the posted comment contains inline images — exit 1 if none found
+# Use separate --paginate + jq pipe: --jq applies per-page, not to the full list
+LAST_COMMENT=$(gh api "repos/${REPO}/issues/$PR_NUMBER/comments" --paginate 2>/dev/null | jq -r '.[-1].body // ""')
+if ! echo "$LAST_COMMENT" | grep -q '!\['; then
+  echo "ERROR: Posted comment contains no inline images (![). Bare directory links are not acceptable." >&2
+  exit 1
+fi
+echo "✓ Inline images verified in posted comment"
 ```
 
 **The PR comment MUST include:**
@@ -666,6 +895,103 @@ rm -f "$COMMENT_FILE"
 3. A 1-2 sentence explanation below each screenshot describing what it proves
 
 This approach uses the GitHub Git API to create blobs, trees, commits, and refs entirely server-side. No local `git checkout` or `git push` — safe for worktrees and won't interfere with the PR branch.
+
+## Step 8: Evaluate and post a formal PR review
+
+After the test comment is posted, evaluate whether the run was thorough enough to make a merge decision, then post a formal GitHub review (approve or request changes). **This step is mandatory — every test run MUST end with a formal review decision.**
+
+### Evaluation criteria
+
+Re-read the PR description:
+```bash
+gh pr view "$PR_NUMBER" --json body --jq '.body' --repo "$REPO"
+```
+
+Score the run against each criterion:
+
+| Criterion | Pass condition |
+|-----------|---------------|
+| **Coverage** | Every feature/change described in the PR has at least one test scenario |
+| **All scenarios pass** | No FAIL rows in the results table |
+| **Negative tests** | At least one failure-path test per feature (invalid input, unauthorized, edge case) |
+| **Before/after evidence** | Every state-changing API call has before/after values logged |
+| **Screenshots are meaningful** | Screenshots show the actual state change, not just a loading spinner or blank page |
+| **No regressions** | Existing core flows (login, agent create/run) still work |
+
+### Decision logic
+
+```
+ALL criteria pass                            → APPROVE
+Any scenario FAIL or missing PR feature      → REQUEST_CHANGES (list gaps)
+Evidence weak (no before/after, vague shots) → REQUEST_CHANGES (list what's missing)
+```
+
+### Post the review
+
+```bash
+REVIEW_FILE=$(mktemp)
+
+# Count results
+PASS_COUNT=$(echo "$TEST_RESULTS_TABLE" | grep -c "PASS" || true)
+FAIL_COUNT=$(echo "$TEST_RESULTS_TABLE" | grep -c "FAIL" || true)
+TOTAL=$(( PASS_COUNT + FAIL_COUNT ))
+
+# List any coverage gaps found during evaluation (populate this array as you assess)
+# e.g. COVERAGE_GAPS=("PR claims to add X but no test covers it")
+COVERAGE_GAPS=()
+```
+
+**If APPROVING** — all criteria met, zero failures, full coverage:
+
+```bash
+cat > "$REVIEW_FILE" <<REVIEWEOF
+## E2E Test Evaluation — APPROVED
+
+**Results:** ${PASS_COUNT}/${TOTAL} scenarios passed.
+
+**Coverage:** All features described in the PR were exercised.
+
+**Evidence:** Before/after API values logged for all state-changing operations; screenshots show meaningful state transitions.
+
+**Negative tests:** Failure paths tested for each feature.
+
+No regressions observed on core flows.
+REVIEWEOF
+
+gh pr review "$PR_NUMBER" --repo "$REPO" --approve --body "$(cat "$REVIEW_FILE")"
+echo "✅ PR approved"
+```
+
+**If REQUESTING CHANGES** — any failure, coverage gap, or missing evidence:
+
+```bash
+FAIL_LIST=$(echo "$TEST_RESULTS_TABLE" | grep "FAIL" | awk -F'|' '{print "- Scenario" $2 "failed"}' || true)
+
+cat > "$REVIEW_FILE" <<REVIEWEOF
+## E2E Test Evaluation — Changes Requested
+
+**Results:** ${PASS_COUNT}/${TOTAL} scenarios passed, ${FAIL_COUNT} failed.
+
+### Required before merge
+
+${FAIL_LIST}
+$(for gap in "${COVERAGE_GAPS[@]}"; do echo "- $gap"; done)
+
+Please fix the above and re-run the E2E tests.
+REVIEWEOF
+
+gh pr review "$PR_NUMBER" --repo "$REPO" --request-changes --body "$(cat "$REVIEW_FILE")"
+echo "❌ Changes requested"
+```
+
+```bash
+rm -f "$REVIEW_FILE"
+```
+
+**Rules:**
+- In `--fix` mode, fix all failures before posting the review — the review reflects the final state after fixes
+- Never approve if any scenario failed, even if it seems like a flake — rerun that scenario first
+- Never request changes for issues already fixed in this run
 
 ## Fix mode (--fix flag)
 
@@ -734,9 +1060,15 @@ test scenario → find issue (bug OR UX problem) → screenshot broken state
 ### Problem: Frontend shows cookie banner blocking interaction
 **Fix:** `agent-browser click 'text=Accept All'` before other interactions.
 
-### Problem: Container loses npm packages after rebuild
-**Cause:** `docker compose up --build` rebuilds the image, losing runtime installs.
-**Fix:** Add packages to the Dockerfile instead of installing at runtime.
+### Problem: Claude CLI not found in copilot_executor container
+**Symptom:** Copilot logs say `claude: command not found` or similar when starting an SDK turn.
+**Cause:** Image was built without `poetry install` (stale base layer, or Dockerfile bypass). The SDK CLI ships inside the `claude_agent_sdk` Poetry dep — it is NOT an npm package.
+**Fix:** Rebuild the image cleanly: `docker compose build --no-cache copilot_executor && docker compose up -d copilot_executor`. Do NOT `docker exec ... npm install -g @anthropic-ai/claude-code` — that is outdated guidance and will pollute the container with a second CLI that the SDK won't use.
+
+### Problem: agent-browser screenshot hangs / times out
+**Symptom:** `agent-browser screenshot` exits with code 124 even on `about:blank`.
+**Cause:** Stuck CDP connection or Chromium process tree. Seen on macOS when a prior `/pr-test` left a zombie Chrome for Testing.
+**Fix:** `pkill -9 -f "agent-browser|chromium|Chrome for Testing" && sleep 2`, then reopen the browser with a fresh `--session-name`. If still failing, verify via `agent-browser eval` + `agent-browser snapshot` (DOM state) instead of relying on PNGs — the feature under test is the same.
 
 ### Problem: Services not starting after `docker compose up`
 **Fix:** Wait and check health: `docker compose ps`. Common cause: migration hasn't finished. Check: `docker logs autogpt_platform-migrate-1 2>&1 | tail -5`. If supabase-db isn't healthy: `docker restart supabase-db && sleep 10`.

@@ -33,12 +33,23 @@ _GET_CURRENT_DATE_BLOCK_ID = "b29c1b50-5d0e-4d9f-8f9d-1b0e6fcbf0b1"
 _GMAIL_SEND_BLOCK_ID = "6c27abc2-e51d-499e-a85f-5a0041ba94f0"
 _TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
 
+# Default OrchestratorBlock model/mode — kept in sync with ChatConfig.model.
+# ChatConfig uses the OpenRouter format ("anthropic/claude-opus-4.6");
+# OrchestratorBlock uses the native Anthropic model name.
+ORCHESTRATOR_DEFAULT_MODEL = "claude-opus-4-6"
+ORCHESTRATOR_DEFAULT_EXECUTION_MODE = "extended_thinking"
+
 # Defaults applied to OrchestratorBlock nodes by the fixer.
-_SDM_DEFAULTS: dict[str, int | bool] = {
+# execution_mode and model match the copilot's default (extended thinking
+# with Opus) so generated agents inherit the same reasoning capabilities.
+# If the user explicitly sets these fields, the fixer won't override them.
+_SDM_DEFAULTS: dict[str, int | bool | str] = {
     "agent_mode_max_iterations": 10,
     "conversation_compaction": True,
     "retry": 3,
     "multiple_tool_calls": False,
+    "execution_mode": ORCHESTRATOR_DEFAULT_EXECUTION_MODE,
+    "model": ORCHESTRATOR_DEFAULT_MODEL,
 }
 
 
@@ -879,6 +890,12 @@ class AgentFixer:
             )
 
             if is_ai_block:
+                # Skip AI blocks that don't expose a "model" input property
+                # (some AI-category blocks have no model selector at all).
+                input_properties = block.get("inputSchema", {}).get("properties", {})
+                if "model" not in input_properties:
+                    continue
+
                 node_id = node.get("id")
                 input_default = node.get("input_default", {})
                 current_model = input_default.get("model")
@@ -887,9 +904,7 @@ class AgentFixer:
                 # Blocks with a block-specific enum on the model field (e.g.
                 # PerplexityBlock) use their own enum values; others use the
                 # generic set.
-                model_schema = (
-                    block.get("inputSchema", {}).get("properties", {}).get("model", {})
-                )
+                model_schema = input_properties.get("model", {})
                 block_model_enum = model_schema.get("enum")
 
                 if block_model_enum:
@@ -1310,7 +1325,7 @@ class AgentFixer:
         """
         if not library_agents:
             logger.debug(
-                "fix_agent_executor_blocks: No library_agents provided, " "skipping"
+                "fix_agent_executor_blocks: No library_agents provided, skipping"
             )
             return agent
 
@@ -1375,7 +1390,7 @@ class AgentFixer:
             if "user_id" not in input_default:
                 input_default["user_id"] = ""
                 self.add_fix_log(
-                    f"Fixed AgentExecutorBlock {node_id}: Added missing " f"user_id"
+                    f"Fixed AgentExecutorBlock {node_id}: Added missing user_id"
                 )
 
             # Ensure inputs is present
@@ -1649,6 +1664,8 @@ class AgentFixer:
         2. ``conversation_compaction`` defaults to ``True``
         3. ``retry`` defaults to ``3``
         4. ``multiple_tool_calls`` defaults to ``False``
+        5. ``execution_mode`` defaults to ``"extended_thinking"``
+        6. ``model`` defaults to ``"claude-opus-4-6"``
 
         Args:
             agent: The agent dictionary to fix
@@ -1672,8 +1689,7 @@ class AgentFixer:
                 if field not in input_default or input_default[field] is None:
                     input_default[field] = default_value
                     self.add_fix_log(
-                        f"OrchestratorBlock {node_id}: "
-                        f"Set {field}={default_value!r}"
+                        f"OrchestratorBlock {node_id}: Set {field}={default_value!r}"
                     )
 
         return agent
@@ -1748,6 +1764,12 @@ class AgentFixer:
         agent = self.fix_node_x_coordinates(agent, node_lookup=node_lookup)
         agent = self.fix_getcurrentdate_offset(agent)
 
+        # Apply OrchestratorBlock defaults BEFORE fix_ai_model_parameter so that
+        # the orchestrator-specific model (claude-opus-4-6) is set first and
+        # fix_ai_model_parameter sees it as a valid allowed model instead of
+        # overwriting it with the generic default (gpt-4o).
+        agent = self.fix_orchestrator_blocks(agent)
+
         # Apply fixes that require blocks information
         if blocks:
             agent = self.fix_invalid_nested_sink_links(
@@ -1764,9 +1786,6 @@ class AgentFixer:
 
         # Apply fixes for MCPToolBlock nodes
         agent = self.fix_mcp_tool_blocks(agent)
-
-        # Apply fixes for OrchestratorBlock nodes (agent-mode defaults)
-        agent = self.fix_orchestrator_blocks(agent)
 
         # Apply fixes for AgentExecutorBlock nodes (sub-agents)
         if library_agents:

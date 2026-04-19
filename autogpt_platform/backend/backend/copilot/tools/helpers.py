@@ -1,5 +1,6 @@
 """Shared helpers for chat tools."""
 
+import asyncio
 import logging
 import uuid
 from collections import defaultdict
@@ -14,6 +15,7 @@ from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
     COPILOT_SESSION_PREFIX,
+    MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
@@ -83,6 +85,71 @@ def get_inputs_from_schema(
             entry["value"] = provided[name]
         results.append(entry)
     return results
+
+
+async def _charge_block_credits(
+    _credit_db: Any,
+    *,
+    user_id: str,
+    block_name: str,
+    block_id: str,
+    node_exec_id: str,
+    cost: int,
+    cost_filter: dict[str, Any],
+    synthetic_graph_id: str,
+    synthetic_node_id: str,
+) -> None:
+    """Charge credits for a block execution and log any billing leak.
+
+    Centralised so the normal-path charge and the cancellation-recovery charge
+    (see ``execute_block``'s finally) use the same metadata and the same
+    leak-logging contract.
+    """
+    try:
+        await _credit_db.spend_credits(
+            user_id=user_id,
+            cost=cost,
+            metadata=UsageTransactionMetadata(
+                graph_exec_id=synthetic_graph_id,
+                graph_id=synthetic_graph_id,
+                node_id=synthetic_node_id,
+                node_exec_id=node_exec_id,
+                block_id=block_id,
+                block=block_name,
+                input=cost_filter,
+                reason="copilot_block_execution",
+            ),
+        )
+    except Exception as e:
+        # Block already executed (with possible side effects). Never
+        # return ErrorResponse here — the user received output and
+        # deserves it. Log the billing failure for reconciliation.
+        leak_type = (
+            "INSUFFICIENT_BALANCE"
+            if isinstance(e, InsufficientBalanceError)
+            else "UNEXPECTED_ERROR"
+        )
+        logger.error(
+            "BILLING_LEAK[%s]: block executed but credit charge failed — "
+            "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
+            leak_type,
+            user_id,
+            block_id,
+            node_exec_id,
+            cost,
+            e,
+            extra={
+                "json_fields": {
+                    "billing_leak": True,
+                    "leak_type": leak_type,
+                    "user_id": user_id,
+                    "cost": str(cost),
+                }
+            },
+        )
+        # Intentionally swallow. Block already executed with possible side
+        # effects; the caller must still return BlockOutputResponse. The
+        # BILLING_LEAK log above is the signal for reconciliation.
 
 
 async def execute_block(
@@ -210,67 +277,97 @@ async def execute_block(
                     session_id=session_id,
                 )
 
-        # Execute the block and collect outputs
+        # Execute the block under the shared MCP wait cap. A block is
+        # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
+        # MCP handler would block the stream close to the idle timeout.
+        # wait_for cancels the generator on timeout, but the finally below
+        # still settles billing via asyncio.shield — external side effects
+        # may already have landed and the user should be charged for them.
         outputs: dict[str, list[Any]] = defaultdict(list)
-        async for output_name, output_data in block.execute(
-            input_data,
-            **exec_kwargs,
-        ):
-            outputs[output_name].append(output_data)
+        charge_handled = False
+        try:
+            await asyncio.wait_for(
+                _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                timeout=MAX_TOOL_WAIT_SECONDS,
+            )
 
-        # Charge credits for block execution
-        if has_cost:
-            try:
-                await _credit_db.spend_credits(
-                    user_id=user_id,
-                    cost=cost,
-                    metadata=UsageTransactionMetadata(
-                        graph_exec_id=synthetic_graph_id,
-                        graph_id=synthetic_graph_id,
-                        node_id=synthetic_node_id,
-                        node_exec_id=node_exec_id,
+            # Normal (non-cancelled) path. Mark charge_handled BEFORE the
+            # await so an outer cancellation landing mid-charge can't race
+            # the finally block into a double-charge. asyncio.shield keeps
+            # the spend running to completion even if the outer awaitable
+            # is cancelled.
+            if has_cost:
+                charge_handled = True
+                await asyncio.shield(
+                    _charge_block_credits(
+                        _credit_db,
+                        user_id=user_id,
+                        block_name=block.name,
                         block_id=block_id,
-                        block=block.name,
-                        input=cost_filter,
-                        reason="copilot_block_execution",
-                    ),
-                )
-            except Exception as e:
-                # Block already executed (with possible side effects). Never
-                # return ErrorResponse here — the user received output and
-                # deserves it. Log the billing failure for reconciliation.
-                leak_type = (
-                    "INSUFFICIENT_BALANCE"
-                    if isinstance(e, InsufficientBalanceError)
-                    else "UNEXPECTED_ERROR"
-                )
-                logger.error(
-                    "BILLING_LEAK[%s]: block executed but credit charge failed — "
-                    "user_id=%s, block_id=%s, node_exec_id=%s, cost=%s: %s",
-                    leak_type,
-                    user_id,
-                    block_id,
-                    node_exec_id,
-                    cost,
-                    e,
-                    extra={
-                        "json_fields": {
-                            "billing_leak": True,
-                            "leak_type": leak_type,
-                            "user_id": user_id,
-                            "cost": str(cost),
-                        }
-                    },
+                        node_exec_id=node_exec_id,
+                        cost=cost,
+                        cost_filter=cost_filter,
+                        synthetic_graph_id=synthetic_graph_id,
+                        synthetic_node_id=synthetic_node_id,
+                    )
                 )
 
-        return BlockOutputResponse(
-            message=f"Block '{block.name}' executed successfully",
-            block_id=block_id,
-            block_name=block.name,
-            outputs=dict(outputs),
-            success=True,
-            session_id=session_id,
-        )
+            return BlockOutputResponse(
+                message=f"Block '{block.name}' executed successfully",
+                block_id=block_id,
+                block_name=block.name,
+                outputs=dict(outputs),
+                success=True,
+                session_id=session_id,
+            )
+        except asyncio.TimeoutError:
+            # Structured record of tool-call timeouts (SECRT-2247 part 3).
+            # Grep prod logs for `copilot_tool_timeout` to find tools that
+            # keep hitting the cap — candidates for prompt tuning or
+            # escalation to the async start+poll pattern.
+            logger.warning(
+                "copilot_tool_timeout tool=run_block block=%s block_id=%s "
+                "input_keys=%s user=%s session=%s cap_s=%d",
+                block.name,
+                block_id,
+                sorted(input_data.keys()),
+                user_id,
+                session_id,
+                MAX_TOOL_WAIT_SECONDS,
+            )
+            return ErrorResponse(
+                message=(
+                    f"Block '{block.name}' exceeded the "
+                    f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and was "
+                    "cancelled. Long-running work should go through run_agent "
+                    "(graph executions) or run_sub_session (sub-AutoPilot "
+                    "tasks) — those use async start+poll so nothing blocks "
+                    "the chat stream."
+                ),
+                session_id=session_id,
+            )
+        finally:
+            # Sentry r3105079148: asyncio.wait_for raises CancelledError into
+            # the generator. Normal `except Exception` doesn't catch it, so
+            # without this finally a cancelled block would skip credit
+            # charging entirely while external side effects still landed.
+            # Only run when the normal-path charge was NOT reached (the flag
+            # is set before the await, so any cancellation during charge still
+            # sets it and avoids double-billing — r3105216985).
+            if has_cost and outputs and not charge_handled:
+                await asyncio.shield(
+                    _charge_block_credits(
+                        _credit_db,
+                        user_id=user_id,
+                        block_name=block.name,
+                        block_id=block_id,
+                        node_exec_id=node_exec_id,
+                        cost=cost,
+                        cost_filter=cost_filter,
+                        synthetic_graph_id=synthetic_graph_id,
+                        synthetic_node_id=synthetic_node_id,
+                    )
+                )
 
     except BlockError as e:
         logger.warning("Block execution failed: %s", e)
@@ -286,6 +383,23 @@ async def execute_block(
             error=str(e),
             session_id=session_id,
         )
+
+
+async def _collect_block_outputs(
+    block: AnyBlockSchema,
+    input_data: dict[str, Any],
+    exec_kwargs: dict[str, Any],
+    outputs: dict[str, list[Any]],
+) -> None:
+    """Drive ``block.execute`` and append each emitted pair to *outputs*.
+
+    Extracted so ``asyncio.wait_for`` can wrap exactly the generator-
+    consumption step; callers read ``outputs`` afterwards (including from
+    the cancellation path) to decide whether the block produced enough
+    side-effects to warrant billing.
+    """
+    async for output_name, output_data in block.execute(input_data, **exec_kwargs):
+        outputs[output_name].append(output_data)
 
 
 async def resolve_block_credentials(
@@ -655,3 +769,51 @@ def _resolve_discriminated_credentials(
         resolved[field_name] = effective_field_info
 
     return resolved
+
+
+# ---------------------------------------------------------------------------
+# Agent-generation gate
+# ---------------------------------------------------------------------------
+#
+# Tools that produce or modify agent JSON (create_agent, edit_agent,
+# validate_agent_graph, fix_agent_graph) require the parent agent to have
+# read the agent-building guide first — otherwise it tends to generate
+# JSON that doesn't match the current block schemas, link semantics, or
+# AgentExecutorBlock conventions, then waste turns fixing validation
+# errors.  ``require_guide_read`` returns an ``ErrorResponse`` the caller
+# should short-circuit with, or ``None`` when the guide has been read.
+
+
+_AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
+
+
+def _guide_read_in_session(session: ChatSession) -> bool:
+    """True if this session's assistant messages include a guide tool call."""
+    for msg in reversed(session.messages):
+        if msg.role != "assistant" or not msg.tool_calls:
+            continue
+        for tc in msg.tool_calls:
+            name = tc.get("function", {}).get("name") or tc.get("name")
+            if name == _AGENT_GUIDE_TOOL_NAME:
+                return True
+    return False
+
+
+def require_guide_read(session: ChatSession, tool_name: str):
+    """Return an ErrorResponse if the guide hasn't been loaded this session.
+
+    Import inline to keep ``helpers.py`` free of tool-response imports.
+    """
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
+
+    if _guide_read_in_session(session):
+        return None
+    return ErrorResponse(
+        message=(
+            f"Call get_agent_building_guide first, then retry {tool_name}. "
+            "The guide documents required block ids, input/output schemas, "
+            "link semantics, and AgentExecutorBlock / MCPToolBlock usage — "
+            "generating agent JSON without it produces schema mismatches."
+        ),
+        session_id=session.session_id,
+    )

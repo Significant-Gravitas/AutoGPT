@@ -6,11 +6,12 @@ handling the distinction between:
 - Local mode vs E2B mode (storage/filesystem differences)
 """
 
-from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+from functools import cache
+
 from backend.copilot.tools import TOOL_REGISTRY
 
 # Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = f"""\
+_SHARED_TOOL_NOTES = """\
 
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
@@ -66,20 +67,21 @@ that would be corrupted by text encoding.
 
 Example — committing an image file to GitHub:
 ```json
-{{
-  "files": [{{
+{
+  "files": [{
     "path": "docs/hero.png",
     "content": "workspace://abc123#image/png",
     "operation": "upsert"
-  }}]
-}}
+  }]
+}
 ```
 
-### Writing large files — CRITICAL
-**Never write an entire large document in a single tool call.**  When the
-content you want to write exceeds ~2000 words the tool call's output token
-limit will silently truncate the arguments, producing an empty `{{}}` input
-that fails repeatedly.
+### Writing large files — CRITICAL (causes production failures)
+**NEVER write an entire large document in a single tool call.**  When the
+content you want to write exceeds ~2000 words the API output-token limit
+will silently truncate the tool call arguments mid-JSON, losing all content
+and producing an opaque error.  This is unrecoverable — the user's work is
+lost and retrying with the same approach fails in an infinite loop.
 
 **Preferred: compose from file references.**  If the data is already in
 files (tool outputs, workspace files), compose the report in one call
@@ -146,20 +148,27 @@ When the user asks to interact with a service or API, follow this order:
   All tasks must run in the foreground.
 
 ### Delegating to another autopilot (sub-autopilot pattern)
-Use the **AutoPilotBlock** (`run_block` with block_id
-`{AUTOPILOT_BLOCK_ID}`) to delegate a task to a fresh
-autopilot instance.  The sub-autopilot has its own full tool set and can
-perform multi-step work autonomously.
+Use the **`run_sub_session`** tool to delegate a task to a fresh
+sub-AutoPilot. The sub has its own full tool set and can perform
+multi-step work autonomously.
 
-- **Input**: `prompt` (required) — the task description.
-  Optional: `system_context` to constrain behavior, `session_id` to
-  continue a previous conversation, `max_recursion_depth` (default 3).
-- **Output**: `response` (text), `tool_calls` (list), `session_id`
-  (for continuation), `conversation_history`, `token_usage`.
+- `prompt` (required): the task description.
+- `system_context` (optional): extra context prepended to the prompt.
+- `sub_autopilot_session_id` (optional): continue an existing
+  sub-AutoPilot — pass the `sub_autopilot_session_id` returned by a
+  previous completed run.
+- `wait_for_result` (default 60, max 300): seconds to wait inline. If
+  the sub isn't done by then you get `status="running"` + a
+  `sub_session_id` — call **`get_sub_session_result`** with that id
+  (wait up to 300s more per call) until it returns `completed` or
+  `error`. Works across turns — safe to reconnect in a later message.
 
 Use this when a task is complex enough to benefit from a separate
 autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration.
+parent autopilot handles orchestration. Do NOT invoke `AutoPilotBlock`
+via `run_block` — it's hidden from `run_block` by design because the
+dedicated tool handles the async lifecycle correctly.
+
 """
 
 # E2B-only notes — E2B has full internet access so gh CLI works there.
@@ -171,6 +180,7 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
+- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before asking them to connect it.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
@@ -277,6 +287,7 @@ def _get_local_storage_supplement(cwd: str) -> str:
     )
 
 
+@cache
 def _get_cloud_sandbox_supplement() -> str:
     """Cloud persistent sandbox (files survive across turns in session).
 
@@ -330,23 +341,103 @@ def _generate_tool_documentation() -> str:
     return docs
 
 
-def get_sdk_supplement(use_e2b: bool, cwd: str = "") -> str:
+_USER_FOLLOW_UP_NOTE = """
+# `<user_follow_up>` blocks in tool output
+
+A `<user_follow_up>…</user_follow_up>` block at the head of a tool result is a
+message the user sent while the tool was running — not tool output. The user is
+watching the chat live and waiting for confirmation their message landed.
+
+Every time you see one:
+
+1. **Ack immediately.** Your very next emission must be a short visible line,
+   before any more tool calls:
+   *"Got your follow-up: {paraphrase}. {what I'll do}."*
+
+2. **Then act on it:**
+   - Question/input request → stop the tool chain and answer/ask back.
+   - New requirement → fold into the current plan.
+   - Correction → update the plan and continue with the revised target.
+
+Never echo the `<user_follow_up>` tags back. The block holds only the user's
+words — the rest of the tool result is the real data.
+
+# Always close the turn with visible text
+
+Every turn MUST end with at least one short user-facing text sentence —
+even if it is only "Done." or "I'm stopping here because X." Never end a
+turn with only tool calls or only thinking.  The user's UI renders text
+messages; a turn that emits only thinking blocks or only tool calls shows
+up as a frozen screen with no response.  If your plan was to stop after
+the last tool result, still produce one closing sentence summarising
+what happened so the user knows the turn is complete.
+"""
+
+
+@cache
+def get_sdk_supplement(use_e2b: bool) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
 
     SDK mode does NOT include tool documentation because Claude automatically
     receives tool schemas from the SDK. Only includes technical notes about
     storage systems and execution environment.
 
+    The system prompt must be **identical across all sessions and users** to
+    enable cross-session LLM prompt-cache hits (Anthropic caches on exact
+    content). To preserve this invariant, the local-mode supplement uses a
+    generic placeholder for the working directory. The actual ``cwd`` is
+    injected per-turn into the first user message as ``<env_context>``
+    so the model always knows its real working directory without polluting
+    the cacheable system prompt.
+
     Args:
         use_e2b: Whether E2B cloud sandbox is being used
-        cwd: Current working directory (only used in local_storage mode)
 
     Returns:
         The supplement string to append to the system prompt
     """
-    if use_e2b:
-        return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement(cwd)
+    base = (
+        _get_cloud_sandbox_supplement()
+        if use_e2b
+        else _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    )
+    return base + _USER_FOLLOW_UP_NOTE
+
+
+def get_graphiti_supplement() -> str:
+    """Get the memory system instructions to append when Graphiti is enabled.
+
+    Appended after the SDK/baseline supplement in both execution paths.
+    """
+    return """
+
+## Memory System (Graphiti)
+You have access to persistent temporal memory tools that remember facts across sessions.
+
+### CRITICAL — ALWAYS SEARCH BEFORE ANSWERING:
+**You MUST call memory_search before responding to ANY question that could involve information from a prior conversation.** This includes questions about people, processes, preferences, tools, contacts, rules, workflows, or any factual question. Do NOT say "I don't have that information" without searching first. If the user asks "who should I CC" or "what CRM do we use" — SEARCH FIRST, then answer from results.
+
+### When to STORE (memory_store):
+- User shares personal info, preferences, business context
+- User describes workflows, tools they use, pain points
+- Important decisions or outcomes from agent runs
+- Relationships between people, organizations, events
+- Operational rules (e.g. "invoices go out on the 1st", "CC Sarah on client stuff")
+- When you learn something new about the user
+
+### When to RECALL (memory_search):
+- **BEFORE answering any factual or context-dependent question — ALWAYS**
+- When the user references something from a past conversation
+- When building an agent that should use past preferences
+- At the START of every new conversation to check for relevant context
+
+### MEMORY RULES:
+- Facts have temporal validity — if something CHANGED (e.g., user switched from Shopify to WooCommerce), store the new fact. The system automatically invalidates the old one.
+- Never fabricate memories. Only persist what the user actually said.
+- Memory is private to this user — no other user can see it.
+- group_id is handled automatically by the system — never set it yourself.
+- When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
+"""
 
 
 def get_baseline_supplement() -> str:

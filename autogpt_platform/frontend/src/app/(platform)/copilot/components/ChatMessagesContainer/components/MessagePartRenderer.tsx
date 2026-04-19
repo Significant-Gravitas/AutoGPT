@@ -1,7 +1,9 @@
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { ExclamationMarkIcon } from "@phosphor-icons/react";
 import { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
+import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { AskQuestionTool } from "../../../tools/AskQuestion/AskQuestion";
 import { ConnectIntegrationTool } from "../../../tools/ConnectIntegrationTool/ConnectIntegrationTool";
 import { CreateAgentTool } from "../../../tools/CreateAgent/CreateAgent";
@@ -19,7 +21,12 @@ import { RunBlockTool } from "../../../tools/RunBlock/RunBlock";
 import { RunMCPToolComponent } from "../../../tools/RunMCPTool/RunMCPTool";
 import { SearchDocsTool } from "../../../tools/SearchDocs/SearchDocs";
 import { ViewAgentOutputTool } from "../../../tools/ViewAgentOutput/ViewAgentOutput";
-import { parseSpecialMarkers, resolveWorkspaceUrls } from "../helpers";
+import {
+  extractWorkspaceArtifacts,
+  parseSpecialMarkers,
+  resolveWorkspaceUrls,
+} from "../helpers";
+import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
  * Custom img component for Streamdown that renders <video> elements
@@ -61,6 +68,27 @@ function WorkspaceMediaImage(props: React.JSX.IntrinsicElements["img"]) {
 /** Stable components override for Streamdown (avoids re-creating on every render). */
 const STREAMDOWN_COMPONENTS = { img: WorkspaceMediaImage };
 
+function TextWithArtifactCards({ text }: { text: string }) {
+  const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
+  const artifacts = extractWorkspaceArtifacts(text);
+  const resolved = resolveWorkspaceUrls(text);
+
+  return (
+    <>
+      {isArtifactsEnabled && artifacts.length > 0 && (
+        <div className="mb-2 flex flex-col gap-1">
+          {artifacts.map((artifact) => (
+            <ArtifactCard key={artifact.id} artifact={artifact} />
+          ))}
+        </div>
+      )}
+      <MessageResponse components={STREAMDOWN_COMPONENTS}>
+        {resolved}
+      </MessageResponse>
+    </>
+  );
+}
+
 interface Props {
   part: UIMessage<unknown, UIDataTypes, UITools>["parts"][number];
   messageID: string;
@@ -77,6 +105,18 @@ export function MessagePartRenderer({
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
+    case "reasoning": {
+      const reasoningText =
+        "text" in part && typeof part.text === "string" ? part.text : "";
+      if (!reasoningText.trim()) return null;
+      return (
+        <ReasoningCollapse key={key}>
+          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+            {reasoningText}
+          </pre>
+        </ReasoningCollapse>
+      );
+    }
     case "text": {
       const { markerType, markerText, cleanText } = parseSpecialMarkers(
         part.text,
@@ -118,11 +158,7 @@ export function MessagePartRenderer({
         );
       }
 
-      return (
-        <MessageResponse key={key} components={STREAMDOWN_COMPONENTS}>
-          {resolveWorkspaceUrls(cleanText)}
-        </MessageResponse>
-      );
+      return <TextWithArtifactCards key={key} text={cleanText} />;
     }
     case "tool-ask_question":
       return <AskQuestionTool key={key} part={part as ToolUIPart} />;

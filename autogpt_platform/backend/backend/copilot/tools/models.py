@@ -81,6 +81,12 @@ class ResponseType(str, Enum):
     FEATURE_REQUEST_SEARCH = "feature_request_search"
     FEATURE_REQUEST_CREATED = "feature_request_created"
 
+    # Graphiti memory
+    MEMORY_STORE = "memory_store"
+    MEMORY_SEARCH = "memory_search"
+    MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
+    MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -251,6 +257,90 @@ class ErrorResponse(ToolResponseBase):
     type: ResponseType = ResponseType.ERROR
     error: str | None = None
     details: dict[str, Any] | None = None
+
+
+class SubSessionProgressSnapshot(BaseModel):
+    """Mid-flight snapshot of a running sub-AutoPilot.
+
+    Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
+    caller passes ``include_progress=true`` while the sub is still running.
+    """
+
+    message_count: int = Field(
+        description="Total messages in the sub's ChatSession so far.",
+    )
+    last_messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Up to the last 5 messages (role + truncated content) from the "
+            "sub's ChatSession — lets the agent report intermediate progress."
+        ),
+    )
+
+
+class SubSessionStatusResponse(ToolResponseBase):
+    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+
+    Returned by both ``run_sub_session`` (synchronously when the sub finishes
+    within ``wait_for_result``, else with ``status='running'``) and
+    ``get_sub_session_result`` when the agent polls.
+    """
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+        description=(
+            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "target session already had a turn in flight, so the message was "
+            "pushed onto its pending buffer and will be picked up by the "
+            "existing turn on its next drain."
+        ),
+    )
+    sub_session_id: str = Field(
+        description=(
+            "Opaque id for this run. Pass to ``get_sub_session_result`` or "
+            "``run_sub_session(cancel=true, ...)`` to interact with it."
+        ),
+    )
+    response: str | None = Field(
+        default=None,
+        description="Assistant response text when status=completed.",
+    )
+    sub_autopilot_session_id: str | None = Field(
+        default=None,
+        description=(
+            "The session_id of the sub-AutoPilot conversation. Use with "
+            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
+            "to continue it."
+        ),
+    )
+    sub_autopilot_session_link: str | None = Field(
+        default=None,
+        description=(
+            "Relative URL the user can click to open the sub-AutoPilot "
+            "conversation in the CoPilot UI. Always set when "
+            "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Tool calls made during the sub-AutoPilot run.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when status=error.",
+    )
+    elapsed_seconds: float | None = Field(
+        default=None,
+        description="How long the sub-AutoPilot has been running (or took).",
+    )
+    progress: SubSessionProgressSnapshot | None = Field(
+        default=None,
+        description=(
+            "Mid-flight progress snapshot. Populated only when "
+            "get_sub_session_result is called with include_progress=true "
+            "and the sub is still running."
+        ),
+    )
 
 
 class InputValidationErrorResponse(ToolResponseBase):
@@ -463,7 +553,9 @@ class BlockOutputResponse(ToolResponseBase):
     block_name: str
     outputs: dict[str, list[Any]]
     success: bool = True
-    is_dry_run: bool = False
+    is_dry_run: bool | None = (
+        None  # only set to True on dry-run; omitted in normal runs
+    )
 
 
 class ReviewRequiredResponse(ToolResponseBase):
@@ -688,3 +780,36 @@ class AgentsMovedToFolderResponse(ToolResponseBase):
     agent_names: list[str] = []
     folder_id: str | None = None
     count: int = 0
+
+
+# --- Graphiti memory responses ---
+
+
+class MemoryStoreResponse(ToolResponseBase):
+    """Response when a memory is stored."""
+
+    type: ResponseType = ResponseType.MEMORY_STORE
+    memory_name: str
+
+
+class MemorySearchResponse(ToolResponseBase):
+    """Response when memories are searched."""
+
+    type: ResponseType = ResponseType.MEMORY_SEARCH
+    facts: list[str] = Field(default_factory=list)
+    recent_episodes: list[str] = Field(default_factory=list)
+
+
+class MemoryForgetCandidatesResponse(ToolResponseBase):
+    """Response with candidate memories to forget."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CANDIDATES
+    candidates: list[dict[str, str]] = Field(default_factory=list)
+
+
+class MemoryForgetConfirmResponse(ToolResponseBase):
+    """Response after deleting specific memory edges."""
+
+    type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
+    deleted_uuids: list[str] = Field(default_factory=list)
+    failed_uuids: list[str] = Field(default_factory=list)

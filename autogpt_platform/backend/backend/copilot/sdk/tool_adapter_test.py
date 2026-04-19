@@ -1,6 +1,7 @@
 """Tests for tool_adapter: truncation, stash, context vars, readOnlyHint annotations."""
 
 import asyncio
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -12,7 +13,10 @@ from backend.util.truncate import truncate
 
 from .tool_adapter import (
     _MCP_MAX_CHARS,
+    _STRIP_FROM_LLM,
     SDK_DISALLOWED_TOOLS,
+    _make_truncating_wrapper,
+    _strip_llm_fields,
     _text_from_mcp_result,
     create_tool_handler,
     pop_pending_tool_output,
@@ -247,7 +251,10 @@ class TestTruncationAndStashIntegration:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_tool(name: str, output: str = "result") -> MagicMock:
+def _make_mock_tool(
+    name: str,
+    output: str = "result",
+) -> MagicMock:
     """Return a BaseTool mock that returns a successful StreamToolOutputAvailable."""
     tool = MagicMock()
     tool.name = name
@@ -330,6 +337,38 @@ class TestCreateToolHandler:
         await handler({"block_id": "b2"})
 
         assert mock_tool.execute.await_count == 2
+
+
+class TestToolInlineExecution:
+    """Tools run inline to completion — no per-handler timeout, no parking."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_tool_runs_to_completion_regardless_of_duration(self):
+        """A tool that takes a while still runs inline; the handler does not
+        park, cancel, or wrap it in a timeout. The stream-level idle timer
+        (in _run_stream_attempt) is what pauses while tool calls are pending."""
+
+        async def slow_but_completes(*_args, **_kwargs):
+            await asyncio.sleep(0.1)
+            return StreamToolOutputAvailable(
+                toolCallId="t1",
+                output="final-result",
+                toolName="slow_tool",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("slow_tool")
+        mock_tool.execute = AsyncMock(side_effect=slow_but_completes)
+
+        handler = create_tool_handler(mock_tool)
+        result = await handler({})
+
+        assert result["isError"] is False
+        assert "final-result" in result["content"][0]["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -419,10 +458,9 @@ class TestBug1DuplicateExecution:
         await _buggy_prelaunch_handler(mock_tool, pre_launch_args, dispatch_args)
 
         # BUG: pre-launch executed once + fallback executed again = 2
-        assert len(call_log) == 1, (
-            f"Expected 1 execution but got {len(call_log)} — "
-            f"duplicate execution bug!"
-        )
+        assert (
+            len(call_log) == 1
+        ), f"Expected 1 execution but got {len(call_log)} — duplicate execution bug!"
 
     @pytest.mark.asyncio
     async def test_current_code_no_duplicate(self):
@@ -650,8 +688,8 @@ class TestReadFileHandlerBridge:
         test_file.write_text('{"ok": true}\n')
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
-            lambda path, cwd: True,
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
         )
 
         fake_sandbox = object()
@@ -689,8 +727,8 @@ class TestReadFileHandlerBridge:
         test_file.write_text('{"ok": true}\n')
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
-            lambda path, cwd: True,
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
         )
 
         bridge_calls: list[tuple] = []
@@ -711,3 +749,272 @@ class TestReadFileHandlerBridge:
         assert result["isError"] is False
         assert len(bridge_calls) == 0
         assert "Sandbox copy" not in result["content"][0]["text"]
+
+
+# ---------------------------------------------------------------------------
+# _STRIP_FROM_LLM / _strip_llm_fields — dry-run field stripping
+# ---------------------------------------------------------------------------
+
+
+class TestStripLlmFields:
+    """Regression tests for _strip_llm_fields — the guard that hides dry_run
+    execution mode from the LLM.
+
+    Strip-after-stash ordering is the core correctness guarantee: the frontend
+    SSE stream receives the full payload (including is_dry_run) while the LLM
+    sees a clean response without it.
+    """
+
+    def test_strip_from_llm_contains_is_dry_run(self):
+        """_STRIP_FROM_LLM must include is_dry_run so the guard is active."""
+        assert "is_dry_run" in _STRIP_FROM_LLM
+
+    def test_is_dry_run_removed_from_json_text_block(self):
+        """is_dry_run is stripped from a JSON text block before LLM sees it."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"message": "ok", "is_dry_run": true, "outputs": {}}',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" not in parsed
+        assert parsed["message"] == "ok"
+        assert parsed["outputs"] == {}
+
+    def test_other_fields_preserved_after_strip(self):
+        """Stripping is_dry_run does not affect unrelated fields."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"success": true, "is_dry_run": true, "block_id": "b1"}',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert parsed["success"] is True
+        assert parsed["block_id"] == "b1"
+        assert "is_dry_run" not in parsed
+
+    def test_error_result_not_modified(self):
+        """Error results pass through unchanged — stripping only applies on success."""
+        result = {
+            "content": [
+                {"type": "text", "text": '{"is_dry_run": true, "error": "boom"}'}
+            ],
+            "isError": True,
+        }
+        stripped = _strip_llm_fields(result)
+        parsed = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" in parsed
+
+    def test_non_json_text_block_unchanged(self):
+        """Plain-text blocks that are not valid JSON are left as-is."""
+        result = {
+            "content": [{"type": "text", "text": "plain text, not JSON"}],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        assert stripped["content"][0]["text"] == "plain text, not JSON"
+
+    def test_strip_after_stash_ordering(self):
+        """Stash receives full payload (with is_dry_run); LLM result does not."""
+        set_execution_context(user_id="test", session=None, sandbox=None)  # type: ignore[arg-type]
+
+        full_text = '{"message": "ok", "is_dry_run": true}'
+        result = {
+            "content": [{"type": "text", "text": full_text}],
+            "isError": False,
+        }
+
+        # Simulate the stash-before-strip ordering in _truncating:
+        # 1. Stash the FULL output (before any stripping)
+        text = _text_from_mcp_result(result)
+        stash_pending_tool_output("tool_x", text)
+
+        # 2. Strip for the LLM
+        llm_result = _strip_llm_fields(result)
+
+        # Stash (frontend) still has is_dry_run
+        stashed = pop_pending_tool_output("tool_x")
+        assert stashed is not None
+        assert "is_dry_run" in json.loads(stashed)
+
+        # LLM result does NOT have is_dry_run
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" not in llm_parsed
+
+    def test_multiple_text_blocks_strips_only_json_blocks(self):
+        """Mixed content array: JSON block is stripped, plain-text block is untouched."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '{"message": "ok", "is_dry_run": true}',
+                },
+                {
+                    "type": "text",
+                    "text": "plain text block — not JSON",
+                },
+                {
+                    "type": "text",
+                    "text": '{"other": "data", "is_dry_run": false}',
+                },
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        # First block: JSON — is_dry_run removed
+        first = json.loads(stripped["content"][0]["text"])
+        assert "is_dry_run" not in first
+        assert first["message"] == "ok"
+        # Second block: plain text — unchanged
+        assert stripped["content"][1]["text"] == "plain text block — not JSON"
+        # Third block: JSON — is_dry_run removed
+        third = json.loads(stripped["content"][2]["text"])
+        assert "is_dry_run" not in third
+        assert third["other"] == "data"
+
+    def test_non_dict_json_value_unchanged(self):
+        """A JSON array or string value is valid JSON but not a dict — left as-is."""
+        result = {
+            "content": [
+                {
+                    "type": "text",
+                    "text": '["is_dry_run", true]',
+                }
+            ],
+            "isError": False,
+        }
+        stripped = _strip_llm_fields(result)
+        # Not a dict, so should be returned unchanged
+        assert stripped["content"][0]["text"] == '["is_dry_run", true]'
+
+    @pytest.mark.asyncio
+    async def test_truncating_wrapper_stash_then_strip_ordering(self):
+        """The _make_truncating_wrapper must stash BEFORE strip so the frontend
+        gets is_dry_run while the LLM return value does not.
+
+        This test calls the ACTUAL _make_truncating_wrapper so that swapping
+        the stash/strip lines in production code causes this test to fail.
+        Uses a session with dry_run=True so that stripping is active.
+        """
+        dry_run_session = MagicMock()
+        dry_run_session.dry_run = True
+        set_execution_context(
+            user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
+
+        full_payload = '{"message": "done", "is_dry_run": true}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": full_payload}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool")
+        llm_result = await wrapper({})
+
+        # Stash (frontend path) must contain is_dry_run
+        stashed = pop_pending_tool_output("fake_tool")
+        assert stashed is not None
+        assert '"is_dry_run": true' in stashed
+
+        # LLM return value must NOT contain is_dry_run (stripped for session dry_run)
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" not in llm_parsed
+        assert llm_parsed["message"] == "done"
+
+    @pytest.mark.asyncio
+    async def test_truncating_wrapper_normal_mode_preserves_is_dry_run_for_llm(self):
+        """In normal (non-session-dry_run) mode, is_dry_run=True must reach the LLM.
+
+        When a single tool was individually dry-run but the session is not in
+        dry_run mode, the LLM should see is_dry_run=True so it knows that
+        specific tool result was simulated.
+        """
+        normal_session = MagicMock()
+        normal_session.dry_run = False
+        set_execution_context(
+            user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
+
+        full_payload = '{"message": "simulated", "is_dry_run": true}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": full_payload}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_normal")
+        llm_result = await wrapper({})
+
+        # LLM return value MUST contain is_dry_run in normal session mode
+        llm_parsed = json.loads(llm_result["content"][0]["text"])
+        assert "is_dry_run" in llm_parsed
+        assert llm_parsed["is_dry_run"] is True
+        assert llm_parsed["message"] == "simulated"
+
+        # Stash also still has is_dry_run (stash is always unstripped)
+        stashed = pop_pending_tool_output("fake_tool_normal")
+        assert stashed is not None
+        assert '"is_dry_run": true' in stashed
+
+
+class TestTruncatingWrapperLeavesOutputUntouched:
+    """Mid-turn drain moved to the shared ``PostToolUse`` hook path so every
+    tool (MCP + built-in) is covered uniformly.  The wrapper must therefore
+    forward tool output verbatim and never touch ``<user_follow_up>``."""
+
+    @pytest.mark.asyncio
+    async def test_wrapper_does_not_inject_followup(self):
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-no-inject"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": "CLEAN_OUTPUT"}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_clean")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        assert text == "CLEAN_OUTPUT"
+        assert "<user_follow_up>" not in text
+
+    @pytest.mark.asyncio
+    async def test_stash_stays_clean(self):
+        """The frontend-facing stash must be a byte-for-byte copy of the
+        raw tool output (needed for JSON.parse in the bash widget)."""
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-stash"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": clean_json}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_stash_pure")
+        await wrapper({})
+
+        stashed = pop_pending_tool_output("fake_tool_stash_pure")
+        assert stashed == clean_json
+        assert "<user_follow_up>" not in (stashed or "")

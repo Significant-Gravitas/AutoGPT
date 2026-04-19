@@ -26,6 +26,10 @@ from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
+from .get_sub_session_result import GetSubSessionResultTool
+from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
+from .graphiti_search import MemorySearchTool
+from .graphiti_store import MemoryStoreTool
 from .manage_folders import (
     CreateFolderTool,
     DeleteFolderTool,
@@ -37,6 +41,7 @@ from .manage_folders import (
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
+from .run_sub_session import RunSubSessionTool
 from .search_docs import SearchDocsTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -63,6 +68,11 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "find_agent": FindAgentTool(),
     "find_block": FindBlockTool(),
     "find_library_agent": FindLibraryAgentTool(),
+    # Graphiti memory tools
+    "memory_forget_confirm": MemoryForgetConfirmTool(),
+    "memory_forget_search": MemoryForgetSearchTool(),
+    "memory_search": MemorySearchTool(),
+    "memory_store": MemoryStoreTool(),
     # Folder management tools
     "create_folder": CreateFolderTool(),
     "list_folders": ListFoldersTool(),
@@ -73,6 +83,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
     "continue_run_block": ContinueRunBlockTool(),
+    "run_sub_session": RunSubSessionTool(),
+    "get_sub_session_result": GetSubSessionResultTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),

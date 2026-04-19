@@ -4,6 +4,7 @@ import asyncio
 import contextvars
 import json
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any
 
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
@@ -22,6 +23,7 @@ from backend.copilot.permissions import (
     validate_block_identifiers,
 )
 from backend.data.model import SchemaField
+from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -30,6 +32,37 @@ logger = logging.getLogger(__name__)
 
 # Block ID shared between autopilot.py and copilot prompting.py.
 AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
+
+# Identifiers used when registering an AutoPilotBlock turn with the
+# stream registry — distinguishes block-originated turns from sub-session
+# or HTTP SSE turns in logs / observability.
+_AUTOPILOT_TOOL_CALL_ID = "autopilot_block"
+_AUTOPILOT_TOOL_NAME = "autopilot_block"
+
+# Ceiling on how long AutoPilotBlock.execute_copilot will wait for the
+# enqueued turn's terminal event. Graph blocks run synchronously from
+# the caller's perspective so we wait effectively as long as needed; 6h
+# matches the previous abandoned-task cap and is much longer than any
+# legitimate AutoPilot turn.
+_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = 6 * 60 * 60  # 6 hours
+
+
+class SubAgentRecursionError(BlockExecutionError):
+    """Raised when the AutoPilot sub-agent nesting depth limit is exceeded.
+
+    Inherits :class:`BlockExecutionError` — this is a known, handled
+    runtime failure at the block level (caller nested AutoPilotBlocks
+    beyond the configured limit). Surfaces with the block_name /
+    block_id the block framework expects, instead of being wrapped in
+    ``BlockUnknownError``.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            block_name="AutoPilotBlock",
+            block_id=AUTOPILOT_BLOCK_ID,
+        )
 
 
 class ToolCallEntry(TypedDict):
@@ -263,11 +296,15 @@ class AutoPilotBlock(Block):
         user_id: str,
         permissions: "CopilotPermissions | None" = None,
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
-        """Invoke the copilot and collect all stream results.
+        """Invoke the copilot on the copilot_executor queue and aggregate the
+        result.
 
-        Delegates to :func:`collect_copilot_response` — the shared helper that
-        consumes ``stream_chat_completion_sdk`` without wrapping it in an
-        ``asyncio.timeout`` (the SDK manages its own heartbeat-based timeouts).
+        Delegates to :func:`run_copilot_turn_via_queue` — the shared
+        primitive used by ``run_sub_session`` too — which creates the
+        stream_registry meta record, enqueues the job, and waits on the
+        Redis stream for the terminal event. Any available
+        copilot_executor worker picks up the job, so this call survives
+        the graph-executor worker dying mid-turn (RabbitMQ redelivers).
 
         Args:
             prompt: The user task/instruction.
@@ -280,8 +317,8 @@ class AutoPilotBlock(Block):
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
         """
-        from backend.copilot.sdk.collect import (
-            collect_copilot_response,  # avoid circular import
+        from backend.copilot.sdk.session_waiter import (
+            run_copilot_turn_via_queue,  # avoid circular import
         )
 
         tokens = _check_recursion(max_recursion_depth)
@@ -294,14 +331,35 @@ class AutoPilotBlock(Block):
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
 
-            result = await collect_copilot_response(
+            outcome, result = await run_copilot_turn_via_queue(
                 session_id=session_id,
-                message=effective_prompt,
                 user_id=user_id,
+                message=effective_prompt,
+                # Graph block execution is synchronous from the caller's
+                # perspective — wait effectively as long as needed. The
+                # SDK enforces its own idle-based timeout inside the
+                # stream_registry pipeline.
+                timeout=_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS,
                 permissions=effective_permissions,
+                tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
+                tool_name=_AUTOPILOT_TOOL_NAME,
             )
+            if outcome == "failed":
+                raise RuntimeError(
+                    "AutoPilot turn failed — see the session's transcript"
+                )
+            if outcome == "running":
+                raise RuntimeError(
+                    "AutoPilot turn did not complete within "
+                    f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
+                    f"{session_id}"
+                )
 
-            # Build a lightweight conversation summary from streamed data.
+            # Build a lightweight conversation summary from the aggregated data.
+            # When ``result.queued`` is True the prompt rode on an already-
+            # in-flight turn (``run_copilot_turn_via_queue`` queued it and
+            # waited on the existing turn's stream); the aggregated result
+            # is still valid, so the same rendering path applies.
             turn_messages: list[dict[str, Any]] = [
                 {"role": "user", "content": effective_prompt},
             ]
@@ -310,7 +368,7 @@ class AutoPilotBlock(Block):
                     {
                         "role": "assistant",
                         "content": result.response_text,
-                        "tool_calls": result.tool_calls,
+                        "tool_calls": [tc.model_dump() for tc in result.tool_calls],
                     }
                 )
             else:
@@ -321,11 +379,11 @@ class AutoPilotBlock(Block):
 
             tool_calls: list[ToolCallEntry] = [
                 {
-                    "tool_call_id": tc["tool_call_id"],
-                    "tool_name": tc["tool_name"],
-                    "input": tc["input"],
-                    "output": tc["output"],
-                    "success": tc["success"],
+                    "tool_call_id": tc.tool_call_id,
+                    "tool_name": tc.tool_name,
+                    "input": tc.input,
+                    "output": tc.output,
+                    "success": tc.success,
                 }
                 for tc in result.tool_calls
             ]
@@ -383,7 +441,8 @@ class AutoPilotBlock(Block):
         sid = input_data.session_id
         if not sid:
             sid = await self.create_session(
-                execution_context.user_id, dry_run=input_data.dry_run
+                execution_context.user_id,
+                dry_run=input_data.dry_run or execution_context.dry_run,
             )
 
         # NOTE: No asyncio.timeout() here — the SDK manages its own
@@ -409,8 +468,41 @@ class AutoPilotBlock(Block):
             yield "session_id", sid
             yield "error", "AutoPilot execution was cancelled."
             raise
+        except SubAgentRecursionError as exc:
+            # Deliberate block — re-enqueueing would immediately hit the limit
+            # again, so skip recovery and just surface the error.
+            yield "session_id", sid
+            yield "error", str(exc)
         except Exception as exc:
             yield "session_id", sid
+            # Recovery enqueue must happen BEFORE yielding "error": the block
+            # framework (_base.execute) raises BlockExecutionError immediately
+            # when it sees ("error", ...) and stops consuming the generator,
+            # so any code after that yield is dead code in production.
+            effective_prompt = input_data.prompt
+            if input_data.system_context:
+                effective_prompt = (
+                    f"[System Context: {input_data.system_context}]\n\n"
+                    f"{input_data.prompt}"
+                )
+            try:
+                await _enqueue_for_recovery(
+                    sid,
+                    execution_context.user_id,
+                    effective_prompt,
+                    input_data.dry_run or execution_context.dry_run,
+                )
+            except asyncio.CancelledError:
+                # Task cancelled during recovery — still yield the error
+                # so the session_id + error pair is visible before re-raising.
+                yield "error", str(exc)
+                raise
+            except Exception:
+                logger.warning(
+                    "AutoPilot session %s: recovery enqueue raised unexpectedly",
+                    sid[:12],
+                    exc_info=True,
+                )
             yield "error", str(exc)
 
 
@@ -438,13 +530,13 @@ def _check_recursion(
     when the caller exits to restore the previous depth.
 
     Raises:
-        RuntimeError: If the current depth already meets or exceeds the limit.
+        SubAgentRecursionError: If the current depth already meets or exceeds the limit.
     """
     current = _autopilot_recursion_depth.get()
     inherited = _autopilot_recursion_limit.get()
     limit = max_depth if inherited is None else min(inherited, max_depth)
     if current >= limit:
-        raise RuntimeError(
+        raise SubAgentRecursionError(
             f"AutoPilot recursion depth limit reached ({limit}). "
             "The autopilot has called itself too many times."
         )
@@ -535,3 +627,51 @@ def _merge_inherited_permissions(
     # Return the token so the caller can restore the previous value in finally.
     token = _inherited_permissions.set(merged)
     return merged, token
+
+
+# ---------------------------------------------------------------------------
+# Recovery helpers
+# ---------------------------------------------------------------------------
+
+
+async def _enqueue_for_recovery(
+    session_id: str,
+    user_id: str,
+    message: str,
+    dry_run: bool,
+) -> None:
+    """Re-enqueue an orphaned sub-agent session so a fresh executor picks it up.
+
+    When ``execute_copilot`` raises an unexpected exception the sub-agent
+    session is left with ``last_role=user`` and no active consumer — identical
+    to the state that caused Toran's reports of silent sub-agents.  Publishing
+    the original prompt back to the copilot queue lets the executor service
+    resume the session without manual intervention.
+
+    Skipped for dry-run sessions (no real consumers listen to the queue for
+    simulated sessions).  Any failure to publish is logged and swallowed so
+    it never masks the original exception.
+    """
+    if dry_run:
+        return
+    try:
+        from backend.copilot.executor.utils import (  # avoid circular import
+            enqueue_copilot_turn,
+        )
+
+        await asyncio.wait_for(
+            enqueue_copilot_turn(
+                session_id=session_id,
+                user_id=user_id,
+                message=message,
+                turn_id=str(uuid.uuid4()),
+            ),
+            timeout=10,
+        )
+        logger.info("AutoPilot session %s enqueued for recovery", session_id[:12])
+    except Exception:
+        logger.warning(
+            "AutoPilot session %s: failed to enqueue for recovery",
+            session_id[:12],
+            exc_info=True,
+        )
