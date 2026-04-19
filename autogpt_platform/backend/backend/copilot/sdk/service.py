@@ -742,7 +742,7 @@ async def _resolve_model_and_multiplier(
     sdk_model = _resolve_sdk_model()
 
     if model == "advanced":
-        sdk_model = _normalize_model_name("anthropic/claude-opus-4-6")
+        sdk_model = _normalize_model_name(config.advanced_model)
         logger.info(
             "[SDK] [%s] Per-request model override: advanced (%s)",
             session_id[:12] if session_id else "?",

@@ -17,8 +17,8 @@ from backend.util.clients import OPENROUTER_BASE_URL
 CopilotMode = Literal["fast", "extended_thinking"]
 
 # Per-request model tier set by the frontend model toggle.
-# 'standard' uses the global config default (currently Sonnet).
-# 'advanced' forces the highest-capability model (currently Opus).
+# 'standard' uses ``ChatConfig.model`` (Sonnet by default).
+# 'advanced' uses ``ChatConfig.advanced_model`` (Opus by default).
 # None means no preference — falls through to LD per-user targeting, then config.
 # Using tier names instead of model names keeps the contract model-agnostic.
 CopilotLlmModel = Literal["standard", "advanced"]
@@ -27,16 +27,21 @@ CopilotLlmModel = Literal["standard", "advanced"]
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
-    # OpenAI API Configuration
+    # Chat model tiers — applied orthogonally to the path (fast=baseline vs
+    # extended_thinking=SDK).  The "fast" vs "extended_thinking" toggle picks
+    # which code path runs (no reasoning / heavy SDK); "standard" vs
+    # "advanced" picks the model inside that path.
     model: str = Field(
         default="anthropic/claude-sonnet-4-6",
-        description="Default model for extended thinking mode. "
-        "Uses Sonnet 4.6 as the balanced default. "
-        "Override via CHAT_MODEL env var if you want a different default.",
+        description="Model used for the 'standard' tier (Sonnet by default). "
+        "Applies to both baseline (fast) and SDK (extended thinking) paths. "
+        "Override via CHAT_MODEL env var.",
     )
-    fast_model: str = Field(
-        default="anthropic/claude-sonnet-4-6",
-        description="Model for fast mode (baseline path). Should be faster/cheaper than the default model.",
+    advanced_model: str = Field(
+        default="anthropic/claude-opus-4-7",
+        description="Model used for the 'advanced' tier (Opus by default). "
+        "Applies to both baseline (fast) and SDK (extended thinking) paths. "
+        "Override via CHAT_ADVANCED_MODEL env var.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",

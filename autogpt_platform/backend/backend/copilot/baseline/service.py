@@ -25,7 +25,7 @@ from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
-from backend.copilot.config import CopilotMode
+from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import (
@@ -236,17 +236,17 @@ def _filter_tools_by_permissions(
     ]
 
 
-def _resolve_baseline_model(mode: CopilotMode | None) -> str:
-    """Pick the model for the baseline path based on the per-request mode.
+def _resolve_baseline_model(tier: CopilotLlmModel | None) -> str:
+    """Pick the model for the baseline path based on the per-request tier.
 
-    Only ``mode='fast'`` downgrades to the cheaper/faster model.  Any other
-    value (including ``None`` and ``'extended_thinking'``) preserves the
-    default model so that users who never select a mode don't get
-    silently moved to the cheaper tier.
+    The baseline (fast) and SDK (extended thinking) paths now share the
+    same tier-based model resolution — only the *path* differs between
+    "fast" and "extended_thinking".  ``'advanced'`` → Opus;
+    ``'standard'`` / ``None`` → the config default (Sonnet).
     """
-    if mode == "fast":
-        return config.fast_model
-    return config.model
+    from backend.copilot.service import resolve_chat_model
+
+    return resolve_chat_model(tier)
 
 
 @dataclass
@@ -928,6 +928,7 @@ async def stream_chat_completion_baseline(
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
+    model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
@@ -1012,9 +1013,10 @@ async def stream_chat_completion_baseline(
             session_id, last_user_msg.sequence, message
         )
 
-    # Select model based on the per-request mode.  'fast' downgrades to
-    # the cheaper/faster model; everything else keeps the default.
-    active_model = _resolve_baseline_model(mode)
+    # Select model based on the per-request tier toggle (standard / advanced).
+    # The path (fast vs extended_thinking) is already decided — we're in the
+    # baseline (fast) path; ``mode`` is accepted for logging parity only.
+    active_model = _resolve_baseline_model(model)
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
