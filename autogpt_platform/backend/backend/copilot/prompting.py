@@ -361,6 +361,16 @@ Every time you see one:
 
 Never echo the `<user_follow_up>` tags back. The block holds only the user's
 words — the rest of the tool result is the real data.
+
+# Always close the turn with visible text
+
+Every turn MUST end with at least one short user-facing text sentence —
+even if it is only "Done." or "I'm stopping here because X." Never end a
+turn with only tool calls or only thinking.  The user's UI renders text
+messages; a turn that emits only thinking blocks or only tool calls shows
+up as a frozen screen with no response.  If your plan was to stop after
+the last tool result, still produce one closing sentence summarising
+what happened so the user knows the turn is complete.
 """
 
 

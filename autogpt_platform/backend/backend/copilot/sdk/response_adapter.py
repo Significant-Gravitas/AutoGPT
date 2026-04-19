@@ -59,6 +59,15 @@ class SDKResponseAdapter:
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
+        # Track whether any ``TextBlock`` was emitted after the most recent
+        # tool_result.  Used at ``ResultMessage`` time to detect the
+        # "thinking-only final turn" case — when Claude's last LLM call
+        # produced only a ``ThinkingBlock`` (no text, no tool_use) the UI
+        # hangs on the last tool result with a "Thought for Xs" label and
+        # no response text.  We synthesize a short closing line in that
+        # case so the turn renders as cleanly complete.
+        self._text_since_last_tool_result = False
+        self._any_tool_results_seen = False
 
     @property
     def has_unresolved_tool_calls(self) -> bool:
@@ -107,6 +116,7 @@ class SDKResponseAdapter:
                         responses.append(
                             StreamTextDelta(id=self.text_block_id, delta=block.text)
                         )
+                        self._text_since_last_tool_result = True
 
                 elif isinstance(block, ThinkingBlock):
                     # Thinking blocks are preserved in the transcript but
@@ -210,6 +220,13 @@ class SDKResponseAdapter:
                     resolved_in_blocks.add(parent_id)
 
             self.resolved_tool_calls.update(resolved_in_blocks)
+            if resolved_in_blocks:
+                # A new tool_result just landed — reset the
+                # "has the model emitted text since the last tool result?"
+                # tracker so the thinking-only-final-turn guard at
+                # ``ResultMessage`` time stays accurate.
+                self._text_since_last_tool_result = False
+                self._any_tool_results_seen = True
 
             # Close the current step after tool results — the next
             # AssistantMessage will open a new step for the continuation.
@@ -219,6 +236,28 @@ class SDKResponseAdapter:
 
         elif isinstance(sdk_message, ResultMessage):
             self._flush_unresolved_tool_calls(responses)
+            # Thinking-only final turn guard: when the model's last LLM
+            # call after a tool result produced only a ``ThinkingBlock``
+            # (no ``TextBlock``, no ``ToolUseBlock``) the UI has nothing
+            # to render after the tool output — it hangs on "Thought for
+            # Xs" with no response text.  Synthesise a short closing line
+            # so the turn visibly completes.  Condition: we've seen at
+            # least one tool_result AND zero TextBlocks since.  The
+            # prompt rule (``_USER_FOLLOW_UP_NOTE``'s closing clause)
+            # asks the model to always end with text, but we can't rely
+            # on it for extended_thinking / edge cases.
+            if (
+                self._any_tool_results_seen
+                and not self._text_since_last_tool_result
+                and sdk_message.subtype == "success"
+            ):
+                self._ensure_text_started(responses)
+                responses.append(
+                    StreamTextDelta(
+                        id=self.text_block_id,
+                        delta="(Done — no further commentary.)",
+                    )
+                )
             self._end_text_if_open(responses)
             # Close the step before finishing.
             if self.step_open:

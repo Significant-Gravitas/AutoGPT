@@ -251,6 +251,120 @@ def test_result_success_emits_finish_step_and_finish():
     assert isinstance(results[2], StreamFinish)
 
 
+def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_only():
+    """If the model's last LLM call after a tool_result produced only a
+    ThinkingBlock (no TextBlock), the UI would hang on the tool output
+    with no response text.  The adapter should inject a short closing
+    line before ``StreamFinish`` so the turn visibly completes."""
+    adapter = _adapter()
+
+    # Tool use + tool_result (simulates the tool round).
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={}),
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+            ],
+            parent_tool_use_id=None,
+        )
+    )
+
+    # Model's "final turn" after tool_result = thinking-only — we skip
+    # emitting a ThinkingBlock to the frontend, so no Text/Tool events
+    # fire for this branch.  ResultMessage arrives next.
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="",
+    )
+    results = adapter.convert_message(msg)
+
+    # Fallback text should be injected before the finish events.
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert len(text_deltas) == 1, "should synthesize exactly one fallback text"
+    assert text_deltas[0].delta.strip()  # non-empty
+    assert isinstance(results[-1], StreamFinish)
+
+
+def test_result_success_does_not_synthesize_when_text_already_emitted():
+    """Guard: do NOT synthesize when the model DID emit closing text
+    after the last tool result — the fallback is only for the silent
+    thinking-only case."""
+    adapter = _adapter()
+
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+            ],
+            parent_tool_use_id=None,
+        )
+    )
+    # Model responds with actual text after the tool result.
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="all done")], model="test")
+    )
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="all done",
+    )
+    results = adapter.convert_message(msg)
+
+    # No fallback — the only TextDelta came from the previous
+    # AssistantMessage call, not from ResultMessage's synthesis.
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert text_deltas == []
+
+
+def test_result_success_does_not_synthesize_when_no_tools_ran():
+    """Guard: no tool_results seen ⇒ no fallback.  Pure-text turns with
+    no tools legitimately produce text-only responses through normal
+    AssistantMessage events; we don't need a fallback there."""
+    adapter = _adapter()
+
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="hello",
+    )
+    results = adapter.convert_message(msg)
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert text_deltas == []
+
+
 def test_result_error_emits_error_and_finish():
     adapter = _adapter()
     msg = ResultMessage(
