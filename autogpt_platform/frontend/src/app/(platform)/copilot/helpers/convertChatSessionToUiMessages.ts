@@ -191,12 +191,30 @@ export function convertChatSessionMessagesToUiMessages(
 
   messages.forEach((msg) => {
     if (msg.role === "tool") return;
-    if (msg.role !== "user" && msg.role !== "assistant") return;
+    if (
+      msg.role !== "user" &&
+      msg.role !== "assistant" &&
+      msg.role !== "reasoning"
+    )
+      return;
+
+    // Role=="reasoning" rows carry extended_thinking content.  Treat them as
+    // contributing a reasoning part to the surrounding assistant bubble —
+    // the consecutive-assistant merge below then folds them into the same
+    // UIMessage as the text that follows.
+    const uiRole: "user" | "assistant" =
+      msg.role === "reasoning" ? "assistant" : msg.role;
 
     const parts: UIMessage<unknown, UIDataTypes, UITools>["parts"] = [];
 
     if (typeof msg.content === "string" && msg.content.trim()) {
-      if (msg.role === "user") {
+      if (msg.role === "reasoning") {
+        parts.push({
+          type: "reasoning",
+          text: msg.content,
+          state: "done",
+        } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number]);
+      } else if (msg.role === "user") {
         const { cleanText, fileParts } = extractFileParts(msg.content);
         if (cleanText) {
           parts.push({ type: "text", text: cleanText, state: "done" });
@@ -209,7 +227,7 @@ export function convertChatSessionMessagesToUiMessages(
       }
     }
 
-    if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
+    if (uiRole === "assistant" && Array.isArray(msg.tool_calls)) {
       for (const rawToolCall of msg.tool_calls) {
         if (!rawToolCall || typeof rawToolCall !== "object") continue;
         const toolCall = rawToolCall as {
@@ -260,10 +278,10 @@ export function convertChatSessionMessagesToUiMessages(
     }
     if (parts.length === 0) return;
 
-    // Merge consecutive assistant messages into a single UIMessage
-    // to avoid split bubbles on page reload.
+    // Merge consecutive assistant messages (including reasoning rows) into a
+    // single UIMessage to avoid split bubbles on page reload.
     const prevUI = uiMessages[uiMessages.length - 1];
-    if (msg.role === "assistant" && prevUI && prevUI.role === "assistant") {
+    if (uiRole === "assistant" && prevUI && prevUI.role === "assistant") {
       prevUI.parts.push(...parts);
       // Capture duration on merged message (last assistant msg wins)
       if (msg.duration_ms != null) {
@@ -275,11 +293,11 @@ export function convertChatSessionMessagesToUiMessages(
     const msgId = `${sessionId}-seq-${msg.sequence}`;
     uiMessages.push({
       id: msgId,
-      role: msg.role,
+      role: uiRole,
       parts,
     });
 
-    if (msg.role === "assistant" && msg.duration_ms != null) {
+    if (uiRole === "assistant" && msg.duration_ms != null) {
       durations.set(msgId, msg.duration_ms);
     }
   });

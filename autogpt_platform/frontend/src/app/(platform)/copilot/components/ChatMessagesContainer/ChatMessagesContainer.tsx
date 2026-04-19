@@ -414,7 +414,7 @@ export function ChatMessagesContainer({
                 }
               >
                 {hasReasoning && reasoningSegments && (
-                  <ReasoningCollapse>
+                  <ReasoningCollapse label="steps">
                     {renderSegments(reasoningSegments, message.id)}
                   </ReasoningCollapse>
                 )}
