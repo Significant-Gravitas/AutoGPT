@@ -289,6 +289,10 @@ class SDKResponseAdapter:
                 if not self.step_open:
                     responses.append(StreamStartStep())
                     self.step_open = True
+                # Close any open reasoning block first — text and reasoning
+                # must not interleave on the wire (AI SDK v5 maps distinct
+                # start/end events to distinct UI parts).
+                self._end_reasoning_if_open(responses)
                 self._ensure_text_started(responses)
                 responses.append(
                     StreamTextDelta(
