@@ -277,9 +277,25 @@ async function pollBackendAndPromote(
   const drained = localChips.slice(0, drainedCount);
   const remaining = localChips.slice(drainedCount);
 
-  setMessages((prev) => [
-    ...prev,
-    makePromotedUserBubble(drained, "midturn", crypto.randomUUID()),
-  ]);
+  // Insert the promoted bubble **before** the trailing streaming assistant
+  // so that assistant stays at ``messages[-1]``.  The AI SDK's ``useChat``
+  // appends SSE text/tool deltas to the last message; if we push the user
+  // bubble onto the tail, every subsequent chunk lands in the wrong slot
+  // and the UI freezes until a page refresh (observed on prod in session
+  // 2664eff3 after a mid-turn drain — backend kept emitting, client stopped
+  // rendering).  When the last message is NOT an assistant (edge: turn
+  // hadn't spawned one yet), plain append is safe.
+  setMessages((prev) => {
+    const bubble = makePromotedUserBubble(
+      drained,
+      "midturn",
+      crypto.randomUUID(),
+    );
+    const lastIdx = prev.length - 1;
+    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
+      return [...prev.slice(0, lastIdx), bubble, prev[lastIdx]];
+    }
+    return [...prev, bubble];
+  });
   setQueuedMessages(remaining);
 }
