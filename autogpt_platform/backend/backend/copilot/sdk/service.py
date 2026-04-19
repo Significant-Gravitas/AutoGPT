@@ -1163,7 +1163,14 @@ async def _compress_messages(
         `compact_transcript` — compresses JSONL transcript entries.
         `CompactionTracker` — emits UI events for mid-stream compaction.
     """
-    messages = filter_compaction_messages(messages)
+    # ``role="reasoning"`` rows are persisted for frontend replay only — they
+    # aren't valid OpenAI roles and ``compress_context`` would either drop or
+    # malform them.  Strip here so every caller is covered (``_build_query_message``
+    # already filters upstream, but ``_seed_transcript`` and any future caller
+    # don't, and centralising the filter avoids per-call-site drift).
+    messages = [
+        m for m in filter_compaction_messages(messages) if m.role != "reasoning"
+    ]
 
     if len(messages) < 2:
         return messages, False
