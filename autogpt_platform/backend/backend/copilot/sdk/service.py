@@ -656,8 +656,8 @@ def _normalize_model_name(raw_model: str) -> str:
         model = model.split("/", 1)[1]
     # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
     # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
-    # when NOT routing through OpenRouter.
-    if not config.openrouter_active:
+    # Anthropic model names when NOT routing through OpenRouter.
+    if not config.openrouter_active and model.startswith("claude-"):
         model = model.replace(".", "-")
     return model
 
