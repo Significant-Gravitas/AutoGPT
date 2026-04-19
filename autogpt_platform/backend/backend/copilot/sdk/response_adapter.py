@@ -433,9 +433,17 @@ class SDKResponseAdapter:
                     tool_id[:12],
                 )
 
-        if flushed and self.step_open:
-            responses.append(StreamFinishStep())
-            self.step_open = False
+        if flushed:
+            # Mirror the UserMessage tool_result path: a flushed tool output is
+            # still a tool_result as far as the thinking-only-final-turn guard
+            # is concerned.  Without this, a turn whose ONLY tool outputs come
+            # from the flush path (SDK built-ins like WebSearch) would miss
+            # the fallback synthesis if the model then produced no text.
+            self._text_since_last_tool_result = False
+            self._any_tool_results_seen = True
+            if self.step_open:
+                responses.append(StreamFinishStep())
+                self.step_open = False
 
 
 def _extract_tool_output(content: str | list[dict[str, str]] | None) -> str:

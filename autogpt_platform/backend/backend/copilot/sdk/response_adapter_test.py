@@ -358,9 +358,11 @@ def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_on
         )
     )
 
-    # Model's "final turn" after tool_result = thinking-only — we skip
-    # emitting a ThinkingBlock to the frontend, so no Text/Tool events
-    # fire for this branch.  ResultMessage arrives next.
+    # Model's "final turn" after tool_result is thinking-only.  This test
+    # simulates the *degenerate* case where the SDK never surfaces an
+    # AssistantMessage carrying the ThinkingBlock at all (not even the
+    # streamed reasoning events) before ResultMessage — only the tool_result
+    # has arrived.  The fallback guard should still synthesize closing text.
     msg = ResultMessage(
         subtype="success",
         duration_ms=100,
@@ -622,6 +624,13 @@ def test_flush_unresolved_at_result_message():
         "StreamToolInputAvailable",
         "StreamToolOutputAvailable",  # flushed with empty output
         "StreamFinishStep",  # step closed by flush
+        # Flush marks a tool_result as seen, so the thinking-only-final-turn
+        # guard at ResultMessage time synthesizes a closing text delta.
+        "StreamStartStep",
+        "StreamTextStart",
+        "StreamTextDelta",
+        "StreamTextEnd",
+        "StreamFinishStep",
         "StreamFinish",
     ]
     # The flushed output should be empty (no stash available)
