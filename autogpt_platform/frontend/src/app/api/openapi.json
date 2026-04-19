@@ -1464,6 +1464,46 @@
         }
       }
     },
+    "/api/chat/sessions/builder": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Or Create Builder Session Endpoint",
+        "description": "Get-or-create a chat session bound to a builder graph.\n\nThe builder panel calls this on mount so the chat persists across\nrefreshes and is scoped to the currently-opened agent.  If a session\nalready exists with ``metadata.builder_graph_id == graph_id`` for this\nuser, the existing session is returned; otherwise a new one is\ncreated.  The session is restricted server-side to the\n``edit_agent`` and ``run_agent`` tools via the permissions injected\nby the executor (see :func:`resolve_session_permissions`).",
+        "operationId": "postV2GetOrCreateBuilderSessionEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/BuilderSessionRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/sessions/{session_id}": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
@@ -9104,6 +9144,21 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
+      "BuilderSessionRequest": {
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Graph Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["graph_id"],
+        "title": "BuilderSessionRequest",
+        "description": "Request model for get-or-create builder sessions.\n\nEach user has at most one session bound to a given ``graph_id`` —\nthe builder panel re-uses it across refreshes so the chat persists\nwith the agent.  Returning the existing session is safe because the\nsession is restricted via ``CopilotPermissions`` to the two builder\ntools and cannot mutate any other agent."
+      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -9169,7 +9224,15 @@
       },
       "ChatSessionMetadata": {
         "properties": {
-          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "builder_graph_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Builder Graph Id"
+          }
         },
         "type": "object",
         "title": "ChatSessionMetadata",

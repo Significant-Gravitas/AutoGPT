@@ -1,58 +1,36 @@
 "use client";
 
+import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
+import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { cn } from "@/lib/utils";
 import { ChatCircle, X } from "@phosphor-icons/react";
-import { useEffect, useRef } from "react";
-import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
-import { MessageList } from "./components/MessageList";
+import { useRef } from "react";
 import { PanelHeader } from "./components/PanelHeader";
-import { PanelInput } from "./components/PanelInput";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 
 interface Props {
   className?: string;
-  onGraphEdited?: () => void;
 }
 
-export function BuilderChatPanel({ className, onGraphEdited }: Props) {
+export function BuilderChatPanel({ className }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const {
     isOpen,
     handleToggle,
-    retrySession,
+    sessionId,
     messages,
-    stop,
+    status,
     error,
-    isCreatingSession,
-    sessionError,
-    nodes,
-    parsedActions,
-    appliedActionKeys,
-    handleApplyAction,
-    undoStack,
-    handleUndoLastAction,
-    inputValue,
-    setInputValue,
-    handleSend,
-    sendRawMessage,
-    handleKeyDown,
-    isStreaming,
-    canSend,
-  } = useBuilderChatPanel({ onGraphEdited, panelRef });
+    stop,
+    onSend,
+    queuedMessages,
+    isBootstrapping,
+    revertTargetVersion,
+    handleRevert,
+  } = useBuilderChatPanel({ panelRef });
 
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isStreaming]);
-
-  // Move focus to the textarea when the panel opens so keyboard users can type immediately.
-  useEffect(() => {
-    if (isOpen) {
-      textareaRef.current?.focus();
-    }
-  }, [isOpen]);
+  const isStreaming = status === "streaming" || status === "submitted";
 
   return (
     <div
@@ -62,45 +40,56 @@ export function BuilderChatPanel({ className, onGraphEdited }: Props) {
       )}
     >
       {isOpen && (
-        <CopilotChatActionsProvider onSend={sendRawMessage}>
+        <CopilotChatActionsProvider onSend={onSend}>
           <div
             ref={panelRef}
             role="complementary"
             aria-label="Builder chat panel"
-            // max-h-[70vh] instead of h-[70vh] so the panel shrinks with the
-            // viewport on small screens and does not overlap the builder toolbar.
-            className="pointer-events-auto flex max-h-[70vh] min-h-[320px] w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[75vh]"
+            className="pointer-events-auto flex max-h-[70vh] min-h-[320px] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[75vh]"
           >
             <PanelHeader
               onClose={handleToggle}
-              undoCount={undoStack.length}
-              onUndo={handleUndoLastAction}
+              canRevert={revertTargetVersion != null}
+              revertTargetVersion={revertTargetVersion}
+              onRevert={handleRevert}
             />
 
-            <MessageList
-              messages={messages}
-              isCreatingSession={isCreatingSession}
-              sessionError={sessionError}
-              streamError={error}
-              nodes={nodes}
-              parsedActions={parsedActions}
-              appliedActionKeys={appliedActionKeys}
-              onApplyAction={handleApplyAction}
-              onRetry={retrySession}
-              messagesEndRef={messagesEndRef}
-              isStreaming={isStreaming}
-            />
-
-            <PanelInput
-              value={inputValue}
-              onChange={setInputValue}
-              onKeyDown={handleKeyDown}
-              onSend={handleSend}
-              onStop={stop}
-              isStreaming={isStreaming}
-              isDisabled={!canSend}
-              textareaRef={textareaRef}
-            />
+            <div className="flex min-h-0 flex-1 flex-col">
+              {isBootstrapping ? (
+                <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
+                  Preparing builder chat…
+                </div>
+              ) : sessionId ? (
+                <>
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <ChatMessagesContainer
+                      messages={messages}
+                      status={status}
+                      error={error}
+                      isLoading={false}
+                      sessionID={sessionId}
+                      queuedMessages={queuedMessages}
+                    />
+                  </div>
+                  <div className="relative border-t border-slate-100 bg-white px-3 pb-2 pt-2">
+                    <ChatInput
+                      inputId="builder-chat-input"
+                      onSend={onSend}
+                      disabled={false}
+                      isStreaming={isStreaming}
+                      onStop={stop}
+                      onEnqueue={onSend}
+                      placeholder="Ask the builder to edit or run this agent…"
+                      hasSession={true}
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
+                  Open an agent to start chatting with the builder.
+                </div>
+              )}
+            </div>
           </div>
         </CopilotChatActionsProvider>
       )}

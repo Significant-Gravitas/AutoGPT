@@ -35,7 +35,7 @@ export const Flow = () => {
     flowExecutionID: parseAsString,
   });
 
-  const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
+  const { data: graph } = useGetV1GetSpecificGraph(
     flowID ?? "",
     {},
     {
@@ -141,7 +141,7 @@ export const Flow = () => {
       />
       {isBuilderChatEnabled && (
         <ErrorBoundary context="BuilderChatPanel" fallback={null}>
-          <BuilderChatPanel onGraphEdited={() => void refetchGraph()} />
+          <BuilderChatPanel />
         </ErrorBoundary>
       )}
     </div>

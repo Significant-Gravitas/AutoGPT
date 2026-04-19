@@ -1,115 +1,257 @@
+import {
+  getGetV1GetSpecificGraphQueryKey,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  usePostV1CreateNewGraph,
+  usePutV1SetActiveGraphVersion,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV2GetSessionQueryKey,
+  usePostV2GetOrCreateBuilderSessionEndpoint,
+} from "@/app/api/__generated__/endpoints/chat/chat";
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import {
-  type KeyboardEvent,
-  type RefObject,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { parseAsString, useQueryStates } from "nuqs";
-import { useShallow } from "zustand/react/shallow";
-import { useEdgeStore } from "../../stores/edgeStore";
-import { useNodeStore } from "../../stores/nodeStore";
-import {
-  applyConnectNodes,
-  applyUpdateNodeInput,
-  type UndoSnapshot,
-} from "./actionApplicators";
-import { GraphAction, getActionKey } from "./helpers";
-import { useActionParser } from "./useActionParser";
-import {
-  clearGraphSessionCacheForTesting,
-  useSessionManager,
-} from "./useSessionManager";
-import { useToolCallHandler } from "./useToolCallHandler";
-
-export { clearGraphSessionCacheForTesting };
-
-/** Stable empty array so the useShallow selector returns the same reference when the panel is closed. */
-const EMPTY_NODES: never[] = [];
+import * as Sentry from "@sentry/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { useEffect, useRef, useState } from "react";
+import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
+import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
+import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 
 interface UseBuilderChatPanelArgs {
-  onGraphEdited?: () => void;
-  panelRef?: RefObject<HTMLElement | null>;
+  panelRef?: React.RefObject<HTMLElement | null>;
 }
 
-/**
- * Thin coordinator for the builder chat panel.
- *
- * Delegates to focused sub-hooks:
- * - `useSessionManager` — session lifecycle, transport, and useChat integration.
- * - `useActionParser`   — action parsing from completed assistant messages.
- * - `useToolCallHandler` — edit_agent / run_agent tool call detection.
- *
- * Owns the remaining concerns directly: panel open/close state, action
- * application with undo, and input handling.
- */
+type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
+
 export function useBuilderChatPanel({
-  onGraphEdited,
   panelRef,
 }: UseBuilderChatPanelArgs = {}) {
   const [isOpen, setIsOpen] = useState(false);
-  const [appliedActionKeys, setAppliedActionKeys] = useState<Set<string>>(
-    new Set(),
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [revertTargetVersion, setRevertTargetVersion] = useState<number | null>(
+    null,
   );
-  const [undoStack, setUndoStack] = useState<UndoSnapshot[]>([]);
-  const [inputValue, setInputValue] = useState("");
-
-  // Tracks the current flowID as a ref so in-flight session creation callbacks
-  // can verify the graph hasn't changed before committing the new sessionId.
-  const currentFlowIDRef = useRef<string | null>(null);
-
-  const [{ flowID }] = useQueryStates({
+  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowExecutionID: parseAsString,
+    flowVersion: parseAsInteger,
   });
-  // Keep ref in sync with the current flowID so in-flight session callbacks can
-  // detect stale graph context without closure staleness issues.
-  // Assigned during render (not in useEffect) so callbacks created in the same
-  // render cycle see the current flowID immediately — useEffect would delay by
-  // one render, creating a window where stale values are visible.
-  currentFlowIDRef.current = flowID;
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const nodes = useNodeStore(
-    useShallow((s) => (isOpen ? s.nodes : EMPTY_NODES)),
+  const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
+    flowID ?? "",
+    {},
+    {
+      query: {
+        select: okData,
+        enabled: !!flowID,
+      },
+    },
   );
-  const setNodes = useNodeStore((s) => s.setNodes);
-  const setEdges = useEdgeStore((s) => s.setEdges);
 
-  const {
+  const { mutateAsync: createBuilderSession, isPending: isCreatingSession } =
+    usePostV2GetOrCreateBuilderSessionEndpoint();
+  const { mutateAsync: createNewGraph, isPending: isBootstrappingGraph } =
+    usePostV1CreateNewGraph();
+  const { mutateAsync: setActiveVersion } = usePutV1SetActiveGraphVersion();
+
+  const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
+    query: {
+      enabled: !!sessionId,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnMount: true,
+    },
+  });
+
+  const hasActiveStream =
+    sessionQuery.data?.status === 200
+      ? !!sessionQuery.data.data.active_stream
+      : false;
+
+  const hydratedMessages: UiMessages | undefined =
+    sessionQuery.data?.status === 200 && sessionId
+      ? (convertChatSessionMessagesToUiMessages(
+          sessionId,
+          sessionQuery.data.data.messages ?? [],
+          { isComplete: !hasActiveStream },
+        ).messages as UiMessages)
+      : undefined;
+
+  const { messages, setMessages, sendMessage, stop, status, error } =
+    useCopilotStream({
+      sessionId,
+      hydratedMessages,
+      hasActiveStream,
+      refetchSession: sessionQuery.refetch,
+      copilotMode: "fast",
+      copilotModel: undefined,
+    });
+
+  const { queuedMessages, appendChip } = useCopilotPendingChips({
     sessionId,
-    isCreatingSession,
-    sessionError,
+    status,
     messages,
     setMessages,
-    sendMessage,
-    stop,
-    status,
-    error,
-    retrySession: retrySessionBase,
-  } = useSessionManager({ isOpen, flowID, currentFlowIDRef });
+  });
 
-  const { parsedActions } = useActionParser({ messages, status });
-
-  useToolCallHandler({ messages, status, flowID, onGraphEdited });
-
-  // When the user navigates to a different graph: reset all per-session UI state.
-  // Messages are always cleared on navigation — appliedActionKeys cannot be persisted
-  // so restoring messages while resetting action state would show previously applied
-  // actions as unapplied, allowing them to be re-applied and creating duplicate undo entries.
+  // Bind the panel session to (flowID -> graph_id).  Navigating to a
+  // different graph or clearing flowID drops the current session so the
+  // next panel open starts clean with the right graph.
+  const boundGraphRef = useRef<string | null>(null);
   useEffect(() => {
-    setAppliedActionKeys(new Set());
-    setUndoStack([]);
-    setInputValue("");
-    setMessages([]);
-    // setMessages is a stable function from useChat; excluding from deps is safe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!isOpen) return;
+    if (!flowID) return;
+    if (boundGraphRef.current === flowID && sessionId) return;
+    boundGraphRef.current = flowID;
+
+    void (async () => {
+      try {
+        const response = (await createBuilderSession({
+          data: { graph_id: flowID },
+        })) as unknown as {
+          status: number;
+          data?: { id?: string };
+        };
+        if (response.status !== 200 || !response.data?.id) {
+          throw new Error("failed_to_bind_builder_session");
+        }
+        setSessionId(response.data.id);
+      } catch (err) {
+        Sentry.captureException(err);
+        toast({
+          variant: "destructive",
+          title: "Could not start the builder chat",
+          description: "Please try closing and reopening the chat panel.",
+        });
+      }
+    })();
+  }, [isOpen, flowID, sessionId, createBuilderSession, toast]);
+
+  // Reset session + revert target when the graph changes (different agent).
+  useEffect(() => {
+    if (!flowID) {
+      setSessionId(null);
+      setRevertTargetVersion(null);
+      setMessages([]);
+      boundGraphRef.current = null;
+      return;
+    }
+    if (boundGraphRef.current && boundGraphRef.current !== flowID) {
+      setSessionId(null);
+      setRevertTargetVersion(null);
+      setMessages([]);
+      boundGraphRef.current = null;
+    }
+  }, [flowID, setMessages]);
+
+  // Auto-create a blank agent when the panel is opened without one.
+  // The saved graph's id becomes the builder session's binding.
+  const isBootstrappingRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen || flowID || isBootstrappingRef.current) return;
+    isBootstrappingRef.current = true;
+    void (async () => {
+      try {
+        const response = (await createNewGraph({
+          data: {
+            graph: {
+              name: `New Agent ${new Date().toISOString()}`,
+              description: "",
+              nodes: [],
+              links: [],
+            },
+            source: "builder",
+          },
+        })) as unknown as {
+          status: number;
+          data?: GraphModel;
+        };
+        if (response.status !== 200 || !response.data?.id) {
+          throw new Error("failed_to_bootstrap_agent");
+        }
+        setQueryStates({
+          flowID: response.data.id,
+          flowVersion: response.data.version,
+        });
+      } catch (err) {
+        Sentry.captureException(err);
+        toast({
+          variant: "destructive",
+          title: "Could not create a blank agent",
+          description: "Please try again.",
+        });
+      } finally {
+        isBootstrappingRef.current = false;
+      }
+    })();
+  }, [isOpen, flowID, createNewGraph, setQueryStates, toast]);
+
+  // Inline tool-integration: run_agent exec_id -> URL; edit_agent -> graph refetch + record revert point.
+  const processedToolCallsRef = useRef(new Set<string>());
+  useEffect(() => {
+    processedToolCallsRef.current = new Set();
   }, [flowID]);
 
-  // Close the panel on Escape when focus is inside the panel, so pressing Escape
-  // in another dialog or canvas element does not accidentally close the chat panel.
-  // Skip when focus is in an editable element to avoid discarding a draft in progress.
+  const latestVersionBeforeEditRef = useRef<number | null>(null);
+  useEffect(() => {
+    // Capture the active version any time we load the graph.  This is the
+    // version we "revert to" after the next edit_agent turn succeeds.
+    if (graph?.version != null && !hasActiveStream) {
+      latestVersionBeforeEditRef.current = graph.version;
+    }
+  }, [graph?.version, hasActiveStream]);
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    for (const msg of messages) {
+      if (msg.role !== "assistant") continue;
+      for (const part of msg.parts ?? []) {
+        if (part.type !== "dynamic-tool") continue;
+        const dynPart = part as {
+          type: "dynamic-tool";
+          toolName: string;
+          toolCallId: string;
+          state: string;
+          output?: unknown;
+        };
+        if (dynPart.state !== "output-available") continue;
+        if (processedToolCallsRef.current.has(dynPart.toolCallId)) continue;
+        processedToolCallsRef.current.add(dynPart.toolCallId);
+
+        if (dynPart.toolName === "edit_agent") {
+          // Record the version we were on before this edit so the user can
+          // roll back to it.  The graph's newly-active version (after save)
+          // is captured by the refetch below.
+          if (latestVersionBeforeEditRef.current != null) {
+            setRevertTargetVersion(latestVersionBeforeEditRef.current);
+          }
+          void refetchGraph();
+          if (flowID) {
+            queryClient.invalidateQueries({
+              queryKey: getGetV1GetSpecificGraphQueryKey(flowID, {}),
+            });
+          }
+        } else if (dynPart.toolName === "run_agent") {
+          const output = dynPart.output as Record<string, unknown> | null;
+          const execId = output?.execution_id;
+          if (typeof execId === "string" && /^[\w-]+$/i.test(execId)) {
+            setQueryStates({ flowExecutionID: execId });
+          }
+        }
+      }
+    }
+  }, [messages, status, flowID, refetchGraph, queryClient, setQueryStates]);
+
+  // Escape-to-close when the panel is focused.  Skip inside editable
+  // elements so Escape does not discard an in-progress draft.
   useEffect(() => {
     if (!isOpen) return;
     function onKeyDown(e: globalThis.KeyboardEvent) {
@@ -133,119 +275,91 @@ export function useBuilderChatPanel({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen, panelRef]);
 
-  const isStreaming = status === "streaming" || status === "submitted";
-  const canSend =
-    Boolean(sessionId) && !isCreatingSession && !sessionError && !isStreaming;
-
   function handleToggle() {
     setIsOpen((o) => !o);
   }
 
-  // Resets session error state so the session-creation effect re-runs on
-  // the next render without toggling the panel closed and back open.
-  // Also evicts the stale cached session so a fresh one is created.
-  // Messages are cleared so stale messages from the previous session are not
-  // shown alongside content from the new session.
-  // appliedActionKeys and undoStack are cleared because they reference the
-  // previous session's state: stale undo entries hold closures over old
-  // node snapshots, and the applied badges would incorrectly show actions as
-  // applied in the new session even though they have not been re-applied.
-  function retrySession() {
-    retrySessionBase();
-    setAppliedActionKeys(new Set());
-    setUndoStack([]);
-  }
-
-  function handleSend() {
-    const text = inputValue.trim();
-    if (!text || !canSend) return;
-    setInputValue("");
-    sendMessage({ text });
-  }
-
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
-  function handleApplyAction(action: GraphAction) {
-    const deps = {
-      toast,
-      setNodes,
-      setEdges,
-      setUndoStack,
-      setAppliedActionKeys,
-    };
-    let applied = false;
-    if (action.type === "update_node_input") {
-      applied = applyUpdateNodeInput(action, deps);
-    } else if (action.type === "connect_nodes") {
-      applied = applyConnectNodes(action, deps);
-    } else {
-      // Exhaustiveness guard — TypeScript ensures all GraphAction types are handled above.
-      const _: never = action;
-      return _;
-    }
-    if (applied) {
-      setAppliedActionKeys((prev) => {
-        const next = new Set(prev);
-        next.add(getActionKey(action));
-        return next;
+  async function handleRevert() {
+    if (!flowID || revertTargetVersion == null) return;
+    try {
+      const response = (await setActiveVersion({
+        graphId: flowID,
+        data: { active_graph_version: revertTargetVersion },
+      })) as unknown as { status: number };
+      if (response.status !== 200) {
+        throw new Error("failed_to_revert");
+      }
+      setQueryStates({ flowVersion: revertTargetVersion });
+      await refetchGraph();
+      queryClient.invalidateQueries({
+        queryKey: getGetV1GetSpecificGraphQueryKey(flowID, {}),
+      });
+      if (sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetSessionQueryKey(sessionId),
+        });
+      }
+      setRevertTargetVersion(null);
+      toast({
+        title: "Reverted to the previous version",
+        description: `Now viewing version ${revertTargetVersion}.`,
+      });
+    } catch (err) {
+      Sentry.captureException(err);
+      toast({
+        variant: "destructive",
+        title: "Revert failed",
+        description: "Please try again.",
       });
     }
   }
 
-  function handleUndoLastAction() {
-    // Read the current stack directly rather than inside the setUndoStack updater.
-    // Calling restore() (which triggers setNodes/setEdges) inside a state updater
-    // is a React anti-pattern — state updaters must be pure. Reading from the ref
-    // here is safe because this function is only called from event handlers.
-    const stack = undoStack;
-    if (stack.length === 0) return;
-    const last = stack[stack.length - 1];
-    last.restore();
-    setUndoStack((prev) => prev.slice(0, -1));
+  async function onSend(message: string, _files?: File[]) {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    if (!sessionId) return;
+    const isInFlight = status === "streaming" || status === "submitted";
+    if (isInFlight) {
+      appendChip(trimmed);
+      try {
+        const { queueFollowUpMessage } = await import(
+          "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
+        );
+        await queueFollowUpMessage(sessionId, trimmed);
+      } catch (err) {
+        Sentry.captureException(err);
+        toast({
+          variant: "destructive",
+          title: "Could not queue message",
+          description: "Please wait for the current response to finish.",
+        });
+      }
+      return;
+    }
+    sendMessage({ text: trimmed });
   }
 
-  // Sends an arbitrary text message directly, bypassing the input field.
-  // Used by CopilotChatActionsProvider so tool components (e.g. EditAgentTool)
-  // can programmatically send "try again" prompts without touching the textarea.
-  // Silently truncates to the backend's 64,000-character limit to avoid a 422.
-  function sendRawMessage(text: string) {
-    if (!text || !canSend) return;
-    const MAX_RAW_MESSAGE_CHARS = 64_000;
-    const safeText =
-      text.length > MAX_RAW_MESSAGE_CHARS
-        ? text.slice(0, MAX_RAW_MESSAGE_CHARS)
-        : text;
-    sendMessage({ text: safeText });
-  }
+  const isBootstrapping =
+    isBootstrappingGraph ||
+    (!flowID && isOpen) ||
+    (isOpen && !!flowID && !sessionId);
 
   return {
     isOpen,
     handleToggle,
-    retrySession,
-    messages,
-    stop,
-    error,
-    isCreatingSession,
-    sessionError,
+    panelRef,
     sessionId,
-    nodes,
-    parsedActions,
-    appliedActionKeys,
-    handleApplyAction,
-    undoStack,
-    handleUndoLastAction,
-    // Input handling (owned here to keep component render-only)
-    inputValue,
-    setInputValue,
-    handleSend,
-    sendRawMessage,
-    handleKeyDown,
-    isStreaming,
-    canSend,
+    flowID: flowID ?? null,
+    flowVersion: flowVersion ?? null,
+    messages,
+    status,
+    error,
+    stop,
+    onSend,
+    queuedMessages,
+    isCreatingSession,
+    isBootstrapping,
+    revertTargetVersion,
+    handleRevert,
   };
 }
