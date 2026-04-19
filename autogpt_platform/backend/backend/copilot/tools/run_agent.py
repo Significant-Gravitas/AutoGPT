@@ -196,8 +196,15 @@ class RunAgentTool(BaseTool):
 
         # Builder-bound sessions can omit the identifier — the tool defaults
         # to the bound graph so the assistant doesn't have to pass around
-        # IDs the user never sees.
-        builder_graph_id = session.metadata.builder_graph_id if session else None
+        # IDs the user never sees.  We require a real string here so
+        # MagicMock-based tests (which auto-populate any attribute) do
+        # not accidentally opt in to builder behaviour.
+        raw_builder_id = getattr(
+            getattr(session, "metadata", None), "builder_graph_id", None
+        )
+        builder_graph_id: str | None = (
+            raw_builder_id if isinstance(raw_builder_id, str) else None
+        )
         if builder_graph_id and user_id and not has_slug and not has_library_id:
             library_agent = await library_db().get_library_agent_by_graph_id(
                 user_id, builder_graph_id
@@ -278,7 +285,6 @@ class RunAgentTool(BaseTool):
             # resolve the graph first so the user sees a precise error that
             # references the agent they actually asked to run, rather than
             # pre-emptively rejecting every run request.
-            builder_graph_id = session.metadata.builder_graph_id if session else None
             if builder_graph_id and graph.id != builder_graph_id:
                 return ErrorResponse(
                     message=(
