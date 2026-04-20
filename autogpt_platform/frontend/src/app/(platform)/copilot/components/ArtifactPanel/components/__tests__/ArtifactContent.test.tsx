@@ -505,11 +505,13 @@ describe("ArtifactContent", () => {
       expect(container.querySelector('[class*="animate-pulse"]')).toBeTruthy();
     });
 
-    // Let the second fetch complete so the test doesn't leak pending state.
+    // Let the second fetch complete and wait for the recovered render so
+    // pending React updates can't leak into the next test.
     resolveSecond({
       ok: true,
       text: () => Promise.resolve("<html><body>ok</body></html>"),
     });
+    await screen.findByTitle("flaky.html");
   });
 
   // SECRT-2224 end-to-end: Try Again actually recovers when the next fetch
