@@ -16,7 +16,7 @@ interface Props {
   output: ExecutionStartedResponse;
 }
 
-function titleForStatus(status: string | undefined): string {
+export function titleForStatus(status: string | undefined): string {
   // Normalise whatever the backend sent (QUEUED/RUNNING/COMPLETED/FAILED/
   // STOPPED/TERMINATED/TIMED_OUT/INCOMPLETE/CANCELLED …). The card is
   // reused for both truly-just-queued runs and for sync-completed runs
