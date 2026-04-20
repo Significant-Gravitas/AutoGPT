@@ -216,24 +216,28 @@ export function useBuilderChatPanel({
   // on status === "ready". run_agent often completes mid-turn (followed by
   // more assistant text), and edit_agent can finish before the wrap-up
   // summary is streamed — gating on ready misses both.
+  //
+  // Tool parts use the AI SDK static-typed convention `tool-<name>` (NOT
+  // `dynamic-tool` with a `toolName` field). Matching on part.type directly.
   useEffect(() => {
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
-        if (part.type !== "dynamic-tool") continue;
-        const dynPart = part as {
-          type: "dynamic-tool";
-          toolName: string;
+        if (part.type !== "tool-edit_agent" && part.type !== "tool-run_agent") {
+          continue;
+        }
+        const toolPart = part as {
+          type: string;
           toolCallId: string;
           state: string;
           output?: unknown;
         };
-        if (dynPart.state !== "output-available") continue;
-        if (processedToolCallsRef.current.has(dynPart.toolCallId)) continue;
-        processedToolCallsRef.current.add(dynPart.toolCallId);
+        if (toolPart.state !== "output-available") continue;
+        if (processedToolCallsRef.current.has(toolPart.toolCallId)) continue;
+        processedToolCallsRef.current.add(toolPart.toolCallId);
 
-        const output = dynPart.output as Record<string, unknown> | null;
-        if (dynPart.toolName === "edit_agent") {
+        const output = toolPart.output as Record<string, unknown> | null;
+        if (part.type === "tool-edit_agent") {
           // Record the version we were on before this edit so the user can
           // roll back to it. If the tool returned the new graph_version,
           // switch the URL to that version so the builder canvas re-renders
@@ -252,8 +256,15 @@ export function useBuilderChatPanel({
               queryKey: getGetV1GetSpecificGraphQueryKey(flowID, {}),
             });
           }
-        } else if (dynPart.toolName === "run_agent") {
-          const execId = output?.execution_id;
+        } else if (part.type === "tool-run_agent") {
+          // run_agent's output can be either ExecutionStartedResponse
+          // (async enqueue → execution_id on output directly) or
+          // AgentOutputResponse for a sync wait_for_result path
+          // (execution_id nested under output.execution).
+          const direct = output?.execution_id;
+          const nested = (output?.execution as Record<string, unknown> | null)
+            ?.execution_id;
+          const execId = typeof direct === "string" ? direct : nested;
           if (typeof execId === "string" && /^[\w-]+$/i.test(execId)) {
             setQueryStates({ flowExecutionID: execId });
           }
@@ -363,19 +374,17 @@ export function useBuilderChatPanel({
   // the user is already IN the builder looking at the updated agent / run.
   // Strip those tool parts from the rendered message list; the raw
   // `messages` above still drives the side-effects.
-  const BUILDER_HANDLED_TOOLS = new Set([
-    "edit_agent",
-    "run_agent",
-    "create_agent",
+  const HIDDEN_TOOL_PART_TYPES = new Set([
+    "tool-edit_agent",
+    "tool-run_agent",
+    "tool-create_agent",
   ]);
   const visibleMessages = useMemo<UiMessages>(() => {
     return messages.map((msg) => {
       if (msg.role !== "assistant" || !msg.parts) return msg;
-      const filteredParts = msg.parts.filter((part) => {
-        if (part.type !== "dynamic-tool") return true;
-        const dyn = part as { type: "dynamic-tool"; toolName?: string };
-        return !(dyn.toolName && BUILDER_HANDLED_TOOLS.has(dyn.toolName));
-      });
+      const filteredParts = msg.parts.filter(
+        (part) => !HIDDEN_TOOL_PART_TYPES.has(part.type),
+      );
       if (filteredParts.length === msg.parts.length) return msg;
       return { ...msg, parts: filteredParts };
     });
