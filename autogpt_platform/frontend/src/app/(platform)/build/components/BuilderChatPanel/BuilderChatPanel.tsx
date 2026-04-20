@@ -45,7 +45,7 @@ export function BuilderChatPanel({ className }: Props) {
             ref={panelRef}
             role="complementary"
             aria-label="Builder chat panel"
-            className="pointer-events-auto flex max-h-[70vh] min-h-[320px] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:max-h-[75vh]"
+            className="pointer-events-auto flex h-[70vh] max-h-[calc(100vh-6rem)] w-[26rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl sm:h-[75vh]"
           >
             <PanelHeader
               onClose={handleToggle}
@@ -54,22 +54,24 @@ export function BuilderChatPanel({ className }: Props) {
               onRevert={handleRevert}
             />
 
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex h-0 min-h-0 flex-1 flex-col">
               {isBootstrapping ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
                   Preparing builder chat…
                 </div>
               ) : sessionId ? (
                 <>
-                  <ChatMessagesContainer
-                    messages={messages}
-                    status={status}
-                    error={error}
-                    isLoading={false}
-                    sessionID={sessionId}
-                    queuedMessages={queuedMessages}
-                  />
-                  <div className="relative border-t border-slate-100 bg-white px-3 pb-2 pt-2">
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <ChatMessagesContainer
+                      messages={messages}
+                      status={status}
+                      error={error}
+                      isLoading={false}
+                      sessionID={sessionId}
+                      queuedMessages={queuedMessages}
+                    />
+                  </div>
+                  <div className="relative shrink-0 border-t border-slate-100 bg-white px-3 pb-2 pt-2">
                     <ChatInput
                       inputId="builder-chat-input"
                       onSend={onSend}

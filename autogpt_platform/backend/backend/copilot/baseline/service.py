@@ -39,7 +39,6 @@ from backend.copilot.model import (
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
-    pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
@@ -983,7 +982,6 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        drained_at_start_content = pending_texts_from(drained_at_start_pending)
         # Chronological combine: pending typed BEFORE this /stream
         # request's arrival go ahead of ``message``; race-path follow-ups
         # typed AFTER (queued while /stream was still processing) go

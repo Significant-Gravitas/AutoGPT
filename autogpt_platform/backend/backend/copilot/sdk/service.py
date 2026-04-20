@@ -2725,6 +2725,24 @@ async def _restore_cli_session_for_turn(
     return result
 
 
+async def _maybe_prepend_builder_context(
+    session: ChatSession,
+    user_id: str | None,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<builder_context>`` block to the user message.
+
+    No-op for non-user messages and for sessions without a bound graph.
+    Extracted from the SDK stream body so Pyright's complexity analyser
+    stays within budget on the already-large ``stream_chat_completion_sdk``.
+    """
+    if not is_user_message or not session.metadata.builder_graph_id:
+        return query_message
+    block = await build_builder_context_block(session, user_id)
+    return block + query_message if block else query_message
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -3191,10 +3209,7 @@ async def stream_chat_completion_sdk(
             # Chronological combine: items typed BEFORE this request
             # arrived go ahead of ``current_message``; items typed AFTER
             # (race path, queued while /stream was still processing) go
-            # after.  ``pending_texts`` is kept around because downstream
-            # code (the executor's update_message_content_by_sequence
-            # call) needs the pre-combine list.
-            pending_texts = pending_texts_from(pending_messages)
+            # after.
             current_message = combine_pending_with_current(
                 pending_messages,
                 current_message,
@@ -3296,10 +3311,9 @@ async def stream_chat_completion_sdk(
         # agent-building guide, replacing the per-turn
         # ``get_agent_building_guide`` round-trip.  Not persisted to the
         # transcript: the snapshot is stale-by-definition after the turn ends.
-        if is_user_message and session.metadata.builder_graph_id:
-            builder_block = await build_builder_context_block(session, user_id)
-            if builder_block:
-                query_message = builder_block + query_message
+        query_message = await _maybe_prepend_builder_context(
+            session, user_id, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -3460,12 +3474,9 @@ async def stream_chat_completion_sdk(
                 # inject_user_context — no separate injection needed.
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot + guide as the initial attempt.
-                if is_user_message and session.metadata.builder_graph_id:
-                    builder_block_retry = await build_builder_context_block(
-                        session, user_id
-                    )
-                    if builder_block_retry:
-                        state.query_message = builder_block_retry + state.query_message
+                state.query_message = await _maybe_prepend_builder_context(
+                    session, user_id, is_user_message, state.query_message
+                )
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
