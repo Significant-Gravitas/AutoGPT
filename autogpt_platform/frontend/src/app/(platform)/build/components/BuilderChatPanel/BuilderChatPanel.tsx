@@ -61,16 +61,14 @@ export function BuilderChatPanel({ className }: Props) {
                 </div>
               ) : sessionId ? (
                 <>
-                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                    <ChatMessagesContainer
-                      messages={messages}
-                      status={status}
-                      error={error}
-                      isLoading={false}
-                      sessionID={sessionId}
-                      queuedMessages={queuedMessages}
-                    />
-                  </div>
+                  <ChatMessagesContainer
+                    messages={messages}
+                    status={status}
+                    error={error}
+                    isLoading={false}
+                    sessionID={sessionId}
+                    queuedMessages={queuedMessages}
+                  />
                   <div className="relative border-t border-slate-100 bg-white px-3 pb-2 pt-2">
                     <ChatInput
                       inputId="builder-chat-input"
