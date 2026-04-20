@@ -26,6 +26,10 @@ export interface ChatContainerProps {
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
+  /** Called to enqueue a message while streaming (bypasses normal send flow). */
+  onEnqueue?: (message: string) => void | Promise<void>;
+  /** Pending queued messages waiting to be injected, shown at the end of chat. */
+  queuedMessages?: string[];
   isUploadingFiles?: boolean;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
@@ -50,6 +54,8 @@ export const ChatContainer = ({
   onCreateSession,
   onSend,
   onStop,
+  onEnqueue,
+  queuedMessages,
   isUploadingFiles,
   hasMoreMessages,
   isLoadingMore,
@@ -65,13 +71,14 @@ export const ChatContainer = ({
   // state would otherwise shrink the chat column with no panel rendered.
   const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
   useAutoOpenArtifacts({ sessionId });
-  const isBusy =
-    status === "streaming" ||
-    status === "submitted" ||
-    !!isReconnecting ||
-    !!isSyncing ||
-    isLoadingSession ||
-    !!isSessionError;
+  // isStreaming controls the stop-button UI and routes submits to the queue
+  // endpoint — the input itself must NOT be disabled during streaming so users
+  // can type and queue their next message.
+  const isStreaming = status === "streaming" || status === "submitted";
+  // The input is only truly disabled when the session isn't ready at all
+  // (reconnecting, syncing, loading, or errored) — NOT during normal streaming.
+  const isInputDisabled =
+    !!isReconnecting || !!isSyncing || isLoadingSession || !!isSessionError;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors)
@@ -110,6 +117,7 @@ export const ChatContainer = ({
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 historicalDurations={historicalDurations}
+                queuedMessages={queuedMessages}
               />
               <motion.div
                 initial={{ opacity: 0 }}
@@ -121,10 +129,11 @@ export const ChatContainer = ({
                 <ChatInput
                   inputId="chat-input-session"
                   onSend={onSend}
-                  disabled={isBusy}
-                  isStreaming={isBusy}
+                  disabled={isInputDisabled}
+                  isStreaming={isStreaming}
                   isUploadingFiles={isUploadingFiles}
                   onStop={onStop}
+                  onEnqueue={onEnqueue}
                   placeholder="What else can I help with?"
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}

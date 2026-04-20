@@ -23,6 +23,7 @@ from backend.copilot.permissions import (
     validate_block_identifiers,
 )
 from backend.data.model import SchemaField
+from backend.util.exceptions import BlockExecutionError
 
 if TYPE_CHECKING:
     from backend.data.execution import ExecutionContext
@@ -32,9 +33,36 @@ logger = logging.getLogger(__name__)
 # Block ID shared between autopilot.py and copilot prompting.py.
 AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
 
+# Identifiers used when registering an AutoPilotBlock turn with the
+# stream registry — distinguishes block-originated turns from sub-session
+# or HTTP SSE turns in logs / observability.
+_AUTOPILOT_TOOL_CALL_ID = "autopilot_block"
+_AUTOPILOT_TOOL_NAME = "autopilot_block"
 
-class SubAgentRecursionError(RuntimeError):
-    """Raised when the sub-agent nesting depth limit is exceeded."""
+# Ceiling on how long AutoPilotBlock.execute_copilot will wait for the
+# enqueued turn's terminal event. Graph blocks run synchronously from
+# the caller's perspective so we wait effectively as long as needed; 6h
+# matches the previous abandoned-task cap and is much longer than any
+# legitimate AutoPilot turn.
+_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS = 6 * 60 * 60  # 6 hours
+
+
+class SubAgentRecursionError(BlockExecutionError):
+    """Raised when the AutoPilot sub-agent nesting depth limit is exceeded.
+
+    Inherits :class:`BlockExecutionError` — this is a known, handled
+    runtime failure at the block level (caller nested AutoPilotBlocks
+    beyond the configured limit). Surfaces with the block_name /
+    block_id the block framework expects, instead of being wrapped in
+    ``BlockUnknownError``.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            block_name="AutoPilotBlock",
+            block_id=AUTOPILOT_BLOCK_ID,
+        )
 
 
 class ToolCallEntry(TypedDict):
@@ -268,11 +296,15 @@ class AutoPilotBlock(Block):
         user_id: str,
         permissions: "CopilotPermissions | None" = None,
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
-        """Invoke the copilot and collect all stream results.
+        """Invoke the copilot on the copilot_executor queue and aggregate the
+        result.
 
-        Delegates to :func:`collect_copilot_response` — the shared helper that
-        consumes ``stream_chat_completion_sdk`` without wrapping it in an
-        ``asyncio.timeout`` (the SDK manages its own heartbeat-based timeouts).
+        Delegates to :func:`run_copilot_turn_via_queue` — the shared
+        primitive used by ``run_sub_session`` too — which creates the
+        stream_registry meta record, enqueues the job, and waits on the
+        Redis stream for the terminal event. Any available
+        copilot_executor worker picks up the job, so this call survives
+        the graph-executor worker dying mid-turn (RabbitMQ redelivers).
 
         Args:
             prompt: The user task/instruction.
@@ -285,8 +317,8 @@ class AutoPilotBlock(Block):
         Returns:
             A tuple of (response_text, tool_calls, history_json, session_id, usage).
         """
-        from backend.copilot.sdk.collect import (
-            collect_copilot_response,  # avoid circular import
+        from backend.copilot.sdk.session_waiter import (
+            run_copilot_turn_via_queue,  # avoid circular import
         )
 
         tokens = _check_recursion(max_recursion_depth)
@@ -299,14 +331,35 @@ class AutoPilotBlock(Block):
             if system_context:
                 effective_prompt = f"[System Context: {system_context}]\n\n{prompt}"
 
-            result = await collect_copilot_response(
+            outcome, result = await run_copilot_turn_via_queue(
                 session_id=session_id,
-                message=effective_prompt,
                 user_id=user_id,
+                message=effective_prompt,
+                # Graph block execution is synchronous from the caller's
+                # perspective — wait effectively as long as needed. The
+                # SDK enforces its own idle-based timeout inside the
+                # stream_registry pipeline.
+                timeout=_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS,
                 permissions=effective_permissions,
+                tool_call_id=_AUTOPILOT_TOOL_CALL_ID,
+                tool_name=_AUTOPILOT_TOOL_NAME,
             )
+            if outcome == "failed":
+                raise RuntimeError(
+                    "AutoPilot turn failed — see the session's transcript"
+                )
+            if outcome == "running":
+                raise RuntimeError(
+                    "AutoPilot turn did not complete within "
+                    f"{_AUTOPILOT_BLOCK_MAX_WAIT_SECONDS}s — session "
+                    f"{session_id}"
+                )
 
-            # Build a lightweight conversation summary from streamed data.
+            # Build a lightweight conversation summary from the aggregated data.
+            # When ``result.queued`` is True the prompt rode on an already-
+            # in-flight turn (``run_copilot_turn_via_queue`` queued it and
+            # waited on the existing turn's stream); the aggregated result
+            # is still valid, so the same rendering path applies.
             turn_messages: list[dict[str, Any]] = [
                 {"role": "user", "content": effective_prompt},
             ]
@@ -315,7 +368,7 @@ class AutoPilotBlock(Block):
                     {
                         "role": "assistant",
                         "content": result.response_text,
-                        "tool_calls": result.tool_calls,
+                        "tool_calls": [tc.model_dump() for tc in result.tool_calls],
                     }
                 )
             else:
@@ -326,11 +379,11 @@ class AutoPilotBlock(Block):
 
             tool_calls: list[ToolCallEntry] = [
                 {
-                    "tool_call_id": tc["tool_call_id"],
-                    "tool_name": tc["tool_name"],
-                    "input": tc["input"],
-                    "output": tc["output"],
-                    "success": tc["success"],
+                    "tool_call_id": tc.tool_call_id,
+                    "tool_name": tc.tool_name,
+                    "input": tc.input,
+                    "output": tc.output,
+                    "success": tc.success,
                 }
                 for tc in result.tool_calls
             ]
