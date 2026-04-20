@@ -3,6 +3,7 @@ import {
   screen,
   cleanup,
   fireEvent,
+  waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExecutionsTable } from "../components/ExecutionsTable";
@@ -487,5 +488,217 @@ describe("ExecutionsTable", () => {
     mockRunningQuery.mockReturnValue(withExecutions([], 0));
     render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
     expect(screen.getByText("Executions")).toBeDefined();
+  });
+
+  it("opens stop dialog when clicking cleanup button on stuck-queued row", async () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-dialog",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Confirm Cleanup Orphaned Executions"),
+      ).toBeDefined();
+      expect(screen.getByText("Cancel")).toBeDefined();
+      expect(screen.getByText("Cleanup Orphaned")).toBeDefined();
+    });
+  });
+
+  it("calls cleanupOrphanedExecutions when confirming single cleanup", async () => {
+    setupDefaultMocks();
+    mockCleanupOrphaned.mockResolvedValue({
+      data: { success: true, stopped_count: 1, message: "Cleaned" },
+    });
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-confirm",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(screen.getByText("Cleanup Orphaned")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Cleanup Orphaned"));
+    await waitFor(() => {
+      expect(mockCleanupOrphaned).toHaveBeenCalled();
+    });
+  });
+
+  it("opens cleanup dialog for stuck-queued execution", async () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-1",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Confirm Cleanup Orphaned Executions"),
+      ).toBeDefined();
+      expect(screen.getByText("Cleanup Orphaned")).toBeDefined();
+    });
+  });
+
+  it("calls cleanupOrphanedExecutions when confirming cleanup", async () => {
+    setupDefaultMocks();
+    mockCleanupOrphaned.mockResolvedValue({
+      data: { success: true, stopped_count: 1, message: "Cleaned" },
+    });
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-1",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(screen.getByText("Cleanup Orphaned")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Cleanup Orphaned"));
+    await waitFor(() => {
+      expect(mockCleanupOrphaned).toHaveBeenCalled();
+    });
+  });
+
+  it("opens requeue dialog for stuck-queued execution", async () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-1",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Requeue (send to RabbitMQ)"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Confirm Requeue Stuck Executions"),
+      ).toBeDefined();
+      expect(screen.getByText("Requeue Executions")).toBeDefined();
+    });
+  });
+
+  it("calls requeueSingleExecution when confirming requeue", async () => {
+    setupDefaultMocks();
+    mockRequeueSingle.mockResolvedValue({
+      data: { success: true, requeued_count: 1, message: "Requeued" },
+    });
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-1",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Requeue (send to RabbitMQ)"));
+    await waitFor(() => {
+      expect(screen.getByText("Requeue Executions")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Requeue Executions"));
+    await waitFor(() => {
+      expect(mockRequeueSingle).toHaveBeenCalled();
+    });
+  });
+
+  it("closes dialog when cancel is clicked", async () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-cancel-test",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Confirm Cleanup Orphaned Executions"),
+      ).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Cancel"));
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Confirm Cleanup Orphaned Executions"),
+      ).toBeNull();
+    });
+  });
+
+  it("handles cleanup mutation error gracefully", async () => {
+    setupDefaultMocks();
+    mockCleanupOrphaned.mockRejectedValue(new Error("Network error"));
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-error-test",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(screen.getByText("Cleanup Orphaned")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Cleanup Orphaned"));
+    await waitFor(() => {
+      expect(mockCleanupOrphaned).toHaveBeenCalled();
+    });
   });
 });
