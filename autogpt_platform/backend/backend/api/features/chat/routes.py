@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
+from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
@@ -34,7 +35,6 @@ from backend.copilot.pending_message_helpers import (
     queue_pending_for_http,
 )
 from backend.copilot.pending_messages import peek_pending_messages
-from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -101,31 +101,6 @@ async def _validate_and_get_session(
     if not session:
         raise NotFoundError(f"Session {session_id} not found.")
     return session
-
-
-# Tools exposed by builder-bound sessions.  Keep the set minimal — the
-# builder panel intentionally only offers direct-edit and run so the
-# assistant cannot drift into unrelated workflows (web search, file
-# tools, etc).  Adding a tool here widens the blast radius, so review
-# carefully.
-_BUILDER_SESSION_TOOLS: tuple[str, ...] = ("edit_agent", "run_agent")
-
-
-def resolve_session_permissions(
-    session: ChatSession | None,
-) -> CopilotPermissions | None:
-    """Return the capability filter implied by the session's metadata.
-
-    Builder sessions are whitelisted to the two builder tools.  Regular
-    sessions (and missing sessions from stubbed tests) return ``None``
-    (no filter) so the existing behaviour is untouched.
-    """
-    if session is not None and session.metadata.builder_graph_id:
-        return CopilotPermissions(
-            tools=list(_BUILDER_SESSION_TOOLS),
-            tools_exclude=False,
-        )
-    return None
 
 
 router = APIRouter(

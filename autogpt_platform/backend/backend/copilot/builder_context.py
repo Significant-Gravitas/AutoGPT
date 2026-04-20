@@ -24,6 +24,7 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
 
@@ -35,6 +36,32 @@ BUILDER_CONTEXT_TAG = "builder_context"
 
 # Tag that wraps the session-long static block appended to the system prompt.
 BUILDER_SESSION_TAG = "builder_session"
+
+
+# Tools a builder-bound session is allowed to invoke.  Keep this minimal —
+# the builder panel intentionally only offers direct edit + run so the
+# assistant cannot drift into unrelated workflows (web search, file tools,
+# etc).  Widening this set widens the blast radius; review carefully.
+BUILDER_SESSION_TOOLS: tuple[str, ...] = ("edit_agent", "run_agent")
+
+
+def resolve_session_permissions(
+    session: ChatSession | None,
+) -> CopilotPermissions | None:
+    """Return the capability filter implied by the session's metadata.
+
+    Builder-bound sessions (``metadata.builder_graph_id`` set) are
+    whitelisted to the two builder tools.  Regular sessions (and stubbed
+    None sessions used by tests) return ``None`` so existing unrestricted
+    behaviour is preserved.
+    """
+    if session is not None and session.metadata.builder_graph_id:
+        return CopilotPermissions(
+            tools=list(BUILDER_SESSION_TOOLS),
+            tools_exclude=False,
+        )
+    return None
+
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
 # server-side block stays within a practical token budget even for large
