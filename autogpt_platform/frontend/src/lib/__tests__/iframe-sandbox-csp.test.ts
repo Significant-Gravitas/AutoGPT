@@ -54,12 +54,15 @@ describe("FRAGMENT_LINK_INTERCEPTOR_SCRIPT", () => {
   // document. Because sandboxed srcdoc iframes run their scripts in isolation
   // anyway, the behavior we care about is just "this code, when executed in
   // a document, intercepts #anchor clicks and calls scrollIntoView".
+  //
+  // Parse the exported <script> via the DOM rather than regex — CodeQL flags
+  // regex-based HTML stripping, and the test already runs in a DOM env.
   function installInterceptor() {
-    const body = FRAGMENT_LINK_INTERCEPTOR_SCRIPT.replace(
-      /^<script>\s*/,
-      "",
-    ).replace(/\s*<\/script>$/, "");
-    new Function(body)();
+    const template = document.createElement("template");
+    template.innerHTML = FRAGMENT_LINK_INTERCEPTOR_SCRIPT;
+    const script = template.content.querySelector("script");
+    if (!script) throw new Error("Interceptor script tag not found");
+    new Function(script.textContent ?? "")();
   }
 
   let cleanup: (() => void) | null = null;
