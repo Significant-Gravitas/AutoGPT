@@ -1208,4 +1208,51 @@ describe("ExecutionsTable", () => {
     fireEvent.click(screen.getByText("Previous"));
     expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
   });
+
+  it("splits orphaned and active IDs when stopping selected with old execution", async () => {
+    setupDefaultMocks();
+    mockStopMultiple.mockResolvedValue({
+      data: { success: true, stopped_count: 0, message: "OK" },
+    });
+    mockCleanupOrphaned.mockResolvedValue({
+      data: { success: true, stopped_count: 1, message: "Cleaned 1" },
+    });
+    // Use an OLD execution (>24h) so it's classified as orphaned
+    const oldExec = {
+      ...sampleExecution,
+      execution_id: "exec-old-orphan",
+      created_at: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+    };
+    mockRunningQuery.mockReturnValue(withExecutions([oldExec], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    // Select the old execution
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Stop Selected/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByText(/Stop Selected/));
+    await waitFor(() => {
+      expect(screen.getByText("Stop Executions")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Stop Executions"));
+    await waitFor(() => {
+      // Should call cleanupOrphaned for the old execution
+      expect(mockCleanupOrphaned).toHaveBeenCalled();
+    });
+  });
+
+  it("clicking Try Again on error state calls refetch", () => {
+    setupDefaultMocks();
+    const refetch = vi.fn();
+    mockRunningQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: { status: 500, message: "Server error" },
+      refetch,
+    });
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    fireEvent.click(screen.getByText("Try Again"));
+    expect(refetch).toHaveBeenCalled();
+  });
 });
