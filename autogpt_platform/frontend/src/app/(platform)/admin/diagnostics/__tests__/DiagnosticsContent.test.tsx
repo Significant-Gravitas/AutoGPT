@@ -505,4 +505,36 @@ describe("DiagnosticsContent", () => {
     render(<DiagnosticsContent />);
     expect(screen.getByText(/from 4 schedules/)).toBeDefined();
   });
+
+  it("clicking Refresh button calls all refetch functions", () => {
+    const refetchExec = vi.fn();
+    const refetchAgent = vi.fn();
+    const refetchSchedule = vi.fn();
+    mockExecQuery.mockReturnValue({
+      data: { data: executionData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchExec,
+    });
+    mockAgentQuery.mockReturnValue({
+      data: { data: agentData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchAgent,
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: { data: scheduleData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: refetchSchedule,
+    });
+    render(<DiagnosticsContent />);
+    fireEvent.click(screen.getByText("Refresh"));
+    expect(refetchExec).toHaveBeenCalled();
+    expect(refetchAgent).toHaveBeenCalled();
+    expect(refetchSchedule).toHaveBeenCalled();
+  });
 });
