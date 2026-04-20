@@ -47,7 +47,7 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after `timeout` seconds (default 30); pass a larger value for long-running jobs."
+            "Killed after `timeout` seconds (default 120); pass a larger value for long-running jobs."
         )
 
     @property
@@ -61,8 +61,8 @@ class BashExecTool(BaseTool):
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds (default 30). Set higher for long-running commands.",
-                    "default": 30,
+                    "description": "Timeout in seconds (default 120). Set higher for long-running commands.",
+                    "default": 120,
                 },
             },
             "required": ["command"],
@@ -80,7 +80,7 @@ class BashExecTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         command: str = "",
-        timeout: int = 30,
+        timeout: int = 120,
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Run a bash command on E2B (if available) or in a bubblewrap sandbox.
