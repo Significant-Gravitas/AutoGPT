@@ -701,4 +701,139 @@ describe("ExecutionsTable", () => {
       expect(mockCleanupOrphaned).toHaveBeenCalled();
     });
   });
+
+  it("calls requeueAllStuck when clicking Requeue All button and confirming", async () => {
+    setupDefaultMocks();
+    mockRequeueAllStuck.mockResolvedValue({
+      data: { success: true, requeued_count: 5, message: "Requeued 5" },
+    });
+    const stuckExecs = Array.from({ length: 3 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-stuck-${i}`,
+      status: "QUEUED",
+      started_at: null,
+    }));
+    mockStuckQueuedQuery.mockReturnValue(withExecutions(stuckExecs, 5));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByText(/Requeue All \(5\)/));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Confirm Requeue Stuck Executions"),
+      ).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Requeue Executions"));
+    await waitFor(() => {
+      expect(mockRequeueAllStuck).toHaveBeenCalled();
+    });
+  });
+
+  it("calls cleanupAllStuckQueued when clicking Cleanup All on stuck-queued tab", async () => {
+    setupDefaultMocks();
+    mockCleanupAllStuckQueued.mockResolvedValue({
+      data: { success: true, stopped_count: 5, message: "Cleaned 5" },
+    });
+    const stuckExecs = Array.from({ length: 3 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-stuck-${i}`,
+      status: "QUEUED",
+      started_at: null,
+    }));
+    mockStuckQueuedQuery.mockReturnValue(withExecutions(stuckExecs, 5));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByText(/Cleanup All \(5\)/));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Confirm Cleanup Orphaned Executions"),
+      ).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Cleanup Orphaned"));
+    await waitFor(() => {
+      expect(mockCleanupAllStuckQueued).toHaveBeenCalled();
+    });
+  });
+
+  it("calls stopAllLongRunning when clicking Stop All Long-Running", async () => {
+    setupDefaultMocks();
+    mockStopAllLongRunning.mockResolvedValue({
+      data: { success: true, stopped_count: 3, message: "Stopped 3" },
+    });
+    mockLongRunningQuery.mockReturnValue(withExecutions([sampleExecution], 3));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="long-running"
+      />,
+    );
+    fireEvent.click(screen.getByText(/Stop All Long-Running \(3\)/));
+    await waitFor(() => {
+      expect(screen.getByText("Confirm Stop Executions")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Stop Executions"));
+    await waitFor(() => {
+      expect(mockStopAllLongRunning).toHaveBeenCalled();
+    });
+  });
+
+  it("shows requeue warning text in dialog", async () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-warn",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Requeue (send to RabbitMQ)"));
+    await waitFor(() => {
+      expect(screen.getByText(/will cost credits/)).toBeDefined();
+    });
+  });
+
+  it("shows cleanup description in dialog", async () => {
+    setupDefaultMocks();
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-stuck-desc",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(screen.getByText(/cleanup this orphaned execution/)).toBeDefined();
+    });
+  });
+
+  it("renders age in days format for old executions", () => {
+    setupDefaultMocks();
+    const oldExec = {
+      ...sampleExecution,
+      started_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    mockRunningQuery.mockReturnValue(withExecutions([oldExec], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/3d/)).toBeDefined();
+  });
 });
