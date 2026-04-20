@@ -1,4 +1,9 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiagnosticsContent } from "../components/DiagnosticsContent";
 
@@ -443,5 +448,61 @@ describe("DiagnosticsContent", () => {
     setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText(/3 orphaned/)).toBeDefined();
+  });
+
+  it("clicking orphaned alert card does not crash", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    fireEvent.click(screen.getByText("Orphaned Executions"));
+  });
+
+  it("clicking failed alert card does not crash", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    fireEvent.click(screen.getByText("Failed Executions (24h)"));
+  });
+
+  it("clicking long-running alert card does not crash", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    fireEvent.click(screen.getByText("Long-Running Executions"));
+  });
+
+  it("clicking orphaned schedules alert card does not crash", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    fireEvent.click(screen.getByText("Orphaned Schedules"));
+  });
+
+  it("clicking invalid states alert card does not crash", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    fireEvent.click(screen.getByText("Invalid States (Data Corruption)"));
+  });
+
+  it("renders orphan detail text in schedule alert", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText(/2 deleted graph/)).toBeDefined();
+    expect(screen.getByText(/1 no access/)).toBeDefined();
+  });
+
+  it("renders failure rate in failed alert card", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText(/0.8\/hr rate/)).toBeDefined();
+  });
+
+  it("renders click to view text on alert cards", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    const clickTexts = screen.getAllByText(/Click to view/);
+    expect(clickTexts.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("renders schedule next hour count", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText(/from 4 schedules/)).toBeDefined();
   });
 });
