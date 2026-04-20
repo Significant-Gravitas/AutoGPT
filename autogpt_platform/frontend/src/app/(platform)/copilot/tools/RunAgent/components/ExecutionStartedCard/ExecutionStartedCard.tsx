@@ -16,6 +16,22 @@ interface Props {
   output: ExecutionStartedResponse;
 }
 
+function titleForStatus(status: string | undefined): string {
+  // Normalise whatever the backend sent (QUEUED/RUNNING/COMPLETED/FAILED/
+  // STOPPED/TERMINATED/TIMED_OUT/INCOMPLETE/CANCELLED …). The card is
+  // reused for both truly-just-queued runs and for sync-completed runs
+  // (run_agent with wait_for_result) — "Execution started" is wrong for
+  // the latter.
+  const s = (status ?? "").toUpperCase();
+  if (s === "COMPLETED") return "Execution completed";
+  if (s === "FAILED") return "Execution failed";
+  if (s === "STOPPED" || s === "TERMINATED" || s === "CANCELLED")
+    return "Execution stopped";
+  if (s === "TIMED_OUT" || s === "INCOMPLETE") return "Execution incomplete";
+  if (s === "RUNNING") return "Execution running";
+  return "Execution started";
+}
+
 export function ExecutionStartedCard({ output }: Props) {
   const router = useRouter();
   // In the builder panel the run_agent effect already drops the exec_id
@@ -28,7 +44,7 @@ export function ExecutionStartedCard({ output }: Props) {
   return (
     <ContentGrid>
       <ContentCard>
-        <ContentCardTitle>Execution started</ContentCardTitle>
+        <ContentCardTitle>{titleForStatus(output.status)}</ContentCardTitle>
         <ContentCardSubtitle>{output.execution_id}</ContentCardSubtitle>
         <ContentCardDescription>{output.message}</ContentCardDescription>
         {!hideViewExecution && (
