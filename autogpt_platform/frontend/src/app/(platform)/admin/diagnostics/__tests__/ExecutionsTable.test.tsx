@@ -836,4 +836,94 @@ describe("ExecutionsTable", () => {
     render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
     expect(screen.getByText(/3d/)).toBeDefined();
   });
+
+  it("shows stop selected button after selecting a checkbox", async () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Stop Selected/)).toBeDefined();
+    });
+  });
+
+  it("shows stop selected button with count after selection", async () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Stop Selected \(1\)/)).toBeDefined();
+    });
+  });
+
+  it("renders select-all checkbox", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    expect(checkboxes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("selects all checkboxes with select-all", async () => {
+    setupDefaultMocks();
+    const execs = [
+      { ...sampleExecution, execution_id: "exec-a" },
+      { ...sampleExecution, execution_id: "exec-b" },
+    ];
+    mockRunningQuery.mockReturnValue(withExecutions(execs, 2));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    // First checkbox is select-all
+    if (checkboxes[0]) fireEvent.click(checkboxes[0]);
+    await waitFor(() => {
+      expect(screen.getByText(/Stop Selected \(2\)/)).toBeDefined();
+    });
+  });
+
+  it("renders hours format for recent execution age", () => {
+    setupDefaultMocks();
+    const recentExec = {
+      ...sampleExecution,
+      started_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    };
+    mockRunningQuery.mockReturnValue(withExecutions([recentExec], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/5h/)).toBeDefined();
+  });
+
+  it("calls onRefresh when provided", async () => {
+    setupDefaultMocks();
+    const onRefresh = vi.fn();
+    mockStopSingle.mockResolvedValue({
+      data: { success: true, stopped_count: 1, message: "Stopped" },
+    });
+    const stuckExec = {
+      ...sampleExecution,
+      execution_id: "exec-refresh-test",
+      status: "QUEUED",
+      started_at: null,
+    };
+    mockStuckQueuedQuery.mockReturnValue(withExecutions([stuckExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+        onRefresh={onRefresh}
+      />,
+    );
+    fireEvent.click(screen.getByTitle("Cleanup (mark as FAILED)"));
+    await waitFor(() => {
+      expect(screen.getByText("Cleanup Orphaned")).toBeDefined();
+    });
+    mockCleanupOrphaned.mockResolvedValue({
+      data: { success: true, stopped_count: 1, message: "OK" },
+    });
+    fireEvent.click(screen.getByText("Cleanup Orphaned"));
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalled();
+    });
+  });
 });
