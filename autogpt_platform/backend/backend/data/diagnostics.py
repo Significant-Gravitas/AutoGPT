@@ -384,14 +384,20 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
     # Detect orphaned schedules
     orphans = await _detect_orphaned_schedules(user_schedules)
 
-    # Count schedules by next run time
+    # Count schedules by next run time (exclude orphaned schedules)
     now = datetime.now(timezone.utc)
     one_hour_from_now = now + timedelta(hours=1)
     twenty_four_hours_from_now = now + timedelta(hours=24)
 
+    orphaned_ids = set()
+    for category_ids in orphans.values():
+        orphaned_ids.update(category_ids)
+
+    healthy_schedules = [s for s in user_schedules if s.id not in orphaned_ids]
+
     schedules_next_hour = sum(
         1
-        for s in user_schedules
+        for s in healthy_schedules
         if s.next_run_time
         and datetime.fromisoformat(s.next_run_time.replace("Z", "+00:00"))
         <= one_hour_from_now
@@ -399,16 +405,18 @@ async def get_schedule_health_metrics() -> ScheduleHealthMetrics:
 
     schedules_next_24h = sum(
         1
-        for s in user_schedules
+        for s in healthy_schedules
         if s.next_run_time
         and datetime.fromisoformat(s.next_run_time.replace("Z", "+00:00"))
         <= twenty_four_hours_from_now
     )
 
-    # Calculate total execution runs (not just unique schedules)
-    total_runs_next_hour = _calculate_total_runs(user_schedules, now, one_hour_from_now)
+    # Calculate total execution runs (not just unique schedules, exclude orphaned)
+    total_runs_next_hour = _calculate_total_runs(
+        healthy_schedules, now, one_hour_from_now
+    )
     total_runs_next_24h = _calculate_total_runs(
-        user_schedules, now, twenty_four_hours_from_now
+        healthy_schedules, now, twenty_four_hours_from_now
     )
 
     return ScheduleHealthMetrics(
@@ -1081,6 +1089,7 @@ async def stop_all_long_running_executions(admin_user_id: str) -> int:
         where={
             "executionStatus": AgentExecutionStatus.RUNNING,
             "startedAt": {"lt": cutoff},
+            "isDeleted": False,
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
@@ -1132,7 +1141,7 @@ async def cleanup_orphaned_executions_bulk(
 
     # Update all executions in DB directly (no cancel signals)
     result = await AgentGraphExecution.prisma().update_many(
-        where={"id": {"in": execution_ids}},
+        where={"id": {"in": execution_ids}, "isDeleted": False},
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
             "updatedAt": datetime.now(timezone.utc),
@@ -1183,6 +1192,7 @@ async def cleanup_all_stuck_queued_executions(admin_user_id: str) -> int:
         where={
             "executionStatus": AgentExecutionStatus.QUEUED,
             "createdAt": {"lt": one_hour_ago},
+            "isDeleted": False,
         },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,

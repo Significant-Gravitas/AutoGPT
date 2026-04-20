@@ -335,12 +335,18 @@ export function SchedulesTable({
                               </div>
                             </TableCell>
                             <TableCell>
-                              <code className="rounded bg-gray-100 px-2 py-1 text-xs">
-                                {schedule.cron}
-                              </code>
-                              <div className="text-xs text-gray-500">
-                                {schedule.timezone}
-                              </div>
+                              {schedule.cron ? (
+                                <>
+                                  <code className="rounded bg-gray-100 px-2 py-1 text-xs">
+                                    {schedule.cron}
+                                  </code>
+                                  <div className="text-xs text-gray-500">
+                                    {schedule.timezone}
+                                  </div>
+                                </>
+                              ) : (
+                                <span className="text-gray-400">N/A</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               {schedule.next_run_time
