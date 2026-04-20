@@ -70,7 +70,6 @@ from ..pending_message_helpers import (
     persist_session_safe,
 )
 from ..pending_messages import (
-    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -93,6 +92,7 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from ..builder_context import build_builder_context_block
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -3250,6 +3250,19 @@ async def stream_chat_completion_sdk(
         # warm_ctx is injected via inject_user_context above (warm_ctx= kwarg).
         # No separate injection needed here.
 
+        # Inject per-turn builder context when the session is bound to a
+        # graph via ``metadata.builder_graph_id``.  Runs on EVERY user turn
+        # (including resumes) so the LLM always sees the live graph snapshot
+        # — if the user edits the graph between turns, the next turn carries
+        # the updated nodes/links.  The block also carries the full
+        # agent-building guide, replacing the per-turn
+        # ``get_agent_building_guide`` round-trip.  Not persisted to the
+        # transcript: the snapshot is stale-by-definition after the turn ends.
+        if is_user_message and session.metadata.builder_graph_id:
+            builder_block = await build_builder_context_block(session, user_id)
+            if builder_block:
+                query_message = builder_block + query_message
+
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
         # upload_transcript saves a compact version for future turns.
@@ -3407,6 +3420,14 @@ async def stream_chat_completion_sdk(
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via
                 # inject_user_context — no separate injection needed.
+                # Re-inject per-turn builder context so retries carry the
+                # same live graph snapshot + guide as the initial attempt.
+                if is_user_message and session.metadata.builder_graph_id:
+                    builder_block_retry = await build_builder_context_block(
+                        session, user_id
+                    )
+                    if builder_block_retry:
+                        state.query_message = builder_block_retry + state.query_message
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
