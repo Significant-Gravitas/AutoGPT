@@ -926,4 +926,90 @@ describe("ExecutionsTable", () => {
       expect(onRefresh).toHaveBeenCalled();
     });
   });
+
+  it("renders showing count text in pagination", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-page-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 30));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/Showing 1 to 10 of 30/)).toBeDefined();
+  });
+
+  it("disables Previous button on first page", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-dis-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 25));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const prevBtn = screen.getByText("Previous").closest("button");
+    expect(prevBtn?.disabled).toBe(true);
+  });
+
+  it("enables Next button when more pages exist", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-next-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 25));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const nextBtn = screen.getByText("Next").closest("button");
+    expect(nextBtn?.disabled).toBe(false);
+  });
+
+  it("renders orphaned execution with orange background", () => {
+    setupDefaultMocks();
+    const orphanedExec = {
+      ...sampleExecution,
+      execution_id: "exec-orange",
+      created_at: "2026-04-10T10:00:00Z",
+    };
+    mockOrphanedQuery.mockReturnValue(withExecutions([orphanedExec], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="orphaned"
+      />,
+    );
+    const row = screen.getByText("Test Agent").closest("tr");
+    expect(row?.className).toContain("bg-orange");
+  });
+
+  it("renders initialTab syncs with useEffect", () => {
+    setupDefaultMocks();
+    mockFailedQuery.mockReturnValue(
+      withExecutions(
+        [
+          {
+            ...sampleExecution,
+            execution_id: "exec-sync",
+            status: "FAILED",
+            error_message: "sync test",
+          },
+        ],
+        1,
+      ),
+    );
+    const { rerender } = render(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="all" />,
+    );
+    // Rerender with new initialTab to trigger useEffect sync
+    rerender(
+      <ExecutionsTable diagnosticsData={diagnosticsData} initialTab="failed" />,
+    );
+    expect(screen.getByText("sync test")).toBeDefined();
+  });
+
+  it("renders the all tab total count", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 7));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    // "All (7)" in the tab trigger
+    expect(screen.getByText(/All.*7/)).toBeDefined();
+  });
 });
