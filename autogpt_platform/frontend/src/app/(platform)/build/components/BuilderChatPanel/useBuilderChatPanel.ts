@@ -212,8 +212,11 @@ export function useBuilderChatPanel({
     }
   }, [graph?.version, hasActiveStream]);
 
+  // Process tool outputs as soon as they reach output-available — do NOT gate
+  // on status === "ready". run_agent often completes mid-turn (followed by
+  // more assistant text), and edit_agent can finish before the wrap-up
+  // summary is streamed — gating on ready misses both.
   useEffect(() => {
-    if (status !== "ready") return;
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
@@ -229,12 +232,19 @@ export function useBuilderChatPanel({
         if (processedToolCallsRef.current.has(dynPart.toolCallId)) continue;
         processedToolCallsRef.current.add(dynPart.toolCallId);
 
+        const output = dynPart.output as Record<string, unknown> | null;
         if (dynPart.toolName === "edit_agent") {
           // Record the version we were on before this edit so the user can
-          // roll back to it.  The graph's newly-active version (after save)
-          // is captured by the refetch below.
+          // roll back to it. If the tool returned the new graph_version,
+          // switch the URL to that version so the builder canvas re-renders
+          // the edited graph — otherwise the URL stays pinned to the old
+          // version and refetchGraph returns the same data.
           if (latestVersionBeforeEditRef.current != null) {
             setRevertTargetVersion(latestVersionBeforeEditRef.current);
+          }
+          const newVersion = output?.graph_version;
+          if (typeof newVersion === "number" && Number.isFinite(newVersion)) {
+            setQueryStates({ flowVersion: newVersion });
           }
           void refetchGraph();
           if (flowID) {
@@ -243,7 +253,6 @@ export function useBuilderChatPanel({
             });
           }
         } else if (dynPart.toolName === "run_agent") {
-          const output = dynPart.output as Record<string, unknown> | null;
           const execId = output?.execution_id;
           if (typeof execId === "string" && /^[\w-]+$/i.test(execId)) {
             setQueryStates({ flowExecutionID: execId });
@@ -251,7 +260,7 @@ export function useBuilderChatPanel({
         }
       }
     }
-  }, [messages, status, flowID, refetchGraph, queryClient, setQueryStates]);
+  }, [messages, flowID, refetchGraph, queryClient, setQueryStates]);
 
   // Escape-to-close when the panel is focused.  Skip inside editable
   // elements so Escape does not discard an in-progress draft.

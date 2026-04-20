@@ -181,6 +181,7 @@ async def fix_validate_and_save(
             ),
             agent_id=created_graph.id,
             agent_name=created_graph.name,
+            graph_version=created_graph.version,
             library_agent_id=library_agent.id,
             library_agent_link=f"/library/agents/{library_agent.id}",
             agent_page_link=f"/build?flowID={created_graph.id}",
