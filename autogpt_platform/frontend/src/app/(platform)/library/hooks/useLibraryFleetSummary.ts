@@ -35,6 +35,17 @@ function isRecentCompletion(
   return Date.now() - ts < SEVENTY_TWO_HOURS_MS;
 }
 
+function toTimestamp(value?: string | Date | null): number | null {
+  if (!value) return null;
+  const ts =
+    value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function startOfCurrentMonth(now: Date = new Date()): number {
+  return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+}
+
 export function useLibraryFleetSummary(
   agents: LibraryAgent[],
 ): FleetSummary | undefined {
@@ -64,6 +75,8 @@ export function useLibraryFleetSummary(
     const agentsWithActiveExecution = new Set<string>();
     const agentsWithRecentFailure = new Set<string>();
     const agentsWithRecentCompletion = new Set<string>();
+    const monthStart = startOfCurrentMonth();
+    let monthlySpendCents = 0;
 
     for (const exec of executions) {
       if (isActive(exec.status)) {
@@ -75,6 +88,14 @@ export function useLibraryFleetSummary(
       if (isRecentCompletion(exec.status, exec.ended_at)) {
         agentsWithRecentCompletion.add(exec.graph_id);
       }
+
+      const startedTs = toTimestamp(exec.started_at);
+      if (startedTs !== null && startedTs >= monthStart) {
+        const cost = exec.stats?.cost;
+        if (typeof cost === "number" && cost > 0) {
+          monthlySpendCents += cost;
+        }
+      }
     }
 
     const summary: FleetSummary = {
@@ -84,7 +105,7 @@ export function useLibraryFleetSummary(
       listening: 0,
       scheduled: 0,
       idle: 0,
-      monthlySpend: 0,
+      monthlySpend: monthlySpendCents,
     };
 
     for (const agent of agents) {
