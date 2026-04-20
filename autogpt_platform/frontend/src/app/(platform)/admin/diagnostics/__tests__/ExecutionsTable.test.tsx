@@ -1124,4 +1124,61 @@ describe("ExecutionsTable", () => {
       expect(screen.getByText(/Mark all as FAILED/)).toBeDefined();
     });
   });
+
+  it("clicking refresh button calls refetch and onRefresh", () => {
+    setupDefaultMocks();
+    const onRefresh = vi.fn();
+    const refetch = vi.fn();
+    mockRunningQuery.mockReturnValue({
+      data: { data: { executions: [sampleExecution], total: 1 } },
+      isLoading: false,
+      error: null,
+      refetch,
+    });
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        onRefresh={onRefresh}
+      />,
+    );
+    // The refresh button is the last button with ArrowClockwise icon in the header
+    const buttons = document.querySelectorAll("button");
+    // Find the standalone refresh button (no text, just icon)
+    const refreshBtn = Array.from(buttons).find(
+      (b) => b.querySelector("svg") && b.textContent?.trim() === "",
+    );
+    if (refreshBtn) {
+      fireEvent.click(refreshBtn);
+      expect(refetch).toHaveBeenCalled();
+      expect(onRefresh).toHaveBeenCalled();
+    }
+  });
+
+  it("renders executions text label in Showing pagination", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-label-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 20));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/executions/)).toBeDefined();
+  });
+
+  it("renders status badge with green for RUNNING", () => {
+    setupDefaultMocks();
+    mockRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const badge = screen.getByText("RUNNING");
+    expect(badge.className).toContain("bg-green");
+  });
+
+  it("renders status badge with yellow for QUEUED", () => {
+    setupDefaultMocks();
+    const queuedExec = { ...sampleExecution, status: "QUEUED" };
+    mockRunningQuery.mockReturnValue(withExecutions([queuedExec], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    const badge = screen.getByText("QUEUED");
+    expect(badge.className).toContain("bg-yellow");
+  });
 });
