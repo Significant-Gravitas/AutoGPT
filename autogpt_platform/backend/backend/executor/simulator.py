@@ -298,8 +298,13 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
             )
             return None
 
+        # Dry-run iteration cap: platform pays for simulation tokens, but
+        # capping at 1 starves multi-role orchestration patterns (e.g.
+        # Advocate/Critic) where the second iteration is the one that
+        # proves the wiring actually closes the loop. 3 gives enough rope
+        # for the common 2–3 turn patterns while bounding worst-case cost.
         original = input_data.get("agent_mode_max_iterations", 0)
-        max_iters = 1 if original != 0 else 0
+        max_iters = min(original, 3) if original != 0 else 0
         sim_model = _simulator_model()
 
         # Keep the original credentials dict in input_data so the block's
