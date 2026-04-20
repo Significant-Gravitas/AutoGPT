@@ -5,6 +5,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react";
 
 interface Props {
   children: ReactNode;
+  artifactID: string;
   artifactTitle: string;
   artifactType: string;
 }
@@ -27,6 +28,7 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
       },
       tags: { errorBoundary: "true", context: "copilot-artifact" },
       extra: {
+        artifactID: this.props.artifactID,
         artifactTitle: this.props.artifactTitle,
         artifactType: this.props.artifactType,
       },
@@ -36,7 +38,8 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
   componentDidUpdate(prevProps: Props) {
     if (
       this.state.error &&
-      (prevProps.artifactTitle !== this.props.artifactTitle ||
+      (prevProps.artifactID !== this.props.artifactID ||
+        prevProps.artifactTitle !== this.props.artifactTitle ||
         prevProps.artifactType !== this.props.artifactType)
     ) {
       this.setState({ error: null });
@@ -48,6 +51,7 @@ export class ArtifactErrorBoundary extends Component<Props, State> {
     if (!error) return;
     const details = [
       `Artifact: ${this.props.artifactTitle}`,
+      `ID: ${this.props.artifactID}`,
       `Type: ${this.props.artifactType}`,
       `Error: ${error.message}`,
       error.stack ? `Stack:\n${error.stack}` : "",

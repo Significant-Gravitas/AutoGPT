@@ -56,6 +56,7 @@ function ArtifactContentLoader({
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto">
       <ArtifactErrorBoundary
+        artifactID={artifact.id}
         artifactTitle={artifact.title}
         artifactType={classification.type}
       >

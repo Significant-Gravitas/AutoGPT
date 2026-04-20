@@ -1239,8 +1239,79 @@ describe("ArtifactContent", () => {
       });
       const payload = writeText.mock.calls[0]![0] as string;
       expect(payload).toContain("report.tsx");
+      expect(payload).toContain("crash-002");
       expect(payload).toContain("react");
       expect(payload).toContain("jsx parse failed at line 42");
+    } finally {
+      if (originalImpl) {
+        vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+      }
+      consoleErr.mockRestore();
+    }
+  });
+
+  // Regression: two different artifacts can share the same title+type (e.g.
+  // two "App.tsx" files from different sessions). The boundary must reset
+  // when artifact.id changes, not only on title/type changes, otherwise
+  // opening a second artifact after a crash stays stuck on the first's error.
+  it("resets the error fallback when the artifact id changes (same title/type)", async () => {
+    const consoleErr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const originalImpl = vi
+      .mocked(ArtifactReactPreview)
+      .getMockImplementation();
+
+    // First render: throws.
+    vi.mocked(ArtifactReactPreview).mockImplementation(() => {
+      throw new Error("first render boom");
+    });
+
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve("source"),
+        }),
+      );
+      const classification = makeClassification({ type: "react" });
+
+      const { rerender } = render(
+        <ArtifactContent
+          artifact={makeArtifact({
+            id: "id-one",
+            title: "App.tsx",
+            mimeType: "text/tsx",
+          })}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
+
+      await screen.findByText(/This artifact couldn't be rendered/i);
+
+      // Swap in a working renderer and a different artifact id (same title/type).
+      if (originalImpl) {
+        vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+      }
+
+      rerender(
+        <ArtifactContent
+          artifact={makeArtifact({
+            id: "id-two",
+            title: "App.tsx",
+            mimeType: "text/tsx",
+          })}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText(/This artifact couldn't be rendered/i),
+        ).toBeNull();
+        expect(screen.getByTestId("react-preview")).toBeTruthy();
+      });
     } finally {
       if (originalImpl) {
         vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
