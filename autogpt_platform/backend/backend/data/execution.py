@@ -26,6 +26,8 @@ from prisma.models import (
     AgentNodeExecutionInputOutput,
     AgentNodeExecutionKeyValueData,
     SharedExecutionFile,
+    UserWorkspace,
+    UserWorkspaceFile,
 )
 from prisma.types import (
     AgentGraphExecutionUpdateManyMutationInput,
@@ -1575,9 +1577,13 @@ def _extract_workspace_file_ids(outputs: CompletedBlockOutput) -> set[str]:
 async def create_shared_execution_files(
     execution_id: str,
     share_token: str,
+    user_id: str,
     outputs: CompletedBlockOutput,
 ) -> int:
     """Scan execution outputs for workspace files and create allowlist records.
+
+    Only files belonging to the user's workspace are allowlisted — prevents
+    cross-workspace file exposure via crafted outputs.
 
     Returns the number of records created.
     """
@@ -1585,8 +1591,24 @@ async def create_shared_execution_files(
     if not file_ids:
         return 0
 
+    # Validate file IDs belong to the user's workspace
+    workspace = await UserWorkspace.prisma().find_unique(
+        where={"userId": user_id}
+    )
+    if not workspace:
+        return 0
+
+    owned_files = await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": list(file_ids)},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+    owned_ids = {f.id for f in owned_files}
+
     created = 0
-    for file_id in file_ids:
+    for file_id in owned_ids:
         try:
             await SharedExecutionFile.prisma().create(
                 data={
@@ -1597,11 +1619,10 @@ async def create_shared_execution_files(
             )
             created += 1
         except (ForeignKeyViolationError, UniqueViolationError):
-            # ForeignKeyViolationError: file_id doesn't exist in workspace
             # UniqueViolationError: record already exists (idempotent)
             logger.debug(
                 f"Skipping shared file record for {file_id}: "
-                f"file may not exist or record already exists"
+                f"record already exists"
             )
     return created
 

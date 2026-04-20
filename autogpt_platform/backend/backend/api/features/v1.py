@@ -1659,6 +1659,7 @@ async def enable_execution_sharing(
     await execution_db.create_shared_execution_files(
         execution_id=graph_exec_id,
         share_token=share_token,
+        user_id=user_id,
         outputs=execution.outputs,
     )
 
