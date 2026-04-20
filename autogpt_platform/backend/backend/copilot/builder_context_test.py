@@ -89,6 +89,12 @@ async def test_system_prompt_suffix_contains_guide_id_and_name():
     assert 'name="My Agent"' in suffix
     assert "<building_guide>" in suffix
     assert "# Guide body" in suffix
+    # Dispatch-mode guidance must appear so the LLM knows to prefer
+    # wait_for_result=0 for real runs (builder UI subscribes live) and
+    # wait_for_result=120 for dry-runs (so it can inspect the node trace).
+    assert "<run_agent_dispatch_mode>" in suffix
+    assert "wait_for_result=0" in suffix
+    assert "wait_for_result=120" in suffix
 
 
 @pytest.mark.asyncio

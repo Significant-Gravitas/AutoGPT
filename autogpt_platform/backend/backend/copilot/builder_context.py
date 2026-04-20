@@ -156,6 +156,23 @@ def _fetch_failed_turn_prefix() -> str:
     )
 
 
+# Guidance embedded in the builder-session block so the LLM picks the
+# right run_agent dispatch mode without forcing the user to watch a
+# long-blocking call when the builder UI is already live-streaming the
+# execution.
+_BUILDER_RUN_AGENT_GUIDANCE = (
+    "You are operating inside the builder panel, not the standalone "
+    "copilot page. The builder page already subscribes to agent "
+    "executions the moment you return an execution_id, so for REAL "
+    "(non-dry) runs prefer `run_agent(dry_run=False, wait_for_result=0)` "
+    "— the user will see the run stream in the builder's execution panel "
+    "in-place and your turn ends immediately with the id. For DRY-RUNS "
+    "keep `dry_run=True, wait_for_result=120`: blocking is required so "
+    "you can inspect `execution.node_executions` and report the verdict "
+    "in the same turn."
+)
+
+
 def _format_session_block(graph_id: str, graph_name: str | None, guide: str) -> str:
     """Render the session-long ``<builder_session>`` block.
 
@@ -177,6 +194,9 @@ def _format_session_block(graph_id: str, graph_name: str | None, guide: str) -> 
     return (
         f"<{BUILDER_SESSION_TAG}>\n"
         f"{graph_tag}\n"
+        f"<run_agent_dispatch_mode>\n"
+        f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
+        f"</run_agent_dispatch_mode>\n"
         f"<building_guide>\n{guide}\n</building_guide>\n"
         f"</{BUILDER_SESSION_TAG}>"
     )
