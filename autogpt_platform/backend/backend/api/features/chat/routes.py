@@ -192,30 +192,27 @@ class PeekPendingMessagesResponse(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    """Request model for creating a new chat session.
+    """Request model for creating (or get-or-creating) a chat session.
 
-    ``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.
+    Two modes, selected by the body:
+
+    - Default: create a fresh session. ``dry_run`` is a **top-level**
+      field — do not nest it inside ``metadata``.
+    - Builder-bound: when ``builder_graph_id`` is set, the endpoint
+      switches to **get-or-create** keyed on
+      ``(user_id, builder_graph_id)``.  The builder panel calls this on
+      mount so the chat persists across refreshes.  Graph ownership is
+      validated inside :func:`get_or_create_builder_session`; sessions
+      created this way are restricted to the builder tool whitelist via
+      :func:`resolve_session_permissions`.
+
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = False
-
-
-class BuilderSessionRequest(BaseModel):
-    """Request model for get-or-create builder sessions.
-
-    Each user has at most one session bound to a given ``graph_id`` —
-    the builder panel re-uses it across refreshes so the chat persists
-    with the agent.  Returning the existing session is safe because the
-    session is restricted via ``CopilotPermissions`` to the two builder
-    tools and cannot mutate any other agent.
-    """
-
-    model_config = ConfigDict(extra="forbid")
-
-    graph_id: str = Field(min_length=1, max_length=128)
+    builder_graph_id: str | None = Field(default=None, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -360,56 +357,42 @@ async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
     request: CreateSessionRequest | None = None,
 ) -> CreateSessionResponse:
-    """
-    Create a new chat session.
+    """Create (or get-or-create) a chat session.
 
-    Initiates a new chat session for the authenticated user.
+    Two modes, selected by the request body:
+
+    - Default: create a fresh session for the user. ``dry_run=True`` forces
+      run_block and run_agent calls to use dry-run simulation.
+    - Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed
+      on ``(user_id, builder_graph_id)``. Returns the existing session for
+      that graph or creates one locked to it.  Graph ownership is validated
+      inside :func:`get_or_create_builder_session`; raises 404 on
+      unauthorized access.  Sessions are restricted server-side to the
+      builder tool whitelist via :func:`resolve_session_permissions`.
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
-        request: Optional request body. When provided, ``dry_run=True``
-            forces run_block and run_agent calls to use dry-run simulation.
+        request: Optional request body with ``dry_run`` and/or
+            ``builder_graph_id``.
 
     Returns:
-        CreateSessionResponse: Details of the created session.
-
+        CreateSessionResponse: Details of the resulting session.
     """
     dry_run = request.dry_run if request else False
+    builder_graph_id = request.builder_graph_id if request else None
 
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
         f"{', dry_run=True' if dry_run else ''}"
+        f"{f', builder_graph_id={builder_graph_id}' if builder_graph_id else ''}"
     )
 
-    session = await create_chat_session(user_id, dry_run=dry_run)
+    if builder_graph_id:
+        session = await get_or_create_builder_session(user_id, builder_graph_id)
+    else:
+        session = await create_chat_session(user_id, dry_run=dry_run)
 
-    return CreateSessionResponse(
-        id=session.session_id,
-        created_at=session.started_at.isoformat(),
-        user_id=session.user_id,
-        metadata=session.metadata,
-    )
-
-
-@router.post(
-    "/sessions/builder",
-)
-async def get_or_create_builder_session_endpoint(
-    user_id: Annotated[str, Security(auth.get_user_id)],
-    request: BuilderSessionRequest,
-) -> CreateSessionResponse:
-    """Get-or-create a chat session bound to a builder graph.
-
-    The builder panel calls this on mount so the chat persists across
-    refreshes and is scoped to the currently-opened agent.  If a session
-    already exists with ``metadata.builder_graph_id == graph_id`` for this
-    user, the existing session is returned; otherwise a new one is
-    created.  The session is restricted server-side to the
-    ``edit_agent`` and ``run_agent`` tools via the permissions injected
-    by the executor (see :func:`resolve_session_permissions`).
-    """
-    session = await get_or_create_builder_session(user_id, request.graph_id)
     return CreateSessionResponse(
         id=session.session_id,
         created_at=session.started_at.isoformat(),

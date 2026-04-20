@@ -25,7 +25,7 @@ vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
 const mockUseGetV2GetSession = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
   useGetV2GetSession: (...args: unknown[]) => mockUseGetV2GetSession(...args),
-  usePostV2GetOrCreateBuilderSessionEndpoint: () => ({
+  usePostV2CreateSession: () => ({
     mutateAsync: createBuilderSession,
     isPending: false,
   }),
@@ -154,7 +154,7 @@ describe("useBuilderChatPanel", () => {
 
     await waitFor(() => {
       expect(createBuilderSession).toHaveBeenCalledWith({
-        data: { graph_id: "graph-1" },
+        data: { builder_graph_id: "graph-1" },
       });
     });
   });
@@ -761,7 +761,7 @@ describe("useBuilderChatPanel", () => {
     rerender();
     await waitFor(() => {
       expect(createBuilderSession).toHaveBeenCalledWith({
-        data: { graph_id: "graph-A" },
+        data: { builder_graph_id: "graph-A" },
       });
     });
     // Navigate to graph-B — reset effect clears sessionId + boundGraphRef.

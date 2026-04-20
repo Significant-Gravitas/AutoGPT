@@ -1677,14 +1677,15 @@ def test_get_session_returns_backward_paginated(
     assert "newest_sequence" not in data
 
 
-# ─── POST /sessions/builder (get-or-create builder session) ─────────────
+# ─── POST /sessions with builder_graph_id (get-or-create) ──────────────
 
 
-def test_builder_session_creates_when_missing(
+def test_create_session_with_builder_graph_id_uses_get_or_create(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """POST /sessions/builder returns a new session bound to the given graph."""
+    """``POST /sessions`` with ``builder_graph_id`` routes through
+    ``get_or_create_builder_session`` and returns a session bound to the graph."""
     from backend.copilot.model import ChatSession
 
     async def _fake_get_or_create(user_id: str, graph_id: str) -> ChatSession:
@@ -1700,7 +1701,7 @@ def test_builder_session_creates_when_missing(
         side_effect=_fake_get_or_create,
     )
 
-    response = client.post("/sessions/builder", json={"graph_id": "graph-1"})
+    response = client.post("/sessions", json={"builder_graph_id": "graph-1"})
 
     assert response.status_code == 200
     body = response.json()
@@ -1708,22 +1709,12 @@ def test_builder_session_creates_when_missing(
     assert body["metadata"]["dry_run"] is False
 
 
-def test_builder_session_rejects_empty_graph_id(
-    test_user_id: str,
-) -> None:
-    """``graph_id`` must be non-empty — empty strings fail validation."""
-    response = client.post("/sessions/builder", json={"graph_id": ""})
-    assert response.status_code == 422
-
-
-def test_builder_session_returns_404_when_graph_not_owned(
+def test_create_session_with_builder_graph_id_returns_404_when_not_owned(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
 ) -> None:
-    """POST /sessions/builder must not create a session for a graph the
-    caller doesn't own — ``get_or_create_builder_session`` raises
-    ``NotFoundError`` and the route maps it to HTTP 404 (see sentry thread
-    on PR #12699)."""
+    """``get_or_create_builder_session`` raises ``NotFoundError`` when the
+    user doesn't own the graph; the route must map that to HTTP 404."""
 
     async def _fake_get_or_create(user_id: str, graph_id: str):
         raise NotFoundError(f"Graph {graph_id} not found")
@@ -1734,20 +1725,46 @@ def test_builder_session_returns_404_when_graph_not_owned(
         side_effect=_fake_get_or_create,
     )
 
-    response = client.post("/sessions/builder", json={"graph_id": "graph-unauthorized"})
+    response = client.post("/sessions", json={"builder_graph_id": "graph-unauthorized"})
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
 
-def test_builder_session_rejects_unknown_fields(
+def test_create_session_without_builder_graph_id_creates_fresh(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """With no ``builder_graph_id`` the endpoint falls through to the
+    default ``create_chat_session`` path — no get-or-create lookup."""
+    from backend.copilot.model import ChatSession
+
+    gorc = mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new_callable=AsyncMock,
+    )
+
+    async def _fake_create(user_id: str, *, dry_run: bool) -> ChatSession:
+        return ChatSession.new(user_id, dry_run=dry_run)
+
+    mocker.patch(
+        "backend.api.features.chat.routes.create_chat_session",
+        new_callable=AsyncMock,
+        side_effect=_fake_create,
+    )
+
+    response = client.post("/sessions", json={"dry_run": True})
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["dry_run"] is True
+    gorc.assert_not_called()
+
+
+def test_create_session_rejects_unknown_fields(
     test_user_id: str,
 ) -> None:
     """Extra request fields are rejected (422) to prevent silent mis-use."""
-    response = client.post(
-        "/sessions/builder",
-        json={"graph_id": "graph-1", "unexpected": "x"},
-    )
+    response = client.post("/sessions", json={"unexpected": "x"})
     assert response.status_code == 422
 
 

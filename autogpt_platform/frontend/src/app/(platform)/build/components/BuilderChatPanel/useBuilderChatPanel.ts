@@ -8,7 +8,7 @@ import {
 } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import {
   getGetV2GetSessionQueryKey,
-  usePostV2GetOrCreateBuilderSessionEndpoint,
+  usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
 import { okData } from "@/app/api/helpers";
@@ -94,8 +94,10 @@ export function useBuilderChatPanel({
     },
   );
 
-  const { mutateAsync: createBuilderSession } =
-    usePostV2GetOrCreateBuilderSessionEndpoint();
+  // Unified /sessions endpoint: setting ``builder_graph_id`` routes the
+  // request through the get-or-create path keyed on (user_id, graph_id)
+  // so the panel re-binds to the same session across refreshes.
+  const { mutateAsync: createBuilderSession } = usePostV2CreateSession();
   const { mutateAsync: createNewGraph, isPending: isBootstrappingGraph } =
     usePostV1CreateNewGraph();
   const { mutateAsync: setActiveVersion } = usePutV1SetActiveGraphVersion();
@@ -199,7 +201,7 @@ export function useBuilderChatPanel({
     void (async () => {
       try {
         const response = (await createBuilderSession({
-          data: { graph_id: effectFlowID },
+          data: { builder_graph_id: effectFlowID },
         })) as unknown as {
           status: number;
           data?: { id?: string };
