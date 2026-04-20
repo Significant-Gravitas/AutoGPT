@@ -23,10 +23,15 @@ from backend.copilot.builder_context import (
 from backend.copilot.model import ChatSession
 
 
-def _session(builder_graph_id: str | None) -> ChatSession:
+def _session(
+    builder_graph_id: str | None,
+    *,
+    user_id: str = "test-user",
+) -> ChatSession:
     """Build a minimal ChatSession whose metadata carries *builder_graph_id*."""
     session = MagicMock(spec=ChatSession)
     session.session_id = "test-session"
+    session.user_id = user_id
     session.metadata = MagicMock()
     session.metadata.builder_graph_id = builder_graph_id
     return session
@@ -84,6 +89,29 @@ async def test_system_prompt_suffix_contains_guide_id_and_name():
     assert 'name="My Agent"' in suffix
     assert "<building_guide>" in suffix
     assert "# Guide body" in suffix
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_forwards_session_user_id_for_ownership():
+    """Regression: the graph must be fetched with the session owner's
+    ``user_id`` so ``get_graph``'s ownership check is enforced — passing
+    ``None`` here would leak graph metadata to unauthorized callers (see
+    sentry thread on PR #12699)."""
+    session = _session("graph-1", user_id="owner-xyz")
+    agent_json_mock = AsyncMock(return_value=_agent_json())
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=agent_json_mock,
+        ),
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        ),
+    ):
+        await build_builder_system_prompt_suffix(session)
+
+    agent_json_mock.assert_awaited_once_with("graph-1", "owner-xyz")
 
 
 @pytest.mark.asyncio

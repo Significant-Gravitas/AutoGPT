@@ -1716,6 +1716,30 @@ def test_builder_session_rejects_empty_graph_id(
     assert response.status_code == 422
 
 
+def test_builder_session_returns_404_when_graph_not_owned(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    """POST /sessions/builder must not create a session for a graph the
+    caller doesn't own — ``get_or_create_builder_session`` raises
+    ``NotFoundError`` and the route maps it to HTTP 404 (see sentry thread
+    on PR #12699)."""
+
+    async def _fake_get_or_create(user_id: str, graph_id: str):
+        raise NotFoundError(f"Graph {graph_id} not found")
+
+    mocker.patch(
+        "backend.api.features.chat.routes.get_or_create_builder_session",
+        new_callable=AsyncMock,
+        side_effect=_fake_get_or_create,
+    )
+
+    response = client.post("/sessions/builder", json={"graph_id": "graph-unauthorized"})
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
 def test_builder_session_rejects_unknown_fields(
     test_user_id: str,
 ) -> None:

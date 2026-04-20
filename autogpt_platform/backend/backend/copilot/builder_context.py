@@ -170,6 +170,10 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
     assistant loses all of its building context.  On guide load failure,
     the suffix is empty; we don't pollute the prompt with a half-built
     block that only tells the LLM its graph id.
+
+    The graph is fetched with the session owner's ``user_id`` so the
+    ownership check in ``get_graph`` is enforced — we never emit graph
+    metadata the session user is not entitled to see.
     """
     metadata = getattr(session, "metadata", None)
     graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
@@ -184,7 +188,7 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
 
     graph_name: str | None = None
     try:
-        agent_json = await get_agent_as_json(graph_id, None)
+        agent_json = await get_agent_as_json(graph_id, session.user_id)
     except Exception:
         logger.exception(
             "[builder_context] Failed to fetch graph %s for system prompt",

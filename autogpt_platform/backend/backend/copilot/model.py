@@ -22,10 +22,10 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel
 
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, graph_db
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import DatabaseError, RedisError
+from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
 from .config import ChatConfig
 
@@ -788,7 +788,18 @@ async def get_or_create_builder_session(
     builder-bound sessions.  If a match exists, the full :class:`ChatSession`
     (with messages) is returned so refreshing ``/build?flowID=<g>``
     restores the same chat.
+
+    The caller must own *graph_id* — ownership is verified via
+    ``graph_db().get_graph(graph_id, user_id=user_id)`` before any session
+    lookup or creation. Raises :class:`NotFoundError` (mapped to HTTP 404
+    by the REST layer) if the graph doesn't exist or isn't accessible to
+    *user_id*. This prevents database pollution with orphaned sessions
+    and graph-id probing by unauthorized callers.
     """
+    graph = await graph_db().get_graph(graph_id, version=None, user_id=user_id)
+    if graph is None:
+        raise NotFoundError(f"Graph {graph_id} not found")
+
     existing_info = await chat_db().get_builder_session_by_graph_id(user_id, graph_id)
     if existing_info is not None:
         session = await get_chat_session(existing_info.session_id, user_id)
