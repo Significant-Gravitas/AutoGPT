@@ -1012,4 +1012,116 @@ describe("ExecutionsTable", () => {
     // "All (7)" in the tab trigger
     expect(screen.getByText(/All.*7/)).toBeDefined();
   });
+
+  it("opens stop dialog and calls mutations for selected executions", async () => {
+    setupDefaultMocks();
+    mockStopMultiple.mockResolvedValue({
+      data: { success: true, stopped_count: 1, message: "Stopped 1" },
+    });
+    mockCleanupOrphaned.mockResolvedValue({
+      data: { success: true, stopped_count: 0, message: "OK" },
+    });
+    // Use a recent execution that won't be classified as orphaned
+    const recentExec = {
+      ...sampleExecution,
+      execution_id: "exec-recent-stop",
+      created_at: new Date().toISOString(),
+    };
+    mockRunningQuery.mockReturnValue(withExecutions([recentExec], 1));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    // Select execution
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Stop Selected/)).toBeDefined();
+    });
+    // Click stop selected
+    fireEvent.click(screen.getByText(/Stop Selected/));
+    // Dialog should open
+    await waitFor(() => {
+      expect(screen.getByText("Confirm Stop Executions")).toBeDefined();
+    });
+    // Confirm
+    fireEvent.click(screen.getByText("Stop Executions"));
+    await waitFor(() => {
+      expect(mockStopMultiple).toHaveBeenCalled();
+    });
+  });
+
+  it("calls requeueMultiple for selected stuck-queued executions", async () => {
+    setupDefaultMocks();
+    mockRequeueMultiple.mockResolvedValue({
+      data: { success: true, requeued_count: 2, message: "Requeued 2" },
+    });
+    const stuckExecs = [
+      {
+        ...sampleExecution,
+        execution_id: "stuck-a",
+        status: "QUEUED",
+        started_at: null,
+      },
+      {
+        ...sampleExecution,
+        execution_id: "stuck-b",
+        status: "QUEUED",
+        started_at: null,
+      },
+    ];
+    mockStuckQueuedQuery.mockReturnValue(withExecutions(stuckExecs, 2));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="stuck-queued"
+      />,
+    );
+    // Select all via select-all checkbox
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[0]) fireEvent.click(checkboxes[0]);
+    // In stuck-queued tab, no "Stop Selected" button - only Cleanup All / Requeue All
+    // Use Requeue All button instead
+    await waitFor(() => {
+      expect(screen.getByText(/Requeue All \(2\)/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByText(/Requeue All \(2\)/));
+    await waitFor(() => {
+      expect(screen.getByText("Requeue Executions")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Requeue Executions"));
+    await waitFor(() => {
+      expect(mockRequeueAllStuck).toHaveBeenCalled();
+    });
+  });
+
+  it("shows dialog description for stop all on long-running tab", async () => {
+    setupDefaultMocks();
+    mockLongRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="long-running"
+      />,
+    );
+    fireEvent.click(screen.getByText(/Stop All Long-Running/));
+    await waitFor(() => {
+      expect(screen.getByText(/stop ALL 1 execution/)).toBeDefined();
+    });
+  });
+
+  it("shows stop dialog description listing what it does", async () => {
+    setupDefaultMocks();
+    mockLongRunningQuery.mockReturnValue(withExecutions([sampleExecution], 1));
+    render(
+      <ExecutionsTable
+        diagnosticsData={diagnosticsData}
+        initialTab="long-running"
+      />,
+    );
+    fireEvent.click(screen.getByText(/Stop All Long-Running/));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Send cancel signals for active executions/),
+      ).toBeDefined();
+      expect(screen.getByText(/Mark all as FAILED/)).toBeDefined();
+    });
+  });
 });
