@@ -3,6 +3,7 @@ import {
   screen,
   cleanup,
   fireEvent,
+  waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SchedulesTable } from "../components/SchedulesTable";
@@ -251,5 +252,95 @@ describe("SchedulesTable", () => {
     mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 15));
     render(<SchedulesTable diagnosticsData={diagnosticsData} />);
     expect(screen.getByText(/Showing 1 to 10 of 15/)).toBeDefined();
+  });
+
+  it("renders delete selected button when schedules are selected via checkbox", async () => {
+    setupDefaultMocks();
+    const schedules = [
+      { ...sampleSchedule, schedule_id: "sched-sel-1" },
+      { ...sampleSchedule, schedule_id: "sched-sel-2" },
+    ];
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 2));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    // Click the first checkbox (individual schedule)
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    // First checkbox is select-all, subsequent are individual
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Delete Selected/)).toBeDefined();
+    });
+  });
+
+  it("shows select-all checkbox in header", () => {
+    setupDefaultMocks();
+    mockAllSchedulesQuery.mockReturnValue(withSchedules([sampleSchedule], 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    expect(checkboxes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("opens delete dialog and calls cleanup mutation", async () => {
+    setupDefaultMocks();
+    mockCleanupOrphaned.mockResolvedValue({
+      data: { success: true, deleted_count: 1, message: "Deleted 1" },
+    });
+    const schedules = [{ ...sampleSchedule, schedule_id: "sched-del-1" }];
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    // Select a schedule via checkbox
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Delete Selected/)).toBeDefined();
+    });
+    // Click delete selected
+    fireEvent.click(screen.getByText(/Delete Selected/));
+    // Dialog should open
+    await waitFor(() => {
+      expect(screen.getByText("Confirm Delete Schedules")).toBeDefined();
+    });
+    // Confirm deletion
+    fireEvent.click(screen.getByText("Delete Schedules"));
+    await waitFor(() => {
+      expect(mockCleanupOrphaned).toHaveBeenCalled();
+    });
+  });
+
+  it("shows cancel button in delete dialog", async () => {
+    setupDefaultMocks();
+    const schedules = [{ ...sampleSchedule, schedule_id: "sched-cancel-1" }];
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Delete Selected/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByText(/Delete Selected/));
+    await waitFor(() => {
+      expect(screen.getByText("Cancel")).toBeDefined();
+      expect(screen.getByText("Delete Schedules")).toBeDefined();
+    });
+  });
+
+  it("handles delete error gracefully", async () => {
+    setupDefaultMocks();
+    mockCleanupOrphaned.mockRejectedValue(new Error("Delete failed"));
+    const schedules = [{ ...sampleSchedule, schedule_id: "sched-err-1" }];
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Delete Selected/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByText(/Delete Selected/));
+    await waitFor(() => {
+      expect(screen.getByText("Delete Schedules")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Delete Schedules"));
+    await waitFor(() => {
+      expect(mockCleanupOrphaned).toHaveBeenCalled();
+    });
   });
 });
