@@ -259,6 +259,90 @@ class ErrorResponse(ToolResponseBase):
     details: dict[str, Any] | None = None
 
 
+class SubSessionProgressSnapshot(BaseModel):
+    """Mid-flight snapshot of a running sub-AutoPilot.
+
+    Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
+    caller passes ``include_progress=true`` while the sub is still running.
+    """
+
+    message_count: int = Field(
+        description="Total messages in the sub's ChatSession so far.",
+    )
+    last_messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Up to the last 5 messages (role + truncated content) from the "
+            "sub's ChatSession — lets the agent report intermediate progress."
+        ),
+    )
+
+
+class SubSessionStatusResponse(ToolResponseBase):
+    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+
+    Returned by both ``run_sub_session`` (synchronously when the sub finishes
+    within ``wait_for_result``, else with ``status='running'``) and
+    ``get_sub_session_result`` when the agent polls.
+    """
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+        description=(
+            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "target session already had a turn in flight, so the message was "
+            "pushed onto its pending buffer and will be picked up by the "
+            "existing turn on its next drain."
+        ),
+    )
+    sub_session_id: str = Field(
+        description=(
+            "Opaque id for this run. Pass to ``get_sub_session_result`` or "
+            "``run_sub_session(cancel=true, ...)`` to interact with it."
+        ),
+    )
+    response: str | None = Field(
+        default=None,
+        description="Assistant response text when status=completed.",
+    )
+    sub_autopilot_session_id: str | None = Field(
+        default=None,
+        description=(
+            "The session_id of the sub-AutoPilot conversation. Use with "
+            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
+            "to continue it."
+        ),
+    )
+    sub_autopilot_session_link: str | None = Field(
+        default=None,
+        description=(
+            "Relative URL the user can click to open the sub-AutoPilot "
+            "conversation in the CoPilot UI. Always set when "
+            "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Tool calls made during the sub-AutoPilot run.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when status=error.",
+    )
+    elapsed_seconds: float | None = Field(
+        default=None,
+        description="How long the sub-AutoPilot has been running (or took).",
+    )
+    progress: SubSessionProgressSnapshot | None = Field(
+        default=None,
+        description=(
+            "Mid-flight progress snapshot. Populated only when "
+            "get_sub_session_result is called with include_progress=true "
+            "and the sub is still running."
+        ),
+    )
+
+
 class InputValidationErrorResponse(ToolResponseBase):
     """Response when run_agent receives unknown input fields."""
 

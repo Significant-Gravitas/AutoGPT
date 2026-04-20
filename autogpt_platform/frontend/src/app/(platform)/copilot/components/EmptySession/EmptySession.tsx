@@ -13,6 +13,10 @@ import {
   getSuggestionThemes,
 } from "./helpers";
 import { SuggestionThemes } from "./components/SuggestionThemes/SuggestionThemes";
+import { PulseChips } from "../PulseChips/PulseChips";
+import { usePulseChips } from "../PulseChips/usePulseChips";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { EditNameDialog } from "./components/EditNameDialog/EditNameDialog";
 
 interface Props {
   inputLayoutId: string;
@@ -34,6 +38,8 @@ export function EmptySession({
 }: Props) {
   const { user } = useSupabase();
   const greetingName = getGreetingName(user);
+  const isAgentBriefingEnabled = useGetFlag(Flag.AGENT_BRIEFING);
+  const pulseChips = usePulseChips();
 
   const { data: suggestedPromptsResponse, isLoading: isLoadingPrompts } =
     useGetV2GetSuggestedPrompts({
@@ -75,10 +81,15 @@ export function EmptySession({
         <div className="mx-auto max-w-[52rem]">
           <Text variant="h3" className="mb-1 !text-[1.375rem] text-zinc-700">
             Hey, <span className="text-violet-600">{greetingName}</span>
+            <EditNameDialog currentName={greetingName} />
           </Text>
           <Text variant="h3" className="mb-8 !font-normal">
             Tell me about your work — I&apos;ll find what to automate.
           </Text>
+
+          {isAgentBriefingEnabled && (
+            <PulseChips chips={pulseChips} onChipClick={onSend} />
+          )}
 
           <div className="mb-6">
             <motion.div

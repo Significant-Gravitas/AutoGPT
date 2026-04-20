@@ -59,8 +59,6 @@ export function WalletRefill() {
     resolver: zodResolver(autoRefillSchema),
   });
 
-  console.log("autoRefillForm");
-
   // Pre-fill the auto-refill form with existing values
   useEffect(() => {
     if (

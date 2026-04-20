@@ -222,6 +222,10 @@ class CoPilotProcessor:
         Shuts down the workspace storage instance that belongs to this
         worker's event loop, ensuring ``aiohttp.ClientSession.close()``
         runs on the same loop that created the session.
+
+        Sub-AutoPilots are enqueued on the copilot_execution queue, so
+        rolling deploys survive via RabbitMQ redelivery — no bespoke
+        shutdown notifier needed.
         """
         coro = shutdown_workspace_storage()
         try:
@@ -342,7 +346,9 @@ class CoPilotProcessor:
 
             # Stream chat completion and publish chunks to Redis.
             # stream_and_publish wraps the raw stream with registry
-            # publishing (shared with collect_copilot_response).
+            # publishing so subscribers on the session Redis stream
+            # (e.g. wait_for_session_result, SSE clients) receive the
+            # same events as they are produced.
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message if entry.message else None,
@@ -352,6 +358,8 @@ class CoPilotProcessor:
                 file_ids=entry.file_ids,
                 mode=effective_mode,
                 model=entry.model,
+                permissions=entry.permissions,
+                request_arrival_at=entry.request_arrival_at,
             )
             async for chunk in stream_registry.stream_and_publish(
                 session_id=entry.session_id,

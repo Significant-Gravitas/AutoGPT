@@ -5,6 +5,7 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -14,6 +15,10 @@ from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.util.json import SafeJson
+
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
+)
 
 logger = logging.getLogger(__name__)
 
@@ -334,6 +339,48 @@ async def soft_delete_workspace_file(
 
     logger.info(f"Soft-deleted workspace file {file_id}")
     return WorkspaceFile.from_db(updated) if updated else None
+
+
+async def resolve_workspace_files(
+    user_id: str,
+    file_ids: list[str],
+) -> list[UserWorkspaceFile]:
+    """Return workspace-scoped file records for the given IDs.
+
+    Filters out non-UUID entries, then queries only IDs that belong to the
+    caller's workspace and are not soft-deleted.  Safe to call with
+    untrusted input — invalid IDs and cross-user IDs are silently dropped.
+    """
+    valid_ids = [fid for fid in file_ids if _UUID_RE.fullmatch(fid)]
+    if not valid_ids:
+        return []
+    workspace = await get_or_create_workspace(user_id)
+    return await UserWorkspaceFile.prisma().find_many(
+        where={
+            "id": {"in": valid_ids},
+            "workspaceId": workspace.id,
+            "isDeleted": False,
+        }
+    )
+
+
+def build_files_block(files: list[UserWorkspaceFile]) -> str:
+    """Return a formatted ``[Attached files]`` block for injection into a message.
+
+    Returns an empty string when *files* is empty so callers can do a simple
+    ``message += build_files_block(files)`` without an extra ``if`` check.
+    """
+    if not files:
+        return ""
+    lines = [
+        f"- {f.name} ({f.mimeType}, {round(f.sizeBytes / 1024, 1)} KB), file_id={f.id}"
+        for f in files
+    ]
+    return (
+        "\n\n[Attached files]\n"
+        + "\n".join(lines)
+        + "\nUse read_workspace_file with the file_id to access file contents."
+    )
 
 
 async def get_workspace_total_size(workspace_id: str) -> int:

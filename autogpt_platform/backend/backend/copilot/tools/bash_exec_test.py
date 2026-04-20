@@ -35,12 +35,15 @@ class TestBashExecE2BTokenInjection:
         sandbox = _make_sandbox(stdout="ok")
         env_vars = {"GH_TOKEN": "gh-secret", "GITHUB_TOKEN": "gh-secret"}
 
-        with patch(
-            "backend.copilot.tools.bash_exec.get_integration_env_vars",
-            new=AsyncMock(return_value=env_vars),
-        ) as mock_get_env, patch(
-            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value=env_vars),
+            ) as mock_get_env,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             result = await tool._execute_on_e2b(
                 sandbox=sandbox,
@@ -69,12 +72,15 @@ class TestBashExecE2BTokenInjection:
             "GIT_COMMITTER_EMAIL": "test@example.com",
         }
 
-        with patch(
-            "backend.copilot.tools.bash_exec.get_integration_env_vars",
-            new=AsyncMock(return_value={}),
-        ), patch(
-            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
-            new=AsyncMock(return_value=identity),
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=identity),
+            ),
         ):
             await tool._execute_on_e2b(
                 sandbox=sandbox,
@@ -97,12 +103,15 @@ class TestBashExecE2BTokenInjection:
         session = make_session(user_id=_USER)
         sandbox = _make_sandbox(stdout="ok")
 
-        with patch(
-            "backend.copilot.tools.bash_exec.get_integration_env_vars",
-            new=AsyncMock(return_value={}),
-        ), patch(
-            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
-            new=AsyncMock(return_value=None),
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
         ):
             await tool._execute_on_e2b(
                 sandbox=sandbox,
@@ -123,13 +132,16 @@ class TestBashExecE2BTokenInjection:
         session = make_session(user_id=_USER)
         sandbox = _make_sandbox(stdout="ok")
 
-        with patch(
-            "backend.copilot.tools.bash_exec.get_integration_env_vars",
-            new=AsyncMock(return_value={"GH_TOKEN": "should-not-appear"}),
-        ) as mock_get_env, patch(
-            "backend.copilot.tools.bash_exec.get_github_user_git_identity",
-            new=AsyncMock(return_value=None),
-        ) as mock_get_identity:
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={"GH_TOKEN": "should-not-appear"}),
+            ) as mock_get_env,
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ) as mock_get_identity,
+        ):
             result = await tool._execute_on_e2b(
                 sandbox=sandbox,
                 command="echo hi",

@@ -1010,3 +1010,204 @@ class TestBaselineCostExtraction:
         assert state.cost_usd is None
         assert state.turn_prompt_tokens == 1000
         assert state.turn_completion_tokens == 500
+
+
+class TestMidLoopPendingFlushOrdering:
+    """Regression test for the mid-loop pending drain ordering invariant.
+
+    ``_baseline_conversation_updater`` records assistant+tool entries from
+    each tool-call round into ``state.session_messages``; the finally block
+    of ``stream_chat_completion_baseline`` batch-flushes them into
+    ``session.messages`` at the end of the turn.
+
+    The mid-loop pending drain appends pending user messages directly to
+    ``session.messages``.  Without flushing ``state.session_messages`` first,
+    the pending user message lands BEFORE the preceding round's assistant+
+    tool entries in the final persisted ``session.messages`` — which
+    produces a malformed tool-call/tool-result ordering on the next turn's
+    replay.
+
+    This test documents the invariant by replaying the production flush
+    sequence against an in-memory state.
+    """
+
+    def test_flush_then_append_preserves_chronological_order(self):
+        """Mid-loop drain must flush state.session_messages before appending
+        the pending user message, so the final order matches the
+        chronological execution order.
+        """
+        # Initial state: user turn already appended by maybe_append_user_message
+        session_messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="original user turn"),
+        ]
+        state = _BaselineStreamState()
+
+        # Round 1 completes: conversation_updater buffers assistant+tool
+        # entries into state.session_messages (but does NOT write to
+        # session.messages yet).
+        builder = TranscriptBuilder()
+        builder.append_user("original user turn")
+        response = LLMLoopResponse(
+            response_text="calling search",
+            tool_calls=[LLMToolCall(id="tc_1", name="search", arguments="{}")],
+            raw_response=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+        tool_results = [
+            ToolCallResult(
+                tool_call_id="tc_1", tool_name="search", content="search output"
+            ),
+        ]
+        openai_messages: list = []
+        _baseline_conversation_updater(
+            openai_messages,
+            response,
+            tool_results=tool_results,
+            transcript_builder=builder,
+            state=state,
+            model="test-model",
+        )
+        # state.session_messages should now hold the round-1 assistant + tool
+        assert len(state.session_messages) == 2
+        assert state.session_messages[0].role == "assistant"
+        assert state.session_messages[1].role == "tool"
+
+        # --- Mid-loop pending drain (production code pattern) ---
+        # Flush first, THEN append pending.  This is the ordering fix.
+        for _buffered in state.session_messages:
+            session_messages.append(_buffered)
+        state.session_messages.clear()
+        session_messages.append(
+            ChatMessage(role="user", content="pending mid-loop message")
+        )
+
+        # Round 2 completes: new assistant+tool entries buffer again.
+        response2 = LLMLoopResponse(
+            response_text="another call",
+            tool_calls=[LLMToolCall(id="tc_2", name="calc", arguments="{}")],
+            raw_response=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+        tool_results2 = [
+            ToolCallResult(
+                tool_call_id="tc_2", tool_name="calc", content="calc output"
+            ),
+        ]
+        _baseline_conversation_updater(
+            openai_messages,
+            response2,
+            tool_results=tool_results2,
+            transcript_builder=builder,
+            state=state,
+            model="test-model",
+        )
+
+        # --- Finally-block flush (end of turn) ---
+        for msg in state.session_messages:
+            session_messages.append(msg)
+
+        # Assert chronological order: original user, round-1 assistant,
+        # round-1 tool, pending user, round-2 assistant, round-2 tool.
+        assert [m.role for m in session_messages] == [
+            "user",
+            "assistant",
+            "tool",
+            "user",
+            "assistant",
+            "tool",
+        ]
+        assert session_messages[0].content == "original user turn"
+        assert session_messages[3].content == "pending mid-loop message"
+        # The assistant message carrying tool_call tc_1 must be immediately
+        # followed by its tool result — no user message interposed.
+        assert session_messages[1].role == "assistant"
+        assert session_messages[1].tool_calls is not None
+        assert session_messages[1].tool_calls[0]["id"] == "tc_1"
+        assert session_messages[2].role == "tool"
+        assert session_messages[2].tool_call_id == "tc_1"
+        # Same invariant for the round after the pending user.
+        assert session_messages[4].tool_calls is not None
+        assert session_messages[4].tool_calls[0]["id"] == "tc_2"
+        assert session_messages[5].tool_call_id == "tc_2"
+
+    def test_flushed_assistant_text_len_prevents_duplicate_final_text(self):
+        """After mid-loop drain clears state.session_messages, the finally
+        block must not re-append assistant text from rounds already flushed.
+
+        ``state.assistant_text`` accumulates ALL rounds' text, but
+        ``state.session_messages`` only holds entries from rounds AFTER the
+        last mid-loop flush.  Without ``_flushed_assistant_text_len``, the
+        ``finally`` block's ``startswith(recorded)`` check fails because
+        ``recorded`` only covers post-flush rounds, and the full
+        ``assistant_text`` is appended — duplicating pre-flush rounds.
+        """
+        state = _BaselineStreamState()
+        session_messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="user turn"),
+        ]
+
+        # Simulate round 1 text accumulation (as _bound_llm_caller does)
+        state.assistant_text += "calling search"
+
+        # Round 1 conversation_updater buffers structured entries
+        builder = TranscriptBuilder()
+        builder.append_user("user turn")
+        response1 = LLMLoopResponse(
+            response_text="calling search",
+            tool_calls=[LLMToolCall(id="tc_1", name="search", arguments="{}")],
+            raw_response=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+        )
+        _baseline_conversation_updater(
+            [],
+            response1,
+            tool_results=[
+                ToolCallResult(
+                    tool_call_id="tc_1", tool_name="search", content="result"
+                )
+            ],
+            transcript_builder=builder,
+            state=state,
+            model="test-model",
+        )
+
+        # Mid-loop drain: flush + clear + record flushed text length
+        for _buffered in state.session_messages:
+            session_messages.append(_buffered)
+        state.session_messages.clear()
+        state._flushed_assistant_text_len = len(state.assistant_text)
+        session_messages.append(ChatMessage(role="user", content="pending message"))
+
+        # Simulate round 2 text accumulation
+        state.assistant_text += "final answer"
+
+        # Round 2: natural finish (no tool calls → no session_messages entry)
+
+        # --- Finally block logic (production code) ---
+        for msg in state.session_messages:
+            session_messages.append(msg)
+
+        final_text = state.assistant_text[state._flushed_assistant_text_len :]
+        if state.session_messages:
+            recorded = "".join(
+                m.content or "" for m in state.session_messages if m.role == "assistant"
+            )
+            if final_text.startswith(recorded):
+                final_text = final_text[len(recorded) :]
+        if final_text.strip():
+            session_messages.append(ChatMessage(role="assistant", content=final_text))
+
+        # The final assistant message should only contain round-2 text,
+        # not the round-1 text that was already flushed mid-loop.
+        assistant_msgs = [m for m in session_messages if m.role == "assistant"]
+        # Round-1 structured assistant (from mid-loop flush)
+        assert assistant_msgs[0].content == "calling search"
+        assert assistant_msgs[0].tool_calls is not None
+        # Round-2 final text (from finally block)
+        assert assistant_msgs[1].content == "final answer"
+        assert assistant_msgs[1].tool_calls is None
+        # Crucially: only 2 assistant messages, not 3 (no duplicate)
+        assert len(assistant_msgs) == 2

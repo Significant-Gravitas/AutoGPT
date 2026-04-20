@@ -2,15 +2,13 @@
 
 import asyncio
 import logging
-import re
 from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
-from fastapi.responses import StreamingResponse
-from prisma.models import UserWorkspaceFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
@@ -18,7 +16,6 @@ from backend.copilot import stream_registry
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
-from backend.copilot.message_dedup import acquire_dedup_lock
 from backend.copilot.model import (
     ChatMessage,
     ChatSession,
@@ -30,6 +27,12 @@ from backend.copilot.model import (
     get_user_sessions,
     update_session_title,
 )
+from backend.copilot.pending_message_helpers import (
+    QueuePendingMessageResponse,
+    is_turn_in_flight,
+    queue_pending_for_http,
+)
+from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsageStatus,
     RateLimitExceeded,
@@ -76,7 +79,7 @@ from backend.copilot.tracking import track_user_message
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import get_or_create_workspace
+from backend.data.workspace import build_files_block, resolve_workspace_files
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.settings import Settings
 
@@ -85,10 +88,6 @@ settings = Settings()
 logger = logging.getLogger(__name__)
 
 config = ChatConfig()
-
-_UUID_RE = re.compile(
-    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I
-)
 
 
 async def _validate_and_get_session(
@@ -150,6 +149,19 @@ class StreamChatRequest(BaseModel):
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",
     )
+
+
+class PeekPendingMessagesResponse(BaseModel):
+    """Response for the pending-message peek (GET) endpoint.
+
+    Returns a read-only view of the pending buffer — messages are NOT
+    consumed.  The frontend uses this to restore the queued-message
+    indicator after a page refresh and to decide when to clear it once
+    a turn has ended.
+    """
+
+    messages: list[str]
+    count: int
 
 
 class CreateSessionRequest(BaseModel):
@@ -463,22 +475,13 @@ async def get_session(
 
     Supports cursor-based pagination via ``limit`` and ``before_sequence``.
     When no pagination params are provided, returns the most recent messages.
-
-    Args:
-        session_id: The unique identifier for the desired chat session.
-        user_id: The authenticated user's ID.
-        limit: Maximum number of messages to return (1-200, default 50).
-        before_sequence: Return messages with sequence < this value (cursor).
-
-    Returns:
-        SessionDetailResponse: Details for the requested session, including
-            active_stream info and pagination metadata.
     """
     page = await get_chat_messages_paginated(
         session_id, limit, before_sequence, user_id=user_id
     )
     if page is None:
         raise NotFoundError(f"Session {session_id} not found.")
+
     messages = [
         _strip_injected_context(message.model_dump()) for message in page.messages
     ]
@@ -488,10 +491,6 @@ async def get_session(
     if before_sequence is None:
         active_session, last_message_id = await stream_registry.get_active_session(
             session_id, user_id
-        )
-        logger.info(
-            f"[GET_SESSION] session={session_id}, active_session={active_session is not None}, "
-            f"msg_count={len(messages)}, last_role={messages[-1].get('role') if messages else 'none'}"
         )
         if active_session:
             active_stream_info = ActiveStreamInfo(
@@ -778,36 +777,52 @@ async def cancel_session_task(
 
 @router.post(
     "/sessions/{session_id}/stream",
+    responses={
+        202: {
+            "model": QueuePendingMessageResponse,
+            "description": (
+                "Session has a turn in flight — message queued into the pending "
+                "buffer and will be picked up between tool-call rounds by the "
+                "executor currently processing the turn."
+            ),
+        },
+        404: {"description": "Session not found or access denied"},
+        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+    },
 )
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
 ):
-    """
-    Stream chat responses for a session (POST with context support).
+    """Start a new turn OR queue a follow-up — decided server-side.
 
-    Streams the AI/completion responses in real time over Server-Sent Events (SSE), including:
-      - Text fragments as they are generated
-      - Tool call UI elements (if invoked)
-      - Tool execution results
+    - **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)
+      with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).
+      The generation runs in a background task that survives client disconnects;
+      reconnect via ``GET /sessions/{session_id}/stream`` to resume.
 
-    The AI generation runs in a background task that continues even if the client disconnects.
-    All chunks are written to a per-turn Redis stream for reconnection support. If the client
-    disconnects, they can reconnect using GET /sessions/{session_id}/stream to resume.
+    - **Session has a turn in flight**: pushes the message into the per-session
+      pending buffer and returns ``202 application/json`` with
+      ``QueuePendingMessageResponse``.  The executor running the current turn
+      drains the buffer between tool-call rounds (baseline) or at the start of
+      the next turn (SDK).  Clients should detect the 202 and surface the
+      message as a queued-chip in the UI.
 
     Args:
-        session_id: The chat session identifier to associate with the streamed messages.
-        request: Request body containing message, is_user_message, and optional context.
+        session_id: The chat session identifier.
+        request: Request body with message, is_user_message, and optional context.
         user_id: Authenticated user ID.
-    Returns:
-        StreamingResponse: SSE-formatted response chunks.
-
     """
     import asyncio
     import time
 
     stream_start_time = time.perf_counter()
+    # Wall-clock arrival time, propagated to the executor so the turn-start
+    # drain can order pending messages relative to this request (pending
+    # pushed BEFORE this instant were typed earlier; pending pushed AFTER
+    # are race-path follow-ups typed while /stream was still processing).
+    request_arrival_at = time.time()
     log_meta = {"component": "ChatStream", "session_id": session_id, "user_id": user_id}
 
     logger.info(
@@ -816,6 +831,26 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     await _validate_and_get_session(session_id, user_id)
+
+    # Self-defensive queue-fallback: if a turn is already running, don't race
+    # it on the cluster lock — drop the message into the pending buffer and
+    # return 202 so the caller can render a chip.  Both UI chips and autopilot
+    # block follow-ups route through this path; keeping the decision on the
+    # server means every caller gets uniform behaviour.
+    if (
+        request.is_user_message
+        and request.message
+        and await is_turn_in_flight(session_id)
+    ):
+        response = await queue_pending_for_http(
+            session_id=session_id,
+            user_id=user_id,
+            message=request.message,
+            context=request.context,
+            file_ids=request.file_ids,
+        )
+        return JSONResponse(status_code=202, content=response.model_dump())
+
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
@@ -846,89 +881,41 @@ async def stream_chat_post(
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
     # forwarded downstream (e.g. to the executor via enqueue_copilot_turn).
     sanitized_file_ids: list[str] | None = None
-    # Capture the original message text BEFORE any mutation (attachment enrichment)
-    # so the idempotency hash is stable across retries.
-    original_message = request.message
-    if request.file_ids and user_id:
-        # Filter to valid UUIDs only to prevent DB abuse
-        valid_ids = [fid for fid in request.file_ids if _UUID_RE.match(fid)]
-
-        if valid_ids:
-            workspace = await get_or_create_workspace(user_id)
-            # Batch query instead of N+1
-            files = await UserWorkspaceFile.prisma().find_many(
-                where={
-                    "id": {"in": valid_ids},
-                    "workspaceId": workspace.id,
-                    "isDeleted": False,
-                }
-            )
-            # Only keep IDs that actually exist in the user's workspace
-            sanitized_file_ids = [wf.id for wf in files] or None
-            file_lines: list[str] = [
-                f"- {wf.name} ({wf.mimeType}, {round(wf.sizeBytes / 1024, 1)} KB), file_id={wf.id}"
-                for wf in files
-            ]
-            if file_lines:
-                files_block = (
-                    "\n\n[Attached files]\n"
-                    + "\n".join(file_lines)
-                    + "\nUse read_workspace_file with the file_id to access file contents."
-                )
-                request.message += files_block
-
-    # ── Idempotency guard ────────────────────────────────────────────────────
-    # Blocks duplicate executor tasks from concurrent/retried POSTs.
-    # See backend/copilot/message_dedup.py for the full lifecycle description.
-    dedup_lock = None
-    if request.is_user_message:
-        dedup_lock = await acquire_dedup_lock(
-            session_id, original_message, sanitized_file_ids
-        )
-        if dedup_lock is None and (original_message or sanitized_file_ids):
-
-            async def _empty_sse() -> AsyncGenerator[str, None]:
-                yield StreamFinish().to_sse()
-                yield "data: [DONE]\n\n"
-
-            return StreamingResponse(
-                _empty_sse(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "X-Accel-Buffering": "no",
-                    "Connection": "keep-alive",
-                    "x-vercel-ai-ui-message-stream": "v1",
-                },
-            )
+    if request.file_ids:
+        files = await resolve_workspace_files(user_id, request.file_ids)
+        sanitized_file_ids = [wf.id for wf in files] or None
+        request.message += build_files_block(files)
 
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
-    # saved yet.  append_and_save_message re-fetches inside a lock to prevent
-    # message loss from concurrent requests.
-    #
-    # If any of these operations raises, release the dedup lock before propagating
-    # so subsequent retries are not blocked for 30 s.
-    try:
-        if request.message:
-            message = ChatMessage(
-                role="user" if request.is_user_message else "assistant",
-                content=request.message,
-            )
-            if request.is_user_message:
-                track_user_message(
-                    user_id=user_id,
-                    session_id=session_id,
-                    message_length=len(request.message),
-                )
-            logger.info(f"[STREAM] Saving user message to session {session_id}")
+    # saved yet.  append_and_save_message returns None when a duplicate is
+    # detected — in that case skip enqueue to avoid processing the message twice.
+    is_duplicate_message = False
+    if request.message:
+        message = ChatMessage(
+            role="user" if request.is_user_message else "assistant",
+            content=request.message,
+        )
+        logger.info(f"[STREAM] Saving user message to session {session_id}")
+        is_duplicate_message = (
             await append_and_save_message(session_id, message)
-            logger.info(f"[STREAM] User message saved for session {session_id}")
+        ) is None
+        logger.info(f"[STREAM] User message saved for session {session_id}")
+        if not is_duplicate_message and request.is_user_message:
+            track_user_message(
+                user_id=user_id,
+                session_id=session_id,
+                message_length=len(request.message),
+            )
 
-        # Create a task in the stream registry for reconnection support
+    # Create a task in the stream registry for reconnection support.
+    # For duplicate messages, skip create_session entirely so the infra-retry
+    # client subscribes to the *existing* turn's Redis stream and receives the
+    # in-progress executor output rather than an empty stream.
+    turn_id = ""
+    if not is_duplicate_message:
         turn_id = str(uuid4())
         log_meta["turn_id"] = turn_id
-
         session_create_start = time.perf_counter()
         await stream_registry.create_session(
             session_id=session_id,
@@ -946,7 +933,6 @@ async def stream_chat_post(
                 }
             },
         )
-
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,
@@ -957,11 +943,12 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            request_arrival_at=request_arrival_at,
         )
-    except Exception:
-        if dedup_lock:
-            await dedup_lock.release()
-        raise
+    else:
+        logger.info(
+            f"[STREAM] Duplicate message detected for session {session_id}, skipping enqueue"
+        )
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
@@ -985,12 +972,6 @@ async def stream_chat_post(
         subscriber_queue = None
         first_chunk_yielded = False
         chunks_yielded = 0
-        # True for every exit path except GeneratorExit (client disconnect).
-        # On disconnect the backend turn is still running — releasing the lock
-        # there would reopen the infra-retry duplicate window. The 30 s TTL
-        # is the fallback. All other exits (normal finish, early return, error)
-        # should release so the user can re-send the same message.
-        release_dedup_lock_on_exit = True
         try:
             # Subscribe from the position we captured before enqueuing
             # This avoids replaying old messages while catching all new ones
@@ -1002,7 +983,7 @@ async def stream_chat_post(
 
             if subscriber_queue is None:
                 yield StreamFinish().to_sse()
-                return  # finally releases dedup_lock
+                return
 
             # Read from the subscriber queue and yield to SSE
             logger.info(
@@ -1044,7 +1025,7 @@ async def stream_chat_post(
                                 }
                             },
                         )
-                        break  # finally releases dedup_lock
+                        break
 
                 except asyncio.TimeoutError:
                     yield StreamHeartbeat().to_sse()
@@ -1060,7 +1041,6 @@ async def stream_chat_post(
                     }
                 },
             )
-            release_dedup_lock_on_exit = False
         except Exception as e:
             elapsed = (time_module.perf_counter() - event_gen_start) * 1000
             logger.error(
@@ -1075,10 +1055,7 @@ async def stream_chat_post(
                 code="stream_error",
             ).to_sse()
             yield StreamFinish().to_sse()
-            # finally releases dedup_lock
         finally:
-            if dedup_lock and release_dedup_lock_on_exit:
-                await dedup_lock.release()
             # Unsubscribe when client disconnects or stream ends
             if subscriber_queue is not None:
                 try:
@@ -1114,6 +1091,31 @@ async def stream_chat_post(
             "X-Accel-Buffering": "no",  # Disable nginx buffering
             "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
         },
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/messages/pending",
+    response_model=PeekPendingMessagesResponse,
+    responses={
+        404: {"description": "Session not found or access denied"},
+    },
+)
+async def get_pending_messages(
+    session_id: str,
+    user_id: str = Security(auth.get_user_id),
+):
+    """Peek at the pending-message buffer without consuming it.
+
+    Returns the current contents of the session's pending message buffer
+    so the frontend can restore the queued-message indicator after a page
+    refresh and clear it correctly once a turn drains the buffer.
+    """
+    await _validate_and_get_session(session_id, user_id)
+    pending = await peek_pending_messages(session_id)
+    return PeekPendingMessagesResponse(
+        messages=[m.content for m in pending],
+        count=len(pending),
     )
 
 
