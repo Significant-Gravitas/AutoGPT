@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
 from backend.data.db_accessors import graph_db, library_db, user_db
@@ -71,7 +72,7 @@ class RunAgentInput(BaseModel):
     schedule_name: str = ""
     cron: str = ""
     timezone: str = "UTC"
-    wait_for_result: int = Field(default=0, ge=0, le=300)
+    wait_for_result: int = Field(default=0, ge=0, le=MAX_TOOL_WAIT_SECONDS)
     dry_run: bool = Field(default=False)
 
     @field_validator(
@@ -150,9 +151,12 @@ class RunAgentTool(BaseTool):
                 },
                 "wait_for_result": {
                     "type": "integer",
-                    "description": "Max seconds to wait for completion (0-300).",
+                    "description": (
+                        "Max seconds to wait for completion "
+                        f"(0-{MAX_TOOL_WAIT_SECONDS})."
+                    ),
                     "minimum": 0,
-                    "maximum": 300,
+                    "maximum": MAX_TOOL_WAIT_SECONDS,
                 },
                 "dry_run": {
                     "type": "boolean",

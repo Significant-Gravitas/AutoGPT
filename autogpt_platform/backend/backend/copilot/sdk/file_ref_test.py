@@ -1394,11 +1394,7 @@ async def test_e2e_toml_dict_with_list_value_to_concat_block():
     """TOML dict with a list value → List[List[Any]] block: extracts list
     values, ignoring scalar values like 'title'."""
     toml_content = (
-        'title = "Fruits"\n'
-        "[[fruits]]\n"
-        'name = "apple"\n'
-        "[[fruits]]\n"
-        'name = "banana"\n'
+        'title = "Fruits"\n[[fruits]]\nname = "apple"\n[[fruits]]\nname = "banana"\n'
     )
 
     async def _resolve(ref, *a, **kw):  # noqa: ARG001
@@ -1692,12 +1688,15 @@ async def test_media_file_field_passthrough_workspace_uri():
         },
     }
 
-    with patch(
-        "backend.copilot.sdk.file_ref.resolve_file_ref",
-        new=AsyncMock(side_effect=AssertionError("should not read file content")),
-    ), patch(
-        "backend.copilot.sdk.file_ref.read_file_bytes",
-        new=AsyncMock(side_effect=AssertionError("should not read file bytes")),
+    with (
+        patch(
+            "backend.copilot.sdk.file_ref.resolve_file_ref",
+            new=AsyncMock(side_effect=AssertionError("should not read file content")),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref.read_file_bytes",
+            new=AsyncMock(side_effect=AssertionError("should not read file bytes")),
+        ),
     ):
         result = await expand_file_refs_in_args(
             {"image": "@@agptfile:workspace://img123"},

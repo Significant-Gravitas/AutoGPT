@@ -8,6 +8,7 @@ from backend.copilot.model import ChatSession
 from .agent_generator import get_agent_as_json
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "If you haven't already, call get_agent_building_guide first."
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -72,6 +73,10 @@ class EditAgentTool(BaseTool):
         if library_agent_ids is None:
             library_agent_ids = []
         session_id = session.session_id if session else None
+
+        guide_gate = require_guide_read(session, "edit_agent")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_id:
             return ErrorResponse(
