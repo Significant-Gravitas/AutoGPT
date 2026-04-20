@@ -2,25 +2,110 @@ import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiagnosticsContent } from "../components/DiagnosticsContent";
 
-const mockUseDiagnosticsContent = vi.fn();
+// Mock the generated API hooks directly so useDiagnosticsContent code is exercised
+const mockExecQuery = vi.fn();
+const mockAgentQuery = vi.fn();
+const mockScheduleQuery = vi.fn();
 
-vi.mock("../components/useDiagnosticsContent", () => ({
-  useDiagnosticsContent: () => mockUseDiagnosticsContent(),
-}));
-
-vi.mock("../components/ExecutionsTable", () => ({
-  ExecutionsTable: () => (
-    <div data-testid="executions-table">ExecutionsTable</div>
-  ),
-}));
-
-vi.mock("../components/SchedulesTable", () => ({
-  SchedulesTable: () => <div data-testid="schedules-table">SchedulesTable</div>,
+vi.mock("@/app/api/__generated__/endpoints/admin/admin", () => ({
+  useGetV2GetExecutionDiagnostics: () => mockExecQuery(),
+  useGetV2GetAgentDiagnostics: () => mockAgentQuery(),
+  useGetV2GetScheduleDiagnostics: () => mockScheduleQuery(),
+  useGetV2ListRunningExecutions: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useGetV2ListOrphanedExecutions: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useGetV2ListFailedExecutions: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useGetV2ListLongRunningExecutions: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useGetV2ListStuckQueuedExecutions: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useGetV2ListInvalidExecutions: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  usePostV2StopSingleExecution: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2StopMultipleExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2StopAllLongRunningExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2CleanupOrphanedExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2CleanupAllOrphanedExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2CleanupAllStuckQueuedExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2RequeueStuckExecution: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2RequeueMultipleStuckExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  usePostV2RequeueAllStuckQueuedExecutions: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
+  useGetV2ListAllUserSchedules: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useGetV2ListOrphanedSchedules: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  usePostV2CleanupOrphanedSchedules: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 afterEach(() => {
   cleanup();
-  mockUseDiagnosticsContent.mockReset();
+  mockExecQuery.mockReset();
+  mockAgentQuery.mockReset();
+  mockScheduleQuery.mockReset();
 });
 
 const executionData = {
@@ -67,61 +152,100 @@ const scheduleData = {
   timestamp: "2026-04-17T00:00:00Z",
 };
 
+function setupLoadedMocks() {
+  mockExecQuery.mockReturnValue({
+    data: { data: executionData },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+  mockAgentQuery.mockReturnValue({
+    data: { data: agentData },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+  mockScheduleQuery.mockReturnValue({
+    data: { data: scheduleData },
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+}
+
+function setupLoadingMocks() {
+  mockExecQuery.mockReturnValue({
+    data: undefined,
+    isLoading: true,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+  mockAgentQuery.mockReturnValue({
+    data: undefined,
+    isLoading: true,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+  mockScheduleQuery.mockReturnValue({
+    data: undefined,
+    isLoading: true,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+}
+
+function setupErrorMocks() {
+  mockExecQuery.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: true,
+    error: { status: 500, message: "Server error" },
+    refetch: vi.fn(),
+  });
+  mockAgentQuery.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+  mockScheduleQuery.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+  });
+}
+
 describe("DiagnosticsContent", () => {
   it("shows loading state", () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData: undefined,
-      agentData: undefined,
-      scheduleData: undefined,
-      isLoading: true,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+    setupLoadingMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("Loading diagnostics...")).toBeDefined();
   });
 
   it("shows error state with retry", () => {
-    const refresh = vi.fn();
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData: undefined,
-      agentData: undefined,
-      scheduleData: undefined,
-      isLoading: false,
-      isError: true,
-      error: { status: 500, message: "Server error" },
-      refresh,
-    });
+    setupErrorMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("Try Again")).toBeDefined();
   });
 
-  it("renders system diagnostics heading with data", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
-      isLoading: false,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+  it("renders system diagnostics heading with data", () => {
+    setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("System Diagnostics")).toBeDefined();
     expect(screen.getByText("Refresh")).toBeDefined();
   });
 
-  it("renders execution queue status cards", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
-      isLoading: false,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+  it("renders execution queue status cards", () => {
+    setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("Execution Queue Status")).toBeDefined();
     expect(screen.getByText("Running Executions")).toBeDefined();
@@ -129,16 +253,8 @@ describe("DiagnosticsContent", () => {
     expect(screen.getByText("Queued in RabbitMQ")).toBeDefined();
   });
 
-  it("renders throughput metrics", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
-      isLoading: false,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+  it("renders throughput metrics", () => {
+    setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("System Throughput")).toBeDefined();
     expect(screen.getByText("Completed (24h)")).toBeDefined();
@@ -146,32 +262,16 @@ describe("DiagnosticsContent", () => {
     expect(screen.getByText("50.0")).toBeDefined();
   });
 
-  it("renders schedule summary card", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
-      isLoading: false,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+  it("renders schedule summary card", () => {
+    setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("User Schedules")).toBeDefined();
     expect(screen.getByText("Upcoming Runs (1h)")).toBeDefined();
     expect(screen.getByText("Upcoming Runs (24h)")).toBeDefined();
   });
 
-  it("renders alert cards for critical issues", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
-      isLoading: false,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+  it("renders alert cards for critical issues", () => {
+    setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("Orphaned Executions")).toBeDefined();
     expect(screen.getByText("Failed Executions (24h)")).toBeDefined();
@@ -180,28 +280,37 @@ describe("DiagnosticsContent", () => {
     expect(screen.getByText("Invalid States (Data Corruption)")).toBeDefined();
   });
 
-  it("hides alert cards when counts are zero", async () => {
-    const noIssuesData = {
-      ...executionData,
-      orphaned_running: 0,
-      orphaned_queued: 0,
-      failed_count_24h: 0,
-      stuck_running_24h: 0,
-      invalid_queued_with_start: 0,
-      invalid_running_without_start: 0,
-    };
-    const noOrphanSchedules = {
-      ...scheduleData,
-      total_orphaned: 0,
-    };
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData: noIssuesData,
-      agentData,
-      scheduleData: noOrphanSchedules,
+  it("hides alert cards when counts are zero", () => {
+    mockExecQuery.mockReturnValue({
+      data: {
+        data: {
+          ...executionData,
+          orphaned_running: 0,
+          orphaned_queued: 0,
+          failed_count_24h: 0,
+          stuck_running_24h: 0,
+          invalid_queued_with_start: 0,
+          invalid_running_without_start: 0,
+        },
+      },
       isLoading: false,
       isError: false,
-      error: undefined,
-      refresh: vi.fn(),
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockAgentQuery.mockReturnValue({
+      data: { data: agentData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: { data: { ...scheduleData, total_orphaned: 0 } },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
     });
     render(<DiagnosticsContent />);
     expect(screen.queryByText("Orphaned Executions")).toBeNull();
@@ -211,68 +320,128 @@ describe("DiagnosticsContent", () => {
     expect(screen.queryByText("Invalid States (Data Corruption)")).toBeNull();
   });
 
-  it("renders diagnostic information section", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
-      isLoading: false,
-      isError: false,
-      error: undefined,
-      refresh: vi.fn(),
-    });
+  it("renders diagnostic information section", () => {
+    setupLoadedMocks();
     render(<DiagnosticsContent />);
     expect(screen.getByText("Diagnostic Information")).toBeDefined();
     expect(screen.getByText("Throughput Metrics:")).toBeDefined();
     expect(screen.getByText("Queue Health:")).toBeDefined();
   });
 
-  it("renders tables", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData,
-      agentData,
-      scheduleData,
+  it("shows no data message when execution data is null", () => {
+    mockExecQuery.mockReturnValue({
+      data: undefined,
       isLoading: false,
       isError: false,
-      error: undefined,
-      refresh: vi.fn(),
+      error: null,
+      refetch: vi.fn(),
     });
-    render(<DiagnosticsContent />);
-    expect(screen.getByTestId("executions-table")).toBeDefined();
-    expect(screen.getByTestId("schedules-table")).toBeDefined();
-  });
-
-  it("shows no data message when execution data is null", async () => {
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData: undefined,
-      agentData: undefined,
-      scheduleData: undefined,
+    mockAgentQuery.mockReturnValue({
+      data: undefined,
       isLoading: false,
       isError: false,
-      error: undefined,
-      refresh: vi.fn(),
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
     });
     render(<DiagnosticsContent />);
     const noDataMessages = screen.getAllByText("No data available");
     expect(noDataMessages.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows RabbitMQ error state when depth is -1", async () => {
-    const errorData = {
-      ...executionData,
-      queued_executions_rabbitmq: -1,
-    };
-    mockUseDiagnosticsContent.mockReturnValue({
-      executionData: errorData,
-      agentData,
-      scheduleData,
+  it("shows RabbitMQ error state when depth is -1", () => {
+    mockExecQuery.mockReturnValue({
+      data: {
+        data: { ...executionData, queued_executions_rabbitmq: -1 },
+      },
       isLoading: false,
       isError: false,
-      error: undefined,
-      refresh: vi.fn(),
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockAgentQuery.mockReturnValue({
+      data: { data: agentData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: { data: scheduleData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
     });
     render(<DiagnosticsContent />);
     const errorTexts = screen.getAllByText("Error");
     expect(errorTexts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders completed 24h and 1h values", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText("1200")).toBeDefined();
+    expect(screen.getByText("50 in last hour")).toBeDefined();
+  });
+
+  it("renders schedule metric values", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText("12")).toBeDefined();
+    expect(screen.getByText("48")).toBeDefined();
+  });
+
+  it("renders oldest running hours in alert card", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText(/oldest:.*26h/)).toBeDefined();
+  });
+
+  it("renders cancel queue depth error when -1", () => {
+    mockExecQuery.mockReturnValue({
+      data: {
+        data: { ...executionData, cancel_queue_depth: -1 },
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockAgentQuery.mockReturnValue({
+      data: { data: agentData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockScheduleQuery.mockReturnValue({
+      data: { data: scheduleData },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<DiagnosticsContent />);
+    const errorTexts = screen.getAllByText("Error");
+    expect(errorTexts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders stuck queued count in queue status card", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText(/2 stuck/)).toBeDefined();
+  });
+
+  it("renders schedule orphaned count in card", () => {
+    setupLoadedMocks();
+    render(<DiagnosticsContent />);
+    expect(screen.getByText(/3 orphaned/)).toBeDefined();
   });
 });
