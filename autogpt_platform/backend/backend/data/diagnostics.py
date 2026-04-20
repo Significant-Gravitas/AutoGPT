@@ -1140,8 +1140,16 @@ async def cleanup_orphaned_executions_bulk(
     )
 
     # Update all executions in DB directly (no cancel signals)
+    # Only update executions still in RUNNING/QUEUED status to avoid
+    # overwriting a legitimately COMPLETED execution (TOCTOU guard)
     result = await AgentGraphExecution.prisma().update_many(
-        where={"id": {"in": execution_ids}, "isDeleted": False},
+        where={
+            "id": {"in": execution_ids},
+            "isDeleted": False,
+            "executionStatus": {
+                "in": [AgentExecutionStatus.RUNNING, AgentExecutionStatus.QUEUED]
+            },
+        },
         data={
             "executionStatus": AgentExecutionStatus.FAILED,
             "updatedAt": datetime.now(timezone.utc),
