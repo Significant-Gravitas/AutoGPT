@@ -178,6 +178,40 @@ export function getTurnMessages(
   return messages.slice(start, end);
 }
 
+const SUB_SESSION_POLLING_TOOL_TYPES = new Set([
+  "tool-run_sub_session",
+  "tool-get_sub_session_result",
+]);
+
+/**
+ * True when the last part of the given assistant message is a completed
+ * `run_sub_session` / `get_sub_session_result` whose output reports the sub
+ * is still running — i.e. we're between polls. Lets the UI show a positive
+ * "still running" indicator instead of the generic cycling "Thinking…".
+ */
+export function isSubSessionStillPolling(
+  message: UIMessage<unknown, UIDataTypes, UITools> | undefined,
+): boolean {
+  if (!message || message.role !== "assistant") return false;
+  const lastPart = message.parts[message.parts.length - 1];
+  if (!lastPart || !SUB_SESSION_POLLING_TOOL_TYPES.has(lastPart.type))
+    return false;
+  if (!("state" in lastPart) || lastPart.state !== "output-available")
+    return false;
+  const rawOutput = (lastPart as ToolUIPart).output;
+  if (!rawOutput) return false;
+  let output: unknown = rawOutput;
+  if (typeof rawOutput === "string") {
+    try {
+      output = JSON.parse(rawOutput);
+    } catch {
+      return false;
+    }
+  }
+  if (!output || typeof output !== "object") return false;
+  return (output as Record<string, unknown>).status === "running";
+}
+
 // Special message prefixes for text-based markers (set by backend).
 // The hex suffix makes it virtually impossible for an LLM to accidentally
 // produce these strings in normal conversation.
