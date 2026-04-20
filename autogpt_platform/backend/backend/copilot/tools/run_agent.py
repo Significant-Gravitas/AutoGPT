@@ -152,8 +152,22 @@ class RunAgentTool(BaseTool):
                 "wait_for_result": {
                     "type": "integer",
                     "description": (
-                        "Max seconds to wait for completion "
-                        f"(0-{MAX_TOOL_WAIT_SECONDS})."
+                        "Dispatch mode (seconds). "
+                        "0 = fire-and-forget: the tool returns an "
+                        "ExecutionStartedResponse with the new execution_id "
+                        "immediately (status QUEUED) and the turn ends — "
+                        "use this when the caller/UI will follow the run "
+                        "itself, or for long real runs where blocking the "
+                        "chat is bad UX. "
+                        f">0 (up to {MAX_TOOL_WAIT_SECONDS}) = block up to N "
+                        "seconds for terminal state: on success returns "
+                        "AgentOutputResponse with the final execution "
+                        "status, outputs, and (for dry_run=True) the full "
+                        "node_executions trace so you can inspect per-node "
+                        "status without a follow-up view_agent_output call; "
+                        "on timeout falls back to ExecutionStartedResponse. "
+                        "Recommended: 120 for dry-run verification, 0 for "
+                        "real runs the user is actively watching."
                     ),
                     "minimum": 0,
                     "maximum": MAX_TOOL_WAIT_SECONDS,
