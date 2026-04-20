@@ -29,6 +29,36 @@ interface UseBuilderChatPanelArgs {
 
 type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
 
+/**
+ * Normalize a tool part's `output` to a plain object.
+ *
+ * On the live AI-SDK stream the backend encodes tool outputs as JSON strings
+ * (see `stash_pending_tool_output` on the backend — dicts get `json.dumps`d
+ * before being sent). On hydration from DB the session-converter already
+ * parsed that string back to an object. So this effect may see either shape,
+ * and we need a tolerant reader. Returns null if the value doesn't
+ * resemble a structured response (e.g. still a primitive partial chunk).
+ */
+function parseToolOutput(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) return null;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Mid-stream partial JSON — swallow and wait for the completion event.
+    }
+  }
+  return null;
+}
+
 export function useBuilderChatPanel({
   panelRef,
 }: UseBuilderChatPanelArgs = {}) {
@@ -219,19 +249,16 @@ export function useBuilderChatPanel({
   //
   // Tool parts use the AI SDK static-typed convention `tool-<name>` (NOT
   // `dynamic-tool` with a `toolName` field). Matching on part.type directly.
+  //
+  // IMPORTANT: on the live stream the backend emits `output` as a JSON
+  // STRING (see backend copilot SDK response_adapter — tool outputs are
+  // stashed as strings). After hydration from DB, `convertChatSessionToUi`
+  // parses that string to an object. So this effect must handle BOTH shapes
+  // to work on live-streamed *and* hydrated sessions.
   useEffect(() => {
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
-        if (typeof part.type === "string" && part.type.startsWith("tool-")) {
-          // eslint-disable-next-line no-console
-          console.debug(
-            "[BuilderChatPanel] tool-part",
-            part.type,
-            (part as { state?: string }).state,
-            (part as { toolCallId?: string }).toolCallId,
-          );
-        }
         if (part.type !== "tool-edit_agent" && part.type !== "tool-run_agent") {
           continue;
         }
@@ -243,9 +270,14 @@ export function useBuilderChatPanel({
         };
         if (toolPart.state !== "output-available") continue;
         if (processedToolCallsRef.current.has(toolPart.toolCallId)) continue;
+
+        const output = parseToolOutput(toolPart.output);
+        // Only mark as processed once we successfully extract a usable
+        // object — otherwise a mid-stream partial string would lock us out
+        // of the real output that arrives milliseconds later.
+        if (!output) continue;
         processedToolCallsRef.current.add(toolPart.toolCallId);
 
-        const output = toolPart.output as Record<string, unknown> | null;
         if (part.type === "tool-edit_agent") {
           // Record the version we were on before this edit so the user can
           // roll back to it. If the tool returned the new graph_version,
@@ -255,9 +287,7 @@ export function useBuilderChatPanel({
           if (latestVersionBeforeEditRef.current != null) {
             setRevertTargetVersion(latestVersionBeforeEditRef.current);
           }
-          // eslint-disable-next-line no-console
-          console.debug("[BuilderChatPanel] edit_agent output", output);
-          const newVersion = output?.graph_version;
+          const newVersion = output.graph_version;
           if (typeof newVersion === "number" && Number.isFinite(newVersion)) {
             setQueryStates({ flowVersion: newVersion });
           }
@@ -272,8 +302,8 @@ export function useBuilderChatPanel({
           // (async enqueue → execution_id on output directly) or
           // AgentOutputResponse for a sync wait_for_result path
           // (execution_id nested under output.execution).
-          const direct = output?.execution_id;
-          const nested = (output?.execution as Record<string, unknown> | null)
+          const direct = output.execution_id;
+          const nested = (output.execution as Record<string, unknown> | null)
             ?.execution_id;
           const execId = typeof direct === "string" ? direct : nested;
           if (typeof execId === "string" && /^[\w-]+$/i.test(execId)) {

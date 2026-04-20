@@ -326,8 +326,7 @@ describe("useBuilderChatPanel", () => {
         role: "assistant",
         parts: [
           {
-            type: "dynamic-tool",
-            toolName: "edit_agent",
+            type: "tool-edit_agent",
             toolCallId: "tc-edit-1",
             state: "output-available",
             output: { agent_id: "graph-X" },
@@ -357,8 +356,7 @@ describe("useBuilderChatPanel", () => {
         role: "assistant",
         parts: [
           {
-            type: "dynamic-tool",
-            toolName: "run_agent",
+            type: "tool-run_agent",
             toolCallId: "tc-run-1",
             state: "output-available",
             output: { execution_id: "exec-abc-123" },
@@ -383,14 +381,87 @@ describe("useBuilderChatPanel", () => {
     });
   });
 
+  // Live-stream tool outputs arrive as JSON STRINGS (the backend stashes
+  // tool output via json.dumps). Hydrated-from-DB tool outputs arrive as
+  // already-parsed objects. The effect must handle both shapes.
+  it("writes flowVersion when edit_agent output is a JSON string (live stream)", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-live", version: 3 },
+      refetch: mockRefetchGraph,
+    });
+    const messagesWithEdit = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-edit_agent",
+            toolCallId: "tc-edit-live-1",
+            state: "output-available",
+            output: JSON.stringify({
+              type: "agent_builder_saved",
+              agent_id: "graph-live",
+              graph_version: 4,
+            }),
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-live", flowExecutionID: null, flowVersion: 3 },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({ flowVersion: 4 });
+    });
+  });
+
+  it("writes flowExecutionID when run_agent output is a JSON string (live stream)", async () => {
+    const messagesWithRun = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_agent",
+            toolCallId: "tc-run-live-1",
+            state: "output-available",
+            output: JSON.stringify({
+              type: "agent_output",
+              execution_id: "exec-live-xyz",
+            }),
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithRun,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-live", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowExecutionID: "exec-live-xyz",
+      });
+    });
+  });
+
   it("ignores tool outputs that are not output-available or not assistant-role", async () => {
     const messages = [
       {
         role: "user",
         parts: [
           {
-            type: "dynamic-tool",
-            toolName: "edit_agent",
+            type: "tool-edit_agent",
             toolCallId: "tc-bad-1",
             state: "output-available",
             output: { agent_id: "g" },
@@ -401,8 +472,7 @@ describe("useBuilderChatPanel", () => {
         role: "assistant",
         parts: [
           {
-            type: "dynamic-tool",
-            toolName: "run_agent",
+            type: "tool-run_agent",
             toolCallId: "tc-bad-2",
             state: "partial",
             output: { execution_id: "exec-incomplete" },
@@ -589,8 +659,7 @@ describe("useBuilderChatPanel", () => {
         role: "assistant",
         parts: [
           {
-            type: "dynamic-tool",
-            toolName: "edit_agent",
+            type: "tool-edit_agent",
             toolCallId: "tc-edit-fail",
             state: "output-available",
             output: { agent_id: "graph-revfail" },
@@ -633,8 +702,7 @@ describe("useBuilderChatPanel", () => {
         role: "assistant",
         parts: [
           {
-            type: "dynamic-tool",
-            toolName: "edit_agent",
+            type: "tool-edit_agent",
             toolCallId: "tc-edit-r",
             state: "output-available",
             output: { agent_id: "graph-R" },
