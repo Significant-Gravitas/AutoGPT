@@ -960,18 +960,6 @@ async def stream_chat_post(
                 }
             },
         )
-        # Builder sessions always run in fast mode: extended-thinking
-        # churns on a panel that only offers edit_agent + run_agent, and
-        # the user's explicit requirement is fast mode by default.  We
-        # override the request and set ``force_mode=True`` so
-        # ``resolve_effective_mode`` cannot strip it for users who are
-        # not on the chat-mode-option flag.
-        is_builder_session = (
-            session is not None and session.metadata.builder_graph_id is not None
-        )
-        effective_mode: CopilotMode | None = (
-            "fast" if is_builder_session else request.mode
-        )
         await enqueue_copilot_turn(
             session_id=session_id,
             user_id=user_id,
@@ -980,10 +968,9 @@ async def stream_chat_post(
             is_user_message=request.is_user_message,
             context=request.context,
             file_ids=sanitized_file_ids,
-            mode=effective_mode,
+            mode=request.mode,
             model=request.model,
             permissions=builder_permissions,
-            force_mode=is_builder_session,
             request_arrival_at=request_arrival_at,
         )
     else:
