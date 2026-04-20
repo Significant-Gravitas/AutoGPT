@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ArtifactDragHandle } from "./ArtifactDragHandle";
 
@@ -30,21 +30,22 @@ function renderHandle(onWidthChange = vi.fn(), panelWidth = 600) {
   return { handle, onWidthChange, ...utils };
 }
 
-// jsdom/happy-dom don't implement pointer capture by default — stub them so
-// the component can still exercise the capture calls.
+// jsdom/happy-dom don't implement pointer capture by default — spy on the
+// prototype so vi.restoreAllMocks() can clean the stubs up automatically.
+// Seed no-op base implementations first so vi.spyOn has something to spy on.
 function installPointerCaptureStub() {
-  const setPointerCapture = vi.fn();
-  const releasePointerCapture = vi.fn();
-  (
-    HTMLElement.prototype as unknown as {
-      setPointerCapture: typeof setPointerCapture;
-    }
-  ).setPointerCapture = setPointerCapture;
-  (
-    HTMLElement.prototype as unknown as {
-      releasePointerCapture: typeof releasePointerCapture;
-    }
-  ).releasePointerCapture = releasePointerCapture;
+  const proto = HTMLElement.prototype as unknown as {
+    setPointerCapture?: (id: number) => void;
+    releasePointerCapture?: (id: number) => void;
+  };
+  if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
+  if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
+  const setPointerCapture = vi
+    .spyOn(HTMLElement.prototype, "setPointerCapture")
+    .mockImplementation(() => {});
+  const releasePointerCapture = vi
+    .spyOn(HTMLElement.prototype, "releasePointerCapture")
+    .mockImplementation(() => {});
   return { setPointerCapture, releasePointerCapture };
 }
 
@@ -61,6 +62,7 @@ describe("ArtifactDragHandle", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
   });
 
