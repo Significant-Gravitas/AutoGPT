@@ -323,6 +323,44 @@ describe("SchedulesTable", () => {
     });
   });
 
+  it("shows dialog description text about permanent removal", async () => {
+    setupDefaultMocks();
+    const schedules = [{ ...sampleSchedule, schedule_id: "sched-desc-1" }];
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Delete Selected/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByText(/Delete Selected/));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/permanently remove the schedules/),
+      ).toBeDefined();
+    });
+  });
+
+  it("closes dialog when cancel is clicked", async () => {
+    setupDefaultMocks();
+    const schedules = [{ ...sampleSchedule, schedule_id: "sched-close-1" }];
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 1));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    const checkboxes = document.querySelectorAll('[role="checkbox"]');
+    if (checkboxes[1]) fireEvent.click(checkboxes[1]);
+    await waitFor(() => {
+      expect(screen.getByText(/Delete Selected/)).toBeDefined();
+    });
+    fireEvent.click(screen.getByText(/Delete Selected/));
+    await waitFor(() => {
+      expect(screen.getByText("Cancel")).toBeDefined();
+    });
+    fireEvent.click(screen.getByText("Cancel"));
+    await waitFor(() => {
+      expect(screen.queryByText("Confirm Delete Schedules")).toBeNull();
+    });
+  });
+
   it("handles delete error gracefully", async () => {
     setupDefaultMocks();
     mockCleanupOrphaned.mockRejectedValue(new Error("Delete failed"));
