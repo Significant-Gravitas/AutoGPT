@@ -1,4 +1,9 @@
-import { render, screen, cleanup, fireEvent } from "@/tests/integrations/test-utils";
+import {
+  render,
+  screen,
+  cleanup,
+  fireEvent,
+} from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SchedulesTable } from "../components/SchedulesTable";
 
