@@ -1,4 +1,11 @@
-import { describe, expect, test, vi } from "vitest";
+// Force a non-UTC timezone so the UTC-month boundary logic in
+// `startOfCurrentMonth` can be distinguished from a hypothetical local-month
+// implementation. Node reads TZ on each Date operation on Linux (CI), so this
+// takes effect before any `new Date(...)` below.
+process.env.TZ = "America/Los_Angeles";
+
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { within } from "@testing-library/react";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
@@ -14,6 +21,13 @@ import {
 import { getGetV1ListAllExecutionsMockHandler } from "@/app/api/__generated__/endpoints/graphs/graphs.msw";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import LibraryPage from "../page";
+
+// Defensive teardown: if a test fails before its final `vi.useRealTimers()`,
+// later tests would inherit fake timers. Global `cleanup()` is handled in
+// `src/tests/integrations/vitest.setup.tsx`.
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 vi.mock("@/services/feature-flags/use-get-flag", async () => {
   const actual = await vi.importActual<
@@ -102,6 +116,24 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
         stats: { cost: 75 },
       },
       {
+        // April 1 in UTC, but March 31 22:00 in America/Los_Angeles.
+        // A buggy local-month implementation would exclude this execution
+        // under TZ=America/Los_Angeles; the correct UTC-month logic includes
+        // it. Contributes 500 cents to the expected $8.25 total.
+        id: "utc-vs-local-boundary",
+        user_id: "test-user",
+        graph_id: "g-1",
+        graph_version: 1,
+        inputs: {},
+        credential_inputs: {},
+        nodes_input_masks: {},
+        preset_id: null,
+        status: "COMPLETED",
+        started_at: new Date("2026-04-01T05:00:00.000Z"),
+        ended_at: new Date("2026-04-01T05:02:00.000Z"),
+        stats: { cost: 500 },
+      },
+      {
         id: "previous-month",
         user_id: "test-user",
         graph_id: "g-1",
@@ -122,10 +154,13 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
     const tile = (await screen.findByText("Spent this month")).closest(
       "button",
     );
-    expect(tile).toBeDefined();
-    // 250 + 75 = 325 cents = $3.25. The late-March UTC execution must NOT
-    // contribute (confirms the UTC-vs-local-time boundary fix).
-    expect(await screen.findByText("$3.25")).toBeDefined();
+    if (!tile) {
+      throw new Error("Spent this month tile should render inside a button");
+    }
+    // 250 + 75 + 500 = 825 cents = $8.25. The late-March UTC execution must
+    // NOT contribute, and the April-1-UTC/March-31-local execution MUST
+    // contribute (confirms UTC-month boundary under a non-UTC test zone).
+    expect(within(tile).getByText("$8.25")).toBeDefined();
 
     vi.useRealTimers();
   });
@@ -138,8 +173,13 @@ describe("LibraryPage — AgentBriefingPanel 'Spent this month' tile", () => {
 
     render(<LibraryPage />);
 
-    await screen.findByText("Spent this month");
-    expect(await screen.findByText("$0.00")).toBeDefined();
+    const tile = (await screen.findByText("Spent this month")).closest(
+      "button",
+    );
+    if (!tile) {
+      throw new Error("Spent this month tile should render inside a button");
+    }
+    expect(within(tile).getByText("$0.00")).toBeDefined();
 
     vi.useRealTimers();
   });
