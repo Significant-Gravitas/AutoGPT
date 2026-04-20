@@ -28,9 +28,22 @@ export function BuilderChatPanel({ className }: Props) {
     isBootstrapping,
     revertTargetVersion,
     handleRevert,
+    bindError,
+    bootstrapError,
+    retryBind,
+    retryBootstrap,
   } = useBuilderChatPanel({ panelRef });
 
   const isStreaming = status === "streaming" || status === "submitted";
+  const activeError = bindError ?? bootstrapError ?? null;
+  const activeRetry = bindError
+    ? retryBind
+    : bootstrapError
+      ? retryBootstrap
+      : null;
+  const activeErrorTitle = bindError
+    ? "Could not start the builder chat"
+    : "Could not create a blank agent";
 
   return (
     <div
@@ -55,7 +68,23 @@ export function BuilderChatPanel({ className }: Props) {
             />
 
             <div className="flex h-0 min-h-0 flex-1 flex-col">
-              {isBootstrapping ? (
+              {activeError && activeRetry ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600">
+                  <p className="font-medium text-slate-800">
+                    {activeErrorTitle}
+                  </p>
+                  <p className="text-slate-500">
+                    Something went wrong. Retry to try again.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={activeRetry}
+                    className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : isBootstrapping ? (
                 <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
                   Preparing builder chat…
                 </div>

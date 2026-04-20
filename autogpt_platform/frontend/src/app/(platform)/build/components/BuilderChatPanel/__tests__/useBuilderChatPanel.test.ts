@@ -685,6 +685,103 @@ describe("useBuilderChatPanel", () => {
     expect(setActiveVersion).toHaveBeenCalled();
   });
 
+  it("surfaces bindError and clears isBootstrapping when createBuilderSession fails", async () => {
+    createBuilderSession.mockRejectedValue(new Error("boom"));
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-err", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(result.current.bindError).not.toBeNull();
+    });
+    expect(result.current.isBootstrapping).toBe(false);
+    // Retrying should clear the error and re-invoke the mutation.
+    createBuilderSession.mockResolvedValueOnce({
+      status: 200,
+      data: { id: "sess-retry" },
+    });
+    result.current.retryBind();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-retry");
+    });
+    expect(result.current.bindError).toBeNull();
+  });
+
+  it("surfaces bootstrapError when createNewGraph fails and recovers via retryBootstrap", async () => {
+    createNewGraph.mockRejectedValueOnce(new Error("network"));
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(result.current.bootstrapError).not.toBeNull();
+    });
+    expect(result.current.isBootstrapping).toBe(false);
+    createNewGraph.mockResolvedValueOnce({
+      status: 200,
+      data: { id: "graph-after-retry", version: 1 },
+    });
+    result.current.retryBootstrap();
+    rerender();
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowID: "graph-after-retry",
+        flowVersion: 1,
+      });
+    });
+  });
+
+  it("discards a stale createBuilderSession response when flowID changed mid-request", async () => {
+    // The first call (slow, for graph-A) resolves AFTER the user navigates
+    // to graph-B — its response id must NOT overwrite the session because
+    // the staleness check on currentFlowIDRef should bail out.
+    let resolveA: (v: unknown) => void = () => {};
+    const slowResponseA = new Promise((resolve) => {
+      resolveA = resolve;
+    });
+    createBuilderSession.mockImplementationOnce(() => slowResponseA);
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-A", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { graph_id: "graph-A" },
+      });
+    });
+    // Navigate to graph-B — reset effect clears sessionId + boundGraphRef.
+    // The currentFlowIDRef is updated synchronously in an effect so the
+    // pending graph-A IIFE will observe graph-B on its staleness check.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-B", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    rerender();
+    // NOW the stale graph-A response resolves — must be discarded because
+    // currentFlowIDRef.current !== "graph-A".
+    resolveA({ status: 200, data: { id: "sess-A-STALE" } });
+    // Flush the post-await microtasks.
+    await Promise.resolve();
+    await Promise.resolve();
+    // Stale response discarded: no sessionId set from it.
+    expect(result.current.sessionId).not.toBe("sess-A-STALE");
+  });
+
   it("reverts to the captured version and invalidates graph queries on handleRevert success", async () => {
     mockUseGetV1GetSpecificGraph.mockReturnValue({
       data: { id: "graph-R", version: 7 },

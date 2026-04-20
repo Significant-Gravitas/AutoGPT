@@ -67,6 +67,14 @@ export function useBuilderChatPanel({
   const [revertTargetVersion, setRevertTargetVersion] = useState<number | null>(
     null,
   );
+  // Retry tokens: bumping forces the bind / bootstrap effect to re-run after
+  // a failure so the panel can recover without a close+reopen round-trip.
+  const [bindRetryToken, setBindRetryToken] = useState(0);
+  const [bootstrapRetryToken, setBootstrapRetryToken] = useState(0);
+  // Non-null when the corresponding async op failed; drives the retry UI
+  // surfaced by the panel.  Cleared on each retry attempt and on success.
+  const [bindError, setBindError] = useState<string | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowExecutionID: parseAsString,
@@ -86,7 +94,7 @@ export function useBuilderChatPanel({
     },
   );
 
-  const { mutateAsync: createBuilderSession, isPending: isCreatingSession } =
+  const { mutateAsync: createBuilderSession } =
     usePostV2GetOrCreateBuilderSessionEndpoint();
   const { mutateAsync: createNewGraph, isPending: isBootstrappingGraph } =
     usePostV1CreateNewGraph();
@@ -135,46 +143,28 @@ export function useBuilderChatPanel({
     setMessages,
   });
 
-  // Bind the panel session to (flowID -> graph_id).  Navigating to a
-  // different graph or clearing flowID drops the current session so the
-  // next panel open starts clean with the right graph.
-  const boundGraphRef = useRef<string | null>(null);
+  // Track the currently-selected graph so the async bind effect can
+  // discard stale responses.  Updated synchronously every render so the
+  // IIFE sees the freshest value after `await`.
+  const currentFlowIDRef = useRef<string | null>(flowID ?? null);
   useEffect(() => {
-    if (!isOpen) return;
-    if (!flowID) return;
-    if (boundGraphRef.current === flowID && sessionId) return;
-    boundGraphRef.current = flowID;
+    currentFlowIDRef.current = flowID ?? null;
+  }, [flowID]);
 
-    void (async () => {
-      try {
-        const response = (await createBuilderSession({
-          data: { graph_id: flowID },
-        })) as unknown as {
-          status: number;
-          data?: { id?: string };
-        };
-        if (response.status !== 200 || !response.data?.id) {
-          throw new Error("failed_to_bind_builder_session");
-        }
-        setSessionId(response.data.id);
-      } catch (err) {
-        Sentry.captureException(err);
-        toast({
-          variant: "destructive",
-          title: "Could not start the builder chat",
-          description: "Please try closing and reopening the chat panel.",
-        });
-      }
-    })();
-  }, [isOpen, flowID, sessionId, createBuilderSession, toast]);
+  const boundGraphRef = useRef<string | null>(null);
 
-  // Reset session + revert target when the graph changes (different agent).
+  // Reset on graph change MUST run before the bind effect so that navigating
+  // between agents first clears the old session/messages (same render cycle)
+  // and only then the bind effect tries to create a new session.  Reverse
+  // ordering leaks the previous graph's session id + messages into the new
+  // graph for one paint.
   useEffect(() => {
     if (!flowID) {
       setSessionId(null);
       setRevertTargetVersion(null);
       setMessages([]);
       boundGraphRef.current = null;
+      setBindError(null);
       return;
     }
     if (boundGraphRef.current && boundGraphRef.current !== flowID) {
@@ -182,15 +172,78 @@ export function useBuilderChatPanel({
       setRevertTargetVersion(null);
       setMessages([]);
       boundGraphRef.current = null;
+      setBindError(null);
     }
   }, [flowID, setMessages]);
 
+  // Bind the panel session to (flowID -> graph_id).  Navigating to a
+  // different graph or clearing flowID drops the current session (above) so
+  // the next panel open starts clean with the right graph.  Guards against:
+  //   1) concurrent re-entry while an in-flight bind is pending
+  //      (`bindingRef`) — rapid open/close toggles would otherwise fire
+  //      multiple POST /sessions/builder calls for the same graph.
+  //   2) stale async responses after the user switches graphs
+  //      (`currentFlowIDRef`) — an older graph's response must NOT
+  //      overwrite a newer graph's sessionId.
+  const bindingRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!flowID) return;
+    if (boundGraphRef.current === flowID && sessionId) return;
+    if (bindingRef.current) return;
+    const effectFlowID = flowID;
+    boundGraphRef.current = effectFlowID;
+    bindingRef.current = true;
+    setBindError(null);
+
+    void (async () => {
+      try {
+        const response = (await createBuilderSession({
+          data: { graph_id: effectFlowID },
+        })) as unknown as {
+          status: number;
+          data?: { id?: string };
+        };
+        // The user may have navigated to a different graph while we were
+        // awaiting the response — in that case, discard this one.  The
+        // reset effect above will have already cleared boundGraphRef; the
+        // next render fires a fresh bind for the new flowID.
+        if (currentFlowIDRef.current !== effectFlowID) {
+          return;
+        }
+        if (response.status !== 200 || !response.data?.id) {
+          throw new Error("failed_to_bind_builder_session");
+        }
+        setSessionId(response.data.id);
+      } catch (err) {
+        if (currentFlowIDRef.current !== effectFlowID) return;
+        Sentry.captureException(err);
+        setBindError("failed_to_bind_builder_session");
+        // Clear the bound marker so the panel can re-trigger on retry.
+        boundGraphRef.current = null;
+        toast({
+          variant: "destructive",
+          title: "Could not start the builder chat",
+          description: "Please retry or close and reopen the chat panel.",
+        });
+      } finally {
+        bindingRef.current = false;
+      }
+    })();
+    // `bindRetryToken` is intentionally in the dep array so retrying bumps
+    // the token and forces this effect to re-run even when flowID+sessionId
+    // haven't changed.
+  }, [isOpen, flowID, sessionId, bindRetryToken, createBuilderSession, toast]);
+
   // Auto-create a blank agent when the panel is opened without one.
-  // The saved graph's id becomes the builder session's binding.
+  // The saved graph's id becomes the builder session's binding.  On
+  // failure we surface a retry button (see `bootstrapError` in the
+  // return value) so the user can recover without closing the panel.
   const isBootstrappingRef = useRef(false);
   useEffect(() => {
     if (!isOpen || flowID || isBootstrappingRef.current) return;
     isBootstrappingRef.current = true;
+    setBootstrapError(null);
     void (async () => {
       try {
         const response = (await createNewGraph({
@@ -216,6 +269,7 @@ export function useBuilderChatPanel({
         });
       } catch (err) {
         Sentry.captureException(err);
+        setBootstrapError("failed_to_bootstrap_agent");
         toast({
           variant: "destructive",
           title: "Could not create a blank agent",
@@ -225,7 +279,14 @@ export function useBuilderChatPanel({
         isBootstrappingRef.current = false;
       }
     })();
-  }, [isOpen, flowID, createNewGraph, setQueryStates, toast]);
+  }, [
+    isOpen,
+    flowID,
+    bootstrapRetryToken,
+    createNewGraph,
+    setQueryStates,
+    toast,
+  ]);
 
   // Inline tool-integration: run_agent exec_id -> URL; edit_agent -> graph refetch + record revert point.
   const processedToolCallsRef = useRef(new Set<string>());
@@ -256,6 +317,19 @@ export function useBuilderChatPanel({
   // parses that string to an object. So this effect must handle BOTH shapes
   // to work on live-streamed *and* hydrated sessions.
   useEffect(() => {
+    // Cross-graph guard: if the session is currently bound to graph A but
+    // the URL has already flipped to graph B, the `messages` in hand still
+    // belong to graph A's stream (the reset effect hasn't flushed yet).
+    // Process them against the new `flowID` and we'd corrupt the URL by
+    // writing flowVersion / flowExecutionID from the previous graph's
+    // tool calls.  Skip until the reset effect clears the session and the
+    // new bind repopulates messages for the new graph.
+    // `boundGraphRef.current === null` is the initial "no session yet" state
+    // and must not be blocked — tool calls on hydrated messages (for tests
+    // and for pre-open-panel reads) should still be processed.
+    if (boundGraphRef.current !== null && boundGraphRef.current !== flowID) {
+      return;
+    }
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
@@ -284,11 +358,19 @@ export function useBuilderChatPanel({
           // switch the URL to that version so the builder canvas re-renders
           // the edited graph — otherwise the URL stays pinned to the old
           // version and refetchGraph returns the same data.
-          if (latestVersionBeforeEditRef.current != null) {
-            setRevertTargetVersion(latestVersionBeforeEditRef.current);
+          //
+          // Snapshot the pre-edit version synchronously and advance the ref
+          // to the new version (if the tool returned one) so that a second
+          // rapid edit captures the correct revert target — not the
+          // pre-first-edit version which the async refetchGraph hasn't
+          // updated yet.
+          const preEditVersion = latestVersionBeforeEditRef.current;
+          if (preEditVersion != null) {
+            setRevertTargetVersion(preEditVersion);
           }
           const newVersion = output.graph_version;
           if (typeof newVersion === "number" && Number.isFinite(newVersion)) {
+            latestVersionBeforeEditRef.current = newVersion;
             setQueryStates({ flowVersion: newVersion });
           }
           void refetchGraph();
@@ -403,10 +485,26 @@ export function useBuilderChatPanel({
     sendMessage({ text: trimmed });
   }
 
+  // While an error is active the panel surfaces a retry button instead of
+  // the loading spinner — so the computed bootstrapping flag must read
+  // false in that case.  Without this, a bind / create-graph failure would
+  // still render "Preparing builder chat…" forever.
   const isBootstrapping =
-    isBootstrappingGraph ||
-    (!flowID && isOpen) ||
-    (isOpen && !!flowID && !sessionId);
+    !bindError &&
+    !bootstrapError &&
+    (isBootstrappingGraph ||
+      (!flowID && isOpen) ||
+      (isOpen && !!flowID && !sessionId));
+
+  function retryBind() {
+    setBindError(null);
+    setBindRetryToken((t) => t + 1);
+  }
+
+  function retryBootstrap() {
+    setBootstrapError(null);
+    setBootstrapRetryToken((t) => t + 1);
+  }
 
   // The builder panel already auto-refetches the graph on edit_agent and
   // auto-opens the execution panel on run_agent (see effects above), so the
@@ -436,9 +534,12 @@ export function useBuilderChatPanel({
     stop,
     onSend,
     queuedMessages,
-    isCreatingSession,
     isBootstrapping,
     revertTargetVersion,
     handleRevert,
+    bindError,
+    bootstrapError,
+    retryBind,
+    retryBootstrap,
   };
 }

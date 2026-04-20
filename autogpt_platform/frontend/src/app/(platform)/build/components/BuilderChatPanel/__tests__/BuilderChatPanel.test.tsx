@@ -31,10 +31,13 @@ function makeMockHook(
     stop: vi.fn(),
     onSend: vi.fn(),
     queuedMessages: [],
-    isCreatingSession: false,
     isBootstrapping: false,
     revertTargetVersion: null,
     handleRevert: vi.fn(),
+    bindError: null,
+    bootstrapError: null,
+    retryBind: vi.fn(),
+    retryBootstrap: vi.fn(),
     ...overrides,
   } as ReturnType<typeof useBuilderChatPanel>;
 }
@@ -99,5 +102,40 @@ describe("BuilderChatPanel", () => {
     );
     render(<BuilderChatPanel />);
     expect(screen.queryByRole("button", { name: /Revert/i })).toBeNull();
+  });
+
+  it("shows a Retry button and bind error title when bindError is set", () => {
+    const retryBind = vi.fn();
+    mockUseBuilderChatPanel.mockReturnValue(
+      makeMockHook({
+        isOpen: true,
+        isBootstrapping: false,
+        bindError: "failed_to_bind_builder_session",
+        retryBind,
+      }),
+    );
+    render(<BuilderChatPanel />);
+    expect(screen.getByText(/Could not start the builder chat/i)).toBeDefined();
+    const retry = screen.getByRole("button", { name: /Retry/i });
+    fireEvent.click(retry);
+    expect(retryBind).toHaveBeenCalledOnce();
+    expect(screen.queryByText(/Preparing builder chat/i)).toBeNull();
+  });
+
+  it("shows a Retry button and bootstrap error title when bootstrapError is set", () => {
+    const retryBootstrap = vi.fn();
+    mockUseBuilderChatPanel.mockReturnValue(
+      makeMockHook({
+        isOpen: true,
+        isBootstrapping: false,
+        bootstrapError: "failed_to_bootstrap_agent",
+        retryBootstrap,
+      }),
+    );
+    render(<BuilderChatPanel />);
+    expect(screen.getByText(/Could not create a blank agent/i)).toBeDefined();
+    const retry = screen.getByRole("button", { name: /Retry/i });
+    fireEvent.click(retry);
+    expect(retryBootstrap).toHaveBeenCalledOnce();
   });
 });
