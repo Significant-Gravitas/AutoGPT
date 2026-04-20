@@ -18,7 +18,11 @@ import signal
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = 30
-_MAX_TIMEOUT = 120
+# Sanity ceiling for the bubblewrap fallback path. Aligned with the MCP
+# per-tool call budget so long-running jobs aren't clipped at an arbitrary
+# low value. The E2B path (used in prod) has no server-side clamp — it
+# honours whatever timeout the model requests.
+_MAX_TIMEOUT = 600
 
 
 # ---------------------------------------------------------------------------
