@@ -376,10 +376,13 @@ def _make_mock_diagnostics(**overrides) -> ExecutionDiagnosticsSummary:
     return ExecutionDiagnosticsSummary(**defaults)
 
 
+_SENTINEL = object()
+
+
 def _make_mock_execution(
     exec_id: str = "exec-1",
     status: str = "RUNNING",
-    started_at: datetime | None = None,
+    started_at: datetime | None | object = _SENTINEL,
 ) -> RunningExecutionDetail:
     return RunningExecutionDetail(
         execution_id=exec_id,
@@ -390,7 +393,9 @@ def _make_mock_execution(
         user_email="test@example.com",
         status=status,
         created_at=datetime.now(timezone.utc),
-        started_at=started_at or datetime.now(timezone.utc),
+        started_at=(
+            datetime.now(timezone.utc) if started_at is _SENTINEL else started_at
+        ),
         queue_status=None,
     )
 

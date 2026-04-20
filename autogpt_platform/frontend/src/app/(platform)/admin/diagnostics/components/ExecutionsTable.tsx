@@ -948,6 +948,15 @@ export function ExecutionsTable({
             <DialogDescription>
               {stopMode === "requeue" ? (
                 <>
+                  {stopTarget === "single" && (
+                    <>Are you sure you want to requeue this stuck execution?</>
+                  )}
+                  {stopTarget === "selected" && (
+                    <>
+                      Are you sure you want to requeue {selectedIds.size}{" "}
+                      selected execution(s)?
+                    </>
+                  )}
                   {stopTarget === "all" && (
                     <>
                       Are you sure you want to requeue ALL {total} stuck
