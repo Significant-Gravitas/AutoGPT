@@ -151,4 +151,35 @@ describe("customMutator — Sentry trace propagation", () => {
 
     expect(mockGetTraceData).not.toHaveBeenCalled();
   });
+
+  it("skips non-string values returned by Sentry.getTraceData", async () => {
+    // Simulate a non-string slipping into the trace-data object
+    mockGetTraceData.mockReturnValue({
+      "sentry-trace": "real-trace",
+      "sentry-sampled": 1,
+    } as unknown as ReturnType<typeof Sentry.getTraceData>);
+
+    await customMutator("/test", { method: "GET" });
+
+    const fetchCall = vi.mocked(fetch).mock.calls[0];
+    const headers = fetchCall[1]?.headers as Record<string, string>;
+    expect(headers["sentry-trace"]).toBe("real-trace");
+    expect(headers["sentry-sampled"]).toBeUndefined();
+  });
+
+  it("falls back to an empty object when Sentry.getTraceData is undefined", async () => {
+    // Simulate an older @sentry/nextjs build where getTraceData isn't exported
+    (Sentry as { getTraceData?: unknown }).getTraceData =
+      undefined as unknown as typeof Sentry.getTraceData;
+
+    await customMutator("/test", { method: "GET" });
+
+    const fetchCall = vi.mocked(fetch).mock.calls[0];
+    const headers = fetchCall[1]?.headers as Record<string, string>;
+    expect(headers["sentry-trace"]).toBeUndefined();
+    expect(headers["baggage"]).toBeUndefined();
+
+    // Restore for subsequent tests
+    (Sentry as { getTraceData?: unknown }).getTraceData = mockGetTraceData;
+  });
 });
