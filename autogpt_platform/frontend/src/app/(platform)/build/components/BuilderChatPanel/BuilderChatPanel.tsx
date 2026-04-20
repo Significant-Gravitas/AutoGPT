@@ -40,7 +40,7 @@ export function BuilderChatPanel({ className }: Props) {
       )}
     >
       {isOpen && (
-        <CopilotChatActionsProvider onSend={onSend}>
+        <CopilotChatActionsProvider onSend={onSend} chatSurface="builder">
           <div
             ref={panelRef}
             role="complementary"
