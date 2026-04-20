@@ -347,6 +347,31 @@ export function useBuilderChatPanel({
     (!flowID && isOpen) ||
     (isOpen && !!flowID && !sessionId);
 
+  // The builder panel already auto-refetches the graph on edit_agent and
+  // auto-opens the execution panel on run_agent (see effects above), so the
+  // heavy tool-result cards those tools render (with "Open in library",
+  // "Open in builder", "Open run" buttons) are redundant and confusing —
+  // the user is already IN the builder looking at the updated agent / run.
+  // Strip those tool parts from the rendered message list; the raw
+  // `messages` above still drives the side-effects.
+  const BUILDER_HANDLED_TOOLS = new Set([
+    "edit_agent",
+    "run_agent",
+    "create_agent",
+  ]);
+  const visibleMessages = useMemo<UiMessages>(() => {
+    return messages.map((msg) => {
+      if (msg.role !== "assistant" || !msg.parts) return msg;
+      const filteredParts = msg.parts.filter((part) => {
+        if (part.type !== "dynamic-tool") return true;
+        const dyn = part as { type: "dynamic-tool"; toolName?: string };
+        return !(dyn.toolName && BUILDER_HANDLED_TOOLS.has(dyn.toolName));
+      });
+      if (filteredParts.length === msg.parts.length) return msg;
+      return { ...msg, parts: filteredParts };
+    });
+  }, [messages]);
+
   return {
     isOpen,
     handleToggle,
@@ -354,7 +379,7 @@ export function useBuilderChatPanel({
     sessionId,
     flowID: flowID ?? null,
     flowVersion: flowVersion ?? null,
-    messages,
+    messages: visibleMessages,
     status,
     error,
     stop,
