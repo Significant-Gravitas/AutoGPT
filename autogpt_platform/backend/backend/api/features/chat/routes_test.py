@@ -175,7 +175,7 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     _mock_stream_internals(mocker)
     # Patch workspace lookup as imported by the routes module
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
     mock_prisma = mocker.MagicMock()
@@ -227,7 +227,7 @@ def test_file_ids_filters_invalid_uuids(mocker: pytest_mock.MockerFixture):
     and NOT passed to the database query."""
     _mock_stream_internals(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "ws-1"})(),
     )
 
@@ -265,7 +265,7 @@ def test_file_ids_scoped_to_workspace(mocker: pytest_mock.MockerFixture):
     """The batch query should scope to the user's workspace."""
     _mock_stream_internals(mocker)
     mocker.patch(
-        "backend.api.features.chat.routes.get_or_create_workspace",
+        "backend.data.workspace.get_or_create_workspace",
         return_value=type("W", (), {"id": "my-workspace-id"})(),
     )
 
@@ -615,6 +615,246 @@ class TestStreamChatRequestModeValidation:
 
         req = StreamChatRequest(message="hi")
         assert req.mode is None
+
+
+# ─── POST /stream queue-fallback (when a turn is already in flight) ──
+
+
+def _mock_stream_queue_internals(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    session_exists: bool = True,
+    turn_in_flight: bool = True,
+    call_count: int = 1,
+):
+    """Mock dependencies for the POST /stream queue-fallback path.
+
+    When ``turn_in_flight`` is True the handler takes the 202 queue branch.
+    """
+    if session_exists:
+        mock_session = mocker.MagicMock()
+        mock_session.id = "sess-1"
+        mocker.patch(
+            "backend.api.features.chat.routes._validate_and_get_session",
+            new_callable=AsyncMock,
+            return_value=mock_session,
+        )
+    else:
+        mocker.patch(
+            "backend.api.features.chat.routes._validate_and_get_session",
+            side_effect=fastapi.HTTPException(
+                status_code=404, detail="Session not found."
+            ),
+        )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=turn_in_flight,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, None),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.incr_with_ttl",
+        new_callable=AsyncMock,
+        return_value=call_count,
+    )
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.push_pending_message",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+    # queue_user_message re-runs is_turn_in_flight via the helper module —
+    # stub that path out too so we don't need a fake stream_registry.
+    mocker.patch(
+        "backend.copilot.pending_message_helpers.get_active_session_meta",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
+def test_stream_queue_returns_202_when_turn_in_flight(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Happy path: POST /stream to a session with a live turn → 202 queue."""
+    _mock_stream_queue_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "follow-up", "is_user_message": True},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["buffer_length"] == 1
+    assert "turn_in_flight" in data
+
+
+def test_stream_queue_session_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """If the session doesn't exist or belong to the user, returns 404."""
+    _mock_stream_queue_internals(mocker, session_exists=False)
+
+    response = client.post(
+        "/sessions/bad-sess/stream",
+        json={"message": "hi", "is_user_message": True},
+    )
+    assert response.status_code == 404
+
+
+def test_stream_queue_call_frequency_limit_returns_429(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Per-user call-frequency cap rejects rapid-fire queued pushes."""
+    from backend.copilot.pending_message_helpers import PENDING_CALL_LIMIT
+
+    _mock_stream_queue_internals(mocker, call_count=PENDING_CALL_LIMIT + 1)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hi", "is_user_message": True},
+    )
+    assert response.status_code == 429
+    assert "Too many queued message requests this minute" in response.json()["detail"]
+
+
+def test_stream_queue_converts_context_dict_to_pending_context(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """StreamChatRequest.context is a raw dict; must be coerced to the
+    typed PendingMessageContext before being pushed onto the buffer."""
+    _mock_stream_queue_internals(mocker)
+    queue_spy = mocker.patch(
+        "backend.copilot.pending_message_helpers.queue_user_message",
+        new_callable=AsyncMock,
+    )
+    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+
+    queue_spy.return_value = QueuePendingMessageResponse(
+        buffer_length=1, max_buffer_length=10, turn_in_flight=True
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "hi",
+            "is_user_message": True,
+            "context": {"url": "https://example.test", "content": "body"},
+        },
+    )
+
+    assert response.status_code == 202
+    queue_spy.assert_awaited_once()
+    kwargs = queue_spy.await_args.kwargs
+    from backend.copilot.pending_messages import PendingMessageContext
+
+    assert isinstance(kwargs["context"], PendingMessageContext)
+    assert kwargs["context"].url == "https://example.test"
+    assert kwargs["context"].content == "body"
+
+
+def test_stream_queue_passes_none_context_when_omitted(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """When request.context is omitted, the queue call receives context=None."""
+    _mock_stream_queue_internals(mocker)
+    queue_spy = mocker.patch(
+        "backend.copilot.pending_message_helpers.queue_user_message",
+        new_callable=AsyncMock,
+    )
+    from backend.copilot.pending_message_helpers import QueuePendingMessageResponse
+
+    queue_spy.return_value = QueuePendingMessageResponse(
+        buffer_length=1, max_buffer_length=10, turn_in_flight=True
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hi", "is_user_message": True},
+    )
+
+    assert response.status_code == 202
+    queue_spy.assert_awaited_once()
+    assert queue_spy.await_args.kwargs["context"] is None
+
+
+# ─── get_pending_messages (GET /sessions/{session_id}/messages/pending) ─────
+
+
+def test_get_pending_messages_returns_200_with_empty_buffer(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Happy path: no pending messages returns 200 with empty list."""
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages",
+        new_callable=AsyncMock,
+        return_value=[],
+    )
+
+    response = client.get("/sessions/sess-1/messages/pending")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messages"] == []
+    assert data["count"] == 0
+
+
+def test_get_pending_messages_returns_queued_messages(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Returns pending messages from buffer without consuming them."""
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new_callable=AsyncMock,
+        return_value=mocker.MagicMock(),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.peek_pending_messages",
+        new_callable=AsyncMock,
+        return_value=[
+            MagicMock(content="first message"),
+            MagicMock(content="second message"),
+        ],
+    )
+
+    response = client.get("/sessions/sess-1/messages/pending")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 2
+    assert data["messages"] == ["first message", "second message"]
+
+
+def test_get_pending_messages_session_not_found_returns_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """If session does not exist or belongs to another user, returns 404."""
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        side_effect=fastapi.HTTPException(status_code=404, detail="Session not found."),
+    )
+
+    response = client.get("/sessions/bad-sess/messages/pending")
+
+    assert response.status_code == 404
 
 
 class TestStripInjectedContext:

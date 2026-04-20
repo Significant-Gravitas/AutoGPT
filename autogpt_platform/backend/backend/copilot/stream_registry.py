@@ -32,6 +32,7 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
 from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
@@ -42,6 +43,9 @@ from .response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -67,17 +71,6 @@ _listener_sessions: dict[int, tuple[str, asyncio.Task]] = {}
 # Timeout for putting chunks into subscriber queues (seconds)
 # If the queue is full and doesn't drain within this time, send an overflow error
 QUEUE_PUT_TIMEOUT = 5.0
-
-# Lua script for atomic compare-and-swap status update (idempotent completion)
-# Returns 1 if status was updated, 0 if already completed/failed
-COMPLETE_SESSION_SCRIPT = """
-local current = redis.call("HGET", KEYS[1], "status")
-if current == "running" then
-    redis.call("HSET", KEYS[1], "status", ARGV[1])
-    return 1
-end
-return 0
-"""
 
 
 @dataclass
@@ -839,12 +832,14 @@ async def mark_session_completed(
     turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
     # Atomic compare-and-swap: only update if status is "running"
-    result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
+    swapped = await hash_compare_and_set(
+        redis, meta_key, "status", expected="running", new=status
+    )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
     _meta_ttl_refresh_at.pop(session_id, None)
 
-    if result == 0:
+    if not swapped:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
@@ -1070,6 +1065,9 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.TEXT_START.value: StreamTextStart,
         ResponseType.TEXT_DELTA.value: StreamTextDelta,
         ResponseType.TEXT_END.value: StreamTextEnd,
+        ResponseType.REASONING_START.value: StreamReasoningStart,
+        ResponseType.REASONING_DELTA.value: StreamReasoningDelta,
+        ResponseType.REASONING_END.value: StreamReasoningEnd,
         ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
         ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
         ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,

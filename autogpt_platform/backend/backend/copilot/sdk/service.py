@@ -38,6 +38,7 @@ from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.exceptions import NotFoundError
@@ -49,6 +50,7 @@ from ..constants import (
     COPILOT_RETRYABLE_ERROR_PREFIX,
     COPILOT_SYSTEM_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
 from ..context import encode_cwd_for_cli, get_workspace_manager
@@ -60,6 +62,18 @@ from ..model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from ..pending_message_helpers import (
+    combine_pending_with_current,
+    drain_pending_safe,
+    pending_texts_from,
+    persist_pending_as_user_rows,
+    persist_session_safe,
+)
+from ..pending_messages import (
+    PendingMessage,
+    drain_pending_for_persist,
+    push_pending_message,
+)
 from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
 from ..rate_limit import get_user_tier
@@ -69,6 +83,9 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -162,9 +179,13 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 )
 
 # Idle timeout: abort the stream if no meaningful SDK message (only heartbeats)
-# arrives for this many seconds. This catches hung tool calls (e.g. WebSearch
-# hanging on a search provider that never responds).
-_IDLE_TIMEOUT_SECONDS = 10 * 60  # 10 minutes
+# arrives for this many seconds. Derived from MAX_TOOL_WAIT_SECONDS so the
+# invariant "no single tool blocks close to this long" holds by construction —
+# long-running tools use the async "start + poll" pattern (initial tool returns
+# with a handle, polling tool waits in ≤MAX_TOOL_WAIT_SECONDS chunks), so an
+# idle of 2× that genuinely means the SDK itself is stuck.
+_IDLE_TIMEOUT_SECONDS = STREAM_IDLE_TIMEOUT_SECONDS
+
 
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
@@ -335,6 +356,15 @@ class _RetryState:
     # None = model-aware default.  Halved each retry for progressively more
     # aggressive compression (LLM summarize → truncate → middle-out → trim).
     target_tokens: int | None = None
+    # Count of user rows inserted MID-TURN by the follow-up persist path
+    # (``StreamToolOutputAvailable`` handler).  The CLI JSONL does NOT contain
+    # these as separate user entries — they are embedded inside tool_result
+    # text via the MCP wrapper injection, which the CLI may even strip when
+    # the tool output exceeds its internal size cap.  Tracking them separately
+    # lets the upload path subtract from ``message_count`` so the next turn's
+    # ``detect_gap`` picks them up as gap-fill entries instead of assuming the
+    # JSONL already covers them.
+    midturn_user_rows: int = 0
 
 
 @dataclass
@@ -712,7 +742,7 @@ async def _resolve_model_and_multiplier(
     sdk_model = _resolve_sdk_model()
 
     if model == "advanced":
-        sdk_model = _normalize_model_name("anthropic/claude-opus-4-6")
+        sdk_model = _normalize_model_name(config.advanced_model)
         logger.info(
             "[SDK] [%s] Per-request model override: advanced (%s)",
             session_id[:12] if session_id else "?",
@@ -1133,7 +1163,14 @@ async def _compress_messages(
         `compact_transcript` — compresses JSONL transcript entries.
         `CompactionTracker` — emits UI events for mid-stream compaction.
     """
-    messages = filter_compaction_messages(messages)
+    # ``role="reasoning"`` rows are persisted for frontend replay only — they
+    # aren't valid OpenAI roles and ``compress_context`` would either drop or
+    # malform them.  Strip here so every caller is covered (``_build_query_message``
+    # already filters upstream, but ``_seed_transcript`` and any future caller
+    # don't, and centralising the filter avoids per-call-site drift).
+    messages = [
+        m for m in filter_compaction_messages(messages) if m.role != "reasoning"
+    ]
 
     if len(messages) < 2:
         return messages, False
@@ -1289,6 +1326,8 @@ async def _build_query_message(
     use_resume: bool,
     transcript_msg_count: int,
     session_id: str,
+    *,
+    session_msg_ceiling: int | None = None,
     target_tokens: int | None = None,
     prior_messages: "list[ChatMessage] | None" = None,
 ) -> tuple[str, bool]:
@@ -1305,11 +1344,38 @@ async def _build_query_message(
     progressively more aggressive compression when the first attempt exceeds
     context limits.
 
+    Args:
+        session_msg_ceiling: If provided, treat ``session.messages`` as if it
+            only has this many entries when computing the gap slice.  Pass
+            ``len(session.messages)`` captured *before* appending any pending
+            messages so that mid-turn drains do not skew the gap calculation
+            and cause pending messages to be duplicated in both the gap context
+            and ``current_message``.
+
     Returns:
         Tuple of (query_message, was_compacted).
     """
     msg_count = len(session.messages)
-    prior = session.messages[:-1]  # all turns except the current user message
+    # Use the ceiling if supplied (prevents pending-message duplication when
+    # messages were appended to session.messages after the drain but before
+    # this function is called).
+    effective_count = (
+        session_msg_ceiling if session_msg_ceiling is not None else msg_count
+    )
+    # Exclude the current user message and any pending messages appended after
+    # the ceiling snapshot — only history up to effective_count-1 is in scope.
+    # max(0, ...) guards against a theoretical 0-message ceiling (brand-new
+    # session) where -1 would select all-but-last instead of an empty slice.
+    prior = session.messages[: max(0, effective_count - 1)]
+    # ``role="reasoning"`` rows are persisted for frontend replay only and are
+    # never present in the CLI JSONL (extended_thinking is embedded inside
+    # assistant entries).  The watermark — ``transcript_msg_count`` — counts
+    # non-reasoning rows (see _jsonl_covered upload), so we must filter reasoning
+    # out of ``prior`` too; otherwise the ``prior[transcript_msg_count - 1]``
+    # watermark-alignment check trips on a reasoning row (instead of the
+    # expected assistant) and the gap injection is skipped, dropping real
+    # mid-turn user rows from the next LLM query.
+    prior = [m for m in prior if m.role != "reasoning"]
 
     logger.info(
         "[SDK] [%s] Context path: use_resume=%s, transcript_msg_count=%d,"
@@ -1322,7 +1388,7 @@ async def _build_query_message(
     )
 
     if use_resume and transcript_msg_count > 0:
-        if transcript_msg_count < msg_count - 1:
+        if transcript_msg_count < effective_count - 1:
             # Sanity-check the watermark: the last covered position should be
             # an assistant turn.  A user-role message here means the count is
             # misaligned (e.g. a message was deleted and DB positions shifted).
@@ -1373,7 +1439,7 @@ async def _build_query_message(
             )
         return current_message, False
 
-    elif not use_resume and msg_count > 1:
+    elif not use_resume and effective_count > 1:
         # No --resume: the CLI starts a fresh session with no prior context.
         # Injecting only the post-transcript gap would omit the transcript-covered
         # prefix entirely, so always compress the full prior session here.
@@ -1564,6 +1630,12 @@ class _StreamAccumulator:
     thinking_stripper: ThinkingStripper = dataclass_field(
         default_factory=ThinkingStripper,
     )
+    # Currently-open reasoning block for this turn.  Each StreamReasoningStart
+    # creates a new ChatMessage(role="reasoning"), each delta appends to its
+    # content, and StreamReasoningEnd clears the reference.  Rows are persisted
+    # inline with text/tool rows so they survive session reload; the reader
+    # filters role="reasoning" out of LLM context.
+    reasoning_response: ChatMessage | None = None
 
 
 def _dispatch_response(
@@ -1624,7 +1696,20 @@ def _dispatch_response(
             retryable=(response.code == "transient_api_error"),
         )
 
-    if isinstance(response, StreamTextDelta):
+    if isinstance(response, StreamReasoningStart):
+        acc.reasoning_response = ChatMessage(role="reasoning", content="")
+        ctx.session.messages.append(acc.reasoning_response)
+
+    elif isinstance(response, StreamReasoningDelta):
+        if acc.reasoning_response is not None:
+            acc.reasoning_response.content = (acc.reasoning_response.content or "") + (
+                response.delta or ""
+            )
+
+    elif isinstance(response, StreamReasoningEnd):
+        acc.reasoning_response = None
+
+    elif isinstance(response, StreamTextDelta):
         raw_delta = response.delta or ""
         if skip_strip:
             # Pre-stripped tail from ThinkingStripper.flush() — bypass process()
@@ -1671,6 +1756,29 @@ def _dispatch_response(
             acc.has_appended_assistant = True
 
     elif isinstance(response, StreamToolOutputAvailable):
+        # Dedupe: the response adapter can emit the same tool_use_id more than
+        # once when the CLI re-delivers a ToolResultBlock (e.g. after a retry
+        # or when a parallel-tool UserMessage is processed alongside a flush).
+        # Guard at persistence time — the first emission already wrote the row
+        # (via the pop_pending_tool_output stash, so it has clean text), and a
+        # duplicate would land a second row with the raw MCP list fallback
+        # content (breaking frontend widgets and inflating conversation tokens).
+        already_persisted = any(
+            m.role == "tool" and m.tool_call_id == response.toolCallId
+            for m in ctx.session.messages
+        )
+        if already_persisted:
+            logger.info(
+                "%s Skipping duplicate tool_result for toolCallId=%s",
+                log_prefix,
+                response.toolCallId,
+            )
+            # Return None so the caller's ``if dispatched is not None: yield``
+            # short-circuits — the duplicate event stays off the SSE stream
+            # (so the frontend doesn't render a second widget) and the
+            # mid-turn follow-up persist doesn't double-fire (its guard is
+            # ``dispatched is not None``).
+            return None
         content = (
             response.output
             if isinstance(response.output, str)
@@ -1932,20 +2040,19 @@ async def _run_stream_attempt(
                     yield ev
                 yield StreamHeartbeat()
 
-                # Idle timeout: if no real SDK message for too long, a tool
-                # call is likely hung (e.g. WebSearch provider not responding).
+                # Idle timeout: abort if the SDK has been silent for too long.
+                # Long-running tools use the async "start + poll" pattern so
+                # the MCP handler never blocks longer than the poll cap (5 min)
+                # — a 10-min gap here means the SDK itself is stuck.
                 idle_seconds = time.monotonic() - _last_real_msg_time
                 if idle_seconds >= _IDLE_TIMEOUT_SECONDS:
                     logger.error(
-                        "%s Idle timeout after %.0fs with no SDK message — "
-                        "aborting stream (likely hung tool call)",
+                        "%s Idle timeout after %.0fs — aborting stream",
                         ctx.log_prefix,
                         idle_seconds,
                     )
                     stream_error_msg = (
-                        "A tool call appears to be stuck "
-                        "(no response for 10 minutes). "
-                        "Please try again."
+                        "The session has been idle for too long. Please try again."
                     )
                     stream_error_code = "idle_timeout"
                     _append_error_marker(ctx.session, stream_error_msg, retryable=True)
@@ -2261,6 +2368,42 @@ async def _run_stream_attempt(
                 )
                 if dispatched is not None:
                     yield dispatched
+
+                # Mid-turn follow-up persistence: the MCP tool wrapper drains
+                # the primary pending buffer and stashes the drained
+                # PendingMessages into the per-session persist queue.  Claude
+                # has already seen them via the <user_follow_up> block
+                # injected into the tool output.  Now — right after the
+                # tool_result row has been appended to session.messages — we
+                # pop the persist queue and append a real user ChatMessage
+                # so the UI renders a proper user bubble in the correct
+                # chronological position (after the tool_result, before the
+                # assistant's continuing response).  Rollback re-queues into
+                # the PRIMARY pending buffer so the next turn-start drain
+                # picks them up if this persist silently fails.
+                # Only run the follow-up persist if the tool_result row was
+                # actually appended by _dispatch_response (currently always
+                # true for this variant, but we guard so a future refactor
+                # that conditionally skips the append can't silently land
+                # a user row before a missing tool_result).
+                if (
+                    isinstance(response, StreamToolOutputAvailable)
+                    and dispatched is not None
+                    and acc.has_tool_results
+                ):
+                    followup_drained = await drain_pending_for_persist(
+                        ctx.session.session_id
+                    )
+                    if followup_drained and await persist_pending_as_user_rows(
+                        ctx.session,
+                        state.transcript_builder,
+                        followup_drained,
+                        log_prefix=ctx.log_prefix,
+                    ):
+                        # Track CLI-JSONL-invisible rows so the upload
+                        # watermark excludes them and the next turn's
+                        # detect_gap picks them up as gap-fill.
+                        state.midturn_user_rows += len(followup_drained)
 
             # Append assistant entry AFTER convert_message so that
             # any stashed tool results from the previous turn are
@@ -2592,6 +2735,7 @@ async def stream_chat_completion_sdk(
     permissions: "CopilotPermissions | None" = None,
     mode: CopilotMode | None = None,
     model: CopilotLlmModel | None = None,
+    request_arrival_at: float = 0.0,
     **_kwargs: Any,
 ) -> AsyncIterator[StreamBaseResponse]:
     """Stream chat completion using Claude Agent SDK.
@@ -2642,20 +2786,47 @@ async def stream_chat_completion_sdk(
     if message:
         message = strip_user_context_tags(message)
 
-    if maybe_append_user_message(session, message, is_user_message):
-        if is_user_message:
-            track_user_message(
-                user_id=user_id,
-                session_id=session_id,
-                message_length=len(message or ""),
-            )
+    _user_message_appended = maybe_append_user_message(
+        session, message, is_user_message
+    )
+    if _user_message_appended and is_user_message:
+        track_user_message(
+            user_id=user_id,
+            session_id=session_id,
+            message_length=len(message or ""),
+        )
 
     # Structured log prefix: [SDK][<session>][T<turn>]
     # Turn = number of user messages (1-based), computed AFTER appending the new message.
     turn = sum(1 for m in session.messages if m.role == "user")
     log_prefix = f"[SDK][{session_id[:12]}][T{turn}]"
 
-    session = await upsert_chat_session(session)
+    # Persist the appended user message to DB immediately so page refreshes
+    # during a long-running turn (e.g. auto-continue whose sleep/bash call
+    # blocks for minutes) show the user bubble. routes.py pre-saves the
+    # user message before direct POSTs so maybe_append_user_message returns
+    # False there (duplicate) — this branch only fires for internal callers
+    # that did NOT pre-save, most notably the auto-continue recursive call
+    # below.
+    #
+    # If the persist fails, roll back the in-memory append: otherwise
+    # session.messages[-1] carries a ``sequence=None`` ghost row, and a
+    # later turn-start drain (from a pending message queued during this
+    # turn) would trip the "no sequence" RuntimeError and crash the turn.
+    if _user_message_appended and is_user_message:
+        session = await persist_session_safe(session, log_prefix)
+        if session.messages and session.messages[-1].sequence is None:
+            # Eager persist swallowed a transient DB failure and left the
+            # in-memory append without a sequence. Roll back so the session
+            # stays consistent with the DB and raise so the caller can
+            # re-queue any drained content. Without this, a later
+            # turn-start drain would trip the "no sequence" RuntimeError
+            # and lose the fresh pending messages it just LPOPed.
+            session.messages.pop()
+            raise RuntimeError(
+                f"{log_prefix} Eager persist of user message failed; "
+                f"in-memory append rolled back"
+            )
 
     # Generate title for new sessions (first user message)
     if is_user_message and not session.title:
@@ -2981,6 +3152,77 @@ async def stream_chat_completion_sdk(
             if last_user:
                 current_message = last_user[-1].content or ""
 
+        # Capture the message count *before* draining so _build_query_message
+        # can compute the gap slice without including the newly-drained pending
+        # messages.  Pending messages are both appended to session.messages AND
+        # concatenated into current_message; without the ceiling the gap slice
+        # would extend into the pending messages and duplicate them in the
+        # model's input context (gap_context + current_message both containing
+        # them).
+        _pre_drain_msg_count = len(session.messages)
+
+        # Drain any messages the user queued via POST /messages/pending
+        # while the previous turn was running (or since the session was
+        # idle).  Messages are drained ATOMICALLY — one LPOP with count
+        # removes them all at once, so a concurrent push lands *after*
+        # the drain and stays queued for the next turn instead of being
+        # lost between LPOP and clear.  File IDs and context are
+        # preserved via format_pending_as_user_message.
+        #
+        # The drained content is combined in chronological (typing) order:
+        # pending messages were queued DURING the previous turn, so they
+        # were typed BEFORE the current /stream message.  Putting pending
+        # first — ``pending → current`` — matches the order the user
+        # actually sent them and avoids the "I typed A then B but it shows
+        # up as B then A" confusion.  The already-saved user message in
+        # the DB is updated via update_message_content_by_sequence to
+        # include the pending texts, avoiding a duplicate INSERT that
+        # would occur if we used insert_pending_before_last +
+        # persist_session_safe (routes.py has already saved the user
+        # message at sequence N before the executor runs, so an
+        # incremental upsert would write a second copy at N+1).
+        pending_messages = await drain_pending_safe(session_id, log_prefix)
+        if pending_messages:
+            logger.info(
+                "%s Draining %d pending message(s) at turn start",
+                log_prefix,
+                len(pending_messages),
+            )
+            # Chronological combine: items typed BEFORE this request
+            # arrived go ahead of ``current_message``; items typed AFTER
+            # (race path, queued while /stream was still processing) go
+            # after.  ``pending_texts`` is kept around because downstream
+            # code (the executor's update_message_content_by_sequence
+            # call) needs the pre-combine list.
+            pending_texts = pending_texts_from(pending_messages)
+            current_message = combine_pending_with_current(
+                pending_messages,
+                current_message,
+                request_arrival_at=request_arrival_at,
+            )
+            # Update the in-memory content of the already-saved user message
+            # and persist that update to the DB by sequence number.  This
+            # avoids inserting an extra row — the user message was already
+            # written at its sequence by append_and_save_message in routes.py.
+            last_user_msg = next(
+                (m for m in reversed(session.messages) if m.role == "user"), None
+            )
+            if last_user_msg is None or last_user_msg.sequence is None:
+                # Defensive: routes.py always pre-saves the user message with
+                # a sequence before dispatch, so this is unreachable under
+                # normal flow. Raising instead of a warning-and-continue
+                # avoids silent data loss (in-memory diverges from DB row,
+                # so the queued chip would disappear from the UI after
+                # refresh without a corresponding bubble).
+                raise RuntimeError(
+                    f"{log_prefix} Cannot persist turn-start pending injection: "
+                    f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
+                )
+            last_user_msg.content = current_message
+            await chat_db().update_message_content_by_sequence(
+                session_id, last_user_msg.sequence, current_message
+            )
+
         if not current_message.strip():
             yield StreamError(
                 errorText="Message cannot be empty.",
@@ -3032,6 +3274,7 @@ async def stream_chat_completion_sdk(
             use_resume,
             transcript_msg_count,
             session_id,
+            session_msg_ceiling=_pre_drain_msg_count,
             prior_messages=restore_context_messages,
         )
         # If files are attached, prepare them: images become vision
@@ -3195,6 +3438,7 @@ async def stream_chat_completion_sdk(
                     state.use_resume,
                     state.transcript_msg_count,
                     session_id,
+                    session_msg_ceiling=_pre_drain_msg_count,
                     target_tokens=state.target_tokens,
                 )
                 if attachments.hint:
@@ -3527,6 +3771,11 @@ async def stream_chat_completion_sdk(
 
         raise
     finally:
+        # Pending messages are drained atomically at the start of each
+        # turn (see drain_pending_messages call above), so there's
+        # nothing to clean up here — any message pushed after that
+        # point belongs to the next turn.
+
         # --- Close OTEL context (with cost attributes) ---
         if _otel_ctx is not None:
             try:
@@ -3685,7 +3934,28 @@ async def stream_chat_completion_sdk(
                     # That concern was addressed by the inflated-watermark fix
                     # (using the GCS watermark as the anchor for gap detection),
                     # which makes len(session.messages) safe to use here.
-                    _jsonl_covered = len(session.messages)
+                    #
+                    # Mid-turn follow-up user rows (persisted via the
+                    # StreamToolOutputAvailable handler) are NOT part of the CLI
+                    # JSONL — the CLI only knows them as embedded text inside a
+                    # tool_result, and even that embedding can be stripped by
+                    # the CLI's internal tool_result size cap.  Deduct them
+                    # from the watermark so detect_gap on the next turn
+                    # treats them as gap-fill entries and the model sees them
+                    # as real user messages instead of missing text.
+                    _midturn_offset = (
+                        state.midturn_user_rows if state is not None else 0
+                    )
+                    # ``role="reasoning"`` rows are persisted to session.messages
+                    # for frontend replay but never appear in the CLI JSONL
+                    # (extended_thinking lives embedded in assistant entries, not
+                    # as standalone rows).  Exclude them from the watermark so
+                    # ``detect_gap`` on the next turn doesn't skip real
+                    # user/assistant rows.  See sentry comment 3106186683.
+                    _non_reasoning_count = sum(
+                        1 for m in session.messages if m.role != "reasoning"
+                    )
+                    _jsonl_covered = _non_reasoning_count - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
@@ -3711,3 +3981,86 @@ async def stream_chat_completion_sdk(
         finally:
             # Release stream lock to allow new streams for this session
             await lock.release()
+
+    # -------------------------------------------------------------------------
+    # Auto-continue: drain any messages the user queued AFTER the turn-start
+    # drain window and process them as a new turn automatically.
+    #
+    # This code only executes on NORMAL turn completion.  GeneratorExit and
+    # BaseException both re-raise inside their except blocks, so the generator
+    # closes before reaching here — messages queued during a cancelled turn are
+    # preserved in Redis for the next manual turn.
+    # -------------------------------------------------------------------------
+    if not ended_with_stream_error:
+        _auto_pending_messages = await drain_pending_safe(session_id, log_prefix)
+        if _auto_pending_messages:
+            logger.info(
+                "%s Auto-continuing with %d pending message(s) queued after turn start",
+                log_prefix,
+                len(_auto_pending_messages),
+            )
+            # Combine all pending messages into one turn so they are processed
+            # together rather than sequentially. The recursive call may itself
+            # drain further messages queued while this turn runs.
+            _auto_combined = "\n\n".join(pending_texts_from(_auto_pending_messages))
+            # Race guard: drain_pending_safe has already LPOPed the messages
+            # from Redis. If another request acquires the session lock in the
+            # window between our lock.release() above and the recursive call's
+            # try_acquire() below, that recursive call exits with
+            # "stream_already_active" and the drained messages would be
+            # permanently lost. Detect that sentinel on the first yielded
+            # event and push the drained messages back to Redis so the
+            # competing stream's turn-start drain picks them up — preserving
+            # the original ``file_ids`` / ``context`` metadata (sentry
+            # r3105523410 — text-only requeue silently stripped it).
+            _auto_requeued = False
+            _first_auto_event = True
+
+            async def _requeue_drained(reason: str) -> None:
+                logger.warning(
+                    "%s Auto-continue %s; re-queueing %d drained message(s)",
+                    log_prefix,
+                    reason,
+                    len(_auto_pending_messages),
+                )
+                for _pm in _auto_pending_messages:
+                    try:
+                        await push_pending_message(session_id, _pm)
+                    except Exception:
+                        logger.exception(
+                            "%s Failed to re-queue auto-continue message",
+                            log_prefix,
+                        )
+
+            try:
+                async for event in stream_chat_completion_sdk(
+                    session_id=session_id,
+                    message=_auto_combined,
+                    is_user_message=True,
+                    user_id=user_id,
+                    file_ids=None,
+                    permissions=permissions,
+                    mode=mode,
+                    model=model,
+                ):
+                    if _first_auto_event:
+                        _first_auto_event = False
+                        if (
+                            isinstance(event, StreamError)
+                            and getattr(event, "code", None) == "stream_already_active"
+                        ):
+                            await _requeue_drained("lost lock race")
+                            _auto_requeued = True
+                            # Suppress the stale "already active" error —
+                            # the competing stream will emit its own events.
+                            continue
+                    yield event
+            except Exception:
+                # Eager-persist rollback or any other failure inside the
+                # recursive call before messages were consumed. Push the
+                # drained texts back so the next turn picks them up.
+                if not _auto_requeued:
+                    await _requeue_drained("raised during recursive call")
+                raise
+            if _auto_requeued:
+                return

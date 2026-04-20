@@ -11,8 +11,11 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
+import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
 import { useCopilotNotifications } from "./useCopilotNotifications";
@@ -66,6 +69,7 @@ export function useCopilotPage() {
 
   const {
     messages: currentMessages,
+    setMessages,
     sendMessage,
     stop,
     status,
@@ -92,11 +96,35 @@ export function useCopilotPage() {
       initialPageRawMessages: rawSessionMessages,
     });
 
+  // Ref that mirrors whether a stream turn is currently in-flight.
+  // Updated synchronously on every render so it always reflects the latest
+  // status — unlike reading `status` inside onSend (which captures the
+  // closure's render-cycle value and can be stale for a frame).
+  // Setting it to true *before* calling sendMessage prevents rapid
+  // double-presses from both routing to /stream before React can re-render
+  // with status="submitted".
+  const isInflightRef = useRef(false);
+  isInflightRef.current = status === "streaming" || status === "submitted";
+
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
-  const messages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+
+  // Drop / trim assistant messages whose leading text is a replay of an
+  // earlier assistant (Claude Agent SDK's `--resume` behaviour). See
+  // helpers/stripReplayPrefix.ts for the three cases.
+  const messages = useMemo(() => stripReplayPrefix(rawMessages), [rawMessages]);
+
+  // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
+  // lives in a dedicated hook so this component is just glue.
+  const { queuedMessages, appendChip } = useCopilotPendingChips({
+    sessionId,
+    status,
+    messages,
+    setMessages,
+  });
 
   useCopilotNotifications(sessionId);
 
@@ -252,12 +280,57 @@ export function useCopilotPage() {
     isUserStoppingRef.current = false;
 
     if (sessionId) {
+      const isInFlight = isInflightRef.current;
+
+      if (isInFlight) {
+        // File attachments cannot be included in a queued pending message —
+        // the queue API does not support file_ids.  Inform the user and bail.
+        if (files && files.length > 0) {
+          toast({
+            title: "Please wait to attach files",
+            description:
+              "File attachments can't be queued until the current response finishes.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Queue the follow-up into the pending buffer.  Both queue and new-
+        // turn go through the same ``/stream`` endpoint; the server returns
+        // 202 for the queue path (pending buffer) and an SSE stream for the
+        // new-turn path.  Using a plain ``fetch`` here keeps the 202 JSON
+        // from confusing the AI SDK's stream parser.
+        try {
+          const result = await queueFollowUpMessage(sessionId, trimmed);
+          if (result.kind === "queued") {
+            appendChip(trimmed);
+          }
+          // kind === "raced_started_turn": the client thought a turn was in
+          // flight but the previous turn finished before the request landed.
+          // The server already kicked off a new turn; useHydrateOnStreamEnd
+          // will surface its output when it completes. No chip + no toast.
+        } catch (err) {
+          toast({
+            title: "Could not queue message",
+            description: "Please wait for the current response to finish.",
+            variant: "destructive",
+          });
+          throw err;
+        }
+        return;
+      }
+
+      // Mark in-flight synchronously before sendMessage so any rapid
+      // second press sees isInflightRef.current=true and routes to /pending
+      // instead of triggering a duplicate /stream POST.
+      isInflightRef.current = true;
       if (files && files.length > 0) {
         setIsUploadingFiles(true);
         try {
           const uploaded = await uploadFiles(files, sessionId);
           if (uploaded.length === 0) {
             // All uploads failed — abort send so chips revert to editable
+            isInflightRef.current = false;
             throw new Error("All file uploads failed");
           }
           const fileParts = buildFileParts(uploaded);
@@ -394,6 +467,10 @@ export function useCopilotPage() {
     isLoggedIn,
     createSession,
     onSend,
+    // onEnqueue delegates to onSend, which internally routes to the pending
+    // endpoint when isInflightRef.current is true.
+    onEnqueue: onSend,
+    queuedMessages,
     // Pagination
     hasMoreMessages: hasMore,
     isLoadingMore,

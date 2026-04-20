@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractWorkspaceArtifacts, filePartToArtifactRef } from "./helpers";
+import {
+  extractWorkspaceArtifacts,
+  filePartToArtifactRef,
+  splitReasoningAndResponse,
+  type MessagePart,
+} from "./helpers";
 
 describe("extractWorkspaceArtifacts", () => {
   it("extracts a single workspace:// link with its markdown title", () => {
@@ -99,5 +104,43 @@ describe("filePartToArtifactRef", () => {
       "agent",
     );
     expect(overridden?.origin).toBe("agent");
+  });
+});
+
+describe("splitReasoningAndResponse", () => {
+  const reasoning: MessagePart = {
+    type: "reasoning",
+    text: "thinking...",
+    state: "done",
+  } as unknown as MessagePart;
+  const text: MessagePart = {
+    type: "text",
+    text: "final answer",
+    state: "done",
+  } as unknown as MessagePart;
+  const tool: MessagePart = {
+    type: "tool-run_block",
+    toolCallId: "t1",
+    state: "output-available",
+    input: {},
+    output: "ok",
+  } as unknown as MessagePart;
+
+  it("returns empty reasoning when there are no tool parts", () => {
+    const out = splitReasoningAndResponse([reasoning, text]);
+    expect(out.reasoning).toEqual([]);
+    expect(out.response).toEqual([reasoning, text]);
+  });
+
+  it("keeps reasoning inside the reasoning group when tools precede the text", () => {
+    const out = splitReasoningAndResponse([reasoning, tool, text]);
+    expect(out.reasoning).toEqual([reasoning, tool]);
+    expect(out.response).toEqual([text]);
+  });
+
+  it("splits tools into reasoning and text into response when no reasoning is present", () => {
+    const out = splitReasoningAndResponse([tool, text]);
+    expect(out.reasoning).toEqual([tool]);
+    expect(out.response).toEqual([text]);
   });
 });

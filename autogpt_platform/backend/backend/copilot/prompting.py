@@ -8,11 +8,10 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
 from backend.copilot.tools import TOOL_REGISTRY
 
 # Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = f"""\
+_SHARED_TOOL_NOTES = """\
 
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
@@ -68,13 +67,13 @@ that would be corrupted by text encoding.
 
 Example — committing an image file to GitHub:
 ```json
-{{
-  "files": [{{
+{
+  "files": [{
     "path": "docs/hero.png",
     "content": "workspace://abc123#image/png",
     "operation": "upsert"
-  }}]
-}}
+  }]
+}
 ```
 
 ### Writing large files — CRITICAL (causes production failures)
@@ -149,20 +148,27 @@ When the user asks to interact with a service or API, follow this order:
   All tasks must run in the foreground.
 
 ### Delegating to another autopilot (sub-autopilot pattern)
-Use the **AutoPilotBlock** (`run_block` with block_id
-`{AUTOPILOT_BLOCK_ID}`) to delegate a task to a fresh
-autopilot instance.  The sub-autopilot has its own full tool set and can
-perform multi-step work autonomously.
+Use the **`run_sub_session`** tool to delegate a task to a fresh
+sub-AutoPilot. The sub has its own full tool set and can perform
+multi-step work autonomously.
 
-- **Input**: `prompt` (required) — the task description.
-  Optional: `system_context` to constrain behavior, `session_id` to
-  continue a previous conversation, `max_recursion_depth` (default 3).
-- **Output**: `response` (text), `tool_calls` (list), `session_id`
-  (for continuation), `conversation_history`, `token_usage`.
+- `prompt` (required): the task description.
+- `system_context` (optional): extra context prepended to the prompt.
+- `sub_autopilot_session_id` (optional): continue an existing
+  sub-AutoPilot — pass the `sub_autopilot_session_id` returned by a
+  previous completed run.
+- `wait_for_result` (default 60, max 300): seconds to wait inline. If
+  the sub isn't done by then you get `status="running"` + a
+  `sub_session_id` — call **`get_sub_session_result`** with that id
+  (wait up to 300s more per call) until it returns `completed` or
+  `error`. Works across turns — safe to reconnect in a later message.
 
 Use this when a task is complex enough to benefit from a separate
 autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration.
+parent autopilot handles orchestration. Do NOT invoke `AutoPilotBlock`
+via `run_block` — it's hidden from `run_block` by design because the
+dedicated tool handles the async lifecycle correctly.
+
 """
 
 # E2B-only notes — E2B has full internet access so gh CLI works there.
@@ -335,6 +341,39 @@ def _generate_tool_documentation() -> str:
     return docs
 
 
+_USER_FOLLOW_UP_NOTE = """
+# `<user_follow_up>` blocks in tool output
+
+A `<user_follow_up>…</user_follow_up>` block at the head of a tool result is a
+message the user sent while the tool was running — not tool output. The user is
+watching the chat live and waiting for confirmation their message landed.
+
+Every time you see one:
+
+1. **Ack immediately.** Your very next emission must be a short visible line,
+   before any more tool calls:
+   *"Got your follow-up: {paraphrase}. {what I'll do}."*
+
+2. **Then act on it:**
+   - Question/input request → stop the tool chain and answer/ask back.
+   - New requirement → fold into the current plan.
+   - Correction → update the plan and continue with the revised target.
+
+Never echo the `<user_follow_up>` tags back. The block holds only the user's
+words — the rest of the tool result is the real data.
+
+# Always close the turn with visible text
+
+Every turn MUST end with at least one short user-facing text sentence —
+even if it is only "Done." or "I'm stopping here because X." Never end a
+turn with only tool calls or only thinking.  The user's UI renders text
+messages; a turn that emits only thinking blocks or only tool calls shows
+up as a frozen screen with no response.  If your plan was to stop after
+the last tool result, still produce one closing sentence summarising
+what happened so the user knows the turn is complete.
+"""
+
+
 @cache
 def get_sdk_supplement(use_e2b: bool) -> str:
     """Get the supplement for SDK mode (Claude Agent SDK).
@@ -357,9 +396,12 @@ def get_sdk_supplement(use_e2b: bool) -> str:
     Returns:
         The supplement string to append to the system prompt
     """
-    if use_e2b:
-        return _get_cloud_sandbox_supplement()
-    return _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    base = (
+        _get_cloud_sandbox_supplement()
+        if use_e2b
+        else _get_local_storage_supplement("/tmp/copilot-<session-id>")
+    )
+    return base + _USER_FOLLOW_UP_NOTE
 
 
 def get_graphiti_supplement() -> str:

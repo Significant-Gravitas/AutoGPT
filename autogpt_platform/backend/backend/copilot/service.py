@@ -26,7 +26,7 @@ from backend.data.understanding import (
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.settings import AppEnvironment, Settings
 
-from .config import ChatConfig
+from .config import ChatConfig, CopilotLlmModel
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -39,6 +39,21 @@ logger = logging.getLogger(__name__)
 
 config = ChatConfig()
 settings = Settings()
+
+
+def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
+    """Return the configured OpenRouter model string for the given tier.
+
+    Shared by the baseline (fast) and SDK (extended thinking) paths so
+    both honor the same standard/advanced env-var configuration.  ``None``
+    and ``'standard'`` fall through to ``config.model``; ``'advanced'``
+    uses ``config.advanced_model``.  Keep this flat — if a third tier
+    shows up later, extend here and both paths pick it up for free.
+    """
+    if tier == "advanced":
+        return config.advanced_model
+    return config.model
+
 
 _client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
@@ -446,7 +461,9 @@ async def inject_user_context(
             + final_message
         )
 
-    for session_msg in session_messages:
+    # Scan in reverse so we target the current turn's user message, not
+    # an older one that may exist when pending messages have been drained.
+    for session_msg in reversed(session_messages):
         if session_msg.role == "user":
             # Only touch the DB / in-memory state when the content actually
             # needs to change — avoids an unnecessary write on the common

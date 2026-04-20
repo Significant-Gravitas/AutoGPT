@@ -62,11 +62,24 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Max MCP response size in chars. 100K chars ≈ 25K tokens. The SDK writes oversized results to tool-results/ files.
-# Set to 100K (down from a previous 500K) because the SDK already reads back large results from disk via
-# tool-results/ — sending 500K chars inline bloated the context window and caused cache-miss thrashing.
-# 100K keeps the common case (block output, API responses) in-band without punishing the context budget.
-_MCP_MAX_CHARS = 100_000
+# Max MCP response size in chars — sized to the Claude CLI's internal cap.
+#
+# The CLI has a default ``maxResultSizeChars = 1e5`` (100K chars) annotation
+# for MCP tool results, but the actual trigger is TOKEN-based (see
+# ``sizeEstimateTokens`` in the bundled CLI at ``tengu_mcp_large_result_handled``)
+# and fires around 20–25K tokens.  For JSON-heavy tool output (~3–4 chars/token)
+# that lands anywhere from ~60K to ~100K chars in practice; we've observed the
+# error path at 81K chars in production.  When it fires, the CLI persists the
+# full output to disk and REPLACES the returned content with a synthetic
+# ``"Error: result (N characters) exceeds maximum allowed tokens. Output has
+# been saved to …"`` message — which destroys any `<user_follow_up>` block
+# we injected.
+#
+# 70K gives us headroom below the observed 81K trigger and leaves ~6K for the
+# follow-up injection plus CLI wire overhead.  Oversized content is still
+# reachable via ``read_tool_result`` against the persisted disk file; only
+# the inline reply to this specific call is truncated.
+_MCP_MAX_CHARS = 70_000
 
 # MCP server naming - the SDK prefixes tool names as "mcp__{server_name}__{tool}"
 MCP_SERVER_NAME = "copilot"
@@ -248,7 +261,14 @@ async def _execute_tool_sync(
     session: ChatSession,
     args: dict[str, Any],
 ) -> dict[str, Any]:
-    """Execute a tool synchronously and return MCP-formatted response."""
+    """Execute a tool inline and return an MCP-formatted response.
+
+    The call runs to completion — no per-handler timeout, no parking. The
+    stream-level idle timer in ``_run_stream_attempt`` pauses while a tool
+    is pending, so a long sub-AutoPilot / graph execution doesn't trip the
+    30-min idle safety net (SECRT-2247). A genuine hang is handled by the
+    broader session lifecycle (user closes the tab / cancel endpoint).
+    """
     effective_id = f"sdk-{uuid.uuid4().hex[:12]}"
     result = await base_tool.execute(
         user_id=user_id,
@@ -612,8 +632,12 @@ def _make_truncating_wrapper(
         else:
             _clear_tool_failures(tool_name)
 
-        # Stash BEFORE stripping so the frontend SSE stream receives
-        # the full output including _STRIP_FROM_LLM fields (e.g. is_dry_run).
+        # Stash the raw tool output for the frontend SSE stream so widgets
+        # (bash, tool viewers) receive clean JSON.  Mid-turn user follow-up
+        # injection for MCP + built-in tools is now handled uniformly by
+        # the ``PostToolUse`` hook via ``additionalContext`` so Claude sees
+        # the follow-up attached to the tool_result without mutating the
+        # frontend-facing payload.
         if not truncated.get("isError"):
             text = _text_from_mcp_result(truncated)
             if text:

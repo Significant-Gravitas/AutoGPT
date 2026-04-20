@@ -25,7 +25,7 @@ from langfuse import propagate_attributes
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 from opentelemetry import trace as otel_trace
 
-from backend.copilot.config import CopilotMode
+from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.model import (
@@ -34,6 +34,17 @@ from backend.copilot.model import (
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
+)
+from backend.copilot.pending_message_helpers import (
+    combine_pending_with_current,
+    drain_pending_safe,
+    pending_texts_from,
+    persist_pending_as_user_rows,
+    persist_session_safe,
+)
+from backend.copilot.pending_messages import (
+    drain_pending_messages,
+    format_pending_as_user_message,
 )
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
 from backend.copilot.response_model import (
@@ -75,6 +86,7 @@ from backend.copilot.transcript import (
     validate_transcript,
 )
 from backend.copilot.transcript_builder import TranscriptBuilder
+from backend.data.db_accessors import chat_db
 from backend.util import json as util_json
 from backend.util.exceptions import NotFoundError
 from backend.util.prompt import (
@@ -224,17 +236,17 @@ def _filter_tools_by_permissions(
     ]
 
 
-def _resolve_baseline_model(mode: CopilotMode | None) -> str:
-    """Pick the model for the baseline path based on the per-request mode.
+def _resolve_baseline_model(tier: CopilotLlmModel | None) -> str:
+    """Pick the model for the baseline path based on the per-request tier.
 
-    Only ``mode='fast'`` downgrades to the cheaper/faster model.  Any other
-    value (including ``None`` and ``'extended_thinking'``) preserves the
-    default model so that users who never select a mode don't get
-    silently moved to the cheaper tier.
+    The baseline (fast) and SDK (extended thinking) paths now share the
+    same tier-based model resolution — only the *path* differs between
+    "fast" and "extended_thinking".  ``'advanced'`` → Opus;
+    ``'standard'`` / ``None`` → the config default (Sonnet).
     """
-    if mode == "fast":
-        return config.fast_model
-    return config.model
+    from backend.copilot.service import resolve_chat_model
+
+    return resolve_chat_model(tier)
 
 
 @dataclass
@@ -257,6 +269,11 @@ class _BaselineStreamState:
     cost_usd: float | None = None
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
+    # Tracks how much of ``assistant_text`` has already been flushed to
+    # ``session.messages`` via mid-loop pending drains, so the ``finally``
+    # block only appends the *new* assistant text (avoiding duplication of
+    # round-1 text when round-1 entries were cleared from session_messages).
+    _flushed_assistant_text_len: int = 0
 
 
 async def _baseline_llm_caller(
@@ -911,6 +928,8 @@ async def stream_chat_completion_baseline(
     permissions: "CopilotPermissions | None" = None,
     context: dict[str, str] | None = None,
     mode: CopilotMode | None = None,
+    model: CopilotLlmModel | None = None,
+    request_arrival_at: float = 0.0,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """Baseline LLM with tool calling via OpenAI-compatible API.
@@ -942,11 +961,62 @@ async def stream_chat_completion_baseline(
                 message_length=len(message or ""),
             )
 
-    session = await upsert_chat_session(session)
+    # Capture count *before* the pending drain so is_first_turn and the
+    # transcript staleness check are not skewed by queued messages.
+    _pre_drain_msg_count = len(session.messages)
 
-    # Select model based on the per-request mode.  'fast' downgrades to
-    # the cheaper/faster model; everything else keeps the default.
-    active_model = _resolve_baseline_model(mode)
+    # Drain any messages the user queued via POST /messages/pending
+    # while this session was idle (or during a previous turn whose
+    # mid-loop drains missed them).
+    # The drained content is appended after ``message`` so the user's submitted
+    # message remains the leading context (better UX: the user sent their primary
+    # message first, queued follow-ups second).  The already-saved user message
+    # in the DB is updated via update_message_content_by_sequence rather than
+    # inserting a new row, because routes.py has already saved the user message
+    # before the executor picks up the turn (using insert_pending_before_last +
+    # persist_session_safe would add a duplicate row at sequence N+1).
+    drained_at_start_pending = await drain_pending_safe(session_id, "[Baseline]")
+    if drained_at_start_pending:
+        logger.info(
+            "[Baseline] Draining %d pending message(s) at turn start for session %s",
+            len(drained_at_start_pending),
+            session_id,
+        )
+        drained_at_start_content = pending_texts_from(drained_at_start_pending)
+        # Chronological combine: pending typed BEFORE this /stream
+        # request's arrival go ahead of ``message``; race-path follow-ups
+        # typed AFTER (queued while /stream was still processing) go
+        # after.  See ``combine_pending_with_current`` for details.
+        message = combine_pending_with_current(
+            drained_at_start_pending,
+            message,
+            request_arrival_at=request_arrival_at,
+        )
+        # Update the in-memory content of the already-saved user message
+        # and persist that update by sequence number.
+        last_user_msg = next(
+            (m for m in reversed(session.messages) if m.role == "user"), None
+        )
+        if last_user_msg is None or last_user_msg.sequence is None:
+            # Defensive: routes.py always pre-saves the user message with a
+            # sequence before dispatch, so this is unreachable under normal
+            # flow. Raising instead of a warning-and-continue avoids silent
+            # data loss (in-memory message diverges from the DB row, so the
+            # queued chip would disappear from the UI after refresh without
+            # a corresponding bubble).
+            raise RuntimeError(
+                f"[Baseline] Cannot persist turn-start pending injection: "
+                f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
+            )
+        last_user_msg.content = message
+        await chat_db().update_message_content_by_sequence(
+            session_id, last_user_msg.sequence, message
+        )
+
+    # Select model based on the per-request tier toggle (standard / advanced).
+    # The path (fast vs extended_thinking) is already decided — we're in the
+    # baseline (fast) path; ``mode`` is accepted for logging parity only.
+    active_model = _resolve_baseline_model(model)
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
@@ -971,7 +1041,9 @@ async def stream_chat_completion_baseline(
 
     # Build system prompt only on the first turn to avoid mid-conversation
     # changes from concurrent chats updating business understanding.
-    is_first_turn = len(session.messages) <= 1
+    # Use the pre-drain count so queued pending messages don't incorrectly
+    # flip is_first_turn to False on an actual first turn.
+    is_first_turn = _pre_drain_msg_count <= 1
     # Gate context fetch on both first turn AND user message so that assistant-
     # role calls (e.g. tool-result submissions) on the first turn don't trigger
     # a needless DB lookup for user understanding.
@@ -983,9 +1055,11 @@ async def stream_chat_completion_baseline(
         prompt_task = _build_system_prompt(None)
 
     # Run download + prompt build concurrently — both are independent I/O
-    # on the request critical path.
+    # on the request critical path.  Use the pre-drain count so pending
+    # messages drained at turn start don't spuriously trigger a transcript
+    # load on an actual first turn.
     transcript_download: TranscriptDownload | None = None
-    if user_id and len(session.messages) > 1:
+    if user_id and _pre_drain_msg_count > 1:
         (
             (transcript_upload_safe, transcript_download),
             (base_system_prompt, understanding),
@@ -1003,6 +1077,17 @@ async def stream_chat_completion_baseline(
 
     # Append user message to transcript after context injection below so the
     # transcript receives the prefixed message when user context is available.
+
+    # NOTE: drained pending messages are folded into the current user
+    # message's content (see the turn-start drain above), so the single
+    # ``transcript_builder.append_user`` call below (covered by the
+    # ``if message and is_user_message`` branch that appends
+    # ``user_message_for_transcript or message``) already records the
+    # combined text in the transcript. Do NOT also append drained items
+    # individually here — on the ``transcript_download is None`` path
+    # that would produce N separate pending entries plus the combined
+    # entry, duplicating the pending content in the JSONL uploaded for
+    # the next turn's ``--resume``.
 
     # Generate title for new sessions
     if is_user_message and not session.title:
@@ -1025,10 +1110,12 @@ async def stream_chat_completion_baseline(
     system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
+    # Use the pre-drain count so pending messages drained at turn start
+    # don't prevent warm context injection on an actual first turn.
     # Stored here but injected into the user message (not the system prompt)
     # after openai_messages is built — keeps system prompt static for caching.
     warm_ctx: str | None = None
-    if graphiti_enabled and user_id and len(session.messages) <= 1:
+    if graphiti_enabled and user_id and _pre_drain_msg_count <= 1:
         from backend.copilot.graphiti.context import fetch_warm_context
 
         warm_ctx = await fetch_warm_context(user_id, message or "")
@@ -1078,7 +1165,9 @@ async def stream_chat_completion_baseline(
             understanding, message or "", session_id, session.messages
         )
         if prefixed is not None:
-            for msg in openai_messages:
+            # Reverse scan so we update the current turn's user message, not
+            # the first (oldest) one when pending messages were drained.
+            for msg in reversed(openai_messages):
                 if msg["role"] == "user":
                     msg["content"] = prefixed
                     break
@@ -1086,12 +1175,14 @@ async def stream_chat_completion_baseline(
         else:
             logger.warning("[Baseline] No user message found for context injection")
 
-    # Inject Graphiti warm context into the first user message (not the
-    # system prompt) so the system prompt stays static and cacheable.
+    # Inject Graphiti warm context into the current turn's user message (not
+    # the system prompt) so the system prompt stays static and cacheable.
     # warm_ctx is already wrapped in <temporal_context>.
     # Appended AFTER user_context so <user_context> stays at the very start.
+    # Reverse scan so we update the current turn's user message, not the
+    # oldest one when pending messages were drained.
     if warm_ctx:
-        for msg in openai_messages:
+        for msg in reversed(openai_messages):
             if msg["role"] == "user":
                 existing = msg.get("content", "")
                 if isinstance(existing, str):
@@ -1197,9 +1288,26 @@ async def stream_chat_completion_baseline(
     # Bind extracted module-level callbacks to this request's state/session
     # using functools.partial so they satisfy the Protocol signatures.
     _bound_llm_caller = partial(_baseline_llm_caller, state=state)
-    _bound_tool_executor = partial(
-        _baseline_tool_executor, state=state, user_id=user_id, session=session
-    )
+
+    # ``session`` is reassigned after each mid-turn ``persist_session_safe``
+    # call (``upsert_chat_session`` returns a fresh ``model_copy``).  Holding
+    # the object via ``partial(session=session)`` would pin tool executions
+    # to the *original* object — any post-persist ``session.successful_agent_runs``
+    # mutation from a run_agent tool call would then land on the stale copy
+    # and be lost on the final persist.  Wrap in a 1-element holder and read
+    # the current binding lazily so the executor always sees the latest session.
+    _session_holder: list[ChatSession] = [session]
+
+    async def _bound_tool_executor(
+        tool_call: LLMToolCall, tools: Sequence[Any]
+    ) -> ToolCallResult:
+        return await _baseline_tool_executor(
+            tool_call,
+            tools,
+            state=state,
+            user_id=user_id,
+            session=_session_holder[0],
+        )
 
     _bound_conversation_updater = partial(
         _baseline_conversation_updater,
@@ -1222,6 +1330,124 @@ async def stream_chat_completion_baseline(
             for evt in state.pending_events:
                 yield evt
             state.pending_events.clear()
+
+            # Inject any messages the user queued while the turn was
+            # running.  ``tool_call_loop`` mutates ``openai_messages``
+            # in-place, so appending here means the model sees the new
+            # messages on its next LLM call.
+            #
+            # IMPORTANT: skip when the loop has already finished (no
+            # more LLM calls are coming).  ``tool_call_loop`` yields
+            # a final ``ToolCallLoopResult`` on both paths:
+            #   - natural finish: ``finished_naturally=True``
+            #   - hit max_iterations: ``finished_naturally=False``
+            #                         and ``iterations >= max_iterations``
+            # In either case the loop is about to return on the next
+            # ``async for`` step, so draining here would silently
+            # lose the message (the user sees 202 but the model never
+            # reads the text).  Those messages stay in the buffer and
+            # get picked up at the start of the next turn.
+            is_final_yield = (
+                loop_result.finished_naturally
+                or loop_result.iterations >= _MAX_TOOL_ROUNDS
+            )
+            if is_final_yield:
+                continue
+            try:
+                pending = await drain_pending_messages(session_id)
+            except Exception:
+                logger.warning(
+                    "[Baseline] mid-loop drain_pending_messages failed for session %s",
+                    session_id,
+                    exc_info=True,
+                )
+                pending = []
+            if pending:
+                # Flush any buffered assistant/tool messages from completed
+                # rounds into session.messages BEFORE appending the pending
+                # user message.  ``_baseline_conversation_updater`` only
+                # records assistant+tool rounds into ``state.session_messages``
+                # — they are normally batch-flushed in the finally block.
+                # Without this in-order flush, the mid-loop pending user
+                # message lands before the preceding round's assistant/tool
+                # entries, producing chronologically-wrong session.messages
+                # on persist (user interposed between an assistant tool_call
+                # and its tool-result), which breaks OpenAI tool-call ordering
+                # invariants on the next turn's replay.
+                #
+                # Also persist any assistant text from text-only rounds (rounds
+                # with no tool calls, which ``_baseline_conversation_updater``
+                # does NOT record in session_messages).  If we only update
+                # ``_flushed_assistant_text_len`` without persisting the text,
+                # that text is silently lost: the finally block only appends
+                # assistant_text[_flushed_assistant_text_len:], so text generated
+                # before this drain never reaches session.messages.
+                recorded_text = "".join(
+                    m.content or ""
+                    for m in state.session_messages
+                    if m.role == "assistant"
+                )
+                unflushed_text = state.assistant_text[
+                    state._flushed_assistant_text_len :
+                ]
+                text_only_text = (
+                    unflushed_text[len(recorded_text) :]
+                    if unflushed_text.startswith(recorded_text)
+                    else unflushed_text
+                )
+                if text_only_text.strip():
+                    session.messages.append(
+                        ChatMessage(role="assistant", content=text_only_text)
+                    )
+                for _buffered in state.session_messages:
+                    session.messages.append(_buffered)
+                state.session_messages.clear()
+                # Record how much assistant_text has been covered by the
+                # structured entries just flushed, so the finally block's
+                # final-text dedup doesn't re-append rounds already persisted.
+                state._flushed_assistant_text_len = len(state.assistant_text)
+
+                # Persist the assistant/tool flush BEFORE the pending append
+                # so a later pending-persist failure can roll back the
+                # pending rows without also discarding LLM output.
+                session = await persist_session_safe(session, "[Baseline]")
+                # ``upsert_chat_session`` may return a *new* ``ChatSession``
+                # instance (e.g. when a concurrent title update has written a
+                # newer title to Redis, it returns ``session.model_copy``).
+                # Keep ``_session_holder`` in sync so subsequent tool rounds
+                # executed via ``_bound_tool_executor`` see the fresh session
+                # — any tool-side mutations on the stale object would be
+                # discarded when the new one is persisted in the ``finally``.
+                _session_holder[0] = session
+
+                # ``format_pending_as_user_message`` embeds file attachments
+                # and context URL/page content into the content string so
+                # the in-session transcript is a faithful copy of what the
+                # model actually saw.  We also mirror each push into
+                # ``openai_messages`` so the model's next LLM round sees it.
+                #
+                # Pre-compute the formatted dicts once so both the openai
+                # messages append and the content_of lookup inside the
+                # shared helper use the same string — and so ``on_rollback``
+                # can trim ``openai_messages`` to the recorded anchor.
+                formatted_by_pm = {
+                    id(pm): format_pending_as_user_message(pm) for pm in pending
+                }
+                _openai_anchor = len(openai_messages)
+                for pm in pending:
+                    openai_messages.append(formatted_by_pm[id(pm)])
+
+                def _trim_openai_on_rollback(_session_anchor: int) -> None:
+                    del openai_messages[_openai_anchor:]
+
+                await persist_pending_as_user_rows(
+                    session,
+                    transcript_builder,
+                    pending,
+                    log_prefix="[Baseline]",
+                    content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
+                    on_rollback=_trim_openai_on_rollback,
+                )
 
         if loop_result and not loop_result.finished_naturally:
             limit_msg = (
@@ -1263,6 +1489,11 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
+        # Pending messages are drained atomically at turn start and
+        # between tool rounds, so there's nothing to clear in finally.
+        # Any message pushed after the final drain window stays in the
+        # buffer and gets picked up at the start of the next turn.
+
         # Set cost attributes on OTEL span before closing
         if _trace_ctx is not None:
             try:
@@ -1338,7 +1569,11 @@ async def stream_chat_completion_baseline(
         # no tool calls, i.e. the natural finish).  Only add it if the
         # conversation updater didn't already record it as part of a
         # tool-call round (which would have empty response_text).
-        final_text = state.assistant_text
+        # Only consider assistant text produced AFTER the last mid-loop
+        # flush.  ``_flushed_assistant_text_len`` tracks the prefix already
+        # persisted via structured session_messages during mid-loop pending
+        # drains; including it here would duplicate those rounds.
+        final_text = state.assistant_text[state._flushed_assistant_text_len :]
         if state.session_messages:
             # Strip text already captured in tool-call round messages
             recorded = "".join(

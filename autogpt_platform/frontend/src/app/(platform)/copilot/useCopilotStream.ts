@@ -20,6 +20,7 @@ import {
   disconnectSessionStream,
 } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
+import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -419,16 +420,15 @@ export function useCopilotStream({
     };
   }, [refetchSession, setMessages]);
 
-  // Hydrate messages from REST API when not actively streaming
-  useEffect(() => {
-    if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    if (isReconnectScheduled) return;
-    setMessages((prev) => {
-      if (prev.length >= hydratedMessages.length) return prev;
-      return deduplicateMessages(hydratedMessages);
-    });
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
+  // After-stream hydration — force-replace AI-SDK state with the DB's view
+  // once React Query has actually refetched, then keep length-gated top-ups
+  // working for pagination. See useHydrateOnStreamEnd for the timing dance.
+  useHydrateOnStreamEnd({
+    status,
+    hydratedMessages,
+    isReconnectScheduled,
+    setMessages,
+  });
 
   // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
@@ -567,6 +567,7 @@ export function useCopilotStream({
 
   return {
     messages,
+    setMessages,
     sendMessage,
     stop,
     status,

@@ -877,6 +877,14 @@ def extract_context_messages(
     """
     from .model import ChatMessage as _ChatMessage  # runtime import
 
+    # ``role="reasoning"`` rows are persisted for frontend replay of
+    # extended_thinking content but are NOT conversation context — the
+    # transcript-based --resume path already carries thinking separately,
+    # and sending them back to the model as user/assistant turns would be
+    # both redundant and malformed.  Drop them before any gap detection
+    # or transcript comparison so ordering invariants still hold.
+    session_messages = [m for m in session_messages if m.role != "reasoning"]
+
     prior = session_messages[:-1]
 
     if download is None:

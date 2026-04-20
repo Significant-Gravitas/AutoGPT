@@ -11,6 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -31,7 +32,7 @@ import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
-import { ReasoningCollapse } from "./components/ReasoningCollapse";
+import { StepsCollapse } from "./components/StepsCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
 interface Props {
@@ -45,6 +46,8 @@ interface Props {
   onLoadMore?: () => void;
   onRetry?: () => void;
   historicalDurations?: Map<string, number>;
+  /** Pending queued messages waiting to be injected, shown at the end of chat. */
+  queuedMessages?: string[];
 }
 
 function renderSegments(
@@ -254,6 +257,7 @@ export function ChatMessagesContainer({
   onLoadMore,
   onRetry,
   historicalDurations,
+  queuedMessages,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -410,9 +414,9 @@ export function ChatMessagesContainer({
                 }
               >
                 {hasReasoning && reasoningSegments && (
-                  <ReasoningCollapse>
+                  <StepsCollapse>
                     {renderSegments(reasoningSegments, message.id)}
-                  </ReasoningCollapse>
+                  </StepsCollapse>
                 )}
                 {responseSegments
                   ? renderSegments(
@@ -478,6 +482,17 @@ export function ChatMessagesContainer({
           </Message>
         )}
         {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
+        {queuedMessages?.map((msg, idx) => (
+          <Message key={idx} from="user">
+            <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
+              <span>{msg}</span>
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                <Clock className="size-3" weight="bold" />
+                Queued
+              </span>
+            </MessageContent>
+          </Message>
+        ))}
         {error && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
