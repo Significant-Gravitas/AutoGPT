@@ -154,6 +154,12 @@ export function useBuilderChatPanel({
   }, [flowID]);
 
   const boundGraphRef = useRef<string | null>(null);
+  // Declared here (before the reset effect) so the reset effect can clear
+  // it on graph change.  Without this clear, a bind still in-flight when
+  // the user switches graphs would leave ``bindingRef.current === true``
+  // and the new graph's bind effect would early-return without ever
+  // retrying — panel silently stuck bootstrapping. See sentry 13568553.
+  const bindingRef = useRef(false);
 
   // Reset on graph change MUST run before the bind effect so that navigating
   // between agents first clears the old session/messages (same render cycle)
@@ -166,6 +172,7 @@ export function useBuilderChatPanel({
       setRevertTargetVersion(null);
       setMessages([]);
       boundGraphRef.current = null;
+      bindingRef.current = false;
       setBindError(null);
       return;
     }
@@ -174,6 +181,7 @@ export function useBuilderChatPanel({
       setRevertTargetVersion(null);
       setMessages([]);
       boundGraphRef.current = null;
+      bindingRef.current = false;
       setBindError(null);
     }
   }, [flowID, setMessages]);
@@ -183,11 +191,10 @@ export function useBuilderChatPanel({
   // the next panel open starts clean with the right graph.  Guards against:
   //   1) concurrent re-entry while an in-flight bind is pending
   //      (`bindingRef`) — rapid open/close toggles would otherwise fire
-  //      multiple POST /sessions/builder calls for the same graph.
+  //      multiple POST /sessions calls for the same graph.
   //   2) stale async responses after the user switches graphs
   //      (`currentFlowIDRef`) — an older graph's response must NOT
   //      overwrite a newer graph's sessionId.
-  const bindingRef = useRef(false);
   useEffect(() => {
     if (!isOpen) return;
     if (!flowID) return;

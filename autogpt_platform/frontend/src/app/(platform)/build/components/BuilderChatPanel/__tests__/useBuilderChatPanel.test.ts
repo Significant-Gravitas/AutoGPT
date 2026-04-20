@@ -294,6 +294,53 @@ describe("useBuilderChatPanel", () => {
     expect(createBuilderSession).toHaveBeenCalledTimes(1);
   });
 
+  it("rebinds for a new graph when the previous bind is still in flight (sentry 13568553)", async () => {
+    // Regression: the bindingRef lock used to persist across graph
+    // navigations, so a pending A-request left the lock set and B's bind
+    // effect early-returned without ever retrying — panel stuck.
+    // First call: slow resolve so graph-A's bind stays in flight while we navigate.
+    let resolveA!: (res: unknown) => void;
+    createBuilderSession
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            resolveA = r;
+          }),
+      )
+      .mockResolvedValueOnce({ status: 200, data: { id: "sess-B" } });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-A", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { builder_graph_id: "graph-A" },
+      });
+    });
+    // Navigate to B while A is still pending.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-B", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    rerender();
+    // B's bind effect must fire even though A's is mid-flight — the
+    // reset-on-graph-change effect clears bindingRef so B is not blocked.
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { builder_graph_id: "graph-B" },
+      });
+    });
+    // Resolve A late — its response must NOT overwrite B's sessionId
+    // (currentFlowIDRef staleness guard handles that).
+    resolveA({ status: 200, data: { id: "sess-A-stale" } });
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-B");
+    });
+  });
+
   it("resets session + revert state when flowID becomes null", async () => {
     const setMessages = vi.fn();
     mockUseCopilotStream.mockReturnValue({ ...defaultStream, setMessages });
