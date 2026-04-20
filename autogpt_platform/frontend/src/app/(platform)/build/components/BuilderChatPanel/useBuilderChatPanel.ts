@@ -223,6 +223,15 @@ export function useBuilderChatPanel({
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
+        if (typeof part.type === "string" && part.type.startsWith("tool-")) {
+          // eslint-disable-next-line no-console
+          console.debug(
+            "[BuilderChatPanel] tool-part",
+            part.type,
+            (part as { state?: string }).state,
+            (part as { toolCallId?: string }).toolCallId,
+          );
+        }
         if (part.type !== "tool-edit_agent" && part.type !== "tool-run_agent") {
           continue;
         }
@@ -246,6 +255,8 @@ export function useBuilderChatPanel({
           if (latestVersionBeforeEditRef.current != null) {
             setRevertTargetVersion(latestVersionBeforeEditRef.current);
           }
+          // eslint-disable-next-line no-console
+          console.debug("[BuilderChatPanel] edit_agent output", output);
           const newVersion = output?.graph_version;
           if (typeof newVersion === "number" && Number.isFinite(newVersion)) {
             setQueryStates({ flowVersion: newVersion });
@@ -374,21 +385,13 @@ export function useBuilderChatPanel({
   // the user is already IN the builder looking at the updated agent / run.
   // Strip those tool parts from the rendered message list; the raw
   // `messages` above still drives the side-effects.
-  const HIDDEN_TOOL_PART_TYPES = new Set([
-    "tool-edit_agent",
-    "tool-run_agent",
-    "tool-create_agent",
-  ]);
-  const visibleMessages = useMemo<UiMessages>(() => {
-    return messages.map((msg) => {
-      if (msg.role !== "assistant" || !msg.parts) return msg;
-      const filteredParts = msg.parts.filter(
-        (part) => !HIDDEN_TOOL_PART_TYPES.has(part.type),
-      );
-      if (filteredParts.length === msg.parts.length) return msg;
-      return { ...msg, parts: filteredParts };
-    });
-  }, [messages]);
+  // Earlier iterations hid edit_agent / run_agent / create_agent tool cards
+  // on the assumption that the side-effect hooks (graph refetch, URL sub)
+  // were enough feedback. They weren't — the user saw nothing in the chat
+  // and couldn't tell if the tool actually ran. Render them as the shared
+  // Copilot MessagePartRenderer does; the side effects still fire in the
+  // effect above.
+  const visibleMessages = messages;
 
   return {
     isOpen,
