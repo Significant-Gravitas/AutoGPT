@@ -1423,7 +1423,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Create Session",
-        "description": "Create a new chat session.\n\nInitiates a new chat session for the authenticated user.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body. When provided, ``dry_run=True``\n        forces run_block and run_agent calls to use dry-run simulation.\n\nReturns:\n    CreateSessionResponse: Details of the created session.",
+        "description": "Create (or get-or-create) a chat session.\n\nTwo modes, selected by the request body:\n\n- Default: create a fresh session for the user. ``dry_run=True`` forces\n  run_block and run_agent calls to use dry-run simulation.\n- Builder-bound: when ``builder_graph_id`` is set, switch to\n  get-or-create semantics keyed on ``(user_id, builder_graph_id)``.\n  Returns the user's existing session for that graph, or creates one\n  locked to it. Used by the builder panel so the chat persists across\n  refreshes. Session is restricted server-side to the builder tool\n  whitelist via ``CopilotPermissions``. Graph ownership is validated\n  inside :func:`get_or_create_builder_session`.\n\nArgs:\n    user_id: The authenticated user ID parsed from the JWT (required).\n    request: Optional request body with ``dry_run`` and/or\n        ``builder_graph_id``.\n\nReturns:\n    CreateSessionResponse: Details of the resulting session.",
         "operationId": "postV2CreateSession",
         "security": [{ "HTTPBearerJWT": [] }],
         "requestBody": {
@@ -1462,46 +1462,6 @@
             }
           }
         }
-      }
-    },
-    "/api/chat/sessions/builder": {
-      "post": {
-        "tags": ["v2", "chat", "chat"],
-        "summary": "Get Or Create Builder Session Endpoint",
-        "description": "Get-or-create a chat session bound to a builder graph.\n\nThe builder panel calls this on mount so the chat persists across\nrefreshes and is scoped to the currently-opened agent.  If a session\nalready exists with ``metadata.builder_graph_id == graph_id`` for this\nuser, the existing session is returned; otherwise a new one is\ncreated.  The session is restricted server-side to the\n``edit_agent`` and ``run_agent`` tools via the permissions injected\nby the executor (see :func:`resolve_session_permissions`).",
-        "operationId": "postV2GetOrCreateBuilderSessionEndpoint",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/BuilderSessionRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CreateSessionResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
       }
     },
     "/api/chat/sessions/{session_id}": {
@@ -8366,6 +8326,10 @@
           },
           "agent_id": { "type": "string", "title": "Agent Id" },
           "agent_name": { "type": "string", "title": "Agent Name" },
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
           "library_agent_id": { "type": "string", "title": "Library Agent Id" },
           "library_agent_link": {
             "type": "string",
@@ -9144,21 +9108,6 @@
         "required": ["file"],
         "title": "Body_uploadWorkspaceFile"
       },
-      "BuilderSessionRequest": {
-        "properties": {
-          "graph_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Graph Id"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": ["graph_id"],
-        "title": "BuilderSessionRequest",
-        "description": "Request model for get-or-create builder sessions.\n\nEach user has at most one session bound to a given ``graph_id`` —\nthe builder panel re-uses it across refreshes so the chat persists\nwith the agent.  Returning the existing session is safe because the\nsession is restricted via ``CopilotPermissions`` to the two builder\ntools and cannot mutate any other agent."
-      },
       "BulkMoveAgentsRequest": {
         "properties": {
           "agent_ids": {
@@ -9445,12 +9394,23 @@
       },
       "CreateSessionRequest": {
         "properties": {
-          "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "builder_graph_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Builder Graph Id"
+          }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating a new chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\n``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.\n\nWhen ``builder_graph_id`` is set the endpoint switches to **get-or-create**\nsemantics keyed on ``(user_id, builder_graph_id)``: the caller receives\nthe user's existing builder session for that graph, or a newly-created\none locked to it.  This is what the builder panel calls on mount so the\nchat persists across refreshes.  Sessions created this way are\nrestricted server-side to the builder tool whitelist\n(``edit_agent`` / ``run_agent``) via ``CopilotPermissions``, so returning\nan existing session is safe — it cannot be used to mutate a different\nagent.  Graph ownership is validated inside\n:func:`get_or_create_builder_session`.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
