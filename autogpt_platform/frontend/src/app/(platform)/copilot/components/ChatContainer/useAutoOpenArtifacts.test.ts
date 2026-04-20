@@ -1,5 +1,5 @@
-import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useCopilotUIStore } from "../../store";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
@@ -31,6 +31,11 @@ function resetStore() {
 
 describe("useAutoOpenArtifacts", () => {
   beforeEach(resetStore);
+  // Testing Library auto-cleanup isn't registered in our Vitest setup, so
+  // mounted `renderHook` instances (and their unmount cleanups) would leak
+  // between tests — here the unmount effect in useAutoOpenArtifacts would
+  // fire after the next test had already run and corrupt its assertions.
+  afterEach(cleanup);
 
   it("does not auto-open on initial render", () => {
     renderHook(() => useAutoOpenArtifacts({ sessionId: "s1" }));
