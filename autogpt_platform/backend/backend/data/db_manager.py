@@ -19,6 +19,7 @@ from backend.api.features.library.db import (
     move_folder,
     update_folder,
     update_graph_in_library,
+    update_library_agent,
 )
 from backend.api.features.store.db import (
     get_agent,
@@ -282,6 +283,7 @@ class DatabaseManager(AppService):
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
+    update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
@@ -344,7 +346,6 @@ class DatabaseManager(AppService):
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
     get_user_session_count = _(chat_db.get_user_session_count)
-    get_builder_session_by_graph_id = _(chat_db.get_builder_session_by_graph_id)
     delete_chat_session = _(chat_db.delete_chat_session)
     get_next_sequence = _(chat_db.get_next_sequence)
     update_tool_message_content = _(chat_db.update_tool_message_content)
@@ -483,6 +484,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_library_agent = d.create_library_agent
     get_library_agent = d.get_library_agent
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
+    update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
 
@@ -546,7 +548,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_chat_messages_batch = d.add_chat_messages_batch
     get_user_chat_sessions = d.get_user_chat_sessions
     get_user_session_count = d.get_user_session_count
-    get_builder_session_by_graph_id = d.get_builder_session_by_graph_id
     delete_chat_session = d.delete_chat_session
     get_next_sequence = d.get_next_sequence
     update_tool_message_content = d.update_tool_message_content

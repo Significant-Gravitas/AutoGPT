@@ -22,7 +22,8 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel
 
-from backend.data.db_accessors import chat_db, graph_db
+from backend.data.db_accessors import chat_db, library_db
+from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
 from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
@@ -782,35 +783,35 @@ async def get_or_create_builder_session(
 ) -> ChatSession:
     """Return the user's builder session for *graph_id*, creating it if absent.
 
-    Looks up any existing session where
-    ``metadata.builder_graph_id == graph_id``.  Matches are unique per
-    (user_id, graph_id) in practice because only this helper creates
-    builder-bound sessions.  If a match exists, the full :class:`ChatSession`
-    (with messages) is returned so refreshing ``/build?flowID=<g>``
-    restores the same chat.
-
-    The caller must own *graph_id* — ownership is verified via
-    ``graph_db().get_graph(graph_id, user_id=user_id)`` before any session
-    lookup or creation. Raises :class:`NotFoundError` (mapped to HTTP 404
-    by the REST layer) if the graph doesn't exist or isn't accessible to
-    *user_id*. This prevents database pollution with orphaned sessions
-    and graph-id probing by unauthorized callers.
+    The session pointer is stored on
+    ``LibraryAgent.settings.builder_chat_session_id``. Ownership is enforced
+    by ``get_library_agent_by_graph_id`` (filters on ``userId``); a miss
+    raises :class:`NotFoundError` (HTTP 404), which also blocks graph-id
+    probing by unauthorized callers.
     """
-    graph = await graph_db().get_graph(graph_id, version=None, user_id=user_id)
-    if graph is None:
+    library_agent = await library_db().get_library_agent_by_graph_id(
+        user_id=user_id, graph_id=graph_id
+    )
+    if library_agent is None:
         raise NotFoundError(f"Graph {graph_id} not found")
 
-    existing_info = await chat_db().get_builder_session_by_graph_id(user_id, graph_id)
-    if existing_info is not None:
-        session = await get_chat_session(existing_info.session_id, user_id)
+    existing_sid = library_agent.settings.builder_chat_session_id
+    if existing_sid:
+        session = await get_chat_session(existing_sid, user_id)
         if session is not None:
             return session
 
-    return await create_chat_session(
+    session = await create_chat_session(
         user_id,
         dry_run=False,
         builder_graph_id=graph_id,
     )
+    await library_db().update_library_agent(
+        library_agent_id=library_agent.id,
+        user_id=user_id,
+        settings=GraphSettings(builder_chat_session_id=session.session_id),
+    )
+    return session
 
 
 async def get_user_sessions(
