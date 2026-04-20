@@ -43,7 +43,11 @@ function toTimestamp(value?: string | Date | null): number | null {
 }
 
 function startOfCurrentMonth(now: Date = new Date()): number {
-  return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+}
+
+function currentDayKey(now: Date = new Date()): number {
+  return Math.floor(now.getTime() / 86_400_000);
 }
 
 export function useLibraryFleetSummary(
@@ -56,6 +60,11 @@ export function useLibraryFleetSummary(
   });
 
   const graphIDs = useMemo(() => agents.map((a) => a.graph_id), [agents]);
+
+  // Recompute when the UTC day rolls over so `monthStart` stays fresh on a
+  // long-open tab — read on every render; cheap. React Query refetches keep
+  // the memo re-evaluating in practice.
+  const dayKey = currentDayKey();
 
   const handleExecutionUpdate = useCallback(() => {
     queryClient.invalidateQueries({
@@ -92,7 +101,7 @@ export function useLibraryFleetSummary(
       const startedTs = toTimestamp(exec.started_at);
       if (startedTs !== null && startedTs >= monthStart) {
         const cost = exec.stats?.cost;
-        if (typeof cost === "number" && cost > 0) {
+        if (typeof cost === "number" && Number.isFinite(cost)) {
           monthlySpendCents += cost;
         }
       }
@@ -133,5 +142,5 @@ export function useLibraryFleetSummary(
     }
 
     return summary;
-  }, [agents, executions, isSuccess]);
+  }, [agents, executions, isSuccess, dayKey]);
 }
