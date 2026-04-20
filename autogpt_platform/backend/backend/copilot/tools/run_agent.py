@@ -9,8 +9,8 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.model import ChatSession
 from backend.copilot.tracking import track_agent_run_success, track_agent_scheduled
-from backend.data.db_accessors import graph_db, library_db, user_db
-from backend.data.execution import ExecutionStatus
+from backend.data.db_accessors import execution_db, graph_db, library_db, user_db
+from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
@@ -702,6 +702,46 @@ class RunAgentTool(BaseTool):
 
             if completed and completed.status == ExecutionStatus.COMPLETED:
                 outputs = get_execution_outputs(completed)
+                # Inline the per-node execution trace on dry-runs so the
+                # LLM can inspect "did every block run, what did each
+                # produce?" without a follow-up view_agent_output call.
+                # Empty final outputs on a COMPLETED dry-run almost always
+                # mean a node silently produced nothing / a link was wired
+                # wrong — the trace is what lets the model debug that.
+                node_executions_data = None
+                if dry_run:
+                    try:
+                        detailed = await execution_db().get_graph_execution(
+                            user_id=user_id,
+                            execution_id=execution.id,
+                            include_node_executions=True,
+                        )
+                        if isinstance(detailed, GraphExecutionWithNodes):
+                            node_executions_data = [
+                                {
+                                    "node_id": ne.node_id,
+                                    "block_id": ne.block_id,
+                                    "status": ne.status.value,
+                                    "input_data": ne.input_data,
+                                    "output_data": dict(ne.output_data),
+                                    "start_time": (
+                                        ne.start_time.isoformat()
+                                        if ne.start_time
+                                        else None
+                                    ),
+                                    "end_time": (
+                                        ne.end_time.isoformat() if ne.end_time else None
+                                    ),
+                                }
+                                for ne in detailed.node_executions
+                            ]
+                    except Exception:
+                        logger.warning(
+                            "run_agent: failed to load node executions for "
+                            "dry-run %s; returning summary only",
+                            execution.id,
+                            exc_info=True,
+                        )
                 return AgentOutputResponse(
                     message=(
                         f"Agent '{library_agent.name}' completed successfully. "
@@ -718,6 +758,7 @@ class RunAgentTool(BaseTool):
                         started_at=completed.started_at,
                         ended_at=completed.ended_at,
                         outputs=outputs or {},
+                        node_executions=node_executions_data,
                     ),
                 )
             elif completed and completed.status == ExecutionStatus.FAILED:
