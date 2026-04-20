@@ -269,6 +269,9 @@ describe("ArtifactContent", () => {
       const nextSrc = nextImg?.getAttribute("src") ?? "";
       expect(nextSrc).not.toBe(firstSrc);
       expect(nextSrc.startsWith(artifact.sourceUrl)).toBe(true);
+      // Assert the specific cache-bust contract, not just that the URL
+      // changed — guards against accidental rewrites that drop the key.
+      expect(nextSrc).toContain("_retry=");
     });
   });
 
@@ -1151,41 +1154,43 @@ describe("ArtifactContent", () => {
       throw new Error("boom in renderer");
     });
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve("source"),
-      }),
-    );
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve("source"),
+        }),
+      );
 
-    const artifact = makeArtifact({
-      id: "crash-001",
-      title: "broken.tsx",
-      mimeType: "text/tsx",
-    });
-    const classification = makeClassification({ type: "react" });
+      const artifact = makeArtifact({
+        id: "crash-001",
+        title: "broken.tsx",
+        mimeType: "text/tsx",
+      });
+      const classification = makeClassification({ type: "react" });
 
-    render(
-      <ArtifactContent
-        artifact={artifact}
-        isSourceView={false}
-        classification={classification}
-      />,
-    );
+      render(
+        <ArtifactContent
+          artifact={artifact}
+          isSourceView={false}
+          classification={classification}
+        />,
+      );
 
-    expect(
-      await screen.findByText(/This artifact couldn't be rendered/i),
-    ).toBeTruthy();
-    expect(screen.getByText(/boom in renderer/)).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: /copy error details/i }),
-    ).toBeTruthy();
-
-    if (originalImpl) {
-      vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+      expect(
+        await screen.findByText(/This artifact couldn't be rendered/i),
+      ).toBeTruthy();
+      expect(screen.getByText(/boom in renderer/)).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: /copy error details/i }),
+      ).toBeTruthy();
+    } finally {
+      if (originalImpl) {
+        vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+      }
+      consoleErr.mockRestore();
     }
-    consoleErr.mockRestore();
   });
 
   it("copies artifact title, type, and error to the clipboard", async () => {
@@ -1204,42 +1209,44 @@ describe("ArtifactContent", () => {
       throw new Error("jsx parse failed at line 42");
     });
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        text: () => Promise.resolve("source"),
-      }),
-    );
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          text: () => Promise.resolve("source"),
+        }),
+      );
 
-    render(
-      <ArtifactContent
-        artifact={makeArtifact({
-          id: "crash-002",
-          title: "report.tsx",
-          mimeType: "text/tsx",
-        })}
-        isSourceView={false}
-        classification={makeClassification({ type: "react" })}
-      />,
-    );
+      render(
+        <ArtifactContent
+          artifact={makeArtifact({
+            id: "crash-002",
+            title: "report.tsx",
+            mimeType: "text/tsx",
+          })}
+          isSourceView={false}
+          classification={makeClassification({ type: "react" })}
+        />,
+      );
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: /copy error details/i }),
-    );
+      fireEvent.click(
+        await screen.findByRole("button", { name: /copy error details/i }),
+      );
 
-    await waitFor(() => {
-      expect(writeText).toHaveBeenCalled();
-    });
-    const payload = writeText.mock.calls[0]![0] as string;
-    expect(payload).toContain("report.tsx");
-    expect(payload).toContain("react");
-    expect(payload).toContain("jsx parse failed at line 42");
-
-    if (originalImpl) {
-      vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalled();
+      });
+      const payload = writeText.mock.calls[0]![0] as string;
+      expect(payload).toContain("report.tsx");
+      expect(payload).toContain("react");
+      expect(payload).toContain("jsx parse failed at line 42");
+    } finally {
+      if (originalImpl) {
+        vi.mocked(ArtifactReactPreview).mockImplementation(originalImpl);
+      }
+      consoleErr.mockRestore();
     }
-    consoleErr.mockRestore();
   });
 
   it("renders the user-reported plotly HTML artifact into a sandboxed iframe", async () => {
