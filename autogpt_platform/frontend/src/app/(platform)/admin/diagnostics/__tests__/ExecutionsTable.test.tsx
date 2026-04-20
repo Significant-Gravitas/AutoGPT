@@ -1181,4 +1181,31 @@ describe("ExecutionsTable", () => {
     const badge = screen.getByText("QUEUED");
     expect(badge.className).toContain("bg-yellow");
   });
+
+  it("clicking Next advances pagination page", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-pagnext-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 25));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
+    fireEvent.click(screen.getByText("Next"));
+    expect(screen.getByText(/Page 2 of 3/)).toBeDefined();
+  });
+
+  it("clicking Previous goes back a page", () => {
+    setupDefaultMocks();
+    const executions = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleExecution,
+      execution_id: `exec-pagprev-${i}`,
+    }));
+    mockRunningQuery.mockReturnValue(withExecutions(executions, 25));
+    render(<ExecutionsTable diagnosticsData={diagnosticsData} />);
+    fireEvent.click(screen.getByText("Next"));
+    expect(screen.getByText(/Page 2 of 3/)).toBeDefined();
+    fireEvent.click(screen.getByText("Previous"));
+    expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
+  });
 });

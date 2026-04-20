@@ -381,4 +381,33 @@ describe("SchedulesTable", () => {
       expect(mockCleanupOrphaned).toHaveBeenCalled();
     });
   });
+
+  it("clicking Next button advances page", () => {
+    setupDefaultMocks();
+    const schedules = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleSchedule,
+      schedule_id: `sched-pag-${i}`,
+    }));
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 25));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
+    fireEvent.click(screen.getByText("Next"));
+    expect(screen.getByText(/Page 2 of 3/)).toBeDefined();
+  });
+
+  it("clicking Previous button goes back a page", () => {
+    setupDefaultMocks();
+    const schedules = Array.from({ length: 10 }, (_, i) => ({
+      ...sampleSchedule,
+      schedule_id: `sched-back-${i}`,
+    }));
+    mockAllSchedulesQuery.mockReturnValue(withSchedules(schedules, 25));
+    render(<SchedulesTable diagnosticsData={diagnosticsData} />);
+    // Go to page 2 first
+    fireEvent.click(screen.getByText("Next"));
+    expect(screen.getByText(/Page 2 of 3/)).toBeDefined();
+    // Go back
+    fireEvent.click(screen.getByText("Previous"));
+    expect(screen.getByText(/Page 1 of 3/)).toBeDefined();
+  });
 });
