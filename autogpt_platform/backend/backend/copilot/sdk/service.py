@@ -95,7 +95,10 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from ..builder_context import build_builder_context_block
+from ..builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
+)
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -2739,7 +2742,7 @@ async def _maybe_prepend_builder_context(
     """
     if not is_user_message or not session.metadata.builder_graph_id:
         return query_message
-    block = await build_builder_context_block(session, user_id)
+    block = await build_builder_context_turn_prefix(session, user_id)
     return block + query_message if block else query_message
 
 
@@ -2976,10 +2979,17 @@ async def stream_chat_completion_sdk(
         graphiti_enabled = await is_enabled_for_user(user_id)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        # Append the builder-session block (graph id+name + full building
+        # guide) AFTER the shared supplements so the system prompt is
+        # byte-identical across turns of the same builder session — Claude's
+        # prompt cache keeps the ~20KB guide warm for the whole session.
+        # Empty string for non-builder sessions preserves cross-user caching.
+        builder_session_suffix = await build_builder_system_prompt_suffix(session)
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
+            + builder_session_suffix
         )
 
         # Warm context: pre-load relevant facts from Graphiti on first turn.

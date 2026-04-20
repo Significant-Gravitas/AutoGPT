@@ -1,4 +1,12 @@
-"""Tests for the per-turn builder-context injection helpers."""
+"""Tests for the split builder-context helpers.
+
+Covers both halves of the public API:
+
+- :func:`build_builder_system_prompt_suffix` — session-stable block
+  appended to the system prompt (contains the guide + graph id/name).
+- :func:`build_builder_context_turn_prefix` — per-turn user-message
+  prefix (contains the live version + node/link snapshot).
+"""
 
 from __future__ import annotations
 
@@ -8,8 +16,9 @@ import pytest
 
 from backend.copilot.builder_context import (
     BUILDER_CONTEXT_TAG,
-    _format_graph_block,
-    build_builder_context_block,
+    BUILDER_SESSION_TAG,
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
 )
 from backend.copilot.model import ChatSession
 
@@ -41,15 +50,138 @@ def _agent_json(
     return base
 
 
+# ---------------------------------------------------------------------------
+# build_builder_system_prompt_suffix
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.asyncio
-async def test_no_builder_graph_id_returns_empty_string():
+async def test_system_prompt_suffix_empty_for_non_builder():
     session = _session(None)
-    result = await build_builder_context_block(session, "user-1")
+    result = await build_builder_system_prompt_suffix(session)
     assert result == ""
 
 
 @pytest.mark.asyncio
-async def test_happy_path_returns_block_with_id_version_and_guide():
+async def test_system_prompt_suffix_contains_guide_id_and_name():
+    session = _session("graph-1")
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=AsyncMock(return_value=_agent_json()),
+        ),
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        ),
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert suffix.startswith("\n\n")
+    assert f"<{BUILDER_SESSION_TAG}>" in suffix
+    assert f"</{BUILDER_SESSION_TAG}>" in suffix
+    assert 'id="graph-1"' in suffix
+    assert 'name="My Agent"' in suffix
+    assert "<building_guide>" in suffix
+    assert "# Guide body" in suffix
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_no_name_when_graph_fetch_fails():
+    """Graph fetch failure keeps the guide — without the name — so the
+    assistant still has its building context for the session."""
+    session = _session("graph-1")
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=AsyncMock(side_effect=RuntimeError("boom")),
+        ),
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        ),
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert f"<{BUILDER_SESSION_TAG}>" in suffix
+    assert 'id="graph-1"' in suffix
+    # No name attribute when the fetch failed.
+    assert "name=" not in suffix
+    assert "# Guide body" in suffix
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_no_name_when_graph_not_found():
+    session = _session("graph-1")
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        ),
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert 'id="graph-1"' in suffix
+    assert "name=" not in suffix
+    assert "# Guide body" in suffix
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_empty_when_guide_load_fails():
+    """Guide load failure means we have nothing useful to add — emit an empty
+    suffix rather than a half-built block that only says ``graph id=…``."""
+    session = _session("graph-1")
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=AsyncMock(return_value=_agent_json()),
+        ),
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            side_effect=OSError("missing"),
+        ),
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert suffix == ""
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_suffix_escapes_graph_name():
+    session = _session("graph-1")
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=AsyncMock(return_value=_agent_json(name='<script>&"')),
+        ),
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="# Guide body",
+        ),
+    ):
+        suffix = await build_builder_system_prompt_suffix(session)
+
+    assert 'name="&lt;script&gt;&amp;&quot;"' in suffix
+
+
+# ---------------------------------------------------------------------------
+# build_builder_context_turn_prefix
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_turn_prefix_empty_for_non_builder():
+    session = _session(None)
+    result = await build_builder_context_turn_prefix(session, "user-1")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_turn_prefix_contains_version_nodes_and_links():
     session = _session("graph-1")
     nodes = [
         {
@@ -74,41 +206,56 @@ async def test_happy_path_returns_block_with_id_version_and_guide():
         }
     ]
     agent = _agent_json(nodes=nodes, links=links)
-
-    with (
-        patch(
-            "backend.copilot.builder_context.get_agent_as_json",
-            new=AsyncMock(return_value=agent),
-        ),
-        patch(
-            "backend.copilot.builder_context._load_guide",
-            return_value="# Guide body",
-        ),
+    with patch(
+        "backend.copilot.builder_context.get_agent_as_json",
+        new=AsyncMock(return_value=agent),
     ):
-        block = await build_builder_context_block(session, "user-1")
+        block = await build_builder_context_turn_prefix(session, "user-1")
 
     assert block.startswith(f"<{BUILDER_CONTEXT_TAG}>\n")
     assert block.endswith(f"</{BUILDER_CONTEXT_TAG}>\n\n")
-    assert 'id="graph-1"' in block
     assert 'version="3"' in block
-    assert 'name="My Agent"' in block
-    assert "A test agent" in block
-    assert 'count="2"' in block  # nodes
+    assert 'node_count="2"' in block
+    assert 'edge_count="1"' in block
     assert "n1: Input (block-A)" in block
     assert "n2: block-B (block-B)" in block
     assert "Input.out -> block-B.in" in block
-    assert "# Guide body" in block
-    assert "<building_guide>" in block
 
 
 @pytest.mark.asyncio
-async def test_fetch_failure_returns_minimal_marker():
+async def test_turn_prefix_does_not_include_guide_or_graph_id():
+    """Static data (guide, graph id) lives in the system prompt. The per-turn
+    prefix must stay small so it isn't dragged through prompt caching."""
+    session = _session("graph-1")
+    with (
+        patch(
+            "backend.copilot.builder_context.get_agent_as_json",
+            new=AsyncMock(return_value=_agent_json()),
+        ),
+        # Sentinel guide text — if it leaks into the turn prefix the assertion
+        # below catches it. The turn prefix never calls _load_guide, but we
+        # patch it anyway as a defense-in-depth check.
+        patch(
+            "backend.copilot.builder_context._load_guide",
+            return_value="SENTINEL_GUIDE_BODY",
+        ),
+    ):
+        block = await build_builder_context_turn_prefix(session, "user-1")
+
+    assert "SENTINEL_GUIDE_BODY" not in block
+    assert "<building_guide>" not in block
+    # graph id should live in <builder_session> (system prompt), not here.
+    assert 'id="graph-1"' not in block
+
+
+@pytest.mark.asyncio
+async def test_turn_prefix_fetch_failure_returns_marker():
     session = _session("graph-1")
     with patch(
         "backend.copilot.builder_context.get_agent_as_json",
         new=AsyncMock(side_effect=RuntimeError("boom")),
     ):
-        block = await build_builder_context_block(session, "user-1")
+        block = await build_builder_context_turn_prefix(session, "user-1")
 
     assert block == (
         f"<{BUILDER_CONTEXT_TAG}>\n"
@@ -118,48 +265,39 @@ async def test_fetch_failure_returns_minimal_marker():
 
 
 @pytest.mark.asyncio
-async def test_graph_not_found_returns_minimal_marker():
+async def test_turn_prefix_graph_not_found_returns_marker():
     session = _session("graph-1")
     with patch(
         "backend.copilot.builder_context.get_agent_as_json",
         new=AsyncMock(return_value=None),
     ):
-        block = await build_builder_context_block(session, "user-1")
+        block = await build_builder_context_turn_prefix(session, "user-1")
 
     assert "<status>fetch_failed</status>" in block
 
 
 @pytest.mark.asyncio
-async def test_guide_load_failure_returns_minimal_marker():
+async def test_turn_prefix_node_cap_truncates_with_more_marker():
     session = _session("graph-1")
-    with (
-        patch(
-            "backend.copilot.builder_context.get_agent_as_json",
-            new=AsyncMock(return_value=_agent_json()),
-        ),
-        patch(
-            "backend.copilot.builder_context._load_guide",
-            side_effect=OSError("missing"),
-        ),
-    ):
-        block = await build_builder_context_block(session, "user-1")
-
-    assert "<status>fetch_failed</status>" in block
-
-
-def test_node_cap_truncates_with_more_marker():
     nodes = [
         {"id": f"n{i}", "block_id": "b", "input_default": {}, "metadata": {}}
         for i in range(150)
     ]
     agent = _agent_json(nodes=nodes)
-    block = _format_graph_block(agent, "guide")
-    assert 'count="150"' in block
-    # 50 nodes past the cap of 100
+    with patch(
+        "backend.copilot.builder_context.get_agent_as_json",
+        new=AsyncMock(return_value=agent),
+    ):
+        block = await build_builder_context_turn_prefix(session, "user-1")
+
+    assert 'node_count="150"' in block
+    # 50 nodes past the cap of 100.
     assert "(50 more not shown)" in block
 
 
-def test_link_cap_truncates_with_more_marker():
+@pytest.mark.asyncio
+async def test_turn_prefix_link_cap_truncates_with_more_marker():
+    session = _session("graph-1")
     nodes = [
         {"id": f"n{i}", "block_id": "b", "input_default": {}, "metadata": {}}
         for i in range(5)
@@ -174,12 +312,19 @@ def test_link_cap_truncates_with_more_marker():
         for _ in range(250)
     ]
     agent = _agent_json(nodes=nodes, links=links)
-    block = _format_graph_block(agent, "guide")
-    assert 'count="250"' in block
+    with patch(
+        "backend.copilot.builder_context.get_agent_as_json",
+        new=AsyncMock(return_value=agent),
+    ):
+        block = await build_builder_context_turn_prefix(session, "user-1")
+
+    assert 'edge_count="250"' in block
     assert "(50 more not shown)" in block
 
 
-def test_xml_escaping_in_node_names_and_graph_name():
+@pytest.mark.asyncio
+async def test_turn_prefix_xml_escaping_in_node_names():
+    session = _session("graph-1")
     nodes = [
         {
             "id": "n1",
@@ -188,26 +333,13 @@ def test_xml_escaping_in_node_names_and_graph_name():
             "metadata": {},
         }
     ]
-    agent = _agent_json(nodes=nodes, name='<script>&"')
-    block = _format_graph_block(agent, "guide")
+    agent = _agent_json(nodes=nodes)
+    with patch(
+        "backend.copilot.builder_context.get_agent_as_json",
+        new=AsyncMock(return_value=agent),
+    ):
+        block = await build_builder_context_turn_prefix(session, "user-1")
+
     # The raw closing tag must never appear inside the block content —
     # escaping stops a user-controlled name from breaking out of the block.
-    assert 'name="&lt;script&gt;&amp;&quot;"' in block
-    # The sanitized node name appears escaped.
     assert "&lt;/builder_context&gt;" in block
-
-
-def test_description_trimmed_to_max_length():
-    long_desc = "A" * 2000
-    agent = _agent_json(description=long_desc)
-    block = _format_graph_block(agent, "guide")
-    # Description inside the block should be capped well below the original.
-    # The 500-char cap is an implementation detail; just assert it is bounded.
-    assert "<description>" in block
-    assert "A" * 2000 not in block
-
-
-def test_missing_description_is_omitted():
-    agent = _agent_json(description="")
-    block = _format_graph_block(agent, "guide")
-    assert "<description>" not in block

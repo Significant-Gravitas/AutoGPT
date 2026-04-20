@@ -1,15 +1,21 @@
-"""Builder-session context block helpers.
+"""Builder-session context helpers.
 
 When a copilot session is bound to a builder graph (via
-``session.metadata.builder_graph_id``), every turn's user message is
-prefixed with a trusted ``<builder_context>`` block that contains:
+``session.metadata.builder_graph_id``), the assistant needs two distinct
+pieces of context:
 
-- The bound graph's id, name, description, and current version.
-- A compact summary of the graph's nodes and links (live snapshot).
-- The full agent-building guide text.
+- A **static** session-long block — the bound graph's id/name and the
+  full agent-building guide. This never changes turn-to-turn, so it
+  belongs in the *system prompt* where Claude's cross-turn prompt cache
+  keeps it warm across the whole session.
+- A **dynamic** per-turn snapshot — the current graph version and a
+  compact summary of its live nodes and links. The user may edit the
+  graph between turns, so this is injected as a ``<builder_context>``
+  prefix on every user message.
 
-This lets the LLM act on the current agent without a per-turn
-``get_agent_building_guide`` + ``get_agent_as_json`` round-trip.
+Splitting the two lets the ~20KB guide live in the cacheable system
+prompt while only the small, volatile snapshot rides along with each
+user turn — a large prompt-cache win for builder sessions.
 """
 
 from __future__ import annotations
@@ -24,19 +30,22 @@ from backend.copilot.tools.get_agent_building_guide import _load_guide
 logger = logging.getLogger(__name__)
 
 
+# Tag that wraps the per-turn graph snapshot prepended to user messages.
 BUILDER_CONTEXT_TAG = "builder_context"
+
+# Tag that wraps the session-long static block appended to the system prompt.
+BUILDER_SESSION_TAG = "builder_session"
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
 # server-side block stays within a practical token budget even for large
 # graphs.
 _MAX_NODES = 100
 _MAX_LINKS = 200
-_MAX_DESCRIPTION_CHARS = 500
 
 
 def _sanitize_for_xml(value: Any) -> str:
     """Escape XML special characters so user-controlled strings cannot break
-    out of the ``<builder_context>`` wrapper.
+    out of the context wrappers.
 
     Mirrors the escaping pattern used by the frontend ``sanitizeForXml``
     helper in ``BuilderChatPanel/helpers.ts``.
@@ -70,7 +79,7 @@ def _node_display_name(node: dict[str, Any]) -> str:
 
 def _format_nodes(nodes: list[dict[str, Any]]) -> str:
     if not nodes:
-        return '<nodes count="0"/>'
+        return "<nodes>\n</nodes>"
     visible = nodes[:_MAX_NODES]
     lines = []
     for node in visible:
@@ -82,7 +91,7 @@ def _format_nodes(nodes: list[dict[str, Any]]) -> str:
     if extra > 0:
         lines.append(f"({extra} more not shown)")
     body = "\n".join(lines)
-    return f'<nodes count="{len(nodes)}">\n{body}\n</nodes>'
+    return f"<nodes>\n{body}\n</nodes>"
 
 
 def _format_links(
@@ -90,7 +99,7 @@ def _format_links(
     nodes: list[dict[str, Any]],
 ) -> str:
     if not links:
-        return '<links count="0"/>'
+        return "<links>\n</links>"
     name_by_id = {n.get("id"): _node_display_name(n) for n in nodes}
     visible = links[:_MAX_LINKS]
     lines = []
@@ -109,41 +118,10 @@ def _format_links(
     if extra > 0:
         lines.append(f"({extra} more not shown)")
     body = "\n".join(lines)
-    return f'<links count="{len(links)}">\n{body}\n</links>'
+    return f"<links>\n{body}\n</links>"
 
 
-def _format_graph_block(agent_json: dict[str, Any], guide: str) -> str:
-    graph_id = _sanitize_for_xml(agent_json.get("id") or "")
-    version = _sanitize_for_xml(agent_json.get("version") or "")
-    name = _sanitize_for_xml(agent_json.get("name") or "")
-    raw_description = agent_json.get("description") or ""
-    description = ""
-    if isinstance(raw_description, str) and raw_description.strip():
-        trimmed = raw_description.strip()[:_MAX_DESCRIPTION_CHARS]
-        description = f"<description>{_sanitize_for_xml(trimmed)}</description>\n"
-
-    nodes = agent_json.get("nodes") or []
-    links = agent_json.get("links") or []
-    nodes_block = _format_nodes(nodes)
-    links_block = _format_links(links, nodes)
-
-    # The guide is trusted server-side content (read from disk). We do NOT
-    # escape it — the LLM needs the raw markdown to make sense of block ids,
-    # code fences, and example JSON.
-    guide_block = f"<building_guide>\n{guide}\n</building_guide>"
-
-    inner = (
-        f'<graph id="{graph_id}" version="{version}" name="{name}">\n'
-        f"{description}"
-        f"{nodes_block}\n"
-        f"{links_block}\n"
-        f"</graph>\n"
-        f"{guide_block}"
-    )
-    return f"<{BUILDER_CONTEXT_TAG}>\n{inner}\n</{BUILDER_CONTEXT_TAG}>\n\n"
-
-
-def _fetch_failed_block() -> str:
+def _fetch_failed_turn_prefix() -> str:
     return (
         f"<{BUILDER_CONTEXT_TAG}>\n"
         f"<status>fetch_failed</status>\n"
@@ -151,16 +129,93 @@ def _fetch_failed_block() -> str:
     )
 
 
-async def build_builder_context_block(
+def _format_session_block(graph_id: str, graph_name: str | None, guide: str) -> str:
+    """Render the session-long ``<builder_session>`` block.
+
+    *graph_name* is optional — on graph fetch failure we still emit the
+    block with just the id and the guide, because the guide alone is
+    useful for the assistant even without the graph's display name.
+    """
+    if graph_name:
+        graph_tag = (
+            f'<graph id="{_sanitize_for_xml(graph_id)}" '
+            f'name="{_sanitize_for_xml(graph_name)}"/>'
+        )
+    else:
+        graph_tag = f'<graph id="{_sanitize_for_xml(graph_id)}"/>'
+
+    # The guide is trusted server-side content (read from disk). We do NOT
+    # escape it — the LLM needs the raw markdown to make sense of block ids,
+    # code fences, and example JSON.
+    return (
+        f"<{BUILDER_SESSION_TAG}>\n"
+        f"{graph_tag}\n"
+        f"<building_guide>\n{guide}\n</building_guide>\n"
+        f"</{BUILDER_SESSION_TAG}>"
+    )
+
+
+async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
+    """Return the system-prompt suffix for a builder-bound *session*.
+
+    Returns ``"\\n\\n<builder_session>…</builder_session>"`` when the session
+    is bound to a graph and the building guide can be loaded; otherwise
+    ``""``. The graph's *name* is fetched once here (session-stable, safe to
+    cache in the system prompt); version/nodes/links intentionally stay out
+    of this block so the suffix is byte-identical across turns of the same
+    session and Claude's prompt cache can keep it warm.
+
+    On graph fetch failure, the suffix still includes the guide with just the
+    graph id — the guide alone is useful and we avoid a turn where the
+    assistant loses all of its building context.  On guide load failure,
+    the suffix is empty; we don't pollute the prompt with a half-built
+    block that only tells the LLM its graph id.
+    """
+    metadata = getattr(session, "metadata", None)
+    graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
+    if not graph_id:
+        return ""
+
+    try:
+        guide = _load_guide()
+    except Exception:
+        logger.exception("[builder_context] Failed to load agent-building guide")
+        return ""
+
+    graph_name: str | None = None
+    try:
+        agent_json = await get_agent_as_json(graph_id, None)
+    except Exception:
+        logger.exception(
+            "[builder_context] Failed to fetch graph %s for system prompt",
+            graph_id,
+        )
+        agent_json = None
+
+    if agent_json:
+        raw_name = agent_json.get("name")
+        if isinstance(raw_name, str) and raw_name.strip():
+            graph_name = raw_name.strip()
+
+    return "\n\n" + _format_session_block(graph_id, graph_name, guide)
+
+
+async def build_builder_context_turn_prefix(
     session: ChatSession,
     user_id: str | None,
 ) -> str:
-    """Return the per-turn ``<builder_context>`` block for *session*.
+    """Return the per-turn ``<builder_context>`` prefix for *session*.
 
-    Returns an empty string when the session is not builder-bound.  When the
-    graph fetch fails, returns a minimal ``<builder_context><status>fetch_failed
-    </status></builder_context>`` marker so the LLM can still reason about its
-    binding instead of silently seeing no context.
+    Contains only the volatile parts: current graph *version*, node/edge
+    counts, and the capped node + link lists. The static guide + graph id
+    live in :func:`build_builder_system_prompt_suffix` instead, so the
+    per-turn prefix stays small.
+
+    Returns ``""`` for non-builder sessions. Returns a
+    ``<builder_context><status>fetch_failed</status></builder_context>``
+    marker when the graph cannot be fetched — same behaviour as before,
+    so the LLM still sees it is bound to a graph even when the live
+    snapshot is unavailable.
     """
     metadata = getattr(session, "metadata", None)
     graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
@@ -175,7 +230,7 @@ async def build_builder_context_block(
             graph_id,
             getattr(session, "session_id", "?"),
         )
-        return _fetch_failed_block()
+        return _fetch_failed_turn_prefix()
 
     if not agent_json:
         logger.warning(
@@ -183,12 +238,18 @@ async def build_builder_context_block(
             graph_id,
             getattr(session, "session_id", "?"),
         )
-        return _fetch_failed_block()
+        return _fetch_failed_turn_prefix()
 
-    try:
-        guide = _load_guide()
-    except Exception:
-        logger.exception("[builder_context] Failed to load agent-building guide")
-        return _fetch_failed_block()
+    version = _sanitize_for_xml(agent_json.get("version") or "")
+    nodes = agent_json.get("nodes") or []
+    links = agent_json.get("links") or []
+    nodes_block = _format_nodes(nodes)
+    links_block = _format_links(links, nodes)
+    graph_tag = (
+        f'<graph version="{version}" '
+        f'node_count="{len(nodes)}" '
+        f'edge_count="{len(links)}"/>'
+    )
 
-    return _format_graph_block(agent_json, guide)
+    inner = f"{graph_tag}\n{nodes_block}\n{links_block}"
+    return f"<{BUILDER_CONTEXT_TAG}>\n{inner}\n</{BUILDER_CONTEXT_TAG}>\n\n"
