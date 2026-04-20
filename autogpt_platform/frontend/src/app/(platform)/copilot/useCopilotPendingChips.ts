@@ -277,9 +277,32 @@ async function pollBackendAndPromote(
   const drained = localChips.slice(0, drainedCount);
   const remaining = localChips.slice(drainedCount);
 
-  setMessages((prev) => [
-    ...prev,
-    makePromotedUserBubble(drained, "midturn", crypto.randomUUID()),
-  ]);
+  // Splice the promoted bubble at ``len-1`` so the trailing streaming
+  // assistant stays at ``messages[-1]``.  AI SDK's ``useChat`` streams
+  // every SSE text/tool delta into the last message; pushing the user
+  // bubble onto the tail makes ``[-1]`` the user bubble and every
+  // subsequent chunk lands in the wrong slot (silently) until a page
+  // refresh.  Inserting before the assistant keeps the stream flowing.
+  //
+  // The one tradeoff: during streaming the promoted bubble clusters
+  // just above the current streaming assistant — which is earlier in
+  // the chronological order than the DB-canonical spot (between the
+  // tool result it rode in on and the continuing assistant).  AI SDK's
+  // single-message-per-turn model can't represent that mid-turn split
+  // client-side.  ``useHydrateOnStreamEnd`` replaces the in-memory
+  // messages with the DB-canonical order once the stream ends, so the
+  // bubble snaps to the correct position.
+  setMessages((prev) => {
+    const bubble = makePromotedUserBubble(
+      drained,
+      "midturn",
+      crypto.randomUUID(),
+    );
+    const lastIdx = prev.length - 1;
+    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
+      return [...prev.slice(0, lastIdx), bubble, prev[lastIdx]];
+    }
+    return [...prev, bubble];
+  });
   setQueuedMessages(remaining);
 }

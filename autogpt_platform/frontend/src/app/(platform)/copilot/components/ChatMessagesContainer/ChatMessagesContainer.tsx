@@ -32,7 +32,7 @@ import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
-import { ReasoningCollapse } from "./components/ReasoningCollapse";
+import { StepsCollapse } from "./components/StepsCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
 interface Props {
@@ -414,9 +414,9 @@ export function ChatMessagesContainer({
                 }
               >
                 {hasReasoning && reasoningSegments && (
-                  <ReasoningCollapse>
+                  <StepsCollapse>
                     {renderSegments(reasoningSegments, message.id)}
-                  </ReasoningCollapse>
+                  </StepsCollapse>
                 )}
                 {responseSegments
                   ? renderSegments(

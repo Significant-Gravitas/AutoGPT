@@ -345,6 +345,25 @@ describe("useCopilotPendingChips", () => {
       return updated.some((m) => m.id.startsWith("promoted-midturn-"));
     });
     expect(promotedCall).toBeDefined();
+
+    // And — crucially — the promoted bubble is inserted BEFORE the
+    // trailing streaming assistant, not after.  The AI SDK's ``useChat``
+    // streams SSE deltas into ``messages[-1]``; if the last message is
+    // a user bubble instead of the still-streaming assistant, every
+    // subsequent chunk lands in the wrong slot and the UI freezes until
+    // a page refresh.
+    const streamingUpdater = promotedCall![0] as (
+      prev: UIMessage[],
+    ) => UIMessage[];
+    const priorMessages = [user("u1"), assistant("a1", "streaming...")];
+    const afterPromotion = streamingUpdater(priorMessages);
+    expect(afterPromotion).toHaveLength(3);
+    const lastIdx = afterPromotion.length - 1;
+    expect(afterPromotion[lastIdx].role).toBe("assistant");
+    expect(afterPromotion[lastIdx].id).toBe("a1");
+    expect(afterPromotion[lastIdx - 1].id.startsWith("promoted-midturn-")).toBe(
+      true,
+    );
     // And remaining chips cleared.
     expect(result.current.queuedMessages).toEqual([]);
   });

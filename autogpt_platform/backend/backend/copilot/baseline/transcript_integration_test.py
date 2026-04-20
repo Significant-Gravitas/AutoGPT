@@ -63,21 +63,21 @@ def _make_session_messages(*roles: str) -> list[ChatMessage]:
 
 
 class TestResolveBaselineModel:
-    """Model selection honours the per-request mode."""
+    """Baseline model resolution honours the per-request tier toggle."""
 
-    def test_fast_mode_selects_fast_model(self):
-        assert _resolve_baseline_model("fast") == config.fast_model
+    def test_advanced_tier_selects_advanced_model(self):
+        assert _resolve_baseline_model("advanced") == config.advanced_model
 
-    def test_extended_thinking_selects_default_model(self):
-        assert _resolve_baseline_model("extended_thinking") == config.model
+    def test_standard_tier_selects_default_model(self):
+        assert _resolve_baseline_model("standard") == config.model
 
-    def test_none_mode_selects_default_model(self):
-        """Critical: baseline users without a mode MUST keep the default (opus)."""
+    def test_none_tier_selects_default_model(self):
+        """Baseline users without a tier MUST keep the default (standard)."""
         assert _resolve_baseline_model(None) == config.model
 
-    def test_default_and_fast_models_same(self):
-        """SDK defaults currently keep standard and fast on Sonnet 4.6."""
-        assert config.model == config.fast_model
+    def test_standard_and_advanced_models_differ(self):
+        """Advanced tier defaults to a different (Opus) model than standard."""
+        assert config.model != config.advanced_model
 
 
 class TestLoadPriorTranscript:

@@ -82,6 +82,9 @@ from ..response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamStatus,
@@ -739,7 +742,7 @@ async def _resolve_model_and_multiplier(
     sdk_model = _resolve_sdk_model()
 
     if model == "advanced":
-        sdk_model = _normalize_model_name("anthropic/claude-opus-4-6")
+        sdk_model = _normalize_model_name(config.advanced_model)
         logger.info(
             "[SDK] [%s] Per-request model override: advanced (%s)",
             session_id[:12] if session_id else "?",
@@ -1160,7 +1163,14 @@ async def _compress_messages(
         `compact_transcript` — compresses JSONL transcript entries.
         `CompactionTracker` — emits UI events for mid-stream compaction.
     """
-    messages = filter_compaction_messages(messages)
+    # ``role="reasoning"`` rows are persisted for frontend replay only — they
+    # aren't valid OpenAI roles and ``compress_context`` would either drop or
+    # malform them.  Strip here so every caller is covered (``_build_query_message``
+    # already filters upstream, but ``_seed_transcript`` and any future caller
+    # don't, and centralising the filter avoids per-call-site drift).
+    messages = [
+        m for m in filter_compaction_messages(messages) if m.role != "reasoning"
+    ]
 
     if len(messages) < 2:
         return messages, False
@@ -1357,6 +1367,15 @@ async def _build_query_message(
     # max(0, ...) guards against a theoretical 0-message ceiling (brand-new
     # session) where -1 would select all-but-last instead of an empty slice.
     prior = session.messages[: max(0, effective_count - 1)]
+    # ``role="reasoning"`` rows are persisted for frontend replay only and are
+    # never present in the CLI JSONL (extended_thinking is embedded inside
+    # assistant entries).  The watermark — ``transcript_msg_count`` — counts
+    # non-reasoning rows (see _jsonl_covered upload), so we must filter reasoning
+    # out of ``prior`` too; otherwise the ``prior[transcript_msg_count - 1]``
+    # watermark-alignment check trips on a reasoning row (instead of the
+    # expected assistant) and the gap injection is skipped, dropping real
+    # mid-turn user rows from the next LLM query.
+    prior = [m for m in prior if m.role != "reasoning"]
 
     logger.info(
         "[SDK] [%s] Context path: use_resume=%s, transcript_msg_count=%d,"
@@ -1611,6 +1630,12 @@ class _StreamAccumulator:
     thinking_stripper: ThinkingStripper = dataclass_field(
         default_factory=ThinkingStripper,
     )
+    # Currently-open reasoning block for this turn.  Each StreamReasoningStart
+    # creates a new ChatMessage(role="reasoning"), each delta appends to its
+    # content, and StreamReasoningEnd clears the reference.  Rows are persisted
+    # inline with text/tool rows so they survive session reload; the reader
+    # filters role="reasoning" out of LLM context.
+    reasoning_response: ChatMessage | None = None
 
 
 def _dispatch_response(
@@ -1671,7 +1696,20 @@ def _dispatch_response(
             retryable=(response.code == "transient_api_error"),
         )
 
-    if isinstance(response, StreamTextDelta):
+    if isinstance(response, StreamReasoningStart):
+        acc.reasoning_response = ChatMessage(role="reasoning", content="")
+        ctx.session.messages.append(acc.reasoning_response)
+
+    elif isinstance(response, StreamReasoningDelta):
+        if acc.reasoning_response is not None:
+            acc.reasoning_response.content = (acc.reasoning_response.content or "") + (
+                response.delta or ""
+            )
+
+    elif isinstance(response, StreamReasoningEnd):
+        acc.reasoning_response = None
+
+    elif isinstance(response, StreamTextDelta):
         raw_delta = response.delta or ""
         if skip_strip:
             # Pre-stripped tail from ThinkingStripper.flush() — bypass process()
@@ -3929,7 +3967,16 @@ async def stream_chat_completion_sdk(
                     _midturn_offset = (
                         state.midturn_user_rows if state is not None else 0
                     )
-                    _jsonl_covered = len(session.messages) - _midturn_offset
+                    # ``role="reasoning"`` rows are persisted to session.messages
+                    # for frontend replay but never appear in the CLI JSONL
+                    # (extended_thinking lives embedded in assistant entries, not
+                    # as standalone rows).  Exclude them from the watermark so
+                    # ``detect_gap`` on the next turn doesn't skip real
+                    # user/assistant rows.  See sentry comment 3106186683.
+                    _non_reasoning_count = sum(
+                        1 for m in session.messages if m.role != "reasoning"
+                    )
+                    _jsonl_covered = _non_reasoning_count - _midturn_offset
                     await asyncio.shield(
                         upload_transcript(
                             user_id=user_id,
