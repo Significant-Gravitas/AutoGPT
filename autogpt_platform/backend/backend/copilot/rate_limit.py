@@ -493,13 +493,25 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
 
     # The DB write above is already committed; the drift check is best-effort
-    # diagnostic logging. Bound it with a short timeout so Stripe/LaunchDarkly
-    # latency never makes an admin tier update wait on the 80s default Stripe
-    # SDK timeout. On timeout/error we log and return — no blocking.
+    # diagnostic logging. Fire-and-forget so admin bulk ops don't wait on a
+    # Stripe roundtrip. The inner helper wraps its body in a timeout + broad
+    # except so background task errors still surface via logs rather than as
+    # "task exception never retrieved" warnings. Cancellation on request
+    # shutdown is acceptable — the drift warning is non-load-bearing.
+    asyncio.ensure_future(_drift_check_background(user_id, tier))
+
+
+async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
+    """Run the Stripe drift check in the background, logging rather than raising."""
     try:
         await asyncio.wait_for(
             _warn_if_stripe_subscription_drifts(user_id, tier),
             timeout=5.0,
+        )
+        logger.debug(
+            "set_user_tier: drift check completed for user=%s admin_tier=%s",
+            user_id,
+            tier.value,
         )
     except asyncio.TimeoutError:
         logger.warning(
@@ -507,9 +519,14 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
             user_id,
             tier.value,
         )
+    except asyncio.CancelledError:
+        # Request may have completed and the event loop is cancelling tasks —
+        # the drift log is non-critical, so accept cancellation silently.
+        raise
     except Exception:
         logger.exception(
-            "set_user_tier: drift check raised for user=%s admin_tier=%s",
+            "set_user_tier: drift check background task failed for"
+            " user=%s admin_tier=%s",
             user_id,
             tier.value,
         )
