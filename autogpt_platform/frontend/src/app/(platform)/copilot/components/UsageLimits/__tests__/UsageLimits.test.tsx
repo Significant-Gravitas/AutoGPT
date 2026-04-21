@@ -102,8 +102,9 @@ describe("UsageLimits", () => {
   });
 
   it("caps bar width at 100% when over limit", () => {
+    // 150% exercises the clamp — 100% exactly is merely exhausted, not over.
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyPercent: 100 }),
+      data: makeUsage({ dailyPercent: 150 }),
       isLoading: false,
     });
     render(<UsageLimits />);
