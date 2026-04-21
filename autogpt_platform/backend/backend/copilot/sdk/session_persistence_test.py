@@ -24,9 +24,9 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import (
     _dispatch_response,
-    _prune_orphan_tool_calls,
     _StreamAccumulator,
 )
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -249,7 +249,7 @@ class TestPruneOrphanToolCalls:
             ),
         ]
 
-        removed = _prune_orphan_tool_calls(messages)
+        removed = prune_orphan_tool_calls(messages)
 
         assert removed == 1
         assert len(messages) == 1
@@ -268,7 +268,7 @@ class TestPruneOrphanToolCalls:
             ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER),
         ]
 
-        removed = _prune_orphan_tool_calls(messages)
+        removed = prune_orphan_tool_calls(messages)
 
         assert removed == 2
         assert len(messages) == 1
@@ -291,7 +291,7 @@ class TestPruneOrphanToolCalls:
             ),
         ]
 
-        removed = _prune_orphan_tool_calls(messages)
+        removed = prune_orphan_tool_calls(messages)
 
         assert removed == 0
         assert len(messages) == 3
@@ -316,7 +316,7 @@ class TestPruneOrphanToolCalls:
             ),
         ]
 
-        removed = _prune_orphan_tool_calls(messages)
+        removed = prune_orphan_tool_calls(messages)
 
         # Both the orphan assistant and its partial tool row are dropped.
         assert removed == 2
@@ -330,11 +330,11 @@ class TestPruneOrphanToolCalls:
             ChatMessage(role="assistant", content="hello"),
         ]
 
-        removed = _prune_orphan_tool_calls(messages)
+        removed = prune_orphan_tool_calls(messages)
 
         assert removed == 0
         assert len(messages) == 2
 
     def test_empty_session_is_noop(self) -> None:
         messages: list[ChatMessage] = []
-        assert _prune_orphan_tool_calls(messages) == 0
+        assert prune_orphan_tool_calls(messages) == 0

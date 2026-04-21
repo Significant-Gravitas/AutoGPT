@@ -53,6 +53,7 @@ from ..constants import (
     STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
+from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
@@ -497,58 +498,6 @@ def _append_error_marker(
     session.messages.append(
         ChatMessage(role="assistant", content=f"{prefix} {display_msg}")
     )
-
-
-def _prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
-    """Pop trailing orphan tool-use blocks from *messages* in place.
-
-    A Stop mid-tool-call leaves the session ending on an assistant message
-    whose ``tool_calls`` have no matching ``role="tool"`` row — the tool
-    never produced output because the executor was cancelled.  Feeding that
-    tail to the next ``--resume`` turn would hand the Claude CLI a
-    ``tool_use`` with no paired ``tool_result`` and the SDK raises a
-    generic error.
-
-    Also strips trailing ``STOPPED_BY_USER_MARKER`` assistant rows emitted
-    by the same Stop path, so the next turn's transcript starts clean.
-
-    In-memory only — the DB write path is append-only via ``start_sequence``
-    so no delete is needed; the same rows are popped again on the next
-    session load.
-    """
-    removed = 0
-
-    while messages and messages[-1].role == "assistant":
-        tail = messages[-1]
-        if tail.content != STOPPED_BY_USER_MARKER:
-            break
-        messages.pop()
-        removed += 1
-
-    cut_index: int | None = None
-    resolved_ids: set[str] = set()
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if msg.role == "tool" and msg.tool_call_id:
-            resolved_ids.add(msg.tool_call_id)
-            continue
-        if msg.role == "assistant" and msg.tool_calls:
-            pending_ids = {
-                tc.get("id")
-                for tc in msg.tool_calls
-                if isinstance(tc, dict) and tc.get("id")
-            }
-            if pending_ids and not pending_ids.issubset(resolved_ids):
-                cut_index = i
-            break
-        break
-
-    if cut_index is not None:
-        dropped = len(messages) - cut_index
-        del messages[cut_index:]
-        removed += dropped
-
-    return removed
 
 
 def _setup_langfuse_otel() -> None:
@@ -2832,7 +2781,7 @@ async def stream_chat_completion_sdk(
 
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
-    _n_orphaned = _prune_orphan_tool_calls(session.messages)
+    _n_orphaned = prune_orphan_tool_calls(session.messages)
     if _n_orphaned:
         logger.info(
             "[SDK] [%s] Dropped %d trailing orphan tool-use/stop row(s) "

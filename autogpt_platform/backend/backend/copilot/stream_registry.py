@@ -362,20 +362,22 @@ async def stream_and_publish(
                 try:
                     await publish_chunk(turn_id, event, session_id=session_id)
                 except (RedisError, ConnectionError, OSError):
+                    # Full stack trace on the first failure; terser lines
+                    # for the rest so subsequent failures don't flood logs
+                    # while still being visible at WARNING.
                     if not publish_failed_once:
                         publish_failed_once = True
                         logger.warning(
-                            "[stream_and_publish] Failed to publish chunk %s for %s "
-                            "(further failures logged at DEBUG)",
+                            "[stream_and_publish] Failed to publish chunk %s for %s",
                             type(event).__name__,
                             session_id[:12],
                             exc_info=True,
                         )
                     else:
-                        logger.debug(
-                            "[stream_and_publish] Failed to publish chunk %s",
+                        logger.warning(
+                            "[stream_and_publish] Failed to publish chunk %s for %s",
                             type(event).__name__,
-                            exc_info=True,
+                            session_id[:12],
                         )
             yield event
     finally:

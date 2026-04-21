@@ -47,6 +47,7 @@ from backend.copilot.pending_messages import (
     format_pending_as_user_message,
 )
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -946,6 +947,17 @@ async def stream_chat_completion_baseline(
     if not session:
         raise NotFoundError(
             f"Session {session_id} not found. Please create a new session first."
+        )
+
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the new turn starts from a well-formed message list.
+    _n_orphaned = prune_orphan_tool_calls(session.messages)
+    if _n_orphaned:
+        logger.info(
+            "[Baseline] [%s] Dropped %d trailing orphan tool-use/stop row(s) "
+            "before starting new turn",
+            session_id[:12],
+            _n_orphaned,
         )
 
     # Strip any user-injected <user_context> tags on every turn.
