@@ -10,10 +10,11 @@ import pytest
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
-    _apply_prompt_cache_markers,
     _baseline_conversation_updater,
     _BaselineStreamState,
     _compress_session_messages,
+    _mark_system_message_with_cache_control,
+    _mark_tools_with_cache_control,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.transcript_builder import TranscriptBuilder
@@ -1223,9 +1224,8 @@ class TestApplyPromptCacheMarkers:
             {"role": "system", "content": "You are helpful."},
             {"role": "user", "content": "hello"},
         ]
-        tools: list[ChatCompletionToolParam] = []
 
-        cached_messages, _ = _apply_prompt_cache_markers(messages, tools)
+        cached_messages = _mark_system_message_with_cache_control(messages)
 
         assert cached_messages[0]["role"] == "system"
         assert cached_messages[0]["content"] == [
@@ -1238,14 +1238,25 @@ class TestApplyPromptCacheMarkers:
         # User message must be untouched.
         assert cached_messages[1] == {"role": "user", "content": "hello"}
 
+    def test_system_message_preserves_unknown_fields(self):
+        # Future-proofing: a system message with extra keys (e.g. "name") must
+        # keep them after the content-blocks conversion.
+        messages = [
+            {"role": "system", "content": "sys", "name": "developer"},
+        ]
+
+        cached_messages = _mark_system_message_with_cache_control(messages)
+
+        assert cached_messages[0]["name"] == "developer"
+        assert cached_messages[0]["role"] == "system"
+
     def test_last_tool_gets_cache_control(self):
-        messages: list[dict] = []
         tools = [
             {"type": "function", "function": {"name": "a"}},
             {"type": "function", "function": {"name": "b"}},
         ]
 
-        _, cached_tools = _apply_prompt_cache_markers(messages, tools)
+        cached_tools = _mark_tools_with_cache_control(tools)
 
         assert "cache_control" not in cached_tools[0]
         assert cached_tools[-1]["cache_control"] == {"type": "ephemeral"}
@@ -1255,25 +1266,20 @@ class TestApplyPromptCacheMarkers:
     def test_does_not_mutate_input(self):
         messages = [{"role": "system", "content": "sys"}]
         tools = [{"type": "function", "function": {"name": "a"}}]
-        _apply_prompt_cache_markers(messages, tools)
+
+        _mark_system_message_with_cache_control(messages)
+        _mark_tools_with_cache_control(tools)
+
         assert messages == [{"role": "system", "content": "sys"}]
         assert tools == [{"type": "function", "function": {"name": "a"}}]
 
     def test_no_system_message_safe(self):
         messages = [{"role": "user", "content": "hi"}]
-        tools: list[dict] = []
-        cached_messages, cached_tools = _apply_prompt_cache_markers(messages, tools)
+        cached_messages = _mark_system_message_with_cache_control(messages)
         assert cached_messages == messages
-        assert cached_tools == []
 
     def test_empty_tools_safe(self):
-        messages = [{"role": "system", "content": "sys"}]
-        tools: list[dict] = []
-        cached_messages, cached_tools = _apply_prompt_cache_markers(messages, tools)
-        assert cached_messages[0]["content"][0]["cache_control"] == {
-            "type": "ephemeral"
-        }
-        assert cached_tools == []
+        assert _mark_tools_with_cache_control([]) == []
 
     def test_non_string_system_content_left_untouched(self):
         # If the content is already a list of blocks (e.g. caller pre-marked),
@@ -1282,5 +1288,5 @@ class TestApplyPromptCacheMarkers:
             {"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}
         ]
         messages = [{"role": "system", "content": pre_marked}]
-        cached_messages, _ = _apply_prompt_cache_markers(messages, [])
+        cached_messages = _mark_system_message_with_cache_control(messages)
         assert cached_messages[0]["content"] == pre_marked

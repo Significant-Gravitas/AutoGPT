@@ -276,13 +276,6 @@ class _BaselineStreamState:
     _flushed_assistant_text_len: int = 0
 
 
-# Defense-in-depth: request the Anthropic prompt-caching beta explicitly.
-# OpenRouter auto-forwards cache_control for Anthropic routes without this
-# header, but passing it makes the intent unambiguous on-wire and is a no-op
-# for non-Anthropic providers (OpenRouter drops unknown headers).
-_ANTHROPIC_CACHING_HEADERS = {"anthropic-beta": "prompt-caching-2024-07-31"}
-
-
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
     """Return a FRESH ``{"type": "ephemeral"}`` dict each call.
 
@@ -294,28 +287,58 @@ def _fresh_ephemeral_cache_control() -> dict[str, str]:
     return {"type": "ephemeral"}
 
 
-def _apply_prompt_cache_markers(
+def _fresh_anthropic_caching_headers() -> dict[str, str]:
+    """Return a FRESH ``extra_headers`` dict requesting the Anthropic
+    prompt-caching beta.
+
+    Same reasoning as :func:`_fresh_ephemeral_cache_control`: never hand a
+    shared module-level dict to third-party SDKs.  OpenRouter auto-forwards
+    cache_control for Anthropic routes without this header, but passing it
+    makes the intent unambiguous on-wire and is a no-op for non-Anthropic
+    providers (unknown headers are dropped).
+    """
+    return {"anthropic-beta": "prompt-caching-2024-07-31"}
+
+
+def _mark_tools_with_cache_control(tools: Sequence[Any]) -> list[dict[str, Any]]:
+    """Return a copy of *tools* with ``cache_control`` on the last entry.
+
+    Marking the last tool is a cache breakpoint that covers the whole tool
+    schema block as a cacheable prefix segment.  Extracted from
+    :func:`_mark_system_message_with_cache_control` so callers can precompute
+    the marked tool list once per session — the tool set is static within a
+    request and the ~43 dict-copies would otherwise run on every LLM round
+    in the tool-call loop.
+    """
+    cached: list[dict[str, Any]] = [dict(t) for t in tools]
+    if cached:
+        cached[-1] = {
+            **cached[-1],
+            "cache_control": _fresh_ephemeral_cache_control(),
+        }
+    return cached
+
+
+def _mark_system_message_with_cache_control(
     messages: list[dict[str, Any]],
-    tools: Sequence[Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Attach Anthropic ephemeral ``cache_control`` markers to the static
-    prefix of the request so OpenRouter passes them through to Anthropic
-    and the prompt is served from cache on repeat requests.
+) -> list[dict[str, Any]]:
+    """Return a copy of *messages* with ``cache_control`` on the system block.
 
     Anthropic's cache uses prefix-match with up to 4 explicit breakpoints.
-    We set two: one at the end of the system message and one on the last
-    tool schema.  This creates two cache segments — the system block alone,
-    and system+all-tools — so requests that share only the system prefix
-    still get a partial cache hit.
+    Combined with the last-tool marker this gives two cache segments — the
+    system block alone, and system+all-tools — so requests that share only
+    the system prefix still get a partial cache hit.
 
-    Non-Anthropic models routed via OpenRouter silently ignore the markers.
+    The system message is rebuilt via spread (``{**original, ...}``) so any
+    unknown fields the caller set (e.g. ``name``) survive the transformation.
+    Non-Anthropic models silently ignore the markers.
     """
     cached_messages = list(messages)
     if cached_messages and cached_messages[0].get("role") == "system":
         sys_content = cached_messages[0].get("content")
         if isinstance(sys_content, str) and sys_content:
             cached_messages[0] = {
-                "role": "system",
+                **cached_messages[0],
                 "content": [
                     {
                         "type": "text",
@@ -324,14 +347,7 @@ def _apply_prompt_cache_markers(
                     }
                 ],
             }
-
-    cached_tools: list[dict[str, Any]] = [dict(t) for t in tools]
-    if cached_tools:
-        cached_tools[-1] = {
-            **cached_tools[-1],
-            "cache_control": _fresh_ephemeral_cache_control(),
-        }
-    return cached_messages, cached_tools
+    return cached_messages
 
 
 async def _baseline_llm_caller(
@@ -353,17 +369,21 @@ async def _baseline_llm_caller(
     response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
-        cached_messages, cached_tools = _apply_prompt_cache_markers(messages, tools)
+        # Tools are expected to already carry cache_control on the last entry —
+        # they're precomputed once per session in stream_chat_completion_baseline
+        # (static within a request).  The system-message marker is applied per
+        # round because messages grow across the tool-call loop.
+        cached_messages = _mark_system_message_with_cache_control(messages)
         typed_messages = cast(list[ChatCompletionMessageParam], cached_messages)
-        if cached_tools:
-            typed_tools = cast(list[ChatCompletionToolParam], cached_tools)
+        if tools:
+            typed_tools = cast(list[ChatCompletionToolParam], list(tools))
             response = await client.chat.completions.create(
                 model=state.model,
                 messages=typed_messages,
                 tools=typed_tools,
                 stream=True,
                 stream_options={"include_usage": True},
-                extra_headers=_ANTHROPIC_CACHING_HEADERS,
+                extra_headers=_fresh_anthropic_caching_headers(),
             )
         else:
             response = await client.chat.completions.create(
@@ -371,7 +391,7 @@ async def _baseline_llm_caller(
                 messages=typed_messages,
                 stream=True,
                 stream_options={"include_usage": True},
-                extra_headers=_ANTHROPIC_CACHING_HEADERS,
+                extra_headers=_fresh_anthropic_caching_headers(),
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
@@ -1322,6 +1342,12 @@ async def stream_chat_completion_baseline(
     # --- Permission filtering ---
     if permissions is not None:
         tools = _filter_tools_by_permissions(tools, permissions)
+
+    # Pre-mark cache_control on the last tool schema once per session.  The
+    # tool set is static within a request, so doing this here (instead of in
+    # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
+    # round of the tool-call loop.
+    tools = cast(list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools))
 
     # Propagate execution context so tool handlers can read session-level flags.
     set_execution_context(
