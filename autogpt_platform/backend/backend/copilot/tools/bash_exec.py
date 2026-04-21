@@ -129,7 +129,7 @@ class BashExecTool(BaseTool):
             message=(
                 "Execution timed out"
                 if timed_out
-                else f"Command executed (exit {exit_code})"
+                else f"Command executed with status code {exit_code}"
             ),
             stdout=stdout,
             stderr=stderr,
@@ -183,7 +183,7 @@ class BashExecTool(BaseTool):
                 stdout = stdout.replace(secret, "[REDACTED]")
                 stderr = stderr.replace(secret, "[REDACTED]")
             return BashExecResponse(
-                message=f"Command executed on E2B (exit {result.exit_code})",
+                message=f"Command executed with status code {result.exit_code}",
                 stdout=stdout,
                 stderr=stderr,
                 exit_code=result.exit_code,
