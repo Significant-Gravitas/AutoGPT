@@ -119,6 +119,8 @@ export function SubscriptionTierSection() {
           const isUpgrade = targetIdx > currentIdx;
           const isDowngrade = targetIdx < currentIdx;
           const isThisPending = pendingTier === tier.key;
+          const isScheduledTier =
+            hasPendingChange && pendingTierFromSubscription === tier.key;
 
           return (
             <div
@@ -153,7 +155,7 @@ export function SubscriptionTierSection() {
                 <Button
                   className="w-full"
                   variant={isUpgrade ? "default" : "outline"}
-                  disabled={isPending}
+                  disabled={isPending || isScheduledTier}
                   onClick={() =>
                     handleTierChange(
                       tier.key,
@@ -164,11 +166,13 @@ export function SubscriptionTierSection() {
                 >
                   {isThisPending
                     ? "Updating..."
-                    : isUpgrade
-                      ? `Upgrade to ${tier.label}`
-                      : isDowngrade
-                        ? `Downgrade to ${tier.label}`
-                        : `Switch to ${tier.label}`}
+                    : isScheduledTier
+                      ? "Scheduled"
+                      : isUpgrade
+                        ? `Upgrade to ${tier.label}`
+                        : isDowngrade
+                          ? `Downgrade to ${tier.label}`
+                          : `Switch to ${tier.label}`}
                 </Button>
               )}
             </div>

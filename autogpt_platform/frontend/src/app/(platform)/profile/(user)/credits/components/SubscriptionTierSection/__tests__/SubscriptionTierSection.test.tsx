@@ -480,6 +480,30 @@ describe("SubscriptionTierSection", () => {
     expect(refetchFn).toHaveBeenCalled();
   });
 
+  it("disables the tier button that matches the pending tier so users can't overwrite their own scheduled change by mis-click", () => {
+    // User is on BUSINESS and has a pending downgrade to PRO. The "Downgrade
+    // to Pro" button must be disabled + labelled "Scheduled" so the primary
+    // cancel path stays the banner. Other tier buttons (FREE here) remain
+    // clickable — the user can still overwrite their pending change by
+    // picking a different target; backend handles that.
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+    });
+    render(<SubscriptionTierSection />);
+
+    const scheduledBtn = screen.getByRole("button", { name: /scheduled/i });
+    expect(scheduledBtn).toBeDefined();
+    expect((scheduledBtn as HTMLButtonElement).disabled).toBe(true);
+
+    // The non-pending tier (FREE) button is still clickable.
+    const freeBtn = screen.getByRole("button", { name: /downgrade to free/i });
+    expect((freeBtn as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("renders FREE cancellation copy in banner when pending_tier is FREE", () => {
     setupMocks({
       subscription: makeSubscription({
