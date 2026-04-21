@@ -168,12 +168,29 @@ def _extract_usage_cost(usage: CompletionUsage) -> float | None:
 
 
 def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
-    """Read Anthropic's ``cache_creation_input_tokens`` off an OpenAI
-    ``PromptTokensDetails`` — it's a provider-specific extra, not in the
-    typed model, so we read it via ``model_extra`` rather than
-    ``getattr``.
+    """Return cache-write token count from an OpenAI-compatible
+    ``PromptTokensDetails``, handling provider-specific field names.
+
+    Two shapes we care about:
+
+    - **OpenRouter** (our primary baseline provider) streams the cache-write
+      count as ``cache_write_tokens`` directly on ``prompt_tokens_details``.
+      Verified empirically against ``openrouter.ai/api/v1`` streaming
+      responses with ``usage.include=true`` and Anthropic routing —
+      ``cache_creation_input_tokens`` is never populated.
+    - **Direct Anthropic API** (via proxy or future native path) uses
+      ``cache_creation_input_tokens`` as an extra field in ``model_extra``.
+
+    Checked in order (OpenRouter first because that's the production path).
+    Either field is a non-typed extra on the OpenAI SDK's
+    ``PromptTokensDetails``, so we go through ``model_extra`` rather than
+    attribute access to avoid silent zeros when pydantic strips unknowns.
     """
-    return int((ptd.model_extra or {}).get("cache_creation_input_tokens") or 0)
+    extras = ptd.model_extra or {}
+    openrouter_val = extras.get("cache_write_tokens")
+    if openrouter_val:
+        return int(openrouter_val)
+    return int(extras.get("cache_creation_input_tokens") or 0)
 
 
 async def _prepare_baseline_attachments(

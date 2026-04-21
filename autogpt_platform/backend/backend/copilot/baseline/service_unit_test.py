@@ -14,6 +14,7 @@ from backend.copilot.baseline.service import (
     _baseline_llm_caller,
     _BaselineStreamState,
     _compress_session_messages,
+    _extract_cache_creation_tokens,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
@@ -1336,3 +1337,39 @@ class TestApplyPromptCacheMarkers:
         assert (
             _fresh_anthropic_caching_headers() is not _fresh_anthropic_caching_headers()
         )
+
+    def test_extract_cache_creation_tokens_openrouter_field(self):
+        """OpenRouter streams cache-write count as ``cache_write_tokens`` on
+        ``prompt_tokens_details`` (not ``cache_creation_input_tokens`` —
+        that's Anthropic-native-only).  Verified empirically against
+        openrouter.ai/api/v1 streaming with Anthropic routing."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate(
+            {
+                "audio_tokens": 0,
+                "cached_tokens": 0,
+                "cache_write_tokens": 12345,
+                "video_tokens": 0,
+            }
+        )
+        assert _extract_cache_creation_tokens(ptd) == 12345
+
+    def test_extract_cache_creation_tokens_anthropic_native_field(self):
+        """Direct Anthropic API uses ``cache_creation_input_tokens`` —
+        falls through as the secondary path when ``cache_write_tokens``
+        isn't in the response."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate(
+            {"cached_tokens": 0, "cache_creation_input_tokens": 2048}
+        )
+        assert _extract_cache_creation_tokens(ptd) == 2048
+
+    def test_extract_cache_creation_tokens_absent(self):
+        """Neither provider field present → 0 (non-Anthropic routes or
+        cache-miss responses)."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
+        assert _extract_cache_creation_tokens(ptd) == 0
