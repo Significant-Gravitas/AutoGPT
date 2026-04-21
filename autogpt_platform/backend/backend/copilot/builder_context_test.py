@@ -10,7 +10,7 @@ Covers both halves of the public API:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -28,13 +28,12 @@ def _session(
     *,
     user_id: str = "test-user",
 ) -> ChatSession:
-    """Build a minimal ChatSession whose metadata carries *builder_graph_id*."""
-    session = MagicMock(spec=ChatSession)
-    session.session_id = "test-session"
-    session.user_id = user_id
-    session.metadata = MagicMock()
-    session.metadata.builder_graph_id = builder_graph_id
-    return session
+    """Minimal ``ChatSession`` with *builder_graph_id* on metadata."""
+    return ChatSession.new(
+        user_id,
+        dry_run=False,
+        builder_graph_id=builder_graph_id,
+    )
 
 
 def _agent_json(

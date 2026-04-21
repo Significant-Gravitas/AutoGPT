@@ -146,9 +146,7 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
     bytes are identical across turns AND across sessions for different
     graphs — the live id/name/version ride on the per-turn prefix.
     """
-    metadata = getattr(session, "metadata", None)
-    graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
-    if not graph_id:
+    if not session.metadata.builder_graph_id:
         return ""
 
     try:
@@ -177,8 +175,7 @@ async def build_builder_context_turn_prefix(
     """Return the per-turn ``<builder_context>`` prefix with the live
     graph snapshot (id/name/version/nodes/links). ``""`` for non-builder
     sessions; fetch-failure marker if the graph cannot be read."""
-    metadata = getattr(session, "metadata", None)
-    graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
+    graph_id = session.metadata.builder_graph_id
     if not graph_id:
         return ""
 
@@ -188,7 +185,7 @@ async def build_builder_context_turn_prefix(
         logger.exception(
             "[builder_context] Failed to fetch graph %s for session %s",
             graph_id,
-            getattr(session, "session_id", "?"),
+            session.session_id,
         )
         return _FETCH_FAILED_PREFIX
 
@@ -196,7 +193,7 @@ async def build_builder_context_turn_prefix(
         logger.warning(
             "[builder_context] Graph %s not found for session %s",
             graph_id,
-            getattr(session, "session_id", "?"),
+            session.session_id,
         )
         return _FETCH_FAILED_PREFIX
 
