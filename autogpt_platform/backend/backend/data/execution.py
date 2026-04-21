@@ -1618,11 +1618,15 @@ async def create_shared_execution_files(
                 }
             )
             created += 1
-        except (ForeignKeyViolationError, UniqueViolationError):
-            # UniqueViolationError: record already exists (idempotent)
+        except UniqueViolationError:
             logger.debug(
                 f"Skipping shared file record for {file_id}: "
                 f"record already exists"
+            )
+        except ForeignKeyViolationError:
+            logger.debug(
+                f"Skipping shared file record for {file_id}: "
+                f"file does not exist"
             )
     return created
 

@@ -225,24 +225,30 @@ export async function downloadOutputs(items: DownloadItem[]) {
 
   if (concatenableTexts.length > 0) {
     const combinedText = concatenableTexts.join("\n\n---\n\n");
-    const filename = getUniqueFilename("combined_output.txt", usedFilenames);
-    zip.file(filename, combinedText);
-    hasFiles = true;
+    const textSize = new Blob([combinedText]).size;
+    if (totalSize + textSize <= MAX_TOTAL_SIZE_BYTES) {
+      const filename = getUniqueFilename("combined_output.txt", usedFilenames);
+      zip.file(filename, combinedText);
+      totalSize += textSize;
+      hasFiles = true;
+    }
   }
 
   if (unfetchableUrls.length > 0) {
     const linksContent = unfetchableUrls
       .map((url, i) => `${i + 1}. ${url}`)
       .join("\n");
-    const manifestFilename = getUniqueFilename(
-      "unfetched_files.txt",
-      usedFilenames,
-    );
-    zip.file(
-      manifestFilename,
-      `The following files could not be included in the zip (CORS restriction or size limit).\nYou can download them directly from these URLs:\n\n${linksContent}\n`,
-    );
-    hasFiles = true;
+    const manifest = `The following files could not be included in the zip (CORS restriction or size limit).\nYou can download them directly from these URLs:\n\n${linksContent}\n`;
+    const manifestSize = new Blob([manifest]).size;
+    if (totalSize + manifestSize <= MAX_TOTAL_SIZE_BYTES) {
+      const manifestFilename = getUniqueFilename(
+        "unfetched_files.txt",
+        usedFilenames,
+      );
+      zip.file(manifestFilename, manifest);
+      totalSize += manifestSize;
+      hasFiles = true;
+    }
   }
 
   if (!hasFiles) return;
