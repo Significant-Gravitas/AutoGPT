@@ -1104,10 +1104,15 @@ async def test_handle_subscription_payment_failure_passes_invoice_id_as_transact
 @pytest.mark.asyncio
 async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
     """modify_stripe_subscription_for_tier calls Subscription.modify and returns True."""
-    mock_sub = {
-        "id": "sub_abc",
-        "items": {"data": [{"id": "si_abc"}]},
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_abc",
+            "items": {"data": [{"id": "si_abc"}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1127,11 +1132,13 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
     ):
         result = await modify_stripe_subscription_for_tier(
@@ -1198,7 +1205,8 @@ async def test_modify_stripe_subscription_for_tier_returns_false_when_no_sub():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
     ):
@@ -1236,12 +1244,18 @@ async def test_modify_stripe_subscription_for_tier_downgrade_creates_schedule():
     import time as time_mod
 
     now = int(time_mod.time())
-    mock_sub = {
-        "id": "sub_biz",
-        "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
-        "current_period_start": now - 3 * 24 * 3600,
-        "current_period_end": now + 27 * 24 * 3600,
-    }
+    period_end = now + 27 * 24 * 3600
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+            "current_period_start": now - 3 * 24 * 3600,
+            "current_period_end": period_end,
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1249,7 +1263,9 @@ async def test_modify_stripe_subscription_for_tier_downgrade_creates_schedule():
     mock_user.stripe_customer_id = "cus_abc"
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
-    mock_schedule = {"id": "sub_sched_1"}
+    mock_schedule = stripe.SubscriptionSchedule.construct_from(
+        {"id": "sub_sched_1"}, "k"
+    )
 
     with (
         patch(
@@ -1263,18 +1279,22 @@ async def test_modify_stripe_subscription_for_tier_downgrade_creates_schedule():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.create",
+            "backend.data.credit.stripe.SubscriptionSchedule.create_async",
+            new_callable=AsyncMock,
             return_value=mock_schedule,
         ) as mock_schedule_create,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.modify",
+            "backend.data.credit.stripe.SubscriptionSchedule.modify_async",
+            new_callable=AsyncMock,
         ) as mock_schedule_modify,
     ):
         result = await modify_stripe_subscription_for_tier(
@@ -1289,7 +1309,7 @@ async def test_modify_stripe_subscription_for_tier_downgrade_creates_schedule():
     _, kwargs = mock_schedule_modify.call_args
     phases = kwargs["phases"]
     assert phases[0]["items"][0]["price"] == "price_biz_monthly"
-    assert phases[0]["end_date"] == mock_sub["current_period_end"]
+    assert phases[0]["end_date"] == period_end
     assert phases[1]["items"][0]["price"] == "price_pro_monthly"
     assert phases[0]["proration_behavior"] == "none"
     assert phases[1]["proration_behavior"] == "none"
@@ -1298,10 +1318,15 @@ async def test_modify_stripe_subscription_for_tier_downgrade_creates_schedule():
 @pytest.mark.asyncio
 async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration():
     """PRO→BUSINESS upgrade still uses Subscription.modify with proration (no schedule)."""
-    mock_sub = {
-        "id": "sub_pro",
-        "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1321,14 +1346,17 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.create",
+            "backend.data.credit.stripe.SubscriptionSchedule.create_async",
+            new_callable=AsyncMock,
         ) as mock_schedule_create,
     ):
         result = await modify_stripe_subscription_for_tier(
@@ -1347,11 +1375,14 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
 @pytest.mark.asyncio
 async def test_release_pending_subscription_schedule_releases_downgrade_schedule():
     """release_pending_subscription_schedule releases the Stripe schedule if one is attached."""
-    mock_sub = {
-        "id": "sub_biz",
-        "schedule": "sub_sched_1",
-        "cancel_at_period_end": False,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "schedule": "sub_sched_1",
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1365,14 +1396,17 @@ async def test_release_pending_subscription_schedule_releases_downgrade_schedule
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.release",
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
         ) as mock_release,
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
     ):
         result = await release_pending_subscription_schedule("user-1")
@@ -1385,11 +1419,14 @@ async def test_release_pending_subscription_schedule_releases_downgrade_schedule
 @pytest.mark.asyncio
 async def test_release_pending_subscription_schedule_clears_cancel_at_period_end():
     """release_pending_subscription_schedule reverts a pending paid→FREE cancel."""
-    mock_sub = {
-        "id": "sub_pro",
-        "schedule": None,
-        "cancel_at_period_end": True,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "schedule": None,
+            "cancel_at_period_end": True,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1403,14 +1440,17 @@ async def test_release_pending_subscription_schedule_clears_cancel_at_period_end
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.release",
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
         ) as mock_release,
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
     ):
         result = await release_pending_subscription_schedule("user-1")
@@ -1423,11 +1463,14 @@ async def test_release_pending_subscription_schedule_clears_cancel_at_period_end
 @pytest.mark.asyncio
 async def test_release_pending_subscription_schedule_no_pending_change_returns_false():
     """release_pending_subscription_schedule returns False when no schedule/cancel is set."""
-    mock_sub = {
-        "id": "sub_pro",
-        "schedule": None,
-        "cancel_at_period_end": False,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1441,7 +1484,8 @@ async def test_release_pending_subscription_schedule_no_pending_change_returns_f
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
     ):
@@ -1474,12 +1518,15 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
-    mock_sub = {
-        "id": "sub_pro",
-        "current_period_end": period_end,
-        "cancel_at_period_end": True,
-        "schedule": None,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "current_period_end": period_end,
+            "cancel_at_period_end": True,
+            "schedule": None,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1504,7 +1551,8 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
     ):
@@ -1525,29 +1573,35 @@ async def test_get_pending_subscription_change_from_schedule():
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
-    mock_sub = {
-        "id": "sub_biz",
-        "current_period_end": period_end,
-        "cancel_at_period_end": False,
-        "schedule": "sub_sched_1",
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "current_period_end": period_end,
+            "cancel_at_period_end": False,
+            "schedule": "sub_sched_1",
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
-    mock_schedule = {
-        "id": "sub_sched_1",
-        "phases": [
-            {
-                "start_date": now - 3 * 24 * 3600,
-                "end_date": period_end,
-                "items": [{"price": "price_biz_monthly"}],
-            },
-            {
-                "start_date": period_end,
-                "items": [{"price": "price_pro_monthly"}],
-            },
-        ],
-    }
+    mock_schedule = stripe.SubscriptionSchedule.construct_from(
+        {
+            "id": "sub_sched_1",
+            "phases": [
+                {
+                    "start_date": now - 3 * 24 * 3600,
+                    "end_date": period_end,
+                    "items": [{"price": "price_biz_monthly"}],
+                },
+                {
+                    "start_date": period_end,
+                    "items": [{"price": "price_pro_monthly"}],
+                },
+            ],
+        },
+        "k",
+    )
 
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
@@ -1570,11 +1624,13 @@ async def test_get_pending_subscription_change_from_schedule():
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.retrieve",
+            "backend.data.credit.stripe.SubscriptionSchedule.retrieve_async",
+            new_callable=AsyncMock,
             return_value=mock_schedule,
         ),
     ):
@@ -1594,12 +1650,15 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
     get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
 
     now = int(time_mod.time())
-    mock_sub = {
-        "id": "sub_pro",
-        "current_period_end": now + 10 * 24 * 3600,
-        "cancel_at_period_end": False,
-        "schedule": None,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "current_period_end": now + 10 * 24 * 3600,
+            "cancel_at_period_end": False,
+            "schedule": None,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1620,7 +1679,8 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
             side_effect=mock_price_id,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
     ):
@@ -1633,16 +1693,20 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
 async def test_sync_subscription_schedule_from_stripe_retrieves_and_delegates():
     """subscription_schedule.released triggers a sync via the active subscription object."""
     stripe_schedule = {"id": "sub_sched_1", "subscription": "sub_pro"}
-    retrieved_sub = {
-        "id": "sub_pro",
-        "customer": "cus_abc",
-        "status": "active",
-        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
-    }
+    retrieved_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "customer": "cus_abc",
+            "status": "active",
+            "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+        },
+        "k",
+    )
 
     with (
         patch(
-            "backend.data.credit.stripe.Subscription.retrieve",
+            "backend.data.credit.stripe.Subscription.retrieve_async",
+            new_callable=AsyncMock,
             return_value=retrieved_sub,
         ) as mock_retrieve,
         patch(
@@ -1663,7 +1727,8 @@ async def test_sync_subscription_schedule_from_stripe_retrieves_and_delegates():
 async def test_sync_subscription_schedule_from_stripe_missing_sub_id_returns():
     """A schedule event with no 'subscription' field is logged and ignored."""
     with patch(
-        "backend.data.credit.stripe.Subscription.retrieve",
+        "backend.data.credit.stripe.Subscription.retrieve_async",
+        new_callable=AsyncMock,
     ) as mock_retrieve:
         await sync_subscription_schedule_from_stripe({"id": "sub_sched_1"})
     mock_retrieve.assert_not_called()
@@ -1719,11 +1784,14 @@ async def test_release_schedule_idempotent_on_terminal_state():
     """SubscriptionSchedule.release raising InvalidRequestError on a terminal-state
     schedule is treated as success; we still continue to the cancel_at_period_end clear.
     """
-    mock_sub = {
-        "id": "sub_biz",
-        "schedule": "sub_sched_terminal",
-        "cancel_at_period_end": True,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "schedule": "sub_sched_terminal",
+            "cancel_at_period_end": True,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1737,18 +1805,21 @@ async def test_release_schedule_idempotent_on_terminal_state():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.release",
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
             side_effect=stripe.InvalidRequestError(
                 "Schedule has already been released",
                 param="schedule",
             ),
         ) as mock_release,
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
     ):
         result = await release_pending_subscription_schedule("user-1")
@@ -1765,20 +1836,27 @@ async def test_schedule_downgrade_releases_existing_schedule():
     import time as time_mod
 
     now = int(time_mod.time())
-    mock_sub = {
-        "id": "sub_biz",
-        "schedule": "sub_sched_old",
-        "cancel_at_period_end": False,
-        "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
-        "current_period_start": now - 3 * 24 * 3600,
-        "current_period_end": now + 27 * 24 * 3600,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "schedule": "sub_sched_old",
+            "cancel_at_period_end": False,
+            "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+            "current_period_start": now - 3 * 24 * 3600,
+            "current_period_end": now + 27 * 24 * 3600,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
     mock_user = MagicMock(spec=User)
     mock_user.stripe_customer_id = "cus_abc"
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mock_new_schedule = stripe.SubscriptionSchedule.construct_from(
+        {"id": "sub_sched_new"}, "k"
+    )
 
     with (
         patch(
@@ -1792,21 +1870,26 @@ async def test_schedule_downgrade_releases_existing_schedule():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.release",
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
         ) as mock_release,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.create",
-            return_value={"id": "sub_sched_new"},
+            "backend.data.credit.stripe.SubscriptionSchedule.create_async",
+            new_callable=AsyncMock,
+            return_value=mock_new_schedule,
         ) as mock_create,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.modify",
+            "backend.data.credit.stripe.SubscriptionSchedule.modify_async",
+            new_callable=AsyncMock,
         ),
     ):
         result = await modify_stripe_subscription_for_tier(
@@ -1827,20 +1910,27 @@ async def test_schedule_downgrade_clears_cancel_at_period_end():
     import time as time_mod
 
     now = int(time_mod.time())
-    mock_sub = {
-        "id": "sub_biz",
-        "schedule": None,
-        "cancel_at_period_end": True,
-        "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
-        "current_period_start": now - 3 * 24 * 3600,
-        "current_period_end": now + 27 * 24 * 3600,
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "schedule": None,
+            "cancel_at_period_end": True,
+            "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+            "current_period_start": now - 3 * 24 * 3600,
+            "current_period_end": now + 27 * 24 * 3600,
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
     mock_user = MagicMock(spec=User)
     mock_user.stripe_customer_id = "cus_abc"
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mock_new_schedule = stripe.SubscriptionSchedule.construct_from(
+        {"id": "sub_sched_new"}, "k"
+    )
 
     with (
         patch(
@@ -1854,18 +1944,22 @@ async def test_schedule_downgrade_clears_cancel_at_period_end():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.create",
-            return_value={"id": "sub_sched_new"},
+            "backend.data.credit.stripe.SubscriptionSchedule.create_async",
+            new_callable=AsyncMock,
+            return_value=mock_new_schedule,
         ) as mock_create,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.modify",
+            "backend.data.credit.stripe.SubscriptionSchedule.modify_async",
+            new_callable=AsyncMock,
         ),
     ):
         result = await modify_stripe_subscription_for_tier(
@@ -1881,11 +1975,15 @@ async def test_schedule_downgrade_clears_cancel_at_period_end():
 @pytest.mark.asyncio
 async def test_upgrade_releases_pending_schedule():
     """modify_stripe_subscription_for_tier upgrade path releases attached schedule first."""
-    mock_sub = {
-        "id": "sub_pro",
-        "schedule": "sub_sched_pending_downgrade",
-        "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
-    }
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "schedule": "sub_sched_pending_downgrade",
+            "cancel_at_period_end": False,
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+        },
+        "k",
+    )
     mock_list = MagicMock()
     mock_list.data = [mock_sub]
 
@@ -1905,14 +2003,17 @@ async def test_upgrade_releases_pending_schedule():
             return_value=mock_user,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.list",
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
             return_value=mock_list,
         ),
         patch(
-            "backend.data.credit.stripe.Subscription.modify",
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
         ) as mock_modify,
         patch(
-            "backend.data.credit.stripe.SubscriptionSchedule.release",
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
         ) as mock_release,
     ):
         result = await modify_stripe_subscription_for_tier(
@@ -1938,20 +2039,23 @@ async def test_next_phase_tier_and_start_logs_unknown_price(caplog):
     from backend.data.credit import _next_phase_tier_and_start
 
     now = int(time_mod.time())
-    schedule = {
-        "id": "sub_sched_unknown",
-        "phases": [
-            {
-                "start_date": now - 3 * 24 * 3600,
-                "end_date": now + 27 * 24 * 3600,
-                "items": [{"price": "price_current"}],
-            },
-            {
-                "start_date": now + 27 * 24 * 3600,
-                "items": [{"price": "price_unknown"}],
-            },
-        ],
-    }
+    schedule = stripe.SubscriptionSchedule.construct_from(
+        {
+            "id": "sub_sched_unknown",
+            "phases": [
+                {
+                    "start_date": now - 3 * 24 * 3600,
+                    "end_date": now + 27 * 24 * 3600,
+                    "items": [{"price": "price_current"}],
+                },
+                {
+                    "start_date": now + 27 * 24 * 3600,
+                    "items": [{"price": "price_unknown"}],
+                },
+            ],
+        },
+        "k",
+    )
     price_to_tier = {"price_pro_monthly": SubscriptionTier.PRO}
 
     with caplog.at_level(logging.WARNING, logger="backend.data.credit"):

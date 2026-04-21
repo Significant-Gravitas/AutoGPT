@@ -1440,8 +1440,44 @@ def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bo
     return _tier_rank(target) < _tier_rank(current)
 
 
+async def _get_active_subscription(customer_id: str) -> stripe.Subscription | None:
+    """Return the customer's active or trialing subscription, or None."""
+    for status in ("active", "trialing"):
+        subs = await stripe.Subscription.list_async(
+            customer=customer_id, status=status, limit=1
+        )
+        if subs.data:
+            return subs.data[0]
+    return None
+
+
+async def _release_schedule_ignoring_terminal(
+    schedule_id: str, log_context: str
+) -> bool:
+    """Release a Stripe schedule; swallow InvalidRequestError on terminal state.
+
+    Returns True if the release call succeeded, False if the schedule was
+    already in a terminal (released / completed / canceled) state. Any other
+    Stripe error propagates.
+    """
+    try:
+        await stripe.SubscriptionSchedule.release_async(schedule_id)
+        return True
+    except stripe.InvalidRequestError as e:
+        logger.info(
+            "%s: schedule %s not releasable (%s); treating as already released",
+            log_context,
+            schedule_id,
+            getattr(e, "user_message", None) or str(e),
+        )
+        return False
+
+
 async def _schedule_downgrade_at_period_end(
-    sub: dict, new_price_id: str, user_id: str, tier: SubscriptionTier
+    sub: stripe.Subscription,
+    new_price_id: str,
+    user_id: str,
+    tier: SubscriptionTier,
 ) -> None:
     """Create a Subscription Schedule that defers a tier change to period end.
 
@@ -1461,56 +1497,36 @@ async def _schedule_downgrade_at_period_end(
     operations — by the time modify/release returns, the subscription is in a
     known-clean state for the subsequent create.
     """
-    sub_id = sub["id"]
-    items = sub.get("items", {}).get("data", [])
+    sub_id = sub.id
+    # ``sub["items"]`` (dict-item) rather than ``sub.items`` because the latter
+    # is shadowed by Python's dict.items() method on StripeObject.
+    items = sub["items"].data
     if not items:
         raise ValueError(f"Subscription {sub_id} has no items; cannot schedule")
-    current_price_id = items[0].get("price", {}).get("id")
+    price = items[0].price
+    current_price_id = price if isinstance(price, str) else price.id
     period_start: int = sub["current_period_start"]
     period_end: int = sub["current_period_end"]
 
-    # Clear pre-existing pending changes that would block schedule creation.
-    if sub.get("cancel_at_period_end"):
-        await run_in_threadpool(
-            stripe.Subscription.modify, sub_id, cancel_at_period_end=False
-        )
+    if sub.cancel_at_period_end:
+        await stripe.Subscription.modify_async(sub_id, cancel_at_period_end=False)
         logger.info(
             "_schedule_downgrade_at_period_end: cleared cancel_at_period_end"
             " on sub %s for user %s before scheduling downgrade",
             sub_id,
             user_id,
         )
-    existing_schedule_id = sub.get("schedule")
-    if existing_schedule_id:
-        try:
-            await run_in_threadpool(
-                stripe.SubscriptionSchedule.release, existing_schedule_id
-            )
-            logger.info(
-                "_schedule_downgrade_at_period_end: released existing schedule"
-                " %s on sub %s for user %s before scheduling new downgrade",
-                existing_schedule_id,
-                sub_id,
-                user_id,
-            )
-        except stripe.InvalidRequestError as e:
-            # Schedule may already be in a terminal state (released / completed
-            # / canceled). Safe to proceed — the create below will still fail
-            # loudly if the schedule is somehow still live.
-            logger.info(
-                "_schedule_downgrade_at_period_end: existing schedule %s on"
-                " sub %s not releasable (%s); proceeding",
-                existing_schedule_id,
-                sub_id,
-                getattr(e, "user_message", None) or str(e),
-            )
+    if sub.schedule:
+        existing_schedule_id = (
+            sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+        )
+        await _release_schedule_ignoring_terminal(
+            existing_schedule_id, "_schedule_downgrade_at_period_end"
+        )
 
-    schedule = await run_in_threadpool(
-        stripe.SubscriptionSchedule.create, from_subscription=sub_id
-    )
-    await run_in_threadpool(
-        stripe.SubscriptionSchedule.modify,
-        schedule["id"],
+    schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=sub_id)
+    await stripe.SubscriptionSchedule.modify_async(
+        schedule.id,
         phases=[
             {
                 "items": [{"price": current_price_id, "quantity": 1}],
@@ -1567,67 +1583,44 @@ async def modify_stripe_subscription_for_tier(
         return False
     current_tier = user.subscription_tier or SubscriptionTier.FREE
 
-    customer_id = user.stripe_customer_id
-    for status in ("active", "trialing"):
-        subscriptions = await run_in_threadpool(
-            stripe.Subscription.list, customer=customer_id, status=status, limit=1
-        )
-        if not subscriptions.data:
-            continue
-        sub = subscriptions.data[0]
-        sub_id = sub["id"]
-        items = sub.get("items", {}).get("data", [])
-        if not items:
-            continue
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return False
+    items = sub["items"].data
+    if not items:
+        return False
+    sub_id = sub.id
 
-        if is_tier_downgrade(current_tier, tier):
-            await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
-            get_pending_subscription_change.cache_delete(user_id)
-            return True
-
-        # Upgrade path. If a schedule is attached from a previous pending
-        # downgrade, release it first — an upgrade expresses the user's
-        # intent to be on this tier immediately, which overrides any pending
-        # deferred change. Ignore terminal-state errors from release.
-        existing_schedule_id = sub.get("schedule")
-        if existing_schedule_id:
-            try:
-                await run_in_threadpool(
-                    stripe.SubscriptionSchedule.release, existing_schedule_id
-                )
-                logger.info(
-                    "modify_stripe_subscription_for_tier: released schedule %s"
-                    " on sub %s before upgrading user %s → %s",
-                    existing_schedule_id,
-                    sub_id,
-                    user_id,
-                    tier,
-                )
-            except stripe.InvalidRequestError as e:
-                logger.info(
-                    "modify_stripe_subscription_for_tier: schedule %s on sub"
-                    " %s not releasable (%s); proceeding with upgrade",
-                    existing_schedule_id,
-                    sub_id,
-                    getattr(e, "user_message", None) or str(e),
-                )
-
-        item_id = items[0]["id"]
-        await run_in_threadpool(
-            stripe.Subscription.modify,
-            sub_id,
-            items=[{"id": item_id, "price": price_id}],
-            proration_behavior="create_prorations",
-        )
-        logger.info(
-            "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
-            sub_id,
-            user_id,
-            tier,
-        )
+    if is_tier_downgrade(current_tier, tier):
+        await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
         get_pending_subscription_change.cache_delete(user_id)
         return True
-    return False
+
+    # Upgrade path. If a schedule is attached from a previous pending
+    # downgrade, release it first — an upgrade expresses the user's
+    # intent to be on this tier immediately, which overrides any pending
+    # deferred change. Ignore terminal-state errors from release.
+    if sub.schedule:
+        existing_schedule_id = (
+            sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+        )
+        await _release_schedule_ignoring_terminal(
+            existing_schedule_id, "modify_stripe_subscription_for_tier"
+        )
+
+    await stripe.Subscription.modify_async(
+        sub_id,
+        items=[{"id": items[0].id, "price": price_id}],
+        proration_behavior="create_prorations",
+    )
+    logger.info(
+        "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
+        sub_id,
+        user_id,
+        tier,
+    )
+    get_pending_subscription_change.cache_delete(user_id)
+    return True
 
 
 async def release_pending_subscription_schedule(user_id: str) -> bool:
@@ -1647,72 +1640,51 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
     if not user.stripe_customer_id:
         return False
 
-    customer_id = user.stripe_customer_id
-    released_any = False
-    seen_sub_ids: set[str] = set()
-    for status in ("active", "trialing"):
-        subscriptions = await run_in_threadpool(
-            stripe.Subscription.list, customer=customer_id, status=status, limit=1
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return False
+
+    sub_id = sub.id
+    did_anything = False
+    schedule_released = False
+    schedule_id: str | None = None
+    if sub.schedule:
+        schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+        schedule_released = await _release_schedule_ignoring_terminal(
+            schedule_id, "release_pending_subscription_schedule"
         )
-        if not subscriptions.data:
-            continue
-        sub = subscriptions.data[0]
-        sub_id = sub["id"]
-        if sub_id in seen_sub_ids:
-            continue
-        seen_sub_ids.add(sub_id)
-        schedule_id = sub.get("schedule")
-        schedule_released = False
-        if schedule_id:
-            try:
-                await run_in_threadpool(
-                    stripe.SubscriptionSchedule.release, schedule_id
-                )
-                schedule_released = True
-                released_any = True
-                logger.info(
-                    "release_pending_subscription_schedule: released schedule %s for user %s",
-                    schedule_id,
-                    user_id,
-                )
-            except stripe.InvalidRequestError as e:
-                # Terminal state (released/completed/canceled) is idempotent-safe:
-                # treat as "nothing to release" and continue to the
-                # cancel_at_period_end clear step.
-                logger.info(
-                    "release_pending_subscription_schedule: schedule %s for"
-                    " user %s not releasable (%s); treating as already released",
-                    schedule_id,
-                    user_id,
-                    getattr(e, "user_message", None) or str(e),
-                )
-        if sub.get("cancel_at_period_end"):
-            try:
-                await run_in_threadpool(
-                    stripe.Subscription.modify, sub_id, cancel_at_period_end=False
-                )
-            except stripe.StripeError:
-                if schedule_released:
-                    logger.exception(
-                        "release_pending_subscription_schedule: partial release"
-                        " — schedule %s released but cancel_at_period_end clear"
-                        " failed on sub %s for user %s; manual reconciliation"
-                        " may be needed",
-                        schedule_id,
-                        sub_id,
-                        user_id,
-                    )
-                raise
-            released_any = True
+        if schedule_released:
             logger.info(
-                "release_pending_subscription_schedule: cleared cancel_at_period_end"
-                " on sub %s for user %s",
-                sub_id,
+                "release_pending_subscription_schedule: released schedule %s for user %s",
+                schedule_id,
                 user_id,
             )
-    if released_any:
+            did_anything = True
+    if sub.cancel_at_period_end:
+        try:
+            await stripe.Subscription.modify_async(sub_id, cancel_at_period_end=False)
+        except stripe.StripeError:
+            if schedule_released:
+                logger.exception(
+                    "release_pending_subscription_schedule: partial release"
+                    " — schedule %s released but cancel_at_period_end clear"
+                    " failed on sub %s for user %s; manual reconciliation"
+                    " may be needed",
+                    schedule_id,
+                    sub_id,
+                    user_id,
+                )
+            raise
+        did_anything = True
+        logger.info(
+            "release_pending_subscription_schedule: cleared cancel_at_period_end"
+            " on sub %s for user %s",
+            sub_id,
+            user_id,
+        )
+    if did_anything:
         get_pending_subscription_change.cache_delete(user_id)
-    return released_any
+    return did_anything
 
 
 @cached(ttl_seconds=30, maxsize=512, cache_none=True)
@@ -1747,41 +1719,25 @@ async def get_pending_subscription_change(
     if biz_price:
         price_to_tier[biz_price] = SubscriptionTier.BUSINESS
 
-    customer_id = user.stripe_customer_id
-    seen_sub_ids: set[str] = set()
-    for status in ("active", "trialing"):
-        subscriptions = await run_in_threadpool(
-            stripe.Subscription.list, customer=customer_id, status=status, limit=1
-        )
-        if not subscriptions.data:
-            continue
-        sub = subscriptions.data[0]
-        sub_id = sub.get("id")
-        if isinstance(sub_id, str):
-            if sub_id in seen_sub_ids:
-                continue
-            seen_sub_ids.add(sub_id)
-        period_end = sub.get("current_period_end")
-        if not isinstance(period_end, int):
-            continue
-        effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
-        if sub.get("cancel_at_period_end"):
-            return SubscriptionTier.FREE, effective_at
-        schedule_id = sub.get("schedule")
-        if not schedule_id:
-            continue
-        schedule = await run_in_threadpool(
-            stripe.SubscriptionSchedule.retrieve, schedule_id
-        )
-        next_phase = _next_phase_tier_and_start(schedule, price_to_tier)
-        if next_phase is not None:
-            next_tier, phase_start = next_phase
-            return next_tier, phase_start
-    return None
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return None
+    period_end = sub.current_period_end
+    if not isinstance(period_end, int):
+        return None
+    effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
+    if sub.cancel_at_period_end:
+        return SubscriptionTier.FREE, effective_at
+    if not sub.schedule:
+        return None
+    schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+    schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
+    return _next_phase_tier_and_start(schedule, price_to_tier)
 
 
 def _next_phase_tier_and_start(
-    schedule: Any, price_to_tier: dict[str, SubscriptionTier]
+    schedule: stripe.SubscriptionSchedule,
+    price_to_tier: dict[str, SubscriptionTier],
 ) -> tuple[SubscriptionTier, datetime] | None:
     """Return (tier, start_datetime) of the phase that follows the active one.
 
@@ -1789,32 +1745,25 @@ def _next_phase_tier_and_start(
     is correct even for schedules created outside this flow — a dashboard-authored
     schedule can have phase transitions at arbitrary timestamps.
     """
-    phases = schedule.get("phases") or []
     now = int(time.time())
-    schedule_id = schedule.get("id")
-    for phase in phases:
-        start = phase.get("start_date")
-        if not isinstance(start, int) or start <= now:
+    for phase in schedule.phases or []:
+        if not isinstance(phase.start_date, int) or phase.start_date <= now:
             continue
-        items = phase.get("items") or []
+        # ``phase["items"]`` because ``phase.items`` is shadowed by dict.items().
+        items = phase["items"] or []
         if not items:
             continue
-        price_field = items[0].get("price")
-        price_id = (
-            price_field
-            if isinstance(price_field, str)
-            else (price_field or {}).get("id")
-        )
-        if price_id and price_id in price_to_tier:
+        price = items[0].price
+        price_id = price if isinstance(price, str) else price.id
+        if price_id in price_to_tier:
             return price_to_tier[price_id], datetime.fromtimestamp(
-                start, tz=timezone.utc
+                phase.start_date, tz=timezone.utc
             )
-        if price_id:
-            logger.warning(
-                "next_phase_tier_and_start: unknown price %s on schedule %s",
-                price_id,
-                schedule_id,
-            )
+        logger.warning(
+            "next_phase_tier_and_start: unknown price %s on schedule %s",
+            price_id,
+            schedule.id,
+        )
     return None
 
 
@@ -2107,7 +2056,7 @@ async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
         )
         return
     try:
-        sub = await run_in_threadpool(stripe.Subscription.retrieve, sub_id)
+        sub = await stripe.Subscription.retrieve_async(sub_id)
     except stripe.StripeError:
         logger.warning(
             "sync_subscription_schedule_from_stripe: failed to retrieve sub %s",
