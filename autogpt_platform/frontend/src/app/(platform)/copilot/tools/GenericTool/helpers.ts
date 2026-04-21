@@ -200,17 +200,6 @@ export function humanizeFileName(filePath: string): string {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Exit code helper                                                   */
-/* ------------------------------------------------------------------ */
-
-function getExitCode(output: unknown): number | null {
-  if (!output || typeof output !== "object") return null;
-  const parsed = output as Record<string, unknown>;
-  if (typeof parsed.exit_code === "number") return parsed.exit_code;
-  return null;
-}
-
-/* ------------------------------------------------------------------ */
 /*  Animation text                                                     */
 /* ------------------------------------------------------------------ */
 

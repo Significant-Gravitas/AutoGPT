@@ -21,8 +21,6 @@ from backend.copilot.response_model import (
     StreamFinishStep,
     StreamHeartbeat,
     StreamReasoningDelta,
-    StreamReasoningEnd,
-    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
