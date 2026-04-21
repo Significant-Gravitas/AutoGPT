@@ -32,10 +32,10 @@ router = APIRouter(
 class UserRateLimitResponse(BaseModel):
     user_id: str
     user_email: Optional[str] = None
-    daily_token_limit: int
-    weekly_token_limit: int
-    daily_tokens_used: int
-    weekly_tokens_used: int
+    daily_cost_limit_microdollars: int
+    weekly_cost_limit_microdollars: int
+    daily_cost_used_microdollars: int
+    weekly_cost_used_microdollars: int
     tier: SubscriptionTier
 
 
@@ -101,17 +101,19 @@ async def get_user_rate_limit(
     logger.info("Admin %s checking rate limit for user %s", admin_user_id, resolved_id)
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        resolved_id, config.daily_token_limit, config.weekly_token_limit
+        resolved_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
     usage = await get_usage_status(resolved_id, daily_limit, weekly_limit, tier=tier)
 
     return UserRateLimitResponse(
         user_id=resolved_id,
         user_email=resolved_email,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
-        daily_tokens_used=usage.daily.used,
-        weekly_tokens_used=usage.weekly.used,
+        daily_cost_limit_microdollars=daily_limit,
+        weekly_cost_limit_microdollars=weekly_limit,
+        daily_cost_used_microdollars=usage.daily.used,
+        weekly_cost_used_microdollars=usage.weekly.used,
         tier=tier,
     )
 
@@ -141,7 +143,9 @@ async def reset_user_rate_limit(
         raise HTTPException(status_code=500, detail="Failed to reset usage") from e
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
     usage = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
 
@@ -154,10 +158,10 @@ async def reset_user_rate_limit(
     return UserRateLimitResponse(
         user_id=user_id,
         user_email=resolved_email,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
-        daily_tokens_used=usage.daily.used,
-        weekly_tokens_used=usage.weekly.used,
+        daily_cost_limit_microdollars=daily_limit,
+        weekly_cost_limit_microdollars=weekly_limit,
+        daily_cost_used_microdollars=usage.daily.used,
+        weekly_cost_used_microdollars=usage.weekly.used,
         tier=tier,
     )
 

@@ -88,8 +88,9 @@ export function RateLimitDisplay({
   }
 
   const nothingToReset = resetWeekly
-    ? data.daily_tokens_used === 0 && data.weekly_tokens_used === 0
-    : data.daily_tokens_used === 0;
+    ? data.daily_cost_used_microdollars === 0 &&
+      data.weekly_cost_used_microdollars === 0
+    : data.daily_cost_used_microdollars === 0;
 
   return (
     <div className={className ?? "rounded-md border bg-white p-6"}>
@@ -133,17 +134,17 @@ export function RateLimitDisplay({
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Daily Usage</h3>
+          <h3 className="text-sm font-medium text-gray-700">Daily Spend</h3>
           <UsageBar
-            used={data.daily_tokens_used}
-            limit={data.daily_token_limit}
+            used={data.daily_cost_used_microdollars}
+            limit={data.daily_cost_limit_microdollars}
           />
         </div>
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-gray-700">Weekly Usage</h3>
+          <h3 className="text-sm font-medium text-gray-700">Weekly Spend</h3>
           <UsageBar
-            used={data.weekly_tokens_used}
-            limit={data.weekly_token_limit}
+            used={data.weekly_cost_used_microdollars}
+            limit={data.weekly_cost_limit_microdollars}
           />
         </div>
       </div>

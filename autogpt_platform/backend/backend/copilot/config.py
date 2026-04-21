@@ -101,25 +101,31 @@ class ChatConfig(BaseSettings):
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
     )
 
-    # Rate limiting — token-based limits per day and per week.
-    # Per-turn token cost varies with context size: ~10-15K for early turns,
-    # ~30-50K mid-session, up to ~100K pre-compaction. Average across a
-    # session with compaction cycles is ~25-35K tokens/turn, so 2.5M daily
-    # allows ~70-100 turns/day.
+    # Rate limiting — cost-based limits per day and per week, stored in
+    # microdollars (1 USD = 1_000_000).  The counter tracks the real
+    # generation cost reported by the provider (OpenRouter ``usage.cost``
+    # or Claude Agent SDK ``total_cost_usd``), so cache discounts and
+    # cross-model price differences are already reflected — no token
+    # weighting or model multiplier is applied on top.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # These are base limits for the FREE tier. Higher tiers (PRO, BUSINESS,
+    # These are base limits for the FREE tier.  Higher tiers (PRO, BUSINESS,
     # ENTERPRISE) multiply these by their tier multiplier (see
-    # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
+    # rate_limit.TIER_MULTIPLIERS).  User tier is stored in the
     # User.subscriptionTier DB column and resolved inside
     # get_global_rate_limits().
-    daily_token_limit: int = Field(
-        default=2_500_000,
-        description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
+    #
+    # These defaults act as the ceiling when LaunchDarkly is unreachable;
+    # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
+    daily_cost_limit_microdollars: int = Field(
+        default=1_000_000,
+        description="Max cost per day in microdollars, resets at midnight UTC "
+        "(0 = unlimited).",
     )
-    weekly_token_limit: int = Field(
-        default=12_500_000,
-        description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
+    weekly_cost_limit_microdollars: int = Field(
+        default=5_000_000,
+        description="Max cost per week in microdollars, resets Monday 00:00 UTC "
+        "(0 = unlimited).",
     )
 
     # Cost (in credits / cents) to reset the daily rate limit using credits.
