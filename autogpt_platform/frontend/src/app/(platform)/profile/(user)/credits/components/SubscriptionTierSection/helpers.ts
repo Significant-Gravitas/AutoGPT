@@ -43,7 +43,10 @@ export function getTierLabel(tierKey: string): string {
 
 export function formatPendingDate(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
-  return date.toLocaleDateString(undefined, {
+  // Pin to en-US so SSR and CSR produce the same string — passing `undefined`
+  // picks up the server's locale during prerender and the browser's locale on
+  // hydration, which triggers a React hydration mismatch warning.
+  return date.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
     day: "numeric",

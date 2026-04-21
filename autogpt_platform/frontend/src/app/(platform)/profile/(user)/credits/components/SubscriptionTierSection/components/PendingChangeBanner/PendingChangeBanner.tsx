@@ -16,27 +16,25 @@ export function PendingChangeBanner({
   onKeepCurrent,
   isBusy,
 }: Props) {
+  // Backend invariant: pending_tier_effective_at is always populated when
+  // pending_tier is set. Bail early if the date is missing so the sentence
+  // always reads with a date instead of a null-fallback branch.
+  if (!pendingEffectiveAt) return null;
+
   const pendingLabel = getTierLabel(pendingTier);
   const currentLabel = getTierLabel(currentTier);
-  const dateText = pendingEffectiveAt
-    ? formatPendingDate(pendingEffectiveAt)
-    : null;
+  const dateText = formatPendingDate(pendingEffectiveAt);
 
   return (
     <div
       role="status"
+      aria-live="polite"
       className="flex flex-col gap-2 rounded-md border border-violet-500 bg-violet-50 px-3 py-2 text-sm text-violet-800 dark:bg-violet-900/20 dark:text-violet-200 sm:flex-row sm:items-center sm:justify-between"
     >
       <p>
         Scheduled to {pendingTier === "FREE" ? "cancel" : "downgrade"} to{" "}
-        <span className="font-semibold">{pendingLabel}</span>
-        {dateText ? (
-          <>
-            {" "}
-            on <span className="font-semibold">{dateText}</span>
-          </>
-        ) : null}
-        .
+        <span className="font-semibold">{pendingLabel}</span> on{" "}
+        <span className="font-semibold">{dateText}</span>.
       </p>
       <Button
         variant="outline"

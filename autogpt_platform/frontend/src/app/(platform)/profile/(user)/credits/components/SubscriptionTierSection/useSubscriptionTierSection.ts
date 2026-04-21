@@ -140,6 +140,14 @@ export function useSubscriptionTierSection() {
         description: msg,
         variant: "destructive",
       });
+      // Refetch on error so the UI reconciles if the server actually
+      // succeeded (e.g. webhook delivered after our client-side error).
+      // Swallow refetch errors — we already have the primary error for display.
+      try {
+        await refetch();
+      } catch {
+        // intentional
+      }
     }
   }
 
