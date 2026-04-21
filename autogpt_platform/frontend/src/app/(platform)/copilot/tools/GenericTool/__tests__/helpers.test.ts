@@ -202,14 +202,14 @@ describe("getAnimationText", () => {
     expect(getAnimationText(part, "bash")).toBe("Ran: echo hello");
   });
 
-  it("shows exit code on non-zero exit", () => {
+  it("still shows the command even on non-zero exit (exit code lives in the accordion description)", () => {
     const part = makePart({
       type: "tool-bash_exec",
       state: "output-available",
       input: { command: "false" },
       output: { exit_code: 1 },
     });
-    expect(getAnimationText(part, "bash")).toBe("Command exited with code 1");
+    expect(getAnimationText(part, "bash")).toBe("Ran: false");
   });
 
   it("shows error text for bash failure", () => {

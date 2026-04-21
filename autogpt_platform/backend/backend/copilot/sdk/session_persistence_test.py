@@ -19,9 +19,11 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from backend.copilot.constants import STOPPED_BY_USER_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -215,3 +217,183 @@ class TestPreCreateAssistantMessage:
             _simulate_pre_create(acc, ctx)
 
         assert len(ctx.session.messages) == 0
+
+
+class TestPruneOrphanToolCalls:
+    """A Stop mid-tool-call leaves the session ending on an assistant row whose
+    ``tool_calls`` have no matching ``role="tool"`` row.  Unless pruned before
+    the next turn, the ``--resume`` transcript would hand Claude CLI a
+    ``tool_use`` without a paired ``tool_result`` and the SDK would fail.
+    """
+
+    @staticmethod
+    def _tool_call(call_id: str, name: str = "bash_exec") -> dict:
+        return {
+            "id": call_id,
+            "type": "function",
+            "function": {"name": name, "arguments": "{}"},
+        }
+
+    def test_stop_mid_tool_leaves_orphan_assistant(self) -> None:
+        """Stop between StreamToolInputAvailable and StreamToolOutputAvailable:
+        the assistant row has ``tool_calls`` but no matching tool row."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 1
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_stop_strips_stopped_by_user_marker_and_orphan(self) -> None:
+        """The service also appends a ``STOPPED_BY_USER_MARKER`` after a
+        user stop when the stream loop exits cleanly; both tail rows must go."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_completed_tool_call_is_preserved(self) -> None:
+        """An assistant row whose tool_calls are all resolved is a healthy
+        trailing state and must not be popped."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(
+                role="tool",
+                content="ok",
+                tool_call_id="tc_abc",
+            ),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 0
+        assert len(messages) == 3
+
+    def test_partial_resolution_still_pops(self) -> None:
+        """If an assistant emits multiple tool_calls and only some are
+        resolved, the assistant row is still unsafe for ``--resume``."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    self._tool_call("tc_1"),
+                    self._tool_call("tc_2"),
+                ],
+            ),
+            ChatMessage(
+                role="tool",
+                content="ok",
+                tool_call_id="tc_1",
+            ),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        # Both the orphan assistant and its partial tool row are dropped.
+        assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_plain_assistant_text_preserved(self) -> None:
+        """A regular text-only assistant tail is healthy and must be kept."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(role="assistant", content="hello"),
+        ]
+
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 0
+        assert len(messages) == 2
+
+    def test_empty_session_is_noop(self) -> None:
+        messages: list[ChatMessage] = []
+        assert prune_orphan_tool_calls(messages) == 0
+
+
+class TestPruneOrphanToolCallsLogging:
+    """``prune_orphan_tool_calls`` emits an INFO log when the caller passes
+    ``log_prefix`` and something was actually popped.  Shared by the SDK
+    and baseline turn-start cleanup so both paths log in the same shape."""
+
+    def _tool_call(self, call_id: str) -> dict:
+        return {"id": call_id, "type": "function", "function": {"name": "bash"}}
+
+    def test_logs_when_something_was_pruned(self, caplog) -> None:
+        import backend.copilot.session_cleanup as sc
+
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(
+                role="assistant", content="", tool_calls=[self._tool_call("tc_1")]
+            ),
+        ]
+
+        sc.logger.propagate = True
+        caplog.set_level("INFO", logger=sc.logger.name)
+        removed = prune_orphan_tool_calls(messages, log_prefix="[TEST] [abc123]")
+
+        assert removed == 1
+        assert any(
+            "[TEST] [abc123]" in r.message and "Dropped 1" in r.message
+            for r in caplog.records
+        ), caplog.text
+
+    def test_no_log_when_nothing_to_prune(self, caplog) -> None:
+        import backend.copilot.session_cleanup as sc
+
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(role="assistant", content="hello"),
+        ]
+
+        sc.logger.propagate = True
+        caplog.set_level("INFO", logger=sc.logger.name)
+        removed = prune_orphan_tool_calls(messages, log_prefix="[TEST] [xyz]")
+
+        assert removed == 0
+        assert not any("[TEST] [xyz]" in r.message for r in caplog.records), caplog.text
+
+    def test_no_log_when_log_prefix_is_none(self, caplog) -> None:
+        """Without ``log_prefix``, ``prune_orphan_tool_calls`` is silent."""
+        import backend.copilot.session_cleanup as sc
+
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(
+                role="assistant", content="", tool_calls=[self._tool_call("tc_1")]
+            ),
+        ]
+
+        sc.logger.propagate = True
+        caplog.set_level("INFO", logger=sc.logger.name)
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 1
+        assert caplog.text == ""
