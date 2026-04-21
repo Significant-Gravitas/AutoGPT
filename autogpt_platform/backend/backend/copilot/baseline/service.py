@@ -276,6 +276,28 @@ class _BaselineStreamState:
     _flushed_assistant_text_len: int = 0
 
 
+def _is_anthropic_model(model: str) -> bool:
+    """Return True if *model* routes to Anthropic (native or via OpenRouter).
+
+    Cache-control markers on message content + the ``anthropic-beta`` header
+    are Anthropic-specific.  OpenAI rejects the unknown ``cache_control``
+    field with a 400 ("Extra inputs are not permitted") and Grok / other
+    providers behave similarly.  OpenRouter strips unknown headers but
+    passes through ``cache_control`` on the body regardless of provider —
+    which would also fail when OpenRouter routes to a non-Anthropic model.
+
+    Examples that return True:
+      - ``anthropic/claude-sonnet-4-6`` (OpenRouter route)
+      - ``claude-3-5-sonnet-20241022`` (direct Anthropic API)
+      - ``anthropic.claude-3-5-sonnet`` (Bedrock-style)
+
+    False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4``
+    etc.
+    """
+    lowered = model.lower()
+    return "claude" in lowered or lowered.startswith("anthropic")
+
+
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
     """Return a FRESH ``{"type": "ephemeral"}`` dict each call.
 
@@ -311,6 +333,10 @@ def _mark_tools_with_cache_control(
     the marked tool list once per session — the tool set is static within a
     request and the ~43 dict-copies would otherwise run on every LLM round
     in the tool-call loop.
+
+    **Only call this for Anthropic model routes.**  Non-Anthropic providers
+    (OpenAI, Grok, Gemini) reject the unknown ``cache_control`` field with
+    a 400 schema validation error.  Gate via :func:`_is_anthropic_model`.
     """
     cached: list[dict[str, Any]] = [dict(t) for t in tools]
     if cached:
@@ -371,30 +397,35 @@ async def _baseline_llm_caller(
     response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
-        # Tools are expected to already carry cache_control on the last entry —
-        # they're precomputed once per session in stream_chat_completion_baseline
-        # (static within a request).  The system-message marker is applied per
-        # round because messages grow across the tool-call loop.
-        cached_messages = _mark_system_message_with_cache_control(messages)
-        typed_messages = cast(list[ChatCompletionMessageParam], cached_messages)
-        if tools:
-            typed_tools = cast(list[ChatCompletionToolParam], list(tools))
-            response = await client.chat.completions.create(
-                model=state.model,
-                messages=typed_messages,
-                tools=typed_tools,
-                stream=True,
-                stream_options={"include_usage": True},
-                extra_headers=_fresh_anthropic_caching_headers(),
-            )
+        # Cache markers are Anthropic-specific.  For OpenAI/Grok/other
+        # providers, leaving them on would trigger a 400 ("Extra inputs
+        # are not permitted" on cache_control).  The tools list is
+        # precomputed in stream_chat_completion_baseline; we skip both
+        # the message marker and the anthropic-beta header when the model
+        # isn't Anthropic.  The pre-marked tools still ship on that path
+        # but OpenRouter strips unknown fields before forwarding, and
+        # direct non-Anthropic providers are only reachable via the
+        # native client.  If direct-non-Anthropic ever enters the picture,
+        # tools will need to be rebuilt without cache_control too.
+        is_anthropic = _is_anthropic_model(state.model)
+        if is_anthropic:
+            final_messages = _mark_system_message_with_cache_control(messages)
+            extra_headers = _fresh_anthropic_caching_headers()
         else:
-            response = await client.chat.completions.create(
-                model=state.model,
-                messages=typed_messages,
-                stream=True,
-                stream_options={"include_usage": True},
-                extra_headers=_fresh_anthropic_caching_headers(),
-            )
+            final_messages = messages
+            extra_headers = None
+        typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
+        create_kwargs: dict[str, Any] = {
+            "model": state.model,
+            "messages": typed_messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if extra_headers:
+            create_kwargs["extra_headers"] = extra_headers
+        if tools:
+            create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
+        response = await client.chat.completions.create(**create_kwargs)
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
@@ -1349,7 +1380,13 @@ async def stream_chat_completion_baseline(
     # tool set is static within a request, so doing this here (instead of in
     # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
     # round of the tool-call loop.
-    tools = cast(list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools))
+    #
+    # Only apply to Anthropic routes — OpenAI/Grok/other providers would
+    # 400 on the unknown ``cache_control`` field inside tool definitions.
+    if _is_anthropic_model(active_model):
+        tools = cast(
+            list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
+        )
 
     # Propagate execution context so tool handlers can read session-level flags.
     set_execution_context(

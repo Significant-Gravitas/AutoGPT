@@ -15,6 +15,7 @@ from backend.copilot.baseline.service import (
     _compress_session_messages,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
+    _is_anthropic_model,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
 )
@@ -1292,6 +1293,19 @@ class TestApplyPromptCacheMarkers:
         messages = [{"role": "system", "content": pre_marked}]
         cached_messages = _mark_system_message_with_cache_control(messages)
         assert cached_messages[0]["content"] == pre_marked
+
+    def test_is_anthropic_model_matches_claude_and_anthropic_prefix(self):
+        assert _is_anthropic_model("anthropic/claude-sonnet-4-6")
+        assert _is_anthropic_model("claude-3-5-sonnet-20241022")
+        assert _is_anthropic_model("anthropic.claude-3-5-sonnet-20241022-v2:0")
+        assert _is_anthropic_model("ANTHROPIC/Claude-Opus")  # case insensitive
+
+    def test_is_anthropic_model_rejects_other_providers(self):
+        assert not _is_anthropic_model("openai/gpt-4o")
+        assert not _is_anthropic_model("openai/gpt-5")
+        assert not _is_anthropic_model("google/gemini-2.5-pro")
+        assert not _is_anthropic_model("xai/grok-4")
+        assert not _is_anthropic_model("meta-llama/llama-3.3-70b-instruct")
 
     def test_fresh_helpers_return_distinct_objects(self):
         """Regression guard: the `_fresh_*` helpers must return a NEW dict
