@@ -276,6 +276,48 @@ class _BaselineStreamState:
     _flushed_assistant_text_len: int = 0
 
 
+_EPHEMERAL_CACHE_CONTROL = {"type": "ephemeral"}
+
+
+def _apply_prompt_cache_markers(
+    messages: list[dict[str, Any]],
+    tools: Sequence[Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Attach Anthropic ephemeral ``cache_control`` markers to the static
+    prefix of the request so OpenRouter passes them through to Anthropic
+    and the prompt is served from cache on repeat requests.
+
+    Anthropic's cache is prefix-based — marking the LAST tool caches
+    everything above it (system prompt + all earlier tool schemas).  The
+    system message marker is redundant from a cache-key standpoint but
+    explicit, and makes the intent visible in logs/traces.
+
+    Non-Anthropic models routed via OpenRouter silently ignore the markers.
+    """
+    cached_messages = list(messages)
+    if cached_messages and cached_messages[0].get("role") == "system":
+        sys_content = cached_messages[0].get("content")
+        if isinstance(sys_content, str) and sys_content:
+            cached_messages[0] = {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": sys_content,
+                        "cache_control": _EPHEMERAL_CACHE_CONTROL,
+                    }
+                ],
+            }
+
+    cached_tools: list[dict[str, Any]] = [dict(t) for t in tools]
+    if cached_tools:
+        cached_tools[-1] = {
+            **cached_tools[-1],
+            "cache_control": _EPHEMERAL_CACHE_CONTROL,
+        }
+    return cached_messages, cached_tools
+
+
 async def _baseline_llm_caller(
     messages: list[dict[str, Any]],
     tools: Sequence[Any],
@@ -295,9 +337,10 @@ async def _baseline_llm_caller(
     response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
-        typed_messages = cast(list[ChatCompletionMessageParam], messages)
-        if tools:
-            typed_tools = cast(list[ChatCompletionToolParam], tools)
+        cached_messages, cached_tools = _apply_prompt_cache_markers(messages, tools)
+        typed_messages = cast(list[ChatCompletionMessageParam], cached_messages)
+        if cached_tools:
+            typed_tools = cast(list[ChatCompletionToolParam], cached_tools)
             response = await client.chat.completions.create(
                 model=state.model,
                 messages=typed_messages,
