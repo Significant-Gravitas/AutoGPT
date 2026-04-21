@@ -178,27 +178,20 @@ export function getTurnMessages(
   return messages.slice(start, end);
 }
 
-const SUB_SESSION_POLLING_TOOL_TYPES = new Set([
-  "tool-run_sub_session",
-  "tool-get_sub_session_result",
-]);
-
 /**
- * True when the last part of the given assistant message is a completed
- * `run_sub_session` / `get_sub_session_result` whose output reports the sub
- * is still running — i.e. we're between polls. Lets the UI show a positive
- * "still running" indicator instead of the generic cycling "Thinking…".
+ * True when this tool part has completed its inline wait but reports that
+ * the underlying work is still in progress (``output.status === "running"``).
+ * Used by polling-style tools like ``run_sub_session`` / ``run_agent`` /
+ * ``view_agent_output`` / ``get_sub_session_result`` that return a handle
+ * after their wait budget expires so the model can re-poll.
+ *
+ * Generic by design — any tool that sets ``output.status`` to ``"running"``
+ * qualifies. No per-tool whitelist.
  */
-export function isSubSessionStillPolling(
-  message: UIMessage<unknown, UIDataTypes, UITools> | undefined,
-): boolean {
-  if (!message || message.role !== "assistant") return false;
-  const lastPart = message.parts[message.parts.length - 1];
-  if (!lastPart || !SUB_SESSION_POLLING_TOOL_TYPES.has(lastPart.type))
-    return false;
-  if (!("state" in lastPart) || lastPart.state !== "output-available")
-    return false;
-  const rawOutput = (lastPart as ToolUIPart).output;
+export function isToolStillRunning(part: MessagePart): boolean {
+  if (!part.type.startsWith("tool-")) return false;
+  if (!("state" in part) || part.state !== "output-available") return false;
+  const rawOutput = (part as ToolUIPart).output;
   if (!rawOutput) return false;
   let output: unknown = rawOutput;
   if (typeof rawOutput === "string") {

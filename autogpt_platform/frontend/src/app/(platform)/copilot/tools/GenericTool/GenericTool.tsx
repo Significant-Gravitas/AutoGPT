@@ -40,6 +40,7 @@ import {
   getToolCategory,
   truncate,
 } from "./helpers";
+import { isToolStillRunning } from "../../components/ChatMessagesContainer/helpers";
 
 interface Props {
   part: ToolUIPart;
@@ -238,12 +239,28 @@ function getBashAccordionData(
 
   // The command itself is already in the subtitle row above; surface the
   // outcome here so scanning the closed accordion tells the reader "how it
-  // ended" at a glance.
-  const description = timedOut
-    ? "timed out"
-    : exitCode !== null
-      ? `exit ${exitCode}`
-      : undefined;
+  // ended" at a glance.  Prefer the backend's own first line of output
+  // (stderr for failures/timeouts — that's where bash_exec writes
+  // "Timed out after Xs" and where shells emit "command not found" etc.,
+  // stdout for success) over a terse "exit N" so the reader actually sees
+  // WHY the command ended.
+  const firstNonEmptyLine = (s: string | null): string | null => {
+    if (!s) return null;
+    const line = s.split("\n").find((l) => l.trim().length > 0);
+    return line ? truncate(line.trim(), 80) : null;
+  };
+  const stderrPreview = firstNonEmptyLine(stderr);
+  const stdoutPreview = firstNonEmptyLine(stdout);
+  let description: string | undefined;
+  if (timedOut) {
+    description = stderrPreview ?? "timed out";
+  } else if (exitCode !== null && exitCode !== 0) {
+    description = stderrPreview
+      ? `exit ${exitCode} · ${stderrPreview}`
+      : `exit ${exitCode}`;
+  } else if (exitCode === 0) {
+    description = stdoutPreview ?? `exit ${exitCode}`;
+  }
 
   return {
     title,
@@ -684,13 +701,27 @@ function getAccordionData(
 export function GenericTool({ part }: Props) {
   const toolName = extractToolName(part);
   const category = getToolCategory(toolName);
+
+  // Polling tools (run_sub_session, run_agent, view_agent_output, …) return
+  // output.status === "running" when their inline wait budget expired but
+  // the underlying work continues.  Render as still-streaming — spinner +
+  // "Running …" text, no accordion — so the user sees it's active instead
+  // of a static "result received" card.
+  const stillRunning = isToolStillRunning(part);
+
   const isStreaming =
-    part.state === "input-streaming" || part.state === "input-available";
+    stillRunning ||
+    part.state === "input-streaming" ||
+    part.state === "input-available";
   const isError = part.state === "output-error";
-  const text = getAnimationText(part, category);
+  const animatedPart = stillRunning
+    ? ({ ...part, state: "input-available" } as ToolUIPart)
+    : part;
+  const text = getAnimationText(animatedPart, category);
 
   const output = parseOutput(part.output);
   const hasOutput =
+    !stillRunning &&
     part.state === "output-available" &&
     !!output &&
     Object.keys(output).length > 0;

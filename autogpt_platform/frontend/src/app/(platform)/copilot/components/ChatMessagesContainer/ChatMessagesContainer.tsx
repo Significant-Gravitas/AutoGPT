@@ -22,7 +22,7 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import {
   buildRenderSegments,
   getTurnMessages,
-  isSubSessionStillPolling,
+  isToolStillRunning,
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
@@ -34,7 +34,6 @@ import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { StepsCollapse } from "./components/StepsCollapse";
-import { SubAutoPilotRunningIndicator } from "./components/SubAutoPilotRunningIndicator";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
 interface Props {
@@ -299,15 +298,18 @@ export function ChatMessagesContainer({
     )
       return true;
 
+    // Polling tools (run_sub_session, run_agent, view_agent_output, etc.)
+    // return output.status === "running" when their inline wait budget
+    // expired but the underlying work continues.  Treat as inflight so the
+    // generic "Thinking…" doesn't overwrite the tool's own still-running
+    // indicator.
+    if (isToolStillRunning(lastPart)) return true;
+
     return false;
   })();
 
-  const subSessionRunning = isSubSessionStillPolling(lastMessage);
-
   const showThinking =
-    status === "submitted" ||
-    (status === "streaming" && !hasInflight) ||
-    (status === "streaming" && subSessionRunning);
+    status === "submitted" || (status === "streaming" && !hasInflight);
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
   const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
@@ -450,16 +452,12 @@ export function ChatMessagesContainer({
                     durationMs={historicalDurations?.get(message.id)}
                   />
                 )}
-                {isLastAssistant &&
-                  showThinking &&
-                  (subSessionRunning ? (
-                    <SubAutoPilotRunningIndicator />
-                  ) : (
-                    <ThinkingIndicator
-                      active={showThinking}
-                      elapsedSeconds={elapsedSeconds}
-                    />
-                  ))}
+                {isLastAssistant && showThinking && (
+                  <ThinkingIndicator
+                    active={showThinking}
+                    elapsedSeconds={elapsedSeconds}
+                  />
+                )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
                 <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">

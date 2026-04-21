@@ -47,7 +47,7 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after `timeout` seconds (default 120); pass a larger value for long-running jobs."
+            "Killed after `timeout` seconds; pass a larger value for long-running jobs."
         )
 
     @property
@@ -61,7 +61,7 @@ class BashExecTool(BaseTool):
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Timeout in seconds (default 120). Set higher for long-running commands.",
+                    "description": "Timeout in seconds. Set higher for long-running commands.",
                     "default": 120,
                 },
             },

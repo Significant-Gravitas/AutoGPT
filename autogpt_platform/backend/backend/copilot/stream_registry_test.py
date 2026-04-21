@@ -111,13 +111,8 @@ async def test_disconnect_all_listeners_timeout_not_counted():
 
 
 # ---------------------------------------------------------------------------
-# stream_and_publish: close-propagation regression tests (OPEN-3096)
-#
-# When the caller breaks early from the ``async for`` or explicitly
-# closes the wrapper, the inner stream MUST receive GeneratorExit so its
-# ``finally`` (which releases the per-session stream lock) runs
-# immediately.  Without this, a user clicking Stop and then re-sending
-# hits "Another stream is already active".
+# stream_and_publish: closing the wrapper forwards GeneratorExit into the
+# inner stream so its finally (stream lock release, etc.) runs deterministically.
 # ---------------------------------------------------------------------------
 
 

@@ -48,8 +48,8 @@ from ..config import ChatConfig, CopilotLlmModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    STOPPED_BY_USER_MARKER,
     STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
@@ -502,47 +502,31 @@ def _append_error_marker(
 def _prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
     """Pop trailing orphan tool-use blocks from *messages* in place.
 
-    A Stop mid-tool-call leaves the session ending on an assistant message whose
-    ``tool_calls`` have no matching ``role="tool"`` row (the tool never produced
-    output because the executor was cancelled).  Feeding that tail to the next
-    ``--resume`` turn would hand Claude CLI a ``tool_use`` with no paired
-    ``tool_result`` and the SDK raises a generic error (surfaced to the user as
-    "The assistant encountered an error").
+    A Stop mid-tool-call leaves the session ending on an assistant message
+    whose ``tool_calls`` have no matching ``role="tool"`` row — the tool
+    never produced output because the executor was cancelled.  Feeding that
+    tail to the next ``--resume`` turn would hand the Claude CLI a
+    ``tool_use`` with no paired ``tool_result`` and the SDK raises a
+    generic error.
 
-    Walks the trailing tail, collecting already-resolved tool_call_ids from
-    ``role="tool"`` rows.  When an assistant row has ``tool_calls`` whose IDs
-    are not *all* resolved by rows appearing after it, pops the assistant AND
-    every trailing row that followed it (orphaned tool rows have nothing to
-    attach to once their assistant is gone).  Also strips trailing system stop
-    markers ("Execution stopped by user").  Returns the number of rows popped.
+    Also strips trailing ``STOPPED_BY_USER_MARKER`` assistant rows emitted
+    by the same Stop path, so the next turn's transcript starts clean.
 
-    Only removes from the in-memory list — DB rows stay put (the DB write path
-    is append-only via ``start_sequence``, so no delete is needed).  On the next
-    session load the same rows are popped again.
+    In-memory only — the DB write path is append-only via ``start_sequence``
+    so no delete is needed; the same rows are popped again on the next
+    session load.
     """
     removed = 0
 
-    # 1. Strip trailing system-level "stopped by user" markers.
-    while messages:
+    while messages and messages[-1].role == "assistant":
         tail = messages[-1]
-        if (
-            tail.role == "assistant"
-            and tail.content
-            and COPILOT_SYSTEM_PREFIX in tail.content
-            and "stopped by user" in tail.content.lower()
-        ):
-            messages.pop()
-            removed += 1
-            continue
-        break
+        if tail.content != STOPPED_BY_USER_MARKER:
+            break
+        messages.pop()
+        removed += 1
 
-    # 2. If the tail now ends on (or passes through) an assistant with
-    #    unresolved tool_calls, drop the assistant row and every trailing row
-    #    that followed it.  Walk backwards from the tail looking for such an
-    #    assistant; resolved IDs are collected from trailing ``role="tool"``
-    #    rows as we walk.
-    resolved_ids: set[str] = set()
     cut_index: int | None = None
+    resolved_ids: set[str] = set()
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
         if msg.role == "tool" and msg.tool_call_id:
@@ -557,8 +541,6 @@ def _prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
             if pending_ids and not pending_ids.issubset(resolved_ids):
                 cut_index = i
             break
-        # Any other role (user, completed text-only assistant, etc.) means
-        # the trailing block is healthy — stop walking.
         break
 
     if cut_index is not None:
@@ -2574,10 +2556,7 @@ async def _run_stream_attempt(
         for r in closing_responses:
             yield r
         ctx.session.messages.append(
-            ChatMessage(
-                role="assistant",
-                content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
-            )
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER)
         )
 
     if (
@@ -2807,7 +2786,7 @@ async def stream_chat_completion_sdk(
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
     **_kwargs: Any,
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Stream chat completion using Claude Agent SDK.
 
     Args:
@@ -2851,11 +2830,8 @@ async def stream_chat_completion_sdk(
         )
         session.messages.pop()
 
-    # Drop trailing orphan tool_use blocks left by a Stop mid-tool-call.
-    # Without this, the next turn's ``--resume`` transcript contains a
-    # ``tool_use`` with no paired ``tool_result`` and the Claude CLI raises
-    # a generic SDK error ("The assistant encountered an error") — see
-    # OPEN-3096.
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
     _n_orphaned = _prune_orphan_tool_calls(session.messages)
     if _n_orphaned:
         logger.info(

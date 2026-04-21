@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.constants import STOPPED_BY_USER_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import (
@@ -223,13 +223,10 @@ class TestPreCreateAssistantMessage:
 
 
 class TestPruneOrphanToolCalls:
-    """Regression coverage for OPEN-3096.
-
-    A user Stop mid-tool-call leaves the session ending on an assistant row
-    whose ``tool_calls`` have no matching ``role="tool"`` row.  Unless pruned
-    before the next turn, the ``--resume`` transcript hands Claude CLI a
-    ``tool_use`` without a paired ``tool_result`` and the SDK fails with a
-    generic error surfaced as "The assistant encountered an error".
+    """A Stop mid-tool-call leaves the session ending on an assistant row whose
+    ``tool_calls`` have no matching ``role="tool"`` row.  Unless pruned before
+    the next turn, the ``--resume`` transcript would hand Claude CLI a
+    ``tool_use`` without a paired ``tool_result`` and the SDK would fail.
     """
 
     @staticmethod
@@ -259,7 +256,7 @@ class TestPruneOrphanToolCalls:
         assert messages[-1].role == "user"
 
     def test_stop_strips_stopped_by_user_marker_and_orphan(self) -> None:
-        """The service also appends a ``COPILOT_SYSTEM_PREFIX`` marker after a
+        """The service also appends a ``STOPPED_BY_USER_MARKER`` after a
         user stop when the stream loop exits cleanly; both tail rows must go."""
         messages: list[ChatMessage] = [
             ChatMessage(role="user", content="do something"),
@@ -268,10 +265,7 @@ class TestPruneOrphanToolCalls:
                 content="",
                 tool_calls=[self._tool_call("tc_abc")],
             ),
-            ChatMessage(
-                role="assistant",
-                content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
-            ),
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER),
         ]
 
         removed = _prune_orphan_tool_calls(messages)

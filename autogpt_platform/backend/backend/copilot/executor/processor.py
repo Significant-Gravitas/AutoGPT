@@ -366,12 +366,10 @@ class CoPilotProcessor:
                 turn_id=entry.turn_id,
                 stream=raw_stream,
             )
-            # Explicitly close the published stream on break so GeneratorExit
-            # propagates into stream_chat_completion_sdk and its cleanup
-            # handler releases the per-session stream lock immediately.
-            # Without this aclose, the orphaned generator can hold the lock
-            # until GC runs — the user then sees "Another stream is already
-            # active" on the next Stop+resend cycle (OPEN-3096).
+            # Explicit aclose() on early exit: ``async for … break`` does
+            # not close the generator, so GeneratorExit would never reach
+            # stream_chat_completion_sdk, leaving its stream lock held
+            # until GC eventually runs.
             try:
                 async for chunk in published_stream:
                     if cancel.is_set():
