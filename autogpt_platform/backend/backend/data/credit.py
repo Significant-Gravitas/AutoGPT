@@ -1336,6 +1336,21 @@ async def _cancel_customer_subscriptions(
                 continue
             seen_ids.add(sub_id)
             if at_period_end:
+                # Stripe rejects modify(cancel_at_period_end=True) with 400 when a
+                # Subscription Schedule is attached (e.g. the user previously
+                # queued a paid→paid downgrade and is now clicking "Cancel").
+                # Release the schedule first so the cancel flag can be set; the
+                # schedule's pending phase change is superseded by the cancel.
+                existing_schedule = sub["schedule"] if "schedule" in sub else None
+                if existing_schedule:
+                    schedule_id = (
+                        existing_schedule
+                        if isinstance(existing_schedule, str)
+                        else existing_schedule.id
+                    )
+                    await _release_schedule_ignoring_terminal(
+                        schedule_id, "_cancel_customer_subscriptions"
+                    )
                 await run_in_threadpool(
                     stripe.Subscription.modify, sub_id, cancel_at_period_end=True
                 )
@@ -1641,7 +1656,23 @@ async def modify_stripe_subscription_for_tier(
         # will also fire and set it again — idempotent. Without this synchronous
         # update, the UI refetches before the webhook lands and shows the old
         # tier, making the upgrade look like a no-op to the user.
-        await set_subscription_tier(user_id, tier)
+        #
+        # Swallow DB-write exceptions here: Stripe is authoritative and the
+        # modify above already succeeded (the user has been charged). If the
+        # DB write fails and we re-raised, the API would return 5xx and the UI
+        # would surface a failed upgrade to a user who was already charged.
+        # The customer.subscription.updated webhook will reconcile the DB shortly.
+        try:
+            await set_subscription_tier(user_id, tier)
+        except Exception:
+            logger.exception(
+                "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
+                " succeeded for user %s → %s but DB tier flip failed; webhook"
+                " will reconcile",
+                sub_id,
+                user_id,
+                tier,
+            )
         logger.info(
             "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
             sub_id,
@@ -1732,12 +1763,28 @@ async def get_pending_subscription_change(
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
     and ``cancel_at_period_end=True`` (paid→FREE cancel).
 
-    Cached for 30 seconds per user_id: this runs on every dashboard/home
-    fetch and would otherwise fire 2× Subscription.list + 1× Schedule.retrieve
-    per page load. 30s is long enough to absorb dashboard polling and short
+    Cached for 30 seconds per user_id. *Why the cache exists:* this function
+    runs on every dashboard/home fetch and would otherwise fire
+    2× Subscription.list + 1× Schedule.retrieve per page load. A busy user
+    polling the billing page would quickly brush up against Stripe's per-API
+    rate limits; the 30s TTL absorbs dashboard polling while being short
     enough that the UI reconciles quickly after a downgrade / cancel action.
-    Callers that mutate Stripe state and need a fresh read should bust the
-    cache via ``get_pending_subscription_change.cache_delete(user_id)``.
+
+    *Invalidation contract.* Every call-site that mutates Stripe state which
+    could change the pending-change answer MUST call
+    ``get_pending_subscription_change.cache_delete(user_id)`` so the UI never
+    shows a stale pending badge after a user-visible action. Current
+    invalidators (keep this list in sync when adding new mutators):
+
+    - ``set_subscription_tier`` — admin or webhook-driven tier flip.
+    - ``modify_stripe_subscription_for_tier`` — ``finally`` block (covers
+      upgrade path clear + downgrade-schedule create + any partial failure).
+    - ``release_pending_subscription_schedule`` — ``finally`` block when a
+      schedule release OR ``cancel_at_period_end`` clear succeeded.
+    - ``cancel_stripe_subscription`` — after scheduling period-end cancel.
+    - ``sync_subscription_from_stripe`` — webhook entry point.
+    - ``set_user_tier`` (``backend.copilot.rate_limit``) — admin tier override
+      invalidates any cached pending state keyed off the old tier.
     """
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:

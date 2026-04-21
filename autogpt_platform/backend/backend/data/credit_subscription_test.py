@@ -486,6 +486,58 @@ async def test_cancel_stripe_subscription_cancels_active_and_trialing():
 
 
 @pytest.mark.asyncio
+async def test_cancel_stripe_subscription_releases_attached_schedule_first():
+    """Pre-existing Subscription Schedule must be released before cancel_at_period_end.
+
+    Stripe rejects ``modify(cancel_at_period_end=True)`` with HTTP 400 when the
+    subscription has an attached schedule (e.g. user queued a BUSINESS→PRO
+    downgrade and now clicks "Downgrade to FREE"). Without the pre-release,
+    the API handler would surface a 502 to the user.
+    """
+    mock_subscriptions = MagicMock()
+    mock_subscriptions.data = [{"id": "sub_abc123", "schedule": "sub_sched_abc"}]
+    mock_subscriptions.has_more = False
+
+    call_order: list[str] = []
+
+    async def record_release(schedule_id):
+        call_order.append(f"release:{schedule_id}")
+
+    def record_modify(sub_id, **kwargs):
+        call_order.append(f"modify:{sub_id}:{kwargs}")
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=_make_user_with_stripe("cus_123"),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_subscriptions,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
+            side_effect=record_release,
+        ) as mock_release,
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+            side_effect=record_modify,
+        ) as mock_modify,
+    ):
+        await cancel_stripe_subscription("user-1")
+
+    mock_release.assert_awaited_once_with("sub_sched_abc")
+    mock_modify.assert_called_once_with("sub_abc123", cancel_at_period_end=True)
+    # Release must happen before modify, else Stripe returns 400.
+    assert call_order == [
+        "release:sub_sched_abc",
+        "modify:sub_abc123:{'cancel_at_period_end': True}",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_get_proration_credit_cents_no_stripe_customer_returns_zero():
     """Admin-granted tier users without stripe_customer_id get 0 without creating a customer."""
     with patch(
