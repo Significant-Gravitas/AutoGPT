@@ -22,10 +22,7 @@ from unittest.mock import MagicMock
 from backend.copilot.constants import STOPPED_BY_USER_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
-from backend.copilot.sdk.service import (
-    _dispatch_response,
-    _StreamAccumulator,
-)
+from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)

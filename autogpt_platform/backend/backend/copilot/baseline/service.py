@@ -46,7 +46,6 @@ from backend.copilot.pending_messages import (
     format_pending_as_user_message,
 )
 from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
-from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -70,6 +69,7 @@ from backend.copilot.service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
