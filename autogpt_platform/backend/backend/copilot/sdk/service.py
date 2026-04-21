@@ -3076,14 +3076,19 @@ async def stream_chat_completion_sdk(
             "max_turns": config.claude_agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
-            # max_thinking_tokens: cap extended thinking output per LLM call.
-            # Thinking tokens are billed at output rate ($75/M for Opus) and
-            # account for ~54% of total cost.  8192 is the default.
-            # Intentionally sent for all models including Sonnet — the CLI
-            # silently ignores this field for non-Opus models (those without
-            # native extended thinking), so it is safe to pass unconditionally.
-            "max_thinking_tokens": config.claude_agent_max_thinking_tokens,
         }
+        # max_thinking_tokens: cap extended thinking output per LLM call.
+        # Thinking tokens are billed at output rate ($75/M for Opus) and
+        # account for ~54% of total cost.  8192 is the default.
+        # Intentionally sent for all models including Sonnet — the CLI
+        # silently ignores this field for non-Opus models (those without
+        # native extended thinking), so it is safe to pass unconditionally.
+        # Setting to 0 acts as the kill switch (same as baseline): omit the
+        # kwarg so the CLI falls back to its default (extended thinking off).
+        if config.claude_agent_max_thinking_tokens > 0:
+            sdk_options_kwargs["max_thinking_tokens"] = (
+                config.claude_agent_max_thinking_tokens
+            )
         # effort: only set for models with extended thinking (Opus).
         # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
         if config.claude_agent_thinking_effort:
