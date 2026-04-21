@@ -24,6 +24,7 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
 
@@ -35,6 +36,44 @@ BUILDER_CONTEXT_TAG = "builder_context"
 
 # Tag that wraps the session-long static block appended to the system prompt.
 BUILDER_SESSION_TAG = "builder_session"
+
+
+# Tools that don't fit a graph-bound builder session and so are removed
+# from the LLM's toolset for such sessions:
+#   - ``create_agent`` / ``customize_agent``: the builder panel is bound
+#     to ONE graph; minting a new agent from here drifts out of scope
+#     (that flow belongs in ``/copilot``). Mirrors the per-tool guard
+#     in ``edit_agent`` / ``run_agent`` which rejects any ``agent_id``
+#     other than the bound graph.
+#   - ``get_agent_building_guide``: the full guide is already in the
+#     system-prompt suffix (see ``build_builder_system_prompt_suffix``).
+#     A tool call would fetch the same bytes again — wasted tokens and
+#     a cache-unfriendly detour.
+# Other tools (``find_block``, ``find_agent``, ``search_docs``, …) stay
+# available so the LLM can look up block ids instead of hallucinating.
+BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
+    "create_agent",
+    "customize_agent",
+    "get_agent_building_guide",
+)
+
+
+def resolve_session_permissions(
+    session: ChatSession | None,
+) -> CopilotPermissions | None:
+    """Return the capability filter implied by the session's metadata.
+
+    Builder-bound sessions (``metadata.builder_graph_id`` set) receive a
+    blacklist of tools that conflict with the panel's graph-bound scope
+    (see :data:`BUILDER_BLOCKED_TOOLS`). Regular sessions return
+    ``None`` so default (unrestricted) behaviour is preserved.
+    """
+    if session is not None and session.metadata.builder_graph_id:
+        return CopilotPermissions(
+            tools=list(BUILDER_BLOCKED_TOOLS),
+            tools_exclude=True,
+        )
+    return None
 
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the

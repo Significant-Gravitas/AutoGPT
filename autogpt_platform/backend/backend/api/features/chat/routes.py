@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
+from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
@@ -178,9 +179,11 @@ class CreateSessionRequest(BaseModel):
       mount so the chat persists across refreshes.  Graph ownership is
       validated inside :func:`get_or_create_builder_session`. Write-side
       scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject
-      any ``agent_id`` other than the bound graph); the session otherwise
-      has the full copilot toolset available for read lookups
-      (``find_block``, ``find_agent``, ``search_docs``, etc).
+      any ``agent_id`` other than the bound graph) and a small blacklist
+      hides tools that conflict with the panel's scope
+      (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``
+      — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
+      (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
 
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
@@ -345,7 +348,8 @@ async def create_session(
       inside :func:`get_or_create_builder_session`; raises 404 on
       unauthorized access.  Write-side scope is enforced per-tool
       (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than
-      the bound graph).
+      the bound graph) and a small blacklist hides tools that conflict
+      with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
@@ -867,6 +871,7 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_session(session_id, user_id)
+    builder_permissions = resolve_session_permissions(session)
 
     # Self-defensive queue-fallback: if a turn is already running, don't race
     # it on the cluster lock — drop the message into the pending buffer and
@@ -981,6 +986,7 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
     else:
