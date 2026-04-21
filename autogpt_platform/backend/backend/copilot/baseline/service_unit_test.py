@@ -1278,7 +1278,9 @@ class TestApplyPromptCacheMarkers:
     def test_non_string_system_content_left_untouched(self):
         # If the content is already a list of blocks (e.g. caller pre-marked),
         # the helper must not overwrite it.
-        pre_marked = [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}]
+        pre_marked = [
+            {"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}
+        ]
         messages = [{"role": "system", "content": pre_marked}]
         cached_messages, _ = _apply_prompt_cache_markers(messages, [])
         assert cached_messages[0]["content"] == pre_marked

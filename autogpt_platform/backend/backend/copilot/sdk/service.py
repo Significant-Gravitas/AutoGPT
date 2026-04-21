@@ -847,6 +847,7 @@ def _is_fallback_stderr(line: str) -> bool:
 
 def _build_system_prompt_value(
     system_prompt: str,
+    *,
     cross_user_cache: bool,
     include_dynamic_sections: bool = False,
 ) -> str | SystemPromptPreset:
@@ -3072,8 +3073,16 @@ async def stream_chat_completion_sdk(
         # markers apply.  On --resume, omit excludeDynamicSections=True
         # (CLI 2.1.97 exits code 1 when that flag is combined with --resume);
         # the session-stable cwd keeps dynamic sections identical across
-        # turns, so Turn 2+ of the same session still cache-reads the prefix
-        # instead of re-writing the full 33K tool schema + supplement.
+        # turns of the same session.
+        #
+        # Cache behavior: Turn 1 uses exclude_dynamic_sections=True (static
+        # prefix, cross-user cache).  Turn 2 flips that flag off → its
+        # prefix contains the session's dynamic sections and therefore
+        # differs from Turn 1's → Turn 2 writes a new cache entry.  Turn 3+
+        # share the exact same prefix as Turn 2 and cache-read it.  So we
+        # pay one extra write per session (on Turn 2) instead of the
+        # previous every-turn 33K write.
+        #
         # Falling back to a raw string here would pass --system-prompt
         # instead, replacing the built-in prompt entirely and losing all
         # CLI cache markers.

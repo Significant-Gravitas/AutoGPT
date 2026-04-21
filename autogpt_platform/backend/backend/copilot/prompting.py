@@ -8,11 +8,12 @@ handling the distinction between:
 
 from functools import cache
 
-# Shared technical notes that apply to both SDK and baseline modes.
-# Exported as ``SHARED_TOOL_NOTES`` (public alias at module bottom) so the
-# baseline path can append it to the system prompt without reaching into a
-# private name.
-_SHARED_TOOL_NOTES = """\
+# Workflow rules appended to the system prompt on every copilot turn
+# (baseline appends directly; SDK appends via the storage-supplement
+# template).  These are cross-tool rules (file sharing, @@agptfile: refs,
+# tool-discovery priority, sub-agent etiquette) that don't belong on any
+# individual tool schema.
+SHARED_TOOL_NOTES = """\
 
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
@@ -262,7 +263,7 @@ When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
 - To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
-{_SHARED_TOOL_NOTES}{extra_notes}"""
+{SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
@@ -410,9 +411,3 @@ You have access to persistent temporal memory tools that remember facts across s
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """
-
-
-# Public alias — baseline/service.py appends these workflow notes to the
-# system prompt.  Kept as a module-level constant (not a function) so repeat
-# reads don't recompute anything; the content is static.
-SHARED_TOOL_NOTES = _SHARED_TOOL_NOTES

@@ -276,7 +276,22 @@ class _BaselineStreamState:
     _flushed_assistant_text_len: int = 0
 
 
-_EPHEMERAL_CACHE_CONTROL = {"type": "ephemeral"}
+# Defense-in-depth: request the Anthropic prompt-caching beta explicitly.
+# OpenRouter auto-forwards cache_control for Anthropic routes without this
+# header, but passing it makes the intent unambiguous on-wire and is a no-op
+# for non-Anthropic providers (OpenRouter drops unknown headers).
+_ANTHROPIC_CACHING_HEADERS = {"anthropic-beta": "prompt-caching-2024-07-31"}
+
+
+def _fresh_ephemeral_cache_control() -> dict[str, str]:
+    """Return a FRESH ``{"type": "ephemeral"}`` dict each call.
+
+    Using a shared module-level dict would let any downstream mutation
+    (e.g. the OpenAI SDK normalising fields in-place) poison every future
+    request's cache_control marker.  Construction is O(1) so the safety
+    margin is essentially free.
+    """
+    return {"type": "ephemeral"}
 
 
 def _apply_prompt_cache_markers(
@@ -287,10 +302,11 @@ def _apply_prompt_cache_markers(
     prefix of the request so OpenRouter passes them through to Anthropic
     and the prompt is served from cache on repeat requests.
 
-    Anthropic's cache is prefix-based — marking the LAST tool caches
-    everything above it (system prompt + all earlier tool schemas).  The
-    system message marker is redundant from a cache-key standpoint but
-    explicit, and makes the intent visible in logs/traces.
+    Anthropic's cache uses prefix-match with up to 4 explicit breakpoints.
+    We set two: one at the end of the system message and one on the last
+    tool schema.  This creates two cache segments — the system block alone,
+    and system+all-tools — so requests that share only the system prefix
+    still get a partial cache hit.
 
     Non-Anthropic models routed via OpenRouter silently ignore the markers.
     """
@@ -304,7 +320,7 @@ def _apply_prompt_cache_markers(
                     {
                         "type": "text",
                         "text": sys_content,
-                        "cache_control": _EPHEMERAL_CACHE_CONTROL,
+                        "cache_control": _fresh_ephemeral_cache_control(),
                     }
                 ],
             }
@@ -313,7 +329,7 @@ def _apply_prompt_cache_markers(
     if cached_tools:
         cached_tools[-1] = {
             **cached_tools[-1],
-            "cache_control": _EPHEMERAL_CACHE_CONTROL,
+            "cache_control": _fresh_ephemeral_cache_control(),
         }
     return cached_messages, cached_tools
 
@@ -347,6 +363,7 @@ async def _baseline_llm_caller(
                 tools=typed_tools,
                 stream=True,
                 stream_options={"include_usage": True},
+                extra_headers=_ANTHROPIC_CACHING_HEADERS,
             )
         else:
             response = await client.chat.completions.create(
@@ -354,6 +371,7 @@ async def _baseline_llm_caller(
                 messages=typed_messages,
                 stream=True,
                 stream_options={"include_usage": True},
+                extra_headers=_ANTHROPIC_CACHING_HEADERS,
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
