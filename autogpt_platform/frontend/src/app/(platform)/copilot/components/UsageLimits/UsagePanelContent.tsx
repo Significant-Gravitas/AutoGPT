@@ -41,6 +41,11 @@ function UsageBar({
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
         <div
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
           }`}

@@ -265,22 +265,26 @@ class TestRateLimitRecording:
         mock_record.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_record_failure_does_not_raise(self):
-        """A Redis error in record_cost_usage should be swallowed (fail-open)."""
-        mock_record = AsyncMock(side_effect=ConnectionError("Redis down"))
+    async def test_record_usage_bubbles_unexpected_error(self):
+        """Unexpected errors from record_cost_usage must propagate.
+
+        record_cost_usage() owns its own (RedisError, ConnectionError, OSError)
+        fail-open handling. Anything else is a real accounting bug and
+        should not be silently swallowed at this layer.
+        """
+        mock_record = AsyncMock(side_effect=RuntimeError("boom"))
         with patch(
             "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
         ):
-            # Should not raise
-            total = await persist_and_record_usage(
-                session=None,
-                user_id="user-xyz",
-                prompt_tokens=100,
-                completion_tokens=50,
-                cost_usd=0.002,
-            )
-        assert total == 150
+            with pytest.raises(RuntimeError, match="boom"):
+                await persist_and_record_usage(
+                    session=None,
+                    user_id="user-xyz",
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    cost_usd=0.002,
+                )
 
     @pytest.mark.asyncio
     async def test_skips_record_when_zero_tokens_and_no_cost(self):

@@ -11,6 +11,7 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
+    _baseline_llm_caller,
     _BaselineStreamState,
     _compress_session_messages,
 )
@@ -635,11 +636,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cost_usd_extracted_from_usage_chunk(self):
         """state.cost_usd is set from chunk.usage.cost when present."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
         chunk = _make_usage_chunk(
             prompt_tokens=1000, completion_tokens=200, cost=0.0123
@@ -665,11 +661,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cost_usd_accumulates_across_calls(self):
         """cost_usd accumulates when _baseline_llm_caller is called multiple times."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
 
         mock_client = MagicMock()
@@ -700,11 +691,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cost_usd_accepts_string_value(self):
         """OpenRouter may emit cost as a string — it should still parse."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
         chunk = _make_usage_chunk(prompt_tokens=10, cost="0.005")
 
@@ -728,11 +714,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cost_usd_none_when_usage_cost_missing(self):
         """state.cost_usd stays None when the usage chunk lacks a cost field."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
         chunk = _make_usage_chunk(prompt_tokens=1000, completion_tokens=500)
 
@@ -759,11 +740,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_invalid_cost_string_leaves_cost_none(self):
         """A non-numeric cost value is rejected without raising."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
         chunk = _make_usage_chunk(prompt_tokens=10, cost="not-a-number")
 
@@ -787,11 +763,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_negative_cost_is_ignored(self):
         """Guard against negative cost values (shouldn't happen but be safe)."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
         chunk = _make_usage_chunk(prompt_tokens=10, cost=-0.01)
 
@@ -815,11 +786,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cost_not_captured_when_stream_raises_mid_chunk(self):
         """If the stream aborts before emitting the usage chunk there is no cost."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
 
         stream = MagicMock()
@@ -853,11 +819,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_no_cost_when_api_call_raises_before_stream(self):
         """The helper is safe when the create() call itself raises."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
 
         mock_client = MagicMock()
@@ -883,11 +844,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cache_tokens_extracted_from_usage_details(self):
         """cache tokens are extracted from prompt_tokens_details.cached_tokens."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="openai/gpt-4o")
         chunk = _make_usage_chunk(
             prompt_tokens=1000,
@@ -917,11 +873,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cache_creation_tokens_extracted_from_usage_details(self):
         """cache_creation_input_tokens is extracted from prompt_tokens_details."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="openai/gpt-4o")
         chunk = _make_usage_chunk(
             prompt_tokens=1000,
@@ -951,11 +902,6 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_token_accumulators_track_across_multiple_calls(self):
         """Token accumulators grow correctly across multiple _baseline_llm_caller calls."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
 
         mock_client = MagicMock()
@@ -990,19 +936,24 @@ class TestBaselineCostExtraction:
         assert state.turn_prompt_tokens == 2100
         assert state.turn_completion_tokens == 500
 
+    @pytest.mark.parametrize(
+        "tools",
+        [
+            pytest.param([], id="no_tools"),
+            pytest.param([_make_tool("search")], id="with_tools"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_baseline_requests_usage_include_extra_body(self):
+    async def test_baseline_requests_usage_include_extra_body(
+        self, tools: list[ChatCompletionToolParam]
+    ):
         """The baseline call must pass extra_body={'usage': {'include': True}}.
 
         This guards the contract with OpenRouter that triggers inclusion of
         the authoritative cost on the final usage chunk. Without it the
-        rate-limit counter stays at zero.
+        rate-limit counter stays at zero. Exercise both the no-tools and
+        tool-calling branches so a regression in either path trips the test.
         """
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
         create_mock = AsyncMock(return_value=_make_stream_mock())
         mock_client = MagicMock()
@@ -1014,7 +965,7 @@ class TestBaselineCostExtraction:
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
-                tools=[],
+                tools=tools,
                 state=state,
             )
 
@@ -1022,6 +973,7 @@ class TestBaselineCostExtraction:
         await_args = create_mock.await_args
         assert await_args is not None
         assert await_args.kwargs["extra_body"] == {"usage": {"include": True}}
+        assert await_args.kwargs["stream_options"] == {"include_usage": True}
 
 
 class TestMidLoopPendingFlushOrdering:

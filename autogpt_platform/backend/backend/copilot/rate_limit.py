@@ -328,21 +328,15 @@ async def record_cost_usage(
     if cost_microdollars <= 0:
         return
 
-    logger.info(
-        "Recording copilot spend for %s: %d microdollars",
-        user_id[:8],
-        cost_microdollars,
-    )
+    logger.info("Recording copilot spend: %d microdollars", cost_microdollars)
 
     now = datetime.now(UTC)
     try:
         redis = await get_redis_async()
-        # transaction=False: these are independent INCRBY+EXPIRE pairs on
-        # separate keys — no cross-key atomicity needed.  Skipping
-        # MULTI/EXEC avoids the overhead.  If the connection drops between
-        # INCRBY and EXPIRE the key survives until the next date-based key
-        # rotation (daily/weekly), so the memory-leak risk is negligible.
-        pipe = redis.pipeline(transaction=False)
+        # Use MULTI/EXEC so each INCRBY/EXPIRE pair is atomic — guarantees
+        # the TTL is set even if the connection drops mid-pipeline, so
+        # counters can never survive past their date-based rotation window.
+        pipe = redis.pipeline(transaction=True)
 
         # Daily counter (expires at next midnight UTC)
         d_key = _daily_key(user_id, now=now)

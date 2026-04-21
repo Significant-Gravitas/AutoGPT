@@ -1793,7 +1793,7 @@
             }
           },
           "429": {
-            "description": "Token rate-limit or call-frequency cap exceeded"
+            "description": "Cost rate-limit or call-frequency cap exceeded"
           }
         }
       }
@@ -1879,7 +1879,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current token usage vs limits for daily and weekly windows.\nGlobal defaults sourced from LaunchDarkly (falling back to config).\nIncludes the user's rate-limit tier.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns current cost usage (microdollars) vs limits for daily and weekly\nwindows. Global defaults sourced from LaunchDarkly (falling back to config).\nIncludes the user's rate-limit tier.",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -1901,7 +1901,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Reset Copilot Usage",
-        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily token limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.",
+        "description": "Reset the daily CoPilot rate limit by spending credits.\n\nAllows users who have hit their daily cost limit to spend credits\nto reset their daily usage counter and continue working.\nReturns 400 if the feature is disabled or the user is not over the limit.\nReturns 402 if the user has insufficient credits.",
         "operationId": "postV2ResetCopilotUsage",
         "responses": {
           "200": {
@@ -14245,7 +14245,7 @@
         "type": "string",
         "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
-        "description": "Subscription tiers with increasing token allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
+        "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
       "SubscriptionTierRequest": {
         "properties": {
@@ -15878,7 +15878,7 @@
           "limit": {
             "type": "integer",
             "title": "Limit",
-            "description": "Maximum tokens allowed in this window. 0 means unlimited."
+            "description": "Maximum microdollars of spend allowed in this window. 0 means unlimited."
           },
           "resets_at": {
             "type": "string",
@@ -15889,7 +15889,7 @@
         "type": "object",
         "required": ["used", "limit", "resets_at"],
         "title": "UsageWindow",
-        "description": "Usage within a single time window."
+        "description": "Usage within a single time window.\n\n``used`` and ``limit`` are in microdollars (1 USD = 1_000_000)."
       },
       "UserCostSummary": {
         "properties": {

@@ -168,25 +168,32 @@ async def persist_and_record_usage(
     if cost_usd is not None:
         try:
             val = float(cost_usd)
-            if math.isfinite(val) and val >= 0:
-                cost_float = val
         except (ValueError, TypeError):
             logger.error(
                 "%s cost_usd is not numeric: %r — rate limit skipped",
                 log_prefix,
                 cost_usd,
             )
+        else:
+            if math.isfinite(val) and val >= 0:
+                cost_float = val
+            else:
+                logger.error(
+                    "%s cost_usd is non-finite or negative: %r — rate limit skipped",
+                    log_prefix,
+                    val,
+                )
 
     cost_microdollars = usd_to_microdollars(cost_float)
 
     if user_id and cost_microdollars and cost_microdollars > 0:
-        try:
-            await record_cost_usage(
-                user_id=user_id,
-                cost_microdollars=cost_microdollars,
-            )
-        except Exception as usage_err:
-            logger.warning("%s Failed to record cost usage: %s", log_prefix, usage_err)
+        # record_cost_usage() owns its fail-open handling for Redis/network
+        # errors. Don't wrap with a broad except here — unexpected accounting
+        # bugs should surface instead of being silently logged as warnings.
+        await record_cost_usage(
+            user_id=user_id,
+            cost_microdollars=cost_microdollars,
+        )
 
     # Log to PlatformCostLog for admin cost dashboard.
     # Include entries where cost_usd is set even if token count is 0

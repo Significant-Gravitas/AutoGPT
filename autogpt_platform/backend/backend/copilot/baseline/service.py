@@ -267,6 +267,10 @@ class _BaselineStreamState:
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
+    # Tracks whether we've already warned about a missing `cost` field in
+    # the usage chunk this stream, so non-OpenRouter providers don't
+    # generate one warning per streaming call.
+    cost_missing_logged: bool = False
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
     session_messages: list[ChatMessage] = field(default_factory=list)
     # Tracks how much of ``assistant_text`` has already been flushed to
@@ -342,28 +346,39 @@ async def _baseline_llm_caller(
                     # OpenRouter embeds real generation cost here when the
                     # request body includes `usage: {include: true}`. Absent
                     # cost means rate-limit accounting has no authoritative
-                    # figure for this call — log it so we notice.
+                    # figure for this call. Non-OpenRouter providers (direct
+                    # OpenAI, etc.) will never emit this field, so log the
+                    # miss at WARNING and only once per stream to avoid
+                    # drowning error monitoring with false positives.
                     cost_raw = getattr(chunk.usage, "cost", None)
                     if cost_raw is None:
-                        logger.error(
-                            "[Baseline] OpenRouter usage chunk missing cost "
-                            "(model=%s, prompt=%s, completion=%s) — "
-                            "rate-limit accounting will skip this call",
-                            state.model,
-                            chunk.usage.prompt_tokens,
-                            chunk.usage.completion_tokens,
-                        )
+                        if not state.cost_missing_logged:
+                            logger.warning(
+                                "[Baseline] usage chunk missing `cost` field "
+                                "(model=%s, prompt=%s, completion=%s) — "
+                                "rate-limit accounting will skip this call",
+                                state.model,
+                                chunk.usage.prompt_tokens,
+                                chunk.usage.completion_tokens,
+                            )
+                            state.cost_missing_logged = True
                     else:
                         try:
                             cost_val = float(cost_raw)
                         except (TypeError, ValueError):
                             logger.error(
-                                "[Baseline] OpenRouter usage.cost is not numeric: %r",
+                                "[Baseline] usage.cost is not numeric: %r",
                                 cost_raw,
                             )
                         else:
                             if math.isfinite(cost_val) and cost_val >= 0:
                                 state.cost_usd = (state.cost_usd or 0.0) + cost_val
+                            else:
+                                logger.error(
+                                    "[Baseline] usage.cost is non-finite or "
+                                    "negative: %r — skipping rate-limit charge",
+                                    cost_val,
+                                )
 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:

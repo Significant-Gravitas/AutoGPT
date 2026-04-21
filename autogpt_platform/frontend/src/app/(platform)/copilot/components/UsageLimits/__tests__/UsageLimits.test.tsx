@@ -75,14 +75,14 @@ describe("UsageLimits", () => {
     expect(screen.getByRole("button", { name: /usage limits/i })).toBeDefined();
   });
 
-  it("displays daily and weekly usage percentages", () => {
+  it("displays daily and weekly usage amounts", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyUsed: 5000, dailyLimit: 10000 }),
+      data: makeUsage({ dailyUsed: 5_000_000, dailyLimit: 10_000_000 }),
       isLoading: false,
     });
     render(<UsageLimits />);
 
-    expect(screen.getByText("$0.01 / $0.01")).toBeDefined();
+    expect(screen.getByText("$5.00 / $10.00")).toBeDefined();
     expect(screen.getByText("Today")).toBeDefined();
     expect(screen.getByText("This week")).toBeDefined();
     expect(screen.getByText("Usage limits")).toBeDefined();
@@ -105,16 +105,14 @@ describe("UsageLimits", () => {
 
   it("caps bar width at 100% when over limit", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyUsed: 15000, dailyLimit: 10000 }),
+      data: makeUsage({ dailyUsed: 15_000_000, dailyLimit: 10_000_000 }),
       isLoading: false,
     });
-    const { container } = render(<UsageLimits />);
+    render(<UsageLimits />);
 
     // Display shows the raw spend values; progress bar is clamped to 100%.
-    const dailyBar = container.querySelector(
-      '[style*="width: 100%"]',
-    ) as HTMLElement | null;
-    expect(dailyBar).not.toBeNull();
+    const dailyBar = screen.getByRole("progressbar", { name: /today usage/i });
+    expect(dailyBar.getAttribute("aria-valuenow")).toBe("100");
   });
 
   it("displays the user tier label", () => {

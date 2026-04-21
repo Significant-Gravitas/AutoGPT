@@ -587,7 +587,7 @@ async def reset_copilot_usage(
 ) -> RateLimitResetResponse:
     """Reset the daily CoPilot rate limit by spending credits.
 
-    Allows users who have hit their daily token limit to spend credits
+    Allows users who have hit their daily cost limit to spend credits
     to reset their daily usage counter and continue working.
     Returns 400 if the feature is disabled or the user is not over the limit.
     Returns 402 if the user has insufficient credits.
@@ -791,7 +791,7 @@ async def cancel_session_task(
             ),
         },
         404: {"description": "Session not found or access denied"},
-        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+        429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
     },
 )
 async def stream_chat_post(
