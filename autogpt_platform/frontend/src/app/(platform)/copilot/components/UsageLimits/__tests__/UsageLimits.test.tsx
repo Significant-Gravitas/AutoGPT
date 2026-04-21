@@ -27,22 +27,24 @@ afterEach(() => {
 });
 
 function makeUsage({
-  dailyUsed = 500,
-  dailyLimit = 10000,
-  weeklyUsed = 2000,
-  weeklyLimit = 50000,
+  dailyPercent = 5,
+  weeklyPercent = 4,
   tier = "FREE",
 }: {
-  dailyUsed?: number;
-  dailyLimit?: number;
-  weeklyUsed?: number;
-  weeklyLimit?: number;
+  dailyPercent?: number | null;
+  weeklyPercent?: number | null;
   tier?: string;
 } = {}) {
-  const future = new Date(Date.now() + 3600 * 1000); // 1h from now
+  const future = new Date(Date.now() + 3600 * 1000).toISOString();
   return {
-    daily: { used: dailyUsed, limit: dailyLimit, resets_at: future },
-    weekly: { used: weeklyUsed, limit: weeklyLimit, resets_at: future },
+    daily:
+      dailyPercent === null
+        ? null
+        : { percent_used: dailyPercent, resets_at: future },
+    weekly:
+      weeklyPercent === null
+        ? null
+        : { percent_used: weeklyPercent, resets_at: future },
     tier,
   };
 }
@@ -59,7 +61,7 @@ describe("UsageLimits", () => {
 
   it("renders nothing when no limits are configured", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyLimit: 0, weeklyLimit: 0 }),
+      data: makeUsage({ dailyPercent: null, weeklyPercent: null }),
       isLoading: false,
     });
     const { container } = render(<UsageLimits />);
@@ -75,26 +77,22 @@ describe("UsageLimits", () => {
     expect(screen.getByRole("button", { name: /usage limits/i })).toBeDefined();
   });
 
-  it("displays daily and weekly usage amounts", () => {
+  it("displays daily and weekly percentage", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyUsed: 5_000_000, dailyLimit: 10_000_000 }),
+      data: makeUsage({ dailyPercent: 50, weeklyPercent: 4 }),
       isLoading: false,
     });
     render(<UsageLimits />);
 
-    expect(screen.getByText("$5.00 / $10.00")).toBeDefined();
+    expect(screen.getByText("50% used")).toBeDefined();
     expect(screen.getByText("Today")).toBeDefined();
     expect(screen.getByText("This week")).toBeDefined();
     expect(screen.getByText("Usage limits")).toBeDefined();
   });
 
-  it("shows only weekly bar when daily limit is 0", () => {
+  it("shows only weekly bar when daily is null", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({
-        dailyLimit: 0,
-        weeklyUsed: 25000,
-        weeklyLimit: 50000,
-      }),
+      data: makeUsage({ dailyPercent: null, weeklyPercent: 50 }),
       isLoading: false,
     });
     render(<UsageLimits />);
@@ -105,12 +103,11 @@ describe("UsageLimits", () => {
 
   it("caps bar width at 100% when over limit", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyUsed: 15_000_000, dailyLimit: 10_000_000 }),
+      data: makeUsage({ dailyPercent: 100 }),
       isLoading: false,
     });
     render(<UsageLimits />);
 
-    // Display shows the raw spend values; progress bar is clamped to 100%.
     const dailyBar = screen.getByRole("progressbar", { name: /today usage/i });
     expect(dailyBar.getAttribute("aria-valuenow")).toBe("100");
   });

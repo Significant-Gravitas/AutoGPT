@@ -83,7 +83,13 @@ class UsageWindow(BaseModel):
 
 
 class CoPilotUsageStatus(BaseModel):
-    """Current usage status for a user across all windows."""
+    """Current usage status for a user across all windows.
+
+    Internal representation used by server-side code that needs to compare
+    usage against limits (e.g. the reset-credits endpoint).  The public API
+    returns ``CoPilotUsagePublic`` instead so that raw spend and limit
+    figures never leak to clients.
+    """
 
     daily: UsageWindow
     weekly: UsageWindow
@@ -92,6 +98,60 @@ class CoPilotUsageStatus(BaseModel):
         default=0,
         description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
     )
+
+
+class UsageWindowPublic(BaseModel):
+    """Public view of a usage window — only the percentage and reset time.
+
+    Hides the raw spend and the cap so clients cannot derive per-turn cost
+    or reverse-engineer platform margins.  ``percent_used`` is capped at 100.
+    """
+
+    percent_used: float = Field(
+        ge=0.0,
+        le=100.0,
+        description="Percentage of the window's allowance used (0-100). "
+        "Clamped at 100 when over the cap.",
+    )
+    resets_at: datetime
+
+
+class CoPilotUsagePublic(BaseModel):
+    """Current usage status for a user — public (client-safe) shape."""
+
+    daily: UsageWindowPublic | None = Field(
+        default=None,
+        description="Null when no daily cap is configured (unlimited).",
+    )
+    weekly: UsageWindowPublic | None = Field(
+        default=None,
+        description="Null when no weekly cap is configured (unlimited).",
+    )
+    tier: SubscriptionTier = DEFAULT_TIER
+    reset_cost: int = Field(
+        default=0,
+        description="Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
+    )
+
+    @classmethod
+    def from_status(cls, status: CoPilotUsageStatus) -> "CoPilotUsagePublic":
+        """Project the internal status onto the client-safe schema."""
+
+        def window(w: UsageWindow) -> UsageWindowPublic | None:
+            if w.limit <= 0:
+                return None
+            pct = 100.0 * w.used / w.limit
+            return UsageWindowPublic(
+                percent_used=round(min(100.0, pct), 1),
+                resets_at=w.resets_at,
+            )
+
+        return cls(
+            daily=window(status.daily),
+            weekly=window(status.weekly),
+            tier=status.tier,
+            reset_cost=status.reset_cost,
+        )
 
 
 class RateLimitExceeded(Exception):

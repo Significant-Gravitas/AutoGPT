@@ -34,7 +34,7 @@ from backend.copilot.pending_message_helpers import (
 )
 from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
-    CoPilotUsageStatus,
+    CoPilotUsagePublic,
     RateLimitExceeded,
     acquire_reset_lock,
     check_rate_limit,
@@ -536,25 +536,27 @@ async def get_session(
 )
 async def get_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],
-) -> CoPilotUsageStatus:
+) -> CoPilotUsagePublic:
     """Get CoPilot usage status for the authenticated user.
 
-    Returns current cost usage (microdollars) vs limits for daily and weekly
-    windows. Global defaults sourced from LaunchDarkly (falling back to config).
-    Includes the user's rate-limit tier.
+    Returns the percentage of the daily/weekly allowance used — not the
+    raw spend or cap — so clients cannot derive per-turn cost or platform
+    margins. Global defaults sourced from LaunchDarkly (falling back to
+    config). Includes the user's rate-limit tier.
     """
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
         user_id,
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
     )
-    return await get_usage_status(
+    status = await get_usage_status(
         user_id=user_id,
         daily_cost_limit=daily_limit,
         weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
+    return CoPilotUsagePublic.from_status(status)
 
 
 class RateLimitResetResponse(BaseModel):
@@ -563,7 +565,9 @@ class RateLimitResetResponse(BaseModel):
     success: bool
     credits_charged: int = Field(description="Credits charged (in cents)")
     remaining_balance: int = Field(description="Credit balance after charge (in cents)")
-    usage: CoPilotUsageStatus = Field(description="Updated usage status after reset")
+    usage: CoPilotUsagePublic = Field(
+        description="Updated usage status after reset (percentages only)"
+    )
 
 
 @router.post(
@@ -717,7 +721,7 @@ async def reset_copilot_usage(
     finally:
         await release_reset_lock(user_id)
 
-    # Return updated usage status.
+    # Return updated usage status (public schema — percentages only).
     updated_usage = await get_usage_status(
         user_id=user_id,
         daily_cost_limit=daily_limit,
@@ -730,7 +734,7 @@ async def reset_copilot_usage(
         success=True,
         credits_charged=cost,
         remaining_balance=remaining,
-        usage=updated_usage,
+        usage=CoPilotUsagePublic.from_status(updated_usage),
     )
 
 

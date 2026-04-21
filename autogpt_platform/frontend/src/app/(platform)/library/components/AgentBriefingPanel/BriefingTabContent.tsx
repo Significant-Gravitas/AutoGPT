@@ -1,12 +1,11 @@
 "use client";
 
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import {
   formatResetTime,
   formatCents,
-  formatMicrodollarsAsUsd,
 } from "@/app/(platform)/copilot/components/usageHelpers";
 import { useResetRateLimit } from "@/app/(platform)/copilot/hooks/useResetRateLimit";
 import { Button } from "@/components/atoms/Button/Button";
@@ -45,7 +44,7 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
 function UsageSection() {
   const { data: usage } = useGetV2GetCopilotUsage({
     query: {
-      select: (res) => res.data as CoPilotUsageStatus,
+      select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
       staleTime: 10000,
     },
@@ -57,7 +56,7 @@ function UsageSection() {
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
 
-  if (!usage?.daily || !usage?.weekly) return null;
+  if (!usage || (!usage.daily && !usage.weekly)) return null;
 
   return (
     <div className="py-2">
@@ -81,19 +80,17 @@ function UsageSection() {
         )}
       </div>
       <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
-        {usage.daily.limit > 0 && (
+        {usage.daily && (
           <UsageMeter
             label="Today"
-            used={usage.daily.used}
-            limit={usage.daily.limit}
+            percentUsed={usage.daily.percent_used}
             resetsAt={usage.daily.resets_at}
           />
         )}
-        {usage.weekly.limit > 0 && (
+        {usage.weekly && (
           <UsageMeter
             label="This week"
-            used={usage.weekly.used}
-            limit={usage.weekly.limit}
+            percentUsed={usage.weekly.percent_used}
             resetsAt={usage.weekly.resets_at}
           />
         )}
@@ -245,14 +242,12 @@ function UsageFooter({
   hasInsufficientCredits,
   onCreditChange,
 }: {
-  usage: CoPilotUsageStatus;
+  usage: CoPilotUsagePublic;
   hasInsufficientCredits: boolean;
   onCreditChange?: () => void;
 }) {
-  const isDailyExhausted =
-    usage.daily.limit > 0 && usage.daily.used >= usage.daily.limit;
-  const isWeeklyExhausted =
-    usage.weekly.limit > 0 && usage.weekly.used >= usage.weekly.limit;
+  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
+  const isWeeklyExhausted = !!usage.weekly && usage.weekly.percent_used >= 100;
   const resetCost = usage.reset_cost ?? 0;
   const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
 
@@ -295,22 +290,17 @@ function UsageFooter({
 
 function UsageMeter({
   label,
-  used,
-  limit,
+  percentUsed,
   resetsAt,
 }: {
   label: string;
-  used: number;
-  limit: number;
+  percentUsed: number;
   resetsAt: Date | string;
 }) {
-  if (limit <= 0) return null;
-
-  const rawPercent = (used / limit) * 100;
-  const percent = Math.min(100, Math.round(rawPercent));
+  const percent = Math.min(100, Math.round(percentUsed));
   const isHigh = percent >= 80;
   const percentLabel =
-    used > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
+    percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-2">
@@ -327,17 +317,12 @@ function UsageMeter({
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
           }`}
-          style={{ width: `${Math.max(used > 0 ? 1 : 0, percent)}%` }}
+          style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
-      <div className="flex items-baseline justify-between">
-        <Text variant="small" className="tabular-nums text-neutral-500">
-          {formatMicrodollarsAsUsd(used)} / {formatMicrodollarsAsUsd(limit)}
-        </Text>
-        <Text variant="small" className="text-neutral-400">
-          Resets {formatResetTime(resetsAt)}
-        </Text>
-      </div>
+      <Text variant="small" className="text-neutral-400">
+        Resets {formatResetTime(resetsAt)}
+      </Text>
     </div>
   );
 }
