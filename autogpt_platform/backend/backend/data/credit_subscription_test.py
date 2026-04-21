@@ -1140,6 +1140,10 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
             "backend.data.credit.stripe.Subscription.modify_async",
             new_callable=AsyncMock,
         ) as mock_modify,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ) as mock_set_tier,
     ):
         result = await modify_stripe_subscription_for_tier(
             "user-1", SubscriptionTier.PRO
@@ -1151,6 +1155,66 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
         items=[{"id": "si_abc", "price": "price_pro_monthly"}],
         proration_behavior="create_prorations",
     )
+    mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_for_tier_clears_cancel_at_period_end_on_upgrade():
+    """Upgrading from a sub with cancel_at_period_end=True clears the flag so the
+    upgrade isn't silently cancelled at period end and the DB tier flips immediately."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_upgrading",
+            "items": {"data": [{"id": "si_abc"}]},
+            "schedule": None,
+            "cancel_at_period_end": True,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_biz_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ) as mock_set_tier,
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.BUSINESS
+        )
+
+    assert result is True
+    mock_modify.assert_called_once_with(
+        "sub_upgrading",
+        items=[{"id": "si_abc", "price": "price_biz_monthly"}],
+        proration_behavior="create_prorations",
+        cancel_at_period_end=False,
+    )
+    mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
 
 
 @pytest.mark.asyncio
@@ -1358,6 +1422,10 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
             "backend.data.credit.stripe.SubscriptionSchedule.create_async",
             new_callable=AsyncMock,
         ) as mock_schedule_create,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await modify_stripe_subscription_for_tier(
             "user-1", SubscriptionTier.BUSINESS
@@ -2054,6 +2122,10 @@ async def test_upgrade_releases_pending_schedule():
             "backend.data.credit.stripe.SubscriptionSchedule.release_async",
             new_callable=AsyncMock,
         ) as mock_release,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await modify_stripe_subscription_for_tier(
             "user-1", SubscriptionTier.BUSINESS

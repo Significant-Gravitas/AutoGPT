@@ -459,8 +459,11 @@ get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-
 async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
-    Also invalidates the ``get_user_tier`` cache for this user so that
-    subsequent rate-limit checks immediately see the new tier.
+    Invalidates every cache that keys off the user's subscription tier so the
+    change is visible immediately: this function's own ``get_user_tier``, the
+    shared ``get_user_by_id`` (which exposes ``user.subscription_tier``), and
+    ``get_pending_subscription_change`` (since an admin override can invalidate
+    a cached ``cancel_at_period_end`` or schedule-based pending state).
 
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
@@ -469,8 +472,13 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         where={"id": user_id},
         data={"subscriptionTier": tier.value},
     )
-    # Invalidate cached tier so rate-limit checks pick up the change immediately.
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
+    # Local imports to avoid circular: rate_limit is imported from credit.py.
+    from backend.data.credit import get_pending_subscription_change
+    from backend.data.user import get_user_by_id
+
+    get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
+    get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
 
 
 async def get_global_rate_limits(

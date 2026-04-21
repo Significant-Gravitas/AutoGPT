@@ -1280,6 +1280,12 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
     from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
 
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
+    # Invalidate the pending-change cache too — an admin tier override or the
+    # webhook-driven phase transition means any cached pending-change state
+    # (schedule, cancel_at_period_end) is likely stale. Without this the
+    # billing page can show a pending change for up to 30s after the tier
+    # has already flipped.
+    get_pending_subscription_change.cache_delete(user_id)
 
 
 async def _cancel_customer_subscriptions(
@@ -1619,11 +1625,23 @@ async def modify_stripe_subscription_for_tier(
                 existing_schedule_id, "modify_stripe_subscription_for_tier"
             )
 
-        await stripe.Subscription.modify_async(
-            sub_id,
-            items=[{"id": items[0].id, "price": price_id}],
-            proration_behavior="create_prorations",
-        )
+        # If a paid→FREE cancel is pending (cancel_at_period_end=True), clear it
+        # as part of the upgrade — the user is explicitly choosing to stay on a
+        # paid tier. Without this, the sub would be upgraded AND still cancelled
+        # at period end, leaving a confusing dual state.
+        modify_kwargs: dict = {
+            "items": [{"id": items[0].id, "price": price_id}],
+            "proration_behavior": "create_prorations",
+        }
+        if sub.cancel_at_period_end:
+            modify_kwargs["cancel_at_period_end"] = False
+
+        await stripe.Subscription.modify_async(sub_id, **modify_kwargs)
+        # Flip the DB tier immediately. The customer.subscription.updated webhook
+        # will also fire and set it again — idempotent. Without this synchronous
+        # update, the UI refetches before the webhook lands and shows the old
+        # tier, making the upgrade look like a no-op to the user.
+        await set_subscription_tier(user_id, tier)
         logger.info(
             "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
             sub_id,
