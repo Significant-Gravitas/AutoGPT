@@ -5,7 +5,13 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useSubscriptionTierSection } from "./useSubscriptionTierSection";
 import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
-import { TIERS, TIER_ORDER, formatCost } from "./helpers";
+import {
+  TIERS,
+  TIER_ORDER,
+  formatCost,
+  formatPendingDate,
+  getTierLabel,
+} from "./helpers";
 
 export function SubscriptionTierSection() {
   const {
@@ -26,6 +32,9 @@ export function SubscriptionTierSection() {
   const [confirmDowngradeTo, setConfirmDowngradeTo] = useState<string | null>(
     null,
   );
+  const [confirmReplacePendingTo, setConfirmReplacePendingTo] = useState<
+    string | null
+  >(null);
 
   if (isLoading) {
     return (
@@ -82,10 +91,33 @@ export function SubscriptionTierSection() {
     await changeTier(tier);
   }
 
+  async function confirmReplacePending() {
+    if (!confirmReplacePendingTo) return;
+    const tier = confirmReplacePendingTo;
+    setConfirmReplacePendingTo(null);
+    handleTierChange(tier, currentTier, setConfirmDowngradeTo);
+  }
+
   const pendingTierFromSubscription = subscription.pending_tier ?? null;
   const hasPendingChange =
     pendingTierFromSubscription !== null &&
     pendingTierFromSubscription !== currentTier;
+
+  function onTierButtonClick(targetTierKey: string) {
+    // If a pending change is queued and the user clicks a DIFFERENT non-current,
+    // non-pending tier, surface a confirmation so they don't silently overwrite
+    // their own scheduled change. The on-card button for the pending tier itself
+    // is already disabled; the primary cancel path is the banner.
+    if (
+      hasPendingChange &&
+      targetTierKey !== pendingTierFromSubscription &&
+      targetTierKey !== currentTier
+    ) {
+      setConfirmReplacePendingTo(targetTierKey);
+      return;
+    }
+    handleTierChange(targetTierKey, currentTier, setConfirmDowngradeTo);
+  }
 
   return (
     <div className="space-y-4">
@@ -156,13 +188,7 @@ export function SubscriptionTierSection() {
                   className="w-full"
                   variant={isUpgrade ? "default" : "outline"}
                   disabled={isPending || isScheduledTier}
-                  onClick={() =>
-                    handleTierChange(
-                      tier.key,
-                      currentTier,
-                      setConfirmDowngradeTo,
-                    )
-                  }
+                  onClick={() => onTierButtonClick(tier.key)}
                 >
                   {isThisPending
                     ? "Updating..."
@@ -216,6 +242,42 @@ export function SubscriptionTierSection() {
               onClick={() => void confirmDowngrade()}
             >
               Confirm Downgrade
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
+
+      <Dialog
+        title="Replace pending change?"
+        controlled={{
+          isOpen: !!confirmReplacePendingTo,
+          set: (open) => {
+            if (!open) setConfirmReplacePendingTo(null);
+          },
+        }}
+      >
+        <Dialog.Content>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            You have a pending change to{" "}
+            {getTierLabel(pendingTierFromSubscription ?? "")}
+            {subscription.pending_tier_effective_at
+              ? ` scheduled for ${formatPendingDate(subscription.pending_tier_effective_at)}`
+              : ""}
+            . Switching to {getTierLabel(confirmReplacePendingTo ?? "")} will
+            replace it. Continue?
+          </p>
+          <Dialog.Footer>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmReplacePendingTo(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmReplacePending()}
+            >
+              Replace pending change
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

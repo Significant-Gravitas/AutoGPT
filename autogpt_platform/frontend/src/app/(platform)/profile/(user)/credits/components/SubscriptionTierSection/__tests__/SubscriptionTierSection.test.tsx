@@ -504,6 +504,73 @@ describe("SubscriptionTierSection", () => {
     expect((freeBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
+  it("shows replace-pending dialog when clicking a non-pending tier while a pending change exists, and fires the mutation after confirm", async () => {
+    // User is on BUSINESS with a pending downgrade to PRO. Clicking FREE (a
+    // tier that is neither current nor the pending target) must NOT silently
+    // overwrite the pending schedule — it must open a confirmation dialog.
+    // Only after the user explicitly confirms should changeTier (→ its own
+    // downgrade confirm for paid→FREE) fire.
+    const mutateFn = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: { url: "" } });
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+      mutateFn,
+    });
+    render(<SubscriptionTierSection />);
+
+    // Clicking FREE while PRO is pending surfaces the replace-pending dialog
+    // before anything mutates.
+    fireEvent.click(screen.getByRole("button", { name: /downgrade to free/i }));
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(screen.getByText(/replace pending change/i)).toBeDefined();
+    expect(mutateFn).not.toHaveBeenCalled();
+
+    // Confirm the replace: the replace-pending dialog closes and the
+    // downgrade-to-FREE dialog takes over (because FREE is a downgrade).
+    fireEvent.click(
+      screen.getByRole("button", { name: /replace pending change/i }),
+    );
+
+    // Now the "Confirm Downgrade" dialog should be open — confirm it to fire
+    // the mutation.
+    fireEvent.click(screen.getByRole("button", { name: /confirm downgrade/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tier: "FREE" }),
+        }),
+      );
+    });
+  });
+
+  it("dismisses replace-pending dialog on Cancel without mutating", () => {
+    const mutateFn = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: { url: "" } });
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+      mutateFn,
+    });
+    render(<SubscriptionTierSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /downgrade to free/i }));
+    expect(screen.getByRole("dialog")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
+
   it("renders FREE cancellation copy in banner when pending_tier is FREE", () => {
     setupMocks({
       subscription: makeSubscription({
