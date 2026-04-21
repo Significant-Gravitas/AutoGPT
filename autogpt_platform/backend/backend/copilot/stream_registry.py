@@ -17,7 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -35,7 +35,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
-from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
+from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
@@ -329,8 +329,8 @@ async def publish_chunk(
 async def stream_and_publish(
     session_id: str,
     turn_id: str,
-    stream: AsyncIterator[StreamBaseResponse],
-) -> AsyncIterator[StreamBaseResponse]:
+    stream: AsyncGenerator[StreamBaseResponse, None],
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Wrap an async stream iterator with registry publishing.
 
     Publishes each chunk to the stream registry for frontend SSE consumption,
@@ -353,27 +353,35 @@ async def stream_and_publish(
     """
     publish_failed_once = False
 
-    async for event in stream:
-        if turn_id and not isinstance(event, (StreamFinish, StreamError)):
-            try:
-                await publish_chunk(turn_id, event, session_id=session_id)
-            except (RedisError, ConnectionError, OSError):
-                if not publish_failed_once:
-                    publish_failed_once = True
-                    logger.warning(
-                        "[stream_and_publish] Failed to publish chunk %s for %s "
-                        "(further failures logged at DEBUG)",
-                        type(event).__name__,
-                        session_id[:12],
-                        exc_info=True,
-                    )
-                else:
-                    logger.debug(
-                        "[stream_and_publish] Failed to publish chunk %s",
-                        type(event).__name__,
-                        exc_info=True,
-                    )
-        yield event
+    # async-for does not close an iterator on GeneratorExit; forward close
+    # to ``stream`` explicitly so its own cleanup (stream lock, persist)
+    # runs deterministically instead of waiting for GC.
+    try:
+        async for event in stream:
+            if turn_id and not isinstance(event, (StreamFinish, StreamError)):
+                try:
+                    await publish_chunk(turn_id, event, session_id=session_id)
+                except (RedisError, ConnectionError, OSError):
+                    # Full stack trace on the first failure; terser lines
+                    # for the rest so subsequent failures don't flood logs
+                    # while still being visible at WARNING.
+                    if not publish_failed_once:
+                        publish_failed_once = True
+                        logger.warning(
+                            "[stream_and_publish] Failed to publish chunk %s for %s",
+                            type(event).__name__,
+                            session_id[:12],
+                            exc_info=True,
+                        )
+                    else:
+                        logger.warning(
+                            "[stream_and_publish] Failed to publish chunk %s for %s",
+                            type(event).__name__,
+                            session_id[:12],
+                        )
+            yield event
+    finally:
+        await stream.aclose()
 
 
 async def subscribe_to_session(
@@ -842,6 +850,15 @@ async def mark_session_completed(
     if not swapped:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
+
+    # Force-release the executor's cluster lock so the next enqueued turn can
+    # acquire it immediately. The lock holder's on_run_done will also release
+    # (idempotent delete); doing it here unblocks cases where the task hangs
+    # past the cancel timeout or a pod crash leaves the lock orphaned.
+    try:
+        await redis.delete(get_session_lock_key(session_id))
+    except RedisError as e:
+        logger.warning(f"Failed to release cluster lock for session {session_id}: {e}")
 
     if error_message and not skip_error_publish:
         try:

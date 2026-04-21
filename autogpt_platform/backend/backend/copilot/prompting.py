@@ -8,10 +8,12 @@ handling the distinction between:
 
 from functools import cache
 
-from backend.copilot.tools import TOOL_REGISTRY
-
-# Shared technical notes that apply to both SDK and baseline modes
-_SHARED_TOOL_NOTES = """\
+# Workflow rules appended to the system prompt on every copilot turn
+# (baseline appends directly; SDK appends via the storage-supplement
+# template).  These are cross-tool rules (file sharing, @@agptfile: refs,
+# tool-discovery priority, sub-agent etiquette) that don't belong on any
+# individual tool schema.
+SHARED_TOOL_NOTES = """\
 
 ### Sharing files
 After `write_workspace_file`, embed the `download_url` in Markdown:
@@ -261,7 +263,7 @@ When a tool output contains `<tool-output-truncated workspace_path="...">`, the
 full output is in workspace storage (NOT on the local filesystem). To access it:
 - Use `read_workspace_file(path="...", offset=..., length=50000)` for reading sections.
 - To process in the sandbox, use `read_workspace_file(path="...", save_to_path="{working_dir}/file.json")` first, then use `bash_exec` on the local copy.
-{_SHARED_TOOL_NOTES}{extra_notes}"""
+{SHARED_TOOL_NOTES}{extra_notes}"""
 
 
 # Pre-built supplements for common environments
@@ -310,35 +312,6 @@ def _get_cloud_sandbox_supplement() -> str:
         file_move_name_2_to_1="Persistent → Sandbox",
         extra_notes=_E2B_TOOL_NOTES,
     )
-
-
-def _generate_tool_documentation() -> str:
-    """Auto-generate tool documentation from TOOL_REGISTRY.
-
-    NOTE: This is ONLY used in baseline mode (direct OpenAI API).
-    SDK mode doesn't need it since Claude gets tool schemas automatically.
-
-    This generates a complete list of available tools with their descriptions,
-    ensuring the documentation stays in sync with the actual tool implementations.
-    All workflow guidance is now embedded in individual tool descriptions.
-
-    Only documents tools that are available in the current environment
-    (checked via tool.is_available property).
-    """
-    docs = "\n## AVAILABLE TOOLS\n\n"
-
-    # Sort tools alphabetically for consistent output
-    # Filter by is_available to match get_available_tools() behavior
-    for name in sorted(TOOL_REGISTRY.keys()):
-        tool = TOOL_REGISTRY[name]
-        if not tool.is_available:
-            continue
-        schema = tool.as_openai_tool()
-        desc = schema["function"].get("description", "No description available")
-        # Format as bullet list with tool name in code style
-        docs += f"- **`{name}`**: {desc}\n"
-
-    return docs
 
 
 _USER_FOLLOW_UP_NOTE = """
@@ -438,17 +411,3 @@ You have access to persistent temporal memory tools that remember facts across s
 - group_id is handled automatically by the system — never set it yourself.
 - When storing, be specific about operational rules and instructions (e.g., "CC Sarah on client communications" not just "Sarah is the assistant").
 """
-
-
-def get_baseline_supplement() -> str:
-    """Get the supplement for baseline mode (direct OpenAI API).
-
-    Baseline mode INCLUDES auto-generated tool documentation because the
-    direct API doesn't automatically provide tool schemas to Claude.
-    Also includes shared technical notes (but NOT SDK-specific environment details).
-
-    Returns:
-        The supplement string to append to the system prompt
-    """
-    tool_docs = _generate_tool_documentation()
-    return tool_docs + _SHARED_TOOL_NOTES

@@ -36,7 +36,7 @@ from backend.copilot.pending_message_helpers import (
 )
 from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
-    CoPilotUsageStatus,
+    CoPilotUsagePublic,
     RateLimitExceeded,
     acquire_reset_lock,
     check_rate_limit,
@@ -562,23 +562,27 @@ async def get_session(
 )
 async def get_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],
-) -> CoPilotUsageStatus:
+) -> CoPilotUsagePublic:
     """Get CoPilot usage status for the authenticated user.
 
-    Returns current token usage vs limits for daily and weekly windows.
-    Global defaults sourced from LaunchDarkly (falling back to config).
-    Includes the user's rate-limit tier.
+    Returns the percentage of the daily/weekly allowance used — not the
+    raw spend or cap — so clients cannot derive per-turn cost or platform
+    margins. Global defaults sourced from LaunchDarkly (falling back to
+    config). Includes the user's rate-limit tier.
     """
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
-    return await get_usage_status(
+    status = await get_usage_status(
         user_id=user_id,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
+    return CoPilotUsagePublic.from_status(status)
 
 
 class RateLimitResetResponse(BaseModel):
@@ -587,7 +591,9 @@ class RateLimitResetResponse(BaseModel):
     success: bool
     credits_charged: int = Field(description="Credits charged (in cents)")
     remaining_balance: int = Field(description="Credit balance after charge (in cents)")
-    usage: CoPilotUsageStatus = Field(description="Updated usage status after reset")
+    usage: CoPilotUsagePublic = Field(
+        description="Updated usage status after reset (percentages only)"
+    )
 
 
 @router.post(
@@ -611,7 +617,7 @@ async def reset_copilot_usage(
 ) -> RateLimitResetResponse:
     """Reset the daily CoPilot rate limit by spending credits.
 
-    Allows users who have hit their daily token limit to spend credits
+    Allows users who have hit their daily cost limit to spend credits
     to reset their daily usage counter and continue working.
     Returns 400 if the feature is disabled or the user is not over the limit.
     Returns 402 if the user has insufficient credits.
@@ -630,7 +636,9 @@ async def reset_copilot_usage(
         )
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
 
     if daily_limit <= 0:
@@ -667,8 +675,8 @@ async def reset_copilot_usage(
         # used for limit checks, not returned to the client.)
         usage_status = await get_usage_status(
             user_id=user_id,
-            daily_token_limit=daily_limit,
-            weekly_token_limit=weekly_limit,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
             tier=tier,
         )
         if daily_limit > 0 and usage_status.daily.used < daily_limit:
@@ -703,7 +711,7 @@ async def reset_copilot_usage(
 
         # Reset daily usage in Redis.  If this fails, refund the credits
         # so the user is not charged for a service they did not receive.
-        if not await reset_daily_usage(user_id, daily_token_limit=daily_limit):
+        if not await reset_daily_usage(user_id, daily_cost_limit=daily_limit):
             # Compensate: refund the charged credits.
             refunded = False
             try:
@@ -739,11 +747,11 @@ async def reset_copilot_usage(
     finally:
         await release_reset_lock(user_id)
 
-    # Return updated usage status.
+    # Return updated usage status (public schema — percentages only).
     updated_usage = await get_usage_status(
         user_id=user_id,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
@@ -752,7 +760,7 @@ async def reset_copilot_usage(
         success=True,
         credits_charged=cost,
         remaining_balance=remaining,
-        usage=updated_usage,
+        usage=CoPilotUsagePublic.from_status(updated_usage),
     )
 
 
@@ -813,7 +821,7 @@ async def cancel_session_task(
             ),
         },
         404: {"description": "Session not found or access denied"},
-        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+        429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
     },
 )
 async def stream_chat_post(
@@ -888,18 +896,20 @@ async def stream_chat_post(
         },
     )
 
-    # Pre-turn rate limit check (token-based).
+    # Pre-turn rate limit check (cost-based, microdollars).
     # check_rate_limit short-circuits internally when both limits are 0.
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id, config.daily_token_limit, config.weekly_token_limit
+                user_id,
+                config.daily_cost_limit_microdollars,
+                config.weekly_cost_limit_microdollars,
             )
             await check_rate_limit(
                 user_id=user_id,
-                daily_token_limit=daily_limit,
-                weekly_token_limit=weekly_limit,
+                daily_cost_limit=daily_limit,
+                weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e

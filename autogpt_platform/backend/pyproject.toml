@@ -18,7 +18,7 @@ apscheduler = "^3.11.1"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
 cachetools = "^5.5.0"
-claude-agent-sdk = "0.1.58"  # latest stable; bundled CLI 2.1.97 -- CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 env var strips the broken context-management beta. See sdk_compat_test.py.
+claude-agent-sdk = "^0.1.64"  # bundled CLI 2.1.116 -- 2.1.98+ fixes the --resume + excludeDynamicSections crash that used to force a per-turn 33K cache write. CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 env var strips the broken context-management beta. See sdk_compat_test.py.
 click = "^8.2.0"
 cryptography = "^46.0"
 discord-py = "^2.5.2"
