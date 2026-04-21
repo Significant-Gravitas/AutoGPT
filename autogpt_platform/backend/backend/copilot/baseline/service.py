@@ -15,7 +15,7 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -300,7 +300,9 @@ def _fresh_anthropic_caching_headers() -> dict[str, str]:
     return {"anthropic-beta": "prompt-caching-2024-07-31"}
 
 
-def _mark_tools_with_cache_control(tools: Sequence[Any]) -> list[dict[str, Any]]:
+def _mark_tools_with_cache_control(
+    tools: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
     """Return a copy of *tools* with ``cache_control`` on the last entry.
 
     Marking the last tool is a cache breakpoint that covers the whole tool
@@ -320,7 +322,7 @@ def _mark_tools_with_cache_control(tools: Sequence[Any]) -> list[dict[str, Any]]
 
 
 def _mark_system_message_with_cache_control(
-    messages: list[dict[str, Any]],
+    messages: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
     """Return a copy of *messages* with ``cache_control`` on the system block.
 
@@ -333,7 +335,7 @@ def _mark_system_message_with_cache_control(
     unknown fields the caller set (e.g. ``name``) survive the transformation.
     Non-Anthropic models silently ignore the markers.
     """
-    cached_messages = list(messages)
+    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
     if cached_messages and cached_messages[0].get("role") == "system":
         sys_content = cached_messages[0].get("content")
         if isinstance(sys_content, str) and sys_content:

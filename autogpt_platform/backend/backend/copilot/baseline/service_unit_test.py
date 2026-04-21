@@ -13,6 +13,8 @@ from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _BaselineStreamState,
     _compress_session_messages,
+    _fresh_anthropic_caching_headers,
+    _fresh_ephemeral_cache_control,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
 )
@@ -1290,3 +1292,13 @@ class TestApplyPromptCacheMarkers:
         messages = [{"role": "system", "content": pre_marked}]
         cached_messages = _mark_system_message_with_cache_control(messages)
         assert cached_messages[0]["content"] == pre_marked
+
+    def test_fresh_helpers_return_distinct_objects(self):
+        """Regression guard: the `_fresh_*` helpers must return a NEW dict
+        on every call.  A future refactor returning a module-level constant
+        would silently reintroduce the shared-mutable-state bug flagged
+        during earlier review cycles."""
+        assert _fresh_ephemeral_cache_control() is not _fresh_ephemeral_cache_control()
+        assert (
+            _fresh_anthropic_caching_headers() is not _fresh_anthropic_caching_headers()
+        )
