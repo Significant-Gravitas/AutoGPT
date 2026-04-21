@@ -5,12 +5,6 @@ import {
   sendSubscriptionToServer,
 } from "./api";
 
-vi.mock("@/services/environment", () => ({
-  environment: {
-    getAGPTServerBaseUrl: () => "http://localhost:8006",
-  },
-}));
-
 describe("fetchVapidPublicKey", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -29,9 +23,7 @@ describe("fetchVapidPublicKey", () => {
     const key = await fetchVapidPublicKey();
 
     expect(key).toBe("BFakeKey123");
-    expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:8006/api/push/vapid-key",
-    );
+    expect(fetch).toHaveBeenCalledWith("/api/proxy/api/push/vapid-key");
   });
 
   it("returns null when response is not ok", async () => {
@@ -81,26 +73,20 @@ describe("sendSubscriptionToServer", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends correct payload with auth header", async () => {
+  it("sends correct payload via proxy", async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
 
-    await sendSubscriptionToServer(mockSubscription, "test-token");
+    await sendSubscriptionToServer(mockSubscription);
 
-    expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:8006/api/push/subscribe",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer test-token",
-        },
-        body: JSON.stringify({
-          endpoint: "https://push.example.com/sub/123",
-          keys: { p256dh: "key-p256dh", auth: "key-auth" },
-          user_agent: navigator.userAgent,
-        }),
-      },
-    );
+    expect(fetch).toHaveBeenCalledWith("/api/proxy/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: "https://push.example.com/sub/123",
+        keys: { p256dh: "key-p256dh", auth: "key-auth" },
+        user_agent: navigator.userAgent,
+      }),
+    });
   });
 
   it("returns true on 200 response", async () => {
@@ -109,10 +95,7 @@ describe("sendSubscriptionToServer", () => {
       status: 200,
     } as Response);
 
-    const result = await sendSubscriptionToServer(
-      mockSubscription,
-      "test-token",
-    );
+    const result = await sendSubscriptionToServer(mockSubscription);
 
     expect(result).toBe(true);
   });
@@ -123,10 +106,7 @@ describe("sendSubscriptionToServer", () => {
       status: 204,
     } as Response);
 
-    const result = await sendSubscriptionToServer(
-      mockSubscription,
-      "test-token",
-    );
+    const result = await sendSubscriptionToServer(mockSubscription);
 
     expect(result).toBe(true);
   });
@@ -137,10 +117,7 @@ describe("sendSubscriptionToServer", () => {
       status: 500,
     } as Response);
 
-    const result = await sendSubscriptionToServer(
-      mockSubscription,
-      "test-token",
-    );
+    const result = await sendSubscriptionToServer(mockSubscription);
 
     expect(result).toBe(false);
   });
@@ -148,10 +125,7 @@ describe("sendSubscriptionToServer", () => {
   it("returns false on network error", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("Network error"));
 
-    const result = await sendSubscriptionToServer(
-      mockSubscription,
-      "test-token",
-    );
+    const result = await sendSubscriptionToServer(mockSubscription);
 
     expect(result).toBe(false);
   });
@@ -166,7 +140,7 @@ describe("sendSubscriptionToServer", () => {
 
     vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
 
-    await sendSubscriptionToServer(subWithoutKeys, "test-token");
+    await sendSubscriptionToServer(subWithoutKeys);
 
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
     expect(body.keys).toEqual({ p256dh: "", auth: "" });
@@ -182,27 +156,18 @@ describe("removeSubscriptionFromServer", () => {
     vi.restoreAllMocks();
   });
 
-  it("sends endpoint with auth header", async () => {
+  it("sends endpoint via proxy", async () => {
     vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
 
-    await removeSubscriptionFromServer(
-      "https://push.example.com/sub/123",
-      "test-token",
-    );
+    await removeSubscriptionFromServer("https://push.example.com/sub/123");
 
-    expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:8006/api/push/unsubscribe",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer test-token",
-        },
-        body: JSON.stringify({
-          endpoint: "https://push.example.com/sub/123",
-        }),
-      },
-    );
+    expect(fetch).toHaveBeenCalledWith("/api/proxy/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: "https://push.example.com/sub/123",
+      }),
+    });
   });
 
   it("returns true on success", async () => {
@@ -210,7 +175,6 @@ describe("removeSubscriptionFromServer", () => {
 
     const result = await removeSubscriptionFromServer(
       "https://push.example.com/sub/123",
-      "test-token",
     );
 
     expect(result).toBe(true);
@@ -224,7 +188,6 @@ describe("removeSubscriptionFromServer", () => {
 
     const result = await removeSubscriptionFromServer(
       "https://push.example.com/sub/123",
-      "test-token",
     );
 
     expect(result).toBe(true);
@@ -238,7 +201,6 @@ describe("removeSubscriptionFromServer", () => {
 
     const result = await removeSubscriptionFromServer(
       "https://push.example.com/sub/123",
-      "test-token",
     );
 
     expect(result).toBe(false);
@@ -249,7 +211,6 @@ describe("removeSubscriptionFromServer", () => {
 
     const result = await removeSubscriptionFromServer(
       "https://push.example.com/sub/123",
-      "test-token",
     );
 
     expect(result).toBe(false);

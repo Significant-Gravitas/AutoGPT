@@ -1,6 +1,5 @@
 "use client";
 
-import { ensureSupabaseClient } from "@/lib/supabase/hooks/helpers";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useEffect, useRef, useState } from "react";
 import { fetchVapidPublicKey, sendSubscriptionToServer } from "./api";
@@ -46,16 +45,7 @@ export function usePushNotifications() {
       const subscription = await subscribeToPush(registration, vapidKey);
       if (!subscription) return;
 
-      const supabase = ensureSupabaseClient();
-      if (!supabase) return;
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const accessToken = session?.access_token;
-      if (!accessToken) return;
-
-      const sent = await sendSubscriptionToServer(subscription, accessToken);
+      const sent = await sendSubscriptionToServer(subscription);
       if (sent) {
         registeredRef.current = true;
       }

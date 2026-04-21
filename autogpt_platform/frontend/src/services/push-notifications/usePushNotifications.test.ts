@@ -8,16 +8,6 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
   useSupabase: vi.fn(() => ({ user: mockUser })),
 }));
 
-vi.mock("@/lib/supabase/hooks/helpers", () => ({
-  ensureSupabaseClient: vi.fn(() => ({
-    auth: {
-      getSession: vi.fn().mockResolvedValue({
-        data: { session: { access_token: "test-token" } },
-      }),
-    },
-  })),
-}));
-
 const mockIsPushSupported = vi.fn(() => true);
 const mockRegisterServiceWorker = vi.fn();
 const mockSubscribeToPush = vi.fn();
@@ -25,7 +15,8 @@ const mockSubscribeToPush = vi.fn();
 vi.mock("./registration", () => ({
   isPushSupported: () => mockIsPushSupported(),
   registerServiceWorker: () => mockRegisterServiceWorker(),
-  subscribeToPush: (...args: [unknown, unknown]) => mockSubscribeToPush(...args),
+  subscribeToPush: (...args: [unknown, unknown]) =>
+    mockSubscribeToPush(...args),
 }));
 
 const mockFetchVapidPublicKey = vi.fn();
@@ -33,8 +24,7 @@ const mockSendSubscriptionToServer = vi.fn();
 
 vi.mock("./api", () => ({
   fetchVapidPublicKey: () => mockFetchVapidPublicKey(),
-  sendSubscriptionToServer: (...args: [unknown, unknown]) =>
-    mockSendSubscriptionToServer(...args),
+  sendSubscriptionToServer: (sub: unknown) => mockSendSubscriptionToServer(sub),
 }));
 
 describe("usePushNotifications", () => {
@@ -76,7 +66,6 @@ describe("usePushNotifications", () => {
     await waitFor(() => {
       expect(mockSendSubscriptionToServer).toHaveBeenCalledWith(
         mockSubscription,
-        "test-token",
       );
     });
   });
