@@ -1687,7 +1687,7 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
     return did_anything
 
 
-@cached(ttl_seconds=30, maxsize=512, cache_none=True)
+@cached(ttl_seconds=30, maxsize=512, cache_none=True, shared_cache=True)
 async def get_pending_subscription_change(
     user_id: str,
 ) -> tuple[SubscriptionTier, datetime] | None:

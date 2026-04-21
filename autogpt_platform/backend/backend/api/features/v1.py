@@ -26,7 +26,7 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -708,10 +708,14 @@ class SubscriptionStatusResponse(BaseModel):
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
     pending_tier: Optional[Literal["FREE", "PRO", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
-    # Populated only when POST /credits/subscription starts a Stripe Checkout
-    # Session (FREE → paid upgrade). Empty string in all other branches — the
-    # client redirects to this URL when non-empty.
-    url: str = ""
+    url: str = Field(
+        default="",
+        description=(
+            "Populated only when POST /credits/subscription starts a Stripe Checkout"
+            " Session (FREE → paid upgrade). Empty string in all other branches —"
+            " the client redirects to this URL when non-empty."
+        ),
+    )
 
 
 def _validate_checkout_redirect_url(url: str) -> bool:

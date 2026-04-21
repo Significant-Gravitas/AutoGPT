@@ -14242,8 +14242,8 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "default": "",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE \u2192 paid upgrade). Empty string in all other branches \u2014 the client redirects to this URL when non-empty."
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "default": ""
           }
         },
         "type": "object",
