@@ -35,7 +35,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
-from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
+from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
@@ -850,6 +850,15 @@ async def mark_session_completed(
     if not swapped:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
+
+    # Force-release the executor's cluster lock so the next enqueued turn can
+    # acquire it immediately. The lock holder's on_run_done will also release
+    # (idempotent delete); doing it here unblocks cases where the task hangs
+    # past the cancel timeout or a pod crash leaves the lock orphaned.
+    try:
+        await redis.delete(get_session_lock_key(session_id))
+    except RedisError as e:
+        logger.warning(f"Failed to release cluster lock for session {session_id}: {e}")
 
     if error_message and not skip_error_publish:
         try:
