@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 
 from backend.data.db_accessors import user_db
 from backend.data.redis_client import get_redis_async
+from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
@@ -465,6 +466,15 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     ``get_pending_subscription_change`` (since an admin override can invalidate
     a cached ``cancel_at_period_end`` or schedule-based pending state).
 
+    If the user has an active Stripe subscription whose current price does not
+    match ``tier``, Stripe will keep billing the old price and the next
+    ``customer.subscription.updated`` webhook will overwrite the DB tier back
+    to whatever Stripe has. Proper reconciliation (cancelling or modifying the
+    Stripe subscription when an admin overrides the tier) is out of scope for
+    this PR — it changes the admin contract and needs its own test coverage.
+    For now we emit a ``WARNING`` so drift surfaces via Sentry until that
+    follow-up lands.
+
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
     """
@@ -473,12 +483,69 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         data={"subscriptionTier": tier.value},
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local imports to avoid circular: rate_limit is imported from credit.py.
+    # Local import required: backend.data.credit imports backend.copilot.rate_limit
+    # (via get_user_tier in credit.py's _invalidate_user_tier_caches), so a
+    # top-level ``from backend.data.credit import ...`` here would create a
+    # circular import at module-load time.
     from backend.data.credit import get_pending_subscription_change
-    from backend.data.user import get_user_by_id
 
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
     get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
+
+    await _warn_if_stripe_subscription_drifts(user_id, tier)
+
+
+async def _warn_if_stripe_subscription_drifts(
+    user_id: str, new_tier: SubscriptionTier
+) -> None:
+    """Emit a WARNING when an admin tier override leaves an active Stripe sub on a
+    mismatched price.
+
+    The warning is diagnostic only: Stripe remains the billing source of truth,
+    so the next ``customer.subscription.updated`` webhook will reset the DB
+    tier. Surfacing the drift here lets ops catch admin overrides that bypass
+    the intended Checkout / Portal cancel flows before users notice surprise
+    charges.
+    """
+    # Local imports: see note in ``set_user_tier`` about the credit <-> rate_limit
+    # circular. These helpers (``_get_active_subscription``,
+    # ``get_subscription_price_id``) live in credit.py alongside the rest of
+    # the Stripe billing code.
+    from backend.data.credit import _get_active_subscription, get_subscription_price_id
+
+    try:
+        user = await get_user_by_id(user_id)
+    except Exception:
+        return
+    if not getattr(user, "stripe_customer_id", None):
+        return
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except Exception:
+        return
+    if sub is None:
+        return
+    items = sub["items"].data
+    if not items:
+        return
+    price = items[0].price
+    current_price_id = price if isinstance(price, str) else price.id
+
+    expected_price_id = await get_subscription_price_id(new_tier)
+    if expected_price_id is not None and expected_price_id == current_price_id:
+        return
+    logger.warning(
+        "Admin tier override will drift from Stripe: user=%s admin_tier=%s"
+        " stripe_sub=%s stripe_price=%s expected_price=%s — the next"
+        " customer.subscription.updated webhook will reconcile the DB tier"
+        " back to whatever Stripe has; cancel or modify the Stripe subscription"
+        " if you intended the admin override to stick.",
+        user_id,
+        new_tier.value,
+        sub.id,
+        current_price_id,
+        expected_price_id,
+    )
 
 
 async def get_global_rate_limits(
