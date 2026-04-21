@@ -48,11 +48,12 @@ from ..config import ChatConfig, CopilotLlmModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    STOPPED_BY_USER_MARKER,
     STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
+from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
@@ -70,7 +71,6 @@ from ..pending_message_helpers import (
     persist_session_safe,
 )
 from ..pending_messages import (
-    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -2504,10 +2504,7 @@ async def _run_stream_attempt(
         for r in closing_responses:
             yield r
         ctx.session.messages.append(
-            ChatMessage(
-                role="assistant",
-                content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
-            )
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER)
         )
 
     if (
@@ -2737,7 +2734,7 @@ async def stream_chat_completion_sdk(
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
     **_kwargs: Any,
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Stream chat completion using Claude Agent SDK.
 
     Args:
@@ -2780,6 +2777,10 @@ async def stream_chat_completion_sdk(
             session_id[:12],
         )
         session.messages.pop()
+
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
+    prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
@@ -3191,10 +3192,7 @@ async def stream_chat_completion_sdk(
             # Chronological combine: items typed BEFORE this request
             # arrived go ahead of ``current_message``; items typed AFTER
             # (race path, queued while /stream was still processing) go
-            # after.  ``pending_texts`` is kept around because downstream
-            # code (the executor's update_message_content_by_sequence
-            # call) needs the pre-combine list.
-            pending_texts = pending_texts_from(pending_messages)
+            # after.
             current_message = combine_pending_with_current(
                 pending_messages,
                 current_message,

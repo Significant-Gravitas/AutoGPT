@@ -38,7 +38,6 @@ from backend.copilot.model import (
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
-    pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
@@ -70,6 +69,7 @@ from backend.copilot.service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
@@ -948,6 +948,12 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the new turn starts from a well-formed message list.
+    prune_orphan_tool_calls(
+        session.messages, log_prefix=f"[Baseline] [{session_id[:12]}]"
+    )
+
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
     if message:
@@ -982,7 +988,6 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        drained_at_start_content = pending_texts_from(drained_at_start_pending)
         # Chronological combine: pending typed BEFORE this /stream
         # request's arrival go ahead of ``message``; race-path follow-ups
         # typed AFTER (queued while /stream was still processing) go
