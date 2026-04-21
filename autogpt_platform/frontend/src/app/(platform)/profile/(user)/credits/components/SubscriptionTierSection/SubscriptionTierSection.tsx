@@ -5,7 +5,7 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useSubscriptionTierSection } from "./useSubscriptionTierSection";
 import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
-import { TIERS, TIER_ORDER, formatCost, getTierLabel } from "./helpers";
+import { TIERS, TIER_ORDER, formatCost } from "./helpers";
 
 export function SubscriptionTierSection() {
   const {
@@ -86,7 +86,6 @@ export function SubscriptionTierSection() {
   const hasPendingChange =
     pendingTierFromSubscription !== null &&
     pendingTierFromSubscription !== currentTier;
-  const currentLabel = getTierLabel(currentTier);
 
   return (
     <div className="space-y-4">
@@ -149,17 +148,6 @@ export function SubscriptionTierSection() {
               <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {tier.description}
               </p>
-
-              {isCurrent && hasPendingChange && isPaymentEnabled && (
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  disabled={isPending}
-                  onClick={() => void cancelPendingChange()}
-                >
-                  {isPending ? "Cancelling..." : `Keep ${currentLabel}`}
-                </Button>
-              )}
 
               {!isCurrent && isPaymentEnabled && (
                 <Button

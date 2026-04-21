@@ -374,10 +374,11 @@ describe("SubscriptionTierSection", () => {
     });
     render(<SubscriptionTierSection />);
     expect(screen.getByText(/scheduled to downgrade to/i)).toBeDefined();
-    // Banner "Keep Business" button
+    // Banner "Keep Business" button — the only Keep button, since the on-card
+    // duplicate was removed in favour of the banner.
     expect(
-      screen.getAllByRole("button", { name: /keep business/i }).length,
-    ).toBeGreaterThan(0);
+      screen.getAllByRole("button", { name: /keep business/i }),
+    ).toHaveLength(1);
   });
 
   it("does not render pending-change banner when pending_tier is null", () => {
@@ -408,11 +409,7 @@ describe("SubscriptionTierSection", () => {
     });
     render(<SubscriptionTierSection />);
 
-    const keepButtons = screen.getAllByRole("button", {
-      name: /keep business/i,
-    });
-    // First one is the banner's button (rendered before the tier grid)
-    fireEvent.click(keepButtons[0]);
+    fireEvent.click(screen.getByRole("button", { name: /keep business/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledWith(
@@ -427,35 +424,6 @@ describe("SubscriptionTierSection", () => {
         title: "Pending subscription change cancelled.",
       }),
     );
-  });
-
-  it("clicking Keep [CurrentTier] on the current tier card submits a same-tier update", async () => {
-    const mutateFn = vi
-      .fn()
-      .mockResolvedValue({ status: 200, data: { url: "", tier: "BUSINESS" } });
-    setupMocks({
-      subscription: makeSubscription({
-        tier: "BUSINESS",
-        pendingTier: "PRO",
-        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
-      }),
-      mutateFn,
-    });
-    render(<SubscriptionTierSection />);
-
-    const keepButtons = screen.getAllByRole("button", {
-      name: /keep business/i,
-    });
-    // The current tier card's Keep button is the second one (banner renders first)
-    fireEvent.click(keepButtons[keepButtons.length - 1]);
-
-    await waitFor(() => {
-      expect(mutateFn).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ tier: "BUSINESS" }),
-        }),
-      );
-    });
   });
 
   it("uses end-of-period copy for paid→paid downgrade confirmation", () => {
