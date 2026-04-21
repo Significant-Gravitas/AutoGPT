@@ -1656,9 +1656,7 @@ async def create_shared_execution_files(
         return 0
 
     # Validate file IDs belong to the user's workspace
-    workspace = await UserWorkspace.prisma().find_unique(
-        where={"userId": user_id}
-    )
+    workspace = await UserWorkspace.prisma().find_unique(where={"userId": user_id})
     if not workspace:
         return 0
 
@@ -1684,13 +1682,11 @@ async def create_shared_execution_files(
             created += 1
         except UniqueViolationError:
             logger.debug(
-                f"Skipping shared file record for {file_id}: "
-                f"record already exists"
+                f"Skipping shared file record for {file_id}: " f"record already exists"
             )
         except ForeignKeyViolationError:
             logger.debug(
-                f"Skipping shared file record for {file_id}: "
-                f"file does not exist"
+                f"Skipping shared file record for {file_id}: " f"file does not exist"
             )
     return created
 
