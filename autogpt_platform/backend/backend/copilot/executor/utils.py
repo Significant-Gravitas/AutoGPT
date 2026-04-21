@@ -82,6 +82,12 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
 )
 COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue"
 
+
+def get_session_lock_key(session_id: str) -> str:
+    """Redis key for the per-session cluster lock held by the executing pod."""
+    return f"copilot:session:{session_id}:lock"
+
+
 # CoPilot operations can include extended thinking and agent generation
 # which may take 30+ minutes to complete
 COPILOT_CONSUMER_TIMEOUT_SECONDS = 60 * 60  # 1 hour

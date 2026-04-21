@@ -779,7 +779,9 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
+# WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
+# ``mcp__copilot__web_search`` so cost tracking is unified across paths.
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.
@@ -805,6 +807,7 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
+    "WebSearch",
     "AskUserQuestion",
     "Write",
     "Edit",

@@ -6,7 +6,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UsagePanelContent } from "../UsagePanelContent";
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 
 const mockResetUsage = vi.fn();
 vi.mock("../../../hooks/useResetRateLimit", () => ({
@@ -20,36 +20,38 @@ afterEach(() => {
 
 function makeUsage(
   overrides: Partial<{
-    dailyUsed: number;
-    dailyLimit: number;
-    weeklyUsed: number;
-    weeklyLimit: number;
+    dailyPercent: number | null;
+    weeklyPercent: number | null;
     tier: string;
     resetCost: number;
   }> = {},
-): CoPilotUsageStatus {
+): CoPilotUsagePublic {
   const {
-    dailyUsed = 500,
-    dailyLimit = 10000,
-    weeklyUsed = 2000,
-    weeklyLimit = 50000,
+    dailyPercent = 5,
+    weeklyPercent = 4,
     tier = "FREE",
     resetCost = 100,
   } = overrides;
-  const future = new Date(Date.now() + 3600 * 1000);
+  const future = new Date(Date.now() + 3600 * 1000).toISOString();
   return {
-    daily: { used: dailyUsed, limit: dailyLimit, resets_at: future },
-    weekly: { used: weeklyUsed, limit: weeklyLimit, resets_at: future },
+    daily:
+      dailyPercent === null
+        ? null
+        : { percent_used: dailyPercent, resets_at: future },
+    weekly:
+      weeklyPercent === null
+        ? null
+        : { percent_used: weeklyPercent, resets_at: future },
     tier,
     reset_cost: resetCost,
-  } as CoPilotUsageStatus;
+  } as CoPilotUsagePublic;
 }
 
 describe("UsagePanelContent", () => {
-  it("renders 'No usage limits configured' when both limits are zero", () => {
+  it("renders 'No usage limits configured' when both windows are null", () => {
     render(
       <UsagePanelContent
-        usage={makeUsage({ dailyLimit: 0, weeklyLimit: 0 })}
+        usage={makeUsage({ dailyPercent: null, weeklyPercent: null })}
       />,
     );
     expect(screen.getByText("No usage limits configured")).toBeDefined();
@@ -58,11 +60,7 @@ describe("UsagePanelContent", () => {
   it("renders the reset button when daily limit is exhausted", () => {
     render(
       <UsagePanelContent
-        usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
-          resetCost: 50,
-        })}
+        usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
       />,
     );
     expect(screen.getByText(/Reset daily limit/)).toBeDefined();
@@ -72,10 +70,8 @@ describe("UsagePanelContent", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
-          weeklyUsed: 50000,
-          weeklyLimit: 50000,
+          dailyPercent: 100,
+          weeklyPercent: 100,
           resetCost: 50,
         })}
       />,
@@ -86,11 +82,7 @@ describe("UsagePanelContent", () => {
   it("calls resetUsage when the reset button is clicked", () => {
     render(
       <UsagePanelContent
-        usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
-          resetCost: 50,
-        })}
+        usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
       />,
     );
     fireEvent.click(screen.getByText(/Reset daily limit/));
@@ -100,15 +92,21 @@ describe("UsagePanelContent", () => {
   it("renders 'Add credits' link when insufficient credits", () => {
     render(
       <UsagePanelContent
-        usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
-          resetCost: 50,
-        })}
+        usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
         hasInsufficientCredits={true}
         isBillingEnabled={true}
       />,
     );
     expect(screen.getByText("Add credits to reset")).toBeDefined();
+  });
+
+  it("renders percent used in the usage bar", () => {
+    render(<UsagePanelContent usage={makeUsage({ dailyPercent: 25 })} />);
+    expect(screen.getByText("25% used")).toBeDefined();
+  });
+
+  it("renders '<1% used' when usage is greater than 0 but rounds to 0", () => {
+    render(<UsagePanelContent usage={makeUsage({ dailyPercent: 0.3 })} />);
+    expect(screen.getByText("<1% used")).toBeDefined();
   });
 });

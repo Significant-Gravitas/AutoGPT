@@ -76,6 +76,7 @@ class ResponseType(str, Enum):
 
     # Web
     WEB_FETCH = "web_fetch"
+    WEB_SEARCH = "web_search"
 
     # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
@@ -418,6 +419,7 @@ class AgentSavedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
+    graph_version: int | None = None
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page
@@ -582,6 +584,32 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class WebSearchResult(BaseModel):
+    """One entry in a web_search tool response."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    page_age: str | None = None
+
+
+class WebSearchResponse(ToolResponseBase):
+    """Response for web_search tool — mirrors the shape of the SDK's
+    native ``WebSearch`` tool so the LLM sees a consistent interface
+    regardless of which path dispatched the call."""
+
+    type: ResponseType = ResponseType.WEB_SEARCH
+    query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
+    results: list[WebSearchResult] = Field(default_factory=list)
+    search_requests: int = 0
 
 
 class BashExecResponse(ToolResponseBase):

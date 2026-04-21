@@ -21,8 +21,6 @@ from backend.copilot.response_model import (
     StreamFinishStep,
     StreamHeartbeat,
     StreamReasoningDelta,
-    StreamReasoningEnd,
-    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
     StreamTextDelta,
@@ -331,6 +329,69 @@ def test_empty_thinking_block_is_ignored():
     results = adapter.convert_message(msg)
     # Only the StepStart fires — no reasoning events.
     assert [type(r).__name__ for r in results] == ["StreamStartStep"]
+
+
+def test_render_reasoning_in_ui_false_still_emits_adapter_events():
+    """With the persist/render decoupling the adapter is flag-agnostic:
+    it always emits ``StreamReasoning*`` so the session transcript keeps a
+    durable reasoning record.  Wire-level suppression when
+    ``render_reasoning_in_ui=False`` happens at the SDK service yield
+    boundary, not here — see
+    ``backend/copilot/sdk/service.py::_filter_reasoning_events``.
+    """
+    adapter = SDKResponseAdapter(
+        message_id="m",
+        session_id="s",
+        render_reasoning_in_ui=False,
+    )
+    msg = AssistantMessage(
+        content=[ThinkingBlock(thinking="plan", signature="sig")],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningStart" in types
+    assert "StreamReasoningDelta" in types
+
+
+def test_render_reasoning_off_text_after_thinking_still_closes_reasoning():
+    """Adapter still emits a ``StreamReasoningEnd`` when text follows a
+    thinking block — decoupled from the render flag.  The service layer
+    drops the reasoning events at yield time; the adapter's structural
+    open/close pairing must not depend on the flag or downstream filters
+    would see orphan reasoning starts on the persisted transcript.
+    """
+    adapter = SDKResponseAdapter(
+        message_id="m",
+        session_id="s",
+        render_reasoning_in_ui=False,
+    )
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="warming up", signature="sig")],
+            model="test",
+        )
+    )
+    results = adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningEnd" in types
+    assert "StreamTextStart" in types
+    assert "StreamTextDelta" in types
+
+
+def test_render_reasoning_on_is_default():
+    """Default is True — existing callers keep emitting reasoning events."""
+    adapter = SDKResponseAdapter(message_id="m", session_id="s")
+    msg = AssistantMessage(
+        content=[ThinkingBlock(thinking="plan", signature="sig")],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningStart" in types
+    assert "StreamReasoningDelta" in types
 
 
 def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_only():

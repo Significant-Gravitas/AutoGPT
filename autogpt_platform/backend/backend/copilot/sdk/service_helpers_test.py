@@ -364,9 +364,10 @@ class TestNormalizeModelName:
     """Unit tests for the model-name normalisation helper.
 
     The per-request model toggle calls _normalize_model_name with either
-    ``"anthropic/claude-opus-4-6"`` (for 'advanced') or ``config.model`` (for
-    'standard').  These tests verify the OpenRouter/provider-prefix stripping
-    that keeps the value compatible with the Claude CLI.
+    ``config.thinking_advanced_model`` (for 'advanced') or
+    ``config.thinking_standard_model`` (for 'standard').  These tests verify
+    the OpenRouter/provider-prefix stripping that keeps the value compatible
+    with the Claude CLI.
     """
 
     def test_strips_anthropic_prefix(self):

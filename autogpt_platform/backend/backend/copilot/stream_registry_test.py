@@ -4,8 +4,10 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry
+from backend.copilot.executor.utils import get_session_lock_key
 
 
 @pytest.fixture(autouse=True)
@@ -108,3 +110,228 @@ async def test_disconnect_all_listeners_timeout_not_counted():
         await task
     except asyncio.CancelledError:
         pass
+
+
+# ---------------------------------------------------------------------------
+# stream_and_publish: closing the wrapper forwards GeneratorExit into the
+# inner stream so its finally (stream lock release, etc.) runs deterministically.
+# ---------------------------------------------------------------------------
+
+
+class _FakeEvent:
+    """Minimal stand-in for a StreamBaseResponse so publish_chunk is a no-op."""
+
+    def __init__(self, idx: int):
+        self.idx = idx
+
+
+@pytest.mark.asyncio
+async def test_stream_and_publish_aclose_propagates_to_inner_stream():
+    """Closing the wrapper MUST run the inner generator's finally block."""
+    inner_finally_ran = asyncio.Event()
+
+    async def _inner():
+        try:
+            yield _FakeEvent(0)
+            yield _FakeEvent(1)
+            yield _FakeEvent(2)
+        finally:
+            inner_finally_ran.set()
+
+    inner = _inner()
+    # Empty turn_id skips publish_chunk — keeps the test hermetic (no Redis).
+    wrapper = stream_registry.stream_and_publish(
+        session_id="sess-test", turn_id="", stream=inner
+    )
+
+    # Consume one event, then close the wrapper early.
+    first = await wrapper.__anext__()
+    assert isinstance(first, _FakeEvent)
+
+    await wrapper.aclose()
+
+    # The inner generator's finally must have run deterministically
+    # (not deferred to GC) so the caller's cleanup (lock release, etc.)
+    # is observable right after aclose returns.
+    assert inner_finally_ran.is_set()
+
+
+@pytest.mark.asyncio
+async def test_stream_and_publish_logs_warning_on_publish_chunk_failure():
+    """``stream_and_publish`` must not propagate a Redis publish failure —
+    it warns once with full stack trace, keeps yielding, and logs
+    subsequent failures at WARNING (terser, no exc_info) so repeated
+    errors stay visible without flooding the trace."""
+    from redis.exceptions import RedisError
+
+    async def _inner():
+        yield _FakeEvent(0)
+        yield _FakeEvent(1)
+        yield _FakeEvent(2)
+
+    async def _raising_publish(turn_id, event, session_id=None):
+        raise RedisError("boom")
+
+    warning_mock = patch.object(
+        stream_registry.logger, "warning", autospec=True
+    ).start()
+    try:
+        with patch.object(stream_registry, "publish_chunk", new=_raising_publish):
+            wrapper = stream_registry.stream_and_publish(
+                session_id="sess-test", turn_id="turn-1", stream=_inner()
+            )
+            received = [evt async for evt in wrapper]
+    finally:
+        patch.stopall()
+
+    # Every event still yields through — publish failures don't break the stream.
+    assert len(received) == 3
+    # One warning per failed publish (3 total).  First call carries a
+    # stack trace (``exc_info=True``); subsequent calls are terser.
+    assert warning_mock.call_count == 3
+    assert warning_mock.call_args_list[0].kwargs.get("exc_info") is True
+    assert warning_mock.call_args_list[1].kwargs.get("exc_info") is not True
+
+
+@pytest.mark.asyncio
+async def test_stream_and_publish_consumer_break_then_aclose_releases_inner():
+    """The processor pattern — break on cancel, then aclose — must release."""
+    inner_finally_ran = asyncio.Event()
+
+    async def _inner():
+        try:
+            for idx in range(100):
+                yield _FakeEvent(idx)
+        finally:
+            inner_finally_ran.set()
+
+    inner = _inner()
+    wrapper = stream_registry.stream_and_publish(
+        session_id="sess-test", turn_id="", stream=inner
+    )
+
+    # Mimic the processor: consume a few events, simulate Stop by breaking,
+    # then aclose the wrapper (as processor._execute_async now does in the
+    # try/finally around the async for).
+    try:
+        count = 0
+        async for _ in wrapper:
+            count += 1
+            if count >= 2:
+                break
+    finally:
+        await wrapper.aclose()
+
+    assert inner_finally_ran.is_set()
+
+
+# ---------------------------------------------------------------------------
+# mark_session_completed: the atomic meta flip to completed/failed must also
+# release the per-session cluster lock, so the next enqueued turn's run
+# handler can acquire it without waiting for the TTL (5 min default).
+# ---------------------------------------------------------------------------
+
+
+class _FakeRedis:
+    """Minimal async-Redis fake: only the calls mark_session_completed makes."""
+
+    def __init__(self, meta: dict[str, str]):
+        self._meta = dict(meta)
+        self.deleted_keys: list[str] = []
+        self.delete = AsyncMock(side_effect=self._record_delete)
+
+    async def _record_delete(self, *keys: str):
+        self.deleted_keys.extend(keys)
+        for k in keys:
+            self._meta.pop(k, None)
+        return len(keys)
+
+    async def hgetall(self, _key: str):
+        return dict(self._meta)
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_releases_cluster_lock_on_success():
+    """CAS swap must be followed by a DELETE on the session's lock key so a
+    stuck-because-of-stale-lock session becomes immediately claimable."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+    assert get_session_lock_key("sess-1") in fake_redis.deleted_keys
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_skips_lock_release_when_already_completed():
+    """CAS failure = someone else completed the session first; we must not
+    delete their already-released lock, and we must NOT publish StreamFinish
+    twice (the winning caller already published it)."""
+    fake_redis = _FakeRedis({"status": "completed", "turn_id": "turn-1"})
+    publish_mock = AsyncMock()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=False)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is False
+    assert get_session_lock_key("sess-1") not in fake_redis.deleted_keys
+    assert not any(
+        isinstance(call.args[1], stream_registry.StreamFinish)
+        for call in publish_mock.call_args_list
+    ), "StreamFinish must NOT be re-published on the CAS-no-op branch"
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_survives_lock_release_redis_error():
+    """A Redis hiccup during lock DELETE must not prevent the StreamFinish
+    publish — the client's SSE stream would otherwise hang on the stale meta
+    status while Redis recovers."""
+    fake_redis = _FakeRedis({"status": "running", "turn_id": "turn-1"})
+    fake_redis.delete = AsyncMock(side_effect=RedisError("boom"))
+    publish_mock = AsyncMock()
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+    assert any(
+        isinstance(call.args[1], stream_registry.StreamFinish)
+        for call in publish_mock.call_args_list
+    ), "StreamFinish must still be published even if lock DELETE raises"

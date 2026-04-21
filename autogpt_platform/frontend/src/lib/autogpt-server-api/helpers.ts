@@ -163,6 +163,15 @@ export function createRequestHeaders(
     if (apiKeyHeader) {
       headers[API_KEY_HEADER_NAME] = apiKeyHeader;
     }
+
+    // Forward Sentry distributed-tracing headers so the backend transaction
+    // continues the browser span instead of starting a disconnected trace.
+    for (const name of ["sentry-trace", "baggage"] as const) {
+      const value = originalRequest.headers.get(name);
+      if (value) {
+        headers[name] = value;
+      }
+    }
   }
 
   return headers;

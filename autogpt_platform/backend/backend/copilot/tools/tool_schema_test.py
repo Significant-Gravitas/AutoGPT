@@ -14,8 +14,25 @@ import pytest
 
 from backend.copilot.tools import TOOL_REGISTRY
 
-# Character budget (~4 chars/token heuristic, targeting ~8000 tokens)
-_CHAR_BUDGET = 32_000
+# Character budget (~4 chars/token heuristic, targeting ~8000 tokens).
+# Bumped 32000 -> 32500 on PR #12699 to fit two pieces of load-bearing
+# guidance: the wait_for_result dispatch-mode docs on run_agent
+# (tells the LLM when to block vs fire-and-forget, and what each
+# response shape carries) and the dry_run description. Keeps the
+# regression gate effective while accepting a deliberate ~120-token
+# spend on LLM-decision-critical copy.
+# Bumped 32500 -> 32800 on PR #12871 for the new web_search tool
+# (server-side Anthropic beta). Description already trimmed to the
+# minimum viable copy; the bump absorbs the schema skeleton cost
+# (~300 chars / ~75 tokens) for a new LLM-facing primitive.
+# Bumped 32800 -> 33200 on PR #12873 for the web_search Perplexity
+# Sonar refactor — adds a load-bearing `deep` boolean with explicit
+# "~100x more expensive" cost warning the model must see to avoid
+# accidentally triggering sonar-reasoning on ordinary lookups, plus
+# synthesised-answer wording in the top-level description so the LLM
+# reads the answer before reaching for `web_fetch`. Both are
+# LLM-decision-critical copy, not bloat.
+_CHAR_BUDGET = 33_200
 
 
 @pytest.fixture(scope="module")

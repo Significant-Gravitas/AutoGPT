@@ -53,7 +53,13 @@ class SDKResponseAdapter:
     text blocks, tool calls, and message lifecycle.
     """
 
-    def __init__(self, message_id: str | None = None, session_id: str | None = None):
+    def __init__(
+        self,
+        message_id: str | None = None,
+        session_id: str | None = None,
+        *,
+        render_reasoning_in_ui: bool = True,
+    ):
         self.message_id = message_id or str(uuid.uuid4())
         self.session_id = session_id
         self.text_block_id = str(uuid.uuid4())
@@ -62,6 +68,7 @@ class SDKResponseAdapter:
         self.reasoning_block_id = str(uuid.uuid4())
         self.has_started_reasoning = False
         self.has_ended_reasoning = True
+        self.render_reasoning_in_ui = render_reasoning_in_ui
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
@@ -142,6 +149,17 @@ class SDKResponseAdapter:
                     # it live, extended_thinking turns that end
                     # thinking-only left the UI stuck on "Thought for Xs"
                     # with nothing rendered until a page refresh.
+                    #
+                    # When ``render_reasoning_in_ui=False`` the three
+                    # reasoning helpers below (and the append) no-op, so
+                    # the frontend sees a text-only stream AND no
+                    # ``ChatMessage(role='reasoning')`` row is persisted
+                    # (the row is only created by ``_dispatch_response``
+                    # when ``StreamReasoningStart`` arrives, which is
+                    # suppressed here).  Persistence of the thinking text
+                    # into the SDK transcript via
+                    # ``_format_sdk_content_blocks`` is unaffected — that
+                    # feeds ``--resume`` continuity, not the UI.
                     if block.thinking:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
@@ -347,8 +365,12 @@ class SDKResponseAdapter:
         """Start (or restart) a reasoning block if needed.
 
         Each ``ThinkingBlock`` the SDK emits gets its own streaming block
-        on the wire so the frontend can render a new ``Reasoning`` part
-        per LLM turn (rather than concatenating across the whole session).
+        so the frontend can render a new ``Reasoning`` part per LLM turn
+        (rather than concatenating across the whole session).  Events
+        are emitted unconditionally — the caller filters them out of the
+        SSE wire when ``render_reasoning_in_ui=False`` but still feeds
+        them through ``_dispatch_response`` so the session transcript
+        keeps a ``role='reasoning'`` row.
         """
         if not self.has_started_reasoning or self.has_ended_reasoning:
             if self.has_ended_reasoning:

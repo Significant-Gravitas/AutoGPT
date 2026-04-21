@@ -13,12 +13,15 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 )
 from pytest_mock import MockerFixture
 
+from backend.util.exceptions import NotFoundError
+
 from .model import (
     ChatMessage,
     ChatSession,
     Usage,
     append_and_save_message,
     get_chat_session,
+    get_or_create_builder_session,
     is_message_duplicate,
     maybe_append_user_message,
     upsert_chat_session,
@@ -918,3 +921,145 @@ async def test_append_and_save_message_lock_release_failure_is_ignored(
     new_msg = ChatMessage(role="user", content="new msg")
     result = await append_and_save_message(session.session_id, new_msg)
     assert result is not None
+
+
+# ─── get_or_create_builder_session ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_raises_when_graph_not_owned(
+    mocker: MockerFixture,
+) -> None:
+    """Regression: the helper must verify the caller owns the graph before
+    any session lookup/creation. ``library_db().get_library_agent_by_graph_id``
+    returns ``None`` when the user doesn't own *graph_id*, which must surface
+    as :class:`NotFoundError` (mapped to HTTP 404 by the REST layer)."""
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=None),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(NotFoundError):
+        await get_or_create_builder_session("u1", "graph-not-mine")
+
+    # Confirms the ownership check short-circuits before we hit
+    # create_chat_session, so no orphaned session rows can be created.
+    create_mock.assert_not_awaited()
+    library_db_mock.update_library_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_returns_existing_when_owned(
+    mocker: MockerFixture,
+) -> None:
+    """When the caller owns the graph AND a session pointer on the library
+    agent resolves to a live chat session, return it unchanged without
+    creating a new one or re-writing the pointer."""
+    existing_session = ChatSession.new(
+        "u1", dry_run=False, builder_graph_id="graph-mine"
+    )
+    existing_session.session_id = "sess-existing"
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id="sess-existing"),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing_session,
+    )
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await get_or_create_builder_session("u1", "graph-mine")
+
+    assert result is existing_session
+    create_mock.assert_not_awaited()
+    library_db_mock.update_library_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_writes_pointer_on_create(
+    mocker: MockerFixture,
+) -> None:
+    """When no session pointer exists yet, create a new ChatSession and
+    write its id back to ``library_agent.settings.builder_chat_session_id``
+    so the next call resumes the same chat."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id=None),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    new_session = ChatSession.new("u1", dry_run=False, builder_graph_id="graph-mine")
+    new_session.session_id = "sess-new"
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=new_session,
+    )
+
+    result = await get_or_create_builder_session("u1", "graph-mine")
+
+    assert result is new_session
+    create_mock.assert_awaited_once()
+    library_db_mock.update_library_agent.assert_awaited_once()
+    call_kwargs = library_db_mock.update_library_agent.call_args.kwargs
+    assert call_kwargs["library_agent_id"] == "lib-1"
+    assert call_kwargs["user_id"] == "u1"
+    assert call_kwargs["settings"].builder_chat_session_id == "sess-new"
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_recreates_when_pointer_stale(
+    mocker: MockerFixture,
+) -> None:
+    """When the stored pointer no longer resolves (session was deleted),
+    fall through to creating a fresh session and updating the pointer."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id="sess-gone"),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    new_session = ChatSession.new("u1", dry_run=False, builder_graph_id="graph-mine")
+    new_session.session_id = "sess-new"
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=new_session,
+    )
+
+    result = await get_or_create_builder_session("u1", "graph-mine")
+
+    assert result is new_session
+    create_mock.assert_awaited_once()
+    library_db_mock.update_library_agent.assert_awaited_once()

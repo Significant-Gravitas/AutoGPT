@@ -172,7 +172,7 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
     expect(mockResumeStream).toHaveBeenCalledTimes(1);
 
     // Subsequent rerender with the same hydration must not re-trigger resume
-    // because hasResumedRef is now set for this session.
+    // because hasResumedRef is now set for this mount.
     rerender(makeArgs({ hasActiveStream: true, hydratedMessages: [] }));
     expect(mockResumeStream).toHaveBeenCalledTimes(1);
   });
@@ -193,25 +193,37 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
   });
 });
 
-describe("useCopilotStream — session epoch guard (SECRT-2241)", () => {
-  it("reconnect timer bails out after a mid-flight session switch", async () => {
-    const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
+describe("useCopilotStream — unmount cleanup", () => {
+  it("stops the in-flight fetch and disconnects backend listeners on unmount", () => {
+    const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
       initialProps: makeArgs({ sessionId: "sess-A" }),
     });
 
-    expect(capturedUseChatOptions?.onFinish).toBeDefined();
+    // Start a reconnect cycle so there's state to tear down.
+    // (handleReconnect arms a timer; unmount should not resume the stream.)
+    void capturedUseChatOptions!.onFinish!({ isDisconnect: true });
 
-    // Trigger reconnect: simulate a backend-disconnect finish.
+    unmount();
+
+    // Both cleanup actions must fire: abort the fetch + tell the backend
+    // to release its XREAD listeners without waiting for the timeout.
+    expect(mockSdkStop).toHaveBeenCalled();
+    expect(mockDisconnectSessionStream).toHaveBeenCalledWith("sess-A");
+  });
+
+  it("reconnect timer does not fire resumeStream after unmount", async () => {
+    const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-A" }),
+    });
+
     await act(async () => {
       await capturedUseChatOptions!.onFinish!({ isDisconnect: true });
     });
 
-    // Session switch happens BEFORE the reconnect timer fires.
-    rerender(makeArgs({ sessionId: "sess-B" }));
+    // Parent would remount us with a new session key — simulate the
+    // unmount that happens before the reconnect timer backoff expires.
+    unmount();
 
-    // Advance past the first reconnect backoff (1s) — the stale timer should
-    // either have been cleared or bail via the epoch check. Either way,
-    // resumeStream must not fire for the old session.
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
@@ -249,8 +261,8 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
     expect(result.current.isReconnecting).toBe(false);
   });
 
-  it("forced-timeout does not fire once the stream resumes (epoch/active-stream guard)", async () => {
-    const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
+  it("forced-timeout does not fire after unmount", async () => {
+    const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
       initialProps: makeArgs(),
     });
 
@@ -258,9 +270,10 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
       await capturedUseChatOptions!.onFinish!({ isDisconnect: true });
     });
 
-    // Simulate the stream resuming before the 30s timeout fires by switching
-    // sessions (which bumps the epoch and clears the timeout timer).
-    rerender(makeArgs({ sessionId: "sess-C" }));
+    // Parent remounts on session switch — the old mount unmounts. Any
+    // pending timers belong to that mount and must not fire toasts after
+    // its teardown.
+    unmount();
 
     mockToast.mockClear();
     await act(async () => {
@@ -274,204 +287,73 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
   });
 });
 
-describe("useCopilotStream — content-gated snapshot clear", () => {
-  it("restores the snapshot when replay streams but no visible content arrives within the grace window", async () => {
-    const trailingAssistant: UIMessage = {
-      id: "hydrated-assistant",
+describe("useCopilotStream — cursor tracking for incremental resume", () => {
+  it("records the latest data-cursor chunkId on the per-session coord", () => {
+    const assistantWithCursor: UIMessage = {
+      id: "assistant-1",
       role: "assistant",
-      parts: [{ type: "text", text: "hydrated content", state: "done" }],
-    };
-    mockMessages = [trailingAssistant];
-
-    const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
-      initialProps: makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
-    });
-
-    expect(mockResumeStream).toHaveBeenCalledTimes(1);
-
-    // Our setMessages mock does not execute the updater, so
-    // stripAndResume's snapshot-capture produced null. Prime the store
-    // with the snapshot stripAndResume would have saved in real use.
-    useCopilotStreamStore
-      .getState()
-      .updateCoord("sess-1", { stripSnapshot: trailingAssistant });
-
-    // Replay begins streaming but all accumulated parts are invisible
-    // (step-start only — no rendered content). Status flips to "streaming".
-    mockMessages = [
-      {
-        id: "replay-assistant",
-        role: "assistant",
-        parts: [
-          { type: "step-start" } as unknown as UIMessage["parts"][number],
-        ],
-      },
-    ];
-    mockStatus = "streaming";
-    mockSetMessages.mockClear();
-    rerender(
-      makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
-    );
-
-    // Snapshot must remain armed: no visible content yet.
-    expect(
-      useCopilotStreamStore.getState().getCoord("sess-1").stripSnapshot,
-    ).not.toBeNull();
-
-    // Advance past the 8s grace window.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(8_000);
-    });
-
-    // Restorer should have run: when prev contains the empty replay
-    // assistant, it swaps it for the snapshot.
-    const restorer = mockSetMessages.mock.calls.find(([arg]) => {
-      if (typeof arg !== "function") return false;
-      const next = (arg as (prev: UIMessage[]) => UIMessage[])([
+      parts: [
+        { type: "text", text: "hi", state: "done" },
         {
-          id: "replay-assistant",
-          role: "assistant",
-          parts: [
-            { type: "step-start" } as unknown as UIMessage["parts"][number],
-          ],
-        } as UIMessage,
-      ]);
-      return (
-        Array.isArray(next) &&
-        next.length === 1 &&
-        next[0].id === "hydrated-assistant"
-      );
+          type: "data-cursor",
+          data: { chunkId: "1700000000000-0" },
+        } as unknown as UIMessage["parts"][number],
+        { type: "text", text: "there", state: "done" },
+        {
+          type: "data-cursor",
+          data: { chunkId: "1700000000001-0" },
+        } as unknown as UIMessage["parts"][number],
+      ],
+    };
+    mockMessages = [assistantWithCursor];
+
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ hasActiveStream: false }),
     });
-    expect(restorer).toBeDefined();
+
+    expect(
+      useCopilotStreamStore.getState().getCoord("sess-1").lastChunkId,
+    ).toBe("1700000000001-0");
   });
 
-  it("clears the snapshot and cancels the grace timer once the replay produces visible content", async () => {
-    const trailingAssistant: UIMessage = {
-      id: "hydrated-assistant",
+  it("preserves cursor across a simulated remount (persists per session)", () => {
+    // First mount populates the cursor.
+    const assistantWithCursor: UIMessage = {
+      id: "assistant-1",
       role: "assistant",
-      parts: [{ type: "text", text: "hydrated content", state: "done" }],
+      parts: [
+        {
+          type: "data-cursor",
+          data: { chunkId: "1700000000005-0" },
+        } as unknown as UIMessage["parts"][number],
+      ],
     };
-    mockMessages = [trailingAssistant];
+    mockMessages = [assistantWithCursor];
 
-    const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
-      initialProps: makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
+    const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-A", hasActiveStream: false }),
     });
 
-    expect(mockResumeStream).toHaveBeenCalledTimes(1);
+    unmount();
 
-    // Prime the snapshot manually (see the other test for why).
-    useCopilotStreamStore
-      .getState()
-      .updateCoord("sess-1", { stripSnapshot: trailingAssistant });
-
-    // Replay streams a reasoning part with actual content — this IS visible.
-    mockMessages = [
-      {
-        id: "replay-assistant",
-        role: "assistant",
-        parts: [
-          {
-            type: "reasoning",
-            text: "analyzing the question...",
-          } as unknown as UIMessage["parts"][number],
-        ],
-      },
-    ];
-    mockStatus = "streaming";
-    mockSetMessages.mockClear();
-    rerender(
-      makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
-    );
-
-    // Snapshot is discarded because visible content has arrived.
+    // Remount for the same session — cursor must still be there so the
+    // transport's prepareReconnectToStreamRequest can pass it on resume.
     expect(
-      useCopilotStreamStore.getState().getCoord("sess-1").stripSnapshot,
-    ).toBeNull();
-
-    // Advance past 8s — the grace timer must have been cancelled, so no
-    // restore call should have been issued.
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(9_000);
-    });
-    const restorer = mockSetMessages.mock.calls.find(([arg]) => {
-      if (typeof arg !== "function") return false;
-      const next = (arg as (prev: UIMessage[]) => UIMessage[])([]);
-      return (
-        Array.isArray(next) && next.some((m) => m.id === "hydrated-assistant")
-      );
-    });
-    expect(restorer).toBeUndefined();
+      useCopilotStreamStore.getState().getCoord("sess-A").lastChunkId,
+    ).toBe("1700000000005-0");
   });
 });
 
-describe("useCopilotStream — resume snapshot guard", () => {
-  it("restores the stripped trailing assistant if submitted→ready without streaming", async () => {
-    // Arrange: an assistant bubble already hydrated into the chat.
-    const trailingAssistant: UIMessage = {
-      id: "hydrated-assistant",
-      role: "assistant",
-      parts: [{ type: "text", text: "hydrated content", state: "done" }],
-    };
-    mockMessages = [trailingAssistant];
-
-    const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
-      initialProps: makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
+describe("useCopilotStream — mount starts with clean useChat state", () => {
+  it("calls setMessages([]) on mount to avoid stale Chat-instance bleed-through", () => {
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-A" }),
     });
 
-    // Resume fires and strips the trailing assistant (the SDK will build
-    // fresh when the backend replays from "0-0"). The SDK mock only records
-    // calls — it doesn't execute the updater — so stripAndResume's own
-    // snapshot capture produces null. Prime the store with the snapshot it
-    // would have saved in real use.
-    expect(mockResumeStream).toHaveBeenCalledTimes(1);
-    useCopilotStreamStore
-      .getState()
-      .updateCoord("sess-1", { stripSnapshot: trailingAssistant });
-
-    // Simulate the resume kicking the SDK into "submitted" with no chunks,
-    // then dropping back to "ready" (e.g. 204 Not Found because the stream
-    // already finished). The snapshot must be restored via setMessages.
-    mockSetMessages.mockClear();
-    mockStatus = "submitted";
-    rerender(
-      makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
-    );
-    mockStatus = "ready";
-    rerender(
-      makeArgs({
-        hasActiveStream: true,
-        hydratedMessages: [trailingAssistant],
-      }),
-    );
-
-    // One of the setMessages calls should be the restoration (append snapshot).
-    const restorer = mockSetMessages.mock.calls.find(([arg]) => {
-      if (typeof arg !== "function") return false;
-      const next = (arg as (prev: UIMessage[]) => UIMessage[])([]);
-      return (
-        Array.isArray(next) &&
-        next.length === 1 &&
-        next[0].id === "hydrated-assistant"
-      );
-    });
-    expect(restorer).toBeDefined();
+    // The mount effect resets the AI SDK's messages array. AI SDK v5
+    // caches Chat instances per id, so without this a revisit to a
+    // session would render stale pre-refetch messages until hydration
+    // catches up.
+    expect(mockSetMessages).toHaveBeenCalledWith([]);
   });
 });

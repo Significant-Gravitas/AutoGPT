@@ -919,6 +919,10 @@ async def add_graph_execution(
     """
     Adds a graph execution to the queue and returns the execution entry.
 
+    Supports two modes:
+    1. CREATE mode (graph_exec_id=None): Validates, creates new DB entry, and queues
+    2. REQUEUE mode (graph_exec_id provided): Fetches existing execution and re-queues it
+
     Args:
         graph_id: The ID of the graph to execute.
         user_id: The ID of the user executing the graph.
@@ -931,7 +935,7 @@ async def add_graph_execution(
         parent_graph_exec_id: The ID of the parent graph execution (for nested executions).
         graph_exec_id: If provided, resume this existing execution instead of creating a new one.
     Returns:
-        GraphExecutionEntry: The entry for the graph execution.
+        GraphExecutionWithNodes: The execution entry.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
         NotFoundError: If graph_exec_id is provided but execution is not found.

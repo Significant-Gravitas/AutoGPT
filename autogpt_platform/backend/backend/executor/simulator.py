@@ -31,21 +31,31 @@ Inspired by https://github.com/Significant-Gravitas/agent-simulator
 import inspect
 import json
 import logging
+import math
 from collections.abc import AsyncGenerator
 from typing import Any
+
+from openai.types import CompletionUsage
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.orchestrator import OrchestratorBlock
+from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util.clients import get_openai_client
 
 logger = logging.getLogger(__name__)
 
 
-# Default simulator model — Gemini 2.5 Flash via OpenRouter (fast, cheap, good at
-# JSON generation).  Configurable via ChatConfig.simulation_model
-# (CHAT_SIMULATION_MODEL env var).
-_DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash"
+# Default simulator model — Gemini 2.5 Flash-Lite via OpenRouter.  Same provider
+# as Flash ($0.10 / $0.40 per MTok vs $0.30 / $1.20 — ~3× cheaper) with JSON-mode
+# reliability that's more than enough for dry-run shape-matching.  Configurable
+# via ChatConfig.simulation_model (CHAT_SIMULATION_MODEL env var).
+_DEFAULT_SIMULATOR_MODEL = "google/gemini-2.5-flash-lite"
+
+# OpenRouter-specific extra_body flag that embeds the real generation cost on
+# the response usage object.  Same shape used by the baseline copilot service
+# and web_search tool — keep the three aligned.
+_OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 
 def _simulator_model() -> str:
@@ -105,10 +115,15 @@ async def _call_llm_for_simulation(
     user_prompt: str,
     *,
     label: str = "simulate",
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     """Send a simulation prompt to the LLM and return the parsed JSON dict.
 
-    Handles client acquisition, retries on invalid JSON, and logging.
+    Handles client acquisition, retries on invalid JSON, logging, and platform
+    cost tracking.  The dry-run simulator calls OpenRouter on the platform's
+    key rather than a user's own API credentials, so every successful call is
+    recorded against the triggering ``user_id``'s rate-limit counter via
+    ``persist_and_record_usage`` (same rails as every copilot turn).
 
     Raises:
         RuntimeError: If no LLM client is available.
@@ -133,6 +148,7 @@ async def _call_llm_for_simulation(
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
+                extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
             )
             if not response.choices:
                 raise ValueError("LLM returned empty choices array")
@@ -141,13 +157,21 @@ async def _call_llm_for_simulation(
             if not isinstance(parsed, dict):
                 raise ValueError(f"LLM returned non-object JSON: {raw[:200]}")
 
-            logger.debug(
-                "simulate(%s): attempt=%d tokens=%s/%s",
-                label,
-                attempt + 1,
-                getattr(getattr(response, "usage", None), "prompt_tokens", "?"),
-                getattr(getattr(response, "usage", None), "completion_tokens", "?"),
-            )
+            usage = response.usage
+            if usage is not None:
+                logger.debug(
+                    "simulate(%s): attempt=%d tokens=%d/%d",
+                    label,
+                    attempt + 1,
+                    usage.prompt_tokens,
+                    usage.completion_tokens,
+                )
+            else:
+                logger.debug(
+                    "simulate(%s): attempt=%d usage unavailable", label, attempt + 1
+                )
+
+            await _track_simulator_cost(usage=usage, user_id=user_id, model=model)
             return parsed
 
         except (json.JSONDecodeError, ValueError) as e:
@@ -172,6 +196,69 @@ async def _call_llm_for_simulation(
         "simulate(%s): all retries exhausted; last_error=%s", label, last_error
     )
     raise ValueError(msg)
+
+
+def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:
+    """Return the provider-reported USD cost on the response usage object.
+
+    OpenRouter attaches a ``cost`` field to the OpenAI-compatible usage object
+    when the request body includes ``usage: {"include": True}``.  The typed
+    ``CompletionUsage`` does not declare it, so we read it off ``model_extra``
+    (pydantic v2's container for extras) to keep access fully typed — no
+    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``
+    and ``backend.copilot.baseline.service._extract_usage_cost``; keep the
+    three in sync.
+    """
+    if usage is None:
+        return None
+    extras = usage.model_extra or {}
+    if "cost" not in extras:
+        return None
+    raw = extras["cost"]
+    if raw is None:
+        logger.error("[simulator] usage.cost is present but null")
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        logger.error("[simulator] usage.cost is not numeric: %r", raw)
+        return None
+    if not math.isfinite(val) or val < 0:
+        logger.error("[simulator] usage.cost is non-finite or negative: %r", val)
+        return None
+    return val
+
+
+async def _track_simulator_cost(
+    *,
+    usage: CompletionUsage | None,
+    user_id: str | None,
+    model: str,
+) -> None:
+    """Record platform cost for a single simulator LLM call.
+
+    The simulator runs outside a copilot ``ChatSession`` — pass ``session=None``
+    so ``persist_and_record_usage`` skips the session append but still charges
+    the user's rate-limit counter and writes a ``PlatformCostLog`` entry.  No
+    user_id means no tracking (e.g. in-process tests that don't plumb one
+    through); rate-limit accounting silently no-ops in that case.
+    """
+    if usage is None:
+        return
+    cost_usd = _extract_cost_usd(usage)
+    try:
+        await persist_and_record_usage(
+            session=None,
+            user_id=user_id,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            log_prefix="[simulator]",
+            cost_usd=cost_usd,
+            model=model,
+            provider="open_router",
+        )
+    except Exception as exc:
+        logger.warning("[simulator] usage tracking failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -298,8 +385,19 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
             )
             return None
 
+        # Dry-run iteration cap: platform pays for simulation tokens, but
+        # capping at 1 starves multi-role orchestration patterns (e.g.
+        # Advocate/Critic) where the second iteration is the one that
+        # proves the wiring actually closes the loop. 3 gives enough rope
+        # for the common 2–3 turn patterns while bounding worst-case cost.
+        # Honour the agent's configured iteration count, capped at 10 as a
+        # safety net against runaway simulation cost.  The earlier cap of 1
+        # starved multi-role patterns (Advocate/Critic, propose/critique)
+        # where the second iteration is what proves the loop actually
+        # closes, and ``original=0`` (unbounded) already passed through
+        # untouched so a tiny bounded cap was asymmetric anyway.
         original = input_data.get("agent_mode_max_iterations", 0)
-        max_iters = 1 if original != 0 else 0
+        max_iters = min(original, 10) if original != 0 else 0
         sim_model = _simulator_model()
 
         # Keep the original credentials dict in input_data so the block's
@@ -382,11 +480,17 @@ def _default_for_input_result(result_schema: dict[str, Any], name: str | None) -
 async def simulate_block(
     block: Any,
     input_data: dict[str, Any],
+    *,
+    user_id: str | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
     """Simulate block execution using an LLM.
 
     All block types (including MCPToolBlock) use the same generic LLM prompt
     which includes the block's run() source code for accurate simulation.
+
+    ``user_id`` is threaded through to platform cost tracking — every dry-run
+    LLM call hits the platform's OpenRouter key and is charged against the
+    triggering user's rate-limit counter, same rails as copilot turns.
 
     Note: callers should check ``prepare_dry_run(block, input_data)`` first.
     OrchestratorBlock and AgentExecutorBlock execute for real in dry-run mode
@@ -451,7 +555,9 @@ async def simulate_block(
     label = getattr(block, "name", "?")
 
     try:
-        parsed = await _call_llm_for_simulation(system_prompt, user_prompt, label=label)
+        parsed = await _call_llm_for_simulation(
+            system_prompt, user_prompt, label=label, user_id=user_id
+        )
 
         # Track which pins were yielded so we can fill in missing required
         # ones afterwards — downstream nodes connected to unyielded pins

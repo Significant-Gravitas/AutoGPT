@@ -714,10 +714,15 @@ class TestDoTransientBackoff:
         mock_sleep.assert_called_once_with(7)
 
     async def test_replaces_adapter_with_new_instance(self):
-        """state.adapter is replaced with a new SDKResponseAdapter after yield."""
+        """state.adapter is replaced with a new SDKResponseAdapter after yield,
+        and ``render_reasoning_in_ui`` is threaded from the SDK service config
+        (not hardcoded) so ``CHAT_RENDER_REASONING_IN_UI=false`` at runtime
+        flips the reconstruction consistently with the rest of the path."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
+
+        cfg = _make_config(render_reasoning_in_ui=False)
 
         original_adapter = MagicMock()
         state = MagicMock()
@@ -726,6 +731,7 @@ class TestDoTransientBackoff:
 
         with (
             patch("asyncio.sleep", new=AsyncMock()),
+            patch(f"{_SVC}.config", cfg),
             patch("backend.copilot.sdk.service.SDKResponseAdapter") as mock_cls,
         ):
             new_adapter = MagicMock()
@@ -733,7 +739,11 @@ class TestDoTransientBackoff:
             async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
                 pass
 
-        mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
+        mock_cls.assert_called_once_with(
+            message_id="msg-1",
+            session_id="sess-1",
+            render_reasoning_in_ui=False,
+        )
         assert state.adapter is new_adapter
 
     async def test_resets_usage_after_yield(self):

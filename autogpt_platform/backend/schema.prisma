@@ -81,6 +81,10 @@ model User {
   OAuthAuthorizationCodes OAuthAuthorizationCode[]
   OAuthAccessTokens       OAuthAccessToken[]
   OAuthRefreshTokens      OAuthRefreshToken[]
+
+  // Platform bot linking
+  PlatformLinks     PlatformLink[]
+  PlatformUserLinks PlatformUserLink[]
 }
 
 enum SubscriptionTier {
@@ -200,8 +204,30 @@ model UserWorkspaceFile {
 
   metadata Json @default("{}")
 
+  SharedExecutionFiles SharedExecutionFile[]
+
   @@unique([workspaceId, path])
   @@index([workspaceId, isDeleted])
+}
+
+// Tracks which workspace files are exposed via a shared execution.
+// Created when sharing is enabled, deleted when sharing is disabled.
+// The public file download endpoint validates against this table.
+model SharedExecutionFile {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  executionId String
+  Execution   AgentGraphExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  fileId String
+  File   UserWorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  shareToken String
+
+  @@unique([shareToken, fileId])
+  @@index([shareToken])
+  @@index([executionId])
 }
 
 model BuilderSearchHistory {
@@ -585,9 +611,10 @@ model AgentGraphExecution {
   ChildExecutions        AgentGraphExecution[] @relation("ParentChildExecution")
 
   // Sharing fields
-  isShared   Boolean   @default(false)
-  shareToken String?   @unique
-  sharedAt   DateTime?
+  isShared             Boolean                @default(false)
+  shareToken           String?                @unique
+  sharedAt             DateTime?
+  SharedExecutionFiles SharedExecutionFile[]
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId, isDeleted, createdAt])
@@ -1365,4 +1392,85 @@ model OAuthRefreshToken {
   @@index([token]) // For token lookup
   @@index([userId, applicationId])
   @@index([expiresAt]) // For cleanup
+}
+
+// ── Platform Bot Linking ──────────────────────────────────────────────
+// Links external chat platform identities (Discord, Telegram, Slack, etc.)
+// to AutoGPT user accounts, enabling the multi-platform CoPilot bot.
+
+enum PlatformType {
+  DISCORD
+  TELEGRAM
+  SLACK
+  TEAMS
+  WHATSAPP
+  GITHUB
+  LINEAR
+}
+
+// Whether a linking token claims a server (group chat / guild) or a personal
+// 1:1 user link (DMs). Server and user links are completely independent —
+// linking a server does not grant DM access and vice versa.
+enum PlatformLinkType {
+  SERVER
+  USER
+}
+
+// Maps a platform server (Discord guild, Telegram group, Slack workspace, etc.)
+// to an AutoGPT user account. The user who first authenticates becomes the
+// "owner" — all usage from that server is attributed to their account.
+model PlatformLink {
+  id                  String       @id @default(uuid())
+  userId              String       // AutoGPT user ID of the owner
+  User                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform            PlatformType
+  platformServerId    String       // Server/guild/group ID on that platform
+  ownerPlatformUserId String       // Platform user ID of the person who set it up
+  serverName          String?      // Display name of the server (best-effort, may go stale)
+  linkedAt            DateTime     @default(now())
+
+  @@unique([platform, platformServerId])
+  @@index([userId])
+}
+
+// Maps a platform user identity (a single Discord / Telegram / Slack user) to
+// an AutoGPT account for 1:1 DM conversations with the bot. Independent from
+// PlatformLink — a user who owns a linked server must still link their DMs
+// separately.
+model PlatformUserLink {
+  id               String       @id @default(uuid())
+  userId           String       // AutoGPT user ID
+  User             User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform         PlatformType
+  platformUserId   String       // Individual's user ID on the platform
+  platformUsername String?      // Display name at link time (best-effort)
+  linkedAt         DateTime     @default(now())
+
+  @@unique([platform, platformUserId])
+  @@index([userId])
+}
+
+// One-time tokens for either the server linking flow or the DM (user) linking
+// flow. linkType determines which target is populated — SERVER tokens carry
+// platformServerId + serverName + ownerPlatformUserId, USER tokens carry
+// platformUserId only.
+model PlatformLinkToken {
+  id               String           @id @default(uuid())
+  token            String           @unique
+  platform         PlatformType
+  linkType         PlatformLinkType @default(SERVER)
+  // SERVER token fields (null for USER tokens)
+  platformServerId String?          // Server/guild/group ID being linked
+  serverName       String?          // Server display name
+  channelId        String?          // Channel to send confirmation back to
+  // Always set — platform user ID of the person who will claim ownership
+  platformUserId   String
+  platformUsername String?          // Their display name
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime         @default(now())
+
+  @@index([platform, platformServerId])
+  @@index([platform, platformUserId])
+  @@index([expiresAt])
 }

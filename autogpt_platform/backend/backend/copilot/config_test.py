@@ -19,6 +19,8 @@ _ENV_VARS_TO_CLEAR = (
     "OPENAI_BASE_URL",
     "CHAT_CLAUDE_AGENT_CLI_PATH",
     "CLAUDE_AGENT_CLI_PATH",
+    "CHAT_RENDER_REASONING_IN_UI",
+    "CHAT_STREAM_REPLAY_COUNT",
 )
 
 
@@ -164,3 +166,38 @@ class TestClaudeAgentCliPathEnvFallback:
         monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(tmp_path))
         with pytest.raises(Exception, match="not a regular file"):
             ChatConfig()
+
+
+class TestRenderReasoningInUi:
+    """``render_reasoning_in_ui`` gates reasoning wire events globally."""
+
+    def test_defaults_to_true(self):
+        """Default must stay True — flipping it silences the reasoning
+        collapse for every user, which is an opt-in operator decision."""
+        cfg = ChatConfig()
+        assert cfg.render_reasoning_in_ui is True
+
+    def test_env_override_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_RENDER_REASONING_IN_UI", "false")
+        cfg = ChatConfig()
+        assert cfg.render_reasoning_in_ui is False
+
+
+class TestStreamReplayCount:
+    """``stream_replay_count`` caps the SSE reconnect replay batch size."""
+
+    def test_default_is_200(self):
+        """200 covers a full Kimi turn after coalescing (~150 events) while
+        bounding the replay storm from 1000+ chunks."""
+        cfg = ChatConfig()
+        assert cfg.stream_replay_count == 200
+
+    def test_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CHAT_STREAM_REPLAY_COUNT", "500")
+        cfg = ChatConfig()
+        assert cfg.stream_replay_count == 500
+
+    def test_zero_rejected(self):
+        """count=0 would make XREAD replay nothing — rejected via ge=1."""
+        with pytest.raises(Exception):
+            ChatConfig(stream_replay_count=0)

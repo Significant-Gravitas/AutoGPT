@@ -1,20 +1,19 @@
 "use client";
 
 import { SidebarProvider } from "@/components/ui/sidebar";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { Flask } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
+import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
-import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import { CopilotChatHost } from "./CopilotChatHost";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
 import { FileDropZone } from "./components/FileDropZone/FileDropZone";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
 import { NotificationBanner } from "./components/NotificationBanner/NotificationBanner";
 import { NotificationDialog } from "./components/NotificationDialog/NotificationDialog";
-import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { ScaleLoader } from "./components/ScaleLoader/ScaleLoader";
-import { useCopilotPage } from "./useCopilotPage";
 import { useIsMobile } from "./useIsMobile";
 
 const ArtifactPanel = dynamic(
@@ -29,35 +28,14 @@ export function CopilotPage() {
   const [droppedFiles, setDroppedFiles] = useState<File[]>([]);
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
-
-  const {
-    sessionId,
-    messages,
-    status,
-    error,
-    stop,
-    isReconnecting,
-    isSyncing,
-    isRetrievingStream,
-    streamRetrievalFailed,
-    createSession,
-    onSend,
-    onEnqueue,
-    queuedMessages,
-    isLoadingSession,
-    isSessionError,
-    isCreatingSession,
-    isUploadingFiles,
-    isUserLoading,
-    isLoggedIn,
-    hasMoreMessages,
-    isLoadingMore,
-    loadMore,
-    historicalDurations,
-    rateLimitMessage,
-    dismissRateLimit,
-    sessionDryRun,
-  } = useCopilotPage();
+  const { isUserLoading, isLoggedIn } = useSupabase();
+  // Read sessionId here purely to key the chat-host subtree — the inner
+  // host's useChatSession reads the same URL param via nuqs so both stay
+  // in sync. Keying the subtree guarantees that every session switch
+  // mounts a fresh useChat Chat instance, eliminating orphaned AI-SDK
+  // state from the previous session (which was causing stuck UI on
+  // session-switch-back — full reload worked, switch-back didn't).
+  const [sessionId] = useQueryState("sessionId", parseAsString);
 
   if (isUserLoading || !isLoggedIn) {
     return (
@@ -80,55 +58,17 @@ export function CopilotPage() {
         >
           {isMobile && <MobileHeader />}
           <NotificationBanner />
-          {/* Only shown when the CURRENT session is confirmed dry_run via its
-              immutable metadata. Never based on the global isDryRun preference
-              (which only predicts future sessions) — users browsing non-dry-run
-              sessions while the toggle is on would otherwise see a misleading
-              banner. The DryRunToggleButton on new chats communicates the
-              preference. */}
-          {sessionId && sessionDryRun && (
-            <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
-              <Flask size={13} weight="bold" />
-              Test mode — this session runs agents as simulation
-            </div>
-          )}
-          <div className="flex-1 overflow-hidden">
-            <ChatContainer
-              messages={messages}
-              status={status}
-              error={error}
-              sessionId={sessionId}
-              isLoadingSession={isLoadingSession}
-              isSessionError={isSessionError}
-              isCreatingSession={isCreatingSession}
-              isReconnecting={isReconnecting}
-              isSyncing={isSyncing}
-              isRetrievingStream={isRetrievingStream}
-              streamRetrievalFailed={streamRetrievalFailed}
-              onCreateSession={createSession}
-              onSend={onSend}
-              onStop={stop}
-              onEnqueue={onEnqueue}
-              queuedMessages={queuedMessages}
-              isUploadingFiles={isUploadingFiles}
-              hasMoreMessages={hasMoreMessages}
-              isLoadingMore={isLoadingMore}
-              onLoadMore={loadMore}
-              droppedFiles={droppedFiles}
-              onDroppedFilesConsumed={() => setDroppedFiles([])}
-              historicalDurations={historicalDurations}
-            />
-          </div>
+          <CopilotChatHost
+            key={sessionId ?? "new"}
+            droppedFiles={droppedFiles}
+            onDroppedFilesConsumed={() => setDroppedFiles([])}
+          />
         </FileDropZone>
         {!isMobile && isArtifactsEnabled && <ArtifactPanel />}
       </div>
       {isMobile && isArtifactsEnabled && <ArtifactPanel mobile />}
       {isMobile && <MobileDrawer />}
       <NotificationDialog />
-      <RateLimitGate
-        rateLimitMessage={rateLimitMessage}
-        onDismiss={dismissRateLimit}
-      />
     </SidebarProvider>
   );
 }

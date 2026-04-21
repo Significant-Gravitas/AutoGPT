@@ -107,6 +107,7 @@ ToolName = Literal[
     "validate_agent_graph",
     "view_agent_output",
     "web_fetch",
+    "web_search",
     "write_workspace_file",
     # SDK built-ins
     "Agent",
