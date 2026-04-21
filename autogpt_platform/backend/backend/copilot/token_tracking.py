@@ -175,18 +175,24 @@ async def persist_and_record_usage(
                 cost_usd,
             )
         else:
-            if math.isfinite(val) and val >= 0:
-                cost_float = val
-            else:
+            if not math.isfinite(val):
                 logger.error(
-                    "%s cost_usd is non-finite or negative: %r — rate limit skipped",
+                    "%s cost_usd is non-finite: %r — rate limit skipped",
                     log_prefix,
                     val,
                 )
+            elif val < 0:
+                logger.warning(
+                    "%s cost_usd %s is negative — skipping rate-limit + cost log",
+                    log_prefix,
+                    val,
+                )
+            else:
+                cost_float = val
 
     cost_microdollars = usd_to_microdollars(cost_float)
 
-    if user_id and cost_microdollars and cost_microdollars > 0:
+    if user_id and cost_microdollars is not None and cost_microdollars > 0:
         # record_cost_usage() owns its fail-open handling for Redis/network
         # errors. Don't wrap with a broad except here — unexpected accounting
         # bugs should surface instead of being silently logged as warnings.

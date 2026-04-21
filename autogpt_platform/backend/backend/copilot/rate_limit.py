@@ -524,11 +524,15 @@ async def get_global_rate_limits(
     # rate_limit -> feature_flag -> settings -> ... -> rate_limit
     from backend.util.feature_flag import Flag, get_feature_flag_value
 
-    daily_raw = await get_feature_flag_value(
-        Flag.COPILOT_DAILY_COST_LIMIT.value, user_id, config_daily
-    )
-    weekly_raw = await get_feature_flag_value(
-        Flag.COPILOT_WEEKLY_COST_LIMIT.value, user_id, config_weekly
+    # Fetch daily + weekly flags in parallel — each LD evaluation is an
+    # independent network round-trip, so gather cuts latency roughly in half.
+    daily_raw, weekly_raw = await asyncio.gather(
+        get_feature_flag_value(
+            Flag.COPILOT_DAILY_COST_LIMIT.value, user_id, config_daily
+        ),
+        get_feature_flag_value(
+            Flag.COPILOT_WEEKLY_COST_LIMIT.value, user_id, config_weekly
+        ),
     )
     try:
         daily = max(0, int(daily_raw))

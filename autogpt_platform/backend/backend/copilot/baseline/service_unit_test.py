@@ -585,29 +585,30 @@ def _make_usage_chunk(
 ):
     """Build a mock streaming chunk carrying usage (and optionally cost).
 
-    ``cost`` mirrors the extra ``usage.cost`` field OpenRouter adds when the
-    request body enables ``usage: {include: true}``. ``None`` means the
-    attribute is *missing* (getattr-default triggers the warn-and-skip path).
+    Provider-specific fields (``cost`` on usage, ``cache_creation_input_tokens``
+    on prompt_tokens_details) are set on ``model_extra`` because that's where
+    the baseline helper reads them from (typed ``CompletionUsage.model_extra``
+    rather than ``getattr``).
     """
     chunk = MagicMock()
     chunk.choices = []
     chunk.usage = MagicMock()
     chunk.usage.prompt_tokens = prompt_tokens
     chunk.usage.completion_tokens = completion_tokens
+    usage_extras: dict[str, float | str] = {}
+    if cost is not None:
+        usage_extras["cost"] = cost
+    chunk.usage.model_extra = usage_extras
 
     if cached_tokens is not None or cache_creation_input_tokens is not None:
         ptd = MagicMock()
         ptd.cached_tokens = cached_tokens or 0
-        ptd.cache_creation_input_tokens = cache_creation_input_tokens or 0
+        ptd.model_extra = {
+            "cache_creation_input_tokens": cache_creation_input_tokens or 0
+        }
         chunk.usage.prompt_tokens_details = ptd
     else:
         chunk.usage.prompt_tokens_details = None
-
-    # Only set .cost when provided so the getattr default behaves realistically.
-    if cost is None:
-        del chunk.usage.cost
-    else:
-        chunk.usage.cost = cost
 
     return chunk
 

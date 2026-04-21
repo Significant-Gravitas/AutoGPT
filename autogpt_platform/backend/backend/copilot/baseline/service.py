@@ -22,7 +22,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from openai.types.completion_usage import PromptTokensDetails
 from opentelemetry import trace as otel_trace
 
 from backend.copilot.config import CopilotLlmModel, CopilotMode
@@ -125,6 +127,48 @@ _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
 # Matches characters unsafe for filenames.
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+# OpenRouter-specific extra_body flag that embeds the real generation cost
+# into the final usage chunk. Module-level constant so we don't reallocate
+# an identical dict on every streaming call.
+_OPENROUTER_INCLUDE_USAGE_COST = {"usage": {"include": True}}
+
+
+def _extract_usage_cost(usage: CompletionUsage) -> float | None:
+    """Return the provider-reported USD cost on a streaming usage chunk.
+
+    OpenRouter piggybacks a ``cost`` field on the OpenAI-compatible usage
+    object when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we
+    read it off ``model_extra`` (the pydantic v2 container for extras) to
+    keep the access fully typed — no ``getattr``.
+
+    Returns ``None`` when the field is absent, non-numeric, non-finite, or
+    negative. Invalid values are logged here (they indicate a provider
+    bug worth chasing); plain absences are silent so the caller can
+    dedupe the warning per stream.
+    """
+    raw = (usage.model_extra or {}).get("cost")
+    if raw is None:
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        logger.error("[Baseline] usage.cost is not numeric: %r", raw)
+        return None
+    if not math.isfinite(val) or val < 0:
+        logger.error("[Baseline] usage.cost is non-finite or negative: %r", val)
+        return None
+    return val
+
+
+def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
+    """Read Anthropic's ``cache_creation_input_tokens`` off an OpenAI
+    ``PromptTokensDetails`` — it's a provider-specific extra, not in the
+    typed model, so we read it via ``model_extra`` rather than
+    ``getattr``.
+    """
+    return int((ptd.model_extra or {}).get("cache_creation_input_tokens") or 0)
 
 
 async def _prepare_baseline_attachments(
@@ -310,7 +354,7 @@ async def _baseline_llm_caller(
                 tools=typed_tools,
                 stream=True,
                 stream_options={"include_usage": True},
-                extra_body={"usage": {"include": True}},
+                extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
             )
         else:
             response = await client.chat.completions.create(
@@ -318,7 +362,7 @@ async def _baseline_llm_caller(
                 messages=typed_messages,
                 stream=True,
                 stream_options={"include_usage": True},
-                extra_body={"usage": {"include": True}},
+                extra_body=_OPENROUTER_INCLUDE_USAGE_COST,
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
@@ -331,54 +375,33 @@ async def _baseline_llm_caller(
                 if chunk.usage:
                     state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-                    # Extract cache token details when available (OpenAI /
-                    # OpenRouter include these in prompt_tokens_details).
-                    ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                    ptd = chunk.usage.prompt_tokens_details
                     if ptd:
-                        state.turn_cache_read_tokens += (
-                            getattr(ptd, "cached_tokens", 0) or 0
-                        )
-                        # cache_creation_input_tokens is reported by some providers
-                        # (e.g. Anthropic native) but not standard OpenAI streaming.
+                        state.turn_cache_read_tokens += ptd.cached_tokens or 0
                         state.turn_cache_creation_tokens += (
-                            getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                            _extract_cache_creation_tokens(ptd)
                         )
-                    # OpenRouter embeds real generation cost here when the
-                    # request body includes `usage: {include: true}`. Absent
-                    # cost means rate-limit accounting has no authoritative
-                    # figure for this call. Non-OpenRouter providers (direct
-                    # OpenAI, etc.) will never emit this field, so log the
-                    # miss at WARNING and only once per stream to avoid
-                    # drowning error monitoring with false positives.
-                    cost_raw = getattr(chunk.usage, "cost", None)
-                    if cost_raw is None:
-                        if not state.cost_missing_logged:
-                            logger.warning(
-                                "[Baseline] usage chunk missing `cost` field "
-                                "(model=%s, prompt=%s, completion=%s) — "
-                                "rate-limit accounting will skip this call",
-                                state.model,
-                                chunk.usage.prompt_tokens,
-                                chunk.usage.completion_tokens,
-                            )
-                            state.cost_missing_logged = True
-                    else:
-                        try:
-                            cost_val = float(cost_raw)
-                        except (TypeError, ValueError):
-                            logger.error(
-                                "[Baseline] usage.cost is not numeric: %r",
-                                cost_raw,
-                            )
-                        else:
-                            if math.isfinite(cost_val) and cost_val >= 0:
-                                state.cost_usd = (state.cost_usd or 0.0) + cost_val
-                            else:
-                                logger.error(
-                                    "[Baseline] usage.cost is non-finite or "
-                                    "negative: %r — skipping rate-limit charge",
-                                    cost_val,
-                                )
+                    cost = _extract_usage_cost(chunk.usage)
+                    if cost is not None:
+                        state.cost_usd = (state.cost_usd or 0.0) + cost
+                    elif (
+                        "cost" not in (chunk.usage.model_extra or {})
+                        and not state.cost_missing_logged
+                    ):
+                        # Field absent (non-OpenRouter route, or OpenRouter
+                        # misconfigured) — warn once per stream so error
+                        # monitoring picks up persistent misses without
+                        # flooding. Invalid values already logged inside
+                        # _extract_usage_cost, so no duplicate warning here.
+                        logger.warning(
+                            "[Baseline] usage chunk missing cost (model=%s, "
+                            "prompt=%s, completion=%s) — rate-limit will "
+                            "skip this call",
+                            state.model,
+                            chunk.usage.prompt_tokens,
+                            chunk.usage.completion_tokens,
+                        )
+                        state.cost_missing_logged = True
 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
