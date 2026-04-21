@@ -299,14 +299,19 @@ def _is_anthropic_model(model: str) -> bool:
 
 
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
-    """Return a FRESH ``{"type": "ephemeral"}`` dict each call.
+    """Return a FRESH ephemeral ``cache_control`` dict each call.
+
+    The ``ttl`` is sourced from :attr:`ChatConfig.baseline_prompt_cache_ttl`
+    (default ``1h``) so the static prefix stays warm across many users'
+    requests in the same workspace cache.  Anthropic caches are keyed
+    per-workspace, so every copilot user reading the same system prompt
+    hits the same cached entry.
 
     Using a shared module-level dict would let any downstream mutation
     (e.g. the OpenAI SDK normalising fields in-place) poison every future
-    request's cache_control marker.  Construction is O(1) so the safety
-    margin is essentially free.
+    request's marker.  Construction is O(1) so the safety margin is free.
     """
-    return {"type": "ephemeral"}
+    return {"type": "ephemeral", "ttl": config.baseline_prompt_cache_ttl}
 
 
 def _fresh_anthropic_caching_headers() -> dict[str, str]:

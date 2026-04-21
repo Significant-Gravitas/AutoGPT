@@ -1235,7 +1235,7 @@ class TestApplyPromptCacheMarkers:
             {
                 "type": "text",
                 "text": "You are helpful.",
-                "cache_control": {"type": "ephemeral"},
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
             }
         ]
         # User message must be untouched.
@@ -1262,7 +1262,10 @@ class TestApplyPromptCacheMarkers:
         cached_tools = _mark_tools_with_cache_control(tools)
 
         assert "cache_control" not in cached_tools[0]
-        assert cached_tools[-1]["cache_control"] == {"type": "ephemeral"}
+        assert cached_tools[-1]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }
         # Last tool's other fields preserved.
         assert cached_tools[-1]["function"] == {"name": "b"}
 
@@ -1288,7 +1291,11 @@ class TestApplyPromptCacheMarkers:
         # If the content is already a list of blocks (e.g. caller pre-marked),
         # the helper must not overwrite it.
         pre_marked = [
-            {"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}
+            {
+                "type": "text",
+                "text": "sys",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
         ]
         messages = [{"role": "system", "content": pre_marked}]
         cached_messages = _mark_system_message_with_cache_control(messages)
@@ -1306,6 +1313,21 @@ class TestApplyPromptCacheMarkers:
         assert not _is_anthropic_model("google/gemini-2.5-pro")
         assert not _is_anthropic_model("xai/grok-4")
         assert not _is_anthropic_model("meta-llama/llama-3.3-70b-instruct")
+
+    def test_cache_control_uses_configured_ttl(self, monkeypatch):
+        """TTL comes from ChatConfig.baseline_prompt_cache_ttl — defaults
+        to 1h so the static prefix (system + tools) stays warm across
+        workspace users past the 5-min default window."""
+        from backend.copilot.baseline import service as bsvc
+
+        assert bsvc.config.baseline_prompt_cache_ttl == "1h"
+        cc = bsvc._fresh_ephemeral_cache_control()
+        assert cc == {"type": "ephemeral", "ttl": "1h"}
+        monkeypatch.setattr(bsvc.config, "baseline_prompt_cache_ttl", "5m")
+        assert bsvc._fresh_ephemeral_cache_control() == {
+            "type": "ephemeral",
+            "ttl": "5m",
+        }
 
     def test_fresh_helpers_return_distinct_objects(self):
         """Regression guard: the `_fresh_*` helpers must return a NEW dict

@@ -219,6 +219,18 @@ class ChatConfig(BaseSettings):
         "from the prefix. Set to False to fall back to passing the system "
         "prompt as a raw string.",
     )
+    baseline_prompt_cache_ttl: str = Field(
+        default="1h",
+        description="TTL for the ephemeral prompt-cache markers on the baseline "
+        "OpenRouter path. Anthropic supports only `5m` (default, 1.25x input "
+        "price for the write) or `1h` (2x input price for the write). 1h is "
+        "strictly cheaper overall when the static prefix gets >7 reads per "
+        "write-window; since the system prompt + tools array is identical "
+        "across all users in our workspace, 1h is the default so cross-user "
+        "reads amortise the higher write cost. Anthropic has no longer "
+        "(24h, permanent) TTL option — see "
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.",
+    )
     claude_agent_cli_path: str | None = Field(
         default=None,
         description="Optional explicit path to a Claude Code CLI binary. "
