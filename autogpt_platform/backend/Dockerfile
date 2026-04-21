@@ -131,10 +131,16 @@ COPY --from=builder /root/.cache/prisma-python/binaries /root/.cache/prisma-pyth
 RUN apt-get update \
     && apt-get install -y --no-install-recommends chromium fonts-liberation \
     && rm -rf /var/lib/apt/lists/* \
-    && npm install -g agent-browser \
+    && npm install -g agent-browser @anthropic-ai/claude-code@2.1.116 \
     && rm -rf /tmp/* /root/.npm
 
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
+
+# Claude Code CLI path — the copilot SDK uses this binary when
+# CHAT_CLAUDE_AGENT_CLI_PATH is set.  CLI 2.1.116 is required for
+# excludeDynamicSections=True + --resume (older CLIs crash); the SDK's
+# bundled 2.1.97 would otherwise crash on every resumed SDK turn.
+ENV CHAT_CLAUDE_AGENT_CLI_PATH=/usr/bin/claude
 
 WORKDIR /app/autogpt_platform/backend
 

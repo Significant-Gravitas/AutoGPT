@@ -117,30 +117,6 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
     assert opts.system_prompt == sdk_preset
 
 
-def test_build_system_prompt_value_on_resume_omits_exclude_flag_but_keeps_preset():
-    """On --resume turns, the helper must return a preset dict WITHOUT
-    ``exclude_dynamic_sections`` to avoid a CLI 2.1.97 crash, while still
-    keeping the preset so the Claude Code default prompt is preserved via
-    --append-system-prompt and within-session cache markers still apply."""
-    from .service import _build_system_prompt_value
-
-    result = _build_system_prompt_value(
-        "my prompt", cross_user_cache=True, include_dynamic_sections=True
-    )
-    assert isinstance(result, dict), (
-        "On resume the helper must still return a preset dict — returning a "
-        "raw string here would trigger --system-prompt (replace-mode) and "
-        "lose Claude Code's default cache-marked prefix"
-    )
-    assert result.get("type") == "preset"
-    assert result.get("preset") == "claude_code"
-    assert result.get("append") == "my prompt"
-    assert "exclude_dynamic_sections" not in result, (
-        "CLI 2.1.97 exits code 1 when excludeDynamicSections=True is combined "
-        "with --resume, so the flag must be absent on resumed turns"
-    )
-
-
 def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
     """When cross_user_cache=False (feature flag disabled globally), the
     helper returns a plain string; the CLI will receive --system-prompt

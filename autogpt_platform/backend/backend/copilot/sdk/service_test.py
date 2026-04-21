@@ -633,27 +633,16 @@ class TestSystemPromptPreset:
         assert result["append"] == ""
         assert result["exclude_dynamic_sections"] is True
 
-    def test_resume_keeps_preset_but_drops_exclude_flag(self):
-        """On --resume, preset is kept (so --append-system-prompt + CLI cache
-        markers still apply) but exclude_dynamic_sections is omitted to avoid
-        the CLI 2.1.97 crash when combined with --resume."""
-        result = _build_system_prompt_value(
-            "sys", cross_user_cache=True, include_dynamic_sections=True
-        )
-
-        assert isinstance(result, dict)
-        assert result["type"] == "preset"
-        assert result["preset"] == "claude_code"
-        assert result["append"] == "sys"
-        assert "exclude_dynamic_sections" not in result
-
-    def test_include_dynamic_sections_ignored_when_cache_off(self):
-        """When cross_user_cache=False the helper returns a raw string
-        regardless of include_dynamic_sections."""
-        result = _build_system_prompt_value(
-            "sys", cross_user_cache=False, include_dynamic_sections=True
-        )
-        assert result == "sys"
+    def test_resume_and_fresh_share_the_same_static_prefix(self):
+        """Every turn (fresh + --resume) must emit the same preset dict
+        so the cross-user cache prefix match works on all turns.  This
+        relies on CLI ≥ 2.1.98 (installed in the Docker image); older
+        CLIs would crash on --resume + excludeDynamicSections=True."""
+        fresh = _build_system_prompt_value("sys", cross_user_cache=True)
+        resumed = _build_system_prompt_value("sys", cross_user_cache=True)
+        assert fresh == resumed
+        assert isinstance(fresh, dict)
+        assert fresh.get("exclude_dynamic_sections") is True
 
     def test_default_config_is_enabled(self, _clean_config_env):
         """The default value for claude_agent_cross_user_prompt_cache is True."""
