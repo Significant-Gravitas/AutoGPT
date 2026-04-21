@@ -70,7 +70,6 @@ from ..pending_message_helpers import (
     persist_session_safe,
 )
 from ..pending_messages import (
-    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -3194,7 +3193,7 @@ async def stream_chat_completion_sdk(
             # after.  ``pending_texts`` is kept around because downstream
             # code (the executor's update_message_content_by_sequence
             # call) needs the pre-combine list.
-            pending_texts = pending_texts_from(pending_messages)
+            pending_texts_from(pending_messages)
             current_message = combine_pending_with_current(
                 pending_messages,
                 current_message,

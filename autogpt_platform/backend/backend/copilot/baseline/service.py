@@ -982,7 +982,7 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        drained_at_start_content = pending_texts_from(drained_at_start_pending)
+        pending_texts_from(drained_at_start_pending)
         # Chronological combine: pending typed BEFORE this /stream
         # request's arrival go ahead of ``message``; race-path follow-ups
         # typed AFTER (queued while /stream was still processing) go
