@@ -300,9 +300,11 @@ export function ChatMessagesContainer({
 
     // Polling tools (run_sub_session, run_agent, view_agent_output, etc.)
     // return output.status === "running" when their inline wait budget
-    // expired but the underlying work continues.  Treat as inflight so the
-    // generic "Thinking…" doesn't overwrite the tool's own still-running
-    // indicator.
+    // expired but the underlying work continues.  Treat as inflight so
+    // the generic cycling "Thinking…" doesn't overlay the polling tool
+    // card between polls.  Safe because `showThinking` still requires
+    // `status === "streaming"` — a dead / historical session won't be
+    // flagged inflight on reload.
     if (isToolStillRunning(lastPart)) return true;
 
     return false;

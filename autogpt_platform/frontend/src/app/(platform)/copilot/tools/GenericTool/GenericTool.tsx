@@ -40,7 +40,6 @@ import {
   getToolCategory,
   truncate,
 } from "./helpers";
-import { isToolStillRunning } from "../../components/ChatMessagesContainer/helpers";
 
 interface Props {
   part: ToolUIPart;
@@ -701,27 +700,13 @@ function getAccordionData(
 export function GenericTool({ part }: Props) {
   const toolName = extractToolName(part);
   const category = getToolCategory(toolName);
-
-  // Polling tools (run_sub_session, run_agent, view_agent_output, …) return
-  // output.status === "running" when their inline wait budget expired but
-  // the underlying work continues.  Render as still-streaming — spinner +
-  // "Running …" text, no accordion — so the user sees it's active instead
-  // of a static "result received" card.
-  const stillRunning = isToolStillRunning(part);
-
   const isStreaming =
-    stillRunning ||
-    part.state === "input-streaming" ||
-    part.state === "input-available";
+    part.state === "input-streaming" || part.state === "input-available";
   const isError = part.state === "output-error";
-  const animatedPart = stillRunning
-    ? ({ ...part, state: "input-available" } as ToolUIPart)
-    : part;
-  const text = getAnimationText(animatedPart, category);
+  const text = getAnimationText(part, category);
 
   const output = parseOutput(part.output);
   const hasOutput =
-    !stillRunning &&
     part.state === "output-available" &&
     !!output &&
     Object.keys(output).length > 0;
