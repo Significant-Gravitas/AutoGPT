@@ -15,7 +15,7 @@ from prisma.enums import (
     OnboardingStep,
     SubscriptionTier,
 )
-from prisma.errors import UniqueViolationError
+from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
@@ -1341,7 +1341,7 @@ async def _cancel_customer_subscriptions(
                 # queued a paid→paid downgrade and is now clicking "Cancel").
                 # Release the schedule first so the cancel flag can be set; the
                 # schedule's pending phase change is superseded by the cancel.
-                existing_schedule = sub["schedule"] if "schedule" in sub else None
+                existing_schedule = sub.schedule
                 if existing_schedule:
                     schedule_id = (
                         existing_schedule
@@ -1723,9 +1723,13 @@ async def modify_stripe_subscription_for_tier(
         # DB write fails and we re-raised, the API would return 5xx and the UI
         # would surface a failed upgrade to a user who was already charged.
         # The customer.subscription.updated webhook will reconcile the DB shortly.
+        #
+        # Only catch actual DB/connection failures — letting KeyError,
+        # AttributeError etc. propagate so programming errors surface in Sentry
+        # instead of being silently masked as benign DB-write-swallow events.
         try:
             await set_subscription_tier(user_id, tier)
-        except Exception:
+        except (PrismaError, ConnectionError, asyncio.TimeoutError):
             logger.exception(
                 "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
                 " succeeded for user %s → %s but DB tier flip failed; webhook"

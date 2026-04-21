@@ -315,7 +315,11 @@ def _make_user_with_stripe(stripe_customer_id: str | None = "cus_123") -> MagicM
 @pytest.mark.asyncio
 async def test_cancel_stripe_subscription_cancels_active():
     mock_subscriptions = MagicMock()
-    mock_subscriptions.data = [{"id": "sub_abc123"}]
+    mock_subscriptions.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_abc123", "schedule": None}, "sk_test"
+        )
+    ]
     mock_subscriptions.has_more = False
 
     with (
@@ -351,7 +355,14 @@ async def test_cancel_stripe_subscription_no_customer_id_returns_false():
 async def test_cancel_stripe_subscription_multi_partial_failure():
     """First modify raises → error propagates and subsequent subs are not scheduled."""
     mock_subscriptions = MagicMock()
-    mock_subscriptions.data = [{"id": "sub_first"}, {"id": "sub_second"}]
+    mock_subscriptions.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_first", "schedule": None}, "sk_test"
+        ),
+        stripe.Subscription.construct_from(
+            {"id": "sub_second", "schedule": None}, "sk_test"
+        ),
+    ]
     mock_subscriptions.has_more = False
 
     with (
@@ -433,7 +444,11 @@ async def test_cancel_stripe_subscription_cancels_trialing():
     active_subs.data = []
     active_subs.has_more = False
     trialing_subs = MagicMock()
-    trialing_subs.data = [{"id": "sub_trial_123"}]
+    trialing_subs.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_trial_123", "schedule": None}, "sk_test"
+        )
+    ]
     trialing_subs.has_more = False
 
     def list_side_effect(*args, **kwargs):
@@ -459,10 +474,18 @@ async def test_cancel_stripe_subscription_cancels_trialing():
 async def test_cancel_stripe_subscription_cancels_active_and_trialing():
     """Both active AND trialing subs present → both get scheduled for cancellation, no duplicates."""
     active_subs = MagicMock()
-    active_subs.data = [{"id": "sub_active_1"}]
+    active_subs.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_active_1", "schedule": None}, "sk_test"
+        )
+    ]
     active_subs.has_more = False
     trialing_subs = MagicMock()
-    trialing_subs.data = [{"id": "sub_trial_2"}]
+    trialing_subs.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_trial_2", "schedule": None}, "sk_test"
+        )
+    ]
     trialing_subs.has_more = False
 
     def list_side_effect(*args, **kwargs):
@@ -495,7 +518,11 @@ async def test_cancel_stripe_subscription_releases_attached_schedule_first():
     the API handler would surface a 502 to the user.
     """
     mock_subscriptions = MagicMock()
-    mock_subscriptions.data = [{"id": "sub_abc123", "schedule": "sub_sched_abc"}]
+    mock_subscriptions.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_abc123", "schedule": "sub_sched_abc"}, "sk_test"
+        )
+    ]
     mock_subscriptions.has_more = False
 
     call_order: list[str] = []
@@ -935,7 +962,11 @@ async def test_cancel_stripe_subscription_raises_on_cancel_error():
     import stripe as stripe_mod
 
     mock_subscriptions = MagicMock()
-    mock_subscriptions.data = [{"id": "sub_abc123"}]
+    mock_subscriptions.data = [
+        stripe.Subscription.construct_from(
+            {"id": "sub_abc123", "schedule": None}, "sk_test"
+        )
+    ]
     mock_subscriptions.has_more = False
 
     with (
