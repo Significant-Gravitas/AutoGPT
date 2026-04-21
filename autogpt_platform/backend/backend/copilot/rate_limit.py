@@ -492,7 +492,27 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
     get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
 
-    await _warn_if_stripe_subscription_drifts(user_id, tier)
+    # The DB write above is already committed; the drift check is best-effort
+    # diagnostic logging. Bound it with a short timeout so Stripe/LaunchDarkly
+    # latency never makes an admin tier update wait on the 80s default Stripe
+    # SDK timeout. On timeout/error we log and return — no blocking.
+    try:
+        await asyncio.wait_for(
+            _warn_if_stripe_subscription_drifts(user_id, tier),
+            timeout=5.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "set_user_tier: drift check timed out for user=%s admin_tier=%s",
+            user_id,
+            tier.value,
+        )
+    except Exception:
+        logger.exception(
+            "set_user_tier: drift check raised for user=%s admin_tier=%s",
+            user_id,
+            tier.value,
+        )
 
 
 async def _warn_if_stripe_subscription_drifts(
@@ -515,23 +535,29 @@ async def _warn_if_stripe_subscription_drifts(
 
     try:
         user = await get_user_by_id(user_id)
-    except Exception:
-        return
-    if not getattr(user, "stripe_customer_id", None):
-        return
-    try:
+        if not getattr(user, "stripe_customer_id", None):
+            return
         sub = await _get_active_subscription(user.stripe_customer_id)
+        if sub is None:
+            return
+        items = sub["items"].data
+        if not items:
+            return
+        price = items[0].price
+        current_price_id = price if isinstance(price, str) else price.id
+        # The LaunchDarkly-backed price lookup must live inside this try/except:
+        # an LD SDK failure (network, token revoked) here would otherwise
+        # propagate past set_user_tier's already-committed DB write and turn a
+        # best-effort diagnostic into a 500 on admin tier writes.
+        expected_price_id = await get_subscription_price_id(new_tier)
     except Exception:
+        logger.debug(
+            "_warn_if_stripe_subscription_drifts: drift lookup failed for"
+            " user=%s; skipping drift warning",
+            user_id,
+            exc_info=True,
+        )
         return
-    if sub is None:
-        return
-    items = sub["items"].data
-    if not items:
-        return
-    price = items[0].price
-    current_price_id = price if isinstance(price, str) else price.id
-
-    expected_price_id = await get_subscription_price_id(new_tier)
     if expected_price_id is not None and expected_price_id == current_price_id:
         return
     logger.warning(

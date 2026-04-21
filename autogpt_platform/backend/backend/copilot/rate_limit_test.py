@@ -581,6 +581,80 @@ class TestSetUserTier:
 
         assert tier_after == SubscriptionTier.ENTERPRISE
 
+    @pytest.mark.asyncio
+    async def test_drift_check_swallows_launchdarkly_failure(self):
+        """LaunchDarkly price-id lookup failures inside the drift check must
+        never bubble up and 500 the admin tier write — the DB update is
+        already committed by the time we check drift."""
+        mock_prisma = AsyncMock()
+        mock_prisma.update = AsyncMock(return_value=None)
+
+        mock_user = MagicMock()
+        mock_user.stripe_customer_id = "cus_abc"
+
+        mock_sub = MagicMock()
+        mock_sub.id = "sub_abc"
+        mock_sub["items"].data = [MagicMock(price=MagicMock(id="price_mismatch"))]
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.PrismaUser.prisma",
+                return_value=mock_prisma,
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=mock_user,
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=mock_sub,
+            ),
+            patch(
+                "backend.data.credit.get_subscription_price_id",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("LD SDK not initialized"),
+            ),
+        ):
+            # Must NOT raise — drift check is best-effort diagnostic only.
+            await set_user_tier(_USER, SubscriptionTier.PRO)
+
+        mock_prisma.update.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_drift_check_timeout_is_bounded(self):
+        """A Stripe call that stalls on the 80s SDK default must not block the
+        admin tier write — set_user_tier wraps the drift check in a 5s timeout
+        and logs + returns on TimeoutError."""
+        import asyncio as _asyncio
+
+        mock_prisma = AsyncMock()
+        mock_prisma.update = AsyncMock(return_value=None)
+
+        async def _never_returns(_user_id: str, _tier):
+            await _asyncio.sleep(60)
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.PrismaUser.prisma",
+                return_value=mock_prisma,
+            ),
+            patch(
+                "backend.copilot.rate_limit._warn_if_stripe_subscription_drifts",
+                side_effect=_never_returns,
+            ),
+            patch(
+                "backend.copilot.rate_limit.asyncio.wait_for",
+                new_callable=AsyncMock,
+                side_effect=_asyncio.TimeoutError,
+            ),
+        ):
+            await set_user_tier(_USER, SubscriptionTier.PRO)
+
+        # Set_user_tier still completed — the drift timeout did not propagate.
+        mock_prisma.update.assert_awaited_once()
+
 
 # ---------------------------------------------------------------------------
 # get_global_rate_limits with tiers
