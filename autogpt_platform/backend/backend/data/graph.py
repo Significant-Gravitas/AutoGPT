@@ -36,9 +36,7 @@ from backend.util.models import Pagination
 from backend.util.request import parse_url
 
 from .block import BlockInput
-from .db import BaseDbModel
-from .db import prisma as db
-from .db import query_raw_with_schema, transaction
+from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
 from .dynamic_fields import is_tool_pin, sanitize_pin_name
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, MAX_GRAPH_VERSIONS_FETCH
 from .model import CredentialsFieldInfo, CredentialsMetaInput, is_credentials_field_name
@@ -1729,22 +1727,22 @@ async def migrate_llm_models(migrate_to: LlmModel):
             if field.annotation == LlmModel:
                 llm_model_fields[block.id] = field_name
 
-    # Convert enum values to a list of strings for the SQL query
-    enum_values = [v.value for v in LlmModel]
-    escaped_enum_values = repr(tuple(enum_values))  # hack but works
+    enum_values = repr(tuple(v.value for v in LlmModel))
 
     # Update each block
     for id, path in llm_model_fields.items():
-        query = f"""
-            UPDATE platform."AgentNode"
+        query = (
+            """
+            UPDATE {schema_prefix}"AgentNode"
             SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
             WHERE "agentBlockId" = $3
             AND "constantInput" ? ($4)::text
-            AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
-            """
+            AND "constantInput"->>($4)::text NOT IN """
+            + enum_values
+        )
 
-        await db.execute_raw(
-            query,  # type: ignore - is supposed to be LiteralString
+        await execute_raw_with_schema(
+            query,
             [path],
             migrate_to.value,
             id,
