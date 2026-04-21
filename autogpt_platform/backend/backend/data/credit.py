@@ -1597,36 +1597,42 @@ async def modify_stripe_subscription_for_tier(
         return False
     sub_id = sub.id
 
-    if is_tier_downgrade(current_tier, tier):
-        await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
-        get_pending_subscription_change.cache_delete(user_id)
+    # Invalidate the cache unconditionally on exit (success OR failure): any
+    # Stripe mutation below — clearing cancel_at_period_end, releasing an old
+    # schedule, creating a new one — may have landed partially before an error
+    # was raised, and the cached pending-change state would otherwise go stale
+    # for up to 30s until the TTL expires.
+    try:
+        if is_tier_downgrade(current_tier, tier):
+            await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
+            return True
+
+        # Upgrade path. If a schedule is attached from a previous pending
+        # downgrade, release it first — an upgrade expresses the user's
+        # intent to be on this tier immediately, which overrides any pending
+        # deferred change. Ignore terminal-state errors from release.
+        if sub.schedule:
+            existing_schedule_id = (
+                sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+            )
+            await _release_schedule_ignoring_terminal(
+                existing_schedule_id, "modify_stripe_subscription_for_tier"
+            )
+
+        await stripe.Subscription.modify_async(
+            sub_id,
+            items=[{"id": items[0].id, "price": price_id}],
+            proration_behavior="create_prorations",
+        )
+        logger.info(
+            "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
+            sub_id,
+            user_id,
+            tier,
+        )
         return True
-
-    # Upgrade path. If a schedule is attached from a previous pending
-    # downgrade, release it first — an upgrade expresses the user's
-    # intent to be on this tier immediately, which overrides any pending
-    # deferred change. Ignore terminal-state errors from release.
-    if sub.schedule:
-        existing_schedule_id = (
-            sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
-        )
-        await _release_schedule_ignoring_terminal(
-            existing_schedule_id, "modify_stripe_subscription_for_tier"
-        )
-
-    await stripe.Subscription.modify_async(
-        sub_id,
-        items=[{"id": items[0].id, "price": price_id}],
-        proration_behavior="create_prorations",
-    )
-    logger.info(
-        "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
-        sub_id,
-        user_id,
-        tier,
-    )
-    get_pending_subscription_change.cache_delete(user_id)
-    return True
+    finally:
+        get_pending_subscription_change.cache_delete(user_id)
 
 
 async def release_pending_subscription_schedule(user_id: str) -> bool:
