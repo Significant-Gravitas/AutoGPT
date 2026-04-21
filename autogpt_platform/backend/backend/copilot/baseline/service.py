@@ -1835,6 +1835,8 @@ async def stream_chat_completion_baseline(
             prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
             total_tokens=billed_prompt + state.turn_completion_tokens,
+            cache_read_tokens=state.turn_cache_read_tokens,
+            cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
     yield StreamFinish()
