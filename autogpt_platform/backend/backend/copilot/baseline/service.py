@@ -352,6 +352,13 @@ class _BaselineStreamState:
     # block only appends the *new* assistant text (avoiding duplication of
     # round-1 text when round-1 entries were cleared from session_messages).
     _flushed_assistant_text_len: int = 0
+    # Memoised system-message dict with cache_control applied.  The system
+    # prompt is static within a session, so we build it once on the first
+    # LLM round and reuse the same dict on subsequent rounds — avoiding
+    # an O(N) dict-copy of the growing ``messages`` list on every tool-call
+    # iteration.  ``None`` means "not yet computed" (or the first message
+    # wasn't a system role, so no marking applies).
+    cached_system_message: dict[str, Any] | None = None
 
 
 def _is_anthropic_model(model: str) -> bool:
@@ -430,10 +437,10 @@ def _mark_tools_with_cache_control(
     return cached
 
 
-def _mark_system_message_with_cache_control(
-    messages: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Return a copy of *messages* with ``cache_control`` on the system block.
+def _build_cached_system_message(
+    system_message: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a copy of *system_message* with ``cache_control`` applied.
 
     Anthropic's cache uses prefix-match with up to 4 explicit breakpoints.
     Combined with the last-tool marker this gives two cache segments — the
@@ -443,21 +450,38 @@ def _mark_system_message_with_cache_control(
     The system message is rebuilt via spread (``{**original, ...}``) so any
     unknown fields the caller set (e.g. ``name``) survive the transformation.
     Non-Anthropic models silently ignore the markers.
+
+    Returns the original dict (shallow-copied) unchanged when the content
+    shape is unsupported (missing / non-string / empty) — callers should
+    splice it into the message list as-is in that case.
+    """
+    sys_copy = dict(system_message)
+    sys_content = sys_copy.get("content")
+    if isinstance(sys_content, str) and sys_content:
+        sys_copy["content"] = [
+            {
+                "type": "text",
+                "text": sys_content,
+                "cache_control": _fresh_ephemeral_cache_control(),
+            }
+        ]
+    return sys_copy
+
+
+def _mark_system_message_with_cache_control(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of *messages* with ``cache_control`` on the system block.
+
+    Thin wrapper around :func:`_build_cached_system_message` that preserves
+    the original list shape.  Prefer the memoised path in
+    ``_baseline_llm_caller`` (which builds the cached system dict once per
+    session) for hot-loop callers; this function is retained for call sites
+    outside the tool-call loop where per-call copying is acceptable.
     """
     cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
     if cached_messages and cached_messages[0].get("role") == "system":
-        sys_content = cached_messages[0].get("content")
-        if isinstance(sys_content, str) and sys_content:
-            cached_messages[0] = {
-                **cached_messages[0],
-                "content": [
-                    {
-                        "type": "text",
-                        "text": sys_content,
-                        "cache_control": _fresh_ephemeral_cache_control(),
-                    }
-                ],
-            }
+        cached_messages[0] = _build_cached_system_message(cached_messages[0])
     return cached_messages
 
 
@@ -492,7 +516,21 @@ async def _baseline_llm_caller(
         # caching headers, always sent.
         is_anthropic = _is_anthropic_model(state.model)
         if is_anthropic:
-            final_messages = _mark_system_message_with_cache_control(messages)
+            # Build the cached system dict once per session and splice it in
+            # on each round.  The full ``messages`` list grows with every
+            # tool call, so copying the entire list just to mutate index 0
+            # scales with conversation length (sentry flagged this); this
+            # splice touches only list slots, not message contents.
+            if (
+                state.cached_system_message is None
+                and messages
+                and messages[0].get("role") == "system"
+            ):
+                state.cached_system_message = _build_cached_system_message(messages[0])
+            if state.cached_system_message is not None and messages:
+                final_messages = [state.cached_system_message, *messages[1:]]
+            else:
+                final_messages = messages
             extra_headers = _fresh_anthropic_caching_headers()
         else:
             final_messages = messages

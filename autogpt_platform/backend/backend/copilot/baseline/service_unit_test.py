@@ -13,6 +13,7 @@ from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
     _baseline_llm_caller,
     _BaselineStreamState,
+    _build_cached_system_message,
     _compress_session_messages,
     _extract_cache_creation_tokens,
     _fresh_anthropic_caching_headers,
@@ -611,11 +612,18 @@ def _make_usage_chunk(
     chunk.usage.model_extra = usage_extras
 
     if cached_tokens is not None or cache_creation_input_tokens is not None:
-        ptd = MagicMock()
-        ptd.cached_tokens = cached_tokens or 0
-        ptd.model_extra = {
-            "cache_creation_input_tokens": cache_creation_input_tokens or 0
-        }
+        # Build a real ``PromptTokensDetails`` so ``getattr(ptd,
+        # "cache_write_tokens", None)`` returns ``None`` on this SDK version
+        # (rather than a truthy MagicMock attribute) and the extraction
+        # helper's typed-attr vs model_extra fallback resolves correctly.
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": cached_tokens or 0})
+        if cache_creation_input_tokens is not None:
+            if ptd.model_extra is None:
+                object.__setattr__(ptd, "__pydantic_extra__", {})
+            assert ptd.model_extra is not None
+            ptd.model_extra["cache_creation_input_tokens"] = cache_creation_input_tokens
         chunk.usage.prompt_tokens_details = ptd
     else:
         chunk.usage.prompt_tokens_details = None
@@ -1396,3 +1404,107 @@ class TestApplyPromptCacheMarkers:
 
         ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
         assert _extract_cache_creation_tokens(ptd) == 0
+
+    def test_build_cached_system_message_applies_cache_control(self):
+        """The single-message helper wraps the string content in a text block
+        with an ephemeral cache_control marker."""
+        out = _build_cached_system_message({"role": "system", "content": "hi"})
+        assert out["role"] == "system"
+        assert out["content"] == [
+            {
+                "type": "text",
+                "text": "hi",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
+        ]
+
+    def test_build_cached_system_message_preserves_extra_fields(self):
+        """Unknown keys (e.g. ``name``) survive the transformation."""
+        out = _build_cached_system_message(
+            {"role": "system", "content": "sys", "name": "dev"}
+        )
+        assert out["name"] == "dev"
+        assert out["role"] == "system"
+
+    def test_build_cached_system_message_non_string_passthrough(self):
+        """Pre-marked list content is returned as-is (shallow-copied)."""
+        pre_marked = [
+            {
+                "type": "text",
+                "text": "sys",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
+        ]
+        out = _build_cached_system_message({"role": "system", "content": pre_marked})
+        assert out["content"] is pre_marked
+
+    @pytest.mark.asyncio
+    async def test_baseline_llm_caller_memoises_cached_system_message(self):
+        """The cached system dict is built once and reused across rounds.
+
+        Guards against the perf regression where the entire (growing)
+        ``messages`` list was copied on every tool-call iteration just to
+        mark the static system prompt.
+        """
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+        chunk = _make_usage_chunk(prompt_tokens=10, completion_tokens=5)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[_make_stream_mock(chunk), _make_stream_mock(chunk)]
+        )
+
+        messages: list[dict] = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "hi"},
+        ]
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(messages=messages, tools=[], state=state)
+            first_cached = state.cached_system_message
+            assert first_cached is not None
+            # Simulate the tool-call loop growing ``messages`` between rounds.
+            messages.append({"role": "assistant", "content": "ok"})
+            messages.append({"role": "user", "content": "follow up"})
+            await _baseline_llm_caller(messages=messages, tools=[], state=state)
+
+        # Same dict instance reused — not rebuilt per round.
+        assert state.cached_system_message is first_cached
+
+        # Second call's first message is the memoised system dict (not a new copy).
+        second_call_messages = mock_client.chat.completions.create.call_args_list[1][1][
+            "messages"
+        ]
+        assert second_call_messages[0] is first_cached
+        # And the tail messages were spliced in, not re-copied.
+        assert second_call_messages[1] is messages[1]
+        assert second_call_messages[-1] is messages[-1]
+
+    @pytest.mark.asyncio
+    async def test_baseline_llm_caller_skips_memoisation_for_non_anthropic(self):
+        """Non-Anthropic routes pass messages through unmodified — no cache
+        dict is built, no list splicing happens."""
+        state = _BaselineStreamState(model="openai/gpt-4o")
+        chunk = _make_usage_chunk(prompt_tokens=10, completion_tokens=5)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        messages: list[dict] = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+        ]
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(messages=messages, tools=[], state=state)
+
+        assert state.cached_system_message is None
+        # The exact same list object reaches the provider (no copy needed).
+        call_messages = mock_client.chat.completions.create.call_args[1]["messages"]
+        assert call_messages is messages
