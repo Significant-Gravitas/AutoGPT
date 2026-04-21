@@ -140,9 +140,17 @@ class CoPilotUsagePublic(BaseModel):
         def window(w: UsageWindow) -> UsageWindowPublic | None:
             if w.limit <= 0:
                 return None
-            pct = 100.0 * w.used / w.limit
+            # When at/over the cap, snap to exactly 100.0 so the UI's
+            # rounded display and its exhaustion check (`percent_used >= 100`)
+            # agree. Without this, e.g. 99.95% would render as "100% used"
+            # via Math.round but fail the exhaustion check, leaving the
+            # reset button hidden while the bar appears full.
+            if w.used >= w.limit:
+                pct = 100.0
+            else:
+                pct = round(100.0 * w.used / w.limit, 1)
             return UsageWindowPublic(
-                percent_used=round(min(100.0, pct), 1),
+                percent_used=pct,
                 resets_at=w.resets_at,
             )
 
