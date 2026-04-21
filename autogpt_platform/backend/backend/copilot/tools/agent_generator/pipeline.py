@@ -103,8 +103,8 @@ async def fix_validate_and_save(
             errors = validator.errors
             return ErrorResponse(
                 message=(
-                    f"The agent has {len(errors)} validation error(s):\n"
-                    + "\n".join(f"- {e}" for e in errors[:5])
+                    f"Validation failed with {len(errors)} error"
+                    f"{'s' if len(errors) != 1 else ''}."
                 ),
                 error="validation_failed",
                 details={"errors": errors},
