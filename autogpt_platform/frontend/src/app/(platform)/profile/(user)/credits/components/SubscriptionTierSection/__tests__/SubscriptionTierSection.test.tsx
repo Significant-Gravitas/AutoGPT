@@ -473,4 +473,60 @@ describe("SubscriptionTierSection", () => {
     );
     expect(dialog.textContent).not.toMatch(/take effect immediately/i);
   });
+
+  it("shows destructive toast, tierError and still refetches when cancel-pending fails", async () => {
+    // The catch branch inside cancelPendingChange is load-bearing: it surfaces
+    // the error to the user AND re-issues a refetch so the UI reconciles if
+    // the server actually succeeded (webhook delivered after our client-side
+    // error).
+    const mutateFn = vi
+      .fn()
+      .mockRejectedValue(new Error("Stripe webhook failed"));
+    const refetchFn = vi.fn();
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+      mutateFn,
+      refetchFn,
+    });
+    render(<SubscriptionTierSection />);
+
+    const keepButtons = screen.getAllByRole("button", {
+      name: /keep business/i,
+    });
+    fireEvent.click(keepButtons[0]);
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toBeDefined();
+      expect(screen.getByText(/stripe webhook failed/i)).toBeDefined();
+    });
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Failed to cancel pending change",
+        variant: "destructive",
+      }),
+    );
+    expect(refetchFn).toHaveBeenCalled();
+  });
+
+  it("renders FREE cancellation copy in banner when pending_tier is FREE", () => {
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "FREE",
+        pendingTierEffectiveAt: new Date("2026-05-15T00:00:00Z"),
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    // Cancellation copy — distinct from the generic downgrade phrasing.
+    expect(
+      screen.getByText(/scheduled to cancel your subscription on/i),
+    ).toBeDefined();
+    expect(screen.getByText(/May 15, 2026/)).toBeDefined();
+    // Must NOT render the "downgrade to" phrasing on FREE cancellation.
+    expect(screen.queryByText(/scheduled to downgrade to/i)).toBeNull();
+  });
 });
