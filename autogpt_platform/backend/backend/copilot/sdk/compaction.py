@@ -196,7 +196,6 @@ class CompactionTracker:
         self._active_transcript_path: str = ""
         self._pending_transcript_paths: deque[str] = deque()
         self._attempted_sources: list[str] = []
-        self._completed_count = 0
         self._completed_sources: list[str] = []
 
     @property
@@ -209,40 +208,31 @@ class CompactionTracker:
 
     @property
     def completed_count(self) -> int:
-        return self._completed_count
+        return len(self._completed_sources)
 
     @property
     def completed_sources(self) -> tuple[str, ...]:
         return tuple(self._completed_sources)
 
     def get_observability_metadata(self) -> dict[str, Any]:
-        attempt_count = self.attempt_count
-        if attempt_count <= 0 and self._completed_count <= 0:
+        if not self._attempted_sources and not self._completed_sources:
             return {}
 
         metadata: dict[str, Any] = {
-            "compaction_attempt_count": attempt_count,
+            "compaction_attempt_count": self.attempt_count,
             "compaction_attempt_sources": _summarize_sources(self._attempted_sources),
         }
-        if self._completed_count > 0:
-            metadata["compaction_count"] = self._completed_count
+        if self._completed_sources:
+            metadata["compaction_count"] = self.completed_count
             metadata["compaction_sources"] = _summarize_sources(self._completed_sources)
         return metadata
 
     def get_log_summary(self) -> dict[str, Any]:
         return {
             "attempt_count": self.attempt_count,
-            "attempt_sources": (
-                _summarize_sources(self._attempted_sources)
-                if self._attempted_sources
-                else ""
-            ),
-            "completed_count": self._completed_count,
-            "completed_sources": (
-                _summarize_sources(self._completed_sources)
-                if self._completed_sources
-                else ""
-            ),
+            "attempt_sources": _summarize_sources(self._attempted_sources),
+            "completed_count": self.completed_count,
+            "completed_sources": _summarize_sources(self._completed_sources),
         }
 
     def on_compact(self, transcript_path: str = "") -> None:
@@ -257,7 +247,6 @@ class CompactionTracker:
     def emit_pre_query(self, session: ChatSession) -> list[StreamBaseResponse]:
         """Emit + persist a self-contained compaction tool call."""
         self._attempted_sources.append("pre_query")
-        self._completed_count += 1
         self._completed_sources.append("pre_query")
         return emit_compaction(session)
 
@@ -314,7 +303,6 @@ class CompactionTracker:
         self._start_emitted = False
         self._tool_call_id = ""
         self._active_transcript_path = ""
-        self._completed_count += 1
         self._completed_sources.append("sdk_internal")
         _persist(session, persist_id, COMPACTION_DONE_MSG)
         return CompactionResult(
