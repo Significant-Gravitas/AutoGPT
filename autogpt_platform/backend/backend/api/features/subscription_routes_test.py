@@ -60,6 +60,27 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
+    """Stub Stripe price + proration lookups used by get_subscription_status.
+
+    The POST /credits/subscription handler now returns the full subscription
+    status payload from every branch (same-tier, FREE downgrade, paid→paid
+    modify, checkout creation), so every POST test implicitly hits these
+    helpers.  Individual tests can override via their own mocker.patch call.
+    """
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [
@@ -420,30 +441,77 @@ def test_update_subscription_tier_enterprise_blocked(
     set_tier_mock.assert_not_awaited()
 
 
-def test_update_subscription_tier_same_tier_is_noop(
+def test_update_subscription_tier_same_tier_releases_pending_change(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """POST /credits/subscription for the user's current paid tier returns 200 with empty URL.
+    """POST /credits/subscription for the user's current tier releases any pending change.
 
-    Without this guard a duplicate POST (double-click, browser retry, stale page) would
-    create a second Stripe Checkout Session for the same price, potentially billing the
-    user twice until the webhook reconciliation fires.
+    "Stay on my current tier" — the collapsed replacement for the old
+    /credits/subscription/cancel-pending route. Always calls
+    release_pending_subscription_schedule (idempotent when nothing is pending)
+    and returns the refreshed status with url="". Never creates a Checkout
+    Session — that would double-charge a user who double-clicks their own tier.
     """
     mock_user = Mock()
-    mock_user.subscription_tier = SubscriptionTier.PRO
-
-    async def mock_feature_enabled(*args, **kwargs):
-        return True
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,
         return_value=mock_user,
     )
-    mocker.patch(
+    release_mock = mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+    )
+    feature_mock = mocker.patch(
         "backend.api.features.v1.is_feature_enabled",
-        side_effect=mock_feature_enabled,
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "BUSINESS",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["tier"] == "BUSINESS"
+    assert data["url"] == ""
+    release_mock.assert_awaited_once_with(TEST_USER_ID)
+    checkout_mock.assert_not_awaited()
+    # Same-tier branch short-circuits before the payment-flag check.
+    feature_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_same_tier_no_pending_change_returns_status(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Same-tier request when nothing is pending still returns status with url=""."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    release_mock = mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     checkout_mock = mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
@@ -460,8 +528,48 @@ def test_update_subscription_tier_same_tier_is_noop(
     )
 
     assert response.status_code == 200
-    assert response.json()["url"] == ""
+    data = response.json()
+    assert data["tier"] == "PRO"
+    assert data["url"] == ""
+    assert data["pending_tier"] is None
+    release_mock.assert_awaited_once_with(TEST_USER_ID)
     checkout_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_same_tier_stripe_error_returns_502(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Same-tier request surfaces a 502 when Stripe release fails.
+
+    Carries forward the error contract from the removed
+    /credits/subscription/cancel-pending route so clients keep seeing 502 for
+    transient Stripe failures.
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        side_effect=stripe.StripeError("network"),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "BUSINESS",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 502
+    assert "contact support" in response.json()["detail"].lower()
 
 
 def test_update_subscription_tier_free_with_payment_schedules_cancel_and_does_not_update_db(
@@ -896,64 +1004,6 @@ def test_get_subscription_status_no_pending_tier(
     data = response.json()
     assert data["pending_tier"] is None
     assert data["pending_tier_effective_at"] is None
-
-
-def test_cancel_pending_subscription_change_calls_release_and_returns_status(
-    client: fastapi.testclient.TestClient,
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """POST /credits/subscription/cancel-pending releases the schedule and returns status."""
-    mock_user = Mock()
-    mock_user.subscription_tier = SubscriptionTier.BUSINESS
-
-    mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
-        new_callable=AsyncMock,
-        return_value=mock_user,
-    )
-    mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    mocker.patch(
-        "backend.api.features.v1.get_proration_credit_cents",
-        new_callable=AsyncMock,
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.v1.get_pending_subscription_change",
-        new_callable=AsyncMock,
-        return_value=None,
-    )
-    release_mock = mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-
-    response = client.post("/credits/subscription/cancel-pending")
-
-    assert response.status_code == 200
-    release_mock.assert_awaited_once_with(TEST_USER_ID)
-    data = response.json()
-    assert data["tier"] == "BUSINESS"
-    assert data["pending_tier"] is None
-
-
-def test_cancel_pending_subscription_change_stripe_error_returns_502(
-    client: fastapi.testclient.TestClient,
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    mocker.patch(
-        "backend.api.features.v1.release_pending_subscription_schedule",
-        side_effect=stripe.StripeError("network"),
-    )
-
-    response = client.post("/credits/subscription/cancel-pending")
-
-    assert response.status_code == 502
-    assert "contact support" in response.json()["detail"].lower()
 
 
 def test_update_subscription_tier_downgrade_paid_to_paid_schedules(

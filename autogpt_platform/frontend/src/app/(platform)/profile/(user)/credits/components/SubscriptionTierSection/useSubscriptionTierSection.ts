@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  useCancelPendingSubscriptionChange,
   useGetSubscriptionStatus,
   useUpdateSubscriptionTier,
 } from "@/app/api/__generated__/endpoints/credits/credits";
@@ -42,9 +41,6 @@ export function useSubscriptionTierSection() {
     isPending,
     variables,
   } = useUpdateSubscriptionTier();
-
-  const { mutateAsync: doCancelPending, isPending: isCancellingPending } =
-    useCancelPendingSubscriptionChange();
 
   useEffect(() => {
     if (subscriptionStatus === "success") {
@@ -122,9 +118,20 @@ export function useSubscriptionTierSection() {
   }
 
   async function cancelPendingChange() {
+    if (!subscription) return;
     setTierError(null);
     try {
-      await doCancelPending();
+      // "Stay on my current tier" is a same-tier POST: the backend collapses
+      // cancel-pending into update-tier and releases any pending schedule.
+      // success_url/cancel_url are unused in this branch (no Stripe Checkout
+      // is created) but are sent to satisfy the request schema.
+      await doUpdateTier({
+        data: {
+          tier: subscription.tier as SubscriptionTierRequestTier,
+          success_url: `${window.location.origin}${window.location.pathname}`,
+          cancel_url: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
       await refetch();
       toast({
         title: "Pending subscription change cancelled.",
@@ -160,7 +167,6 @@ export function useSubscriptionTierSection() {
     error: fetchError,
     tierError,
     isPending,
-    isCancellingPending,
     pendingTier,
     pendingUpgradeTier,
     setPendingUpgradeTier,

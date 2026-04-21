@@ -2470,7 +2470,7 @@
       },
       "post": {
         "tags": ["v1", "credits"],
-        "summary": "Start a Stripe Checkout session to upgrade subscription tier",
+        "summary": "Update subscription tier or start a Stripe Checkout session",
         "operationId": "updateSubscriptionTier",
         "requestBody": {
           "content": {
@@ -2488,7 +2488,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SubscriptionCheckoutResponse"
+                  "$ref": "#/components/schemas/SubscriptionStatusResponse"
                 }
               }
             }
@@ -2503,30 +2503,6 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/credits/subscription/cancel-pending": {
-      "post": {
-        "tags": ["v1", "credits"],
-        "summary": "Cancel a pending scheduled subscription change",
-        "description": "Revert a pending scheduled tier change (paid\u2192paid downgrade or paid\u2192FREE cancel).\n\nReleases any Subscription Schedule attached to the user's active subscription\nand clears ``cancel_at_period_end`` so the subscription continues on its\ncurrent tier. Returns the refreshed subscription status.",
-        "operationId": "cancelPendingSubscriptionChange",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SubscriptionStatusResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -14232,12 +14208,6 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
-      "SubscriptionCheckoutResponse": {
-        "properties": { "url": { "type": "string", "title": "Url" } },
-        "type": "object",
-        "required": ["url"],
-        "title": "SubscriptionCheckoutResponse"
-      },
       "SubscriptionStatusResponse": {
         "properties": {
           "tier": {
@@ -14268,6 +14238,12 @@
               { "type": "null" }
             ],
             "title": "Pending Tier Effective At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "default": "",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE \u2192 paid upgrade). Empty string in all other branches \u2014 the client redirects to this URL when non-empty."
           }
         },
         "type": "object",

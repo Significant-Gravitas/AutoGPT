@@ -37,13 +37,10 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 // Mock generated API hooks
 const mockUseGetSubscriptionStatus = vi.fn();
 const mockUseUpdateSubscriptionTier = vi.fn();
-const mockUseCancelPendingSubscriptionChange = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useGetSubscriptionStatus: (opts: unknown) =>
     mockUseGetSubscriptionStatus(opts),
   useUpdateSubscriptionTier: () => mockUseUpdateSubscriptionTier(),
-  useCancelPendingSubscriptionChange: () =>
-    mockUseCancelPendingSubscriptionChange(),
 }));
 
 // Mock Dialog (Radix portals don't work in happy-dom)
@@ -101,7 +98,6 @@ function setupMocks({
   mutateFn = vi.fn().mockResolvedValue({ status: 200, data: { url: "" } }),
   isPending = false,
   variables = undefined as { data?: { tier?: string } } | undefined,
-  cancelPendingFn = vi.fn().mockResolvedValue({ status: 200, data: undefined }),
   refetchFn = vi.fn(),
 } = {}) {
   // The hook uses select: (data) => (data.status === 200 ? data.data : null)
@@ -118,18 +114,13 @@ function setupMocks({
     isPending,
     variables,
   });
-  mockUseCancelPendingSubscriptionChange.mockReturnValue({
-    mutateAsync: cancelPendingFn,
-    isPending: false,
-  });
-  return { cancelPendingFn, refetchFn, mutateFn };
+  return { refetchFn, mutateFn };
 }
 
 afterEach(() => {
   cleanup();
   mockUseGetSubscriptionStatus.mockReset();
   mockUseUpdateSubscriptionTier.mockReset();
-  mockUseCancelPendingSubscriptionChange.mockReset();
   mockToast.mockReset();
   mockRouterReplace.mockReset();
   mockSearchParams.delete("subscription");
@@ -398,10 +389,13 @@ describe("SubscriptionTierSection", () => {
     expect(screen.queryByRole("button", { name: /keep business/i })).toBeNull();
   });
 
-  it("clicking Keep [CurrentTier] in banner calls cancel-pending mutation and refetches", async () => {
-    const cancelPendingFn = vi
+  it("clicking Keep [CurrentTier] in banner submits a same-tier update and refetches", async () => {
+    // The cancel-pending route was collapsed into POST /credits/subscription as
+    // a same-tier request. Clicking "Keep BUSINESS" calls useUpdateSubscriptionTier
+    // with tier === current tier so the backend releases any pending schedule.
+    const mutateFn = vi
       .fn()
-      .mockResolvedValue({ status: 200, data: undefined });
+      .mockResolvedValue({ status: 200, data: { url: "", tier: "BUSINESS" } });
     const refetchFn = vi.fn();
     setupMocks({
       subscription: makeSubscription({
@@ -409,7 +403,7 @@ describe("SubscriptionTierSection", () => {
         pendingTier: "PRO",
         pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
       }),
-      cancelPendingFn,
+      mutateFn,
       refetchFn,
     });
     render(<SubscriptionTierSection />);
@@ -421,7 +415,11 @@ describe("SubscriptionTierSection", () => {
     fireEvent.click(keepButtons[0]);
 
     await waitFor(() => {
-      expect(cancelPendingFn).toHaveBeenCalled();
+      expect(mutateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tier: "BUSINESS" }),
+        }),
+      );
       expect(refetchFn).toHaveBeenCalled();
     });
     expect(mockToast).toHaveBeenCalledWith(
@@ -431,17 +429,17 @@ describe("SubscriptionTierSection", () => {
     );
   });
 
-  it("clicking Keep [CurrentTier] on the current tier card calls cancel-pending mutation", async () => {
-    const cancelPendingFn = vi
+  it("clicking Keep [CurrentTier] on the current tier card submits a same-tier update", async () => {
+    const mutateFn = vi
       .fn()
-      .mockResolvedValue({ status: 200, data: undefined });
+      .mockResolvedValue({ status: 200, data: { url: "", tier: "BUSINESS" } });
     setupMocks({
       subscription: makeSubscription({
         tier: "BUSINESS",
         pendingTier: "PRO",
         pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
       }),
-      cancelPendingFn,
+      mutateFn,
     });
     render(<SubscriptionTierSection />);
 
@@ -452,7 +450,11 @@ describe("SubscriptionTierSection", () => {
     fireEvent.click(keepButtons[keepButtons.length - 1]);
 
     await waitFor(() => {
-      expect(cancelPendingFn).toHaveBeenCalled();
+      expect(mutateFn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ tier: "BUSINESS" }),
+        }),
+      );
     });
   });
 

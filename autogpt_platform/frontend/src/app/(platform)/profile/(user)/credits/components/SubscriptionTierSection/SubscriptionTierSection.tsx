@@ -14,7 +14,6 @@ export function SubscriptionTierSection() {
     error,
     tierError,
     isPending,
-    isCancellingPending,
     pendingTier,
     pendingUpgradeTier,
     setPendingUpgradeTier,
@@ -108,7 +107,7 @@ export function SubscriptionTierSection() {
           pendingTier={pendingTierFromSubscription}
           pendingEffectiveAt={subscription.pending_tier_effective_at}
           onKeepCurrent={() => void cancelPendingChange()}
-          isBusy={isCancellingPending}
+          isBusy={isPending}
         />
       ) : null}
 
@@ -155,12 +154,10 @@ export function SubscriptionTierSection() {
                 <Button
                   className="w-full"
                   variant="outline"
-                  disabled={isCancellingPending}
+                  disabled={isPending}
                   onClick={() => void cancelPendingChange()}
                 >
-                  {isCancellingPending
-                    ? "Cancelling..."
-                    : `Keep ${currentLabel}`}
+                  {isPending ? "Cancelling..." : `Keep ${currentLabel}`}
                 </Button>
               )}
 
