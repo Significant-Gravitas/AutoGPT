@@ -1,5 +1,7 @@
 import hashlib
 
+import pytest
+
 from autogpt_libs.api_key.keysmith import APIKeySmith
 
 
@@ -77,3 +79,10 @@ def test_invalid_salt_format():
 
     # Invalid salt format should fail gracefully
     assert keysmith.verify_key(key.key, key.hash, "invalid_hex") is False
+
+
+def test_hash_key_rejects_missing_prefix():
+    keysmith = APIKeySmith()
+
+    with pytest.raises(ValueError, match=keysmith.PREFIX):
+        keysmith.hash_key("no_prefix_key")
