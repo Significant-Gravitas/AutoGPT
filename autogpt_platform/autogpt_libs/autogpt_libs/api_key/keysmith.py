@@ -56,9 +56,13 @@ class APIKeySmith:
             return False
 
     def hash_key(self, raw_key: str) -> tuple[str, str]:
-        """Migrate a legacy hash to secure hash format."""
+        """Hash a raw API key with a fresh salt, returning (hash, salt) as hex.
+
+        Used both for generating new keys and for migrating legacy SHA256-hashed
+        keys to the Scrypt format on next successful verification.
+        """
         if not raw_key.startswith(self.PREFIX):
-            raise ValueError("Key without 'agpt_' prefix would fail validation")
+            raise ValueError(f"Key without {self.PREFIX!r} prefix would fail validation")
 
         salt = self._generate_salt()
         hash = self._hash_key_with_salt(raw_key, salt)
