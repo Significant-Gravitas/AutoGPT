@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ArtifactDragHandle } from "./ArtifactDragHandle";
+import { ArtifactDragHandle } from "../ArtifactDragHandle";
 
 function renderHandle(onWidthChange = vi.fn(), panelWidth = 600) {
   const utils = render(

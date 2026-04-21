@@ -3,7 +3,7 @@ import {
   buildReactArtifactSrcDoc,
   collectPreviewStyles,
   escapeHtml,
-} from "./reactArtifactPreview";
+} from "../reactArtifactPreview";
 
 describe("escapeHtml", () => {
   it("escapes &, <, >, \", '", () => {
