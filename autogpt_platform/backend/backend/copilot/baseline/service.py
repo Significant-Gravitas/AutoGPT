@@ -128,10 +128,38 @@ _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 # Matches characters unsafe for filenames.
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
 
-# OpenRouter-specific extra_body flag that embeds the real generation cost
-# into the final usage chunk. Module-level constant so we don't reallocate
-# an identical dict on every streaming call.
-_OPENROUTER_INCLUDE_USAGE_COST = {"usage": {"include": True}}
+
+def _fresh_openrouter_extra_body() -> dict[str, Any]:
+    """Return a FRESH OpenRouter ``extra_body`` dict on every call.
+
+    Two things combined in one payload:
+
+    1. ``usage.include = True`` — asks OpenRouter to embed real generation
+       cost into the final streaming usage chunk so the rate limiter can
+       charge actual dollars instead of token estimates.
+    2. ``provider.order = ["anthropic"]`` with ``allow_fallbacks: false``
+       — pins the request to Anthropic-direct.  OpenRouter fronts three
+       separate upstreams for Claude (Anthropic, Bedrock, Vertex) and
+       each upstream maintains its own prompt cache.  Without pinning,
+       OpenRouter's "sticky routing after a cached request" is best-
+       effort and does slip — seen in production as cache hits on Turn 2
+       followed by a cold-cache miss on Turn 3 (full 30K cache write).
+       Pinning guarantees every request lands on the same cache pool.
+       Per OpenRouter docs, cache_control markers already auto-exclude
+       Bedrock/Vertex (they don't support top-level cache_control) but
+       the explicit pin closes the last gap.
+
+    Using a FRESH dict (not a module-level constant) avoids downstream
+    mutation poisoning the shared state — same reasoning as
+    :func:`_fresh_ephemeral_cache_control`.
+    """
+    return {
+        "usage": {"include": True},
+        "provider": {
+            "order": ["anthropic"],
+            "allow_fallbacks": False,
+        },
+    }
 
 
 def _extract_usage_cost(usage: CompletionUsage) -> float | None:
@@ -541,7 +569,7 @@ async def _baseline_llm_caller(
             "messages": typed_messages,
             "stream": True,
             "stream_options": {"include_usage": True},
-            "extra_body": _OPENROUTER_INCLUDE_USAGE_COST,
+            "extra_body": _fresh_openrouter_extra_body(),
         }
         if extra_headers:
             create_kwargs["extra_headers"] = extra_headers

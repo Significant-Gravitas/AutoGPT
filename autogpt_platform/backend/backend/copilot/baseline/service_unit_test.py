@@ -18,6 +18,7 @@ from backend.copilot.baseline.service import (
     _extract_cache_creation_tokens,
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
+    _fresh_openrouter_extra_body,
     _is_anthropic_model,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
@@ -1335,6 +1336,21 @@ class TestApplyPromptCacheMarkers:
             "type": "ephemeral",
             "ttl": "5m",
         }
+
+    def test_openrouter_extra_body_pins_anthropic_provider(self):
+        """Every OpenRouter request must pin to Anthropic-direct to keep the
+        prompt cache pool consistent.  OpenRouter fronts three separate
+        Claude upstreams (Anthropic, Bedrock, Vertex) each with its own
+        cache — sticky-routing is best-effort and slips in practice,
+        causing the cold-cache Turn-3-after-warm-Turn-2 pattern we
+        reproduced."""
+        body = _fresh_openrouter_extra_body()
+        assert body["usage"] == {"include": True}
+        assert body["provider"]["order"] == ["anthropic"]
+        assert body["provider"]["allow_fallbacks"] is False
+        # Returns a FRESH dict so downstream SDK mutation can't poison
+        # the next request's provider pin.
+        assert _fresh_openrouter_extra_body() is not _fresh_openrouter_extra_body()
 
     def test_fresh_helpers_return_distinct_objects(self):
         """Regression guard: the `_fresh_*` helpers must return a NEW dict
