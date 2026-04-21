@@ -811,7 +811,10 @@ async def get_subscription_status(
 
     try:
         pending = await get_pending_subscription_change(user_id)
-    except Exception:
+    except stripe.StripeError:
+        # Narrow: only swallow Stripe-side failures (rate limits, transient
+        # network errors). Let real bugs (KeyError, AttributeError, etc.)
+        # propagate so they surface in Sentry rather than degrading silently.
         logger.exception(
             "get_subscription_status: failed to resolve pending change for user %s",
             user_id,

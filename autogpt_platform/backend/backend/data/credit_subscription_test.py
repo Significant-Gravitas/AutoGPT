@@ -1470,6 +1470,8 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
     """cancel_at_period_end=True maps to pending FREE at current_period_end."""
     import time as time_mod
 
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
     mock_sub = {
@@ -1518,6 +1520,8 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
 async def test_get_pending_subscription_change_from_schedule():
     """A schedule whose next phase uses the PRO price maps to pending_tier=PRO."""
     import time as time_mod
+
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -1586,6 +1590,8 @@ async def test_get_pending_subscription_change_from_schedule():
 async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel():
     """Returns None when neither a schedule nor cancel_at_period_end is set."""
     import time as time_mod
+
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
 
     now = int(time_mod.time())
     mock_sub = {

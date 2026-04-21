@@ -47,6 +47,19 @@ def _configure_frontend_origin(mocker: pytest_mock.MockFixture) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
+    """Default pending-change lookup to None so tests don't hit Stripe/DB.
+
+    Individual tests can override via their own mocker.patch call.
+    """
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+
 @pytest.mark.parametrize(
     "url,expected",
     [

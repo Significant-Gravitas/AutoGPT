@@ -1366,6 +1366,8 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
         cancelled_count = await _cancel_customer_subscriptions(
             customer_id, at_period_end=True
         )
+        if cancelled_count > 0:
+            get_pending_subscription_change.cache_delete(user_id)
         return cancelled_count > 0
     except stripe.StripeError:
         logger.warning(
@@ -1580,6 +1582,7 @@ async def modify_stripe_subscription_for_tier(
 
         if is_tier_downgrade(current_tier, tier):
             await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
+            get_pending_subscription_change.cache_delete(user_id)
             return True
 
         # Upgrade path. If a schedule is attached from a previous pending
@@ -1622,6 +1625,7 @@ async def modify_stripe_subscription_for_tier(
             user_id,
             tier,
         )
+        get_pending_subscription_change.cache_delete(user_id)
         return True
     return False
 
@@ -1706,9 +1710,12 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
                 sub_id,
                 user_id,
             )
+    if released_any:
+        get_pending_subscription_change.cache_delete(user_id)
     return released_any
 
 
+@cached(ttl_seconds=30, maxsize=512, cache_none=True)
 async def get_pending_subscription_change(
     user_id: str,
 ) -> tuple[SubscriptionTier, datetime] | None:
@@ -1716,9 +1723,18 @@ async def get_pending_subscription_change(
 
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
     and ``cancel_at_period_end=True`` (paid→FREE cancel).
+
+    Cached for 30 seconds per user_id: this runs on every dashboard/home
+    fetch and would otherwise fire 2× Subscription.list + 1× Schedule.retrieve
+    per page load. 30s is long enough to absorb dashboard polling and short
+    enough that the UI reconciles quickly after a downgrade / cancel action.
+    Callers that mutate Stripe state and need a fresh read should bust the
+    cache via ``get_pending_subscription_change.cache_delete(user_id)``.
     """
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
+        # Short-circuit for users with no Stripe customer (admin-granted tiers,
+        # FREE-only users): skip the Stripe API calls entirely.
         return None
 
     pro_price, biz_price = await asyncio.gather(
@@ -2052,6 +2068,9 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+    # Tier changed — bust any cached pending-change view so the next
+    # dashboard fetch reflects the new state immediately.
+    get_pending_subscription_change.cache_delete(user.id)
 
 
 async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
@@ -2065,6 +2084,13 @@ async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
 
     The schedule payload doesn't carry the active price directly — it carries
     a ``subscription`` id that we look up to get the current item.
+
+    Webhook-ordering safety: we deliberately funnel both event sources through
+    ``sync_subscription_from_stripe`` so they share one code path and one DB
+    write. That function is idempotent — it no-ops when ``current_tier ==
+    tier`` — so concurrent or out-of-order deliveries of
+    ``subscription_schedule.*`` and ``customer.subscription.updated`` converge
+    to the same DB state regardless of which arrives first.
     """
     sub_id = stripe_schedule.get("subscription")
     if not isinstance(sub_id, str) or not sub_id:
