@@ -574,37 +574,80 @@ class TestPrepareBaselineAttachments:
         assert blocks == []
 
 
+def _make_usage_chunk(
+    *,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    cost: float | str | None = None,
+    cached_tokens: int | None = None,
+    cache_creation_input_tokens: int | None = None,
+):
+    """Build a mock streaming chunk carrying usage (and optionally cost).
+
+    ``cost`` mirrors the extra ``usage.cost`` field OpenRouter adds when the
+    request body enables ``usage: {include: true}``. ``None`` means the
+    attribute is *missing* (getattr-default triggers the warn-and-skip path).
+    """
+    chunk = MagicMock()
+    chunk.choices = []
+    chunk.usage = MagicMock()
+    chunk.usage.prompt_tokens = prompt_tokens
+    chunk.usage.completion_tokens = completion_tokens
+
+    if cached_tokens is not None or cache_creation_input_tokens is not None:
+        ptd = MagicMock()
+        ptd.cached_tokens = cached_tokens or 0
+        ptd.cache_creation_input_tokens = cache_creation_input_tokens or 0
+        chunk.usage.prompt_tokens_details = ptd
+    else:
+        chunk.usage.prompt_tokens_details = None
+
+    # Only set .cost when provided so the getattr default behaves realistically.
+    if cost is None:
+        del chunk.usage.cost
+    else:
+        chunk.usage.cost = cost
+
+    return chunk
+
+
+def _make_stream_mock(*chunks):
+    """Build an async streaming response mock that yields *chunks* in order."""
+    stream = MagicMock()
+    stream.close = AsyncMock()
+
+    async def aiter():
+        for c in chunks:
+            yield c
+
+    stream.__aiter__ = lambda self: aiter()
+    return stream
+
+
 class TestBaselineCostExtraction:
-    """Tests for x-total-cost header extraction in _baseline_llm_caller."""
+    """Tests for ``usage.cost`` extraction in ``_baseline_llm_caller``.
+
+    Cost is read from the OpenRouter ``usage.cost`` field on the final
+    streaming chunk when the request body includes ``usage: {include: true}``
+    (handled by the baseline service via ``extra_body``).
+    """
 
     @pytest.mark.asyncio
-    async def test_cost_usd_extracted_from_response_header(self):
-        """state.cost_usd is set from x-total-cost header when present."""
+    async def test_cost_usd_extracted_from_usage_chunk(self):
+        """state.cost_usd is set from chunk.usage.cost when present."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
         )
 
         state = _BaselineStreamState(model="gpt-4o-mini")
-
-        # Build a mock raw httpx response with the cost header
-        mock_raw_response = MagicMock()
-        mock_raw_response.headers = {"x-total-cost": "0.0123"}
-
-        # Build a mock async streaming response that yields no chunks but has
-        # a _response attribute pointing to the mock httpx response
-        mock_stream_response = MagicMock()
-        mock_stream_response._response = mock_raw_response
-
-        async def empty_aiter():
-            return
-            yield  # make it an async generator
-
-        mock_stream_response.__aiter__ = lambda self: empty_aiter()
+        chunk = _make_usage_chunk(
+            prompt_tokens=1000, completion_tokens=200, cost=0.0123
+        )
 
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
-            return_value=mock_stream_response
+            return_value=_make_stream_mock(chunk)
         )
 
         with patch(
@@ -629,22 +672,12 @@ class TestBaselineCostExtraction:
 
         state = _BaselineStreamState(model="gpt-4o-mini")
 
-        def make_stream_mock(cost: str) -> MagicMock:
-            mock_raw = MagicMock()
-            mock_raw.headers = {"x-total-cost": cost}
-            mock_stream = MagicMock()
-            mock_stream._response = mock_raw
-
-            async def empty_aiter():
-                return
-                yield
-
-            mock_stream.__aiter__ = lambda self: empty_aiter()
-            return mock_stream
-
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
-            side_effect=[make_stream_mock("0.01"), make_stream_mock("0.02")]
+            side_effect=[
+                _make_stream_mock(_make_usage_chunk(prompt_tokens=500, cost=0.01)),
+                _make_stream_mock(_make_usage_chunk(prompt_tokens=600, cost=0.02)),
+            ]
         )
 
         with patch(
@@ -665,28 +698,79 @@ class TestBaselineCostExtraction:
         assert state.cost_usd == pytest.approx(0.03)
 
     @pytest.mark.asyncio
-    async def test_no_cost_when_header_absent(self):
-        """state.cost_usd remains None when response has no x-total-cost header."""
+    async def test_cost_usd_accepts_string_value(self):
+        """OpenRouter may emit cost as a string — it should still parse."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
         )
 
         state = _BaselineStreamState(model="gpt-4o-mini")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        async def empty_aiter():
-            return
-            yield
-
-        mock_stream.__aiter__ = lambda self: empty_aiter()
+        chunk = _make_usage_chunk(prompt_tokens=10, cost="0.005")
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd == pytest.approx(0.005)
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_none_when_usage_cost_missing(self):
+        """state.cost_usd stays None when the usage chunk lacks a cost field."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+        chunk = _make_usage_chunk(prompt_tokens=1000, completion_tokens=500)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+        # Token accumulators are still populated so the caller can log them.
+        assert state.turn_prompt_tokens == 1000
+        assert state.turn_completion_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_invalid_cost_string_leaves_cost_none(self):
+        """A non-numeric cost value is rejected without raising."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+        chunk = _make_usage_chunk(prompt_tokens=10, cost="not-a-number")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -701,8 +785,36 @@ class TestBaselineCostExtraction:
         assert state.cost_usd is None
 
     @pytest.mark.asyncio
-    async def test_cost_extracted_even_when_stream_raises(self):
-        """cost_usd is captured in the finally block even when streaming fails."""
+    async def test_negative_cost_is_ignored(self):
+        """Guard against negative cost values (shouldn't happen but be safe)."""
+        from backend.copilot.baseline.service import (
+            _baseline_llm_caller,
+            _BaselineStreamState,
+        )
+
+        state = _BaselineStreamState(model="gpt-4o-mini")
+        chunk = _make_usage_chunk(prompt_tokens=10, cost=-0.01)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_cost_not_captured_when_stream_raises_mid_chunk(self):
+        """If the stream aborts before emitting the usage chunk there is no cost."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
@@ -710,19 +822,17 @@ class TestBaselineCostExtraction:
 
         state = _BaselineStreamState(model="gpt-4o-mini")
 
-        mock_raw = MagicMock()
-        mock_raw.headers = {"x-total-cost": "0.005"}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
+        stream = MagicMock()
+        stream.close = AsyncMock()
 
         async def failing_aiter():
             raise RuntimeError("stream error")
             yield  # make it an async generator
 
-        mock_stream.__aiter__ = lambda self: failing_aiter()
+        stream.__aiter__ = lambda self: failing_aiter()
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(return_value=stream)
 
         with (
             patch(
@@ -737,11 +847,12 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        assert state.cost_usd == pytest.approx(0.005)
+        # Stream aborted before yielding the usage chunk — cost stays None.
+        assert state.cost_usd is None
 
     @pytest.mark.asyncio
     async def test_no_cost_when_api_call_raises_before_stream(self):
-        """finally block is safe when response is None (API call failed before yielding)."""
+        """The helper is safe when the create() call itself raises."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
@@ -767,49 +878,6 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # response was never assigned so cost extraction must not raise
-        assert state.cost_usd is None
-
-    @pytest.mark.asyncio
-    async def test_no_cost_when_header_missing(self):
-        """cost_usd remains None when x-total-cost is absent."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
-        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {}  # no x-total-cost
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 500
-        mock_chunk.usage.prompt_tokens_details = None
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
-
-        with patch(
-            "backend.copilot.baseline.service._get_openai_client",
-            return_value=mock_client,
-        ):
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "hi"}],
-                tools=[],
-                state=state,
-            )
-
         assert state.cost_usd is None
 
     @pytest.mark.asyncio
@@ -821,30 +889,17 @@ class TestBaselineCostExtraction:
         )
 
         state = _BaselineStreamState(model="openai/gpt-4o")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {"x-total-cost": "0.01"}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        # Create a chunk with prompt_tokens_details
-        mock_ptd = MagicMock()
-        mock_ptd.cached_tokens = 800
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 200
-        mock_chunk.usage.prompt_tokens_details = mock_ptd
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
+        chunk = _make_usage_chunk(
+            prompt_tokens=1000,
+            completion_tokens=200,
+            cost=0.01,
+            cached_tokens=800,
+        )
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -861,37 +916,25 @@ class TestBaselineCostExtraction:
 
     @pytest.mark.asyncio
     async def test_cache_creation_tokens_extracted_from_usage_details(self):
-        """cache_creation_tokens are extracted from prompt_tokens_details."""
+        """cache_creation_input_tokens is extracted from prompt_tokens_details."""
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
         )
 
         state = _BaselineStreamState(model="openai/gpt-4o")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {"x-total-cost": "0.01"}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        mock_ptd = MagicMock()
-        mock_ptd.cached_tokens = 0
-        mock_ptd.cache_creation_input_tokens = 500
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 200
-        mock_chunk.usage.prompt_tokens_details = mock_ptd
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
+        chunk = _make_usage_chunk(
+            prompt_tokens=1000,
+            completion_tokens=200,
+            cost=0.01,
+            cached_tokens=0,
+            cache_creation_input_tokens=500,
+        )
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -915,30 +958,15 @@ class TestBaselineCostExtraction:
 
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
 
-        def make_stream(prompt_tokens: int, completion_tokens: int):
-            mock_raw = MagicMock()
-            mock_raw.headers = {}  # no x-total-cost
-            mock_stream = MagicMock()
-            mock_stream._response = mock_raw
-
-            mock_chunk = MagicMock()
-            mock_chunk.usage = MagicMock()
-            mock_chunk.usage.prompt_tokens = prompt_tokens
-            mock_chunk.usage.completion_tokens = completion_tokens
-            mock_chunk.usage.prompt_tokens_details = None
-            mock_chunk.choices = []
-
-            async def chunk_aiter():
-                yield mock_chunk
-
-            mock_stream.__aiter__ = lambda self: chunk_aiter()
-            return mock_stream
-
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
             side_effect=[
-                make_stream(1000, 200),
-                make_stream(1100, 300),
+                _make_stream_mock(
+                    _make_usage_chunk(prompt_tokens=1000, completion_tokens=200)
+                ),
+                _make_stream_mock(
+                    _make_usage_chunk(prompt_tokens=1100, completion_tokens=300)
+                ),
             ]
         )
 
@@ -957,45 +985,28 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # No x-total-cost header and empty pricing table -- cost_usd remains None
+        # No usage.cost on either chunk → cost stays None, tokens still accumulate.
         assert state.cost_usd is None
-        # Accumulators hold all tokens across both turns
         assert state.turn_prompt_tokens == 2100
         assert state.turn_completion_tokens == 500
 
     @pytest.mark.asyncio
-    async def test_cost_usd_remains_none_when_header_missing(self):
-        """cost_usd stays None when x-total-cost header is absent.
+    async def test_baseline_requests_usage_include_extra_body(self):
+        """The baseline call must pass extra_body={'usage': {'include': True}}.
 
-        Token counts are still tracked; persist_and_record_usage handles
-        the None cost by falling back to tracking_type='tokens'.
+        This guards the contract with OpenRouter that triggers inclusion of
+        the authoritative cost on the final usage chunk. Without it the
+        rate-limit counter stays at zero.
         """
         from backend.copilot.baseline.service import (
             _baseline_llm_caller,
             _BaselineStreamState,
         )
 
-        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {}  # no x-total-cost
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 500
-        mock_chunk.usage.prompt_tokens_details = None
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
-
+        state = _BaselineStreamState(model="gpt-4o-mini")
+        create_mock = AsyncMock(return_value=_make_stream_mock())
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = create_mock
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -1007,9 +1018,10 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        assert state.cost_usd is None
-        assert state.turn_prompt_tokens == 1000
-        assert state.turn_completion_tokens == 500
+        create_mock.assert_awaited_once()
+        await_args = create_mock.await_args
+        assert await_args is not None
+        assert await_args.kwargs["extra_body"] == {"usage": {"include": True}}
 
 
 class TestMidLoopPendingFlushOrdering:

@@ -2,6 +2,10 @@ export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+export function formatMicrodollarsAsUsd(microdollars: number): string {
+  return `$${(microdollars / 1_000_000).toFixed(2)}`;
+}
+
 export function formatResetTime(
   resetsAt: Date | string,
   now: Date = new Date(),

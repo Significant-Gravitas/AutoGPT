@@ -6,6 +6,7 @@ import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/
 import {
   formatResetTime,
   formatCents,
+  formatMicrodollarsAsUsd,
 } from "@/app/(platform)/copilot/components/usageHelpers";
 import { useResetRateLimit } from "@/app/(platform)/copilot/hooks/useResetRateLimit";
 import { Button } from "@/components/atoms/Button/Button";
@@ -331,7 +332,7 @@ function UsageMeter({
       </div>
       <div className="flex items-baseline justify-between">
         <Text variant="small" className="tabular-nums text-neutral-500">
-          {used.toLocaleString()} / {limit.toLocaleString()}
+          {formatMicrodollarsAsUsd(used)} / {formatMicrodollarsAsUsd(limit)}
         </Text>
         <Text variant="small" className="text-neutral-400">
           Resets {formatResetTime(resetsAt)}

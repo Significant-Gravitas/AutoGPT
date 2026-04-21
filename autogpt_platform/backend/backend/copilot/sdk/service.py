@@ -70,7 +70,6 @@ from ..pending_message_helpers import (
     persist_session_safe,
 )
 from ..pending_messages import (
-    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -164,11 +163,6 @@ _MAX_STREAM_ATTEMPTS = 3
 # guidance on the first empty call, giving the model a chance to
 # self-correct.  The limit is generous to allow recovery attempts.
 _EMPTY_TOOL_CALL_LIMIT = 5
-
-# Cost multiplier for Opus model turns — Opus is ~5× more expensive than Sonnet
-# ($15/$75 vs $3/$15 per M tokens).  Applied to rate-limit counters so Opus
-# turns deplete quota proportionally faster.
-_OPUS_COST_MULTIPLIER = 5.0
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -725,22 +719,20 @@ def _resolve_fallback_model() -> str | None:
     return _normalize_model_name(raw)
 
 
-async def _resolve_model_and_multiplier(
+async def _resolve_sdk_model_for_request(
     model: "CopilotLlmModel | None",
     session_id: str,
-) -> tuple[str | None, float]:
-    """Resolve the SDK model string and rate-limit cost multiplier for a turn.
+) -> str | None:
+    """Resolve the SDK model string for a turn.
 
     Priority (highest first):
     1. Explicit per-request ``model`` tier from the frontend toggle.
     2. Global config default (``_resolve_sdk_model()``).
 
-    Returns a ``(sdk_model, cost_multiplier)`` pair.
-    ``sdk_model`` is ``None`` when the Claude Code subscription default applies.
-    ``cost_multiplier`` is 5.0 for Opus, 1.0 otherwise.
+    Returns ``None`` when the Claude Code subscription default applies.
+    Rate-limit accounting no longer applies a multiplier — the real turn
+    cost (reported by the SDK) already reflects model-pricing differences.
     """
-    sdk_model = _resolve_sdk_model()
-
     if model == "advanced":
         sdk_model = _normalize_model_name(config.advanced_model)
         logger.info(
@@ -748,7 +740,7 @@ async def _resolve_model_and_multiplier(
             session_id[:12] if session_id else "?",
             sdk_model,
         )
-        return sdk_model, _OPUS_COST_MULTIPLIER
+        return sdk_model
 
     if model == "standard":
         # Reset to config default — respects subscription mode (None = CLI default).
@@ -758,13 +750,9 @@ async def _resolve_model_and_multiplier(
             session_id[:12] if session_id else "?",
             sdk_model or "subscription-default",
         )
-        return sdk_model, 1.0
+        return sdk_model
 
-    # No per-request override; derive multiplier from final resolved model.
-    cost_multiplier = (
-        _OPUS_COST_MULTIPLIER if sdk_model and "opus" in sdk_model else 1.0
-    )
-    return sdk_model, cost_multiplier
+    return _resolve_sdk_model()
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -2894,7 +2882,6 @@ async def stream_chat_completion_sdk(
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
-    model_cost_multiplier: float = 1.0
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -3011,10 +2998,8 @@ async def stream_chat_completion_sdk(
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
-        # Resolve model and cost multiplier (request tier → config default).
-        sdk_model, model_cost_multiplier = await _resolve_model_and_multiplier(
-            model, session_id
-        )
+        # Resolve model (request tier → config default).
+        sdk_model = await _resolve_sdk_model_for_request(model, session_id)
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -3191,10 +3176,7 @@ async def stream_chat_completion_sdk(
             # Chronological combine: items typed BEFORE this request
             # arrived go ahead of ``current_message``; items typed AFTER
             # (race path, queued while /stream was still processing) go
-            # after.  ``pending_texts`` is kept around because downstream
-            # code (the executor's update_message_content_by_sequence
-            # call) needs the pre-combine list.
-            pending_texts = pending_texts_from(pending_messages)
+            # after.
             current_message = combine_pending_with_current(
                 pending_messages,
                 current_message,
@@ -3815,7 +3797,6 @@ async def stream_chat_completion_sdk(
             cost_usd=turn_cost_usd,
             model=sdk_model or config.model,
             provider="anthropic",
-            model_cost_multiplier=model_cost_multiplier,
         )
 
         # --- Persist session messages ---

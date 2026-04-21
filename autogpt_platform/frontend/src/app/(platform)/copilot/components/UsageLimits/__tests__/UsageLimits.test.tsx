@@ -82,7 +82,7 @@ describe("UsageLimits", () => {
     });
     render(<UsageLimits />);
 
-    expect(screen.getByText("50% used")).toBeDefined();
+    expect(screen.getByText("$0.01 / $0.01")).toBeDefined();
     expect(screen.getByText("Today")).toBeDefined();
     expect(screen.getByText("This week")).toBeDefined();
     expect(screen.getByText("Usage limits")).toBeDefined();
@@ -103,14 +103,18 @@ describe("UsageLimits", () => {
     expect(screen.queryByText("Today")).toBeNull();
   });
 
-  it("caps percentage at 100% when over limit", () => {
+  it("caps bar width at 100% when over limit", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyUsed: 15000, dailyLimit: 10000 }),
       isLoading: false,
     });
-    render(<UsageLimits />);
+    const { container } = render(<UsageLimits />);
 
-    expect(screen.getByText("100% used")).toBeDefined();
+    // Display shows the raw spend values; progress bar is clamped to 100%.
+    const dailyBar = container.querySelector(
+      '[style*="width: 100%"]',
+    ) as HTMLElement | null;
+    expect(dailyBar).not.toBeNull();
   });
 
   it("displays the user tier label", () => {

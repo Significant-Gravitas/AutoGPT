@@ -16130,31 +16130,31 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Email"
           },
-          "daily_token_limit": {
+          "daily_cost_limit_microdollars": {
             "type": "integer",
-            "title": "Daily Token Limit"
+            "title": "Daily Cost Limit Microdollars"
           },
-          "weekly_token_limit": {
+          "weekly_cost_limit_microdollars": {
             "type": "integer",
-            "title": "Weekly Token Limit"
+            "title": "Weekly Cost Limit Microdollars"
           },
-          "daily_tokens_used": {
+          "daily_cost_used_microdollars": {
             "type": "integer",
-            "title": "Daily Tokens Used"
+            "title": "Daily Cost Used Microdollars"
           },
-          "weekly_tokens_used": {
+          "weekly_cost_used_microdollars": {
             "type": "integer",
-            "title": "Weekly Tokens Used"
+            "title": "Weekly Cost Used Microdollars"
           },
           "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
         },
         "type": "object",
         "required": [
           "user_id",
-          "daily_token_limit",
-          "weekly_token_limit",
-          "daily_tokens_used",
-          "weekly_tokens_used",
+          "daily_cost_limit_microdollars",
+          "weekly_cost_limit_microdollars",
+          "daily_cost_used_microdollars",
+          "weekly_cost_used_microdollars",
           "tier"
         ],
         "title": "UserRateLimitResponse"

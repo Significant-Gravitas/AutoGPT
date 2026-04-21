@@ -29,10 +29,10 @@ function makeUsage(
   }> = {},
 ): CoPilotUsageStatus {
   const {
-    dailyUsed = 500,
-    dailyLimit = 10000,
-    weeklyUsed = 2000,
-    weeklyLimit = 50000,
+    dailyUsed = 500_000,
+    dailyLimit = 10_000_000,
+    weeklyUsed = 2_000_000,
+    weeklyLimit = 50_000_000,
     tier = "FREE",
     resetCost = 100,
   } = overrides;
@@ -59,8 +59,8 @@ describe("UsagePanelContent", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
+          dailyUsed: 10_000_000,
+          dailyLimit: 10_000_000,
           resetCost: 50,
         })}
       />,
@@ -72,10 +72,10 @@ describe("UsagePanelContent", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
-          weeklyUsed: 50000,
-          weeklyLimit: 50000,
+          dailyUsed: 10_000_000,
+          dailyLimit: 10_000_000,
+          weeklyUsed: 50_000_000,
+          weeklyLimit: 50_000_000,
           resetCost: 50,
         })}
       />,
@@ -87,8 +87,8 @@ describe("UsagePanelContent", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
+          dailyUsed: 10_000_000,
+          dailyLimit: 10_000_000,
           resetCost: 50,
         })}
       />,
@@ -101,8 +101,8 @@ describe("UsagePanelContent", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({
-          dailyUsed: 10000,
-          dailyLimit: 10000,
+          dailyUsed: 10_000_000,
+          dailyLimit: 10_000_000,
           resetCost: 50,
         })}
         hasInsufficientCredits={true}
@@ -110,5 +110,17 @@ describe("UsagePanelContent", () => {
       />,
     );
     expect(screen.getByText("Add credits to reset")).toBeDefined();
+  });
+
+  it("renders USD amounts in the usage bar", () => {
+    render(
+      <UsagePanelContent
+        usage={makeUsage({
+          dailyUsed: 2_500_000,
+          dailyLimit: 10_000_000,
+        })}
+      />,
+    );
+    expect(screen.getByText("$2.50 / $10.00")).toBeDefined();
   });
 });

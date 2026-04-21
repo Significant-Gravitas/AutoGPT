@@ -38,7 +38,6 @@ from backend.copilot.model import (
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
-    pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
@@ -292,10 +291,12 @@ async def _baseline_llm_caller(
     state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
-    response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
         typed_messages = cast(list[ChatCompletionMessageParam], messages)
+        # extra_body `usage.include=true` asks OpenRouter to embed the real
+        # generation cost into the final usage chunk. Without this we only get
+        # token counts and have no authoritative cost for rate limiting.
         if tools:
             typed_tools = cast(list[ChatCompletionToolParam], tools)
             response = await client.chat.completions.create(
@@ -304,6 +305,7 @@ async def _baseline_llm_caller(
                 tools=typed_tools,
                 stream=True,
                 stream_options={"include_usage": True},
+                extra_body={"usage": {"include": True}},
             )
         else:
             response = await client.chat.completions.create(
@@ -311,6 +313,7 @@ async def _baseline_llm_caller(
                 messages=typed_messages,
                 stream=True,
                 stream_options={"include_usage": True},
+                extra_body={"usage": {"include": True}},
             )
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
@@ -335,6 +338,31 @@ async def _baseline_llm_caller(
                         state.turn_cache_creation_tokens += (
                             getattr(ptd, "cache_creation_input_tokens", 0) or 0
                         )
+                    # OpenRouter embeds real generation cost here when the
+                    # request body includes `usage: {include: true}`. Absent
+                    # cost means rate-limit accounting has no authoritative
+                    # figure for this call — log it so we notice.
+                    cost_raw = getattr(chunk.usage, "cost", None)
+                    if cost_raw is None:
+                        logger.error(
+                            "[Baseline] OpenRouter usage chunk missing cost "
+                            "(model=%s, prompt=%s, completion=%s) — "
+                            "rate-limit accounting will skip this call",
+                            state.model,
+                            chunk.usage.prompt_tokens,
+                            chunk.usage.completion_tokens,
+                        )
+                    else:
+                        try:
+                            cost_val = float(cost_raw)
+                        except (TypeError, ValueError):
+                            logger.error(
+                                "[Baseline] OpenRouter usage.cost is not numeric: %r",
+                                cost_raw,
+                            )
+                        else:
+                            if math.isfinite(cost_val) and cost_val >= 0:
+                                state.cost_usd = (state.cost_usd or 0.0) + cost_val
 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
@@ -394,20 +422,6 @@ async def _baseline_llm_caller(
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
     finally:
-        # Extract OpenRouter cost from response headers (in finally so we
-        # capture cost even when the stream errors mid-way — we already paid).
-        # Accumulate across multi-round tool-calling turns.
-        try:
-            # Access undocumented _response attribute — same pattern as
-            # extract_openrouter_cost() in blocks/llm.py.
-            cost_header = response._response.headers.get("x-total-cost")  # type: ignore[attr-defined]
-            if cost_header:
-                cost = float(cost_header)
-                if math.isfinite(cost) and cost >= 0:
-                    state.cost_usd = (state.cost_usd or 0.0) + cost
-        except (AttributeError, ValueError):
-            pass
-
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -982,7 +996,6 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        drained_at_start_content = pending_texts_from(drained_at_start_pending)
         # Chronological combine: pending typed BEFORE this /stream
         # request's arrival go ahead of ``message``; race-path follow-ups
         # typed AFTER (queued while /stream was still processing) go

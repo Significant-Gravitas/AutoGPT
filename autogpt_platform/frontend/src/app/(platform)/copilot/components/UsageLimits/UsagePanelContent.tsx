@@ -1,7 +1,11 @@
 import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
-import { formatCents, formatResetTime } from "../usageHelpers";
+import {
+  formatCents,
+  formatMicrodollarsAsUsd,
+  formatResetTime,
+} from "../usageHelpers";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 export { formatResetTime };
@@ -22,15 +26,14 @@ function UsageBar({
   const rawPercent = (used / limit) * 100;
   const percent = Math.min(100, Math.round(rawPercent));
   const isHigh = percent >= 80;
-  const percentLabel =
-    used > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
+  const spendLabel = `${formatMicrodollarsAsUsd(used)} / ${formatMicrodollarsAsUsd(limit)}`;
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
         <span className="text-xs font-medium text-neutral-700">{label}</span>
         <span className="text-[11px] tabular-nums text-neutral-500">
-          {percentLabel}
+          {spendLabel}
         </span>
       </div>
       <div className="text-[10px] text-neutral-400">

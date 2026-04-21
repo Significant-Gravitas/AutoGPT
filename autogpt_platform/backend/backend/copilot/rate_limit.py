@@ -1,9 +1,16 @@
-"""CoPilot rate limiting based on token usage.
+"""CoPilot rate limiting based on generation cost.
 
-Uses Redis fixed-window counters to track per-user token consumption
-with configurable daily and weekly limits. Daily windows reset at
-midnight UTC; weekly windows reset at ISO week boundary (Monday 00:00
-UTC). Fails open when Redis is unavailable to avoid blocking users.
+Uses Redis fixed-window counters to track per-user USD spend (stored as
+microdollars, matching ``PlatformCostLog.cost_microdollars``) with
+configurable daily and weekly limits. Daily windows reset at midnight UTC;
+weekly windows reset at ISO week boundary (Monday 00:00 UTC). Fails open
+when Redis is unavailable to avoid blocking users.
+
+Storing microdollars rather than tokens means the counter already reflects
+real model pricing (including cache discounts and provider surcharges), so
+this module carries no pricing table — the cost comes from OpenRouter's
+``usage.cost`` field (baseline) or the Claude Agent SDK's reported total
+cost (SDK path).
 """
 
 import asyncio
@@ -21,8 +28,10 @@ from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
-# Redis key prefixes
-_USAGE_KEY_PREFIX = "copilot:usage"
+# Redis key prefixes. Bumped from "copilot:usage" (token-based) to
+# "copilot:cost" on the token→cost migration so stale counters do not
+# get misinterpreted as microdollars (which would dramatically under-count).
+_USAGE_KEY_PREFIX = "copilot:cost"
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +40,7 @@ _USAGE_KEY_PREFIX = "copilot:usage"
 
 
 class SubscriptionTier(str, Enum):
-    """Subscription tiers with increasing token allowances.
+    """Subscription tiers with increasing cost allowances.
 
     Mirrors the ``SubscriptionTier`` enum in ``schema.prisma``.
     Once ``prisma generate`` is run, this can be replaced with::
@@ -45,9 +54,9 @@ class SubscriptionTier(str, Enum):
     ENTERPRISE = "ENTERPRISE"
 
 
-# Multiplier applied to the base limits (from LD / config) for each tier.
-# Intentionally int (not float): keeps limits as whole token counts and avoids
-# floating-point rounding.  If fractional multipliers are ever needed, change
+# Multiplier applied to the base cost limits (from LD / config) for each tier.
+# Intentionally int (not float): keeps limits as whole microdollars and avoids
+# floating-point rounding. If fractional multipliers are ever needed, change
 # the type and round the result in get_global_rate_limits().
 TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
     SubscriptionTier.FREE: 1,
@@ -60,11 +69,15 @@ DEFAULT_TIER = SubscriptionTier.FREE
 
 
 class UsageWindow(BaseModel):
-    """Usage within a single time window."""
+    """Usage within a single time window.
+
+    ``used`` and ``limit`` are in microdollars (1 USD = 1_000_000).
+    """
 
     used: int
     limit: int = Field(
-        description="Maximum tokens allowed in this window. 0 means unlimited."
+        description="Maximum microdollars of spend allowed in this window. "
+        "0 means unlimited."
     )
     resets_at: datetime
 
@@ -102,8 +115,8 @@ class RateLimitExceeded(Exception):
 
 async def get_usage_status(
     user_id: str,
-    daily_token_limit: int,
-    weekly_token_limit: int,
+    daily_cost_limit: int,
+    weekly_cost_limit: int,
     rate_limit_reset_cost: int = 0,
     tier: SubscriptionTier = DEFAULT_TIER,
 ) -> CoPilotUsageStatus:
@@ -111,13 +124,13 @@ async def get_usage_status(
 
     Args:
         user_id: The user's ID.
-        daily_token_limit: Max tokens per day (0 = unlimited).
-        weekly_token_limit: Max tokens per week (0 = unlimited).
+        daily_cost_limit: Max microdollars of spend per day (0 = unlimited).
+        weekly_cost_limit: Max microdollars of spend per week (0 = unlimited).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
         tier: The user's rate-limit tier (included in the response).
 
     Returns:
-        CoPilotUsageStatus with current usage and limits.
+        CoPilotUsageStatus with current usage and limits in microdollars.
     """
     now = datetime.now(UTC)
     daily_used = 0
@@ -136,12 +149,12 @@ async def get_usage_status(
     return CoPilotUsageStatus(
         daily=UsageWindow(
             used=daily_used,
-            limit=daily_token_limit,
+            limit=daily_cost_limit,
             resets_at=_daily_reset_time(now=now),
         ),
         weekly=UsageWindow(
             used=weekly_used,
-            limit=weekly_token_limit,
+            limit=weekly_cost_limit,
             resets_at=_weekly_reset_time(now=now),
         ),
         tier=tier,
@@ -151,22 +164,22 @@ async def get_usage_status(
 
 async def check_rate_limit(
     user_id: str,
-    daily_token_limit: int,
-    weekly_token_limit: int,
+    daily_cost_limit: int,
+    weekly_cost_limit: int,
 ) -> None:
     """Check if user is within rate limits. Raises RateLimitExceeded if not.
 
     This is a pre-turn soft check. The authoritative usage counter is updated
-    by ``record_token_usage()`` after the turn completes. Under concurrency,
+    by ``record_cost_usage()`` after the turn completes. Under concurrency,
     two parallel turns may both pass this check against the same snapshot.
-    This is acceptable because token-based limits are approximate by nature
-    (the exact token count is unknown until after generation).
+    This is acceptable because cost-based limits are approximate by nature
+    (the exact cost is unknown until after generation).
 
     Fails open: if Redis is unavailable, allows the request.
     """
     # Short-circuit: when both limits are 0 (unlimited) skip the Redis
     # round-trip entirely.
-    if daily_token_limit <= 0 and weekly_token_limit <= 0:
+    if daily_cost_limit <= 0 and weekly_cost_limit <= 0:
         return
 
     now = datetime.now(UTC)
@@ -182,26 +195,25 @@ async def check_rate_limit(
         logger.warning("Redis unavailable for rate limit check, allowing request")
         return
 
-    # Worst-case overshoot: N concurrent requests × ~15K tokens each.
-    if daily_token_limit > 0 and daily_used >= daily_token_limit:
+    if daily_cost_limit > 0 and daily_used >= daily_cost_limit:
         raise RateLimitExceeded("daily", _daily_reset_time(now=now))
 
-    if weekly_token_limit > 0 and weekly_used >= weekly_token_limit:
+    if weekly_cost_limit > 0 and weekly_used >= weekly_cost_limit:
         raise RateLimitExceeded("weekly", _weekly_reset_time(now=now))
 
 
-async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
-    """Reset a user's daily token usage counter in Redis.
+async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
+    """Reset a user's daily cost usage counter in Redis.
 
     Called after a user pays credits to extend their daily limit.
-    Also reduces the weekly usage counter by ``daily_token_limit`` tokens
+    Also reduces the weekly usage counter by ``daily_cost_limit`` microdollars
     (clamped to 0) so the user effectively gets one extra day's worth of
     weekly capacity.
 
     Args:
         user_id: The user's ID.
-        daily_token_limit: The configured daily token limit. When positive,
-            the weekly counter is reduced by this amount.
+        daily_cost_limit: The configured daily cost limit in microdollars.
+            When positive, the weekly counter is reduced by this amount.
 
     Returns False if Redis is unavailable so the caller can handle
     compensation (fail-closed for billed operations, unlike the read-only
@@ -217,12 +229,12 @@ async def reset_daily_usage(user_id: str, daily_token_limit: int = 0) -> bool:
         # counter is not decremented — which would let the caller refund
         # credits even though the daily limit was already reset.
         d_key = _daily_key(user_id, now=now)
-        w_key = _weekly_key(user_id, now=now) if daily_token_limit > 0 else None
+        w_key = _weekly_key(user_id, now=now) if daily_cost_limit > 0 else None
 
         pipe = redis.pipeline(transaction=True)
         pipe.delete(d_key)
         if w_key is not None:
-            pipe.decrby(w_key, daily_token_limit)
+            pipe.decrby(w_key, daily_cost_limit)
         results = await pipe.execute()
 
         # Clamp negative weekly counter to 0 (best-effort; not critical).
@@ -295,69 +307,31 @@ async def increment_daily_reset_count(user_id: str) -> None:
         logger.warning("Redis unavailable for tracking reset count")
 
 
-async def record_token_usage(
+async def record_cost_usage(
     user_id: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    *,
-    cache_read_tokens: int = 0,
-    cache_creation_tokens: int = 0,
-    model_cost_multiplier: float = 1.0,
+    cost_microdollars: int,
 ) -> None:
-    """Record token usage for a user across all windows.
+    """Record a user's generation spend against daily and weekly counters.
 
-    Uses cost-weighted counting so cached tokens don't unfairly penalise
-    multi-turn conversations. Anthropic's pricing:
-      - uncached input: 100%
-      - cache creation:  25%
-      - cache read:      10%
-      - output:         100%
-
-    ``prompt_tokens`` should be the *uncached* input count (``input_tokens``
-    from the API response). Cache counts are passed separately.
-
-    ``model_cost_multiplier`` scales the final weighted total to reflect
-    relative model cost. Use 5.0 for Opus (5× more expensive than Sonnet)
-    so that Opus turns deplete the rate limit faster, proportional to cost.
+    ``cost_microdollars`` is the real generation cost reported by the
+    provider (OpenRouter's ``usage.cost`` or the Claude Agent SDK's
+    ``total_cost_usd`` converted to microdollars). Because the provider
+    cost already reflects model pricing and cache discounts, this function
+    carries no pricing table or weighting — it just increments counters.
 
     Args:
         user_id: The user's ID.
-        prompt_tokens: Uncached input tokens.
-        completion_tokens: Output tokens.
-        cache_read_tokens: Tokens served from prompt cache (10% cost).
-        cache_creation_tokens: Tokens written to prompt cache (25% cost).
-        model_cost_multiplier: Relative model cost factor (1.0 = Sonnet, 5.0 = Opus).
+        cost_microdollars: Spend to record in microdollars (1 USD = 1_000_000).
+            Non-positive values are ignored.
     """
-    prompt_tokens = max(0, prompt_tokens)
-    completion_tokens = max(0, completion_tokens)
-    cache_read_tokens = max(0, cache_read_tokens)
-    cache_creation_tokens = max(0, cache_creation_tokens)
-
-    weighted_input = (
-        prompt_tokens
-        + round(cache_creation_tokens * 0.25)
-        + round(cache_read_tokens * 0.1)
-    )
-    total = round(
-        (weighted_input + completion_tokens) * max(1.0, model_cost_multiplier)
-    )
-    if total <= 0:
+    cost_microdollars = max(0, cost_microdollars)
+    if cost_microdollars <= 0:
         return
 
-    raw_total = (
-        prompt_tokens + cache_read_tokens + cache_creation_tokens + completion_tokens
-    )
     logger.info(
-        "Recording token usage for %s: raw=%d, weighted=%d, multiplier=%.1fx "
-        "(uncached=%d, cache_read=%d@10%%, cache_create=%d@25%%, output=%d)",
+        "Recording copilot spend for %s: %d microdollars",
         user_id[:8],
-        raw_total,
-        total,
-        model_cost_multiplier,
-        prompt_tokens,
-        cache_read_tokens,
-        cache_creation_tokens,
-        completion_tokens,
+        cost_microdollars,
     )
 
     now = datetime.now(UTC)
@@ -372,7 +346,7 @@ async def record_token_usage(
 
         # Daily counter (expires at next midnight UTC)
         d_key = _daily_key(user_id, now=now)
-        pipe.incrby(d_key, total)
+        pipe.incrby(d_key, cost_microdollars)
         seconds_until_daily_reset = int(
             (_daily_reset_time(now=now) - now).total_seconds()
         )
@@ -380,7 +354,7 @@ async def record_token_usage(
 
         # Weekly counter (expires end of week)
         w_key = _weekly_key(user_id, now=now)
-        pipe.incrby(w_key, total)
+        pipe.incrby(w_key, cost_microdollars)
         seconds_until_weekly_reset = int(
             (_weekly_reset_time(now=now) - now).total_seconds()
         )
@@ -389,8 +363,8 @@ async def record_token_usage(
         await pipe.execute()
     except (RedisError, ConnectionError, OSError):
         logger.warning(
-            "Redis unavailable for recording token usage (tokens=%d)",
-            total,
+            "Redis unavailable for recording cost usage (microdollars=%d)",
+            cost_microdollars,
         )
 
 
@@ -480,37 +454,37 @@ async def get_global_rate_limits(
 ) -> tuple[int, int, SubscriptionTier]:
     """Resolve global rate limits from LaunchDarkly, falling back to config.
 
-    The base limits (from LD or config) are multiplied by the user's
-    tier multiplier so that higher tiers receive proportionally larger
-    allowances.
+    Values are microdollars. The base limits (from LD or config) are
+    multiplied by the user's tier multiplier so that higher tiers receive
+    proportionally larger allowances.
 
     Args:
         user_id: User ID for LD flag evaluation context.
-        config_daily: Fallback daily limit from ChatConfig.
-        config_weekly: Fallback weekly limit from ChatConfig.
+        config_daily: Fallback daily cost limit (microdollars) from ChatConfig.
+        config_weekly: Fallback weekly cost limit (microdollars) from ChatConfig.
 
     Returns:
-        (daily_token_limit, weekly_token_limit, tier) 3-tuple.
+        (daily_cost_limit, weekly_cost_limit, tier) — limits in microdollars.
     """
     # Lazy import to avoid circular dependency:
     # rate_limit -> feature_flag -> settings -> ... -> rate_limit
     from backend.util.feature_flag import Flag, get_feature_flag_value
 
     daily_raw = await get_feature_flag_value(
-        Flag.COPILOT_DAILY_TOKEN_LIMIT.value, user_id, config_daily
+        Flag.COPILOT_DAILY_COST_LIMIT.value, user_id, config_daily
     )
     weekly_raw = await get_feature_flag_value(
-        Flag.COPILOT_WEEKLY_TOKEN_LIMIT.value, user_id, config_weekly
+        Flag.COPILOT_WEEKLY_COST_LIMIT.value, user_id, config_weekly
     )
     try:
         daily = max(0, int(daily_raw))
     except (TypeError, ValueError):
-        logger.warning("Invalid LD value for daily token limit: %r", daily_raw)
+        logger.warning("Invalid LD value for daily cost limit: %r", daily_raw)
         daily = config_daily
     try:
         weekly = max(0, int(weekly_raw))
     except (TypeError, ValueError):
-        logger.warning("Invalid LD value for weekly token limit: %r", weekly_raw)
+        logger.warning("Invalid LD value for weekly cost limit: %r", weekly_raw)
         weekly = config_weekly
 
     # Apply tier multiplier

@@ -539,17 +539,19 @@ async def get_copilot_usage(
 ) -> CoPilotUsageStatus:
     """Get CoPilot usage status for the authenticated user.
 
-    Returns current token usage vs limits for daily and weekly windows.
-    Global defaults sourced from LaunchDarkly (falling back to config).
+    Returns current cost usage (microdollars) vs limits for daily and weekly
+    windows. Global defaults sourced from LaunchDarkly (falling back to config).
     Includes the user's rate-limit tier.
     """
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
     return await get_usage_status(
         user_id=user_id,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
@@ -604,7 +606,9 @@ async def reset_copilot_usage(
         )
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
 
     if daily_limit <= 0:
@@ -641,8 +645,8 @@ async def reset_copilot_usage(
         # used for limit checks, not returned to the client.)
         usage_status = await get_usage_status(
             user_id=user_id,
-            daily_token_limit=daily_limit,
-            weekly_token_limit=weekly_limit,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
             tier=tier,
         )
         if daily_limit > 0 and usage_status.daily.used < daily_limit:
@@ -677,7 +681,7 @@ async def reset_copilot_usage(
 
         # Reset daily usage in Redis.  If this fails, refund the credits
         # so the user is not charged for a service they did not receive.
-        if not await reset_daily_usage(user_id, daily_token_limit=daily_limit):
+        if not await reset_daily_usage(user_id, daily_cost_limit=daily_limit):
             # Compensate: refund the charged credits.
             refunded = False
             try:
@@ -716,8 +720,8 @@ async def reset_copilot_usage(
     # Return updated usage status.
     updated_usage = await get_usage_status(
         user_id=user_id,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
@@ -861,18 +865,20 @@ async def stream_chat_post(
         },
     )
 
-    # Pre-turn rate limit check (token-based).
+    # Pre-turn rate limit check (cost-based, microdollars).
     # check_rate_limit short-circuits internally when both limits are 0.
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id, config.daily_token_limit, config.weekly_token_limit
+                user_id,
+                config.daily_cost_limit_microdollars,
+                config.weekly_cost_limit_microdollars,
             )
             await check_rate_limit(
                 user_id=user_id,
-                daily_token_limit=daily_limit,
-                weekly_token_limit=weekly_limit,
+                daily_cost_limit=daily_limit,
+                weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
