@@ -1724,6 +1724,42 @@ async def test_sync_subscription_schedule_from_stripe_retrieves_and_delegates():
 
 
 @pytest.mark.asyncio
+async def test_sync_subscription_schedule_from_stripe_uses_released_subscription_fallback():
+    """subscription_schedule.released events clear `subscription` and set
+    `released_subscription`; the sync handler must fall back to that id."""
+    stripe_schedule = {
+        "id": "sub_sched_1",
+        "subscription": None,
+        "released_subscription": "sub_pro_released",
+    }
+    retrieved_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro_released",
+            "customer": "cus_abc",
+            "status": "active",
+            "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+        },
+        "k",
+    )
+
+    with (
+        patch(
+            "backend.data.credit.stripe.Subscription.retrieve_async",
+            new_callable=AsyncMock,
+            return_value=retrieved_sub,
+        ) as mock_retrieve,
+        patch(
+            "backend.data.credit.sync_subscription_from_stripe",
+            new_callable=AsyncMock,
+        ) as mock_sync,
+    ):
+        await sync_subscription_schedule_from_stripe(stripe_schedule)
+
+    mock_retrieve.assert_called_once_with("sub_pro_released")
+    mock_sync.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_sync_subscription_schedule_from_stripe_missing_sub_id_returns():
     """A schedule event with no 'subscription' field is logged and ignored."""
     with patch(

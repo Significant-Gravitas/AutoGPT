@@ -165,7 +165,7 @@ export function SubscriptionTierSection() {
                 <Button
                   className="w-full"
                   variant={isUpgrade ? "default" : "outline"}
-                  disabled={isPending || hasPendingChange}
+                  disabled={isPending}
                   onClick={() =>
                     handleTierChange(
                       tier.key,

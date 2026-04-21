@@ -2049,7 +2049,12 @@ async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
     ``subscription_schedule.*`` and ``customer.subscription.updated`` converge
     to the same DB state regardless of which arrives first.
     """
-    sub_id = stripe_schedule.get("subscription")
+    # When a schedule is released, Stripe clears `subscription` and moves the id
+    # to `released_subscription`. Fall back to that so `.released` events — the
+    # main reason we listen to schedule webhooks as a safety net — are processed.
+    sub_id = stripe_schedule.get("subscription") or stripe_schedule.get(
+        "released_subscription"
+    )
     if not isinstance(sub_id, str) or not sub_id:
         logger.warning(
             "sync_subscription_schedule_from_stripe: no 'subscription' id; skipping"
