@@ -326,16 +326,10 @@ export function useBuilderChatPanel({
   // parses that string to an object. So this effect must handle BOTH shapes
   // to work on live-streamed *and* hydrated sessions.
   useEffect(() => {
-    // Cross-graph guard: if the session is currently bound to graph A but
-    // the URL has already flipped to graph B, the `messages` in hand still
-    // belong to graph A's stream (the reset effect hasn't flushed yet).
-    // Process them against the new `flowID` and we'd corrupt the URL by
-    // writing flowVersion / flowExecutionID from the previous graph's
-    // tool calls.  Skip until the reset effect clears the session and the
-    // new bind repopulates messages for the new graph.
-    // `boundGraphRef.current === null` is the initial "no session yet" state
-    // and must not be blocked — tool calls on hydrated messages (for tests
-    // and for pre-open-panel reads) should still be processed.
+    // Drop tool-parts from the previous graph's stream before the reset
+    // effect flushes them — otherwise flowVersion / flowExecutionID get
+    // written with stale values. `null` is the initial "no session yet"
+    // state and must pass through so hydrated messages still apply.
     if (boundGraphRef.current !== null && boundGraphRef.current !== flowID) {
       return;
     }
@@ -515,21 +509,6 @@ export function useBuilderChatPanel({
     setBootstrapRetryToken((t) => t + 1);
   }
 
-  // The builder panel already auto-refetches the graph on edit_agent and
-  // auto-opens the execution panel on run_agent (see effects above), so the
-  // heavy tool-result cards those tools render (with "Open in library",
-  // "Open in builder", "Open run" buttons) are redundant and confusing —
-  // the user is already IN the builder looking at the updated agent / run.
-  // Strip those tool parts from the rendered message list; the raw
-  // `messages` above still drives the side-effects.
-  // Earlier iterations hid edit_agent / run_agent / create_agent tool cards
-  // on the assumption that the side-effect hooks (graph refetch, URL sub)
-  // were enough feedback. They weren't — the user saw nothing in the chat
-  // and couldn't tell if the tool actually ran. Render them as the shared
-  // Copilot MessagePartRenderer does; the side effects still fire in the
-  // effect above.
-  const visibleMessages = messages;
-
   return {
     isOpen,
     handleToggle,
@@ -537,7 +516,7 @@ export function useBuilderChatPanel({
     sessionId,
     flowID: flowID ?? null,
     flowVersion: flowVersion ?? null,
-    messages: visibleMessages,
+    messages,
     status,
     error,
     stop,

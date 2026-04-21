@@ -1,22 +1,5 @@
-"""Builder-session context helpers.
-
-When a copilot session is bound to a builder graph (via
-``session.metadata.builder_graph_id``), the assistant needs two distinct
-pieces of context:
-
-- A **static** session-long block — the bound graph's id/name and the
-  full agent-building guide. This never changes turn-to-turn, so it
-  belongs in the *system prompt* where Claude's cross-turn prompt cache
-  keeps it warm across the whole session.
-- A **dynamic** per-turn snapshot — the current graph version and a
-  compact summary of its live nodes and links. The user may edit the
-  graph between turns, so this is injected as a ``<builder_context>``
-  prefix on every user message.
-
-Splitting the two lets the ~20KB guide live in the cacheable system
-prompt while only the small, volatile snapshot rides along with each
-user turn — a large prompt-cache win for builder sessions.
-"""
+"""Builder-session context helpers — split cacheable system prompt from
+the volatile per-turn snapshot so Claude's prompt cache stays warm."""
 
 from __future__ import annotations
 
@@ -31,26 +14,15 @@ from backend.copilot.tools.get_agent_building_guide import _load_guide
 logger = logging.getLogger(__name__)
 
 
-# Tag that wraps the per-turn graph snapshot prepended to user messages.
 BUILDER_CONTEXT_TAG = "builder_context"
-
-# Tag that wraps the session-long static block appended to the system prompt.
 BUILDER_SESSION_TAG = "builder_session"
 
 
-# Tools that don't fit a graph-bound builder session and so are removed
-# from the LLM's toolset for such sessions:
-#   - ``create_agent`` / ``customize_agent``: the builder panel is bound
-#     to ONE graph; minting a new agent from here drifts out of scope
-#     (that flow belongs in ``/copilot``). Mirrors the per-tool guard
-#     in ``edit_agent`` / ``run_agent`` which rejects any ``agent_id``
-#     other than the bound graph.
-#   - ``get_agent_building_guide``: the full guide is already in the
-#     system-prompt suffix (see ``build_builder_system_prompt_suffix``).
-#     A tool call would fetch the same bytes again — wasted tokens and
-#     a cache-unfriendly detour.
-# Other tools (``find_block``, ``find_agent``, ``search_docs``, …) stay
-# available so the LLM can look up block ids instead of hallucinating.
+# Tools hidden from builder-bound sessions: ``create_agent`` /
+# ``customize_agent`` would mint a new graph (panel is bound to one),
+# and ``get_agent_building_guide`` duplicates bytes already in the
+# system-prompt suffix. Everything else (find_block, find_agent, …)
+# stays available so the LLM can look up ids instead of hallucinating.
 BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
     "create_agent",
     "customize_agent",
@@ -61,35 +33,45 @@ BUILDER_BLOCKED_TOOLS: tuple[str, ...] = (
 def resolve_session_permissions(
     session: ChatSession | None,
 ) -> CopilotPermissions | None:
-    """Return the capability filter implied by the session's metadata.
-
-    Builder-bound sessions (``metadata.builder_graph_id`` set) receive a
-    blacklist of tools that conflict with the panel's graph-bound scope
-    (see :data:`BUILDER_BLOCKED_TOOLS`). Regular sessions return
-    ``None`` so default (unrestricted) behaviour is preserved.
-    """
-    if session is not None and session.metadata.builder_graph_id:
-        return CopilotPermissions(
-            tools=list(BUILDER_BLOCKED_TOOLS),
-            tools_exclude=True,
-        )
-    return None
+    """Blacklist :data:`BUILDER_BLOCKED_TOOLS` for builder-bound sessions,
+    return ``None`` (unrestricted) otherwise."""
+    if session is None or not session.metadata.builder_graph_id:
+        return None
+    return CopilotPermissions(
+        tools=list(BUILDER_BLOCKED_TOOLS),
+        tools_exclude=True,
+    )
 
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
-# server-side block stays within a practical token budget even for large
-# graphs.
+# server-side block stays within a practical token budget for large graphs.
 _MAX_NODES = 100
 _MAX_LINKS = 200
 
+_FETCH_FAILED_PREFIX = (
+    f"<{BUILDER_CONTEXT_TAG}>\n"
+    f"<status>fetch_failed</status>\n"
+    f"</{BUILDER_CONTEXT_TAG}>\n\n"
+)
+
+# Embedded in the cacheable suffix so the LLM picks the right run_agent
+# dispatch mode without forcing the user to watch a long-blocking call.
+_BUILDER_RUN_AGENT_GUIDANCE = (
+    "You are operating inside the builder panel, not the standalone "
+    "copilot page. The builder page already subscribes to agent "
+    "executions the moment you return an execution_id, so for REAL "
+    "(non-dry) runs prefer `run_agent(dry_run=False, wait_for_result=0)` "
+    "— the user will see the run stream in the builder's execution panel "
+    "in-place and your turn ends immediately with the id. For DRY-RUNS "
+    "keep `dry_run=True, wait_for_result=120`: blocking is required so "
+    "you can inspect `execution.node_executions` and report the verdict "
+    "in the same turn."
+)
+
 
 def _sanitize_for_xml(value: Any) -> str:
-    """Escape XML special characters so user-controlled strings cannot break
-    out of the context wrappers.
-
-    Mirrors the escaping pattern used by the frontend ``sanitizeForXml``
-    helper in ``BuilderChatPanel/helpers.ts``.
-    """
+    """Escape XML special chars — mirrors ``sanitizeForXml`` in
+    ``BuilderChatPanel/helpers.ts``."""
     s = "" if value is None else str(value)
     return (
         s.replace("&", "&amp;")
@@ -101,12 +83,8 @@ def _sanitize_for_xml(value: Any) -> str:
 
 
 def _node_display_name(node: dict[str, Any]) -> str:
-    """Return a short, human-friendly label for a node.
-
-    ``input_default`` often carries a ``name``/``title`` the user set in the
-    builder (e.g. for AgentInputBlock / AgentOutputBlock / AgentExecutorBlock).
-    When absent, fall back to the block id.
-    """
+    """Prefer the user-set label (``input_default.name`` / ``metadata.title``);
+    fall back to the block id."""
     defaults = node.get("input_default") or {}
     metadata = node.get("metadata") or {}
     for key in ("name", "title", "label"):
@@ -161,60 +139,12 @@ def _format_links(
     return f"<links>\n{body}\n</links>"
 
 
-def _fetch_failed_turn_prefix() -> str:
-    return (
-        f"<{BUILDER_CONTEXT_TAG}>\n"
-        f"<status>fetch_failed</status>\n"
-        f"</{BUILDER_CONTEXT_TAG}>\n\n"
-    )
-
-
-# Guidance embedded in the builder-session block so the LLM picks the
-# right run_agent dispatch mode without forcing the user to watch a
-# long-blocking call when the builder UI is already live-streaming the
-# execution.
-_BUILDER_RUN_AGENT_GUIDANCE = (
-    "You are operating inside the builder panel, not the standalone "
-    "copilot page. The builder page already subscribes to agent "
-    "executions the moment you return an execution_id, so for REAL "
-    "(non-dry) runs prefer `run_agent(dry_run=False, wait_for_result=0)` "
-    "— the user will see the run stream in the builder's execution panel "
-    "in-place and your turn ends immediately with the id. For DRY-RUNS "
-    "keep `dry_run=True, wait_for_result=120`: blocking is required so "
-    "you can inspect `execution.node_executions` and report the verdict "
-    "in the same turn."
-)
-
-
-def _format_session_block(guide: str) -> str:
-    """Render the session-long ``<builder_session>`` block.
-
-    Holds only static content (dispatch guidance + building guide). The
-    live graph id/name/version move to the per-turn ``<builder_context>``
-    prefix — putting anything mutable here would invalidate Claude's
-    prompt cache on every rename / version bump / cross-graph session.
-    """
-    # The guide is trusted server-side content (read from disk). We do NOT
-    # escape it — the LLM needs the raw markdown to make sense of block ids,
-    # code fences, and example JSON.
-    return (
-        f"<{BUILDER_SESSION_TAG}>\n"
-        f"<run_agent_dispatch_mode>\n"
-        f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
-        f"</run_agent_dispatch_mode>\n"
-        f"<building_guide>\n{guide}\n</building_guide>\n"
-        f"</{BUILDER_SESSION_TAG}>"
-    )
-
-
 async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
-    """Return the system-prompt suffix for a builder-bound *session*.
+    """Return the cacheable system-prompt suffix for a builder session.
 
-    Returns ``"\\n\\n<builder_session>…</builder_session>"`` when the session
-    is bound to a graph and the building guide can be loaded; otherwise
-    ``""``. The suffix is byte-identical for every builder session (only
-    depends on the on-disk guide), so Claude's prompt cache stays warm
-    both across turns and across sessions for different graphs.
+    Holds only static content (dispatch guidance + building guide) so the
+    bytes are identical across turns AND across sessions for different
+    graphs — the live id/name/version ride on the per-turn prefix.
     """
     metadata = getattr(session, "metadata", None)
     graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
@@ -227,25 +157,26 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
         logger.exception("[builder_context] Failed to load agent-building guide")
         return ""
 
-    return "\n\n" + _format_session_block(guide)
+    # The guide is trusted server-side content (read from disk). We do NOT
+    # escape it — the LLM needs the raw markdown to make sense of block ids,
+    # code fences, and example JSON.
+    return (
+        f"\n\n<{BUILDER_SESSION_TAG}>\n"
+        f"<run_agent_dispatch_mode>\n"
+        f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
+        f"</run_agent_dispatch_mode>\n"
+        f"<building_guide>\n{guide}\n</building_guide>\n"
+        f"</{BUILDER_SESSION_TAG}>"
+    )
 
 
 async def build_builder_context_turn_prefix(
     session: ChatSession,
     user_id: str | None,
 ) -> str:
-    """Return the per-turn ``<builder_context>`` prefix for *session*.
-
-    Carries all the live, mutable bits: graph id+name, current version,
-    node/edge counts, and the capped node + link lists. The static
-    building guide lives in :func:`build_builder_system_prompt_suffix`
-    so only this (small) block rides along with each user turn — and
-    the cacheable system prefix stays identical across turns/sessions.
-
-    Returns ``""`` for non-builder sessions. Returns a
-    ``<builder_context><status>fetch_failed</status></builder_context>``
-    marker when the graph cannot be fetched.
-    """
+    """Return the per-turn ``<builder_context>`` prefix with the live
+    graph snapshot (id/name/version/nodes/links). ``""`` for non-builder
+    sessions; fetch-failure marker if the graph cannot be read."""
     metadata = getattr(session, "metadata", None)
     graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
     if not graph_id:
@@ -259,7 +190,7 @@ async def build_builder_context_turn_prefix(
             graph_id,
             getattr(session, "session_id", "?"),
         )
-        return _fetch_failed_turn_prefix()
+        return _FETCH_FAILED_PREFIX
 
     if not agent_json:
         logger.warning(
@@ -267,7 +198,7 @@ async def build_builder_context_turn_prefix(
             graph_id,
             getattr(session, "session_id", "?"),
         )
-        return _fetch_failed_turn_prefix()
+        return _FETCH_FAILED_PREFIX
 
     version = _sanitize_for_xml(agent_json.get("version") or "")
     raw_name = agent_json.get("name")
@@ -276,8 +207,6 @@ async def build_builder_context_turn_prefix(
     )
     nodes = agent_json.get("nodes") or []
     links = agent_json.get("links") or []
-    nodes_block = _format_nodes(nodes)
-    links_block = _format_links(links, nodes)
     name_attr = f' name="{_sanitize_for_xml(graph_name)}"' if graph_name else ""
     graph_tag = (
         f'<graph id="{_sanitize_for_xml(graph_id)}"'
@@ -287,5 +216,5 @@ async def build_builder_context_turn_prefix(
         f'edge_count="{len(links)}"/>'
     )
 
-    inner = f"{graph_tag}\n{nodes_block}\n{links_block}"
+    inner = f"{graph_tag}\n{_format_nodes(nodes)}\n{_format_links(links, nodes)}"
     return f"<{BUILDER_CONTEXT_TAG}>\n{inner}\n</{BUILDER_CONTEXT_TAG}>\n\n"

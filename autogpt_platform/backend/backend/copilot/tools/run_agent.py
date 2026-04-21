@@ -411,27 +411,10 @@ class RunAgentTool(BaseTool):
         error: GraphValidationError,
         session_id: str,
     ) -> SetupRequirementsResponse | None:
-        """Convert a credential-related ``GraphValidationError`` into
-        the inline ``SetupRequirementsResponse`` the frontend renders.
-
-        Returns ``None`` if *error* isn't credential-related — the
-        caller should then fall back to a plain text error.
-
-        This is the race-condition path (prereq check passed → creds
-        deleted/invalidated → executor/scheduler raised). All credential
-        fields are shown as missing so the user sees exactly which
-        accounts to reconnect.
-        """
-        # Only surface the credential-setup UI when ALL errors are credential-
-        # related.  If there are also structural errors (missing inputs, invalid
-        # node config), fall through to the plain error path so those errors are
-        # not hidden from the user — they would surface on the next run attempt
-        # after the credential fix, creating a confusing two-step failure.
-        #
-        # Collect all error messages once so we can check both emptiness and
-        # uniformity without iterating twice.  all() returns True vacuously on
-        # an empty sequence, so the ``not messages`` guard is essential — an
-        # empty node_errors dict must fall through to the plain error path.
+        """Turn a credential-only ``GraphValidationError`` into the inline
+        setup-requirements card; return ``None`` if *any* non-credential
+        error is present so the caller falls back to the plain text path
+        (otherwise structural errors would be hidden)."""
         messages = [
             msg
             for node_errors in error.node_errors.values()
@@ -442,17 +425,10 @@ class RunAgentTool(BaseTool):
         ):
             return None
 
-        # Show ALL credential fields as missing — in the race case the
-        # previously-matched credentials have since become invalid, so
-        # the user needs to reconnect all of them.  Passing ``None``
-        # means no field is treated as "already connected".
-        #
-        # Trade-off: we could narrow to only the failing nodes in
-        # ``error.node_errors``, but we cannot trust the old credential
-        # mapping (those creds were valid at prereq time but are now
-        # gone/invalid), so showing all is safer than showing a partial
-        # list that might still contain broken entries.  The user sees
-        # every account that may need attention in a single card.
+        # Show ALL credential fields as missing — the previously-matched
+        # creds are now invalid, so narrowing to `error.node_errors` would
+        # leak the stale mapping. Passing ``None`` means no field is
+        # treated as "already connected".
         credentials_dict = build_missing_credentials_from_graph(graph, None)
         return SetupRequirementsResponse(
             message=(
