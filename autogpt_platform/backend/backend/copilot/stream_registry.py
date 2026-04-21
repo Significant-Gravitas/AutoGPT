@@ -17,7 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -330,7 +330,7 @@ async def stream_and_publish(
     session_id: str,
     turn_id: str,
     stream: AsyncIterator[StreamBaseResponse],
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Wrap an async stream iterator with registry publishing.
 
     Publishes each chunk to the stream registry for frontend SSE consumption,
@@ -353,27 +353,45 @@ async def stream_and_publish(
     """
     publish_failed_once = False
 
-    async for event in stream:
-        if turn_id and not isinstance(event, (StreamFinish, StreamError)):
-            try:
-                await publish_chunk(turn_id, event, session_id=session_id)
-            except (RedisError, ConnectionError, OSError):
-                if not publish_failed_once:
-                    publish_failed_once = True
-                    logger.warning(
-                        "[stream_and_publish] Failed to publish chunk %s for %s "
-                        "(further failures logged at DEBUG)",
-                        type(event).__name__,
-                        session_id[:12],
-                        exc_info=True,
-                    )
-                else:
-                    logger.debug(
-                        "[stream_and_publish] Failed to publish chunk %s",
-                        type(event).__name__,
-                        exc_info=True,
-                    )
-        yield event
+    # ``async for`` does NOT auto-close the iterator on GeneratorExit /
+    # early break in the consumer — without this try/finally, aclose() on
+    # this wrapper would not propagate to ``stream``, leaving the inner
+    # ``stream_chat_completion_sdk`` generator orphaned and holding the
+    # per-session stream lock until GC eventually closes it.  See
+    # OPEN-3096: user clicks Stop, resends, and hits
+    # "Another stream is already active".
+    try:
+        async for event in stream:
+            if turn_id and not isinstance(event, (StreamFinish, StreamError)):
+                try:
+                    await publish_chunk(turn_id, event, session_id=session_id)
+                except (RedisError, ConnectionError, OSError):
+                    if not publish_failed_once:
+                        publish_failed_once = True
+                        logger.warning(
+                            "[stream_and_publish] Failed to publish chunk %s for %s "
+                            "(further failures logged at DEBUG)",
+                            type(event).__name__,
+                            session_id[:12],
+                            exc_info=True,
+                        )
+                    else:
+                        logger.debug(
+                            "[stream_and_publish] Failed to publish chunk %s",
+                            type(event).__name__,
+                            exc_info=True,
+                        )
+            yield event
+    finally:
+        # Explicitly close the inner stream so its ``finally`` / GeneratorExit
+        # handler runs deterministically (releases the stream lock, persists
+        # session state).  aclose() is safe to call on an already-exhausted
+        # generator — it's a no-op in that case.  Guarded by getattr because
+        # AsyncIterator protocol does not mandate aclose; real callers pass
+        # async generators which do have it.
+        _aclose = getattr(stream, "aclose", None)
+        if _aclose is not None:
+            await _aclose()
 
 
 async def subscribe_to_session(
