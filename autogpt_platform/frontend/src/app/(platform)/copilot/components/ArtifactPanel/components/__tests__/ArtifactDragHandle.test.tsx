@@ -31,13 +31,25 @@ function renderHandle(onWidthChange = vi.fn(), panelWidth = 600) {
 }
 
 // jsdom/happy-dom don't implement pointer capture by default — spy on the
-// prototype so vi.restoreAllMocks() can clean the stubs up automatically.
-// Seed no-op base implementations first so vi.spyOn has something to spy on.
+// prototype so vi.restoreAllMocks() can tear the spies down. We also seed
+// no-op base implementations where the prototype lacks them so vi.spyOn has
+// something to wrap. Both the seeded properties and window.innerWidth are
+// manual mutations that vi.restoreAllMocks() won't undo, so capture their
+// original descriptors and restore them in `restoreGlobals`.
 function installPointerCaptureStub() {
   const proto = HTMLElement.prototype as unknown as {
     setPointerCapture?: (id: number) => void;
     releasePointerCapture?: (id: number) => void;
   };
+  const originalSetPointerCapture = Object.getOwnPropertyDescriptor(
+    proto,
+    "setPointerCapture",
+  );
+  const originalReleasePointerCapture = Object.getOwnPropertyDescriptor(
+    proto,
+    "releasePointerCapture",
+  );
+
   if (!proto.setPointerCapture) proto.setPointerCapture = () => {};
   if (!proto.releasePointerCapture) proto.releasePointerCapture = () => {};
   const setPointerCapture = vi
@@ -46,11 +58,37 @@ function installPointerCaptureStub() {
   const releasePointerCapture = vi
     .spyOn(HTMLElement.prototype, "releasePointerCapture")
     .mockImplementation(() => {});
-  return { setPointerCapture, releasePointerCapture };
+
+  function restoreGlobals() {
+    if (originalSetPointerCapture) {
+      Object.defineProperty(
+        proto,
+        "setPointerCapture",
+        originalSetPointerCapture,
+      );
+    } else {
+      delete proto.setPointerCapture;
+    }
+    if (originalReleasePointerCapture) {
+      Object.defineProperty(
+        proto,
+        "releasePointerCapture",
+        originalReleasePointerCapture,
+      );
+    } else {
+      delete proto.releasePointerCapture;
+    }
+  }
+
+  return { setPointerCapture, releasePointerCapture, restoreGlobals };
 }
 
 describe("ArtifactDragHandle", () => {
   let spies: ReturnType<typeof installPointerCaptureStub>;
+  const originalInnerWidth = Object.getOwnPropertyDescriptor(
+    window,
+    "innerWidth",
+  );
 
   beforeEach(() => {
     spies = installPointerCaptureStub();
@@ -64,6 +102,10 @@ describe("ArtifactDragHandle", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    spies.restoreGlobals();
+    if (originalInnerWidth) {
+      Object.defineProperty(window, "innerWidth", originalInnerWidth);
+    }
   });
 
   // SECRT-2256: when the cursor drifts over a sandboxed iframe mid-drag, the
