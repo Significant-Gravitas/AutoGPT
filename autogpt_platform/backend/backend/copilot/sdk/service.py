@@ -848,27 +848,44 @@ def _is_fallback_stderr(line: str) -> bool:
 def _build_system_prompt_value(
     system_prompt: str,
     cross_user_cache: bool,
+    include_dynamic_sections: bool = False,
 ) -> str | SystemPromptPreset:
     """Build the ``system_prompt`` argument for :class:`ClaudeAgentOptions`.
 
     When *cross_user_cache* is enabled, returns a :class:`SystemPromptPreset`
-    dict so the Claude Code default prompt becomes a cacheable prefix shared
-    across all users; our custom *system_prompt* is appended after it.
+    dict so the Claude Code default prompt becomes a cacheable prefix; our
+    custom *system_prompt* is appended after it.
 
-    When disabled (or if the SDK is too old to support ``SystemPromptPreset``),
-    the raw *system_prompt* string is returned unchanged.
+    *include_dynamic_sections* controls whether the preset's dynamic sections
+    (cwd, git status) are included.  Defaults to False so Turn 1 produces a
+    fully-static prefix that caches cross-user.  Set to True on ``--resume``
+    turns to avoid a CLI 2.1.97 crash when ``excludeDynamicSections=True`` is
+    combined with ``--resume`` — the dynamic sections are session-stable
+    (cwd derived from session_id), so Turn 2+ of the same session still
+    share a common cacheable prefix even though the cross-user prefix match
+    is broken by the per-session cwd.
+
+    When *cross_user_cache* is disabled, the raw *system_prompt* string is
+    returned.  Note this causes the CLI to REPLACE its built-in prompt via
+    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset),
+    which loses Claude Code's default prompt and its cache markers entirely.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
     """
     if cross_user_cache:
-        logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        return _SystemPromptPreset(
+        preset = _SystemPromptPreset(
             type="preset",
             preset="claude_code",
             append=system_prompt,
-            exclude_dynamic_sections=True,
         )
+        if not include_dynamic_sections:
+            preset["exclude_dynamic_sections"] = True
+        logger.debug(
+            "Using SystemPromptPreset (include_dynamic_sections=%s)",
+            include_dynamic_sections,
+        )
+        return preset
     logger.debug("Cross-user prompt cache disabled, using raw string")
     return system_prompt
 
@@ -3050,15 +3067,20 @@ async def stream_chat_completion_sdk(
                     sid,
                 )
 
-        # Use SystemPromptPreset for cross-user prompt caching.
-        # WORKAROUND: CLI 2.1.97 (sdk 0.1.58) exits code 1 when
-        # excludeDynamicSections=True is in the initialize request AND
-        # --resume is active.  Disable the preset on resumed turns.
-        # Turn 1 still gets the preset (no --resume).
-        _cross_user = config.claude_agent_cross_user_prompt_cache and not use_resume
+        # Use SystemPromptPreset so the Claude Code default prompt is
+        # preserved (via --append-system-prompt) and the preset-level cache
+        # markers apply.  On --resume, omit excludeDynamicSections=True
+        # (CLI 2.1.97 exits code 1 when that flag is combined with --resume);
+        # the session-stable cwd keeps dynamic sections identical across
+        # turns, so Turn 2+ of the same session still cache-reads the prefix
+        # instead of re-writing the full 33K tool schema + supplement.
+        # Falling back to a raw string here would pass --system-prompt
+        # instead, replacing the built-in prompt entirely and losing all
+        # CLI cache markers.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
-            cross_user_cache=_cross_user,
+            cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+            include_dynamic_sections=use_resume,
         )
 
         sdk_options_kwargs: dict[str, Any] = {
@@ -3418,12 +3440,13 @@ async def stream_chat_completion_sdk(
                 # Recompute system_prompt for retry — ctx.use_resume may have
                 # changed (context reduction enabled --resume).  CLI 2.1.97
                 # crashes when excludeDynamicSections=True is combined with
-                # --resume, so disable the cross-user preset on resumed turns.
-                _cross_user_retry = (
-                    config.claude_agent_cross_user_prompt_cache and not ctx.use_resume
-                )
+                # --resume, so on resume we keep the preset but include the
+                # dynamic sections (session-stable cwd keeps them identical
+                # across turns, preserving within-session cache reads).
                 sdk_options_kwargs_retry["system_prompt"] = _build_system_prompt_value(
-                    system_prompt, cross_user_cache=_cross_user_retry
+                    system_prompt,
+                    cross_user_cache=config.claude_agent_cross_user_prompt_cache,
+                    include_dynamic_sections=ctx.use_resume,
                 )
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 # Retry intentionally omits prior_messages (transcript+gap context) and

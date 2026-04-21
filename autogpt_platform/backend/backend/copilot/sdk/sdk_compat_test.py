@@ -94,30 +94,57 @@ def test_agent_options_accepts_required_fields():
 def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_sections():
     """Verify ClaudeAgentOptions accepts the exact preset dict _build_system_prompt_value produces.
 
-    The production code always includes ``exclude_dynamic_sections=True`` in the preset
-    dict.  This compat test mirrors that exact shape so any SDK version that starts
-    rejecting unknown keys will be caught here rather than at runtime.
+    The Turn 1 (non-resume) code path includes ``exclude_dynamic_sections=True`` in
+    the preset dict for cross-user caching.  This compat test mirrors that exact
+    shape so any SDK version that starts rejecting unknown keys will be caught
+    here rather than at runtime.
     """
     from claude_agent_sdk import ClaudeAgentOptions
     from claude_agent_sdk.types import SystemPromptPreset
 
     from .service import _build_system_prompt_value
 
-    # Call the production helper directly so this test is tied to the real
-    # dict shape rather than a hand-rolled copy.
     preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
     assert isinstance(
         preset, dict
     ), "_build_system_prompt_value must return a dict when caching is on"
+    assert preset.get("exclude_dynamic_sections") is True, (
+        "Turn 1 must strip dynamic sections to keep the prefix cacheable " "cross-user"
+    )
 
     sdk_preset = cast(SystemPromptPreset, preset)
     opts = ClaudeAgentOptions(system_prompt=sdk_preset)
     assert opts.system_prompt == sdk_preset
 
 
+def test_build_system_prompt_value_on_resume_omits_exclude_flag_but_keeps_preset():
+    """On --resume turns, the helper must return a preset dict WITHOUT
+    ``exclude_dynamic_sections`` to avoid a CLI 2.1.97 crash, while still
+    keeping the preset so the Claude Code default prompt is preserved via
+    --append-system-prompt and within-session cache markers still apply."""
+    from .service import _build_system_prompt_value
+
+    result = _build_system_prompt_value(
+        "my prompt", cross_user_cache=True, include_dynamic_sections=True
+    )
+    assert isinstance(result, dict), (
+        "On resume the helper must still return a preset dict — returning a "
+        "raw string here would trigger --system-prompt (replace-mode) and "
+        "lose Claude Code's default cache-marked prefix"
+    )
+    assert result.get("type") == "preset"
+    assert result.get("preset") == "claude_code"
+    assert result.get("append") == "my prompt"
+    assert "exclude_dynamic_sections" not in result, (
+        "CLI 2.1.97 exits code 1 when excludeDynamicSections=True is combined "
+        "with --resume, so the flag must be absent on resumed turns"
+    )
+
+
 def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
-    """When cross_user_cache=False (e.g. on --resume turns), the helper must return
-    a plain string so the preset+resume crash is avoided."""
+    """When cross_user_cache=False (feature flag disabled globally), the
+    helper returns a plain string; the CLI will receive --system-prompt
+    (replace-mode) and skip the preset entirely."""
     from .service import _build_system_prompt_value
 
     result = _build_system_prompt_value("my prompt", cross_user_cache=False)
