@@ -1478,6 +1478,25 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
     return None
 
 
+# Substrings Stripe uses in InvalidRequestError messages when the schedule is
+# already in a terminal state (released / completed / canceled) and therefore
+# cannot be released again. We only swallow the error when one of these appears;
+# anything else (typo'd schedule id, wrong subscription, 404, etc.) must
+# propagate so bugs aren't masked as silent no-ops.
+_TERMINAL_SCHEDULE_ERROR_SUBSTRINGS = (
+    "already been released",
+    "already released",
+    "already been completed",
+    "already completed",
+    "already been canceled",
+    "already been cancelled",
+    "already canceled",
+    "already cancelled",
+    "is not active",
+    "is not in a state",
+)
+
+
 async def _release_schedule_ignoring_terminal(
     schedule_id: str, log_context: str
 ) -> bool:
@@ -1485,17 +1504,31 @@ async def _release_schedule_ignoring_terminal(
 
     Returns True if the release call succeeded, False if the schedule was
     already in a terminal (released / completed / canceled) state. Any other
-    Stripe error propagates.
+    Stripe error — including non-terminal InvalidRequestErrors such as typo'd
+    ids or 404s — propagates so the caller can surface the failure instead of
+    silently masking a bug.
     """
     try:
         await stripe.SubscriptionSchedule.release_async(schedule_id)
         return True
     except stripe.InvalidRequestError as e:
-        logger.info(
+        message = getattr(e, "user_message", None) or str(e)
+        if not any(
+            marker in message.lower() for marker in _TERMINAL_SCHEDULE_ERROR_SUBSTRINGS
+        ):
+            logger.warning(
+                "%s: schedule %s release failed with non-terminal"
+                " InvalidRequestError (%s); re-raising",
+                log_context,
+                schedule_id,
+                message,
+            )
+            raise
+        logger.warning(
             "%s: schedule %s not releasable (%s); treating as already released",
             log_context,
             schedule_id,
-            getattr(e, "user_message", None) or str(e),
+            message,
         )
         return False
 
@@ -1551,23 +1584,51 @@ async def _schedule_downgrade_at_period_end(
             existing_schedule_id, "_schedule_downgrade_at_period_end"
         )
 
+    # Create + modify as a two-step transaction. If modify fails (network,
+    # Stripe 500) the created schedule is orphaned AND attached to the
+    # subscription, which blocks any future Stripe-side change until manually
+    # released. Roll back by releasing the orphan, then re-raise so the caller
+    # sees the original failure.
     schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=sub_id)
-    await stripe.SubscriptionSchedule.modify_async(
-        schedule.id,
-        phases=[
-            {
-                "items": [{"price": current_price_id, "quantity": 1}],
-                "start_date": period_start,
-                "end_date": period_end,
-                "proration_behavior": "none",
-            },
-            {
-                "items": [{"price": new_price_id, "quantity": 1}],
-                "proration_behavior": "none",
-            },
-        ],
-        metadata={"user_id": user_id, "pending_tier": tier.value},
-    )
+    try:
+        await stripe.SubscriptionSchedule.modify_async(
+            schedule.id,
+            phases=[
+                {
+                    "items": [{"price": current_price_id, "quantity": 1}],
+                    "start_date": period_start,
+                    "end_date": period_end,
+                    "proration_behavior": "none",
+                },
+                {
+                    "items": [{"price": new_price_id, "quantity": 1}],
+                    "proration_behavior": "none",
+                },
+            ],
+            metadata={"user_id": user_id, "pending_tier": tier.value},
+        )
+    except stripe.StripeError:
+        logger.exception(
+            "_schedule_downgrade_at_period_end: modify failed for schedule %s"
+            " on sub %s user %s; attempting rollback release",
+            schedule.id,
+            sub_id,
+            user_id,
+        )
+        try:
+            await _release_schedule_ignoring_terminal(
+                schedule.id, "_schedule_downgrade_at_period_end_rollback"
+            )
+        except stripe.StripeError:
+            logger.exception(
+                "_schedule_downgrade_at_period_end: rollback release also failed"
+                " for orphaned schedule %s on sub %s user %s; manual cleanup"
+                " required",
+                schedule.id,
+                sub_id,
+                user_id,
+            )
+        raise
     logger.info(
         "modify_stripe_subscription_for_tier: scheduled sub %s downgrade for user %s → %s at %d",
         sub_id,

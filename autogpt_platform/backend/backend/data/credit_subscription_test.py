@@ -2132,6 +2132,121 @@ async def test_schedule_downgrade_clears_cancel_at_period_end():
 
 
 @pytest.mark.asyncio
+async def test_schedule_downgrade_rolls_back_orphan_on_modify_failure():
+    """If SubscriptionSchedule.modify fails after a successful create, the
+    orphaned schedule must be released so it doesn't stay attached and block
+    future changes. The original StripeError re-raises to the caller.
+    """
+    import time as time_mod
+
+    now = int(time_mod.time())
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz",
+            "schedule": None,
+            "cancel_at_period_end": False,
+            "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+            "current_period_start": now - 3 * 24 * 3600,
+            "current_period_end": now + 27 * 24 * 3600,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mock_new_schedule = stripe.SubscriptionSchedule.construct_from(
+        {"id": "sub_sched_new"}, "k"
+    )
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.create_async",
+            new_callable=AsyncMock,
+            return_value=mock_new_schedule,
+        ) as mock_create,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.modify_async",
+            new_callable=AsyncMock,
+            side_effect=stripe.APIConnectionError("network down"),
+        ) as mock_schedule_modify,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
+        ) as mock_release,
+    ):
+        with pytest.raises(stripe.APIConnectionError):
+            await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.PRO)
+
+    mock_create.assert_called_once_with(from_subscription="sub_biz")
+    mock_schedule_modify.assert_called_once()
+    # Rollback must release the freshly-created (and now orphaned) schedule
+    # id, not the pre-existing one (there was none here).
+    mock_release.assert_called_once_with("sub_sched_new")
+
+
+@pytest.mark.asyncio
+async def test_release_ignoring_terminal_reraises_non_terminal_error():
+    """_release_schedule_ignoring_terminal only swallows terminal-state errors.
+    Typos / wrong ids / 404s surface so bugs aren't silently masked.
+    """
+    from backend.data.credit import _release_schedule_ignoring_terminal
+
+    with patch(
+        "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+        new_callable=AsyncMock,
+        side_effect=stripe.InvalidRequestError(
+            "No such subscription_schedule: 'sub_sched_typo'",
+            param="schedule",
+        ),
+    ):
+        with pytest.raises(stripe.InvalidRequestError):
+            await _release_schedule_ignoring_terminal("sub_sched_typo", "test_context")
+
+
+@pytest.mark.asyncio
+async def test_release_ignoring_terminal_swallows_terminal_error():
+    """Terminal-state messages are treated as idempotent success and return False."""
+    from backend.data.credit import _release_schedule_ignoring_terminal
+
+    with patch(
+        "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+        new_callable=AsyncMock,
+        side_effect=stripe.InvalidRequestError(
+            "Schedule has already been released",
+            param="schedule",
+        ),
+    ):
+        result = await _release_schedule_ignoring_terminal(
+            "sub_sched_done", "test_context"
+        )
+
+    assert result is False
+
+
+@pytest.mark.asyncio
 async def test_upgrade_releases_pending_schedule():
     """modify_stripe_subscription_for_tier upgrade path releases attached schedule first."""
     mock_sub = stripe.Subscription.construct_from(
