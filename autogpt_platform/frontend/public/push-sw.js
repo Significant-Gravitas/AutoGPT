@@ -63,11 +63,15 @@ self.addEventListener("push", function (event) {
     targetUrl = "/copilot?sessionId=" + data.session_id;
   }
 
+  // Unique tag per push so repeat notifications aren't coalesced by the OS.
+  // Falls back to Date.now() if the backend omitted `id`.
+  var tag = data.type + ":" + data.event + ":" + (data.id || Date.now());
+
   var options = {
     body: config.body,
     icon: "/favicon.ico",
     badge: "/favicon.ico",
-    tag: data.type + ":" + data.event,
+    tag: tag,
     data: Object.assign({ url: targetUrl }, data),
     renotify: true,
   };

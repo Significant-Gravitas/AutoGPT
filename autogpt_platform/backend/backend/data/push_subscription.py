@@ -1,13 +1,30 @@
 """CRUD operations for Web Push subscriptions (PushSubscription model)."""
 
-from __future__ import annotations
-
 import logging
 from datetime import datetime, timezone
 
 from prisma.models import PushSubscription
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
+
+
+class PushSubscriptionDTO(BaseModel):
+    """RPC-serializable projection of PushSubscription."""
+
+    user_id: str
+    endpoint: str
+    p256dh: str
+    auth: str
+
+    @staticmethod
+    def from_db(model: PushSubscription) -> "PushSubscriptionDTO":
+        return PushSubscriptionDTO(
+            user_id=model.userId,
+            endpoint=model.endpoint,
+            p256dh=model.p256dh,
+            auth=model.auth,
+        )
 
 
 async def upsert_push_subscription(
@@ -38,8 +55,9 @@ async def upsert_push_subscription(
     )
 
 
-async def get_user_push_subscriptions(user_id: str) -> list[PushSubscription]:
-    return await PushSubscription.prisma().find_many(where={"userId": user_id})
+async def get_user_push_subscriptions(user_id: str) -> list[PushSubscriptionDTO]:
+    rows = await PushSubscription.prisma().find_many(where={"userId": user_id})
+    return [PushSubscriptionDTO.from_db(row) for row in rows]
 
 
 async def delete_push_subscription(user_id: str, endpoint: str) -> None:

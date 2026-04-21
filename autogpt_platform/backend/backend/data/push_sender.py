@@ -1,21 +1,16 @@
 """Fire-and-forget Web Push delivery for notification events."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
 import time
+import uuid
 
-from prisma.models import PushSubscription
 from pywebpush import WebPushException, webpush
 
 from backend.api.model import NotificationPayload
-from backend.data.push_subscription import (
-    delete_push_subscription_by_endpoint,
-    get_user_push_subscriptions,
-    increment_fail_count,
-)
+from backend.data.push_subscription import PushSubscriptionDTO
+from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -31,9 +26,14 @@ _FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")
 
 
 def _build_push_payload(payload: NotificationPayload) -> str:
-    """Build a compact JSON payload (<4KB) for the push message."""
+    """Build a compact JSON payload (<4KB) for the push message.
+
+    ``id`` is a per-push UUID used by the service worker to build a unique
+    notification tag, so repeat pushes don't get coalesced by the OS.
+    """
     data = payload.model_dump(mode="json")
     compact: dict[str, object] = {
+        "id": uuid.uuid4().hex,
         "type": data.get("type", ""),
         "event": data.get("event", ""),
     }
@@ -64,14 +64,15 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
         return
     _user_last_push[user_id] = now
 
-    subscriptions = await get_user_push_subscriptions(user_id)
+    db_client = get_database_manager_async_client()
+    subscriptions = await db_client.get_user_push_subscriptions(user_id)
     if not subscriptions:
         return
 
     push_data = _build_push_payload(payload)
     vapid_claims: dict[str, str | int] = {"sub": vapid_claim_email}
 
-    async def _send_one(sub: PushSubscription) -> None:
+    async def _send_one(sub: PushSubscriptionDTO) -> None:
         try:
             await asyncio.to_thread(
                 webpush,
@@ -91,10 +92,12 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
                     status,
                     sub.endpoint[:60],
                 )
-                await delete_push_subscription_by_endpoint(sub.userId, sub.endpoint)
+                await db_client.delete_push_subscription_by_endpoint(
+                    sub.user_id, sub.endpoint
+                )
             else:
                 logger.warning("Push failed for %s: %s", sub.endpoint[:60], e)
-                await increment_fail_count(sub.userId, sub.endpoint)
+                await db_client.increment_push_fail_count(sub.user_id, sub.endpoint)
         except Exception:
             logger.exception("Unexpected error sending push to %s", sub.endpoint[:60])
 

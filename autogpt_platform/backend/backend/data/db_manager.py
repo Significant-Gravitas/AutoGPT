@@ -97,6 +97,11 @@ from backend.data.notifications import (
 )
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.platform_cost import log_platform_cost
+from backend.data.push_subscription import (
+    delete_push_subscription_by_endpoint,
+    get_user_push_subscriptions,
+    increment_fail_count,
+)
 from backend.data.understanding import (
     get_business_understanding,
     upsert_business_understanding,
@@ -336,6 +341,11 @@ class DatabaseManager(AppService):
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = _(log_platform_cost)
 
+    # ============ Push Notifications ============ #
+    get_user_push_subscriptions = _(get_user_push_subscriptions)
+    delete_push_subscription_by_endpoint = _(delete_push_subscription_by_endpoint)
+    increment_push_fail_count = _(increment_fail_count, name="increment_push_fail_count")
+
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = _(chat_db.get_chat_session)
     create_chat_session = _(chat_db.create_chat_session)
@@ -536,6 +546,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Platform Cost Tracking ============ #
     log_platform_cost = d.log_platform_cost
+
+    # ============ Push Notifications ============ #
+    get_user_push_subscriptions = d.get_user_push_subscriptions
+    delete_push_subscription_by_endpoint = d.delete_push_subscription_by_endpoint
+    increment_push_fail_count = d.increment_push_fail_count
 
     # ============ CoPilot Chat Sessions ============ #
     get_chat_session = d.get_chat_session

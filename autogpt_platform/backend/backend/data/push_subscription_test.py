@@ -106,14 +106,28 @@ class TestUpsertPushSubscription:
 
 class TestGetUserPushSubscriptions:
     @pytest.mark.asyncio
-    async def test_returns_list_of_subscriptions(self, mock_prisma):
-        sub1 = MagicMock()
-        sub2 = MagicMock()
+    async def test_returns_list_of_subscription_dtos(self, mock_prisma):
+        sub1 = MagicMock(
+            userId="user-1",
+            endpoint="https://push.example.com/sub/1",
+            p256dh="key1",
+            auth="auth1",
+        )
+        sub2 = MagicMock(
+            userId="user-1",
+            endpoint="https://push.example.com/sub/2",
+            p256dh="key2",
+            auth="auth2",
+        )
         mock_prisma.find_many.return_value = [sub1, sub2]
 
         result = await push_subscription.get_user_push_subscriptions("user-1")
 
-        assert result == [sub1, sub2]
+        assert [r.endpoint for r in result] == [
+            "https://push.example.com/sub/1",
+            "https://push.example.com/sub/2",
+        ]
+        assert all(r.user_id == "user-1" for r in result)
         mock_prisma.find_many.assert_awaited_once_with(where={"userId": "user-1"})
 
     @pytest.mark.asyncio

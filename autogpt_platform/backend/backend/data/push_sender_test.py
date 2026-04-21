@@ -6,6 +6,7 @@ import pytest
 
 from backend.api.model import NotificationPayload
 from backend.data import push_sender
+from backend.data.push_subscription import PushSubscriptionDTO
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +15,20 @@ def clear_debounce():
     push_sender._user_last_push.clear()
     yield
     push_sender._user_last_push.clear()
+
+
+@pytest.fixture
+def mock_db_client(mocker):
+    """Provides a mocked DatabaseManagerAsyncClient with stub async methods."""
+    client = MagicMock()
+    client.get_user_push_subscriptions = AsyncMock(return_value=[])
+    client.delete_push_subscription_by_endpoint = AsyncMock()
+    client.increment_push_fail_count = AsyncMock()
+    mocker.patch(
+        "backend.data.push_sender.get_database_manager_async_client",
+        return_value=client,
+    )
+    return client
 
 
 def _make_settings(
@@ -33,13 +48,10 @@ def _make_subscription(
     endpoint: str = "https://push.example.com/sub/1",
     p256dh: str = "test-p256dh",
     auth: str = "test-auth",
-) -> MagicMock:
-    sub = MagicMock()
-    sub.userId = user_id
-    sub.endpoint = endpoint
-    sub.p256dh = p256dh
-    sub.auth = auth
-    return sub
+) -> PushSubscriptionDTO:
+    return PushSubscriptionDTO(
+        user_id=user_id, endpoint=endpoint, p256dh=p256dh, auth=auth
+    )
 
 
 def _make_payload(**kwargs) -> NotificationPayload:
@@ -100,111 +112,88 @@ class TestBuildPushPayload:
         assert isinstance(parsed["type"], str)
         assert isinstance(parsed["event"], str)
 
+    def test_includes_unique_id_per_call(self):
+        """Each push gets a fresh UUID so repeats don't collapse under the same SW tag."""
+        import json
+
+        payload = _make_payload(type="agent_run", event="completed")
+
+        first = json.loads(push_sender._build_push_payload(payload))
+        second = json.loads(push_sender._build_push_payload(payload))
+
+        assert "id" in first and "id" in second
+        assert first["id"] != second["id"]
+
 
 class TestSendPushForUser:
     @pytest.mark.asyncio
-    async def test_skips_when_vapid_private_key_missing(self, mocker):
+    async def test_skips_when_vapid_private_key_missing(
+        self, mocker, mock_db_client
+    ):
         mocker.patch.object(
-            push_sender,
-            "_settings",
-            _make_settings(private=""),
-        )
-        mock_get = mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
+            push_sender, "_settings", _make_settings(private="")
         )
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_get.assert_not_awaited()
+        mock_db_client.get_user_push_subscriptions.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_skips_when_vapid_public_key_missing(self, mocker):
-        mocker.patch.object(
-            push_sender,
-            "_settings",
-            _make_settings(public=""),
-        )
-        mock_get = mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-        )
+    async def test_skips_when_vapid_public_key_missing(
+        self, mocker, mock_db_client
+    ):
+        mocker.patch.object(push_sender, "_settings", _make_settings(public=""))
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_get.assert_not_awaited()
+        mock_db_client.get_user_push_subscriptions.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_skips_when_vapid_email_missing(self, mocker):
-        mocker.patch.object(
-            push_sender,
-            "_settings",
-            _make_settings(email=""),
-        )
-        mock_get = mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-        )
+    async def test_skips_when_vapid_email_missing(self, mocker, mock_db_client):
+        mocker.patch.object(push_sender, "_settings", _make_settings(email=""))
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_get.assert_not_awaited()
+        mock_db_client.get_user_push_subscriptions.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_debounces_rapid_calls(self, mocker):
+    async def test_debounces_rapid_calls(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
-        mock_get = mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[],
-        )
 
         await push_sender.send_push_for_user("user-1", _make_payload())
-        assert mock_get.await_count == 1
+        assert mock_db_client.get_user_push_subscriptions.await_count == 1
 
         await push_sender.send_push_for_user("user-1", _make_payload())
-        assert mock_get.await_count == 1
+        assert mock_db_client.get_user_push_subscriptions.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_different_users_not_debounced(self, mocker):
+    async def test_different_users_not_debounced(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
-        mock_get = mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[],
-        )
 
         await push_sender.send_push_for_user("user-1", _make_payload())
         await push_sender.send_push_for_user("user-2", _make_payload())
 
-        assert mock_get.await_count == 2
+        assert mock_db_client.get_user_push_subscriptions.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_returns_early_when_no_subscriptions(self, mocker):
+    async def test_returns_early_when_no_subscriptions(
+        self, mocker, mock_db_client
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[],
-        )
-        mock_webpush = mocker.patch(
-            "backend.data.push_sender.webpush",
-        )
+        mock_webpush = mocker.patch("backend.data.push_sender.webpush")
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
         mock_webpush.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_calls_webpush_for_each_subscription(self, mocker):
+    async def test_calls_webpush_for_each_subscription(
+        self, mocker, mock_db_client
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub1 = _make_subscription(endpoint="https://push.example.com/sub/1")
         sub2 = _make_subscription(endpoint="https://push.example.com/sub/2")
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub1, sub2],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub1, sub2]
         mock_webpush = mocker.patch("backend.data.push_sender.webpush")
 
         await push_sender.send_push_for_user("user-1", _make_payload())
@@ -217,7 +206,9 @@ class TestSendPushForUser:
         assert "https://push.example.com/sub/2" in endpoints_called
 
     @pytest.mark.asyncio
-    async def test_webpush_called_with_correct_args(self, mocker):
+    async def test_webpush_called_with_correct_args(
+        self, mocker, mock_db_client
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription(
             user_id="user-1",
@@ -225,11 +216,7 @@ class TestSendPushForUser:
             p256dh="key-p256dh",
             auth="key-auth",
         )
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
         mock_webpush = mocker.patch("backend.data.push_sender.webpush")
 
         await push_sender.send_push_for_user("user-1", _make_payload())
@@ -245,124 +232,92 @@ class TestSendPushForUser:
         assert isinstance(call_kwargs["data"], str)
 
     @pytest.mark.asyncio
-    async def test_removes_subscription_on_410_gone(self, mocker):
+    async def test_removes_subscription_on_410_gone(
+        self, mocker, mock_db_client
+    ):
         from pywebpush import WebPushException
 
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription()
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
 
         mock_response = MagicMock()
         mock_response.status_code = 410
         exc = WebPushException("Gone", response=mock_response)
-        mocker.patch(
-            "backend.data.push_sender.webpush",
-            side_effect=exc,
-        )
-        mock_delete = mocker.patch(
-            "backend.data.push_sender.delete_push_subscription_by_endpoint",
-            new_callable=AsyncMock,
-        )
+        mocker.patch("backend.data.push_sender.webpush", side_effect=exc)
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_delete.assert_awaited_once_with(sub.userId, sub.endpoint)
+        mock_db_client.delete_push_subscription_by_endpoint.assert_awaited_once_with(
+            sub.user_id, sub.endpoint
+        )
 
     @pytest.mark.asyncio
-    async def test_removes_subscription_on_404(self, mocker):
+    async def test_removes_subscription_on_404(self, mocker, mock_db_client):
         from pywebpush import WebPushException
 
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription()
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
 
         mock_response = MagicMock()
         mock_response.status_code = 404
         exc = WebPushException("Not Found", response=mock_response)
-        mocker.patch(
-            "backend.data.push_sender.webpush",
-            side_effect=exc,
-        )
-        mock_delete = mocker.patch(
-            "backend.data.push_sender.delete_push_subscription_by_endpoint",
-            new_callable=AsyncMock,
-        )
+        mocker.patch("backend.data.push_sender.webpush", side_effect=exc)
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_delete.assert_awaited_once_with(sub.userId, sub.endpoint)
+        mock_db_client.delete_push_subscription_by_endpoint.assert_awaited_once_with(
+            sub.user_id, sub.endpoint
+        )
 
     @pytest.mark.asyncio
-    async def test_increments_fail_count_on_other_webpush_error(self, mocker):
+    async def test_increments_fail_count_on_other_webpush_error(
+        self, mocker, mock_db_client
+    ):
         from pywebpush import WebPushException
 
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription()
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
 
         mock_response = MagicMock()
         mock_response.status_code = 429
         exc = WebPushException("Too Many Requests", response=mock_response)
-        mocker.patch(
-            "backend.data.push_sender.webpush",
-            side_effect=exc,
-        )
-        mock_increment = mocker.patch(
-            "backend.data.push_sender.increment_fail_count",
-            new_callable=AsyncMock,
-        )
+        mocker.patch("backend.data.push_sender.webpush", side_effect=exc)
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_increment.assert_awaited_once_with(sub.userId, sub.endpoint)
+        mock_db_client.increment_push_fail_count.assert_awaited_once_with(
+            sub.user_id, sub.endpoint
+        )
 
     @pytest.mark.asyncio
-    async def test_increments_fail_count_when_no_response_object(self, mocker):
+    async def test_increments_fail_count_when_no_response_object(
+        self, mocker, mock_db_client
+    ):
         from pywebpush import WebPushException
 
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription()
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
 
         exc = WebPushException("Connection error")
-        mocker.patch(
-            "backend.data.push_sender.webpush",
-            side_effect=exc,
-        )
-        mock_increment = mocker.patch(
-            "backend.data.push_sender.increment_fail_count",
-            new_callable=AsyncMock,
-        )
+        mocker.patch("backend.data.push_sender.webpush", side_effect=exc)
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_increment.assert_awaited_once_with(sub.userId, sub.endpoint)
+        mock_db_client.increment_push_fail_count.assert_awaited_once_with(
+            sub.user_id, sub.endpoint
+        )
 
     @pytest.mark.asyncio
-    async def test_handles_unexpected_exception_gracefully(self, mocker):
+    async def test_handles_unexpected_exception_gracefully(
+        self, mocker, mock_db_client
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription()
-        mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[sub],
-        )
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
         mocker.patch(
             "backend.data.push_sender.webpush",
             side_effect=RuntimeError("network down"),
@@ -371,18 +326,15 @@ class TestSendPushForUser:
         await push_sender.send_push_for_user("user-1", _make_payload())
 
     @pytest.mark.asyncio
-    async def test_debounce_expires_after_threshold(self, mocker):
+    async def test_debounce_expires_after_threshold(
+        self, mocker, mock_db_client
+    ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
-        mock_get = mocker.patch(
-            "backend.data.push_sender.get_user_push_subscriptions",
-            new_callable=AsyncMock,
-            return_value=[],
-        )
 
         await push_sender.send_push_for_user("user-1", _make_payload())
-        assert mock_get.await_count == 1
+        assert mock_db_client.get_user_push_subscriptions.await_count == 1
 
         push_sender._user_last_push["user-1"] -= push_sender.DEBOUNCE_SECONDS + 1
 
         await push_sender.send_push_for_user("user-1", _make_payload())
-        assert mock_get.await_count == 2
+        assert mock_db_client.get_user_push_subscriptions.await_count == 2
