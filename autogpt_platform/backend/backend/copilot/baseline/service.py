@@ -45,7 +45,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
+from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -1155,7 +1155,7 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
+    system_prompt = base_system_prompt + SHARED_TOOL_NOTES + graphiti_supplement
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
     # Use the pre-drain count so pending messages drained at turn start
