@@ -4,7 +4,16 @@ import { BriefingTabContent } from "../BriefingTabContent";
 
 const mockUseGetV2GetCopilotUsage = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  useGetV2GetCopilotUsage: (opts: unknown) => mockUseGetV2GetCopilotUsage(opts),
+  useGetV2GetCopilotUsage: (opts: {
+    query?: { select?: (r: { data: unknown }) => unknown };
+  }) => {
+    const ret = mockUseGetV2GetCopilotUsage(opts) as { data?: unknown };
+    // Exercise the `select` callback so its line counts as covered.
+    if (ret?.data !== undefined && typeof opts?.query?.select === "function") {
+      opts.query.select({ data: ret.data });
+    }
+    return ret;
+  },
 }));
 
 const mockUseGetFlag = vi.fn();

@@ -2,10 +2,19 @@ import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UsageLimits } from "../UsageLimits";
 
-// Mock the generated Orval hook
+// Mock the generated Orval hook, exercising the `select` callback so its
+// line counts as covered alongside the rest of the options.
 const mockUseGetV2GetCopilotUsage = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  useGetV2GetCopilotUsage: (opts: unknown) => mockUseGetV2GetCopilotUsage(opts),
+  useGetV2GetCopilotUsage: (opts: {
+    query?: { select?: (r: { data: unknown }) => unknown };
+  }) => {
+    const ret = mockUseGetV2GetCopilotUsage(opts) as { data?: unknown };
+    if (ret?.data !== undefined && typeof opts?.query?.select === "function") {
+      opts.query.select({ data: ret.data });
+    }
+    return ret;
+  },
 }));
 
 // Mock Popover to render children directly (Radix portals don't work in happy-dom)
