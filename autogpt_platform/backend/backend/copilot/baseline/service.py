@@ -27,6 +27,10 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 from openai.types.completion_usage import PromptTokensDetails
 from opentelemetry import trace as otel_trace
 
+from backend.copilot.baseline.reasoning import (
+    BaselineReasoningEmitter,
+    reasoning_extra_body,
+)
 from backend.copilot.builder_context import (
     build_builder_context_turn_prefix,
     build_builder_system_prompt_suffix,
@@ -340,6 +344,7 @@ class _BaselineStreamState:
     assistant_text: str = ""
     text_block_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     text_started: bool = False
+    reasoning_emitter: BaselineReasoningEmitter = field(init=False)
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
     turn_cache_read_tokens: int = 0
@@ -350,6 +355,10 @@ class _BaselineStreamState:
     # generate one warning per streaming call.
     cost_missing_logged: bool = False
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
+    # MUTATE in place only — ``__post_init__`` hands this list reference to
+    # ``BaselineReasoningEmitter`` so reasoning rows can be appended as
+    # deltas stream in.  Reassigning (``state.session_messages = [...]``)
+    # would silently detach the emitter from the new list.
     session_messages: list[ChatMessage] = field(default_factory=list)
     # Tracks how much of ``assistant_text`` has already been flushed to
     # ``session.messages`` via mid-loop pending drains, so the ``finally``
@@ -363,6 +372,14 @@ class _BaselineStreamState:
     # iteration.  ``None`` means "not yet computed" (or the first message
     # wasn't a system role, so no marking applies).
     cached_system_message: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        # Wire the reasoning emitter to ``session_messages`` so it can
+        # append ``role="reasoning"`` rows as reasoning streams in — the
+        # frontend's ``convertChatSessionToUiMessages`` relies on these
+        # rows to render the Reasoning collapse after the AI SDK's
+        # stream-end hydrate swaps in the DB-backed message list.
+        self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
 
 
 def _is_anthropic_model(model: str) -> bool:
@@ -540,12 +557,18 @@ async def _baseline_llm_caller(
             final_messages = messages
             extra_headers = None
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
+        extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
+        reasoning_param = reasoning_extra_body(
+            state.model, config.claude_agent_max_thinking_tokens
+        )
+        if reasoning_param:
+            extra_body.update(reasoning_param)
         create_kwargs: dict[str, Any] = {
             "model": state.model,
             "messages": typed_messages,
             "stream": True,
             "stream_options": {"include_usage": True},
-            "extra_body": _OPENROUTER_INCLUDE_USAGE_COST,
+            "extra_body": extra_body,
         }
         if extra_headers:
             create_kwargs["extra_headers"] = extra_headers
@@ -595,7 +618,14 @@ async def _baseline_llm_caller(
                 if not delta:
                     continue
 
+                state.pending_events.extend(state.reasoning_emitter.on_delta(delta))
+
                 if delta.content:
+                    # Text and reasoning must not interleave on the wire — the
+                    # AI SDK maps distinct start/end pairs to distinct UI
+                    # parts.  Close any open reasoning block before emitting
+                    # the first text delta of this run.
+                    state.pending_events.extend(state.reasoning_emitter.close())
                     emit = state.thinking_stripper.process(delta.content)
                     if emit:
                         if not state.text_started:
@@ -609,6 +639,10 @@ async def _baseline_llm_caller(
                         )
 
                 if delta.tool_calls:
+                    # Same rule as the text branch: close any open reasoning
+                    # block before a tool_use starts so the AI SDK treats
+                    # reasoning and tool-use as distinct parts.
+                    state.pending_events.extend(state.reasoning_emitter.close())
                     for tc in delta.tool_calls:
                         idx = tc.index
                         if idx not in tool_calls_by_index:
@@ -633,6 +667,13 @@ async def _baseline_llm_caller(
             except Exception:
                 pass
 
+    finally:
+        # Close open blocks on both normal and exception paths so the
+        # frontend always sees matched start/end pairs.  An exception mid
+        # ``async for chunk in response`` would otherwise leave reasoning
+        # and/or text unterminated and only ``StreamFinishStep`` emitted —
+        # the Reasoning / Text collapses would never finalise.
+        state.pending_events.extend(state.reasoning_emitter.close())
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
         if tail:
@@ -643,12 +684,10 @@ async def _baseline_llm_caller(
             state.pending_events.append(
                 StreamTextDelta(id=state.text_block_id, delta=tail)
             )
-        # Close text block
         if state.text_started:
             state.pending_events.append(StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
-    finally:
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -1753,25 +1792,14 @@ async def stream_chat_completion_baseline(
         _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # Close any open text block.  The llm_caller's finally block
-        # already appended StreamFinishStep to pending_events, so we must
-        # insert StreamTextEnd *before* StreamFinishStep to preserve the
-        # protocol ordering:
-        #   StreamStartStep -> StreamTextStart -> ...deltas... ->
+        # ``_baseline_llm_caller``'s finally block closes any open
+        # reasoning / text blocks and appends ``StreamFinishStep`` on
+        # both normal and exception paths, so pending_events already has
+        # the correct protocol ordering:
+        #   StreamStartStep -> StreamReasoningStart -> ...deltas... ->
+        #   StreamReasoningEnd -> StreamTextStart -> ...deltas... ->
         #   StreamTextEnd -> StreamFinishStep
-        # Appending (or yielding directly) would place it after
-        # StreamFinishStep, violating the protocol.
-        if state.text_started:
-            # Find the last StreamFinishStep and insert before it.
-            insert_pos = len(state.pending_events)
-            for i in range(len(state.pending_events) - 1, -1, -1):
-                if isinstance(state.pending_events[i], StreamFinishStep):
-                    insert_pos = i
-                    break
-            state.pending_events.insert(
-                insert_pos, StreamTextEnd(id=state.text_block_id)
-            )
-        # Drain pending events in correct order
+        # Just drain what's buffered, then yield the error.
         for evt in state.pending_events:
             yield evt
         state.pending_events.clear()

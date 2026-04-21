@@ -192,12 +192,18 @@ class ChatConfig(BaseSettings):
     )
     claude_agent_max_thinking_tokens: int = Field(
         default=8192,
-        ge=1024,
+        ge=0,
         le=128000,
-        description="Maximum thinking/reasoning tokens per LLM call. "
-        "Extended thinking on Opus can generate 50k+ tokens at $75/M — "
-        "capping this is the single biggest cost lever. "
-        "8192 is sufficient for most tasks; increase for complex reasoning.",
+        description="Maximum thinking/reasoning tokens per LLM call. Applies "
+        "to both the Claude Agent SDK path (as ``max_thinking_tokens``) and "
+        "the baseline OpenRouter path (as ``extra_body.reasoning.max_tokens`` "
+        "on Anthropic routes). Extended thinking on Opus can generate 50k+ "
+        "tokens at $75/M — capping this is the single biggest cost lever. "
+        "8192 is sufficient for most tasks; increase for complex reasoning. "
+        "Set to 0 to disable extended thinking on both paths (kill switch): "
+        "baseline skips the ``reasoning`` extra_body; SDK omits the "
+        "``max_thinking_tokens`` kwarg so the CLI falls back to model default "
+        "(which, without the flag, leaves extended thinking off).",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
         Field(
