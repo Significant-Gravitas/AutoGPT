@@ -15,7 +15,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
+from backend.copilot.cost_approval import (
+    generate_cost_approval_token,
+    validate_cost_approval_token,
+)
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
+from backend.copilot.cost_estimation import (
+    CoPilotTurnCostEstimate,
+    estimate_copilot_turn_cost,
+)
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
 from backend.copilot.message_dedup import acquire_dedup_lock
@@ -149,6 +157,10 @@ class StreamChatRequest(BaseModel):
         default=None,
         description="Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. "
         "If None, the server applies per-user LD targeting then falls back to config.",
+    )
+    approval_token: str | None = Field(
+        default=None,
+        description="Short-lived approval token for high-cost requests returned by /estimate.",
     )
 
 
@@ -732,6 +744,43 @@ async def reset_copilot_usage(
 
 
 @router.post(
+    "/sessions/{session_id}/estimate",
+)
+async def estimate_chat_turn_cost(
+    session_id: str,
+    request: StreamChatRequest,
+    user_id: str = Security(auth.get_user_id),
+) -> CoPilotTurnCostEstimate:
+    """Estimate CoPilot token usage and cost before execution."""
+    session = await _validate_and_get_session(session_id, user_id)
+    estimate = await estimate_copilot_turn_cost(
+        session_id=session_id,
+        user_id=user_id,
+        session=session,
+        message=request.message,
+        is_user_message=request.is_user_message,
+        context=request.context,
+        file_ids=request.file_ids,
+        mode=request.mode,
+        model=request.model,
+    )
+    if estimate.requires_confirmation:
+        token = await generate_cost_approval_token(
+            user_id=user_id,
+            session_id=session_id,
+            message=request.message,
+            is_user_message=request.is_user_message,
+            context=request.context,
+            file_ids=request.file_ids,
+            mode=request.mode,
+            model=request.model,
+            ttl_seconds=config.copilot_cost_approval_ttl_seconds,
+        )
+        estimate = estimate.model_copy(update={"approval_token": token})
+    return estimate
+
+
+@router.post(
     "/sessions/{session_id}/cancel",
     status_code=200,
 )
@@ -815,7 +864,7 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
         extra={
@@ -841,6 +890,43 @@ async def stream_chat_post(
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
+
+    estimate = await estimate_copilot_turn_cost(
+        session_id=session_id,
+        user_id=user_id,
+        session=session,
+        message=request.message,
+        is_user_message=request.is_user_message,
+        context=request.context,
+        file_ids=request.file_ids,
+        mode=request.mode,
+        model=request.model,
+    )
+    if estimate.requires_confirmation:
+        if not request.approval_token:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "This task requires cost confirmation before execution. "
+                    "Request an estimate and confirm to continue."
+                ),
+            )
+        approved = await validate_cost_approval_token(
+            token=request.approval_token,
+            user_id=user_id,
+            session_id=session_id,
+            message=request.message,
+            is_user_message=request.is_user_message,
+            context=request.context,
+            file_ids=request.file_ids,
+            mode=request.mode,
+            model=request.model,
+        )
+        if not approved:
+            raise HTTPException(
+                status_code=403,
+                detail="Cost confirmation token is invalid or expired.",
+            )
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are

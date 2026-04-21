@@ -117,6 +117,22 @@ class ChatConfig(BaseSettings):
         description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
     )
 
+    # Cost-estimation confirmation threshold for CoPilot turns.
+    # Users exceeding this estimated USD cost must confirm before execution.
+    # LaunchDarkly can override this per user (and org/domain via targeting).
+    copilot_cost_confirmation_threshold_usd: float = Field(
+        default=10.0,
+        ge=0.0,
+        le=1000.0,
+        description="Estimated USD threshold that requires user confirmation before running a CoPilot turn. 0 disables confirmation gating.",
+    )
+    copilot_cost_approval_ttl_seconds: int = Field(
+        default=600,
+        ge=60,
+        le=86400,
+        description="TTL in seconds for a high-cost confirmation approval token.",
+    )
+
     # Cost (in credits / cents) to reset the daily rate limit using credits.
     # When a user hits their daily limit, they can spend this amount to reset
     # the daily counter and keep working.  Set to 0 to disable the feature.

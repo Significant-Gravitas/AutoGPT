@@ -9,6 +9,9 @@ vi.mock("../components/ChatContainer/ChatContainer", () => ({
 vi.mock("../components/ChatSidebar/ChatSidebar", () => ({
   ChatSidebar: () => <div data-testid="chat-sidebar" />,
 }));
+vi.mock("../components/CostConfirmationDialog/CostConfirmationDialog", () => ({
+  CostConfirmationDialog: () => null,
+}));
 vi.mock("../components/DeleteChatDialog/DeleteChatDialog", () => ({
   DeleteChatDialog: () => null,
 }));
@@ -95,6 +98,9 @@ const basePageState = {
   historicalDurations: {},
   rateLimitMessage: null,
   dismissRateLimit: vi.fn(),
+  pendingCostEstimate: null,
+  confirmCostEstimate: vi.fn(),
+  dismissCostEstimate: vi.fn(),
   isDryRun: false,
   sessionDryRun: false,
 };
