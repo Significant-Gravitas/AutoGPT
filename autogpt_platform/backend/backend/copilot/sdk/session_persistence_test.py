@@ -23,7 +23,7 @@ from backend.copilot.constants import STOPPED_BY_USER_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
-from backend.copilot.session_cleanup import prune_and_log, prune_orphan_tool_calls
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -337,15 +337,17 @@ class TestPruneOrphanToolCalls:
         assert prune_orphan_tool_calls(messages) == 0
 
 
-class TestPruneAndLog:
-    """Wrapper around ``prune_orphan_tool_calls`` that also emits an INFO
-    log line when anything was popped.  Shared by the SDK and baseline
-    turn-start cleanup so both paths log in the same shape."""
+class TestPruneOrphanToolCallsLogging:
+    """``prune_orphan_tool_calls`` emits an INFO log when the caller passes
+    ``log_prefix`` and something was actually popped.  Shared by the SDK
+    and baseline turn-start cleanup so both paths log in the same shape."""
 
     def _tool_call(self, call_id: str) -> dict:
         return {"id": call_id, "type": "function", "function": {"name": "bash"}}
 
     def test_logs_when_something_was_pruned(self, caplog) -> None:
+        import backend.copilot.session_cleanup as sc
+
         messages: list[ChatMessage] = [
             ChatMessage(role="user", content="hi"),
             ChatMessage(
@@ -353,8 +355,9 @@ class TestPruneAndLog:
             ),
         ]
 
-        with caplog.at_level("INFO", logger="backend.copilot.session_cleanup"):
-            removed = prune_and_log(messages, "[TEST] [abc123]")
+        sc.logger.propagate = True
+        caplog.set_level("INFO", logger=sc.logger.name)
+        removed = prune_orphan_tool_calls(messages, log_prefix="[TEST] [abc123]")
 
         assert removed == 1
         assert any(
@@ -363,13 +366,34 @@ class TestPruneAndLog:
         ), caplog.text
 
     def test_no_log_when_nothing_to_prune(self, caplog) -> None:
+        import backend.copilot.session_cleanup as sc
+
         messages: list[ChatMessage] = [
             ChatMessage(role="user", content="hi"),
             ChatMessage(role="assistant", content="hello"),
         ]
 
-        with caplog.at_level("INFO", logger="backend.copilot.session_cleanup"):
-            removed = prune_and_log(messages, "[TEST] [xyz]")
+        sc.logger.propagate = True
+        caplog.set_level("INFO", logger=sc.logger.name)
+        removed = prune_orphan_tool_calls(messages, log_prefix="[TEST] [xyz]")
 
         assert removed == 0
         assert not any("[TEST] [xyz]" in r.message for r in caplog.records), caplog.text
+
+    def test_no_log_when_log_prefix_is_none(self, caplog) -> None:
+        """Without ``log_prefix``, ``prune_orphan_tool_calls`` is silent."""
+        import backend.copilot.session_cleanup as sc
+
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(
+                role="assistant", content="", tool_calls=[self._tool_call("tc_1")]
+            ),
+        ]
+
+        sc.logger.propagate = True
+        caplog.set_level("INFO", logger=sc.logger.name)
+        removed = prune_orphan_tool_calls(messages)
+
+        assert removed == 1
+        assert caplog.text == ""

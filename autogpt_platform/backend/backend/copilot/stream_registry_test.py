@@ -155,6 +155,43 @@ async def test_stream_and_publish_aclose_propagates_to_inner_stream():
 
 
 @pytest.mark.asyncio
+async def test_stream_and_publish_logs_warning_on_publish_chunk_failure():
+    """``stream_and_publish`` must not propagate a Redis publish failure —
+    it warns once with full stack trace, keeps yielding, and logs
+    subsequent failures at WARNING (terser, no exc_info) so repeated
+    errors stay visible without flooding the trace."""
+    from redis.exceptions import RedisError
+
+    async def _inner():
+        yield _FakeEvent(0)
+        yield _FakeEvent(1)
+        yield _FakeEvent(2)
+
+    async def _raising_publish(turn_id, event, session_id=None):
+        raise RedisError("boom")
+
+    warning_mock = patch.object(
+        stream_registry.logger, "warning", autospec=True
+    ).start()
+    try:
+        with patch.object(stream_registry, "publish_chunk", new=_raising_publish):
+            wrapper = stream_registry.stream_and_publish(
+                session_id="sess-test", turn_id="turn-1", stream=_inner()
+            )
+            received = [evt async for evt in wrapper]
+    finally:
+        patch.stopall()
+
+    # Every event still yields through — publish failures don't break the stream.
+    assert len(received) == 3
+    # One warning per failed publish (3 total).  First call carries a
+    # stack trace (``exc_info=True``); subsequent calls are terser.
+    assert warning_mock.call_count == 3
+    assert warning_mock.call_args_list[0].kwargs.get("exc_info") is True
+    assert warning_mock.call_args_list[1].kwargs.get("exc_info") is not True
+
+
+@pytest.mark.asyncio
 async def test_stream_and_publish_consumer_break_then_aclose_releases_inner():
     """The processor pattern — break on cancel, then aclose — must release."""
     inner_finally_ran = asyncio.Event()

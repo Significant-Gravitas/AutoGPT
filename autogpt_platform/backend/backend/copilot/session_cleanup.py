@@ -13,7 +13,10 @@ from backend.copilot.model import ChatMessage
 logger = logging.getLogger(__name__)
 
 
-def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
+def prune_orphan_tool_calls(
+    messages: list[ChatMessage],
+    log_prefix: str | None = None,
+) -> int:
     """Pop trailing orphan tool-use blocks from *messages* in place.
 
     A Stop mid-tool-call leaves the session ending on an assistant message
@@ -25,6 +28,9 @@ def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
 
     Also strips trailing ``STOPPED_BY_USER_MARKER`` assistant rows emitted
     by the same Stop path so the next turn's transcript starts clean.
+
+    If *log_prefix* is given, emits an INFO log with the prefix whenever
+    something was actually popped so the turn-start cleanup is visible.
 
     In-memory only — the DB write path is append-only via
     ``start_sequence`` so no delete is needed; the same rows are popped
@@ -61,20 +67,11 @@ def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
 
     removed = len(messages) - cut_index
     del messages[cut_index:]
-    return removed
-
-
-def prune_and_log(messages: list[ChatMessage], log_prefix: str) -> int:
-    """Call ``prune_orphan_tool_calls`` and log at INFO when anything was
-    actually popped — shared by the SDK and baseline turn-start cleanup so
-    both paths produce identical log lines.
-    """
-    n = prune_orphan_tool_calls(messages)
-    if n:
+    if log_prefix:
         logger.info(
             "%s Dropped %d trailing orphan tool-use/stop row(s) "
             "before starting new turn",
             log_prefix,
-            n,
+            removed,
         )
-    return n
+    return removed
