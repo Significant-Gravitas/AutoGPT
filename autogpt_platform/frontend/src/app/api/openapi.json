@@ -2470,7 +2470,7 @@
       },
       "post": {
         "tags": ["v1", "credits"],
-        "summary": "Start a Stripe Checkout session to upgrade subscription tier",
+        "summary": "Update subscription tier or start a Stripe Checkout session",
         "operationId": "updateSubscriptionTier",
         "requestBody": {
           "content": {
@@ -2488,7 +2488,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SubscriptionCheckoutResponse"
+                  "$ref": "#/components/schemas/SubscriptionStatusResponse"
                 }
               }
             }
@@ -14317,12 +14317,6 @@
         "enum": ["DRAFT", "PENDING", "APPROVED", "REJECTED"],
         "title": "SubmissionStatus"
       },
-      "SubscriptionCheckoutResponse": {
-        "properties": { "url": { "type": "string", "title": "Url" } },
-        "type": "object",
-        "required": ["url"],
-        "title": "SubscriptionCheckoutResponse"
-      },
       "SubscriptionStatusResponse": {
         "properties": {
           "tier": {
@@ -14339,6 +14333,26 @@
           "proration_credit_cents": {
             "type": "integer",
             "title": "Proration Credit Cents"
+          },
+          "pending_tier": {
+            "anyOf": [
+              { "type": "string", "enum": ["FREE", "PRO", "BUSINESS"] },
+              { "type": "null" }
+            ],
+            "title": "Pending Tier"
+          },
+          "pending_tier_effective_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Pending Tier Effective At"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "default": ""
           }
         },
         "type": "object",

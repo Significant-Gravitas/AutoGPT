@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 
 from backend.data.db_accessors import user_db
 from backend.data.redis_client import get_redis_async
+from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
@@ -459,8 +460,20 @@ get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-
 async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
-    Also invalidates the ``get_user_tier`` cache for this user so that
-    subsequent rate-limit checks immediately see the new tier.
+    Invalidates every cache that keys off the user's subscription tier so the
+    change is visible immediately: this function's own ``get_user_tier``, the
+    shared ``get_user_by_id`` (which exposes ``user.subscription_tier``), and
+    ``get_pending_subscription_change`` (since an admin override can invalidate
+    a cached ``cancel_at_period_end`` or schedule-based pending state).
+
+    If the user has an active Stripe subscription whose current price does not
+    match ``tier``, Stripe will keep billing the old price and the next
+    ``customer.subscription.updated`` webhook will overwrite the DB tier back
+    to whatever Stripe has. Proper reconciliation (cancelling or modifying the
+    Stripe subscription when an admin overrides the tier) is out of scope for
+    this PR — it changes the admin contract and needs its own test coverage.
+    For now we emit a ``WARNING`` so drift surfaces via Sentry until that
+    follow-up lands.
 
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
@@ -469,8 +482,113 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         where={"id": user_id},
         data={"subscriptionTier": tier.value},
     )
-    # Invalidate cached tier so rate-limit checks pick up the change immediately.
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
+    # Local import required: backend.data.credit imports backend.copilot.rate_limit
+    # (via get_user_tier in credit.py's _invalidate_user_tier_caches), so a
+    # top-level ``from backend.data.credit import ...`` here would create a
+    # circular import at module-load time.
+    from backend.data.credit import get_pending_subscription_change
+
+    get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
+    get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
+
+    # The DB write above is already committed; the drift check is best-effort
+    # diagnostic logging. Fire-and-forget so admin bulk ops don't wait on a
+    # Stripe roundtrip. The inner helper wraps its body in a timeout + broad
+    # except so background task errors still surface via logs rather than as
+    # "task exception never retrieved" warnings. Cancellation on request
+    # shutdown is acceptable — the drift warning is non-load-bearing.
+    asyncio.ensure_future(_drift_check_background(user_id, tier))
+
+
+async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
+    """Run the Stripe drift check in the background, logging rather than raising."""
+    try:
+        await asyncio.wait_for(
+            _warn_if_stripe_subscription_drifts(user_id, tier),
+            timeout=5.0,
+        )
+        logger.debug(
+            "set_user_tier: drift check completed for user=%s admin_tier=%s",
+            user_id,
+            tier.value,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "set_user_tier: drift check timed out for user=%s admin_tier=%s",
+            user_id,
+            tier.value,
+        )
+    except asyncio.CancelledError:
+        # Request may have completed and the event loop is cancelling tasks —
+        # the drift log is non-critical, so accept cancellation silently.
+        raise
+    except Exception:
+        logger.exception(
+            "set_user_tier: drift check background task failed for"
+            " user=%s admin_tier=%s",
+            user_id,
+            tier.value,
+        )
+
+
+async def _warn_if_stripe_subscription_drifts(
+    user_id: str, new_tier: SubscriptionTier
+) -> None:
+    """Emit a WARNING when an admin tier override leaves an active Stripe sub on a
+    mismatched price.
+
+    The warning is diagnostic only: Stripe remains the billing source of truth,
+    so the next ``customer.subscription.updated`` webhook will reset the DB
+    tier. Surfacing the drift here lets ops catch admin overrides that bypass
+    the intended Checkout / Portal cancel flows before users notice surprise
+    charges.
+    """
+    # Local imports: see note in ``set_user_tier`` about the credit <-> rate_limit
+    # circular. These helpers (``_get_active_subscription``,
+    # ``get_subscription_price_id``) live in credit.py alongside the rest of
+    # the Stripe billing code.
+    from backend.data.credit import _get_active_subscription, get_subscription_price_id
+
+    try:
+        user = await get_user_by_id(user_id)
+        if not getattr(user, "stripe_customer_id", None):
+            return
+        sub = await _get_active_subscription(user.stripe_customer_id)
+        if sub is None:
+            return
+        items = sub["items"].data
+        if not items:
+            return
+        price = items[0].price
+        current_price_id = price if isinstance(price, str) else price.id
+        # The LaunchDarkly-backed price lookup must live inside this try/except:
+        # an LD SDK failure (network, token revoked) here would otherwise
+        # propagate past set_user_tier's already-committed DB write and turn a
+        # best-effort diagnostic into a 500 on admin tier writes.
+        expected_price_id = await get_subscription_price_id(new_tier)
+    except Exception:
+        logger.debug(
+            "_warn_if_stripe_subscription_drifts: drift lookup failed for"
+            " user=%s; skipping drift warning",
+            user_id,
+            exc_info=True,
+        )
+        return
+    if expected_price_id is not None and expected_price_id == current_price_id:
+        return
+    logger.warning(
+        "Admin tier override will drift from Stripe: user=%s admin_tier=%s"
+        " stripe_sub=%s stripe_price=%s expected_price=%s — the next"
+        " customer.subscription.updated webhook will reconcile the DB tier"
+        " back to whatever Stripe has; cancel or modify the Stripe subscription"
+        " if you intended the admin override to stick.",
+        user_id,
+        new_tier.value,
+        sub.id,
+        current_price_id,
+        expected_price_id,
+    )
 
 
 async def get_global_rate_limits(

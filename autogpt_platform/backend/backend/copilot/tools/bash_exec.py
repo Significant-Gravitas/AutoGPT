@@ -47,7 +47,7 @@ class BashExecTool(BaseTool):
         return (
             "Execute a Bash command or script. Shares filesystem with SDK file tools. "
             "Useful for scripts, data processing, and package installation. "
-            "Killed after timeout (default 30s, max 120s)."
+            "Killed after `timeout` seconds."
         )
 
     @property
@@ -61,8 +61,8 @@ class BashExecTool(BaseTool):
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Max seconds (default 30, max 120).",
-                    "default": 30,
+                    "description": "Timeout in seconds; raise for long-running commands.",
+                    "default": 120,
                 },
             },
             "required": ["command"],
@@ -80,7 +80,7 @@ class BashExecTool(BaseTool):
         user_id: str | None,
         session: ChatSession,
         command: str = "",
-        timeout: int = 30,
+        timeout: int = 120,
         **kwargs: Any,
     ) -> ToolResponseBase:
         """Run a bash command on E2B (if available) or in a bubblewrap sandbox.
@@ -129,7 +129,7 @@ class BashExecTool(BaseTool):
             message=(
                 "Execution timed out"
                 if timed_out
-                else f"Command executed (exit {exit_code})"
+                else f"Command executed with status code {exit_code}"
             ),
             stdout=stdout,
             stderr=stderr,
@@ -183,7 +183,7 @@ class BashExecTool(BaseTool):
                 stdout = stdout.replace(secret, "[REDACTED]")
                 stderr = stderr.replace(secret, "[REDACTED]")
             return BashExecResponse(
-                message=f"Command executed on E2B (exit {result.exit_code})",
+                message=f"Command executed with status code {result.exit_code}",
                 stdout=stdout,
                 stderr=stderr,
                 exit_code=result.exit_code,
