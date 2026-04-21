@@ -98,14 +98,23 @@ class PerplexityBlock(Block):
             return _sanitize_perplexity_model(v)
 
         @classmethod
-        def validate_data(cls, data: BlockInput) -> str | None:
+        def validate_data(
+            cls,
+            data: BlockInput,
+            exclude_fields: set[str] | None = None,
+        ) -> str | None:
             """Sanitize the model field before JSON schema validation so that
             invalid values are replaced with the default instead of raising a
-            BlockInputError."""
+            BlockInputError.
+
+            Signature matches ``BlockSchema.validate_data`` (including the
+            optional ``exclude_fields`` kwarg added for dry-run credential
+            bypass) so Pyright doesn't flag this as an incompatible override.
+            """
             model_value = data.get("model")
             if model_value is not None:
                 data["model"] = _sanitize_perplexity_model(model_value).value
-            return super().validate_data(data)
+            return super().validate_data(data, exclude_fields=exclude_fields)
 
         system_prompt: str = SchemaField(
             title="System Prompt",

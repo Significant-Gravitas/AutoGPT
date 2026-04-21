@@ -117,6 +117,47 @@ export function useSubscriptionTierSection() {
     await changeTier(tier);
   }
 
+  async function cancelPendingChange() {
+    if (!subscription) return;
+    setTierError(null);
+    try {
+      // "Stay on my current tier" is a same-tier POST: the backend collapses
+      // cancel-pending into update-tier and releases any pending schedule.
+      // success_url/cancel_url are unused in this branch (no Stripe Checkout
+      // is created) but are sent to satisfy the request schema.
+      await doUpdateTier({
+        data: {
+          tier: subscription.tier as SubscriptionTierRequestTier,
+          success_url: `${window.location.origin}${window.location.pathname}`,
+          cancel_url: `${window.location.origin}${window.location.pathname}`,
+        },
+      });
+      await refetch();
+      toast({
+        title: "Pending subscription change cancelled.",
+      });
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : "Failed to cancel pending subscription change";
+      setTierError(msg);
+      toast({
+        title: "Failed to cancel pending change",
+        description: msg,
+        variant: "destructive",
+      });
+      // Refetch on error so the UI reconciles if the server actually
+      // succeeded (e.g. webhook delivered after our client-side error).
+      // Swallow refetch errors — we already have the primary error for display.
+      try {
+        await refetch();
+      } catch {
+        // intentional
+      }
+    }
+  }
+
   const pendingTier =
     isPending && variables?.data?.tier ? variables.data.tier : null;
 
@@ -133,5 +174,6 @@ export function useSubscriptionTierSection() {
     isPaymentEnabled,
     changeTier,
     handleTierChange,
+    cancelPendingChange,
   };
 }

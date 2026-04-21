@@ -177,70 +177,18 @@ class TestPromptSupplement:
         assert "## Tool notes" in local_supplement
         assert "## Tool notes" in e2b_supplement
 
-    def test_baseline_supplement_includes_tool_docs(self):
-        """Baseline mode MUST include tool documentation (direct API needs it)."""
-        from backend.copilot.prompting import get_baseline_supplement
+    def test_baseline_supplement_has_shared_notes_no_tool_list(self):
+        """Baseline now relies on the OpenAI tools array for schemas and only
+        appends SHARED_TOOL_NOTES (workflow rules not present in any schema).
+        The old auto-generated ``## AVAILABLE TOOLS`` list is gone — it was
+        ~4.3K tokens of pure duplication of the tools array."""
+        from backend.copilot.prompting import SHARED_TOOL_NOTES
 
-        supplement = get_baseline_supplement()
-
-        # MUST have tool list section
-        assert "## AVAILABLE TOOLS" in supplement
-
-        # Should NOT have environment-specific notes (SDK-only)
-        assert "## Tool notes" not in supplement
-
-    def test_baseline_supplement_includes_key_tools(self):
-        """Baseline supplement should document all essential tools."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Core agent workflow tools (always available)
-        assert "`create_agent`" in docs
-        assert "`run_agent`" in docs
-        assert "`find_library_agent`" in docs
-        assert "`edit_agent`" in docs
-
-        # MCP integration (always available)
-        assert "`run_mcp_tool`" in docs
-
-        # Folder management (always available)
-        assert "`create_folder`" in docs
-
-        # Browser tools only if available (Playwright may not be installed in CI)
-        if (
-            TOOL_REGISTRY.get("browser_navigate")
-            and TOOL_REGISTRY["browser_navigate"].is_available
-        ):
-            assert "`browser_navigate`" in docs
-
-    def test_baseline_supplement_includes_workflows(self):
-        """Baseline supplement should include workflow guidance in tool descriptions."""
-        from backend.copilot.prompting import get_baseline_supplement
-
-        docs = get_baseline_supplement()
-
-        # Workflows are now in individual tool descriptions (not separate sections)
-        # Check that key workflow concepts appear in tool descriptions
-        assert "agent_json" in docs or "find_block" in docs
-        assert "run_mcp_tool" in docs
-
-    def test_baseline_supplement_completeness(self):
-        """All available tools from TOOL_REGISTRY should appear in baseline supplement."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Verify each available registered tool is documented
-        # (matches _generate_tool_documentation which filters by is_available)
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
-            assert (
-                f"`{tool_name}`" in docs
-            ), f"Tool '{tool_name}' missing from baseline supplement"
+        assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
+        # Keep the high-value workflow rules that are NOT in any tool schema.
+        assert "@@agptfile:" in SHARED_TOOL_NOTES
+        assert "Tool Discovery Priority" in SHARED_TOOL_NOTES
+        assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
         """Pause is scheduled as a background task before transcript upload begins.
@@ -283,21 +231,6 @@ class TestPromptSupplement:
         # create_task schedules pause, then upload is awaited — pause runs
         # concurrently during upload's first yield. The ordering guarantee is
         # that create_task is CALLED before upload is AWAITED (see source order).
-
-    def test_baseline_supplement_no_duplicate_tools(self):
-        """No tool should appear multiple times in baseline supplement."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Count occurrences of each available tool in the entire supplement
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
-            # Count how many times this tool appears as a bullet point
-            count = docs.count(f"- **`{tool_name}`**")
-            assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
 
 
 # ---------------------------------------------------------------------------
@@ -699,6 +632,17 @@ class TestSystemPromptPreset:
         assert result["preset"] == "claude_code"
         assert result["append"] == ""
         assert result["exclude_dynamic_sections"] is True
+
+    def test_resume_and_fresh_share_the_same_static_prefix(self):
+        """Every turn (fresh + --resume) must emit the same preset dict
+        so the cross-user cache prefix match works on all turns.  This
+        relies on CLI ≥ 2.1.98 (installed in the Docker image); older
+        CLIs would crash on --resume + excludeDynamicSections=True."""
+        fresh = _build_system_prompt_value("sys", cross_user_cache=True)
+        resumed = _build_system_prompt_value("sys", cross_user_cache=True)
+        assert fresh == resumed
+        assert isinstance(fresh, dict)
+        assert fresh.get("exclude_dynamic_sections") is True
 
     def test_default_config_is_enabled(self, _clean_config_env):
         """The default value for claude_agent_cross_user_prompt_cache is True."""

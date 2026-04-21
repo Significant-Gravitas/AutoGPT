@@ -2,6 +2,12 @@ export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+export function formatMicrodollarsAsUsd(microdollars: number): string {
+  const dollars = microdollars / 1_000_000;
+  if (microdollars > 0 && dollars < 0.01) return "<$0.01";
+  return `$${dollars.toFixed(2)}`;
+}
+
 export function formatResetTime(
   resetsAt: Date | string,
   now: Date = new Date(),

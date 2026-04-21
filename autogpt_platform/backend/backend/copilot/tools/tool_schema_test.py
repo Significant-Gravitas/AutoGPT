@@ -14,8 +14,14 @@ import pytest
 
 from backend.copilot.tools import TOOL_REGISTRY
 
-# Character budget (~4 chars/token heuristic, targeting ~8000 tokens)
-_CHAR_BUDGET = 32_000
+# Character budget (~4 chars/token heuristic, targeting ~8000 tokens).
+# Bumped 32000 -> 32500 on PR #12699 to fit two pieces of load-bearing
+# guidance: the wait_for_result dispatch-mode docs on run_agent
+# (tells the LLM when to block vs fire-and-forget, and what each
+# response shape carries) and the dry_run description. Keeps the
+# regression gate effective while accepting a deliberate ~120-token
+# spend on LLM-decision-critical copy.
+_CHAR_BUDGET = 32_500
 
 
 @pytest.fixture(scope="module")

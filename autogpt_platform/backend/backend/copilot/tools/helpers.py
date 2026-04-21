@@ -806,6 +806,12 @@ def require_guide_read(session: ChatSession, tool_name: str):
     """
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
+    # Builder-bound sessions always receive the guide inline via the
+    # per-turn ``<builder_context>`` injection (see
+    # ``backend.copilot.builder_context``), so no tool-call gate is needed —
+    # requiring one would waste a round-trip every turn.
+    if session.metadata.builder_graph_id:
+        return None
     if _guide_read_in_session(session):
         return None
     return ErrorResponse(

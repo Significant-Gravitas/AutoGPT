@@ -19,6 +19,7 @@ from backend.api.features.library.db import (
     move_folder,
     update_folder,
     update_graph_in_library,
+    update_library_agent,
 )
 from backend.api.features.store.db import (
     get_agent,
@@ -282,6 +283,7 @@ class DatabaseManager(AppService):
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
+    update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
     validate_graph_execution_permissions = _(validate_graph_execution_permissions)
 
@@ -482,6 +484,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_library_agent = d.create_library_agent
     get_library_agent = d.get_library_agent
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
+    update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
     validate_graph_execution_permissions = d.validate_graph_execution_permissions
 

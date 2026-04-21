@@ -1,314 +1,406 @@
-import { postV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
-import { getWebSocketToken } from "@/lib/supabase/actions";
-import { environment } from "@/services/environment";
+import {
+  getGetV1GetSpecificGraphQueryKey,
+  useGetV1GetSpecificGraph,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  usePostV1CreateNewGraph,
+  usePutV1SetActiveGraphVersion,
+} from "@/app/api/__generated__/endpoints/graphs/graphs";
+import {
+  getGetV2GetSessionQueryKey,
+  usePostV2CreateSession,
+} from "@/app/api/__generated__/endpoints/chat/chat";
+import type { GraphModel } from "@/app/api/__generated__/models/graphModel";
+import { okData } from "@/app/api/helpers";
 import { useToast } from "@/components/molecules/Toast/use-toast";
-import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { MarkerType } from "@xyflow/react";
-import {
-  type KeyboardEvent,
-  type RefObject,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { parseAsString, useQueryStates } from "nuqs";
-import { useShallow } from "zustand/react/shallow";
-import { useEdgeStore } from "../../stores/edgeStore";
-import { useNodeStore } from "../../stores/nodeStore";
-import {
-  GraphAction,
-  buildSeedPrompt,
-  extractTextFromParts,
-  getActionKey,
-  getNodeDisplayName,
-  parseGraphActions,
-  serializeGraphForChat,
-} from "./helpers";
-
-type SendMessageFn = ReturnType<typeof useChat>["sendMessage"];
-
-/** Maximum number of undo entries to keep. Oldest entries are dropped when the limit is reached. */
-const MAX_UNDO = 20;
-
-/** Snapshot of node data taken before an action is applied, enabling undo. */
-interface UndoSnapshot {
-  actionKey: string;
-  restore: () => void;
-}
-
-/**
- * Per-graph session cache.
- * Maps flowID → sessionId so the same chat session is reused each time the
- * user opens the panel for a given graph, preserving conversation history.
- * Lives at module scope to survive panel close/re-open without server round-trips.
- */
-const graphSessionCache = new Map<string, string>();
-
-/** Stable empty array so the useShallow selector returns the same reference when the panel is closed. */
-const EMPTY_NODES: never[] = [];
-
-/** Clears the session cache. Exported only for use in tests. */
-export function clearGraphSessionCacheForTesting() {
-  graphSessionCache.clear();
-}
+import * as Sentry from "@sentry/nextjs";
+import { useQueryClient } from "@tanstack/react-query";
+import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { convertChatSessionMessagesToUiMessages } from "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages";
+import { useCopilotStream } from "@/app/(platform)/copilot/useCopilotStream";
+import { useCopilotPendingChips } from "@/app/(platform)/copilot/useCopilotPendingChips";
+import { useGetV2GetSession } from "@/app/api/__generated__/endpoints/chat/chat";
 
 interface UseBuilderChatPanelArgs {
-  isGraphLoaded?: boolean;
-  onGraphEdited?: () => void;
-  panelRef?: RefObject<HTMLElement | null>;
+  panelRef?: React.RefObject<HTMLElement | null>;
 }
 
+type UiMessages = UIMessage<unknown, UIDataTypes, UITools>[];
+
 /**
- * Manages the lifecycle and state for the builder chat panel.
+ * Normalize a tool part's `output` to a plain object.
  *
- * Responsibilities:
- * - Session management: creates or reuses a per-graph chat session, keyed by
- *   flowID so reopening the panel for the same graph continues the conversation.
- * - Transport: builds a `DefaultChatTransport` once per session, with per-request
- *   auth token refresh via `getWebSocketToken`.
- * - Action parsing: extracts `update_node_input` and `connect_nodes` actions from
- *   completed assistant messages (gated on `status === "ready"`).
- * - Action application: applies validated graph mutations to Zustand stores,
- *   bypassing the global history to keep chat changes separate from Ctrl+Z.
- * - Tool detection: watches for completed `edit_agent` and `run_agent` tool calls
- *   to trigger graph reload and run auto-follow respectively.
- * - Undo: maintains a bounded LIFO stack (MAX_UNDO = 20) of restore callbacks.
- * - Input: owns the textarea value and keyboard shortcuts (Enter / Shift+Enter / Escape).
+ * On the live AI-SDK stream the backend encodes tool outputs as JSON strings
+ * (see `stash_pending_tool_output` on the backend — dicts get `json.dumps`d
+ * before being sent). On hydration from DB the session-converter already
+ * parsed that string back to an object. So this effect may see either shape,
+ * and we need a tolerant reader. Returns null if the value doesn't
+ * resemble a structured response (e.g. still a primitive partial chunk).
  */
+function parseToolOutput(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed.startsWith("{")) return null;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Mid-stream partial JSON — swallow and wait for the completion event.
+    }
+  }
+  return null;
+}
+
 export function useBuilderChatPanel({
-  isGraphLoaded = false,
-  onGraphEdited,
   panelRef,
 }: UseBuilderChatPanelArgs = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [isCreatingSession, setIsCreatingSession] = useState(false);
-  const [sessionError, setSessionError] = useState(false);
-  const [appliedActionKeys, setAppliedActionKeys] = useState<Set<string>>(
-    new Set(),
+  const [revertTargetVersion, setRevertTargetVersion] = useState<number | null>(
+    null,
   );
-  const [undoStack, setUndoStack] = useState<UndoSnapshot[]>([]);
-  // Input state owned here to keep render logic out of the component.
-  const [inputValue, setInputValue] = useState("");
-
-  const sendMessageRef = useRef<SendMessageFn | null>(null);
-  // Ref-based guard so the session-creation effect doesn't re-run (and cancel
-  // the in-flight request) when setIsCreatingSession triggers a re-render.
-  const isCreatingSessionRef = useRef(false);
-  // Tracks tool call IDs already handled to avoid firing callbacks twice when
-  // the messages array updates while status is "ready".
-  const processedToolCallsRef = useRef(new Set<string>());
-  // Guards against sending the seed message more than once per session.
-  const hasSentSeedMessageRef = useRef(false);
-  // Tracks the current flowID as a ref so in-flight session creation callbacks
-  // can verify the graph hasn't changed before committing the new sessionId.
-  const currentFlowIDRef = useRef<string | null>(null);
-
-  const [{ flowID }, setQueryStates] = useQueryStates({
+  // Retry tokens: bumping forces the bind / bootstrap effect to re-run after
+  // a failure so the panel can recover without a close+reopen round-trip.
+  const [bindRetryToken, setBindRetryToken] = useState(0);
+  const [bootstrapRetryToken, setBootstrapRetryToken] = useState(0);
+  // Non-null when the corresponding async op failed; drives the retry UI
+  // surfaced by the panel.  Cleared on each retry attempt and on success.
+  const [bindError, setBindError] = useState<string | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [{ flowID, flowVersion }, setQueryStates] = useQueryStates({
     flowID: parseAsString,
     flowExecutionID: parseAsString,
+    flowVersion: parseAsInteger,
   });
-  // Keep ref in sync with the current flowID so in-flight session callbacks can
-  // detect stale graph context without closure staleness issues.
-  currentFlowIDRef.current = flowID;
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  const nodes = useNodeStore(
-    useShallow((s) => (isOpen ? s.nodes : EMPTY_NODES)),
+  const { data: graph, refetch: refetchGraph } = useGetV1GetSpecificGraph(
+    flowID ?? "",
+    {},
+    {
+      query: {
+        select: okData,
+        enabled: !!flowID,
+      },
+    },
   );
-  const setNodes = useNodeStore((s) => s.setNodes);
-  const setEdges = useEdgeStore((s) => s.setEdges);
 
-  // When the user navigates to a different graph: restore the cached session for
-  // that graph (preserving the backend session) and reset all per-session UI state.
-  // Messages are always cleared on navigation — appliedActionKeys cannot be persisted
-  // so restoring messages while resetting action state would show previously applied
-  // actions as unapplied, allowing them to be re-applied and creating duplicate undo entries.
+  // Unified /sessions endpoint: setting ``builder_graph_id`` routes the
+  // request through the get-or-create path keyed on (user_id, graph_id)
+  // so the panel re-binds to the same session across refreshes.
+  const { mutateAsync: createBuilderSession } = usePostV2CreateSession();
+  const { mutateAsync: createNewGraph, isPending: isBootstrappingGraph } =
+    usePostV1CreateNewGraph();
+  const { mutateAsync: setActiveVersion } = usePutV1SetActiveGraphVersion();
+
+  const sessionQuery = useGetV2GetSession(sessionId ?? "", undefined, {
+    query: {
+      enabled: !!sessionId,
+      staleTime: Infinity,
+      refetchOnWindowFocus: false,
+      refetchOnMount: true,
+    },
+  });
+
+  const hasActiveStream =
+    sessionQuery.data?.status === 200
+      ? !!sessionQuery.data.data.active_stream
+      : false;
+
+  // Memoize so the hydration effect in useCopilotStream doesn't infinite-loop
+  // on a new array reference every render. Re-derives only when query data,
+  // session id, or stream-active state changes.
+  const hydratedMessages = useMemo<UiMessages | undefined>(() => {
+    if (sessionQuery.data?.status !== 200 || !sessionId) return undefined;
+    return convertChatSessionMessagesToUiMessages(
+      sessionId,
+      sessionQuery.data.data.messages ?? [],
+      { isComplete: !hasActiveStream },
+    ).messages as UiMessages;
+  }, [sessionQuery.data, sessionId, hasActiveStream]);
+
+  const { messages, setMessages, sendMessage, stop, status, error } =
+    useCopilotStream({
+      sessionId,
+      hydratedMessages,
+      hasActiveStream,
+      refetchSession: sessionQuery.refetch,
+      copilotMode: "fast",
+      copilotModel: undefined,
+    });
+
+  const { queuedMessages, appendChip } = useCopilotPendingChips({
+    sessionId,
+    status,
+    messages,
+    setMessages,
+  });
+
+  // Track the currently-selected graph so the async bind effect can
+  // discard stale responses.  Updated synchronously every render so the
+  // IIFE sees the freshest value after `await`.
+  const currentFlowIDRef = useRef<string | null>(flowID ?? null);
   useEffect(() => {
-    const cachedSessionId = flowID
-      ? (graphSessionCache.get(flowID) ?? null)
-      : null;
-    setSessionId(cachedSessionId);
-    setSessionError(false);
-    setAppliedActionKeys(new Set());
-    setUndoStack([]);
-    setInputValue("");
-    isCreatingSessionRef.current = false;
-    processedToolCallsRef.current = new Set();
-    hasSentSeedMessageRef.current = false;
-    setMessages([]);
-    // setMessages is a stable function from useChat; excluding from deps is safe.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    currentFlowIDRef.current = flowID ?? null;
   }, [flowID]);
 
-  // Create a new chat session when the panel opens and no session exists yet.
+  const boundGraphRef = useRef<string | null>(null);
+  // Declared here (before the reset effect) so the reset effect can clear
+  // it on graph change.  Without this clear, a bind still in-flight when
+  // the user switches graphs would leave ``bindingRef.current === true``
+  // and the new graph's bind effect would early-return without ever
+  // retrying — panel silently stuck bootstrapping. See sentry 13568553.
+  const bindingRef = useRef(false);
+
+  // Reset on graph change MUST run before the bind effect so that navigating
+  // between agents first clears the old session/messages (same render cycle)
+  // and only then the bind effect tries to create a new session.  Reverse
+  // ordering leaks the previous graph's session id + messages into the new
+  // graph for one paint.
   useEffect(() => {
-    if (!isOpen || sessionId || isCreatingSessionRef.current || sessionError)
+    if (!flowID) {
+      setSessionId(null);
+      setRevertTargetVersion(null);
+      setMessages([]);
+      boundGraphRef.current = null;
+      bindingRef.current = false;
+      setBindError(null);
       return;
-    // The `cancelled` flag prevents state updates after the component unmounts
-    // or the effect re-runs, avoiding stale state from async calls.
-    let cancelled = false;
-    isCreatingSessionRef.current = true;
-    // Snapshot the flowID at effect start so the result is rejected if the
-    // user navigates to a different graph before the request completes, preventing
-    // the old session from being assigned to the new graph.
-    const effectFlowID = flowID;
-
-    async function createSession() {
-      setIsCreatingSession(true);
-      try {
-        // NOTE: The backend validates that the authenticated user owns the
-        // session before allowing any messages — session IDs alone are not
-        // sufficient for unauthorized access.
-        const res = await postV2CreateSession(null);
-        // Discard the result if the effect was cancelled (unmount or re-run) or
-        // if the user navigated to a different graph before the request completed.
-        if (cancelled || currentFlowIDRef.current !== effectFlowID) return;
-        if (res.status === 200) {
-          const id = res.data.id;
-          // Validate the session ID is a safe non-empty identifier before
-          // interpolating it into the streaming URL — rejects values that
-          // contain path-traversal characters or whitespace.
-          if (typeof id !== "string" || !id || !/^[\w-]+$/i.test(id)) {
-            setSessionError(true);
-            return;
-          }
-          setSessionId(id);
-          // Cache so this session is reused next time the same graph is opened.
-          if (effectFlowID) graphSessionCache.set(effectFlowID, id);
-        } else {
-          setSessionError(true);
-        }
-      } catch {
-        if (!cancelled) setSessionError(true);
-      } finally {
-        if (!cancelled) {
-          setIsCreatingSession(false);
-          isCreatingSessionRef.current = false;
-        }
-      }
     }
+    if (boundGraphRef.current && boundGraphRef.current !== flowID) {
+      setSessionId(null);
+      setRevertTargetVersion(null);
+      setMessages([]);
+      boundGraphRef.current = null;
+      bindingRef.current = false;
+      setBindError(null);
+    }
+  }, [flowID, setMessages]);
 
-    createSession();
-    return () => {
-      cancelled = true;
-      isCreatingSessionRef.current = false;
-    };
-    // isCreatingSession is intentionally excluded: the ref guards re-entry so
-    // state-driven re-renders don't cancel the in-flight request.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, sessionId, sessionError]);
+  // Bind the panel session to (flowID -> graph_id).  Navigating to a
+  // different graph or clearing flowID drops the current session (above) so
+  // the next panel open starts clean with the right graph.  Guards against:
+  //   1) concurrent re-entry while an in-flight bind is pending
+  //      (`bindingRef`) — rapid open/close toggles would otherwise fire
+  //      multiple POST /sessions calls for the same graph.
+  //   2) stale async responses after the user switches graphs
+  //      (`currentFlowIDRef`) — an older graph's response must NOT
+  //      overwrite a newer graph's sessionId.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!flowID) return;
+    if (boundGraphRef.current === flowID && sessionId) return;
+    if (bindingRef.current) return;
+    const effectFlowID = flowID;
+    boundGraphRef.current = effectFlowID;
+    bindingRef.current = true;
+    setBindError(null);
 
-  const transport = useMemo(
-    () =>
-      sessionId
-        ? new DefaultChatTransport({
-            api: `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sessionId}/stream`,
-            prepareSendMessagesRequest: async ({ messages }) => {
-              const last = messages.at(-1);
-              if (!last)
-                throw new Error(
-                  "No message to send — messages array is empty.",
-                );
-              const { token, error } = await getWebSocketToken();
-              if (error || !token)
-                throw new Error(
-                  "Authentication failed — please sign in again.",
-                );
-              const messageText = extractTextFromParts(last.parts ?? []);
-              return {
-                body: {
-                  message: messageText,
-                  is_user_message: last.role === "user",
-                  context: null,
-                  file_ids: null,
-                  mode: null,
-                },
-                headers: { Authorization: `Bearer ${token}` },
-              };
+    void (async () => {
+      try {
+        const response = (await createBuilderSession({
+          data: { builder_graph_id: effectFlowID },
+        })) as unknown as {
+          status: number;
+          data?: { id?: string };
+        };
+        // The user may have navigated to a different graph while we were
+        // awaiting the response — in that case, discard this one.  The
+        // reset effect above will have already cleared boundGraphRef; the
+        // next render fires a fresh bind for the new flowID.
+        if (currentFlowIDRef.current !== effectFlowID) {
+          return;
+        }
+        if (response.status !== 200 || !response.data?.id) {
+          throw new Error("failed_to_bind_builder_session");
+        }
+        setSessionId(response.data.id);
+      } catch (err) {
+        if (currentFlowIDRef.current !== effectFlowID) return;
+        Sentry.captureException(err);
+        setBindError("failed_to_bind_builder_session");
+        // Clear the bound marker so the panel can re-trigger on retry.
+        boundGraphRef.current = null;
+        toast({
+          variant: "destructive",
+          title: "Could not start the builder chat",
+          description: "Please retry or close and reopen the chat panel.",
+        });
+      } finally {
+        bindingRef.current = false;
+      }
+    })();
+    // `bindRetryToken` is intentionally in the dep array so retrying bumps
+    // the token and forces this effect to re-run even when flowID+sessionId
+    // haven't changed.
+  }, [isOpen, flowID, sessionId, bindRetryToken, createBuilderSession, toast]);
+
+  // Auto-create a blank agent when the panel is opened without one.
+  // The saved graph's id becomes the builder session's binding.  On
+  // failure we surface a retry button (see `bootstrapError` in the
+  // return value) so the user can recover without closing the panel.
+  const isBootstrappingRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen || flowID || isBootstrappingRef.current) return;
+    isBootstrappingRef.current = true;
+    setBootstrapError(null);
+    void (async () => {
+      try {
+        const response = (await createNewGraph({
+          data: {
+            graph: {
+              name: `New Agent ${new Date().toISOString()}`,
+              description: "",
+              nodes: [],
+              links: [],
             },
-          })
-        : null,
-    [sessionId],
-  );
+            source: "builder",
+          },
+        })) as unknown as {
+          status: number;
+          data?: GraphModel;
+        };
+        if (response.status !== 200 || !response.data?.id) {
+          throw new Error("failed_to_bootstrap_agent");
+        }
+        setQueryStates({
+          flowID: response.data.id,
+          flowVersion: response.data.version,
+        });
+      } catch (err) {
+        Sentry.captureException(err);
+        setBootstrapError("failed_to_bootstrap_agent");
+        toast({
+          variant: "destructive",
+          title: "Could not create a blank agent",
+          description: "Please try again.",
+        });
+      } finally {
+        isBootstrappingRef.current = false;
+      }
+    })();
+  }, [
+    isOpen,
+    flowID,
+    bootstrapRetryToken,
+    createNewGraph,
+    setQueryStates,
+    toast,
+  ]);
 
-  const { messages, setMessages, sendMessage, stop, status, error } = useChat({
-    id: sessionId ?? undefined,
-    transport: transport ?? undefined,
-  });
-
-  // Keep a stable ref so callbacks can call sendMessage without it appearing
-  // in their dependency arrays.
-  sendMessageRef.current = sendMessage;
-
-  // Send the seed message once per session when the session becomes available
-  // and the graph is loaded. The ref guard prevents duplicate sends when the
-  // effect re-runs due to dependency changes.
+  // Inline tool-integration: run_agent exec_id -> URL; edit_agent -> graph refetch + record revert point.
+  const processedToolCallsRef = useRef(new Set<string>());
   useEffect(() => {
-    if (!sessionId || !isGraphLoaded || hasSentSeedMessageRef.current) return;
-    hasSentSeedMessageRef.current = true;
-    const edges = useEdgeStore.getState().edges;
-    const summary = serializeGraphForChat(nodes, edges);
-    sendMessageRef.current?.({ text: buildSeedPrompt(summary) });
-    // nodes is intentionally excluded: the seed only fires once per session and
-    // reading the live value here is sufficient. edges are read via getState().
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, isGraphLoaded]);
+    processedToolCallsRef.current = new Set();
+  }, [flowID]);
 
-  // Parsed actions from all assistant messages, accumulated across turns.
-  // Gated on `status === "ready"` so parsing only runs on completed turns.
-  const parsedActions = useMemo(() => {
-    if (status !== "ready") return [];
-    const seen = new Set<string>();
-    return messages
-      .filter((m) => m.role === "assistant")
-      .flatMap((msg) => parseGraphActions(extractTextFromParts(msg.parts)))
-      .filter((action) => {
-        const key = getActionKey(action);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-  }, [messages, status]);
-
-  // Detect completed edit_agent and run_agent tool calls and act on them.
-  // edit_agent → trigger a graph reload via the onGraphEdited callback.
-  // run_agent  → update flowExecutionID in the URL to auto-follow the new run.
+  const latestVersionBeforeEditRef = useRef<number | null>(null);
   useEffect(() => {
-    if (status !== "ready") return;
+    // Capture the active version any time we load the graph.  This is the
+    // version we "revert to" after the next edit_agent turn succeeds.
+    if (graph?.version != null && !hasActiveStream) {
+      latestVersionBeforeEditRef.current = graph.version;
+    }
+  }, [graph?.version, hasActiveStream]);
+
+  // Process tool outputs as soon as they reach output-available — do NOT gate
+  // on status === "ready". run_agent often completes mid-turn (followed by
+  // more assistant text), and edit_agent can finish before the wrap-up
+  // summary is streamed — gating on ready misses both.
+  //
+  // Tool parts use the AI SDK static-typed convention `tool-<name>` (NOT
+  // `dynamic-tool` with a `toolName` field). Matching on part.type directly.
+  //
+  // IMPORTANT: on the live stream the backend emits `output` as a JSON
+  // STRING (see backend copilot SDK response_adapter — tool outputs are
+  // stashed as strings). After hydration from DB, `convertChatSessionToUi`
+  // parses that string to an object. So this effect must handle BOTH shapes
+  // to work on live-streamed *and* hydrated sessions.
+  useEffect(() => {
+    // Drop tool-parts from the previous graph's stream before the reset
+    // effect flushes them — otherwise flowVersion / flowExecutionID get
+    // written with stale values. `null` is the initial "no session yet"
+    // state and must pass through so hydrated messages still apply.
+    if (boundGraphRef.current !== null && boundGraphRef.current !== flowID) {
+      return;
+    }
     for (const msg of messages) {
       if (msg.role !== "assistant") continue;
       for (const part of msg.parts ?? []) {
-        if (part.type !== "dynamic-tool") continue;
-        const dynPart = part as {
-          type: "dynamic-tool";
-          toolName: string;
+        if (part.type !== "tool-edit_agent" && part.type !== "tool-run_agent") {
+          continue;
+        }
+        const toolPart = part as {
+          type: string;
           toolCallId: string;
           state: string;
           output?: unknown;
         };
-        if (dynPart.state !== "output-available") continue;
-        if (processedToolCallsRef.current.has(dynPart.toolCallId)) continue;
-        processedToolCallsRef.current.add(dynPart.toolCallId);
+        if (toolPart.state !== "output-available") continue;
+        if (processedToolCallsRef.current.has(toolPart.toolCallId)) continue;
 
-        if (dynPart.toolName === "edit_agent") {
-          onGraphEdited?.();
-        } else if (dynPart.toolName === "run_agent") {
-          const output = dynPart.output as Record<string, unknown> | null;
-          const execId = output?.execution_id;
+        const output = parseToolOutput(toolPart.output);
+        // Only mark as processed once we successfully extract a usable
+        // object — otherwise a mid-stream partial string would lock us out
+        // of the real output that arrives milliseconds later.
+        if (!output) continue;
+        processedToolCallsRef.current.add(toolPart.toolCallId);
+
+        if (part.type === "tool-edit_agent") {
+          // Record the version we were on before this edit so the user can
+          // roll back to it. If the tool returned the new graph_version,
+          // switch the URL to that version so the builder canvas re-renders
+          // the edited graph — otherwise the URL stays pinned to the old
+          // version and refetchGraph returns the same data.
+          //
+          // Snapshot the pre-edit version synchronously and advance the ref
+          // to the new version (if the tool returned one) so that a second
+          // rapid edit captures the correct revert target — not the
+          // pre-first-edit version which the async refetchGraph hasn't
+          // updated yet.
+          const preEditVersion = latestVersionBeforeEditRef.current;
+          if (preEditVersion != null) {
+            setRevertTargetVersion(preEditVersion);
+          }
+          const newVersion = output.graph_version;
+          if (typeof newVersion === "number" && Number.isFinite(newVersion)) {
+            latestVersionBeforeEditRef.current = newVersion;
+            setQueryStates({ flowVersion: newVersion });
+          }
+          void refetchGraph();
+          if (flowID) {
+            queryClient.invalidateQueries({
+              queryKey: getGetV1GetSpecificGraphQueryKey(flowID, {}),
+            });
+          }
+        } else if (part.type === "tool-run_agent") {
+          // run_agent's output can be either ExecutionStartedResponse
+          // (async enqueue → execution_id on output directly) or
+          // AgentOutputResponse for a sync wait_for_result path
+          // (execution_id nested under output.execution).
+          const direct = output.execution_id;
+          const nested = (output.execution as Record<string, unknown> | null)
+            ?.execution_id;
+          const execId = typeof direct === "string" ? direct : nested;
           if (typeof execId === "string" && /^[\w-]+$/i.test(execId)) {
             setQueryStates({ flowExecutionID: execId });
           }
         }
       }
     }
-  }, [messages, status, onGraphEdited, setQueryStates]);
+  }, [messages, flowID, refetchGraph, queryClient, setQueryStates]);
 
-  // Close the panel on Escape when focus is inside the panel, so pressing Escape
-  // in another dialog or canvas element does not accidentally close the chat panel.
-  // Skip when focus is in an editable element to avoid discarding a draft in progress.
+  // Escape-to-close when the panel is focused.  Skip inside editable
+  // elements so Escape does not discard an in-progress draft.
   useEffect(() => {
     if (!isOpen) return;
     function onKeyDown(e: globalThis.KeyboardEvent) {
@@ -332,276 +424,110 @@ export function useBuilderChatPanel({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [isOpen, panelRef]);
 
-  const isStreaming = status === "streaming" || status === "submitted";
-  const canSend =
-    Boolean(sessionId) && !isCreatingSession && !sessionError && !isStreaming;
-
   function handleToggle() {
     setIsOpen((o) => !o);
   }
 
-  // Resets session error state so the session-creation effect re-runs on
-  // the next render without toggling the panel closed and back open.
-  // Also evicts the stale cached session so a fresh one is created.
-  // hasSentSeedMessageRef is reset so the seed message is re-sent to the
-  // new session (it may have been set to true by a previous successful session
-  // that was later invalidated without a flowID change).
-  // Messages are cleared so stale messages from the previous session are not
-  // shown alongside content from the new session.
-  function retrySession() {
-    if (flowID) graphSessionCache.delete(flowID);
-    setSessionId(null);
-    setSessionError(false);
-    isCreatingSessionRef.current = false;
-    hasSentSeedMessageRef.current = false;
-    setMessages([]);
-  }
-
-  function handleSend() {
-    const text = inputValue.trim();
-    if (!text || !canSend) return;
-    setInputValue("");
-    sendMessage({ text });
-  }
-
-  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+  async function handleRevert() {
+    if (!flowID || revertTargetVersion == null) return;
+    try {
+      const response = (await setActiveVersion({
+        graphId: flowID,
+        data: { active_graph_version: revertTargetVersion },
+      })) as unknown as { status: number };
+      if (response.status !== 200) {
+        throw new Error("failed_to_revert");
+      }
+      setQueryStates({ flowVersion: revertTargetVersion });
+      await refetchGraph();
+      queryClient.invalidateQueries({
+        queryKey: getGetV1GetSpecificGraphQueryKey(flowID, {}),
+      });
+      if (sessionId) {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2GetSessionQueryKey(sessionId),
+        });
+      }
+      setRevertTargetVersion(null);
+      toast({
+        title: "Reverted to the previous version",
+        description: `Now viewing version ${revertTargetVersion}.`,
+      });
+    } catch (err) {
+      Sentry.captureException(err);
+      toast({
+        variant: "destructive",
+        title: "Revert failed",
+        description: "Please try again.",
+      });
     }
   }
 
-  function handleApplyAction(action: GraphAction) {
-    if (action.type === "update_node_input") {
-      // Read live state for both validation and mutation so rapid successive
-      // applies see the latest nodes rather than a stale render-cycle snapshot.
-      const liveNodes = useNodeStore.getState().nodes;
-      const node = liveNodes.find((n) => n.id === action.nodeId);
-      if (!node) {
+  async function onSend(message: string, _files?: File[]) {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    if (!sessionId) return;
+    const isInFlight = status === "streaming" || status === "submitted";
+    if (isInFlight) {
+      appendChip(trimmed);
+      try {
+        const { queueFollowUpMessage } = await import(
+          "@/app/(platform)/copilot/helpers/queueFollowUpMessage"
+        );
+        await queueFollowUpMessage(sessionId, trimmed);
+      } catch (err) {
+        Sentry.captureException(err);
         toast({
-          title: "Cannot apply change",
-          description: `Node "${action.nodeId}" was not found in the graph.`,
           variant: "destructive",
+          title: "Could not queue message",
+          description: "Please wait for the current response to finish.",
         });
-        return;
       }
-      // Block prototype-polluting keys regardless of schema presence.
-      // The schema check below uses hasOwnProperty so __proto__ is caught when
-      // schemaProps exists, but this guard handles the no-schema case.
-      const DANGEROUS_KEYS = ["__proto__", "constructor", "prototype"];
-      if (DANGEROUS_KEYS.includes(action.key)) {
-        toast({
-          title: "Cannot apply change",
-          description: `Field "${action.key}" is not a valid input.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Reject keys not present in the node's input schema to prevent writing
-      // arbitrary fields that the block does not support.
-      const schemaProps = node.data.inputSchema?.properties;
-      if (
-        schemaProps &&
-        !Object.prototype.hasOwnProperty.call(schemaProps, action.key)
-      ) {
-        toast({
-          title: "Cannot apply change",
-          description: `Field "${action.key}" is not a valid input for "${getNodeDisplayName(node, node.id)}".`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Capture a shallow-copied nodes snapshot before mutating. Spreading
-      // ensures the undo restore references an independent array rather than
-      // the same reference that the store may update in-place.
-      // Both the apply and the restore use setNodes (not updateNodeData) to
-      // bypass the global history store — this keeps chat-panel changes
-      // completely separate from Ctrl+Z, preventing the "Applied" badge from
-      // going stale after a global undo.
-      const prevNodes = [...liveNodes];
-      const nextNodes = liveNodes.map((n) =>
-        n.id === action.nodeId
-          ? {
-              ...n,
-              data: {
-                ...n.data,
-                hardcodedValues: {
-                  ...n.data.hardcodedValues,
-                  [action.key]: action.value,
-                },
-              },
-            }
-          : n,
-      );
-      const key = getActionKey(action);
-      setUndoStack((prev) => {
-        const entry: UndoSnapshot = {
-          actionKey: key,
-          restore: () => {
-            setNodes(prevNodes);
-            setAppliedActionKeys((keys) => {
-              const next = new Set(keys);
-              next.delete(key);
-              return next;
-            });
-          },
-        };
-        const trimmed = prev.length >= MAX_UNDO ? prev.slice(1) : prev;
-        return [...trimmed, entry];
-      });
-      setNodes(nextNodes);
-    } else if (action.type === "connect_nodes") {
-      // Read live state so validation reflects the current graph even when
-      // multiple actions are applied within the same render cycle.
-      const liveNodes = useNodeStore.getState().nodes;
-      const sourceNode = liveNodes.find((n) => n.id === action.source);
-      const targetNode = liveNodes.find((n) => n.id === action.target);
-      if (!sourceNode || !targetNode) {
-        toast({
-          title: "Cannot apply connection",
-          description: `One or both nodes (${action.source}, ${action.target}) were not found.`,
-          variant: "destructive",
-        });
-        return;
-      }
-      // Validate that the referenced handles exist on the respective nodes.
-      const srcProps = sourceNode.data.outputSchema?.properties;
-      const tgtProps = targetNode.data.inputSchema?.properties;
-      if (
-        srcProps &&
-        !Object.prototype.hasOwnProperty.call(srcProps, action.sourceHandle)
-      ) {
-        toast({
-          title: "Cannot apply connection",
-          description: `Output handle "${action.sourceHandle}" does not exist on "${getNodeDisplayName(sourceNode, action.source)}".`,
-          variant: "destructive",
-        });
-        return;
-      }
-      if (
-        tgtProps &&
-        !Object.prototype.hasOwnProperty.call(tgtProps, action.targetHandle)
-      ) {
-        toast({
-          title: "Cannot apply connection",
-          description: `Input handle "${action.targetHandle}" does not exist on "${getNodeDisplayName(targetNode, action.target)}".`,
-          variant: "destructive",
-        });
-        return;
-      }
-      const edgeId = `${action.source}:${action.sourceHandle}->${action.target}:${action.targetHandle}`;
-      // Shallow-copy the edges snapshot so the undo restore references an
-      // independent array rather than the same reference the store may update.
-      // Both the apply and the restore use setEdges (not addEdge/removeEdge)
-      // to bypass the global history store — keeps chat-panel changes separate.
-      const prevEdges = [...useEdgeStore.getState().edges];
-      // Guard against duplicate edges — the same connection may appear after an
-      // undo-then-reapply or from identical suggestions across AI messages.
-      const alreadyExists = prevEdges.some(
-        (e) =>
-          e.source === action.source &&
-          e.target === action.target &&
-          e.sourceHandle === action.sourceHandle &&
-          e.targetHandle === action.targetHandle,
-      );
-      if (alreadyExists) {
-        // Edge already present — mark as applied without duplicating it.
-        setAppliedActionKeys((prev) => {
-          const next = new Set(prev);
-          next.add(getActionKey(action));
-          return next;
-        });
-        return;
-      }
-      const key = getActionKey(action);
-      setUndoStack((prev) => {
-        const entry: UndoSnapshot = {
-          actionKey: key,
-          restore: () => {
-            setEdges(prevEdges);
-            setAppliedActionKeys((keys) => {
-              const next = new Set(keys);
-              next.delete(key);
-              return next;
-            });
-          },
-        };
-        const trimmed = prev.length >= MAX_UNDO ? prev.slice(1) : prev;
-        return [...trimmed, entry];
-      });
-      setEdges([
-        ...prevEdges,
-        {
-          id: edgeId,
-          source: action.source,
-          target: action.target,
-          sourceHandle: action.sourceHandle,
-          targetHandle: action.targetHandle,
-          type: "custom",
-          // Match the markerEnd style used by addEdge in edgeStore so
-          // chat-applied edges render with the same arrowhead as manually drawn ones.
-          markerEnd: {
-            type: MarkerType.ArrowClosed,
-            strokeWidth: 2,
-            color: "#555",
-          },
-        },
-      ]);
-    } else {
-      // Exhaustiveness guard — TypeScript ensures all GraphAction types are handled above.
-      const _: never = action;
-      return _;
+      return;
     }
-    setAppliedActionKeys((prev) => {
-      const next = new Set(prev);
-      next.add(getActionKey(action));
-      return next;
-    });
+    sendMessage({ text: trimmed });
   }
 
-  function handleUndoLastAction() {
-    // Read the current stack directly rather than inside the setUndoStack updater.
-    // Calling restore() (which triggers setNodes/setEdges) inside a state updater
-    // is a React anti-pattern — state updaters must be pure. Reading from the ref
-    // here is safe because this function is only called from event handlers.
-    const stack = undoStack;
-    if (stack.length === 0) return;
-    const last = stack[stack.length - 1];
-    last.restore();
-    setUndoStack((prev) => prev.slice(0, -1));
+  // While an error is active the panel surfaces a retry button instead of
+  // the loading spinner — so the computed bootstrapping flag must read
+  // false in that case.  Without this, a bind / create-graph failure would
+  // still render "Preparing builder chat…" forever.
+  const isBootstrapping =
+    !bindError &&
+    !bootstrapError &&
+    (isBootstrappingGraph ||
+      (!flowID && isOpen) ||
+      (isOpen && !!flowID && !sessionId));
+
+  function retryBind() {
+    setBindError(null);
+    setBindRetryToken((t) => t + 1);
   }
 
-  // Sends an arbitrary text message directly, bypassing the input field.
-  // Used by CopilotChatActionsProvider so tool components (e.g. EditAgentTool)
-  // can programmatically send "try again" prompts without touching the textarea.
-  function sendRawMessage(text: string) {
-    if (!text || !canSend) return;
-    sendMessage({ text });
+  function retryBootstrap() {
+    setBootstrapError(null);
+    setBootstrapRetryToken((t) => t + 1);
   }
 
   return {
     isOpen,
     handleToggle,
-    retrySession,
-    messages,
-    stop,
-    error,
-    isCreatingSession,
-    sessionError,
+    panelRef,
     sessionId,
-    nodes,
-    parsedActions,
-    appliedActionKeys,
-    handleApplyAction,
-    undoStack,
-    handleUndoLastAction,
-    // Input handling (owned here to keep component render-only)
-    inputValue,
-    setInputValue,
-    handleSend,
-    sendRawMessage,
-    handleKeyDown,
-    isStreaming,
-    canSend,
+    flowID: flowID ?? null,
+    flowVersion: flowVersion ?? null,
+    messages,
+    status,
+    error,
+    stop,
+    onSend,
+    queuedMessages,
+    isBootstrapping,
+    revertTargetVersion,
+    handleRevert,
+    bindError,
+    bootstrapError,
+    retryBind,
+    retryBootstrap,
   };
 }

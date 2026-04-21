@@ -585,7 +585,8 @@ def test_prepare_dry_run_orchestrator_block():
     assert result is not None
     # Model is overridden to the simulation model (not the user's model).
     assert result["model"] != "gpt-4o"
-    assert result["agent_mode_max_iterations"] == 1
+    # Capped to min(original, 10); user's 10 passes through unchanged.
+    assert result["agent_mode_max_iterations"] == 10
     assert result["_dry_run_api_key"] == "sk-or-test-key"
     # Original input_data should not be mutated.
     assert input_data["model"] == "gpt-4o"
@@ -713,13 +714,11 @@ async def test_simulate_agent_output_block_no_name():
 # ---------------------------------------------------------------------------
 
 
-def _make_dry_run_session(dry_run: bool = True) -> MagicMock:
-    """Return a minimal ChatSession mock with dry_run set."""
-    session = MagicMock()
-    session.dry_run = dry_run
-    session.session_id = "test-session-id"
-    session.successful_agent_runs = {}
-    return session
+def _make_dry_run_session(dry_run: bool = True):
+    """Return a real ``ChatSession`` with *dry_run* set on metadata."""
+    from backend.copilot.model import ChatSession
+
+    return ChatSession.new("test-user", dry_run=dry_run)
 
 
 def _make_graph_mock(graph_id: str = "g1") -> MagicMock:

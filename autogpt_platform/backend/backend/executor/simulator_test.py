@@ -156,7 +156,8 @@ class TestPrepareDryRun:
                 {"agent_mode_max_iterations": 10, "model": "gpt-4o", "other": "val"},
             )
         assert result is not None
-        assert result["agent_mode_max_iterations"] == 1
+        # Capped to min(original, 10) — user's 10 passes through unchanged.
+        assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
         # credentials left as-is so block schema validation passes —

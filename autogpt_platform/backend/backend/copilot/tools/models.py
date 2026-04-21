@@ -418,6 +418,7 @@ class AgentSavedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
+    graph_version: int | None = None
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page

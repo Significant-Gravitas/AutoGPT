@@ -236,9 +236,39 @@ function getBashAccordionData(
       ? `Command failed (exit ${exitCode})`
       : "Command output";
 
+  // The command itself is already in the subtitle row above; surface the
+  // outcome here so scanning the closed accordion tells the reader "how it
+  // ended" at a glance.  Prefer the backend's own first line of output
+  // (stderr for failures/timeouts — that's where bash_exec writes
+  // "Timed out after Xs" and where shells emit "command not found" etc.,
+  // stdout for success) over a terse "exit N" so the reader actually sees
+  // WHY the command ended.
+  const firstNonEmptyLine = (s: string | null): string | null => {
+    if (!s) return null;
+    const line = s.split("\n").find((l) => l.trim().length > 0);
+    return line ? truncate(line.trim(), 80) : null;
+  };
+  const stderrPreview = firstNonEmptyLine(stderr);
+  const stdoutPreview = firstNonEmptyLine(stdout);
+  let description: string | undefined;
+  if (timedOut) {
+    description = stderrPreview ?? "timed out";
+  } else if (exitCode !== null && exitCode !== 0) {
+    description = stderrPreview
+      ? `status code ${exitCode} · ${stderrPreview}`
+      : `status code ${exitCode}`;
+  } else if (exitCode === 0) {
+    description = stdoutPreview ?? "completed";
+  } else {
+    // Historical sessions persisted before exit_code/timed_out were added
+    // fall through here — fall back to the command preview so the closed
+    // accordion still tells the reader what ran.
+    description = truncate(command, 80);
+  }
+
   return {
     title,
-    description: truncate(command, 80),
+    description,
     content: (
       <div className="space-y-2">
         {command && (
@@ -703,7 +733,6 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {/* Status line: always visible so the user sees what tool ran */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <ToolIcon
           category={category}
