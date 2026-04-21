@@ -163,4 +163,41 @@ describe("BriefingTabContent — UsageSection", () => {
 
     expect(screen.getByText("<1% used")).toBeDefined();
   });
+
+  it("dispatches to ExecutionListSection for running/attention/completed tabs", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isSuccess: false,
+    });
+    mockUseGetFlag.mockReturnValue(false);
+    mockUseCredits.mockReturnValue({ credits: 1000, fetchCredits: vi.fn() });
+
+    for (const tab of ["running", "attention", "completed"] as const) {
+      const { unmount } = render(
+        <BriefingTabContent activeTab={tab} agents={[]} />,
+      );
+      // Empty list -> EmptyMessage renders for each of the execution tabs.
+      expect(
+        screen.getByText(/No agents|No recently completed/i),
+      ).toBeDefined();
+      unmount();
+    }
+  });
+
+  it("dispatches to AgentListSection for listening/scheduled/idle tabs", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isSuccess: false,
+    });
+    mockUseGetFlag.mockReturnValue(false);
+    mockUseCredits.mockReturnValue({ credits: 1000, fetchCredits: vi.fn() });
+
+    for (const tab of ["listening", "scheduled", "idle"] as const) {
+      const { unmount } = render(
+        <BriefingTabContent activeTab={tab} agents={[]} />,
+      );
+      expect(screen.getByText(/No/i)).toBeDefined();
+      unmount();
+    }
+  });
 });
