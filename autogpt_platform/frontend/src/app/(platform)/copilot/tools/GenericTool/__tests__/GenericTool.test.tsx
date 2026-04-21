@@ -94,6 +94,20 @@ describe("GenericTool", () => {
     expect(trigger.textContent).not.toContain("sleep 120");
   });
 
+  it("falls back to the command preview for legacy outputs missing exit_code/timed_out", () => {
+    render(
+      <GenericTool
+        part={makePart({
+          state: "output-available",
+          input: { command: "echo hello" },
+          output: { stdout: "hello\n" },
+        })}
+      />,
+    );
+    const trigger = screen.getByRole("button", { expanded: false });
+    expect(trigger.textContent).toContain("echo hello");
+  });
+
   it("prefers stdout first line on exit 0, falls back to 'completed'", () => {
     const { rerender } = render(
       <GenericTool

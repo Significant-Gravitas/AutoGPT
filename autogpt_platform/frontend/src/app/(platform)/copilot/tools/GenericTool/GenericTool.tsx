@@ -259,6 +259,11 @@ function getBashAccordionData(
       : `status code ${exitCode}`;
   } else if (exitCode === 0) {
     description = stdoutPreview ?? "completed";
+  } else {
+    // Historical sessions persisted before exit_code/timed_out were added
+    // fall through here — fall back to the command preview so the closed
+    // accordion still tells the reader what ran.
+    description = truncate(command, 80);
   }
 
   return {
