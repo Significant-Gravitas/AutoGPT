@@ -143,13 +143,18 @@ def _extract_usage_cost(usage: CompletionUsage) -> float | None:
     read it off ``model_extra`` (the pydantic v2 container for extras) to
     keep the access fully typed — no ``getattr``.
 
-    Returns ``None`` when the field is absent, non-numeric, non-finite, or
-    negative. Invalid values are logged here (they indicate a provider
-    bug worth chasing); plain absences are silent so the caller can
-    dedupe the warning per stream.
+    Returns ``None`` when the field is absent, explicitly null,
+    non-numeric, non-finite, or negative. Invalid values (including
+    present-but-null) are logged here — they indicate a provider bug
+    worth chasing; plain absences are silent so the caller can dedupe
+    the "missing cost" warning per stream.
     """
-    raw = (usage.model_extra or {}).get("cost")
+    extras = usage.model_extra or {}
+    if "cost" not in extras:
+        return None
+    raw = extras["cost"]
     if raw is None:
+        logger.error("[Baseline] usage.cost is present but null")
         return None
     try:
         val = float(raw)

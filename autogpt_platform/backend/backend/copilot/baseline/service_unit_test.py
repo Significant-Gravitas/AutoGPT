@@ -575,11 +575,14 @@ class TestPrepareBaselineAttachments:
         assert blocks == []
 
 
+_COST_MISSING = object()
+
+
 def _make_usage_chunk(
     *,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
-    cost: float | str | None = None,
+    cost: float | str | None | object = _COST_MISSING,
     cached_tokens: int | None = None,
     cache_creation_input_tokens: int | None = None,
 ):
@@ -588,16 +591,17 @@ def _make_usage_chunk(
     Provider-specific fields (``cost`` on usage, ``cache_creation_input_tokens``
     on prompt_tokens_details) are set on ``model_extra`` because that's where
     the baseline helper reads them from (typed ``CompletionUsage.model_extra``
-    rather than ``getattr``).
+    rather than ``getattr``). Pass ``cost=None`` to emit an explicit-null cost
+    key; omit ``cost`` entirely to leave the key absent.
     """
     chunk = MagicMock()
     chunk.choices = []
     chunk.usage = MagicMock()
     chunk.usage.prompt_tokens = prompt_tokens
     chunk.usage.completion_tokens = completion_tokens
-    usage_extras: dict[str, float | str] = {}
-    if cost is not None:
-        usage_extras["cost"] = cost
+    usage_extras: dict[str, float | str | None] = {}
+    if cost is not _COST_MISSING:
+        usage_extras["cost"] = cost  # type: ignore[assignment]
     chunk.usage.model_extra = usage_extras
 
     if cached_tokens is not None or cache_creation_input_tokens is not None:
@@ -783,6 +787,35 @@ class TestBaselineCostExtraction:
             )
 
         assert state.cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_explicit_null_cost_is_logged_and_ignored(self, caplog):
+        """`{"cost": null}` is rejected and logged (not silently dropped)."""
+        state = _BaselineStreamState(model="openrouter/auto")
+        chunk = _make_usage_chunk(prompt_tokens=10, cost=None)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_openai_client",
+                return_value=mock_client,
+            ),
+            caplog.at_level("ERROR", logger="backend.copilot.baseline.service"),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+        assert any(
+            "usage.cost is present but null" in rec.message for rec in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_cost_not_captured_when_stream_raises_mid_chunk(self):
