@@ -280,9 +280,10 @@ async def test_mark_session_completed_releases_cluster_lock_on_success():
 @pytest.mark.asyncio
 async def test_mark_session_completed_skips_lock_release_when_already_completed():
     """CAS failure = someone else completed the session first; we must not
-    clobber their already-released lock (harmless but wastes a round trip)
-    or, more importantly, publish StreamFinish twice."""
+    delete their already-released lock, and we must NOT publish StreamFinish
+    twice (the winning caller already published it)."""
     fake_redis = _FakeRedis({"status": "completed", "turn_id": "turn-1"})
+    publish_mock = AsyncMock()
 
     with (
         patch.object(
@@ -291,11 +292,16 @@ async def test_mark_session_completed_skips_lock_release_when_already_completed(
         patch.object(
             stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=False)
         ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
     ):
         result = await stream_registry.mark_session_completed("sess-1")
 
     assert result is False
     assert get_session_lock_key("sess-1") not in fake_redis.deleted_keys
+    assert not any(
+        isinstance(call.args[1], stream_registry.StreamFinish)
+        for call in publish_mock.call_args_list
+    ), "StreamFinish must NOT be re-published on the CAS-no-op branch"
 
 
 @pytest.mark.asyncio
