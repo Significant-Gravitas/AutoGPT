@@ -1930,12 +1930,12 @@ async def test_upgrade_releases_pending_schedule():
 
 
 @pytest.mark.asyncio
-async def test_extract_next_phase_tier_logs_unknown_price(caplog):
-    """_extract_next_phase_tier emits a warning when the next-phase price is unmapped."""
+async def test_next_phase_tier_and_start_logs_unknown_price(caplog):
+    """_next_phase_tier_and_start emits a warning when the next-phase price is unmapped."""
     import logging
     import time as time_mod
 
-    from backend.data.credit import _extract_next_phase_tier
+    from backend.data.credit import _next_phase_tier_and_start
 
     now = int(time_mod.time())
     schedule = {
@@ -1955,11 +1955,11 @@ async def test_extract_next_phase_tier_logs_unknown_price(caplog):
     price_to_tier = {"price_pro_monthly": SubscriptionTier.PRO}
 
     with caplog.at_level(logging.WARNING, logger="backend.data.credit"):
-        result = _extract_next_phase_tier(schedule, price_to_tier)
+        result = _next_phase_tier_and_start(schedule, price_to_tier)
 
     assert result is None
     assert any(
-        "extract_next_phase_tier: unknown price price_unknown" in record.message
+        "next_phase_tier_and_start: unknown price price_unknown" in record.message
         and "sub_sched_unknown" in record.message
         for record in caplog.records
     )

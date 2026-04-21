@@ -1773,16 +1773,22 @@ async def get_pending_subscription_change(
         schedule = await run_in_threadpool(
             stripe.SubscriptionSchedule.retrieve, schedule_id
         )
-        next_tier = _extract_next_phase_tier(schedule, price_to_tier)
-        if next_tier is not None:
-            return next_tier, effective_at
+        next_phase = _next_phase_tier_and_start(schedule, price_to_tier)
+        if next_phase is not None:
+            next_tier, phase_start = next_phase
+            return next_tier, phase_start
     return None
 
 
-def _extract_next_phase_tier(
+def _next_phase_tier_and_start(
     schedule: Any, price_to_tier: dict[str, SubscriptionTier]
-) -> SubscriptionTier | None:
-    """Return the tier of the phase that follows the currently-active one."""
+) -> tuple[SubscriptionTier, datetime] | None:
+    """Return (tier, start_datetime) of the phase that follows the active one.
+
+    Using the phase's own ``start_date`` (not the subscription's current_period_end)
+    is correct even for schedules created outside this flow — a dashboard-authored
+    schedule can have phase transitions at arbitrary timestamps.
+    """
     phases = schedule.get("phases") or []
     now = int(time.time())
     schedule_id = schedule.get("id")
@@ -1800,10 +1806,12 @@ def _extract_next_phase_tier(
             else (price_field or {}).get("id")
         )
         if price_id and price_id in price_to_tier:
-            return price_to_tier[price_id]
+            return price_to_tier[price_id], datetime.fromtimestamp(
+                start, tz=timezone.utc
+            )
         if price_id:
             logger.warning(
-                "extract_next_phase_tier: unknown price %s on schedule %s",
+                "next_phase_tier_and_start: unknown price %s on schedule %s",
                 price_id,
                 schedule_id,
             )
