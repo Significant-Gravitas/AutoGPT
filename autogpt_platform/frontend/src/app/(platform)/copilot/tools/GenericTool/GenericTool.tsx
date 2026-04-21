@@ -236,9 +236,18 @@ function getBashAccordionData(
       ? `Command failed (exit ${exitCode})`
       : "Command output";
 
+  // The command itself is already in the subtitle row above; surface the
+  // outcome here so scanning the closed accordion tells the reader "how it
+  // ended" at a glance.
+  const description = timedOut
+    ? "timed out"
+    : exitCode !== null
+      ? `exit ${exitCode}`
+      : undefined;
+
   return {
     title,
-    description: truncate(command, 80),
+    description,
     content: (
       <div className="space-y-2">
         {command && (
@@ -703,6 +712,20 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
+      {/* Subtitle: what ran (e.g. "Ran: sleep 120") — always visible so the
+          user doesn't have to expand the accordion to see the command. */}
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <ToolIcon
+          category={category}
+          isStreaming={isStreaming}
+          isError={isError}
+        />
+        <MorphingTextAnimation
+          text={text}
+          className={isError ? "text-red-500" : undefined}
+        />
+      </div>
+
       {showAccordion && accordionData ? (
         <ToolAccordion
           icon={<AccordionIcon category={category} />}
@@ -713,19 +736,7 @@ export function GenericTool({ part }: Props) {
         >
           {accordionData.content}
         </ToolAccordion>
-      ) : (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <ToolIcon
-            category={category}
-            isStreaming={isStreaming}
-            isError={isError}
-          />
-          <MorphingTextAnimation
-            text={text}
-            className={isError ? "text-red-500" : undefined}
-          />
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }

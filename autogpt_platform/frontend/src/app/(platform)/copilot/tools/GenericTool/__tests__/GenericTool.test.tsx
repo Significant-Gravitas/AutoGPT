@@ -14,7 +14,7 @@ function makePart(overrides: Record<string, unknown> = {}): ToolUIPart {
 }
 
 describe("GenericTool", () => {
-  it("shows only a status line while the tool is streaming", () => {
+  it("shows a subtitle and no accordion while the tool is streaming", () => {
     const { container } = render(
       <GenericTool part={makePart({ state: "input-streaming" })} />,
     );
@@ -22,8 +22,8 @@ describe("GenericTool", () => {
     expect(container.textContent).toContain("Running");
   });
 
-  it("shows only the accordion once output is available (no duplicate status line)", () => {
-    const { container } = render(
+  it("shows the subtitle plus an accordion whose description is the exit status", () => {
+    render(
       <GenericTool
         part={makePart({
           state: "output-available",
@@ -39,21 +39,32 @@ describe("GenericTool", () => {
 
     const trigger = screen.getByRole("button", { expanded: false });
     expect(trigger.textContent).toContain("Command failed (exit 1)");
-    expect(container.textContent).not.toContain("Command exited with code 1");
+    // Description shows the exit status (not the command — the subtitle row
+    // above already shows what ran).
+    expect(trigger.textContent).toContain("exit 1");
+    expect(trigger.textContent).not.toContain(
+      'echo "starting simulation run 2"',
+    );
   });
 
-  it("shows only the accordion on output-error (no duplicate status line)", () => {
-    const { container } = render(
+  it("labels a timed-out command 'timed out' in the accordion description", () => {
+    render(
       <GenericTool
         part={makePart({
-          state: "output-error",
-          output: { exit_code: 2, stderr: "nope" },
+          state: "output-available",
+          input: { command: "sleep 120" },
+          output: {
+            exit_code: -1,
+            timed_out: true,
+            stderr: "Timed out after 120s",
+          },
         })}
       />,
     );
 
     const trigger = screen.getByRole("button", { expanded: false });
-    expect(trigger.textContent).toContain("Command failed (exit 2)");
-    expect(container.textContent).not.toContain("Command exited with code 2");
+    expect(trigger.textContent).toContain("Command timed out");
+    expect(trigger.textContent).toContain("timed out");
+    expect(trigger.textContent).not.toContain("sleep 120");
   });
 });
