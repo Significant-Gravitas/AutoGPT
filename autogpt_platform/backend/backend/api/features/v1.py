@@ -49,6 +49,7 @@ from backend.data.auth import api_key as api_key_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    PendingChangeUnknown,
     RefundRequest,
     TransactionHistory,
     UserCredit,
@@ -815,10 +816,12 @@ async def get_subscription_status(
 
     try:
         pending = await get_pending_subscription_change(user_id)
-    except stripe.StripeError:
-        # Narrow: only swallow Stripe-side failures (rate limits, transient
-        # network errors). Let real bugs (KeyError, AttributeError, etc.)
-        # propagate so they surface in Sentry rather than degrading silently.
+    except (stripe.StripeError, PendingChangeUnknown):
+        # Swallow Stripe-side failures (rate limits, transient network) AND
+        # PendingChangeUnknown (LaunchDarkly price-id lookup failed). Both
+        # propagate past the cache so the next request retries fresh instead
+        # of serving a stale None for the TTL window. Let real bugs (KeyError,
+        # AttributeError, etc.) propagate so they surface in Sentry.
         logger.exception(
             "get_subscription_status: failed to resolve pending change for user %s",
             user_id,

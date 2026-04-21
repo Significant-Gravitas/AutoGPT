@@ -1666,7 +1666,10 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
     mock_user.stripe_customer_id = "cus_abc"
 
     async def mock_price_id(tier: SubscriptionTier) -> str | None:
-        return None
+        return {
+            SubscriptionTier.PRO: "price_pro",
+            SubscriptionTier.BUSINESS: "price_biz",
+        }.get(tier)
 
     with (
         patch(
@@ -2103,3 +2106,87 @@ async def test_next_phase_tier_and_start_logs_unknown_price(caplog):
         and "sub_sched_unknown" in record.message
         for record in caplog.records
     )
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_raises_when_price_lookups_fail():
+    """When both LD price lookups return None, raise PendingChangeUnknown so the
+    @cached wrapper doesn't store None and hide pending changes for 30s."""
+    from backend.data.credit import PendingChangeUnknown
+
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        pytest.raises(PendingChangeUnknown),
+    ):
+        await get_pending_subscription_change("user-price-fail")
+
+
+@pytest.mark.asyncio
+async def test_release_pending_subscription_schedule_invalidates_cache_on_partial_failure():
+    """If schedule.release succeeds but cancel_at_period_end clear fails, the
+    cache must still be invalidated — otherwise the UI shows a stale pending
+    banner for up to 30s even though the schedule was actually released."""
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    import time as time_mod
+
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_mixed",
+            "schedule": "sub_sched_to_release",
+            "cancel_at_period_end": True,
+            "current_period_end": int(time_mod.time()) + 10 * 24 * 3600,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release_async",
+            new_callable=AsyncMock,
+            return_value=MagicMock(),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+            side_effect=stripe.APIConnectionError("transient Stripe error"),
+        ),
+        patch.object(
+            get_pending_subscription_change, "cache_delete"
+        ) as mock_cache_delete,
+    ):
+        with pytest.raises(stripe.APIConnectionError):
+            await release_pending_subscription_schedule("user-partial")
+
+        mock_cache_delete.assert_called_once_with("user-partial")

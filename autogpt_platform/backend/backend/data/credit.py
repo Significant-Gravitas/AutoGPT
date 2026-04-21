@@ -1440,6 +1440,12 @@ def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bo
     return _tier_rank(target) < _tier_rank(current)
 
 
+class PendingChangeUnknown(Exception):
+    """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
+    price-id lookup failed). Propagates past the @cached wrapper so the next
+    request retries instead of serving a stale `None` for the TTL window."""
+
+
 async def _get_active_subscription(customer_id: str) -> stripe.Subscription | None:
     """Return the customer's active or trialing subscription, or None."""
     for status in ("active", "trialing"):
@@ -1648,42 +1654,48 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
     did_anything = False
     schedule_released = False
     schedule_id: str | None = None
-    if sub.schedule:
-        schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
-        schedule_released = await _release_schedule_ignoring_terminal(
-            schedule_id, "release_pending_subscription_schedule"
-        )
-        if schedule_released:
-            logger.info(
-                "release_pending_subscription_schedule: released schedule %s for user %s",
-                schedule_id,
-                user_id,
+    try:
+        if sub.schedule:
+            schedule_id = (
+                sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
             )
-            did_anything = True
-    if sub.cancel_at_period_end:
-        try:
-            await stripe.Subscription.modify_async(sub_id, cancel_at_period_end=False)
-        except stripe.StripeError:
+            schedule_released = await _release_schedule_ignoring_terminal(
+                schedule_id, "release_pending_subscription_schedule"
+            )
             if schedule_released:
-                logger.exception(
-                    "release_pending_subscription_schedule: partial release"
-                    " — schedule %s released but cancel_at_period_end clear"
-                    " failed on sub %s for user %s; manual reconciliation"
-                    " may be needed",
+                logger.info(
+                    "release_pending_subscription_schedule: released schedule %s for user %s",
                     schedule_id,
-                    sub_id,
                     user_id,
                 )
-            raise
-        did_anything = True
-        logger.info(
-            "release_pending_subscription_schedule: cleared cancel_at_period_end"
-            " on sub %s for user %s",
-            sub_id,
-            user_id,
-        )
-    if did_anything:
-        get_pending_subscription_change.cache_delete(user_id)
+                did_anything = True
+        if sub.cancel_at_period_end:
+            try:
+                await stripe.Subscription.modify_async(
+                    sub_id, cancel_at_period_end=False
+                )
+            except stripe.StripeError:
+                if schedule_released:
+                    logger.exception(
+                        "release_pending_subscription_schedule: partial release"
+                        " — schedule %s released but cancel_at_period_end clear"
+                        " failed on sub %s for user %s; manual reconciliation"
+                        " may be needed",
+                        schedule_id,
+                        sub_id,
+                        user_id,
+                    )
+                raise
+            did_anything = True
+            logger.info(
+                "release_pending_subscription_schedule: cleared cancel_at_period_end"
+                " on sub %s for user %s",
+                sub_id,
+                user_id,
+            )
+    finally:
+        if did_anything:
+            get_pending_subscription_change.cache_delete(user_id)
     return did_anything
 
 
@@ -1718,6 +1730,15 @@ async def get_pending_subscription_change(
         price_to_tier[pro_price] = SubscriptionTier.PRO
     if biz_price:
         price_to_tier[biz_price] = SubscriptionTier.BUSINESS
+    if not price_to_tier:
+        logger.warning(
+            "get_pending_subscription_change: no Stripe price IDs resolvable for"
+            " PRO/BUSINESS (LaunchDarkly fetch failed?); raising to bypass the"
+            " None cache so the next request retries fresh"
+        )
+        raise PendingChangeUnknown(
+            "Stripe price lookup failed; pending-change state cannot be determined"
+        )
 
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
