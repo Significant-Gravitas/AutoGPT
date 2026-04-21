@@ -178,33 +178,6 @@ export function getTurnMessages(
   return messages.slice(start, end);
 }
 
-/**
- * True when this tool part has completed its inline wait but reports that
- * the underlying work is still in progress (``output.status === "running"``).
- * Used by polling-style tools like ``run_sub_session`` / ``run_agent`` /
- * ``view_agent_output`` / ``get_sub_session_result`` that return a handle
- * after their wait budget expires so the model can re-poll.
- *
- * Generic by design — any tool that sets ``output.status`` to ``"running"``
- * qualifies. No per-tool whitelist.
- */
-export function isToolStillRunning(part: MessagePart): boolean {
-  if (!part.type.startsWith("tool-")) return false;
-  if (!("state" in part) || part.state !== "output-available") return false;
-  const rawOutput = (part as ToolUIPart).output;
-  if (!rawOutput) return false;
-  let output: unknown = rawOutput;
-  if (typeof rawOutput === "string") {
-    try {
-      output = JSON.parse(rawOutput);
-    } catch {
-      return false;
-    }
-  }
-  if (!output || typeof output !== "object") return false;
-  return (output as Record<string, unknown>).status === "running";
-}
-
 // Special message prefixes for text-based markers (set by backend).
 // The hex suffix makes it virtually impossible for an LLM to accidentally
 // produce these strings in normal conversation.

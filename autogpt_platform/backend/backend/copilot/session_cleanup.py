@@ -26,25 +26,20 @@ def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
     ``start_sequence`` so no delete is needed; the same rows are popped
     again on the next session load.
     """
-    removed = 0
-
-    # The Stop path appends exactly one STOPPED_BY_USER_MARKER row at the
-    # tail, so a single check is enough.
-    if (
-        messages
-        and messages[-1].role == "assistant"
-        and messages[-1].content == STOPPED_BY_USER_MARKER
-    ):
-        messages.pop()
-        removed += 1
-
     cut_index: int | None = None
     resolved_ids: set[str] = set()
+
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
+
         if msg.role == "tool" and msg.tool_call_id:
             resolved_ids.add(msg.tool_call_id)
             continue
+
+        if msg.role == "assistant" and msg.content == STOPPED_BY_USER_MARKER:
+            cut_index = i
+            continue
+
         if msg.role == "assistant" and msg.tool_calls:
             pending_ids = {
                 tc.get("id")
@@ -54,11 +49,12 @@ def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
             if pending_ids and not pending_ids.issubset(resolved_ids):
                 cut_index = i
             break
+
         break
 
-    if cut_index is not None:
-        dropped = len(messages) - cut_index
-        del messages[cut_index:]
-        removed += dropped
+    if cut_index is None:
+        return 0
 
+    removed = len(messages) - cut_index
+    del messages[cut_index:]
     return removed

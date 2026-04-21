@@ -85,7 +85,6 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 vi.mock("../helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
-  isToolStillRunning: () => false,
   parseSpecialMarkers: () => ({ markerType: null }),
   splitReasoningAndResponse: (parts: unknown[]) => ({
     reasoningParts: [],

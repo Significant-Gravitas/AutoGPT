@@ -22,8 +22,8 @@ describe("GenericTool", () => {
     expect(container.textContent).toContain("Running");
   });
 
-  it("never shows the exit code in the subtitle (it lives in the accordion)", () => {
-    const { container } = render(
+  it("renders exactly one row once output is available (accordion only, no loose status line)", () => {
+    render(
       <GenericTool
         part={makePart({
           state: "output-available",
@@ -32,10 +32,11 @@ describe("GenericTool", () => {
         })}
       />,
     );
-    expect(container.textContent).not.toContain("Command exited with code 1");
-    expect(container.textContent).not.toContain(
-      'echo "starting simulation run 2"',
-    );
+    // The accordion trigger is the only interactive element; no separate
+    // MorphingTextAnimation status row is rendered alongside it.
+    const triggers = screen.getAllByRole("button");
+    expect(triggers.length).toBe(1);
+    expect(triggers[0].textContent).toContain("Command failed (exit 1)");
   });
 
   it("shows 'status code N · <first line of stderr>' on non-zero exit", () => {

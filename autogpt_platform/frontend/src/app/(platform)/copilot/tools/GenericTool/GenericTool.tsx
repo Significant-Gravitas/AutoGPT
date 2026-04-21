@@ -728,8 +728,6 @@ export function GenericTool({ part }: Props) {
 
   return (
     <div className="py-2">
-      {/* Subtitle: what ran (e.g. "Ran: sleep 120") — always visible so the
-          user doesn't have to expand the accordion to see the command. */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <ToolIcon
           category={category}

@@ -22,7 +22,6 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import {
   buildRenderSegments,
   getTurnMessages,
-  isToolStillRunning,
   type MessagePart,
   type RenderSegment,
   parseSpecialMarkers,
@@ -297,15 +296,6 @@ export function ChatMessagesContainer({
         lastPart.state === "input-available")
     )
       return true;
-
-    // Polling tools (run_sub_session, run_agent, view_agent_output, etc.)
-    // return output.status === "running" when their inline wait budget
-    // expired but the underlying work continues.  Treat as inflight so
-    // the generic cycling "Thinking…" doesn't overlay the polling tool
-    // card between polls.  Safe because `showThinking` still requires
-    // `status === "streaming"` — a dead / historical session won't be
-    // flagged inflight on reload.
-    if (isToolStillRunning(lastPart)) return true;
 
     return false;
   })();
