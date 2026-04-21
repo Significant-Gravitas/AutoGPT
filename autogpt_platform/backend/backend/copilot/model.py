@@ -801,17 +801,32 @@ async def get_or_create_builder_session(
         if session is not None:
             return session
 
-    session = await create_chat_session(
-        user_id,
-        dry_run=False,
-        builder_graph_id=graph_id,
-    )
-    await library_db().update_library_agent(
-        library_agent_id=library_agent.id,
-        user_id=user_id,
-        settings=GraphSettings(builder_chat_session_id=session.session_id),
-    )
-    return session
+    # Serialise create-and-claim so concurrent callers for the same
+    # (user_id, graph_id) don't each mint a session and orphan one
+    # (double-click / two-tab race — sentry 13632535).
+    async with _get_session_lock(f"builder:{user_id}:{graph_id}"):
+        library_agent = await library_db().get_library_agent_by_graph_id(
+            user_id=user_id, graph_id=graph_id
+        )
+        if library_agent is None:
+            raise NotFoundError(f"Graph {graph_id} not found")
+        existing_sid = library_agent.settings.builder_chat_session_id
+        if existing_sid:
+            session = await get_chat_session(existing_sid, user_id)
+            if session is not None:
+                return session
+
+        session = await create_chat_session(
+            user_id,
+            dry_run=False,
+            builder_graph_id=graph_id,
+        )
+        await library_db().update_library_agent(
+            library_agent_id=library_agent.id,
+            user_id=user_id,
+            settings=GraphSettings(builder_chat_session_id=session.session_id),
+        )
+        return session
 
 
 async def get_user_sessions(
