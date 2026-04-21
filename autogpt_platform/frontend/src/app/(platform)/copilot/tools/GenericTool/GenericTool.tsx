@@ -256,10 +256,10 @@ function getBashAccordionData(
     description = stderrPreview ?? "timed out";
   } else if (exitCode !== null && exitCode !== 0) {
     description = stderrPreview
-      ? `exit ${exitCode} · ${stderrPreview}`
-      : `exit ${exitCode}`;
+      ? `status code ${exitCode} · ${stderrPreview}`
+      : `status code ${exitCode}`;
   } else if (exitCode === 0) {
-    description = stdoutPreview ?? `exit ${exitCode}`;
+    description = stdoutPreview ?? "completed";
   }
 
   return {

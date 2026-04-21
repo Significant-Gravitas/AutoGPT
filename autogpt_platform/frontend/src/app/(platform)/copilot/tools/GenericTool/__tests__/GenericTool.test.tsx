@@ -38,7 +38,7 @@ describe("GenericTool", () => {
     );
   });
 
-  it("shows 'exit N · <first line of stderr>' on non-zero exit", () => {
+  it("shows 'status code N · <first line of stderr>' on non-zero exit", () => {
     render(
       <GenericTool
         part={makePart({
@@ -55,11 +55,11 @@ describe("GenericTool", () => {
     const trigger = screen.getByRole("button", { expanded: false });
     expect(trigger.textContent).toContain("Command failed (exit 127)");
     expect(trigger.textContent).toContain(
-      "exit 127 · bash: missing-bin: command not found",
+      "status code 127 · bash: missing-bin: command not found",
     );
   });
 
-  it("falls back to bare 'exit N' when stderr is empty", () => {
+  it("falls back to bare 'status code N' when stderr is empty", () => {
     render(
       <GenericTool
         part={makePart({
@@ -69,7 +69,7 @@ describe("GenericTool", () => {
       />,
     );
     const trigger = screen.getByRole("button", { expanded: false });
-    expect(trigger.textContent).toContain("exit 2");
+    expect(trigger.textContent).toContain("status code 2");
     expect(trigger.textContent).not.toContain("·");
   });
 
@@ -93,7 +93,7 @@ describe("GenericTool", () => {
     expect(trigger.textContent).not.toContain("sleep 120");
   });
 
-  it("prefers stdout first line on exit 0, falls back to 'exit 0'", () => {
+  it("prefers stdout first line on exit 0, falls back to 'completed'", () => {
     const { rerender } = render(
       <GenericTool
         part={makePart({
@@ -119,6 +119,6 @@ describe("GenericTool", () => {
       />,
     );
     const trigger2 = screen.getByRole("button", { expanded: false });
-    expect(trigger2.textContent).toContain("exit 0");
+    expect(trigger2.textContent).toContain("completed");
   });
 });
