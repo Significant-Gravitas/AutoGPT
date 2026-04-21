@@ -53,7 +53,7 @@ describe("UsageLimits", () => {
   it("renders nothing while loading", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: undefined,
-      isLoading: true,
+      isSuccess: false,
     });
     const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
@@ -62,7 +62,7 @@ describe("UsageLimits", () => {
   it("renders nothing when no limits are configured", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: null, weeklyPercent: null }),
-      isLoading: false,
+      isSuccess: true,
     });
     const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
@@ -71,7 +71,7 @@ describe("UsageLimits", () => {
   it("renders the usage button when limits exist", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
     expect(screen.getByRole("button", { name: /usage limits/i })).toBeDefined();
@@ -80,7 +80,7 @@ describe("UsageLimits", () => {
   it("displays daily and weekly percentage", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 50, weeklyPercent: 4 }),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -93,7 +93,7 @@ describe("UsageLimits", () => {
   it("shows only weekly bar when daily is null", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: null, weeklyPercent: 50 }),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -105,7 +105,7 @@ describe("UsageLimits", () => {
     // 150% exercises the clamp — 100% exactly is merely exhausted, not over.
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 150 }),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -116,7 +116,7 @@ describe("UsageLimits", () => {
   it("displays the user tier label", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ tier: "PRO" }),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -126,7 +126,7 @@ describe("UsageLimits", () => {
   it("shows learn more link to credits page", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 

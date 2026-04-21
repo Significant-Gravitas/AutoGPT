@@ -14,7 +14,7 @@ import { UsagePanelContent } from "./UsagePanelContent";
 export { UsagePanelContent, formatResetTime } from "./UsagePanelContent";
 
 export function UsageLimits() {
-  const { data: usage, isLoading } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
@@ -28,7 +28,7 @@ export function UsageLimits() {
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
 
-  if (isLoading || !usage) return null;
+  if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
   return (

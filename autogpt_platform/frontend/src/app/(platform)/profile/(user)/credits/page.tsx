@@ -27,7 +27,7 @@ import {
 
 function CoPilotUsageSection() {
   const router = useRouter();
-  const { data: usage, isLoading } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
@@ -35,7 +35,7 @@ function CoPilotUsageSection() {
     },
   });
 
-  if (isLoading || !usage) return null;
+  if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
   return (

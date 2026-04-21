@@ -42,7 +42,7 @@ export function BriefingTabContent({ activeTab, agents }: Props) {
 }
 
 function UsageSection() {
-  const { data: usage } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
       select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
@@ -56,7 +56,8 @@ function UsageSection() {
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
 
-  if (!usage || (!usage.daily && !usage.weekly)) return null;
+  if (!isSuccess || !usage) return null;
+  if (!usage.daily && !usage.weekly) return null;
 
   return (
     <div className="py-2">
@@ -297,7 +298,7 @@ function UsageMeter({
   percentUsed: number;
   resetsAt: Date | string;
 }) {
-  const percent = Math.min(100, Math.round(percentUsed));
+  const percent = Math.min(100, Math.max(0, Math.round(percentUsed)));
   const isHigh = percent >= 80;
   const percentLabel =
     percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
@@ -314,6 +315,11 @@ function UsageMeter({
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
         <div
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
           }`}
