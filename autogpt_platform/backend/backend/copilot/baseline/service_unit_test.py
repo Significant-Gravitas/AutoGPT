@@ -1292,6 +1292,8 @@ class TestBuilderContextSplit:
         # Guide appears in the combined on-the-wire payload exactly ONCE.
         combined = suffix + "\n\n" + prefix
         assert combined.count(guide_body) == 1
+
+
 class TestApplyPromptCacheMarkers:
     """Tests for _apply_prompt_cache_markers — Anthropic ephemeral
     cache_control markers on baseline OpenRouter requests."""
