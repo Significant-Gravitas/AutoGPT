@@ -499,6 +499,76 @@ def _append_error_marker(
     )
 
 
+def _prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
+    """Pop trailing orphan tool-use blocks from *messages* in place.
+
+    A Stop mid-tool-call leaves the session ending on an assistant message whose
+    ``tool_calls`` have no matching ``role="tool"`` row (the tool never produced
+    output because the executor was cancelled).  Feeding that tail to the next
+    ``--resume`` turn would hand Claude CLI a ``tool_use`` with no paired
+    ``tool_result`` and the SDK raises a generic error (surfaced to the user as
+    "The assistant encountered an error").
+
+    Walks the trailing tail, collecting already-resolved tool_call_ids from
+    ``role="tool"`` rows.  When an assistant row has ``tool_calls`` whose IDs
+    are not *all* resolved by rows appearing after it, pops the assistant AND
+    every trailing row that followed it (orphaned tool rows have nothing to
+    attach to once their assistant is gone).  Also strips trailing system stop
+    markers ("Execution stopped by user").  Returns the number of rows popped.
+
+    Only removes from the in-memory list — DB rows stay put (the DB write path
+    is append-only via ``start_sequence``, so no delete is needed).  On the next
+    session load the same rows are popped again.
+    """
+    removed = 0
+
+    # 1. Strip trailing system-level "stopped by user" markers.
+    while messages:
+        tail = messages[-1]
+        if (
+            tail.role == "assistant"
+            and tail.content
+            and COPILOT_SYSTEM_PREFIX in tail.content
+            and "stopped by user" in tail.content.lower()
+        ):
+            messages.pop()
+            removed += 1
+            continue
+        break
+
+    # 2. If the tail now ends on (or passes through) an assistant with
+    #    unresolved tool_calls, drop the assistant row and every trailing row
+    #    that followed it.  Walk backwards from the tail looking for such an
+    #    assistant; resolved IDs are collected from trailing ``role="tool"``
+    #    rows as we walk.
+    resolved_ids: set[str] = set()
+    cut_index: int | None = None
+    for i in range(len(messages) - 1, -1, -1):
+        msg = messages[i]
+        if msg.role == "tool" and msg.tool_call_id:
+            resolved_ids.add(msg.tool_call_id)
+            continue
+        if msg.role == "assistant" and msg.tool_calls:
+            pending_ids = {
+                tc.get("id")
+                for tc in msg.tool_calls
+                if isinstance(tc, dict) and tc.get("id")
+            }
+            if pending_ids and not pending_ids.issubset(resolved_ids):
+                cut_index = i
+            break
+        # Any other role (user, completed text-only assistant, etc.) means
+        # the trailing block is healthy — stop walking.
+        break
+
+    if cut_index is not None:
+        dropped = len(messages) - cut_index
+        del messages[cut_index:]
+        removed += dropped
+
+    return removed
+
+
 def _setup_langfuse_otel() -> None:
     """Configure OTEL tracing for the Claude Agent SDK → Langfuse.
 
@@ -2780,6 +2850,20 @@ async def stream_chat_completion_sdk(
             session_id[:12],
         )
         session.messages.pop()
+
+    # Drop trailing orphan tool_use blocks left by a Stop mid-tool-call.
+    # Without this, the next turn's ``--resume`` transcript contains a
+    # ``tool_use`` with no paired ``tool_result`` and the Claude CLI raises
+    # a generic SDK error ("The assistant encountered an error") — see
+    # OPEN-3096.
+    _n_orphaned = _prune_orphan_tool_calls(session.messages)
+    if _n_orphaned:
+        logger.info(
+            "[SDK] [%s] Dropped %d trailing orphan tool-use/stop row(s) "
+            "before starting new turn",
+            session_id[:12],
+            _n_orphaned,
+        )
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.

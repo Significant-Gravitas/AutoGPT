@@ -19,9 +19,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
-from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
+from backend.copilot.sdk.service import (
+    _dispatch_response,
+    _prune_orphan_tool_calls,
+    _StreamAccumulator,
+)
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -215,3 +220,127 @@ class TestPreCreateAssistantMessage:
             _simulate_pre_create(acc, ctx)
 
         assert len(ctx.session.messages) == 0
+
+
+class TestPruneOrphanToolCalls:
+    """Regression coverage for OPEN-3096.
+
+    A user Stop mid-tool-call leaves the session ending on an assistant row
+    whose ``tool_calls`` have no matching ``role="tool"`` row.  Unless pruned
+    before the next turn, the ``--resume`` transcript hands Claude CLI a
+    ``tool_use`` without a paired ``tool_result`` and the SDK fails with a
+    generic error surfaced as "The assistant encountered an error".
+    """
+
+    @staticmethod
+    def _tool_call(call_id: str, name: str = "bash_exec") -> dict:
+        return {
+            "id": call_id,
+            "type": "function",
+            "function": {"name": name, "arguments": "{}"},
+        }
+
+    def test_stop_mid_tool_leaves_orphan_assistant(self) -> None:
+        """Stop between StreamToolInputAvailable and StreamToolOutputAvailable:
+        the assistant row has ``tool_calls`` but no matching tool row."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+        ]
+
+        removed = _prune_orphan_tool_calls(messages)
+
+        assert removed == 1
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_stop_strips_stopped_by_user_marker_and_orphan(self) -> None:
+        """The service also appends a ``COPILOT_SYSTEM_PREFIX`` marker after a
+        user stop when the stream loop exits cleanly; both tail rows must go."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(
+                role="assistant",
+                content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
+            ),
+        ]
+
+        removed = _prune_orphan_tool_calls(messages)
+
+        assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_completed_tool_call_is_preserved(self) -> None:
+        """An assistant row whose tool_calls are all resolved is a healthy
+        trailing state and must not be popped."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[self._tool_call("tc_abc")],
+            ),
+            ChatMessage(
+                role="tool",
+                content="ok",
+                tool_call_id="tc_abc",
+            ),
+        ]
+
+        removed = _prune_orphan_tool_calls(messages)
+
+        assert removed == 0
+        assert len(messages) == 3
+
+    def test_partial_resolution_still_pops(self) -> None:
+        """If an assistant emits multiple tool_calls and only some are
+        resolved, the assistant row is still unsafe for ``--resume``."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="do something"),
+            ChatMessage(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    self._tool_call("tc_1"),
+                    self._tool_call("tc_2"),
+                ],
+            ),
+            ChatMessage(
+                role="tool",
+                content="ok",
+                tool_call_id="tc_1",
+            ),
+        ]
+
+        removed = _prune_orphan_tool_calls(messages)
+
+        # Both the orphan assistant and its partial tool row are dropped.
+        assert removed == 2
+        assert len(messages) == 1
+        assert messages[-1].role == "user"
+
+    def test_plain_assistant_text_preserved(self) -> None:
+        """A regular text-only assistant tail is healthy and must be kept."""
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(role="assistant", content="hello"),
+        ]
+
+        removed = _prune_orphan_tool_calls(messages)
+
+        assert removed == 0
+        assert len(messages) == 2
+
+    def test_empty_session_is_noop(self) -> None:
+        messages: list[ChatMessage] = []
+        assert _prune_orphan_tool_calls(messages) == 0
