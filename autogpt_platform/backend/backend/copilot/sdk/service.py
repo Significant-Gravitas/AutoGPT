@@ -858,9 +858,9 @@ def _build_system_prompt_value(
     prompt cache.  Our custom *system_prompt* is appended after the preset.
 
     Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
-    is combined with ``--resume``).  The backend Docker image installs
-    ``@anthropic-ai/claude-code@2.1.116`` and points the SDK at it via
-    ``CHAT_CLAUDE_AGENT_CLI_PATH``; see backend/Dockerfile.
+    is combined with ``--resume``).  The SDK bundles CLI 2.1.116 at
+    ``claude-agent-sdk >= 0.1.64``, so the pin in ``pyproject.toml`` is
+    the single source of truth — no external install needed.
 
     When *cross_user_cache* is disabled, the raw *system_prompt* string is
     returned.  Note this causes the CLI to REPLACE its built-in prompt via
@@ -3064,11 +3064,9 @@ async def stream_chat_completion_sdk(
         # same static prefix and hit the cross-user prompt cache.
         #
         # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
-        # is combined with --resume).  backend/Dockerfile installs
-        # @anthropic-ai/claude-code@2.1.116 and sets
-        # CHAT_CLAUDE_AGENT_CLI_PATH to point the SDK at it; the bundled
-        # CLI (2.1.97 at the 0.1.58 SDK pin) is only used as a fallback
-        # in local dev.
+        # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
+        # CLI 2.1.116, so the pin in pyproject.toml is sufficient — no
+        # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
             cross_user_cache=config.claude_agent_cross_user_prompt_cache,

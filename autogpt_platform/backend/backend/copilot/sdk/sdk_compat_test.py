@@ -265,6 +265,12 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         "2.1.97",  # claude-agent-sdk 0.1.58 -- OpenRouter-safe only with
         #          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (injected by
         #          build_sdk_env() in env.py).
+        "2.1.116",  # claude-agent-sdk 0.1.64 -- first bundled version that
+        #           fixes the --resume + excludeDynamicSections=True crash
+        #           (introduced in 2.1.98), unlocking cross-user prompt
+        #           cache reads on every resumed SDK turn.  Still requires
+        #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.  Verified
+        #           OpenRouter-safe via cli_openrouter_compat_test.py.
     }
 )
 
