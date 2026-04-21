@@ -37,10 +37,13 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
 // Mock generated API hooks
 const mockUseGetSubscriptionStatus = vi.fn();
 const mockUseUpdateSubscriptionTier = vi.fn();
+const mockUseCancelPendingSubscriptionChange = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useGetSubscriptionStatus: (opts: unknown) =>
     mockUseGetSubscriptionStatus(opts),
   useUpdateSubscriptionTier: () => mockUseUpdateSubscriptionTier(),
+  useCancelPendingSubscriptionChange: () =>
+    mockUseCancelPendingSubscriptionChange(),
 }));
 
 // Mock Dialog (Radix portals don't work in happy-dom)
@@ -71,17 +74,23 @@ function makeSubscription({
   monthlyCost = 0,
   tierCosts = { FREE: 0, PRO: 1999, BUSINESS: 4999, ENTERPRISE: 0 },
   prorationCreditCents = 0,
+  pendingTier = null as string | null,
+  pendingTierEffectiveAt = null as Date | string | null,
 }: {
   tier?: string;
   monthlyCost?: number;
   tierCosts?: Record<string, number>;
   prorationCreditCents?: number;
+  pendingTier?: string | null;
+  pendingTierEffectiveAt?: Date | string | null;
 } = {}) {
   return {
     tier,
     monthly_cost: monthlyCost,
     tier_costs: tierCosts,
     proration_credit_cents: prorationCreditCents,
+    pending_tier: pendingTier,
+    pending_tier_effective_at: pendingTierEffectiveAt,
   };
 }
 
@@ -92,6 +101,8 @@ function setupMocks({
   mutateFn = vi.fn().mockResolvedValue({ status: 200, data: { url: "" } }),
   isPending = false,
   variables = undefined as { data?: { tier?: string } } | undefined,
+  cancelPendingFn = vi.fn().mockResolvedValue({ status: 200, data: undefined }),
+  refetchFn = vi.fn(),
 } = {}) {
   // The hook uses select: (data) => (data.status === 200 ? data.data : null)
   // so the data value returned by the hook is already the transformed subscription object.
@@ -100,19 +111,25 @@ function setupMocks({
     data: subscription,
     isLoading,
     error: queryError,
-    refetch: vi.fn(),
+    refetch: refetchFn,
   });
   mockUseUpdateSubscriptionTier.mockReturnValue({
     mutateAsync: mutateFn,
     isPending,
     variables,
   });
+  mockUseCancelPendingSubscriptionChange.mockReturnValue({
+    mutateAsync: cancelPendingFn,
+    isPending: false,
+  });
+  return { cancelPendingFn, refetchFn, mutateFn };
 }
 
 afterEach(() => {
   cleanup();
   mockUseGetSubscriptionStatus.mockReset();
   mockUseUpdateSubscriptionTier.mockReset();
+  mockUseCancelPendingSubscriptionChange.mockReset();
   mockToast.mockReset();
   mockRouterReplace.mockReset();
   mockSearchParams.delete("subscription");
@@ -354,5 +371,104 @@ describe("SubscriptionTierSection", () => {
     });
     // No toast should fire — the user simply abandoned checkout
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("renders pending-change banner when pending_tier is set", () => {
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.getByText(/scheduled to downgrade to/i)).toBeDefined();
+    // Banner "Keep Business" button
+    expect(
+      screen.getAllByRole("button", { name: /keep business/i }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not render pending-change banner when pending_tier is null", () => {
+    setupMocks({
+      subscription: makeSubscription({ tier: "BUSINESS", pendingTier: null }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.queryByText(/scheduled to downgrade/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /keep business/i })).toBeNull();
+  });
+
+  it("clicking Keep [CurrentTier] in banner calls cancel-pending mutation and refetches", async () => {
+    const cancelPendingFn = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: undefined });
+    const refetchFn = vi.fn();
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+      cancelPendingFn,
+      refetchFn,
+    });
+    render(<SubscriptionTierSection />);
+
+    const keepButtons = screen.getAllByRole("button", {
+      name: /keep business/i,
+    });
+    // First one is the banner's button (rendered before the tier grid)
+    fireEvent.click(keepButtons[0]);
+
+    await waitFor(() => {
+      expect(cancelPendingFn).toHaveBeenCalled();
+      expect(refetchFn).toHaveBeenCalled();
+    });
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Pending subscription change cancelled.",
+      }),
+    );
+  });
+
+  it("clicking Keep [CurrentTier] on the current tier card calls cancel-pending mutation", async () => {
+    const cancelPendingFn = vi
+      .fn()
+      .mockResolvedValue({ status: 200, data: undefined });
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        pendingTier: "PRO",
+        pendingTierEffectiveAt: new Date("2026-11-15T00:00:00Z"),
+      }),
+      cancelPendingFn,
+    });
+    render(<SubscriptionTierSection />);
+
+    const keepButtons = screen.getAllByRole("button", {
+      name: /keep business/i,
+    });
+    // The current tier card's Keep button is the second one (banner renders first)
+    fireEvent.click(keepButtons[keepButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(cancelPendingFn).toHaveBeenCalled();
+    });
+  });
+
+  it("uses end-of-period copy for paid→paid downgrade confirmation", () => {
+    setupMocks({ subscription: makeSubscription({ tier: "BUSINESS" }) });
+    render(<SubscriptionTierSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: /downgrade to pro/i }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toMatch(
+      /switching to pro will take effect at the end of your current billing period/i,
+    );
+    expect(dialog.textContent).toMatch(
+      /you keep your current plan until then/i,
+    );
+    expect(dialog.textContent).not.toMatch(/take effect immediately/i);
   });
 });

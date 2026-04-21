@@ -55,14 +55,17 @@ from backend.data.credit import (
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_auto_top_up,
+    get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_credit_model,
     handle_subscription_payment_failure,
     modify_stripe_subscription_for_tier,
+    release_pending_subscription_schedule,
     set_auto_top_up,
     set_subscription_tier,
     sync_subscription_from_stripe,
+    sync_subscription_schedule_from_stripe,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -707,6 +710,8 @@ class SubscriptionStatusResponse(BaseModel):
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> amount in cents
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
+    pending_tier: Optional[Literal["FREE", "PRO", "BUSINESS"]] = None
+    pending_tier_effective_at: Optional[datetime] = None
 
 
 def _validate_checkout_redirect_url(url: str) -> bool:
@@ -804,12 +809,32 @@ async def get_subscription_status(
     current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
 
-    return SubscriptionStatusResponse(
+    try:
+        pending = await get_pending_subscription_change(user_id)
+    except Exception:
+        logger.exception(
+            "get_subscription_status: failed to resolve pending change for user %s",
+            user_id,
+        )
+        pending = None
+
+    response = SubscriptionStatusResponse(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
         proration_credit_cents=proration_credit,
     )
+    if pending is not None:
+        pending_tier_enum, pending_effective_at = pending
+        if pending_tier_enum == SubscriptionTier.FREE:
+            response.pending_tier = "FREE"
+        elif pending_tier_enum == SubscriptionTier.PRO:
+            response.pending_tier = "PRO"
+        elif pending_tier_enum == SubscriptionTier.BUSINESS:
+            response.pending_tier = "BUSINESS"
+        if response.pending_tier is not None:
+            response.pending_tier_effective_at = pending_effective_at
+    return response
 
 
 @v1_router.post(
@@ -982,6 +1007,40 @@ async def update_subscription_tier(
 
 
 @v1_router.post(
+    path="/credits/subscription/cancel-pending",
+    summary="Cancel a pending scheduled subscription change",
+    operation_id="cancelPendingSubscriptionChange",
+    tags=["credits"],
+    dependencies=[Security(requires_user)],
+)
+async def cancel_pending_subscription_change(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SubscriptionStatusResponse:
+    """Revert a pending scheduled tier change (paid→paid downgrade or paid→FREE cancel).
+
+    Releases any Subscription Schedule attached to the user's active subscription
+    and clears ``cancel_at_period_end`` so the subscription continues on its
+    current tier. Returns the refreshed subscription status.
+    """
+    try:
+        await release_pending_subscription_schedule(user_id)
+    except stripe.StripeError as e:
+        logger.exception(
+            "Stripe error releasing pending subscription change for user %s: %s",
+            user_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to cancel the pending subscription change right now. "
+                "Please try again or contact support."
+            ),
+        )
+    return await get_subscription_status(user_id)
+
+
+@v1_router.post(
     path="/credits/stripe_webhook", summary="Handle Stripe webhooks", tags=["credits"]
 )
 async def stripe_webhook(request: Request):
@@ -1042,6 +1101,13 @@ async def stripe_webhook(request: Request):
         "customer.subscription.deleted",
     ):
         await sync_subscription_from_stripe(data_object)
+
+    if event_type in (
+        "subscription_schedule.released",
+        "subscription_schedule.completed",
+        "subscription_schedule.updated",
+    ):
+        await sync_subscription_schedule_from_stripe(data_object)
 
     if event_type == "invoice.payment_failed":
         await handle_subscription_payment_failure(data_object)

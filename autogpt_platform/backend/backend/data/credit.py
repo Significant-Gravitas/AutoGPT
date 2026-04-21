@@ -1415,18 +1415,95 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
         return 0
 
 
+# Ordered from least- to most-privileged. Used to distinguish upgrades
+# (move right) from downgrades (move left); ENTERPRISE is admin-managed and
+# never reached via self-service flows.
+_TIER_ORDER: tuple[SubscriptionTier, ...] = (
+    SubscriptionTier.FREE,
+    SubscriptionTier.PRO,
+    SubscriptionTier.BUSINESS,
+    SubscriptionTier.ENTERPRISE,
+)
+
+
+def _tier_rank(tier: SubscriptionTier) -> int:
+    return _TIER_ORDER.index(tier)
+
+
+def is_tier_upgrade(current: SubscriptionTier, target: SubscriptionTier) -> bool:
+    return _tier_rank(target) > _tier_rank(current)
+
+
+def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bool:
+    return _tier_rank(target) < _tier_rank(current)
+
+
+async def _schedule_downgrade_at_period_end(
+    sub: dict, new_price_id: str, user_id: str, tier: SubscriptionTier
+) -> None:
+    """Create a Subscription Schedule that defers a tier change to period end.
+
+    Stripe's Subscription Schedule drives an existing subscription through a
+    series of phases. By keeping the current price for the remainder of the
+    billing period and switching to ``new_price_id`` afterwards, the user does
+    NOT receive an immediate proration charge and keeps their current tier
+    until period end.
+    """
+    sub_id = sub["id"]
+    items = sub.get("items", {}).get("data", [])
+    if not items:
+        raise ValueError(f"Subscription {sub_id} has no items; cannot schedule")
+    current_price_id = items[0].get("price", {}).get("id")
+    period_start: int = sub["current_period_start"]
+    period_end: int = sub["current_period_end"]
+
+    schedule = await run_in_threadpool(
+        stripe.SubscriptionSchedule.create, from_subscription=sub_id
+    )
+    await run_in_threadpool(
+        stripe.SubscriptionSchedule.modify,
+        schedule["id"],
+        phases=[
+            {
+                "items": [{"price": current_price_id, "quantity": 1}],
+                "start_date": period_start,
+                "end_date": period_end,
+                "proration_behavior": "none",
+            },
+            {
+                "items": [{"price": new_price_id, "quantity": 1}],
+                "proration_behavior": "none",
+            },
+        ],
+        metadata={"user_id": user_id, "pending_tier": tier.value},
+    )
+    logger.info(
+        "modify_stripe_subscription_for_tier: scheduled sub %s downgrade for user %s → %s at %d",
+        sub_id,
+        user_id,
+        tier,
+        period_end,
+    )
+
+
 async def modify_stripe_subscription_for_tier(
     user_id: str, tier: SubscriptionTier
 ) -> bool:
-    """Modify an existing Stripe subscription to a new paid tier using proration.
+    """Change a Stripe subscription to a new paid tier.
 
-    For paid→paid tier changes (e.g. PRO↔BUSINESS), modifying the existing
-    subscription is preferable to cancelling + creating a new one via Checkout:
-    Stripe handles proration automatically, crediting unused time on the old plan
-    and charging the pro-rated amount for the new plan in the same billing cycle.
+    Upgrades (e.g. PRO→BUSINESS) apply immediately via ``stripe.Subscription.modify``
+    with ``proration_behavior="create_prorations"``: Stripe credits unused time on
+    the old plan and charges the pro-rated amount for the new plan in the same
+    billing cycle.
+
+    Downgrades (e.g. BUSINESS→PRO) are deferred to the end of the current billing
+    period via a Stripe Subscription Schedule: the user keeps their current tier
+    for the time they already paid for, and the new tier takes effect when the
+    next invoice is generated. The DB tier flip happens via the webhook fired
+    when the schedule advances to its next phase.
 
     Returns:
-        True  — a subscription was found and modified successfully.
+        True  — a subscription was found and modified/scheduled successfully.
         False — no active/trialing subscription exists (e.g. admin-granted tier or
                 first-time paid signup); caller should fall back to Checkout.
 
@@ -1437,13 +1514,10 @@ async def modify_stripe_subscription_for_tier(
     if not price_id:
         raise ValueError(f"No Stripe price ID configured for tier {tier}")
 
-    # Guard: only proceed if the user already has a Stripe customer ID.  Calling
-    # get_stripe_customer_id for a user with no Stripe record (e.g. admin-granted tier)
-    # would create an orphaned customer object if the subsequent Subscription.list call
-    # fails.  Return False early so the API layer falls back to Checkout instead.
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return False
+    current_tier = user.subscription_tier or SubscriptionTier.FREE
 
     customer_id = user.stripe_customer_id
     for status in ("active", "trialing"):
@@ -1457,6 +1531,11 @@ async def modify_stripe_subscription_for_tier(
         items = sub.get("items", {}).get("data", [])
         if not items:
             continue
+
+        if is_tier_downgrade(current_tier, tier):
+            await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
+            return True
+
         item_id = items[0]["id"]
         await run_in_threadpool(
             stripe.Subscription.modify,
@@ -1465,13 +1544,145 @@ async def modify_stripe_subscription_for_tier(
             proration_behavior="create_prorations",
         )
         logger.info(
-            "modify_stripe_subscription_for_tier: modified sub %s for user %s → %s",
+            "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
             sub_id,
             user_id,
             tier,
         )
         return True
     return False
+
+
+async def release_pending_subscription_schedule(user_id: str) -> bool:
+    """Cancel any pending subscription change (scheduled downgrade or cancellation).
+
+    Two pending-change mechanisms can be attached to a Stripe subscription:
+
+    - **Subscription Schedule** (paid→paid downgrade): ``stripe.SubscriptionSchedule.release``
+      detaches the schedule and lets the subscription continue on its current
+      phase's price.
+    - **cancel_at_period_end=True** (paid→FREE cancel): clearing that flag via
+      ``stripe.Subscription.modify`` keeps the subscription active indefinitely.
+
+    Returns True if a pending change was found and reverted, False otherwise.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return False
+
+    customer_id = user.stripe_customer_id
+    released_any = False
+    seen_sub_ids: set[str] = set()
+    for status in ("active", "trialing"):
+        subscriptions = await run_in_threadpool(
+            stripe.Subscription.list, customer=customer_id, status=status, limit=1
+        )
+        if not subscriptions.data:
+            continue
+        sub = subscriptions.data[0]
+        sub_id = sub["id"]
+        if sub_id in seen_sub_ids:
+            continue
+        seen_sub_ids.add(sub_id)
+        schedule_id = sub.get("schedule")
+        if schedule_id:
+            await run_in_threadpool(stripe.SubscriptionSchedule.release, schedule_id)
+            released_any = True
+            logger.info(
+                "release_pending_subscription_schedule: released schedule %s for user %s",
+                schedule_id,
+                user_id,
+            )
+        if sub.get("cancel_at_period_end"):
+            await run_in_threadpool(
+                stripe.Subscription.modify, sub_id, cancel_at_period_end=False
+            )
+            released_any = True
+            logger.info(
+                "release_pending_subscription_schedule: cleared cancel_at_period_end"
+                " on sub %s for user %s",
+                sub_id,
+                user_id,
+            )
+    return released_any
+
+
+async def get_pending_subscription_change(
+    user_id: str,
+) -> tuple[SubscriptionTier, datetime] | None:
+    """Return ``(pending_tier, effective_at)`` when a change is queued, else ``None``.
+
+    Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
+    and ``cancel_at_period_end=True`` (paid→FREE cancel).
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return None
+
+    pro_price, biz_price = await asyncio.gather(
+        get_subscription_price_id(SubscriptionTier.PRO),
+        get_subscription_price_id(SubscriptionTier.BUSINESS),
+    )
+    price_to_tier: dict[str, SubscriptionTier] = {}
+    if pro_price:
+        price_to_tier[pro_price] = SubscriptionTier.PRO
+    if biz_price:
+        price_to_tier[biz_price] = SubscriptionTier.BUSINESS
+
+    customer_id = user.stripe_customer_id
+    seen_sub_ids: set[str] = set()
+    for status in ("active", "trialing"):
+        subscriptions = await run_in_threadpool(
+            stripe.Subscription.list, customer=customer_id, status=status, limit=1
+        )
+        if not subscriptions.data:
+            continue
+        sub = subscriptions.data[0]
+        sub_id = sub.get("id")
+        if isinstance(sub_id, str):
+            if sub_id in seen_sub_ids:
+                continue
+            seen_sub_ids.add(sub_id)
+        period_end = sub.get("current_period_end")
+        if not isinstance(period_end, int):
+            continue
+        effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
+        if sub.get("cancel_at_period_end"):
+            return SubscriptionTier.FREE, effective_at
+        schedule_id = sub.get("schedule")
+        if not schedule_id:
+            continue
+        schedule = await run_in_threadpool(
+            stripe.SubscriptionSchedule.retrieve, schedule_id
+        )
+        next_tier = _extract_next_phase_tier(schedule, price_to_tier)
+        if next_tier is not None:
+            return next_tier, effective_at
+    return None
+
+
+def _extract_next_phase_tier(
+    schedule: Any, price_to_tier: dict[str, SubscriptionTier]
+) -> SubscriptionTier | None:
+    """Return the tier of the phase that follows the currently-active one."""
+    phases = schedule.get("phases") or []
+    now = int(time.time())
+    for phase in phases:
+        start = phase.get("start_date")
+        if not isinstance(start, int) or start <= now:
+            continue
+        items = phase.get("items") or []
+        if not items:
+            continue
+        price_field = items[0].get("price")
+        price_id = (
+            price_field
+            if isinstance(price_field, str)
+            else (price_field or {}).get("id")
+        )
+        if price_id and price_id in price_to_tier:
+            return price_to_tier[price_id]
+    return None
 
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
@@ -1732,6 +1943,35 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+
+
+async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
+    """Sync the DB tier from a ``subscription_schedule.*`` webhook event.
+
+    Stripe fires ``subscription_schedule.released`` / ``.completed`` /
+    ``.updated`` when a schedule advances phases or is detached. The regular
+    ``customer.subscription.updated`` webhook with the new price covers the
+    phase transition in most cases, but listening to schedule events is a
+    safety net that also catches releases done via the Stripe dashboard.
+
+    The schedule payload doesn't carry the active price directly — it carries
+    a ``subscription`` id that we look up to get the current item.
+    """
+    sub_id = stripe_schedule.get("subscription")
+    if not isinstance(sub_id, str) or not sub_id:
+        logger.warning(
+            "sync_subscription_schedule_from_stripe: no 'subscription' id; skipping"
+        )
+        return
+    try:
+        sub = await run_in_threadpool(stripe.Subscription.retrieve, sub_id)
+    except stripe.StripeError:
+        logger.warning(
+            "sync_subscription_schedule_from_stripe: failed to retrieve sub %s",
+            sub_id,
+        )
+        return
+    await sync_subscription_from_stripe(dict(sub))
 
 
 async def handle_subscription_payment_failure(invoice: dict) -> None:

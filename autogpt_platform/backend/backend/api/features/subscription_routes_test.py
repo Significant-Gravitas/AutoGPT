@@ -803,3 +803,217 @@ def test_update_subscription_tier_free_no_stripe_subscription(
     cancel_mock.assert_awaited_once_with(TEST_USER_ID)
     # DB tier must be updated immediately — no webhook will fire for a missing sub
     set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.FREE)
+
+
+def test_get_subscription_status_includes_pending_tier(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """GET /credits/subscription exposes pending_tier and pending_tier_effective_at."""
+    import datetime as dt
+
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    effective_at = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        return None
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=mock_price_id,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=(SubscriptionTier.PRO, effective_at),
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pending_tier"] == "PRO"
+    assert data["pending_tier_effective_at"] is not None
+
+
+def test_get_subscription_status_no_pending_tier(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When no pending change exists the response omits pending_tier."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["pending_tier"] is None
+    assert data["pending_tier_effective_at"] is None
+
+
+def test_cancel_pending_subscription_change_calls_release_and_returns_status(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """POST /credits/subscription/cancel-pending releases the schedule and returns status."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    release_mock = mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post("/credits/subscription/cancel-pending")
+
+    assert response.status_code == 200
+    release_mock.assert_awaited_once_with(TEST_USER_ID)
+    data = response.json()
+    assert data["tier"] == "BUSINESS"
+    assert data["pending_tier"] is None
+
+
+def test_cancel_pending_subscription_change_stripe_error_returns_502(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        side_effect=stripe.StripeError("network"),
+    )
+
+    response = client.post("/credits/subscription/cancel-pending")
+
+    assert response.status_code == 502
+    assert "contact support" in response.json()["detail"].lower()
+
+
+def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A BUSINESS→PRO downgrade request dispatches to modify_stripe_subscription_for_tier."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == ""
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
+    checkout_mock.assert_not_awaited()
+
+
+def test_stripe_webhook_dispatches_subscription_schedule_released(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """subscription_schedule.released routes to sync_subscription_schedule_from_stripe."""
+    schedule_obj = {"id": "sub_sched_1", "subscription": "sub_pro"}
+    event = {
+        "type": "subscription_schedule.released",
+        "data": {"object": schedule_obj},
+    }
+    mocker.patch(
+        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.v1.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    sync_mock = mocker.patch(
+        "backend.api.features.v1.sync_subscription_schedule_from_stripe",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    sync_mock.assert_awaited_once_with(schedule_obj)

@@ -12,11 +12,16 @@ from prisma.models import User
 from backend.data.credit import (
     cancel_stripe_subscription,
     create_subscription_checkout,
+    get_pending_subscription_change,
     get_proration_credit_cents,
     handle_subscription_payment_failure,
+    is_tier_downgrade,
+    is_tier_upgrade,
     modify_stripe_subscription_for_tier,
+    release_pending_subscription_schedule,
     set_subscription_tier,
     sync_subscription_from_stripe,
+    sync_subscription_schedule_from_stripe,
 )
 
 
@@ -1108,6 +1113,7 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
 
     mock_user = MagicMock(spec=User)
     mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.FREE
 
     with (
         patch(
@@ -1178,6 +1184,7 @@ async def test_modify_stripe_subscription_for_tier_returns_false_when_no_sub():
 
     mock_user = MagicMock(spec=User)
     mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.FREE
 
     with (
         patch(
@@ -1212,3 +1219,490 @@ async def test_modify_stripe_subscription_for_tier_raises_on_missing_price_id():
     ):
         with pytest.raises(ValueError, match="No Stripe price ID configured"):
             await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.PRO)
+
+
+def test_tier_order_helpers():
+    assert is_tier_upgrade(SubscriptionTier.FREE, SubscriptionTier.PRO) is True
+    assert is_tier_upgrade(SubscriptionTier.PRO, SubscriptionTier.BUSINESS) is True
+    assert is_tier_upgrade(SubscriptionTier.BUSINESS, SubscriptionTier.PRO) is False
+    assert is_tier_downgrade(SubscriptionTier.BUSINESS, SubscriptionTier.PRO) is True
+    assert is_tier_downgrade(SubscriptionTier.PRO, SubscriptionTier.FREE) is True
+    assert is_tier_downgrade(SubscriptionTier.PRO, SubscriptionTier.BUSINESS) is False
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_for_tier_downgrade_creates_schedule():
+    """Paid→paid downgrade (BUSINESS→PRO) creates a Subscription Schedule rather than proration."""
+    import time as time_mod
+
+    now = int(time_mod.time())
+    mock_sub = {
+        "id": "sub_biz",
+        "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+        "current_period_start": now - 3 * 24 * 3600,
+        "current_period_end": now + 27 * 24 * 3600,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mock_schedule = {"id": "sub_sched_1"}
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.create",
+            return_value=mock_schedule,
+        ) as mock_schedule_create,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.modify",
+        ) as mock_schedule_modify,
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.PRO
+        )
+
+    assert result is True
+    # Did NOT call Subscription.modify with proration (no immediate tier change).
+    mock_modify.assert_not_called()
+    mock_schedule_create.assert_called_once_with(from_subscription="sub_biz")
+    assert mock_schedule_modify.call_count == 1
+    _, kwargs = mock_schedule_modify.call_args
+    phases = kwargs["phases"]
+    assert phases[0]["items"][0]["price"] == "price_biz_monthly"
+    assert phases[0]["end_date"] == mock_sub["current_period_end"]
+    assert phases[1]["items"][0]["price"] == "price_pro_monthly"
+    assert phases[0]["proration_behavior"] == "none"
+    assert phases[1]["proration_behavior"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration():
+    """PRO→BUSINESS upgrade still uses Subscription.modify with proration (no schedule)."""
+    mock_sub = {
+        "id": "sub_pro",
+        "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_biz_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.create",
+        ) as mock_schedule_create,
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.BUSINESS
+        )
+
+    assert result is True
+    mock_modify.assert_called_once_with(
+        "sub_pro",
+        items=[{"id": "si_pro", "price": "price_biz_monthly"}],
+        proration_behavior="create_prorations",
+    )
+    mock_schedule_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_release_pending_subscription_schedule_releases_downgrade_schedule():
+    """release_pending_subscription_schedule releases the Stripe schedule if one is attached."""
+    mock_sub = {
+        "id": "sub_biz",
+        "schedule": "sub_sched_1",
+        "cancel_at_period_end": False,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release",
+        ) as mock_release,
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+    ):
+        result = await release_pending_subscription_schedule("user-1")
+
+    assert result is True
+    mock_release.assert_called_once_with("sub_sched_1")
+    mock_modify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_release_pending_subscription_schedule_clears_cancel_at_period_end():
+    """release_pending_subscription_schedule reverts a pending paid→FREE cancel."""
+    mock_sub = {
+        "id": "sub_pro",
+        "schedule": None,
+        "cancel_at_period_end": True,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release",
+        ) as mock_release,
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+    ):
+        result = await release_pending_subscription_schedule("user-1")
+
+    assert result is True
+    mock_modify.assert_called_once_with("sub_pro", cancel_at_period_end=False)
+    mock_release.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_release_pending_subscription_schedule_no_pending_change_returns_false():
+    """release_pending_subscription_schedule returns False when no schedule/cancel is set."""
+    mock_sub = {
+        "id": "sub_pro",
+        "schedule": None,
+        "cancel_at_period_end": False,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+    ):
+        result = await release_pending_subscription_schedule("user-1")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_release_pending_subscription_schedule_no_stripe_customer_returns_false():
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = None
+
+    with patch(
+        "backend.data.credit.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    ):
+        result = await release_pending_subscription_schedule("user-1")
+
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_cancel_at_period_end():
+    """cancel_at_period_end=True maps to pending FREE at current_period_end."""
+    import time as time_mod
+
+    now = int(time_mod.time())
+    period_end = now + 10 * 24 * 3600
+    mock_sub = {
+        "id": "sub_pro",
+        "current_period_end": period_end,
+        "cancel_at_period_end": True,
+        "schedule": None,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        if tier == SubscriptionTier.PRO:
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.BUSINESS:
+            return "price_biz_monthly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+    ):
+        result = await get_pending_subscription_change("user-1")
+
+    assert result is not None
+    pending_tier, effective_at = result
+    assert pending_tier == SubscriptionTier.FREE
+    assert int(effective_at.timestamp()) == period_end
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_from_schedule():
+    """A schedule whose next phase uses the PRO price maps to pending_tier=PRO."""
+    import time as time_mod
+
+    now = int(time_mod.time())
+    period_end = now + 10 * 24 * 3600
+    mock_sub = {
+        "id": "sub_biz",
+        "current_period_end": period_end,
+        "cancel_at_period_end": False,
+        "schedule": "sub_sched_1",
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_schedule = {
+        "id": "sub_sched_1",
+        "phases": [
+            {
+                "start_date": now - 3 * 24 * 3600,
+                "end_date": period_end,
+                "items": [{"price": "price_biz_monthly"}],
+            },
+            {
+                "start_date": period_end,
+                "items": [{"price": "price_pro_monthly"}],
+            },
+        ],
+    }
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        if tier == SubscriptionTier.PRO:
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.BUSINESS:
+            return "price_biz_monthly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.retrieve",
+            return_value=mock_schedule,
+        ),
+    ):
+        result = await get_pending_subscription_change("user-1")
+
+    assert result is not None
+    pending_tier, effective_at = result
+    assert pending_tier == SubscriptionTier.PRO
+    assert int(effective_at.timestamp()) == period_end
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel():
+    """Returns None when neither a schedule nor cancel_at_period_end is set."""
+    import time as time_mod
+
+    now = int(time_mod.time())
+    mock_sub = {
+        "id": "sub_pro",
+        "current_period_end": now + 10 * 24 * 3600,
+        "cancel_at_period_end": False,
+        "schedule": None,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+    ):
+        result = await get_pending_subscription_change("user-1")
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_schedule_from_stripe_retrieves_and_delegates():
+    """subscription_schedule.released triggers a sync via the active subscription object."""
+    stripe_schedule = {"id": "sub_sched_1", "subscription": "sub_pro"}
+    retrieved_sub = {
+        "id": "sub_pro",
+        "customer": "cus_abc",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+    }
+
+    with (
+        patch(
+            "backend.data.credit.stripe.Subscription.retrieve",
+            return_value=retrieved_sub,
+        ) as mock_retrieve,
+        patch(
+            "backend.data.credit.sync_subscription_from_stripe",
+            new_callable=AsyncMock,
+        ) as mock_sync,
+    ):
+        await sync_subscription_schedule_from_stripe(stripe_schedule)
+
+    mock_retrieve.assert_called_once_with("sub_pro")
+    mock_sync.assert_awaited_once()
+    forwarded = mock_sync.call_args.args[0]
+    assert forwarded["id"] == "sub_pro"
+    assert forwarded["customer"] == "cus_abc"
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_schedule_from_stripe_missing_sub_id_returns():
+    """A schedule event with no 'subscription' field is logged and ignored."""
+    with patch(
+        "backend.data.credit.stripe.Subscription.retrieve",
+    ) as mock_retrieve:
+        await sync_subscription_schedule_from_stripe({"id": "sub_sched_1"})
+    mock_retrieve.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
+    """When a schedule advances phases, Stripe fires customer.subscription.updated with
+    the new price — the existing sync handler must update the DB tier accordingly."""
+    mock_user = _make_user(tier=SubscriptionTier.BUSINESS)
+    stripe_sub = {
+        "id": "sub_pro",
+        "customer": "cus_abc",
+        "status": "active",
+        # Phase advanced: price is now PRO (was BUSINESS before).
+        "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
+    }
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        if tier == SubscriptionTier.PRO:
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.BUSINESS:
+            return "price_biz_monthly"
+        return None
+
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)

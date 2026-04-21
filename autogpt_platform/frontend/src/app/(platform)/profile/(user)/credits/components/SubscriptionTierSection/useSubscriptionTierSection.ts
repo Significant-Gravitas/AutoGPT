@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  useCancelPendingSubscriptionChange,
   useGetSubscriptionStatus,
   useUpdateSubscriptionTier,
 } from "@/app/api/__generated__/endpoints/credits/credits";
@@ -41,6 +42,9 @@ export function useSubscriptionTierSection() {
     isPending,
     variables,
   } = useUpdateSubscriptionTier();
+
+  const { mutateAsync: doCancelPending, isPending: isCancellingPending } =
+    useCancelPendingSubscriptionChange();
 
   useEffect(() => {
     if (subscriptionStatus === "success") {
@@ -117,6 +121,28 @@ export function useSubscriptionTierSection() {
     await changeTier(tier);
   }
 
+  async function cancelPendingChange() {
+    setTierError(null);
+    try {
+      await doCancelPending();
+      await refetch();
+      toast({
+        title: "Pending subscription change cancelled.",
+      });
+    } catch (e: unknown) {
+      const msg =
+        e instanceof Error
+          ? e.message
+          : "Failed to cancel pending subscription change";
+      setTierError(msg);
+      toast({
+        title: "Failed to cancel pending change",
+        description: msg,
+        variant: "destructive",
+      });
+    }
+  }
+
   const pendingTier =
     isPending && variables?.data?.tier ? variables.data.tier : null;
 
@@ -126,6 +152,7 @@ export function useSubscriptionTierSection() {
     error: fetchError,
     tierError,
     isPending,
+    isCancellingPending,
     pendingTier,
     pendingUpgradeTier,
     setPendingUpgradeTier,
@@ -133,5 +160,6 @@ export function useSubscriptionTierSection() {
     isPaymentEnabled,
     changeTier,
     handleTierChange,
+    cancelPendingChange,
   };
 }
