@@ -714,13 +714,11 @@ async def test_simulate_agent_output_block_no_name():
 # ---------------------------------------------------------------------------
 
 
-def _make_dry_run_session(dry_run: bool = True) -> MagicMock:
-    """Return a minimal ChatSession mock with dry_run set."""
-    session = MagicMock()
-    session.dry_run = dry_run
-    session.session_id = "test-session-id"
-    session.successful_agent_runs = {}
-    return session
+def _make_dry_run_session(dry_run: bool = True):
+    """Return a real ``ChatSession`` with *dry_run* set on metadata."""
+    from backend.copilot.model import ChatSession
+
+    return ChatSession.new("test-user", dry_run=dry_run)
 
 
 def _make_graph_mock(graph_id: str = "g1") -> MagicMock:
