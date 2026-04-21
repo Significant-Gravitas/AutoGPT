@@ -1712,3 +1712,254 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
     ):
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+
+
+@pytest.mark.asyncio
+async def test_release_schedule_idempotent_on_terminal_state():
+    """SubscriptionSchedule.release raising InvalidRequestError on a terminal-state
+    schedule is treated as success; we still continue to the cancel_at_period_end clear.
+    """
+    mock_sub = {
+        "id": "sub_biz",
+        "schedule": "sub_sched_terminal",
+        "cancel_at_period_end": True,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release",
+            side_effect=stripe.InvalidRequestError(
+                "Schedule has already been released",
+                param="schedule",
+            ),
+        ) as mock_release,
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+    ):
+        result = await release_pending_subscription_schedule("user-1")
+
+    # Terminal-state release is treated as idempotent success; modify still runs.
+    assert result is True
+    mock_release.assert_called_once_with("sub_sched_terminal")
+    mock_modify.assert_called_once_with("sub_biz", cancel_at_period_end=False)
+
+
+@pytest.mark.asyncio
+async def test_schedule_downgrade_releases_existing_schedule():
+    """_schedule_downgrade_at_period_end releases any pre-existing schedule first."""
+    import time as time_mod
+
+    now = int(time_mod.time())
+    mock_sub = {
+        "id": "sub_biz",
+        "schedule": "sub_sched_old",
+        "cancel_at_period_end": False,
+        "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+        "current_period_start": now - 3 * 24 * 3600,
+        "current_period_end": now + 27 * 24 * 3600,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release",
+        ) as mock_release,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.create",
+            return_value={"id": "sub_sched_new"},
+        ) as mock_create,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.modify",
+        ),
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.PRO
+        )
+
+    assert result is True
+    # Existing schedule released before creating the new one.
+    mock_release.assert_called_once_with("sub_sched_old")
+    mock_create.assert_called_once_with(from_subscription="sub_biz")
+    # cancel_at_period_end was False, so Subscription.modify should not be called.
+    mock_modify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_schedule_downgrade_clears_cancel_at_period_end():
+    """_schedule_downgrade_at_period_end clears cancel_at_period_end before scheduling."""
+    import time as time_mod
+
+    now = int(time_mod.time())
+    mock_sub = {
+        "id": "sub_biz",
+        "schedule": None,
+        "cancel_at_period_end": True,
+        "items": {"data": [{"id": "si_biz", "price": {"id": "price_biz_monthly"}}]},
+        "current_period_start": now - 3 * 24 * 3600,
+        "current_period_end": now + 27 * 24 * 3600,
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.create",
+            return_value={"id": "sub_sched_new"},
+        ) as mock_create,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.modify",
+        ),
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.PRO
+        )
+
+    assert result is True
+    # cancel_at_period_end cleared before new schedule is created.
+    mock_modify.assert_called_once_with("sub_biz", cancel_at_period_end=False)
+    mock_create.assert_called_once_with(from_subscription="sub_biz")
+
+
+@pytest.mark.asyncio
+async def test_upgrade_releases_pending_schedule():
+    """modify_stripe_subscription_for_tier upgrade path releases attached schedule first."""
+    mock_sub = {
+        "id": "sub_pro",
+        "schedule": "sub_sched_pending_downgrade",
+        "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+    }
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_biz_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify",
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.release",
+        ) as mock_release,
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.BUSINESS
+        )
+
+    assert result is True
+    # Pending schedule released before the upgrade modify call.
+    mock_release.assert_called_once_with("sub_sched_pending_downgrade")
+    mock_modify.assert_called_once_with(
+        "sub_pro",
+        items=[{"id": "si_pro", "price": "price_biz_monthly"}],
+        proration_behavior="create_prorations",
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_next_phase_tier_logs_unknown_price(caplog):
+    """_extract_next_phase_tier emits a warning when the next-phase price is unmapped."""
+    import logging
+    import time as time_mod
+
+    from backend.data.credit import _extract_next_phase_tier
+
+    now = int(time_mod.time())
+    schedule = {
+        "id": "sub_sched_unknown",
+        "phases": [
+            {
+                "start_date": now - 3 * 24 * 3600,
+                "end_date": now + 27 * 24 * 3600,
+                "items": [{"price": "price_current"}],
+            },
+            {
+                "start_date": now + 27 * 24 * 3600,
+                "items": [{"price": "price_unknown"}],
+            },
+        ],
+    }
+    price_to_tier = {"price_pro_monthly": SubscriptionTier.PRO}
+
+    with caplog.at_level(logging.WARNING, logger="backend.data.credit"):
+        result = _extract_next_phase_tier(schedule, price_to_tier)
+
+    assert result is None
+    assert any(
+        "extract_next_phase_tier: unknown price price_unknown" in record.message
+        and "sub_sched_unknown" in record.message
+        for record in caplog.records
+    )
