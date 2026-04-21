@@ -1080,3 +1080,41 @@ def test_stripe_webhook_dispatches_subscription_schedule_released(
 
     assert response.status_code == 200
     sync_mock.assert_awaited_once_with(schedule_obj)
+
+
+def test_stripe_webhook_ignores_subscription_schedule_updated(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """subscription_schedule.updated must NOT dispatch: our own
+    SubscriptionSchedule.create/.modify calls fire this event and would
+    otherwise loop redundant traffic through the sync handler. State
+    transitions we care about surface via .released/.completed, and phase
+    advance to a new price is already covered by customer.subscription.updated.
+    """
+    schedule_obj = {"id": "sub_sched_1", "subscription": "sub_pro"}
+    event = {
+        "type": "subscription_schedule.updated",
+        "data": {"object": schedule_obj},
+    }
+    mocker.patch(
+        "backend.api.features.v1.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.v1.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    sync_mock = mocker.patch(
+        "backend.api.features.v1.sync_subscription_schedule_from_stripe",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    sync_mock.assert_not_awaited()

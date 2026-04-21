@@ -1094,10 +1094,15 @@ async def stripe_webhook(request: Request):
     ):
         await sync_subscription_from_stripe(data_object)
 
+    # `subscription_schedule.updated` is deliberately omitted: our own
+    # `SubscriptionSchedule.create` + `.modify` calls in
+    # `_schedule_downgrade_at_period_end` would fire that event right back at us
+    # and loop redundant traffic through this handler. We only care about state
+    # transitions (released / completed); phase advance to the new price is
+    # already covered by `customer.subscription.updated`.
     if event_type in (
         "subscription_schedule.released",
         "subscription_schedule.completed",
-        "subscription_schedule.updated",
     ):
         await sync_subscription_schedule_from_stripe(data_object)
 
