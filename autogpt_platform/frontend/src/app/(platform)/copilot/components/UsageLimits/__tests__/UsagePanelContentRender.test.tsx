@@ -104,4 +104,9 @@ describe("UsagePanelContent", () => {
     render(<UsagePanelContent usage={makeUsage({ dailyPercent: 25 })} />);
     expect(screen.getByText("25% used")).toBeDefined();
   });
+
+  it("renders '<1% used' when usage is greater than 0 but rounds to 0", () => {
+    render(<UsagePanelContent usage={makeUsage({ dailyPercent: 0.3 })} />);
+    expect(screen.getByText("<1% used")).toBeDefined();
+  });
 });

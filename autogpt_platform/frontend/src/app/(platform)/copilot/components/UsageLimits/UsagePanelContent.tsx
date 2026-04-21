@@ -15,15 +15,17 @@ function UsageBar({
   percentUsed: number;
   resetsAt: Date | string;
 }) {
-  const percent = Math.min(100, Math.round(percentUsed));
+  const percent = Math.min(100, Math.max(0, Math.round(percentUsed)));
   const isHigh = percent >= 80;
+  const percentLabel =
+    percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
         <span className="text-xs font-medium text-neutral-700">{label}</span>
         <span className="text-[11px] tabular-nums text-neutral-500">
-          {percent}% used
+          {percentLabel}
         </span>
       </div>
       <div className="text-[10px] text-neutral-400">
