@@ -23,7 +23,7 @@ describe("GenericTool", () => {
   });
 
   it("shows the subtitle plus an accordion whose description is the exit status", () => {
-    render(
+    const { container } = render(
       <GenericTool
         part={makePart({
           state: "output-available",
@@ -37,10 +37,12 @@ describe("GenericTool", () => {
       />,
     );
 
+    // Subtitle says WHAT ran — never the exit code (that lives in the
+    // accordion description).
+    expect(container.textContent).not.toContain("Command exited with code 1");
+
     const trigger = screen.getByRole("button", { expanded: false });
     expect(trigger.textContent).toContain("Command failed (exit 1)");
-    // Description shows the exit status (not the command — the subtitle row
-    // above already shows what ran).
     expect(trigger.textContent).toContain("exit 1");
     expect(trigger.textContent).not.toContain(
       'echo "starting simulation run 2"',

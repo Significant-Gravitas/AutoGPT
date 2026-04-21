@@ -287,13 +287,11 @@ export function getAnimationText(
     }
     case "output-available": {
       switch (category) {
-        case "bash": {
-          const exitCode = getExitCode(part.output);
-          if (exitCode !== null && exitCode !== 0) {
-            return `Command exited with code ${exitCode}`;
-          }
+        case "bash":
+          // Subtitle always shows WHAT ran. The accordion title + description
+          // carry HOW it ended (exit code / "timed out"), so repeating the
+          // exit status here would just double up.
           return shortSummary ? `Ran: ${shortSummary}` : "Command completed";
-        }
         case "web":
           if (toolName === "WebSearch") {
             return shortSummary
