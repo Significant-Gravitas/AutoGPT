@@ -1281,10 +1281,16 @@ class TestBuilderContextSplit:
         # System prompt suffix carries <builder_session> and the guide.
         assert f"<{BUILDER_SESSION_TAG}>" in suffix
         assert guide_body in suffix
+        # Dynamic bits must NOT be in the suffix — otherwise renames and
+        # cross-graph sessions invalidate Claude's prompt cache.
+        assert "graph-1" not in suffix
+        assert "Demo" not in suffix
 
-        # Per-turn prefix carries <builder_context> with the version snapshot
-        # but NEVER the guide.
+        # Per-turn prefix carries <builder_context> with the full live
+        # snapshot (id, name, version, nodes) but NEVER the guide.
         assert f"<{BUILDER_CONTEXT_TAG}>" in prefix
+        assert 'id="graph-1"' in prefix
+        assert 'name="Demo"' in prefix
         assert 'version="7"' in prefix
         assert guide_body not in prefix
         assert "<building_guide>" not in prefix

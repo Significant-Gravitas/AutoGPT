@@ -24,7 +24,6 @@ import logging
 from typing import Any
 
 from backend.copilot.model import ChatSession
-from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.agent_generator import get_agent_as_json
 from backend.copilot.tools.get_agent_building_guide import _load_guide
 
@@ -36,31 +35,6 @@ BUILDER_CONTEXT_TAG = "builder_context"
 
 # Tag that wraps the session-long static block appended to the system prompt.
 BUILDER_SESSION_TAG = "builder_session"
-
-
-# Tools a builder-bound session is allowed to invoke.  Keep this minimal —
-# the builder panel intentionally only offers direct edit + run so the
-# assistant cannot drift into unrelated workflows (web search, file tools,
-# etc).  Widening this set widens the blast radius; review carefully.
-BUILDER_SESSION_TOOLS: tuple[str, ...] = ("edit_agent", "run_agent")
-
-
-def resolve_session_permissions(
-    session: ChatSession | None,
-) -> CopilotPermissions | None:
-    """Return the capability filter implied by the session's metadata.
-
-    Builder-bound sessions (``metadata.builder_graph_id`` set) are
-    whitelisted to the two builder tools.  Regular sessions (and stubbed
-    None sessions used by tests) return ``None`` so existing unrestricted
-    behaviour is preserved.
-    """
-    if session is not None and session.metadata.builder_graph_id:
-        return CopilotPermissions(
-            tools=list(BUILDER_SESSION_TOOLS),
-            tools_exclude=False,
-        )
-    return None
 
 
 # Caps — mirror the frontend ``serializeGraphForChat`` defaults so the
@@ -173,27 +147,19 @@ _BUILDER_RUN_AGENT_GUIDANCE = (
 )
 
 
-def _format_session_block(graph_id: str, graph_name: str | None, guide: str) -> str:
+def _format_session_block(guide: str) -> str:
     """Render the session-long ``<builder_session>`` block.
 
-    *graph_name* is optional — on graph fetch failure we still emit the
-    block with just the id and the guide, because the guide alone is
-    useful for the assistant even without the graph's display name.
+    Holds only static content (dispatch guidance + building guide). The
+    live graph id/name/version move to the per-turn ``<builder_context>``
+    prefix — putting anything mutable here would invalidate Claude's
+    prompt cache on every rename / version bump / cross-graph session.
     """
-    if graph_name:
-        graph_tag = (
-            f'<graph id="{_sanitize_for_xml(graph_id)}" '
-            f'name="{_sanitize_for_xml(graph_name)}"/>'
-        )
-    else:
-        graph_tag = f'<graph id="{_sanitize_for_xml(graph_id)}"/>'
-
     # The guide is trusted server-side content (read from disk). We do NOT
     # escape it — the LLM needs the raw markdown to make sense of block ids,
     # code fences, and example JSON.
     return (
         f"<{BUILDER_SESSION_TAG}>\n"
-        f"{graph_tag}\n"
         f"<run_agent_dispatch_mode>\n"
         f"{_BUILDER_RUN_AGENT_GUIDANCE}\n"
         f"</run_agent_dispatch_mode>\n"
@@ -207,20 +173,9 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
 
     Returns ``"\\n\\n<builder_session>…</builder_session>"`` when the session
     is bound to a graph and the building guide can be loaded; otherwise
-    ``""``. The graph's *name* is fetched once here (session-stable, safe to
-    cache in the system prompt); version/nodes/links intentionally stay out
-    of this block so the suffix is byte-identical across turns of the same
-    session and Claude's prompt cache can keep it warm.
-
-    On graph fetch failure, the suffix still includes the guide with just the
-    graph id — the guide alone is useful and we avoid a turn where the
-    assistant loses all of its building context.  On guide load failure,
-    the suffix is empty; we don't pollute the prompt with a half-built
-    block that only tells the LLM its graph id.
-
-    The graph is fetched with the session owner's ``user_id`` so the
-    ownership check in ``get_graph`` is enforced — we never emit graph
-    metadata the session user is not entitled to see.
+    ``""``. The suffix is byte-identical for every builder session (only
+    depends on the on-disk guide), so Claude's prompt cache stays warm
+    both across turns and across sessions for different graphs.
     """
     metadata = getattr(session, "metadata", None)
     graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
@@ -233,22 +188,7 @@ async def build_builder_system_prompt_suffix(session: ChatSession) -> str:
         logger.exception("[builder_context] Failed to load agent-building guide")
         return ""
 
-    graph_name: str | None = None
-    try:
-        agent_json = await get_agent_as_json(graph_id, session.user_id)
-    except Exception:
-        logger.exception(
-            "[builder_context] Failed to fetch graph %s for system prompt",
-            graph_id,
-        )
-        agent_json = None
-
-    if agent_json:
-        raw_name = agent_json.get("name")
-        if isinstance(raw_name, str) and raw_name.strip():
-            graph_name = raw_name.strip()
-
-    return "\n\n" + _format_session_block(graph_id, graph_name, guide)
+    return "\n\n" + _format_session_block(guide)
 
 
 async def build_builder_context_turn_prefix(
@@ -257,16 +197,15 @@ async def build_builder_context_turn_prefix(
 ) -> str:
     """Return the per-turn ``<builder_context>`` prefix for *session*.
 
-    Contains only the volatile parts: current graph *version*, node/edge
-    counts, and the capped node + link lists. The static guide + graph id
-    live in :func:`build_builder_system_prompt_suffix` instead, so the
-    per-turn prefix stays small.
+    Carries all the live, mutable bits: graph id+name, current version,
+    node/edge counts, and the capped node + link lists. The static
+    building guide lives in :func:`build_builder_system_prompt_suffix`
+    so only this (small) block rides along with each user turn — and
+    the cacheable system prefix stays identical across turns/sessions.
 
     Returns ``""`` for non-builder sessions. Returns a
     ``<builder_context><status>fetch_failed</status></builder_context>``
-    marker when the graph cannot be fetched — same behaviour as before,
-    so the LLM still sees it is bound to a graph even when the live
-    snapshot is unavailable.
+    marker when the graph cannot be fetched.
     """
     metadata = getattr(session, "metadata", None)
     graph_id = getattr(metadata, "builder_graph_id", None) if metadata else None
@@ -292,12 +231,19 @@ async def build_builder_context_turn_prefix(
         return _fetch_failed_turn_prefix()
 
     version = _sanitize_for_xml(agent_json.get("version") or "")
+    raw_name = agent_json.get("name")
+    graph_name = (
+        raw_name.strip() if isinstance(raw_name, str) and raw_name.strip() else None
+    )
     nodes = agent_json.get("nodes") or []
     links = agent_json.get("links") or []
     nodes_block = _format_nodes(nodes)
     links_block = _format_links(links, nodes)
+    name_attr = f' name="{_sanitize_for_xml(graph_name)}"' if graph_name else ""
     graph_tag = (
-        f'<graph version="{version}" '
+        f'<graph id="{_sanitize_for_xml(graph_id)}"'
+        f"{name_attr} "
+        f'version="{version}" '
         f'node_count="{len(nodes)}" '
         f'edge_count="{len(links)}"/>'
     )

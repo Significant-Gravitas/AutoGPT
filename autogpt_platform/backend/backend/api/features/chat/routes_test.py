@@ -1778,16 +1778,3 @@ def test_create_session_rejects_unknown_fields(
     assert response.status_code == 422
 
 
-def test_resolve_session_permissions_whitelists_builder_tools() -> None:
-    """``resolve_session_permissions`` returns a whitelist of edit_agent +
-    run_agent for builder-bound sessions, and ``None`` otherwise."""
-    from backend.copilot.model import ChatSession
-
-    unbound = ChatSession.new("u1", dry_run=False)
-    assert chat_routes.resolve_session_permissions(unbound) is None
-
-    bound = ChatSession.new("u1", dry_run=False, builder_graph_id="g1")
-    perms = chat_routes.resolve_session_permissions(bound)
-    assert perms is not None
-    assert perms.tools_exclude is False
-    assert sorted(perms.tools) == ["edit_agent", "run_agent"]
