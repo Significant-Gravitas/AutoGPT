@@ -5,8 +5,12 @@ Shared by both the SDK and baseline chat entry points so both code paths
 start every new turn from a well-formed message list.
 """
 
+import logging
+
 from backend.copilot.constants import STOPPED_BY_USER_MARKER
 from backend.copilot.model import ChatMessage
+
+logger = logging.getLogger(__name__)
 
 
 def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
@@ -58,3 +62,19 @@ def prune_orphan_tool_calls(messages: list[ChatMessage]) -> int:
     removed = len(messages) - cut_index
     del messages[cut_index:]
     return removed
+
+
+def prune_and_log(messages: list[ChatMessage], log_prefix: str) -> int:
+    """Call ``prune_orphan_tool_calls`` and log at INFO when anything was
+    actually popped — shared by the SDK and baseline turn-start cleanup so
+    both paths produce identical log lines.
+    """
+    n = prune_orphan_tool_calls(messages)
+    if n:
+        logger.info(
+            "%s Dropped %d trailing orphan tool-use/stop row(s) "
+            "before starting new turn",
+            log_prefix,
+            n,
+        )
+    return n

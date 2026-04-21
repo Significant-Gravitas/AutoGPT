@@ -69,7 +69,7 @@ from backend.copilot.service import (
     inject_user_context,
     strip_user_context_tags,
 )
-from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.session_cleanup import prune_and_log
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
@@ -950,14 +950,7 @@ async def stream_chat_completion_baseline(
 
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the new turn starts from a well-formed message list.
-    _n_orphaned = prune_orphan_tool_calls(session.messages)
-    if _n_orphaned:
-        logger.info(
-            "[Baseline] [%s] Dropped %d trailing orphan tool-use/stop row(s) "
-            "before starting new turn",
-            session_id[:12],
-            _n_orphaned,
-        )
+    prune_and_log(session.messages, f"[Baseline] [{session_id[:12]}]")
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.

@@ -23,7 +23,7 @@ from backend.copilot.constants import STOPPED_BY_USER_MARKER
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamStartStep, StreamTextDelta
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
-from backend.copilot.session_cleanup import prune_orphan_tool_calls
+from backend.copilot.session_cleanup import prune_and_log, prune_orphan_tool_calls
 
 _NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -335,3 +335,41 @@ class TestPruneOrphanToolCalls:
     def test_empty_session_is_noop(self) -> None:
         messages: list[ChatMessage] = []
         assert prune_orphan_tool_calls(messages) == 0
+
+
+class TestPruneAndLog:
+    """Wrapper around ``prune_orphan_tool_calls`` that also emits an INFO
+    log line when anything was popped.  Shared by the SDK and baseline
+    turn-start cleanup so both paths log in the same shape."""
+
+    def _tool_call(self, call_id: str) -> dict:
+        return {"id": call_id, "type": "function", "function": {"name": "bash"}}
+
+    def test_logs_when_something_was_pruned(self, caplog) -> None:
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(
+                role="assistant", content="", tool_calls=[self._tool_call("tc_1")]
+            ),
+        ]
+
+        with caplog.at_level("INFO", logger="backend.copilot.session_cleanup"):
+            removed = prune_and_log(messages, "[TEST] [abc123]")
+
+        assert removed == 1
+        assert any(
+            "[TEST] [abc123]" in r.message and "Dropped 1" in r.message
+            for r in caplog.records
+        ), caplog.text
+
+    def test_no_log_when_nothing_to_prune(self, caplog) -> None:
+        messages: list[ChatMessage] = [
+            ChatMessage(role="user", content="hi"),
+            ChatMessage(role="assistant", content="hello"),
+        ]
+
+        with caplog.at_level("INFO", logger="backend.copilot.session_cleanup"):
+            removed = prune_and_log(messages, "[TEST] [xyz]")
+
+        assert removed == 0
+        assert not any("[TEST] [xyz]" in r.message for r in caplog.records), caplog.text

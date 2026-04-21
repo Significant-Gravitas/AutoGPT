@@ -53,7 +53,7 @@ from ..constants import (
     STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
-from ..session_cleanup import prune_orphan_tool_calls
+from ..session_cleanup import prune_and_log
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
@@ -2780,14 +2780,7 @@ async def stream_chat_completion_sdk(
 
     # Drop orphan tool_use + trailing stop-marker rows left by a previous
     # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
-    _n_orphaned = prune_orphan_tool_calls(session.messages)
-    if _n_orphaned:
-        logger.info(
-            "[SDK] [%s] Dropped %d trailing orphan tool-use/stop row(s) "
-            "before starting new turn",
-            session_id[:12],
-            _n_orphaned,
-        )
+    prune_and_log(session.messages, f"[SDK] [{session_id[:12]}]")
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
