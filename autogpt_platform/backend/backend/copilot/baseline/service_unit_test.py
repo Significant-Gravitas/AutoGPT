@@ -1338,32 +1338,55 @@ class TestApplyPromptCacheMarkers:
             _fresh_anthropic_caching_headers() is not _fresh_anthropic_caching_headers()
         )
 
-    def test_extract_cache_creation_tokens_openrouter_field(self):
-        """OpenRouter streams cache-write count as ``cache_write_tokens`` on
-        ``prompt_tokens_details`` (not ``cache_creation_input_tokens`` —
-        that's Anthropic-native-only).  Verified empirically against
-        openrouter.ai/api/v1 streaming with Anthropic routing."""
+    def test_extract_cache_creation_tokens_openrouter_typed_attr(self):
+        """Newer ``openai-python`` declares ``cache_write_tokens`` as a
+        typed attribute on ``PromptTokensDetails`` — it no longer lands in
+        ``model_extra``.  Verified empirically against the production
+        openai==1.113 installed in this venv: OpenRouter streaming
+        response populates ``ptd.cache_write_tokens`` directly while
+        ``ptd.model_extra`` is ``{}``.
+        """
         from openai.types.completion_usage import PromptTokensDetails
 
         ptd = PromptTokensDetails.model_validate(
             {
                 "audio_tokens": 0,
                 "cached_tokens": 0,
-                "cache_write_tokens": 12345,
+                "cache_write_tokens": 4432,
                 "video_tokens": 0,
             }
         )
-        assert _extract_cache_creation_tokens(ptd) == 12345
+        assert getattr(ptd, "cache_write_tokens", None) == 4432
+        assert _extract_cache_creation_tokens(ptd) == 4432
+
+    def test_extract_cache_creation_tokens_openrouter_model_extra(self):
+        """Older SDKs that don't yet declare ``cache_write_tokens`` as a
+        typed field leave it in ``model_extra`` — the helper must still
+        find it there."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
+        # Force the value into model_extra (simulates the old SDK shape
+        # where the field wasn't typed yet).
+        if ptd.model_extra is None:
+            # Pydantic v2 sometimes exposes __pydantic_extra__ as None when
+            # extras are disabled; initialise to a dict to mutate safely.
+            object.__setattr__(ptd, "__pydantic_extra__", {})
+        assert ptd.model_extra is not None
+        ptd.model_extra["cache_write_tokens"] = 7777
+        assert _extract_cache_creation_tokens(ptd) == 7777
 
     def test_extract_cache_creation_tokens_anthropic_native_field(self):
         """Direct Anthropic API uses ``cache_creation_input_tokens`` —
-        falls through as the secondary path when ``cache_write_tokens``
-        isn't in the response."""
+        falls through as the final path when neither
+        ``cache_write_tokens`` typed attr nor model_extra entry exists."""
         from openai.types.completion_usage import PromptTokensDetails
 
-        ptd = PromptTokensDetails.model_validate(
-            {"cached_tokens": 0, "cache_creation_input_tokens": 2048}
-        )
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
+        if ptd.model_extra is None:
+            object.__setattr__(ptd, "__pydantic_extra__", {})
+        assert ptd.model_extra is not None
+        ptd.model_extra["cache_creation_input_tokens"] = 2048
         assert _extract_cache_creation_tokens(ptd) == 2048
 
     def test_extract_cache_creation_tokens_absent(self):

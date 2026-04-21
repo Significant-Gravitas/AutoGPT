@@ -169,28 +169,36 @@ def _extract_usage_cost(usage: CompletionUsage) -> float | None:
 
 def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
     """Return cache-write token count from an OpenAI-compatible
-    ``PromptTokensDetails``, handling provider-specific field names.
+    ``PromptTokensDetails``, handling provider-specific field names and
+    SDK-version shape differences.
 
     Two shapes we care about:
 
     - **OpenRouter** (our primary baseline provider) streams the cache-write
-      count as ``cache_write_tokens`` directly on ``prompt_tokens_details``.
-      Verified empirically against ``openrouter.ai/api/v1`` streaming
-      responses with ``usage.include=true`` and Anthropic routing —
-      ``cache_creation_input_tokens`` is never populated.
-    - **Direct Anthropic API** (via proxy or future native path) uses
-      ``cache_creation_input_tokens`` as an extra field in ``model_extra``.
+      count as ``cache_write_tokens``.  Newer ``openai-python`` versions
+      declare this as a typed attribute on ``PromptTokensDetails``; older
+      versions expose it only in ``model_extra``.  Verified empirically:
+      cold-cache request returns ``cache_write_tokens`` > 0, warm-cache
+      request returns ``cached_tokens`` > 0 and ``cache_write_tokens`` = 0.
+    - **Direct Anthropic API** uses ``cache_creation_input_tokens`` —
+      never a typed attribute on the OpenAI SDK, always lives in
+      ``model_extra``.
 
-    Checked in order (OpenRouter first because that's the production path).
-    Either field is a non-typed extra on the OpenAI SDK's
-    ``PromptTokensDetails``, so we go through ``model_extra`` rather than
-    attribute access to avoid silent zeros when pydantic strips unknowns.
+    Lookup order: typed attr → ``model_extra`` (OpenRouter) → ``model_extra``
+    (Anthropic-native).  ``getattr`` handles both the typed-attr case
+    (newer SDK) and the no-such-attr case (older SDK) — we can't only use
+    ``model_extra`` because when the field is typed it's filtered out of
+    ``model_extra``, leaving us at 0 on the modern happy path.
     """
+    typed_val = getattr(ptd, "cache_write_tokens", None)
+    if typed_val:
+        return int(typed_val)
     extras = ptd.model_extra or {}
-    openrouter_val = extras.get("cache_write_tokens")
-    if openrouter_val:
-        return int(openrouter_val)
-    return int(extras.get("cache_creation_input_tokens") or 0)
+    return int(
+        extras.get("cache_write_tokens")
+        or extras.get("cache_creation_input_tokens")
+        or 0
+    )
 
 
 async def _prepare_baseline_attachments(
