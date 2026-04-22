@@ -625,6 +625,18 @@ class IntegrationCredentialsStore:
     async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
         return await self.db_manager.get_user_integrations(user_id=user_id)
 
+    async def get_user_integrations(self, user_id: str) -> UserIntegrations:
+        """Public read-only accessor for the caller's ``UserIntegrations`` row.
+
+        Use for read-only access — the write back mechanism lives in
+        :meth:`edit_user_integrations`, which always persists on exit.
+        Consumers (e.g. managed-credential providers reading legacy side
+        channels) should reach for this method instead of the private
+        ``_get_user_integrations`` or the edit-as-read trick, which would
+        otherwise trigger a spurious DB write + Redis lock round-trip.
+        """
+        return await self._get_user_integrations(user_id)
+
     async def locked_user_integrations(self, user_id: str):
         key = (f"user:{user_id}", "integrations")
         locks = await self.locks()

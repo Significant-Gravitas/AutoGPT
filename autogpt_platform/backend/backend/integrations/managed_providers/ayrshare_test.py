@@ -69,21 +69,17 @@ class TestReadOrCreateProfileKey:
     """
 
     def _mock_store(self, legacy_key: SecretStr | None):
-        """Build a minimal store stub that yields a UserIntegrations-like obj
-        via the ``edit_user_integrations`` async context manager — the same
-        public API the production code uses."""
+        """Build a minimal store stub that exposes the new public
+        read accessor; read-only callers don't go through
+        ``edit_user_integrations``."""
         managed = MagicMock()
         managed.ayrshare_profile_key = legacy_key
 
         user_integrations = MagicMock()
         user_integrations.managed_credentials = managed
 
-        cm = AsyncMock()
-        cm.__aenter__ = AsyncMock(return_value=user_integrations)
-        cm.__aexit__ = AsyncMock(return_value=None)
-
         store = MagicMock()
-        store.edit_user_integrations = MagicMock(return_value=cm)
+        store.get_user_integrations = AsyncMock(return_value=user_integrations)
         return store, user_integrations
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -231,10 +227,6 @@ class TestMigrationOrderingSafety:
         user_integrations = MagicMock()
         user_integrations.managed_credentials = managed
 
-        edit_cm = AsyncMock()
-        edit_cm.__aenter__ = AsyncMock(return_value=user_integrations)
-        edit_cm.__aexit__ = AsyncMock(return_value=None)
-
         lock_cm = AsyncMock()
         lock_cm.__aenter__ = AsyncMock(return_value=None)
         lock_cm.__aexit__ = AsyncMock(return_value=None)
@@ -244,7 +236,11 @@ class TestMigrationOrderingSafety:
         store = MagicMock()
         store.locks = AsyncMock(return_value=locks)
         store.has_managed_credential = AsyncMock(return_value=False)
-        store.edit_user_integrations = MagicMock(return_value=edit_cm)
+        # The provisioning read path uses the new public accessor; the
+        # post_provision clear path still uses edit_user_integrations.
+        # Here we assert the read works and the clear never runs because
+        # add_managed_credential fails first.
+        store.get_user_integrations = AsyncMock(return_value=user_integrations)
         store.add_managed_credential = AsyncMock(side_effect=RuntimeError("DB blip"))
 
         # provision now receives the caller-supplied store directly, so no
