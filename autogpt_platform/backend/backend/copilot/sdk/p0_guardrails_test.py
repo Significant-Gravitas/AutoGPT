@@ -720,7 +720,9 @@ class TestDoTransientBackoff:
         flips the reconstruction consistently with the rest of the path."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from backend.copilot.sdk.service import _do_transient_backoff, config
+        from backend.copilot.sdk.service import _do_transient_backoff
+
+        cfg = _make_config(render_reasoning_in_ui=False)
 
         original_adapter = MagicMock()
         state = MagicMock()
@@ -729,6 +731,7 @@ class TestDoTransientBackoff:
 
         with (
             patch("asyncio.sleep", new=AsyncMock()),
+            patch(f"{_SVC}.config", cfg),
             patch("backend.copilot.sdk.service.SDKResponseAdapter") as mock_cls,
         ):
             new_adapter = MagicMock()
@@ -739,7 +742,7 @@ class TestDoTransientBackoff:
         mock_cls.assert_called_once_with(
             message_id="msg-1",
             session_id="sess-1",
-            render_reasoning_in_ui=config.render_reasoning_in_ui,
+            render_reasoning_in_ui=False,
         )
         assert state.adapter is new_adapter
 
