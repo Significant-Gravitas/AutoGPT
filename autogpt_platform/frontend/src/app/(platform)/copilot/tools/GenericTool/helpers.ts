@@ -205,6 +205,14 @@ export function humanizeFileName(filePath: string): string {
 /*  Animation text                                                     */
 /* ------------------------------------------------------------------ */
 
+// web_search accepts a ``deep`` arg that dispatches to a multi-step
+// research model; render a distinct verb ("Researching"/"Researched"/
+// "Research failed") so users know the call takes longer.
+function _isDeepWebSearch(part: ToolUIPart): boolean {
+  const input = part.input as Record<string, unknown> | undefined;
+  return input?.deep === true;
+}
+
 export function getAnimationText(
   part: ToolUIPart,
   category: ToolCategory,
@@ -223,9 +231,11 @@ export function getAnimationText(
             : "Running command\u2026";
         case "web":
           if (toolName === "WebSearch" || toolName === "web_search") {
+            const deep = _isDeepWebSearch(part);
+            const verb = deep ? "Researching" : "Searching";
             return shortSummary
-              ? `Searching "${shortSummary}"`
-              : "Searching the web\u2026";
+              ? `${verb} "${shortSummary}"`
+              : `${verb} the web\u2026`;
           }
           return shortSummary
             ? `Fetching ${shortSummary}`
@@ -285,9 +295,12 @@ export function getAnimationText(
           return shortSummary ? `Ran: ${shortSummary}` : "Command completed";
         case "web":
           if (toolName === "WebSearch" || toolName === "web_search") {
-            return shortSummary
-              ? `Searched "${shortSummary}"`
+            const deep = _isDeepWebSearch(part);
+            const verb = deep ? "Researched" : "Searched";
+            const completed = deep
+              ? "Web research completed"
               : "Web search completed";
+            return shortSummary ? `${verb} "${shortSummary}"` : completed;
           }
           return shortSummary
             ? `Fetched ${shortSummary}`
@@ -354,9 +367,10 @@ export function getAnimationText(
         case "bash":
           return "Command failed";
         case "web":
-          return toolName === "WebSearch" || toolName === "web_search"
-            ? "Search failed"
-            : "Fetch failed";
+          if (toolName === "WebSearch" || toolName === "web_search") {
+            return _isDeepWebSearch(part) ? "Research failed" : "Search failed";
+          }
+          return "Fetch failed";
         case "browser":
           return "Browser action failed";
         default:

@@ -313,8 +313,10 @@ function getWebAccordionData(
     : null;
 
   if (results) {
+    const deep = inp.deep === true;
+    const noun = deep ? "research source" : "search result";
     return {
-      title: `${results.length} search result${results.length === 1 ? "" : "s"}`,
+      title: `${results.length} ${noun}${results.length === 1 ? "" : "s"}`,
       description: query ? truncate(query, 80) : undefined,
       content: (
         <div className="space-y-3">
