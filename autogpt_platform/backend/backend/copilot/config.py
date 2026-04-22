@@ -463,29 +463,37 @@ class ChatConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_sdk_model_vendor_compatibility(self) -> "ChatConfig":
-        """Fail at config load when an SDK model slug is incompatible with the
-        active routing mode.
+        """Fail at config load when an SDK model slug is incompatible with
+        explicit direct-Anthropic mode.
 
         The SDK path's ``_normalize_model_name`` raises ``ValueError`` when
         a non-Anthropic vendor slug (e.g. ``moonshotai/kimi-k2.6``) is paired
         with direct-Anthropic mode — but that fires inside the request loop,
         so a misconfigured deployment would surface a 500 to every user
-        instead of failing visibly at boot.  Mirror the same check here so
-        the operator sees the actionable error before any traffic lands.
+        instead of failing visibly at boot.
 
-        Covers all three SDK fields that flow through ``_normalize_model_name``:
-        primary tier (``thinking_standard_model``), advanced tier override
+        Only the **explicit** opt-out (``use_openrouter=False``) is checked
+        here, not the credential-missing path.  Build environments and
+        OpenAPI-schema export jobs construct ``ChatConfig()`` without any
+        OpenRouter credentials in the env — that's not a misconfiguration,
+        it's "config loads ok, but no SDK turn will succeed until creds are
+        wired".  The runtime guard in ``_normalize_model_name`` still
+        catches the credential-missing path on the first SDK turn.
+
+        Covers all three SDK fields that flow through
+        ``_normalize_model_name``: primary tier
+        (``thinking_standard_model``), advanced tier
         (``thinking_advanced_model``), and fallback model
         (``claude_agent_fallback_model`` via ``_resolve_fallback_model``).
 
         Skipped when ``use_claude_code_subscription=True`` because the
-        subscription path resolves the model to ``None`` (CLI default) and
-        never calls ``_normalize_model_name``.  Empty fallback strings are
-        also skipped (no fallback configured).
+        subscription path resolves the model to ``None`` (CLI default)
+        and never calls ``_normalize_model_name``.  Empty fallback strings
+        are also skipped (no fallback configured).
         """
         if self.use_claude_code_subscription:
             return self
-        if self.openrouter_active:
+        if self.use_openrouter:
             return self
         for field_name in (
             "thinking_standard_model",
@@ -497,13 +505,12 @@ class ChatConfig(BaseSettings):
                 continue
             if value.split("/", 1)[0] != "anthropic":
                 raise ValueError(
-                    f"Direct-Anthropic mode (use_openrouter=False or "
-                    f"missing OpenRouter credentials) requires an "
-                    f"Anthropic model for {field_name}, got {value!r}. "
-                    f"Set CHAT_THINKING_STANDARD_MODEL / "
+                    f"Direct-Anthropic mode (use_openrouter=False) "
+                    f"requires an Anthropic model for {field_name}, got "
+                    f"{value!r}. Set CHAT_THINKING_STANDARD_MODEL / "
                     f"CHAT_THINKING_ADVANCED_MODEL / "
                     f"CHAT_CLAUDE_AGENT_FALLBACK_MODEL to an anthropic/* "
-                    f"slug, or enable OpenRouter."
+                    f"slug, or set CHAT_USE_OPENROUTER=true."
                 )
         return self
 
