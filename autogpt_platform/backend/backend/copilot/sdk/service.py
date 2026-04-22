@@ -838,11 +838,17 @@ async def _resolve_sdk_model_for_request(
         return config.claude_agent_model
 
     tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
+    # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
+    # comparison below spuriously diverge — ``resolve_model`` already strips
+    # the LD side, so both halves must end up whitespace-normalised to stay
+    # equal when they're semantically equal.  Downstream ``_normalize_model_name``
+    # also benefits from the strip.
     tier_default = (
         config.thinking_advanced_model
         if tier_name == "advanced"
         else config.thinking_standard_model
-    )
+    ).strip()
 
     resolved = await _resolve_thinking_model_for_user(tier_name, user_id)
 

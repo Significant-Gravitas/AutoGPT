@@ -639,6 +639,37 @@ class TestResolveSdkModelForRequestLdFallback:
         assert resolved == "moonshotai/kimi-k2.6"
 
     @pytest.mark.asyncio
+    async def test_standard_subscription_survives_trailing_whitespace_in_env(
+        self, monkeypatch, _clean_config_env
+    ):
+        """``_resolve_thinking_model_for_user`` strips whitespace from the LD
+        side; the config tier default must be stripped too, otherwise a
+        stray trailing space in ``CHAT_THINKING_STANDARD_MODEL`` makes
+        ``resolved == tier_default`` spuriously False and bypasses
+        subscription-default mode.  Sentry HIGH on L856."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing spaces
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-ws", user_id="user-1"
+            )
+        assert resolved is None, (
+            "LD value semantically matches the whitespace-padded config "
+            "default — subscription mode must still win and return None"
+        )
+
+    @pytest.mark.asyncio
     async def test_standard_subscription_default_honoured_when_ld_matches_config(
         self, monkeypatch, _clean_config_env
     ):
