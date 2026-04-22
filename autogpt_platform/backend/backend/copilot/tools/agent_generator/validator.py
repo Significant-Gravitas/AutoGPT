@@ -751,9 +751,17 @@ class AgentValidator:
         A field is flagged when **all** of these hold:
         1. Its input schema has ``format == "google-drive-picker"``, OR an
            ``auto_credentials`` marker (set by ``GoogleDriveFileField``).
-        2. The node sets a non-null value for the field in ``input_default``.
-        3. The field is not also fed by a link — if it is linked, the
-           hardcoded value is overridden at run time and is harmless.
+        2. The node sets a non-null value for the field in
+           ``input_default`` — either at the top level
+           (``{"spreadsheet": ...}``) or via a nested ``_#_`` constant
+           (``{"spreadsheet_#_id": "1abc"}``), which equally bypasses the
+           credentials flow.
+        3. The field is not fed by a link from an
+           ``AgentGoogleDriveFileInputBlock`` (or subclass). Only links
+           whose source block exposes a Drive picker attach
+           ``_credentials_id`` to the payload — a link from any other
+           block is not a safe substitute and should not silence the
+           check.
 
         The exception is ``AgentGoogleDriveFileInputBlock`` itself: its
         ``value`` field uses the same picker format but is meant to carry a
@@ -775,13 +783,22 @@ class AgentValidator:
             and self._block_has_drive_picker_field(block)
         }
 
-        linked_sinks: dict[str, set[str]] = {}
+        # Only links sourced from a Drive input block attach
+        # `_credentials_id`; links from other blocks do NOT satisfy the
+        # credentials requirement and must not suppress the check.
+        drive_linked_sinks: dict[str, set[str]] = {}
         for link in agent.get("links", []):
+            source_id = link.get("source_id")
             sink_id = link.get("sink_id")
             sink_name = link.get("sink_name")
-            if not sink_id or not sink_name:
+            if not source_id or not sink_id or not sink_name:
                 continue
-            linked_sinks.setdefault(sink_id, set()).add(sink_name)
+            source_node = node_lookup.get(source_id)
+            if not source_node:
+                continue
+            if source_node.get("block_id") not in drive_input_block_ids:
+                continue
+            drive_linked_sinks.setdefault(sink_id, set()).add(sink_name)
 
         for node in agent.get("nodes", []):
             node_id = node.get("id", "unknown")
@@ -801,18 +818,15 @@ class AgentValidator:
             if not isinstance(input_props, dict):
                 continue
 
-            node_linked_sinks = linked_sinks.get(node_id, set())
+            node_drive_linked_sinks = drive_linked_sinks.get(node_id, set())
             block_name = block.get("name", "Unknown Block")
 
             for field_name, field_schema in input_props.items():
                 if not self._is_google_drive_picker_field(field_schema):
                     continue
-                if field_name not in input_default:
+                if field_name in node_drive_linked_sinks:
                     continue
-                value = input_default[field_name]
-                if value is None:
-                    continue
-                if field_name in node_linked_sinks:
+                if not self._has_hardcoded_value(input_default, field_name):
                     continue
                 self.add_error(
                     f"Node '{node_id}' (block '{block_name}' - {block_id}) "
@@ -843,6 +857,25 @@ class AgentValidator:
         if isinstance(auto_creds, dict) and auto_creds.get("provider") == "google":
             return True
         return False
+
+    @staticmethod
+    def _has_hardcoded_value(input_default: dict[str, Any], field_name: str) -> bool:
+        """
+        Check whether ``input_default`` hardcodes a non-null value for
+        ``field_name`` — either at the top level or via a nested ``_#_``
+        constant key (e.g. ``"spreadsheet_#_id"``). Nested constants bypass
+        the credentials flow just as much as top-level ones, so both forms
+        must be caught.
+        """
+        top_level = input_default.get(field_name)
+        if top_level is not None:
+            return True
+        nested_prefix = f"{field_name}{DICT_SPLIT}"
+        return any(
+            key.startswith(nested_prefix) and value is not None
+            for key, value in input_default.items()
+            if isinstance(key, str)
+        )
 
     @classmethod
     def _block_has_drive_picker_field(cls, block: dict[str, Any]) -> bool:

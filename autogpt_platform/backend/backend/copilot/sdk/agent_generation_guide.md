@@ -170,7 +170,7 @@ rendered by `AgentGoogleDriveFileInputBlock` does this at run time.
 
 **Target shape** for any agent touching a Drive file:
 
-```
+```text
 [AgentGoogleDriveFileInputBlock]  ──result→  [GoogleSheetsReadBlock].spreadsheet
                                    (or)      [GoogleDocsReadBlock].document
                                    (or)      [GoogleSheetsUpdateCellBlock].spreadsheet

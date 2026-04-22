@@ -747,6 +747,78 @@ class TestValidateGoogleDriveFileInputs:
         assert v.validate_google_drive_file_inputs(agent, [drive_input]) is True
         assert v.errors == []
 
+    def test_format_only_detection_fails(self):
+        # A schema with only `format: "google-drive-picker"` (no
+        # auto_credentials marker) is still a Drive picker field.
+        v = AgentValidator()
+        sheets = _drive_sheets_block()
+        sheets["inputSchema"]["properties"]["spreadsheet"].pop("auto_credentials")
+        node = _make_node(
+            block_id=sheets["id"],
+            input_default={"spreadsheet": {"id": "1abc"}},
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_google_drive_file_inputs(agent, [sheets]) is False
+
+    def test_auto_credentials_only_detection_fails(self):
+        # A schema marked only by `auto_credentials.provider == "google"`
+        # (no `format`) is still a Drive picker field.
+        v = AgentValidator()
+        sheets = _drive_sheets_block()
+        sheets["inputSchema"]["properties"]["spreadsheet"].pop("format")
+        node = _make_node(
+            block_id=sheets["id"],
+            input_default={"spreadsheet": {"id": "1abc"}},
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_google_drive_file_inputs(agent, [sheets]) is False
+
+    def test_link_from_non_drive_source_does_not_suppress_error(self):
+        # A link from e.g. an LLM block to `spreadsheet` does NOT carry
+        # `_credentials_id`, so the hardcoded value must still be flagged.
+        v = AgentValidator()
+        sheets = _drive_sheets_block()
+        unrelated_block = _make_block(
+            block_id="unrelated",
+            name="UnrelatedBlock",
+            output_schema={"properties": {"result": {"type": "object"}}},
+        )
+        unrelated_node = _make_node(node_id="unrelated-n", block_id="unrelated")
+        sheets_node = _make_node(
+            node_id="sheets-node",
+            block_id=sheets["id"],
+            input_default={"spreadsheet": {"id": "1abc"}},
+        )
+        link = _make_link(
+            source_id="unrelated-n",
+            source_name="result",
+            sink_id="sheets-node",
+            sink_name="spreadsheet",
+        )
+        agent = _make_agent(nodes=[unrelated_node, sheets_node], links=[link])
+
+        assert (
+            v.validate_google_drive_file_inputs(agent, [sheets, unrelated_block])
+            is False
+        )
+        assert any("AgentGoogleDriveFileInputBlock" in e for e in v.errors)
+
+    def test_nested_hardcoded_default_fails(self):
+        # `{"spreadsheet_#_id": "1abc"}` bypasses the picker credentials
+        # flow just as much as a top-level hardcode and must be flagged.
+        v = AgentValidator()
+        sheets = _drive_sheets_block()
+        node = _make_node(
+            block_id=sheets["id"],
+            input_default={"spreadsheet_#_id": "1abc"},
+        )
+        agent = _make_agent(nodes=[node])
+
+        assert v.validate_google_drive_file_inputs(agent, [sheets]) is False
+        assert any("spreadsheet" in e for e in v.errors)
+
 
 # ============================================================================
 # validate (integration)
