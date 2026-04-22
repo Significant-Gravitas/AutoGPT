@@ -19,6 +19,7 @@ import pytest
 from .e2b_sandbox import (
     _CREATING_SENTINEL,
     _SANDBOX_CREATE_MAX_RETRIES,
+    _bootstrap_sandbox,
     _try_reconnect,
     get_or_create_sandbox,
     kill_sandbox,
@@ -38,6 +39,10 @@ def _mock_sandbox(sandbox_id: str = _SANDBOX_ID, running: bool = True) -> MagicM
     sb.is_running = AsyncMock(return_value=running)
     sb.pause = AsyncMock()
     sb.kill = AsyncMock()
+    # Default: bootstrap's `sandbox.commands.run(...)` returns exit_code 0.
+    run_result = MagicMock(exit_code=0, stdout="", stderr="")
+    sb.commands = MagicMock()
+    sb.commands.run = AsyncMock(return_value=run_result)
     return sb
 
 
@@ -621,3 +626,63 @@ class TestPauseSandboxDirect:
             result = asyncio.run(pause_sandbox_direct(sb, _SESSION_ID))
 
         assert result is False
+
+
+# ---------------------------------------------------------------------------
+# _bootstrap_sandbox
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrapSandbox:
+    def test_bootstrap_runs_install_script(self):
+        """Bootstrap runs the install script via sandbox.commands.run."""
+        sb = _mock_sandbox()
+        asyncio.run(_bootstrap_sandbox(sb, _SESSION_ID))
+
+        sb.commands.run.assert_awaited_once()
+        (cmd,), _ = sb.commands.run.call_args
+        # The install script must at least detect gh and use the cli/cli repo.
+        assert "command -v gh" in cmd
+        assert "github.com/cli/cli" in cmd
+
+    def test_bootstrap_swallows_exceptions(self):
+        """Bootstrap is best-effort: an exception does not propagate."""
+        sb = _mock_sandbox()
+        sb.commands.run = AsyncMock(side_effect=RuntimeError("boom"))
+        # Must not raise.
+        asyncio.run(_bootstrap_sandbox(sb, _SESSION_ID))
+
+    def test_bootstrap_logs_non_zero_exit(self):
+        """Non-zero exit is logged (warning) but not raised."""
+        sb = _mock_sandbox()
+        sb.commands.run = AsyncMock(
+            return_value=MagicMock(exit_code=2, stdout="", stderr="unsupported arch")
+        )
+        # Must not raise even when the script returned non-zero.
+        asyncio.run(_bootstrap_sandbox(sb, _SESSION_ID))
+
+    def test_create_triggers_bootstrap(self):
+        """Fresh sandbox creation invokes the bootstrap once."""
+        new_sb = _mock_sandbox("sb-new")
+        redis = _mock_redis(set_nx_result=True, stored_sandbox_id=None)
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.create = AsyncMock(return_value=new_sb)
+            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+
+        new_sb.commands.run.assert_awaited_once()
+
+    def test_reconnect_does_not_bootstrap(self):
+        """Reconnect skips bootstrap — filesystem persists across pause/resume."""
+        sb = _mock_sandbox()
+        redis = _mock_redis(stored_sandbox_id=_SANDBOX_ID)
+        with (
+            patch("backend.copilot.tools.e2b_sandbox.AsyncSandbox") as mock_cls,
+            _patch_redis(redis),
+        ):
+            mock_cls.connect = AsyncMock(return_value=sb)
+            asyncio.run(get_or_create_sandbox(_SESSION_ID, _API_KEY, timeout=_TIMEOUT))
+
+        sb.commands.run.assert_not_awaited()
