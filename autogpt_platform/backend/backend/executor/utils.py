@@ -431,6 +431,21 @@ async def _validate_node_input_credentials(
                         field_name, field_value
                     )
 
+                # Local helper: mark the node as skippable when a field
+                # is optional-and-missing.  We add to `nodes_to_skip` here
+                # rather than relying on the post-loop guard — that guard
+                # only fires when the NODE-level ``is_creds_optional`` is
+                # True.  For auto-credential fields the optionality is
+                # usually field-level (``field_name not in required_fields``
+                # because the schema default is None), so deferring would
+                # let the node silently pass validation and then crash in
+                # ``_acquire_auto_credentials`` at runtime.  See Cursor
+                # thread PRRT_kwDOJKSTjM58r_37.
+                def _mark_optional_skip() -> None:
+                    nonlocal has_missing_credentials
+                    has_missing_credentials = True
+                    nodes_to_skip.add(node.id)
+
                 if field_value is None:
                     # Sentry HIGH: an explicitly-None value (e.g. cleared by
                     # `_reassign_ids` on fork, or nulled by a mask) means
@@ -455,9 +470,10 @@ async def _validate_node_input_credentials(
                     )
                     if not field_is_explicitly_none:
                         continue
-                    has_missing_credentials = True
                     if field_is_optional:
+                        _mark_optional_skip()
                         continue
+                    has_missing_credentials = True
                     credential_errors[node.id][field_name] = (
                         f"{CRED_ERR_NOT_AVAILABLE_PREFIX} no file selected "
                         "for this field. Please select a file via the "
@@ -471,9 +487,10 @@ async def _validate_node_input_credentials(
                         # CRED_ERR_NOT_AVAILABLE_PREFIX marker so the copilot
                         # credential-race fallback recognises this as a
                         # credentials gate failure.
-                        has_missing_credentials = True
                         if field_is_optional:
+                            _mark_optional_skip()
                             continue
+                        has_missing_credentials = True
                         credential_errors[node.id][field_name] = (
                             f"{CRED_ERR_NOT_AVAILABLE_PREFIX} authentication "
                             "missing for the selected file. Please re-select "
@@ -490,9 +507,10 @@ async def _validate_node_input_credentials(
                         # treat it like a missing credential so the user
                         # re-authenticates rather than silently running with
                         # no creds.
-                        has_missing_credentials = True
                         if field_is_optional:
+                            _mark_optional_skip()
                             continue
+                        has_missing_credentials = True
                         credential_errors[node.id][field_name] = (
                             f"{CRED_ERR_NOT_AVAILABLE_PREFIX} credential id "
                             "on the selected file is empty or invalid. "
@@ -503,17 +521,19 @@ async def _validate_node_input_credentials(
                         creds_store = get_integration_credentials_store()
                         creds = await creds_store.get_creds_by_id(user_id, cred_id)
                     except Exception as e:
-                        has_missing_credentials = True
                         if field_is_optional:
+                            _mark_optional_skip()
                             continue
+                        has_missing_credentials = True
                         credential_errors[node.id][
                             field_name
                         ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                         continue
                     if not creds:
-                        has_missing_credentials = True
                         if field_is_optional:
+                            _mark_optional_skip()
                             continue
+                        has_missing_credentials = True
                         credential_errors[node.id][
                             field_name
                         ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"

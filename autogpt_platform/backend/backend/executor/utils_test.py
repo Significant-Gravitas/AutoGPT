@@ -1551,6 +1551,59 @@ async def test_validate_node_input_credentials_auto_creds_optional_none_value_sk
 
 
 @pytest.mark.asyncio
+async def test_validate_node_input_credentials_field_level_optional_none_value_skips(
+    mocker: MockerFixture,
+):
+    """Cursor Medium (thread PRRT_kwDOJKSTjM58r_37): a node with
+    ``credentials_optional=False`` (the default) but whose auto-credential
+    field is NOT in ``required_fields`` (typical — the ``spreadsheet``
+    field on Google Sheets blocks defaults to None, so pydantic marks it
+    non-required at the schema level). The per-field check correctly
+    flags ``field_is_optional=True`` via ``field_name not in
+    required_fields``, but the POST-LOOP guard used ``is_creds_optional``
+    (the node-level flag) only — so the node silently passed validation
+    and crashed at runtime inside ``_acquire_auto_credentials`` with
+    ``ValueError('No file selected')``.
+
+    Pin the contract: when ANY per-field branch decides the field is
+    optional and missing, the node must land in ``nodes_to_skip``
+    regardless of the node-level ``credentials_optional`` flag."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-field-optional-cleared"
+    # Node-level flag is False (the common case) — the field is only
+    # field-level optional because it's absent from required_fields.
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"spreadsheet": None}
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    # Field-level optional: `spreadsheet` is NOT in required_fields because
+    # its pydantic default is None.
+    mock_block.input_schema.get_required_fields.return_value = []
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id not in errors
+    assert mock_node.id in nodes_to_skip
+
+
+@pytest.mark.asyncio
 async def test_validate_node_input_credentials_auto_creds_required_none_value_errors(
     mocker: MockerFixture,
 ):
