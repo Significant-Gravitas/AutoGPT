@@ -886,7 +886,11 @@ async def _do_transient_backoff(
     """
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
-    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        render_reasoning_in_ui=config.render_reasoning_in_ui,
+    )
     state.usage.reset()
 
 
@@ -2453,6 +2457,18 @@ async def _run_stream_attempt(
                     skip_strip=response is tail_delta,
                 )
                 if dispatched is not None:
+                    # Persistence (via _dispatch_response) always runs so the
+                    # session transcript keeps role='reasoning' rows; the
+                    # wire is gated so UI can suppress rendering.
+                    if not state.adapter.render_reasoning_in_ui and isinstance(
+                        dispatched,
+                        (
+                            StreamReasoningStart,
+                            StreamReasoningDelta,
+                            StreamReasoningEnd,
+                        ),
+                    ):
+                        continue
                     yield dispatched
 
                 # Mid-turn follow-up persistence: the MCP tool wrapper drains
@@ -3250,7 +3266,11 @@ async def stream_chat_completion_sdk(
 
         options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
-        adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+        adapter = SDKResponseAdapter(
+            message_id=message_id,
+            session_id=session_id,
+            render_reasoning_in_ui=config.render_reasoning_in_ui,
+        )
 
         # Propagate user_id/session_id as OTEL context attributes so the
         # langsmith tracing integration attaches them to every span.  This
@@ -3584,7 +3604,9 @@ async def stream_chat_completion_sdk(
                     session, user_id, is_user_message, state.query_message
                 )
                 state.adapter = SDKResponseAdapter(
-                    message_id=message_id, session_id=session_id
+                    message_id=message_id,
+                    session_id=session_id,
+                    render_reasoning_in_ui=config.render_reasoning_in_ui,
                 )
                 # Reset token accumulators so a failed attempt's partial
                 # usage is not double-counted in the successful attempt.

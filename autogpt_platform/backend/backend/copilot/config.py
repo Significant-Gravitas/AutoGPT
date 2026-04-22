@@ -95,8 +95,10 @@ class ChatConfig(BaseSettings):
         description="Model to use for generating session titles (should be fast/cheap)",
     )
     simulation_model: str = Field(
-        default="google/gemini-2.5-flash",
-        description="Model for dry-run block simulation (should be fast/cheap with good JSON output)",
+        default="google/gemini-2.5-flash-lite",
+        description="Model for dry-run block simulation (should be fast/cheap with good JSON output). "
+        "Gemini 2.5 Flash-Lite is ~3x cheaper than Flash ($0.10/$0.40 vs $0.30/$1.20 per MTok) "
+        "with JSON-mode reliability adequate for shape-matching block outputs.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
@@ -251,6 +253,20 @@ class ChatConfig(BaseSettings):
         "baseline skips the ``reasoning`` extra_body; SDK omits the "
         "``max_thinking_tokens`` kwarg so the CLI falls back to model default "
         "(which, without the flag, leaves extended thinking off).",
+    )
+    render_reasoning_in_ui: bool = Field(
+        default=True,
+        description="Render reasoning as live UI parts "
+        "(``StreamReasoning*`` wire events). False suppresses the live "
+        "wire events only; ``role='reasoning'`` rows are always persisted "
+        "so the reasoning bubble hydrates on reload. Tokens are billed "
+        "upstream regardless.",
+    )
+    stream_replay_count: int = Field(
+        default=200,
+        ge=1,
+        le=10000,
+        description="Max Redis stream entries replayed on SSE reconnect.",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
         Field(

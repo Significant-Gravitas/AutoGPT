@@ -26,7 +26,10 @@ _USER = "test-user-helpers"
 _SESSION = "test-session-helpers"
 
 
-def _make_block(block_id: str = "block-1", name: str = "TestBlock"):
+def _make_block(
+    block_id: str = "block-1",
+    name: str = "TestBlock",
+):
     """Create a minimal mock block for execute_block()."""
     mock = MagicMock()
     mock.id = block_id
@@ -203,6 +206,154 @@ class TestExecuteBlockCreditCharging:
         # Block already executed (with side effects), so output is returned
         assert isinstance(result, BlockOutputResponse)
         assert result.success is True
+
+
+# ---------------------------------------------------------------------------
+# Unregistered block regression: blocks without BLOCK_COSTS entry still run
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestUnregisteredBlockRunsFree:
+    """Ensure blocks not listed in BLOCK_COSTS execute cleanly at zero cost.
+
+    A future refactor that accidentally turns an unregistered block into a
+    non-zero charge — or crashes when the BLOCK_COSTS lookup returns no
+    entry — would silently bill free blocks. ``block_usage_cost`` already
+    returns ``(0, {})`` for unregistered blocks; this test locks that
+    contract in at the copilot execution boundary.
+    """
+
+    async def test_unregistered_block_runs_without_charge(self):
+        block = _make_block(block_id="unregistered-block", name="UnregisteredBlock")
+        credit_patch, mock_credit = _patch_credit_db()
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="unregistered-block",
+                input_data={},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-unreg",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+        # Zero-cost lookup must not touch either credit-wallet endpoint.
+        mock_credit.get_credits.assert_not_awaited()
+        mock_credit.spend_credits.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# BLOCK_COSTS regression: newly-registered paid-API blocks must decrement credits
+# ---------------------------------------------------------------------------
+
+
+class TestNewlyRegisteredBlockCosts:
+    """Regression coverage for the cost-tracking leak closure.
+
+    Every block listed here was missing from BLOCK_COSTS before this PR and
+    would silently no-op ``spend_credits`` when invoked via copilot
+    ``run_block``.  Adding a block id to this test locks in the credit wall
+    so a future refactor can't quietly drop the entry.
+    """
+
+    def test_perplexity_block_registered(self):
+        from backend.blocks.perplexity import PerplexityBlock, PerplexityModel
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert PerplexityBlock in BLOCK_COSTS
+        entries = BLOCK_COSTS[PerplexityBlock]
+        # Pin model->cost mapping so swapped prices fail the regression test.
+        costs_by_model = {
+            entry.cost_filter["model"]: entry.cost_amount for entry in entries
+        }
+        assert costs_by_model == {
+            PerplexityModel.SONAR: 1,
+            PerplexityModel.SONAR_PRO: 5,
+            PerplexityModel.SONAR_DEEP_RESEARCH: 10,
+        }
+
+    def test_fact_checker_block_registered(self):
+        from backend.blocks.jina.fact_checker import FactCheckerBlock
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert FactCheckerBlock in BLOCK_COSTS
+        assert BLOCK_COSTS[FactCheckerBlock][0].cost_amount == 1
+
+    def test_mem0_blocks_registered(self):
+        from backend.blocks.mem0 import (
+            AddMemoryBlock,
+            GetAllMemoriesBlock,
+            GetLatestMemoryBlock,
+            SearchMemoryBlock,
+        )
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        for block_cls in (
+            AddMemoryBlock,
+            SearchMemoryBlock,
+            GetAllMemoriesBlock,
+            GetLatestMemoryBlock,
+        ):
+            assert block_cls in BLOCK_COSTS, f"{block_cls.__name__} missing"
+            assert BLOCK_COSTS[block_cls][0].cost_amount == 1
+
+    def test_screenshotone_block_registered(self):
+        from backend.blocks.screenshotone import ScreenshotWebPageBlock
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert ScreenshotWebPageBlock in BLOCK_COSTS
+        assert BLOCK_COSTS[ScreenshotWebPageBlock][0].cost_amount == 2
+
+    def test_nvidia_deepfake_block_registered(self):
+        from backend.blocks.nvidia.deepfake import NvidiaDeepfakeDetectBlock
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert NvidiaDeepfakeDetectBlock in BLOCK_COSTS
+        assert BLOCK_COSTS[NvidiaDeepfakeDetectBlock][0].cost_amount == 2
+
+    def test_smartlead_blocks_registered(self):
+        from backend.blocks.smartlead.campaign import (
+            AddLeadToCampaignBlock,
+            CreateCampaignBlock,
+            SaveCampaignSequencesBlock,
+        )
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert BLOCK_COSTS[CreateCampaignBlock][0].cost_amount == 2
+        assert BLOCK_COSTS[AddLeadToCampaignBlock][0].cost_amount == 1
+        assert BLOCK_COSTS[SaveCampaignSequencesBlock][0].cost_amount == 1
+
+    def test_zerobounce_validate_block_registered(self):
+        from backend.blocks.zerobounce.validate_emails import ValidateEmailsBlock
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert ValidateEmailsBlock in BLOCK_COSTS
+        assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 2
+
+    def test_claude_code_block_registered(self):
+        """ClaudeCodeBlock spawns an E2B sandbox + runs Claude inside it.
+
+        Cost is dominated by the in-sandbox LLM spend ($0.50-$2/run typical),
+        not the sandbox compute itself. Flat 100 credits ($1.00) is the
+        conservative estimate until we wire the in-sandbox x-total-cost back
+        into NodeExecutionStats.provider_cost.
+        """
+        from backend.blocks.claude_code import ClaudeCodeBlock
+        from backend.data.block_cost_config import BLOCK_COSTS
+
+        assert ClaudeCodeBlock in BLOCK_COSTS
+        assert BLOCK_COSTS[ClaudeCodeBlock][0].cost_amount == 100
+        # Filter keys on `e2b_credentials` (not `credentials`) — verifies the
+        # cost gate matches the block's actual input field name.
+        assert "e2b_credentials" in BLOCK_COSTS[ClaudeCodeBlock][0].cost_filter
 
 
 # ---------------------------------------------------------------------------

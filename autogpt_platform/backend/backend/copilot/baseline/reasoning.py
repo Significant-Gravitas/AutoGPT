@@ -50,13 +50,13 @@ _VISIBLE_REASONING_TYPES = frozenset({"reasoning.text", "reasoning.summary"})
 # (~4,700 deltas per turn in one observed session, vs ~28 for Sonnet); without
 # coalescing, every chunk is one Redis ``xadd`` + one SSE frame + one React
 # re-render of the non-virtualised chat list, which paint-storms the browser
-# main thread and freezes the UI.  Batching into ~32-char / ~40 ms windows
-# cuts the event rate ~100x while staying snappy enough that the Reasoning
+# main thread and freezes the UI.  Batching into ~64-char / ~50 ms windows
+# cuts the event rate ~150x while staying snappy enough that the Reasoning
 # collapse still feels live (well under the ~100 ms perceptual threshold).
 # Per-delta persistence to ``session.messages`` stays granular — we only
 # coalesce the *wire* emission.
-_COALESCE_MIN_CHARS = 32
-_COALESCE_MAX_INTERVAL_MS = 40.0
+_COALESCE_MIN_CHARS = 64
+_COALESCE_MAX_INTERVAL_MS = 50.0
 
 
 class ReasoningDetail(BaseModel):
@@ -242,6 +242,12 @@ class BaselineReasoningEmitter:
     fresh ``ChatMessage(role="reasoning")`` is appended and mutated
     in-place as further deltas arrive; :meth:`close` drops the reference
     but leaves the appended row intact.
+
+    ``render_in_ui=False`` suppresses only the live wire events
+    (``StreamReasoning*``); the ``role='reasoning'`` persistence row is
+    still appended so ``convertChatSessionToUiMessages.ts`` can hydrate
+    the reasoning bubble on reload.  The state machine advances
+    identically either way.
     """
 
     def __init__(
@@ -250,21 +256,19 @@ class BaselineReasoningEmitter:
         *,
         coalesce_min_chars: int = _COALESCE_MIN_CHARS,
         coalesce_max_interval_ms: float = _COALESCE_MAX_INTERVAL_MS,
+        render_in_ui: bool = True,
     ) -> None:
         self._block_id: str = str(uuid.uuid4())
         self._open: bool = False
         self._session_messages = session_messages
         self._current_row: ChatMessage | None = None
-        # Coalescing state — ``_pending_delta`` accumulates reasoning text
-        # between wire flushes.  Providers like Kimi K2.6 emit very fine-
-        # grained chunks; batching them reduces Redis ``xadd`` + SSE + React
-        # re-render load by ~100x for equivalent text output.  Tuning knobs
-        # are kwargs so tests can disable coalescing (``=0``) for
-        # deterministic event assertions.
+        # Coalescing state — tests can disable (``=0``) for deterministic
+        # event assertions.
         self._coalesce_min_chars = coalesce_min_chars
         self._coalesce_max_interval_ms = coalesce_max_interval_ms
         self._pending_delta: str = ""
         self._last_flush_monotonic: float = 0.0
+        self._render_in_ui = render_in_ui
 
     @property
     def is_open(self) -> bool:
@@ -296,8 +300,9 @@ class BaselineReasoningEmitter:
         # syscalls off the hot path without changing semantics.
         now = time.monotonic()
         if not self._open:
-            events.append(StreamReasoningStart(id=self._block_id))
-            events.append(StreamReasoningDelta(id=self._block_id, delta=text))
+            if self._render_in_ui:
+                events.append(StreamReasoningStart(id=self._block_id))
+                events.append(StreamReasoningDelta(id=self._block_id, delta=text))
             self._open = True
             self._last_flush_monotonic = now
             if self._session_messages is not None:
@@ -305,17 +310,15 @@ class BaselineReasoningEmitter:
                 self._session_messages.append(self._current_row)
             return events
 
-        # Persist per-delta (no coalescing here — the session snapshot stays
-        # consistent at every chunk boundary, independent of the wire
-        # coalesce window).
         if self._current_row is not None:
             self._current_row.content = (self._current_row.content or "") + text
 
         self._pending_delta += text
         if self._should_flush_pending(now):
-            events.append(
-                StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
-            )
+            if self._render_in_ui:
+                events.append(
+                    StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
+                )
             self._pending_delta = ""
             self._last_flush_monotonic = now
         return events
@@ -348,12 +351,13 @@ class BaselineReasoningEmitter:
         if not self._open:
             return []
         events: list[StreamBaseResponse] = []
-        if self._pending_delta:
-            events.append(
-                StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
-            )
-            self._pending_delta = ""
-        events.append(StreamReasoningEnd(id=self._block_id))
+        if self._render_in_ui:
+            if self._pending_delta:
+                events.append(
+                    StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
+                )
+            events.append(StreamReasoningEnd(id=self._block_id))
+        self._pending_delta = ""
         self._open = False
         self._block_id = str(uuid.uuid4())
         self._current_row = None

@@ -181,7 +181,9 @@ async def execute_block(
             # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
             coerce_inputs_to_schema(input_data, block.input_schema)
             outputs: dict[str, list[Any]] = defaultdict(list)
-            async for output_name, output_data in simulate_block(block, input_data):
+            async for output_name, output_data in simulate_block(
+                block, input_data, user_id=user_id
+            ):
                 outputs[output_name].append(output_data)
             # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")
             sim_error = outputs.get("error", [])

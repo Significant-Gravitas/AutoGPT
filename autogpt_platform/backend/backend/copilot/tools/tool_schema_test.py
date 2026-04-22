@@ -25,7 +25,14 @@ from backend.copilot.tools import TOOL_REGISTRY
 # (server-side Anthropic beta). Description already trimmed to the
 # minimum viable copy; the bump absorbs the schema skeleton cost
 # (~300 chars / ~75 tokens) for a new LLM-facing primitive.
-_CHAR_BUDGET = 32_800
+# Bumped 32800 -> 33200 on PR #12873 for the web_search Perplexity
+# Sonar refactor — adds a load-bearing `deep` boolean with explicit
+# "~100x more expensive" cost warning the model must see to avoid
+# accidentally triggering sonar-reasoning on ordinary lookups, plus
+# synthesised-answer wording in the top-level description so the LLM
+# reads the answer before reaching for `web_fetch`. Both are
+# LLM-decision-critical copy, not bloat.
+_CHAR_BUDGET = 33_200
 
 
 @pytest.fixture(scope="module")

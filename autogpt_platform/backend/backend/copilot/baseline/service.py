@@ -15,7 +15,7 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections.abc import AsyncGenerator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
@@ -343,7 +343,21 @@ class _BaselineStreamState:
     """
 
     model: str = ""
-    pending_events: list[StreamBaseResponse] = field(default_factory=list)
+    # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
+    # so reasoning / text / tool events reach the SSE wire **during** the upstream
+    # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
+    # ``list`` drained per ``tool_call_loop`` iteration, so any model with
+    # extended thinking (Anthropic via OpenRouter, Moonshot, future reasoning
+    # routes) froze the UI for the entire duration of each LLM round before
+    # flushing the backlog in one burst.  The queue is single-producer (the
+    # streaming loop) / single-consumer (the outer async-gen yield loop);
+    # ``None`` is the close sentinel.
+    pending_events: asyncio.Queue[StreamBaseResponse | None] = field(
+        default_factory=asyncio.Queue
+    )
+    # Mirror of every event put on ``pending_events`` — kept for unit tests that
+    # inspect post-hoc what was emitted.  Not consumed by production code.
+    emitted_events: list[StreamBaseResponse] = field(default_factory=list)
     assistant_text: str = ""
     text_block_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     text_started: bool = False
@@ -382,7 +396,33 @@ class _BaselineStreamState:
         # frontend's ``convertChatSessionToUiMessages`` relies on these
         # rows to render the Reasoning collapse after the AI SDK's
         # stream-end hydrate swaps in the DB-backed message list.
-        self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
+        # ``render_in_ui`` is sourced from ``config.render_reasoning_in_ui``
+        # so the operator can silence the reasoning collapse globally
+        # without dropping the persisted audit trail.
+        self.reasoning_emitter = BaselineReasoningEmitter(
+            self.session_messages,
+            render_in_ui=config.render_reasoning_in_ui,
+        )
+
+
+def _emit(state: "_BaselineStreamState", event: StreamBaseResponse) -> None:
+    """Queue *event* for the live SSE wire AND mirror into ``emitted_events``.
+
+    Single helper so every streaming producer (LLM stream loop, tool executor,
+    conversation updater) posts to the same single-consumer queue.  The mirror
+    list is read-only from production code — it exists so unit tests can assert
+    on the full sequence emitted during one call.
+    """
+    state.pending_events.put_nowait(event)
+    state.emitted_events.append(event)
+
+
+def _emit_all(
+    state: "_BaselineStreamState", events: Iterable[StreamBaseResponse]
+) -> None:
+    """Queue *events* in order — convenience for emitter batches."""
+    for event in events:
+        _emit(state, event)
 
 
 def _is_anthropic_model(model: str) -> bool:
@@ -519,7 +559,7 @@ async def _baseline_llm_caller(
 
     Extracted from ``stream_chat_completion_baseline`` for readability.
     """
-    state.pending_events.append(StreamStartStep())
+    _emit(state, StreamStartStep())
     # Fresh thinking-strip state per round so a malformed unclosed
     # block in one LLM call cannot silently drop content in the next.
     state.thinking_stripper = _ThinkingStripper()
@@ -621,31 +661,30 @@ async def _baseline_llm_caller(
                 if not delta:
                     continue
 
-                state.pending_events.extend(state.reasoning_emitter.on_delta(delta))
+                _emit_all(state, state.reasoning_emitter.on_delta(delta))
 
                 if delta.content:
                     # Text and reasoning must not interleave on the wire — the
                     # AI SDK maps distinct start/end pairs to distinct UI
                     # parts.  Close any open reasoning block before emitting
                     # the first text delta of this run.
-                    state.pending_events.extend(state.reasoning_emitter.close())
+                    _emit_all(state, state.reasoning_emitter.close())
                     emit = state.thinking_stripper.process(delta.content)
                     if emit:
                         if not state.text_started:
-                            state.pending_events.append(
-                                StreamTextStart(id=state.text_block_id)
-                            )
+                            _emit(state, StreamTextStart(id=state.text_block_id))
                             state.text_started = True
                         round_text += emit
-                        state.pending_events.append(
-                            StreamTextDelta(id=state.text_block_id, delta=emit)
+                        _emit(
+                            state,
+                            StreamTextDelta(id=state.text_block_id, delta=emit),
                         )
 
                 if delta.tool_calls:
                     # Same rule as the text branch: close any open reasoning
                     # block before a tool_use starts so the AI SDK treats
                     # reasoning and tool-use as distinct parts.
-                    state.pending_events.extend(state.reasoning_emitter.close())
+                    _emit_all(state, state.reasoning_emitter.close())
                     for tc in delta.tool_calls:
                         idx = tc.index
                         if idx not in tool_calls_by_index:
@@ -676,19 +715,17 @@ async def _baseline_llm_caller(
         # ``async for chunk in response`` would otherwise leave reasoning
         # and/or text unterminated and only ``StreamFinishStep`` emitted —
         # the Reasoning / Text collapses would never finalise.
-        state.pending_events.extend(state.reasoning_emitter.close())
+        _emit_all(state, state.reasoning_emitter.close())
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
         if tail:
             if not state.text_started:
-                state.pending_events.append(StreamTextStart(id=state.text_block_id))
+                _emit(state, StreamTextStart(id=state.text_block_id))
                 state.text_started = True
             round_text += tail
-            state.pending_events.append(
-                StreamTextDelta(id=state.text_block_id, delta=tail)
-            )
+            _emit(state, StreamTextDelta(id=state.text_block_id, delta=tail))
         if state.text_started:
-            state.pending_events.append(StreamTextEnd(id=state.text_block_id))
+            _emit(state, StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
         # Always persist partial text so the session history stays consistent,
@@ -696,7 +733,7 @@ async def _baseline_llm_caller(
         state.assistant_text += round_text
         # Always emit StreamFinishStep to match the StreamStartStep,
         # even if an exception occurred during streaming.
-        state.pending_events.append(StreamFinishStep())
+        _emit(state, StreamFinishStep())
 
     # Convert to shared format
     llm_tool_calls = [
@@ -738,13 +775,14 @@ async def _baseline_tool_executor(
     except orjson.JSONDecodeError as parse_err:
         parse_error = f"Invalid JSON arguments for tool '{tool_name}': {parse_err}"
         logger.warning("[Baseline] %s", parse_error)
-        state.pending_events.append(
+        _emit(
+            state,
             StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=tool_name,
                 output=parse_error,
                 success=False,
-            )
+            ),
         )
         return ToolCallResult(
             tool_call_id=tool_call_id,
@@ -753,15 +791,17 @@ async def _baseline_tool_executor(
             is_error=True,
         )
 
-    state.pending_events.append(
-        StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name)
+    _emit(
+        state,
+        StreamToolInputStart(toolCallId=tool_call_id, toolName=tool_name),
     )
-    state.pending_events.append(
+    _emit(
+        state,
         StreamToolInputAvailable(
             toolCallId=tool_call_id,
             toolName=tool_name,
             input=tool_args,
-        )
+        ),
     )
 
     # Announce the tool call to the session so in-turn guards like
@@ -785,7 +825,7 @@ async def _baseline_tool_executor(
             session=session,
             tool_call_id=tool_call_id,
         )
-        state.pending_events.append(result)
+        _emit(state, result)
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
         )
@@ -802,13 +842,14 @@ async def _baseline_tool_executor(
             error_output,
             exc_info=True,
         )
-        state.pending_events.append(
+        _emit(
+            state,
             StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=tool_name,
                 output=error_output,
                 success=False,
-            )
+            ),
         )
         return ToolCallResult(
             tool_call_id=tool_call_id,
@@ -1660,139 +1701,172 @@ async def stream_chat_completion_baseline(
         state=state,
     )
 
-    try:
-        loop_result = None
-        async for loop_result in tool_call_loop(
-            messages=openai_messages,
-            tools=tools,
-            llm_call=_bound_llm_caller,
-            execute_tool=_bound_tool_executor,
-            update_conversation=_bound_conversation_updater,
-            max_iterations=_MAX_TOOL_ROUNDS,
-        ):
-            # Drain buffered events after each iteration (real-time streaming)
-            for evt in state.pending_events:
-                yield evt
-            state.pending_events.clear()
+    # Run the tool-call loop concurrently with the event consumer so
+    # ``StreamReasoning*`` / ``StreamText*`` deltas emitted inside
+    # ``_baseline_llm_caller`` reach the SSE wire DURING the upstream LLM
+    # stream instead of only at iteration boundaries.  Any reasoning route
+    # that streams for several minutes per round (extended thinking on
+    # Anthropic / Moonshot / future providers) would otherwise freeze the
+    # UI for the whole window before flushing the backlog in one burst.
+    loop_result_holder: list[Any] = [None]
+    loop_task: asyncio.Task[None] | None = None
 
-            # Inject any messages the user queued while the turn was
-            # running.  ``tool_call_loop`` mutates ``openai_messages``
-            # in-place, so appending here means the model sees the new
-            # messages on its next LLM call.
-            #
-            # IMPORTANT: skip when the loop has already finished (no
-            # more LLM calls are coming).  ``tool_call_loop`` yields
-            # a final ``ToolCallLoopResult`` on both paths:
-            #   - natural finish: ``finished_naturally=True``
-            #   - hit max_iterations: ``finished_naturally=False``
-            #                         and ``iterations >= max_iterations``
-            # In either case the loop is about to return on the next
-            # ``async for`` step, so draining here would silently
-            # lose the message (the user sees 202 but the model never
-            # reads the text).  Those messages stay in the buffer and
-            # get picked up at the start of the next turn.
-            is_final_yield = (
-                loop_result.finished_naturally
-                or loop_result.iterations >= _MAX_TOOL_ROUNDS
-            )
-            if is_final_yield:
-                continue
-            try:
-                pending = await drain_pending_messages(session_id)
-            except Exception:
-                logger.warning(
-                    "[Baseline] mid-loop drain_pending_messages failed for session %s",
-                    session_id,
-                    exc_info=True,
-                )
-                pending = []
-            if pending:
-                # Flush any buffered assistant/tool messages from completed
-                # rounds into session.messages BEFORE appending the pending
-                # user message.  ``_baseline_conversation_updater`` only
-                # records assistant+tool rounds into ``state.session_messages``
-                # — they are normally batch-flushed in the finally block.
-                # Without this in-order flush, the mid-loop pending user
-                # message lands before the preceding round's assistant/tool
-                # entries, producing chronologically-wrong session.messages
-                # on persist (user interposed between an assistant tool_call
-                # and its tool-result), which breaks OpenAI tool-call ordering
-                # invariants on the next turn's replay.
+    async def _run_tool_call_loop() -> None:
+        # Read/write the current session via ``_session_holder`` so this
+        # closure doesn't need to ``nonlocal session`` — pyright can't narrow
+        # the outer ``session: ChatSession | None`` through a nested scope,
+        # but the holder is typed non-optional after the preflight guard
+        # above.
+        try:
+            async for loop_result in tool_call_loop(
+                messages=openai_messages,
+                tools=tools,
+                llm_call=_bound_llm_caller,
+                execute_tool=_bound_tool_executor,
+                update_conversation=_bound_conversation_updater,
+                max_iterations=_MAX_TOOL_ROUNDS,
+            ):
+                loop_result_holder[0] = loop_result
+                # Inject any messages the user queued while the turn was
+                # running.  ``tool_call_loop`` mutates ``openai_messages``
+                # in-place, so appending here means the model sees the new
+                # messages on its next LLM call.
                 #
-                # Also persist any assistant text from text-only rounds (rounds
-                # with no tool calls, which ``_baseline_conversation_updater``
-                # does NOT record in session_messages).  If we only update
-                # ``_flushed_assistant_text_len`` without persisting the text,
-                # that text is silently lost: the finally block only appends
-                # assistant_text[_flushed_assistant_text_len:], so text generated
-                # before this drain never reaches session.messages.
-                recorded_text = "".join(
-                    m.content or ""
-                    for m in state.session_messages
-                    if m.role == "assistant"
+                # IMPORTANT: skip when the loop has already finished (no
+                # more LLM calls are coming).  ``tool_call_loop`` yields
+                # a final ``ToolCallLoopResult`` on both paths:
+                #   - natural finish: ``finished_naturally=True``
+                #   - hit max_iterations: ``finished_naturally=False``
+                #                         and ``iterations >= max_iterations``
+                # In either case the loop is about to return on the next
+                # ``async for`` step, so draining here would silently
+                # lose the message (the user sees 202 but the model never
+                # reads the text).  Those messages stay in the buffer and
+                # get picked up at the start of the next turn.
+                is_final_yield = (
+                    loop_result.finished_naturally
+                    or loop_result.iterations >= _MAX_TOOL_ROUNDS
                 )
-                unflushed_text = state.assistant_text[
-                    state._flushed_assistant_text_len :
-                ]
-                text_only_text = (
-                    unflushed_text[len(recorded_text) :]
-                    if unflushed_text.startswith(recorded_text)
-                    else unflushed_text
-                )
-                if text_only_text.strip():
-                    session.messages.append(
-                        ChatMessage(role="assistant", content=text_only_text)
+                if is_final_yield:
+                    continue
+                try:
+                    pending = await drain_pending_messages(session_id)
+                except Exception:
+                    logger.warning(
+                        "[Baseline] mid-loop drain_pending_messages failed for "
+                        "session %s",
+                        session_id,
+                        exc_info=True,
                     )
-                for _buffered in state.session_messages:
-                    session.messages.append(_buffered)
-                state.session_messages.clear()
-                # Record how much assistant_text has been covered by the
-                # structured entries just flushed, so the finally block's
-                # final-text dedup doesn't re-append rounds already persisted.
-                state._flushed_assistant_text_len = len(state.assistant_text)
+                    pending = []
+                if pending:
+                    # Flush any buffered assistant/tool messages from completed
+                    # rounds into session.messages BEFORE appending the pending
+                    # user message.  ``_baseline_conversation_updater`` only
+                    # records assistant+tool rounds into ``state.session_messages``
+                    # — they are normally batch-flushed in the finally block.
+                    # Without this in-order flush, the mid-loop pending user
+                    # message lands before the preceding round's assistant/tool
+                    # entries, producing chronologically-wrong session.messages
+                    # on persist (user interposed between an assistant tool_call
+                    # and its tool-result), which breaks OpenAI tool-call ordering
+                    # invariants on the next turn's replay.
+                    #
+                    # Also persist any assistant text from text-only rounds (rounds
+                    # with no tool calls, which ``_baseline_conversation_updater``
+                    # does NOT record in session_messages).  If we only update
+                    # ``_flushed_assistant_text_len`` without persisting the text,
+                    # that text is silently lost: the finally block only appends
+                    # assistant_text[_flushed_assistant_text_len:], so text generated
+                    # before this drain never reaches session.messages.
+                    recorded_text = "".join(
+                        m.content or ""
+                        for m in state.session_messages
+                        if m.role == "assistant"
+                    )
+                    unflushed_text = state.assistant_text[
+                        state._flushed_assistant_text_len :
+                    ]
+                    text_only_text = (
+                        unflushed_text[len(recorded_text) :]
+                        if unflushed_text.startswith(recorded_text)
+                        else unflushed_text
+                    )
+                    current_session = _session_holder[0]
+                    if text_only_text.strip():
+                        current_session.messages.append(
+                            ChatMessage(role="assistant", content=text_only_text)
+                        )
+                    for _buffered in state.session_messages:
+                        current_session.messages.append(_buffered)
+                    state.session_messages.clear()
+                    # Record how much assistant_text has been covered by the
+                    # structured entries just flushed, so the finally block's
+                    # final-text dedup doesn't re-append rounds already persisted.
+                    state._flushed_assistant_text_len = len(state.assistant_text)
 
-                # Persist the assistant/tool flush BEFORE the pending append
-                # so a later pending-persist failure can roll back the
-                # pending rows without also discarding LLM output.
-                session = await persist_session_safe(session, "[Baseline]")
-                # ``upsert_chat_session`` may return a *new* ``ChatSession``
-                # instance (e.g. when a concurrent title update has written a
-                # newer title to Redis, it returns ``session.model_copy``).
-                # Keep ``_session_holder`` in sync so subsequent tool rounds
-                # executed via ``_bound_tool_executor`` see the fresh session
-                # — any tool-side mutations on the stale object would be
-                # discarded when the new one is persisted in the ``finally``.
-                _session_holder[0] = session
+                    # Persist the assistant/tool flush BEFORE the pending append
+                    # so a later pending-persist failure can roll back the
+                    # pending rows without also discarding LLM output.
+                    current_session = await persist_session_safe(
+                        current_session, "[Baseline]"
+                    )
+                    # ``upsert_chat_session`` may return a *new* ``ChatSession``
+                    # instance (e.g. when a concurrent title update has written a
+                    # newer title to Redis, it returns ``session.model_copy``).
+                    # Keep ``_session_holder`` in sync so subsequent tool rounds
+                    # executed via ``_bound_tool_executor`` see the fresh session
+                    # — any tool-side mutations on the stale object would be
+                    # discarded when the new one is persisted in the ``finally``.
+                    _session_holder[0] = current_session
 
-                # ``format_pending_as_user_message`` embeds file attachments
-                # and context URL/page content into the content string so
-                # the in-session transcript is a faithful copy of what the
-                # model actually saw.  We also mirror each push into
-                # ``openai_messages`` so the model's next LLM round sees it.
-                #
-                # Pre-compute the formatted dicts once so both the openai
-                # messages append and the content_of lookup inside the
-                # shared helper use the same string — and so ``on_rollback``
-                # can trim ``openai_messages`` to the recorded anchor.
-                formatted_by_pm = {
-                    id(pm): format_pending_as_user_message(pm) for pm in pending
-                }
-                _openai_anchor = len(openai_messages)
-                for pm in pending:
-                    openai_messages.append(formatted_by_pm[id(pm)])
+                    # ``format_pending_as_user_message`` embeds file attachments
+                    # and context URL/page content into the content string so
+                    # the in-session transcript is a faithful copy of what the
+                    # model actually saw.  We also mirror each push into
+                    # ``openai_messages`` so the model's next LLM round sees it.
+                    #
+                    # Pre-compute the formatted dicts once so both the openai
+                    # messages append and the content_of lookup inside the
+                    # shared helper use the same string — and so ``on_rollback``
+                    # can trim ``openai_messages`` to the recorded anchor.
+                    formatted_by_pm = {
+                        id(pm): format_pending_as_user_message(pm) for pm in pending
+                    }
+                    _openai_anchor = len(openai_messages)
+                    for pm in pending:
+                        openai_messages.append(formatted_by_pm[id(pm)])
 
-                def _trim_openai_on_rollback(_session_anchor: int) -> None:
-                    del openai_messages[_openai_anchor:]
+                    def _trim_openai_on_rollback(_session_anchor: int) -> None:
+                        del openai_messages[_openai_anchor:]
 
-                await persist_pending_as_user_rows(
-                    session,
-                    transcript_builder,
-                    pending,
-                    log_prefix="[Baseline]",
-                    content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
-                    on_rollback=_trim_openai_on_rollback,
-                )
+                    await persist_pending_as_user_rows(
+                        current_session,
+                        transcript_builder,
+                        pending,
+                        log_prefix="[Baseline]",
+                        content_of=lambda pm: formatted_by_pm[id(pm)]["content"],
+                        on_rollback=_trim_openai_on_rollback,
+                    )
+        finally:
+            # Always post the sentinel so the outer consumer exits — even if
+            # ``tool_call_loop`` raised.  ``_baseline_llm_caller``'s own
+            # finally block has already pushed ``StreamReasoningEnd`` /
+            # ``StreamTextEnd`` / ``StreamFinishStep`` at this point, so the
+            # sentinel only terminates the consumer; it does not suppress
+            # any still-unflushed events.
+            state.pending_events.put_nowait(None)
 
+    loop_task = asyncio.create_task(_run_tool_call_loop())
+    try:
+        while True:
+            evt = await state.pending_events.get()
+            if evt is None:
+                break
+            yield evt
+        # Sentinel received — surface any exception the inner task hit.
+        await loop_task
+        loop_result = loop_result_holder[0]
         if loop_result and not loop_result.finished_naturally:
             limit_msg = (
                 f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
@@ -1803,25 +1877,34 @@ async def stream_chat_completion_baseline(
                 errorText=limit_msg,
                 code="baseline_tool_round_limit",
             )
-
     except Exception as e:
         _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # ``_baseline_llm_caller``'s finally block closes any open
-        # reasoning / text blocks and appends ``StreamFinishStep`` on
-        # both normal and exception paths, so pending_events already has
-        # the correct protocol ordering:
-        #   StreamStartStep -> StreamReasoningStart -> ...deltas... ->
-        #   StreamReasoningEnd -> StreamTextStart -> ...deltas... ->
-        #   StreamTextEnd -> StreamFinishStep
-        # Just drain what's buffered, then yield the error.
-        for evt in state.pending_events:
-            yield evt
-        state.pending_events.clear()
+        # Drain any queued tail events (reasoning/text close + finish step)
+        # that ``_baseline_llm_caller``'s finally block pushed before the
+        # sentinel arrived — without this the frontend would be missing the
+        # matching end / finish parts for the partial round.
+        while not state.pending_events.empty():
+            evt = state.pending_events.get_nowait()
+            if evt is not None:
+                yield evt
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
+        # Cancel the inner task if we're unwinding early (client disconnect,
+        # unexpected error in the consumer) so it doesn't keep streaming
+        # tokens into a dead queue.
+        if loop_task is not None and not loop_task.done():
+            loop_task.cancel()
+            try:
+                await loop_task
+            except (asyncio.CancelledError, Exception):
+                pass
+        # Re-sync the outer ``session`` binding in case the inner task
+        # reassigned it via a mid-loop ``persist_session_safe`` call.
+        session = _session_holder[0]
+
         # In-flight tool-call announcements are only meaningful for the
         # current turn; clear at the top of the outer finally so the next
         # turn starts with a clean scratch buffer even if one of the
