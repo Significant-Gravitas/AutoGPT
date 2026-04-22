@@ -251,9 +251,9 @@ class PerplexityBlock(Block):
             # direct-run ``PlatformCostLog`` flow
             # (``executor.cost_tracking::log_system_credential_cost``) record
             # the actual operator-side spend instead of inferring from tokens.
-            cost = extract_openrouter_cost(response)
-            if cost is not None:
-                self.execution_stats.provider_cost = cost
+            # Always overwrite — ``execution_stats`` is instance state, so a
+            # response without the header must not reuse a previous run's cost.
+            self.execution_stats.provider_cost = extract_openrouter_cost(response)
 
             return {"response": response_content, "annotations": annotations or []}
 

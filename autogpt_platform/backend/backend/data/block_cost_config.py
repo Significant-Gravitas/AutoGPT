@@ -307,8 +307,8 @@ LLM_COST = (
 # (``backend.copilot.rate_limit``). Microdollars track AutoGPT's infra cost
 # (OpenRouter / Anthropic inference spend) and gate the chat loop; credits
 # track the user's prepaid balance. A block running inside copilot ``run_block``
-# now decrements both: the credit wallet via this table and the microdollar
-# counter via ``execute_block``'s pipe-through of ``NodeExecutionStats.provider_cost``.
+# decrements only the credit wallet via this table — microdollars stay scoped
+# to copilot LLM turns and are not double-charged from block execution.
 # See the module docstring on ``backend.copilot.rate_limit`` for the full
 # boundary.
 
