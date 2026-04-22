@@ -43,11 +43,13 @@ logger = logging.getLogger(__name__)
 # https://openrouter.ai/docs/api-reference/get-a-generation
 _GENERATION_URL = "https://openrouter.ai/api/v1/generation"
 
-# OpenRouter's generation endpoint sometimes returns 404 for a few hundred ms
-# after the SSE stream closes — the billing row hasn't landed yet.  Retry a
-# few times with short backoff before giving up.
-_MAX_RETRIES = 4
-_BACKOFF_SECONDS = (0.5, 1.0, 2.0, 3.0)
+# OpenRouter's generation endpoint indexes the billing row a few seconds
+# after the SSE stream closes — observed ~8-12s in practice.  Retry with
+# progressive backoff for up to ~30s total before giving up, so the typical
+# indexing window (~10s) fits inside the retry envelope.  Backoff values
+# in seconds summed: 0.5 + 1 + 2 + 4 + 8 + 15 = 30.5.
+_MAX_RETRIES = 7
+_BACKOFF_SECONDS = (0.5, 1.0, 2.0, 4.0, 8.0, 15.0)
 _REQUEST_TIMEOUT = 10.0
 
 
