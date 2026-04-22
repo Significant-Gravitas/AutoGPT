@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
@@ -43,6 +44,7 @@ from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
 from .search_docs import SearchDocsTool
+from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
@@ -86,6 +88,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
+    "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
@@ -121,15 +124,45 @@ find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
 
-def get_available_tools() -> list[ChatCompletionToolParam]:
+# Capability groups a tool may belong to.  The service layer can hide all
+# tools in a group when the backing capability isn't available to this user
+# (e.g. Graphiti memory behind a feature flag), so the model doesn't reach
+# for tools whose backend is off and then hit opaque runtime errors.  Add
+# a new group by extending ``ToolGroup`` and registering its members in
+# ``TOOL_GROUPS`` below.
+ToolGroup = Literal["graphiti"]
+
+TOOL_GROUPS: dict[str, ToolGroup] = {
+    "memory_store": "graphiti",
+    "memory_search": "graphiti",
+    "memory_forget_search": "graphiti",
+    "memory_forget_confirm": "graphiti",
+}
+
+
+def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
+    """Return the set of tool short-names belonging to any of *groups*."""
+    group_set = frozenset(groups)
+    return frozenset(name for name, g in TOOL_GROUPS.items() if g in group_set)
+
+
+def get_available_tools(
+    *,
+    disabled_groups: Iterable[ToolGroup] = (),
+) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
     Called per-request so that env-var or binary availability is evaluated
     fresh each time (e.g. browser_* tools are excluded when agent-browser
-    CLI is not installed).
+    CLI is not installed).  Tools belonging to any *disabled_groups* are
+    also filtered out — use this to hide capability-gated tools (e.g.
+    ``graphiti`` when the memory backend is off for the current user).
     """
+    hidden = tool_names_in_groups(disabled_groups)
     return [
-        tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available
+        tool.as_openai_tool()
+        for name, tool in TOOL_REGISTRY.items()
+        if tool.is_available and name not in hidden
     ]
 
 

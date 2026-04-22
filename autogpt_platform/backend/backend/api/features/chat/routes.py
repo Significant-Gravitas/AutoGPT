@@ -75,6 +75,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
+    TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
@@ -1413,6 +1414,7 @@ ToolResponseUnion = (
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse
     | MemoryForgetConfirmResponse
+    | TodoWriteResponse
 )
 
 
