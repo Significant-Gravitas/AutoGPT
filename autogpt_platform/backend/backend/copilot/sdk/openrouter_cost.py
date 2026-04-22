@@ -188,36 +188,55 @@ def _gen_ids_from_jsonl(path: Path) -> set[str]:
     return ids
 
 
-def _discover_turn_gen_ids(project_dir: Path, known: list[str]) -> list[str]:
-    """Scan a CLI project directory for every ``gen-`` ID seen this turn.
+def _discover_turn_subagent_gen_ids(
+    project_dir: Path,
+    session_id: str,
+    turn_start_ts: float,
+    known: list[str],
+) -> list[str]:
+    """Gen-IDs from this session's subagents created during this turn.
 
-    The main session transcript (``<session_id>.jsonl``) carries the
-    user-visible LLM rounds — those IDs are already on ``known`` because
-    we captured them live from ``AssistantMessage.message_id``.  What's
-    NOT on ``known`` is the CLI's internal compaction LLM calls: when
-    the CLI compacts mid-stream it spawns a subagent JSONL under
-    ``<project_dir>/subagents/agent-acompact-*.jsonl`` whose own
-    ``gen-`` IDs we never see in the main stream.  Those calls are
-    billed by OpenRouter but would otherwise be invisible to our
-    reconcile.
+    Main-turn LLM rounds (incl. fallback retries) arrive on the live
+    stream as ``AssistantMessage`` and land on ``known`` via
+    ``message_id``.  What's NOT on ``known`` is the CLI's subagent LLM
+    calls — chiefly auto-compaction, which spawns a fresh JSONL under
+    ``<project_dir>/<session_id>/subagents/agent-acompact-*.jsonl``
+    whose gen-IDs never touch our main adapter.  OpenRouter bills them
+    anyway, so without this sweep compaction turns under-report cost.
 
-    Walks every ``*.jsonl`` under ``project_dir`` (including the
-    ``subagents/`` subdir), extracts all ``gen-`` IDs, merges with
-    ``known``, preserves ``known`` ordering so the main-turn IDs come
-    first.
+    Scoping: ONLY the current session's subagent dir
+    (``<project_dir>/<session_id>/subagents/agent-*.jsonl``) and ONLY
+    files whose ``mtime >= turn_start_ts``.  Without both guards we'd
+    merge prior turns' gen-IDs (main JSONL accumulates forever) and
+    foreign sessions' gen-IDs (the project dir contains every session
+    for this cwd), double-billing the user.
+
+    Also covers non-compaction subagents (Task tool etc.) when the CLI
+    spawns them — their live-stream visibility depends on SDK version,
+    so the sweep is a safety net.  The dedup against ``known`` means
+    anything already captured live doesn't double count.
+
+    Preserves ``known`` ordering so main-turn IDs stay first; only
+    appends truly new IDs from the sweep.
     """
     merged: list[str] = list(known)
     seen = set(merged)
-    if not project_dir.exists():
+    subagents_dir = project_dir / session_id / "subagents"
+    if not subagents_dir.exists():
         return merged
     try:
-        for jsonl in project_dir.rglob("*.jsonl"):
+        for jsonl in subagents_dir.glob("agent-*.jsonl"):
+            try:
+                if jsonl.stat().st_mtime < turn_start_ts:
+                    continue
+            except OSError:
+                continue
             for gen_id in _gen_ids_from_jsonl(jsonl):
                 if gen_id not in seen:
                     seen.add(gen_id)
                     merged.append(gen_id)
     except OSError as exc:
-        logger.debug("Failed to walk project_dir=%s: %s", project_dir, exc)
+        logger.debug("Failed to walk subagents dir=%s: %s", subagents_dir, exc)
     return merged
 
 
@@ -232,6 +251,8 @@ async def record_turn_cost_from_openrouter(
     cache_creation_tokens: int,
     generation_ids: list[str],
     cli_project_dir: str | None,
+    cli_session_id: str | None,
+    turn_start_ts: float | None,
     fallback_cost_usd: float | None,
     api_key: str | None,
     log_prefix: str,
@@ -266,18 +287,29 @@ async def record_turn_cost_from_openrouter(
 
     # Merge in any gen-IDs from CLI subagent JSONLs the live stream
     # didn't surface — chiefly SDK-internal compaction, which spawns a
-    # summarisation LLM call under ``<project_dir>/subagents/...`` that
-    # OpenRouter bills but doesn't emit via our main adapter.  Safe no-op
-    # when no compaction happened (the dir is empty of subagents) or the
+    # summarisation LLM call under
+    # ``<project_dir>/<cli_session_id>/subagents/...`` that OpenRouter
+    # bills but doesn't emit via our main adapter.  Safe no-op when no
+    # compaction happened (no subagent files created this turn) or the
     # CLI wrote nothing there.
-    if cli_project_dir:
-        merged_ids = _discover_turn_gen_ids(
-            Path(os.path.expanduser(cli_project_dir)), generation_ids
+    #
+    # The sweep is SESSION-scoped (``<cli_session_id>/subagents/``, not
+    # the whole project dir) and TURN-scoped (mtime >= turn_start_ts).
+    # Both guards are load-bearing: the project dir contains every
+    # session for this cwd, and subagent files persist across turns,
+    # so an unscoped sweep would re-bill prior turns and foreign
+    # sessions' gen-IDs.
+    if cli_project_dir and cli_session_id and turn_start_ts is not None:
+        merged_ids = _discover_turn_subagent_gen_ids(
+            Path(os.path.expanduser(cli_project_dir)),
+            cli_session_id,
+            turn_start_ts,
+            generation_ids,
         )
         if len(merged_ids) != len(generation_ids):
             logger.info(
                 "%s[cost-record] discovered %d additional gen-IDs in "
-                "CLI project dir (compaction / subagent) — reconcile "
+                "session subagents (compaction / Task) — reconcile "
                 "covers all",
                 log_prefix,
                 len(merged_ids) - len(generation_ids),
@@ -306,10 +338,22 @@ async def record_turn_cost_from_openrouter(
     fetched = [r for r in results if isinstance(r, (int, float))]
     if fetched and len(fetched) == len(generation_ids):
         real_cost: float | None = sum(fetched)
+        # Log real (OpenRouter billed) vs CLI rate-card estimate so an
+        # operator can spot divergence without querying OpenRouter by
+        # hand.  Under-count typically means a gen-ID source we don't
+        # capture live (e.g. title model, background LLM calls running
+        # outside the main stream); over-count means the CLI's rate
+        # table is stale vs. OpenRouter's current pricing.
+        delta_pct: float | None = None
+        if fallback_cost_usd and fallback_cost_usd > 0:
+            delta_pct = (real_cost - fallback_cost_usd) / fallback_cost_usd * 100
         logger.info(
-            "%s[cost-record] OpenRouter real=$%.6f (gen_ids=%d)",
+            "%s[cost-record] OpenRouter real=$%.6f cli_estimate=$%s "
+            "delta=%s (gen_ids=%d)",
             log_prefix,
             real_cost,
+            f"{fallback_cost_usd:.6f}" if fallback_cost_usd is not None else "?",
+            f"{delta_pct:+.1f}%" if delta_pct is not None else "n/a",
             len(generation_ids),
         )
     else:

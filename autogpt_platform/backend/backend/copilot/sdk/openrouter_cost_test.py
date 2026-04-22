@@ -62,6 +62,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=[],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=0.05,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -86,6 +88,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-1"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=0.02,
                 api_key=None,
                 log_prefix="[test]",
@@ -118,6 +122,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-1776842410"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=0.01858,  # rate-card estimate, deliberately wrong
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -159,6 +165,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-a", "gen-b"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=0.037,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -203,6 +211,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-a", "gen-b"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=fallback,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -238,6 +248,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-a"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=0.02,
                 api_key="sk-bad",
                 log_prefix="[test]",
@@ -280,6 +292,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-a"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=0.05,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -314,6 +328,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-a"],
                 cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
                 fallback_cost_usd=fallback,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -323,16 +339,15 @@ class TestRecordTurnCostFromOpenRouter:
 
     @pytest.mark.asyncio
     async def test_compaction_subagent_gen_ids_are_swept(self, tmp_path):
-        """CLI-internal compaction spawns a subagent JSONL with its own
-        ``gen-`` IDs that the live adapter doesn't see.  When
-        ``cli_project_dir`` is supplied the reconcile walks the tree,
-        discovers the compaction gen-IDs, and reconciles the full cost."""
-        main = tmp_path / "abc123.jsonl"
-        main.write_text(
-            '{"type":"assistant","message":{"id":"gen-main-1","content":[]}}\n'
-        )
-        sub_dir = tmp_path / "subagents"
-        sub_dir.mkdir()
+        """CLI-internal compaction spawns a subagent JSONL under
+        ``<project_dir>/<session_id>/subagents/agent-acompact-*.jsonl``
+        whose gen-IDs the live adapter never surfaces.  When
+        ``cli_project_dir`` + ``cli_session_id`` + ``turn_start_ts``
+        are supplied the reconcile walks only THIS session's subagents
+        and discovers the compaction IDs."""
+        session_id = "sess-abc"
+        sub_dir = tmp_path / session_id / "subagents"
+        sub_dir.mkdir(parents=True)
         (sub_dir / "agent-acompact-xyz.jsonl").write_text(
             '{"type":"assistant","message":{"id":"gen-compact-1","content":[]}}\n'
             '{"type":"assistant","message":{"id":"gen-compact-2","content":[]}}\n'
@@ -367,6 +382,8 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-main-1"],
                 cli_project_dir=str(tmp_path),
+                cli_session_id=session_id,
+                turn_start_ts=0.0,
                 fallback_cost_usd=0.05,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -380,10 +397,8 @@ class TestRecordTurnCostFromOpenRouter:
     async def test_compaction_sweep_no_subagents_is_noop(self, tmp_path):
         """No compaction happened → reconcile uses only the caller's
         gen-IDs, same as when cli_project_dir is None."""
-        main = tmp_path / "abc123.jsonl"
-        main.write_text(
-            '{"type":"assistant","message":{"id":"gen-main-1","content":[]}}\n'
-        )
+        session_id = "sess-none"
+        (tmp_path / session_id).mkdir()
 
         async def _get(self, *args, **kwargs):  # noqa: ARG001
             return httpx.Response(200, json=_mock_generation_response(0.02))
@@ -405,9 +420,101 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_creation_tokens=0,
                 generation_ids=["gen-main-1"],
                 cli_project_dir=str(tmp_path),
+                cli_session_id=session_id,
+                turn_start_ts=0.0,
                 fallback_cost_usd=0.05,
                 api_key="sk-or-test",
                 log_prefix="[test]",
             )
         mock_persist.assert_called_once()
         assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(0.02)
+
+    @pytest.mark.asyncio
+    async def test_compaction_sweep_ignores_prior_turn_and_foreign_sessions(
+        self, tmp_path
+    ):
+        """Scoping guards the sweep from double-billing: a stale subagent
+        file from a prior turn (mtime before ``turn_start_ts``) and any
+        subagent from a foreign session (different session_id folder)
+        must BOTH be skipped.  Without either guard, a long-running
+        session with past compactions would re-bill every prior turn,
+        and a second chat session in the same cwd would inherit the
+        first session's compaction cost."""
+        import os
+        import time
+
+        this_session = "sess-current"
+        other_session = "sess-other"
+
+        this_subagents = tmp_path / this_session / "subagents"
+        this_subagents.mkdir(parents=True)
+        other_subagents = tmp_path / other_session / "subagents"
+        other_subagents.mkdir(parents=True)
+
+        # Prior-turn compaction file — same session, stale mtime.
+        stale_file = this_subagents / "agent-acompact-stale.jsonl"
+        stale_file.write_text(
+            '{"type":"assistant","message":{"id":"gen-stale-1","content":[]}}\n'
+        )
+        # Foreign session's compaction file.
+        foreign_file = other_subagents / "agent-acompact-foreign.jsonl"
+        foreign_file.write_text(
+            '{"type":"assistant","message":{"id":"gen-foreign-1","content":[]}}\n'
+        )
+        # Current-turn compaction file — fresh.
+        fresh_file = this_subagents / "agent-acompact-fresh.jsonl"
+        fresh_file.write_text(
+            '{"type":"assistant","message":{"id":"gen-fresh-1","content":[]}}\n'
+        )
+
+        # turn_start_ts lies between the stale and fresh mtimes.
+        past = time.time() - 3600
+        os.utime(stale_file, (past, past))
+        os.utime(foreign_file, (past, past))
+        turn_start_ts = time.time() - 60  # 1 min ago
+        fresh_now = time.time()
+        os.utime(fresh_file, (fresh_now, fresh_now))
+
+        costs_by_id = {
+            "gen-main-1": 0.010,
+            "gen-fresh-1": 0.004,
+        }
+
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
+            gen_id = kwargs.get("params", {}).get("id")
+            # If the sweep leaks a stale/foreign ID, the test fails here
+            # with a KeyError rather than silently over-billing.
+            assert gen_id in costs_by_id, f"sweep leaked out-of-scope gen_id {gen_id}"
+            return httpx.Response(
+                200, json=_mock_generation_response(costs_by_id[gen_id])
+            )
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=1000,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-main-1"],
+                cli_project_dir=str(tmp_path),
+                cli_session_id=this_session,
+                turn_start_ts=turn_start_ts,
+                fallback_cost_usd=0.05,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+            )
+        mock_persist.assert_called_once()
+        # Exactly the current-turn main + fresh compaction — no stale,
+        # no foreign.
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(
+            sum(costs_by_id.values()), rel=1e-9
+        )

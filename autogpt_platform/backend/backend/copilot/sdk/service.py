@@ -3063,6 +3063,12 @@ async def stream_chat_completion_sdk(
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
+    # Wall-clock timestamp captured before the CLI runs so the
+    # OpenRouter reconcile can filter subagent JSONLs by mtime — only
+    # files created during THIS turn contribute gen-IDs.  Without this
+    # the sweep would pick up prior turns' compaction files that persist
+    # under ``<session_id>/subagents/``, double-billing the user.
+    turn_start_ts = time.time()
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -4079,6 +4085,8 @@ async def stream_chat_completion_sdk(
                     cache_creation_tokens=turn_cache_creation_tokens,
                     generation_ids=collected_gen_ids,
                     cli_project_dir=cli_project_dir,
+                    cli_session_id=session_id,
+                    turn_start_ts=turn_start_ts,
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,
