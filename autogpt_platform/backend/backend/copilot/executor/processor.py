@@ -18,7 +18,6 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
-from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -51,40 +50,39 @@ _CANCEL_GRACE_SECONDS = 5.0
 _FAIL_CLOSE_REDIS_TIMEOUT = 10.0
 
 
+# Module-level symbol preserved for backward-compat with callers that import
+# ``sync_fail_close_session``; the real implementation now lives on
+# ``CoPilotProcessor`` so it can reuse ``self.execution_loop`` (same
+# pattern as ``backend.executor.manager``'s ``node_execution_loop`` bridge
+# at :meth:`ExecutionProcessor.on_graph_execution`).
+
+
 def sync_fail_close_session(
-    session_id: str, log: "CoPilotLogMetadata | TruncatedLogger"
+    session_id: str,
+    log: "CoPilotLogMetadata | TruncatedLogger",
+    execution_loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Synchronously mark *session_id* as failed from the pool worker thread.
 
-    Safety net invoked from ``CoPilotProcessor.execute``'s ``finally`` so the
-    Redis session meta never stays ``running`` when the worker's event loop
-    dies mid-turn. ``mark_session_completed`` is an atomic CAS on
-    ``status == "running"``, so calling this after a normal completion/error
-    is a cheap no-op.
+    Submits the CAS coroutine to the long-lived *execution_loop* via
+    ``run_coroutine_threadsafe`` — the same shape agent-executor uses at
+    :meth:`backend.executor.manager.ExecutionProcessor.on_graph_execution`
+    to reach its ``node_execution_loop`` from the pool worker. Reusing the
+    persistent loop means:
 
-    Uses a fresh ``asyncio.run`` loop rather than the worker's
-    ``execution_loop`` — the worker loop is the one we suspect of being
-    broken (dead thread, stale Redis client, etc.). A new loop gives us a
-    new thread-local Redis client that doesn't inherit the bad state, but
-    only if we ALSO drop the ``@thread_cached`` ``AsyncRedis`` cache for
-    this thread — otherwise the second call in the same worker thread
-    picks up the previous loop's client, which is now bound to a closed
-    loop and raises ``RuntimeError: Event loop is closed``. The
-    ``clear_cache()`` call below forces a fresh client per invocation.
+    * no fresh TCP connection per turn (the ``@thread_cached``
+      ``AsyncRedis`` on the execution thread stays bound to the same loop
+      and is reused across every turn);
+    * no loop-teardown overhead;
+    * no ``clear_cache()`` gymnastics to dodge the "loop is closed" pitfall.
 
-    The inner ``asyncio.wait_for`` bounds the Redis call so a genuinely
-    unreachable Redis can't hang the safety net for the full redis-py
-    default TCP timeout.
+    ``mark_session_completed`` is an atomic CAS on ``status == "running"``,
+    so when the async path already wrote a terminal state the sync call is
+    a cheap no-op. The inner ``asyncio.wait_for`` bounds the Redis call so
+    a wedged Redis can't hang the safety net for the full redis-py default
+    TCP timeout; the outer ``.result(timeout=...)`` is a belt-and-braces
+    upper bound for the cross-thread wait.
     """
-    # Drop the thread-local AsyncRedis cache so the fresh asyncio.run loop
-    # below gets a fresh client. Without this, turn 2+ on the same worker
-    # thread trips over the closed loop from turn 1's asyncio.run.
-    clear_cache = getattr(get_redis_async, "clear_cache", None)
-    if clear_cache is not None:
-        try:
-            clear_cache()
-        except Exception as e:
-            log.warning(f"sync fail-close clear_cache failed: {e}")
 
     async def _bounded() -> None:
         await asyncio.wait_for(
@@ -95,12 +93,21 @@ def sync_fail_close_session(
         )
 
     try:
-        asyncio.run(_bounded())
-    except asyncio.TimeoutError:
+        future = asyncio.run_coroutine_threadsafe(_bounded(), execution_loop)
+    except RuntimeError as e:
+        # execution_loop is closed — happens if cleanup() already ran the
+        # per-worker teardown. Nothing we can do; let the stale-session
+        # watchdog reap it.
+        log.warning(f"sync fail-close skipped (execution_loop closed): {e}")
+        return
+    try:
+        future.result(timeout=_FAIL_CLOSE_REDIS_TIMEOUT + 2)
+    except concurrent.futures.TimeoutError:
         log.warning(
             f"sync fail-close timed out after {_FAIL_CLOSE_REDIS_TIMEOUT}s "
             f"(session={session_id})"
         )
+        future.cancel()
     except Exception as e:
         log.warning(f"sync fail-close mark_session_completed failed: {e}")
 
@@ -345,7 +352,7 @@ class CoPilotProcessor:
         try:
             self._execute(entry, cancel, cluster_lock, log)
         finally:
-            sync_fail_close_session(entry.session_id, log)
+            sync_fail_close_session(entry.session_id, log, self.execution_loop)
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
 
