@@ -71,7 +71,7 @@ async def resolve_model(
     flag, or non-string flag value.  Passing *config* explicitly keeps
     the resolver cheap to unit-test.
     """
-    fallback = _config_default(config, mode, tier)
+    fallback = _config_default(config, mode, tier).strip()
     if not user_id:
         return fallback
 

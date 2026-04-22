@@ -51,6 +51,23 @@ class TestResolveModel:
         mock_flag.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_missing_user_strips_whitespace_from_fallback(self):
+        """Sentry MEDIUM: the anonymous-user branch returned an unstripped
+        config value.  If ``CHAT_*_MODEL`` env carries trailing whitespace
+        the downstream ``resolved == tier_default`` check in
+        ``_resolve_sdk_model_for_request`` would diverge from the
+        whitespace-stripped LD side, bypassing subscription mode for
+        every anonymous request.  Strip at the source."""
+        cfg = ChatConfig(
+            fast_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing ws
+            fast_advanced_model="anthropic/claude-opus-4.7",
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+        )
+        result = await resolve_model("fast", "standard", None, config=cfg)
+        assert result == "anthropic/claude-sonnet-4-6"
+
+    @pytest.mark.asyncio
     async def test_ld_string_override_wins(self):
         """LD-returned model string replaces the config default."""
         cfg = _make_config()
