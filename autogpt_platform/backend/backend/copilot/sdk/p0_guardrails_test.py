@@ -10,12 +10,19 @@ from backend.copilot.constants import is_transient_api_error
 
 
 def _make_config(**overrides) -> ChatConfig:
-    """Create a ChatConfig with safe defaults, applying *overrides*."""
+    """Create a ChatConfig with safe defaults, applying *overrides*.
+
+    SDK model fields are pinned to anthropic/* so the
+    ``_validate_sdk_model_vendor_compatibility`` model_validator allows
+    construction with ``use_openrouter=False`` (the default here).
+    """
     defaults = {
         "use_claude_code_subscription": False,
         "use_openrouter": False,
         "api_key": None,
         "base_url": None,
+        "thinking_standard_model": "anthropic/claude-sonnet-4-6",
+        "thinking_advanced_model": "anthropic/claude-opus-4-7",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)

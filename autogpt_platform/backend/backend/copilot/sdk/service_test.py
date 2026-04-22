@@ -355,6 +355,10 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            # Pin SDK slugs to anthropic/* so the new
+            # _validate_sdk_model_vendor_compatibility allows construction.
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
@@ -384,6 +388,8 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert (
@@ -673,6 +679,8 @@ class TestSystemPromptPreset:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
 
@@ -684,6 +692,8 @@ class TestSystemPromptPreset:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is False
 

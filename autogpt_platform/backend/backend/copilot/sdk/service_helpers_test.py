@@ -373,7 +373,12 @@ class TestNormalizeModelName:
 
     @pytest.fixture
     def _direct_anthropic_config(self, monkeypatch: pytest.MonkeyPatch):
-        """Force ``config.openrouter_active = False`` for prefix-strip tests."""
+        """Force ``config.openrouter_active = False`` for prefix-strip tests.
+
+        Pins the SDK model fields to anthropic/* so the new
+        ``_validate_sdk_model_vendor_compatibility`` model_validator
+        permits ChatConfig construction.
+        """
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
@@ -381,6 +386,8 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 

@@ -164,3 +164,65 @@ class TestClaudeAgentCliPathEnvFallback:
         monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(tmp_path))
         with pytest.raises(Exception, match="not a regular file"):
             ChatConfig()
+
+
+class TestSdkModelVendorCompatibility:
+    """``model_validator`` that fails fast on SDK model vs routing-mode
+    mismatch — see PR #12878 iteration-2 review.  Mirrors the runtime
+    guard in ``_normalize_model_name`` so misconfig surfaces at boot
+    instead of as a 500 on the first SDK turn."""
+
+    def test_direct_anthropic_with_kimi_default_raises(self):
+        """The ``moonshotai/kimi-k2.6`` default must fail at config load
+        when the deployment has no OpenRouter credentials."""
+        with pytest.raises(Exception, match="requires an Anthropic model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+            )
+
+    def test_direct_anthropic_with_anthropic_override_succeeds(self):
+        """Direct-Anthropic mode is fine when both SDK slugs are anthropic/*."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+        )
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
+
+    def test_openrouter_with_kimi_default_succeeds(self):
+        """Default Kimi slug round-trips cleanly when OpenRouter is on."""
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        assert cfg.thinking_standard_model == "moonshotai/kimi-k2.6"
+
+    def test_subscription_mode_skips_check(self):
+        """Subscription path resolves the model to None and bypasses
+        ``_normalize_model_name``, so the slug check is skipped."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        assert cfg.use_claude_code_subscription is True
+
+    def test_advanced_tier_also_validated(self):
+        """Both standard and advanced SDK slugs are checked."""
+        with pytest.raises(Exception, match="thinking_advanced_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="moonshotai/kimi-k2.6",
+            )

@@ -108,17 +108,16 @@ class TestResolveBaselineModel:
             == "anthropic/claude-opus-4.7"
         )
 
-    def test_standard_cells_diverge_across_paths(self):
-        """The whole point of the split: baseline cheap (Kimi) vs SDK
-        Anthropic-only (Sonnet).  If the shipped standard defaults ever
-        collapse to the same value someone lost the cost savings.
-        Checked against ``Field`` defaults, not the env-backed singleton."""
+    def test_standard_cells_share_kimi_default_across_paths(self):
+        """After PR #12878 both paths default to the same cheap model
+        (``moonshotai/kimi-k2.6``).  The split exists for *override*
+        flexibility, not for forcing a price gap — guard against an
+        accidental regression that pins the SDK path back to Sonnet."""
         from backend.copilot.config import ChatConfig
 
-        assert (
-            ChatConfig.model_fields["thinking_standard_model"].default
-            != ChatConfig.model_fields["fast_standard_model"].default
-        )
+        kimi = "moonshotai/kimi-k2.6"
+        assert ChatConfig.model_fields["fast_standard_model"].default == kimi
+        assert ChatConfig.model_fields["thinking_standard_model"].default == kimi
 
     def test_standard_and_advanced_cells_differ_on_fast(self):
         """Advanced tier defaults to a different model than standard on

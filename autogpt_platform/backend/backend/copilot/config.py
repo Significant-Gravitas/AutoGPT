@@ -3,7 +3,7 @@
 import os
 from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from backend.util.clients import OPENROUTER_BASE_URL
@@ -76,7 +76,7 @@ class ChatConfig(BaseSettings):
         "CLI accepts as a drop-in ``ANTHROPIC_BASE_URL`` target.  The same "
         "cost/capability rationale as the baseline path applies — ~5x "
         "cheaper than Sonnet at SWE-Bench parity.  Roll back to Sonnet via "
-        "``CHAT_THINKING_STANDARD_MODEL=anthropic/claude-sonnet-4-6`` (then "
+        "``CHAT_THINKING_STANDARD_MODEL=anthropic/claude-sonnet-4.6`` (then "
         "the SDK ``cache_control`` markers reactivate).  Direct-Anthropic "
         "deployments (no OpenRouter) must override to an Anthropic model.",
     )
@@ -460,6 +460,38 @@ class ChatConfig(BaseSettings):
                     "Check file permissions."
                 )
         return v
+
+    @model_validator(mode="after")
+    def _validate_sdk_model_vendor_compatibility(self) -> "ChatConfig":
+        """Fail at config load when an SDK model slug is incompatible with the
+        active routing mode.
+
+        The SDK path's ``_normalize_model_name`` raises ``ValueError`` when
+        a non-Anthropic vendor slug (e.g. ``moonshotai/kimi-k2.6``) is paired
+        with direct-Anthropic mode — but that fires inside the request loop,
+        so a misconfigured deployment would surface a 500 to every user
+        instead of failing visibly at boot.  Mirror the same check here so
+        the operator sees the actionable error before any traffic lands.
+
+        Skipped when ``use_claude_code_subscription=True`` because the
+        subscription path resolves the model to ``None`` (CLI default) and
+        never calls ``_normalize_model_name``.
+        """
+        if self.use_claude_code_subscription:
+            return self
+        if not self.openrouter_active:
+            for field_name in ("thinking_standard_model", "thinking_advanced_model"):
+                value: str = getattr(self, field_name)
+                if "/" in value and value.split("/", 1)[0] != "anthropic":
+                    raise ValueError(
+                        f"Direct-Anthropic mode (use_openrouter=False or "
+                        f"missing OpenRouter credentials) requires an "
+                        f"Anthropic model for {field_name}, got {value!r}. "
+                        f"Set CHAT_THINKING_STANDARD_MODEL / "
+                        f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* "
+                        f"slug, or enable OpenRouter."
+                    )
+        return self
 
     # Prompt paths for different contexts
     PROMPT_PATHS: dict[str, str] = {
