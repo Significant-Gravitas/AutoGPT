@@ -47,6 +47,7 @@ import asyncio
 import contextlib
 import logging
 import math
+import shlex
 from typing import Any, Awaitable, Callable, Literal
 
 from e2b import AsyncSandbox, SandboxLifecycle
@@ -155,10 +156,8 @@ async def _bootstrap_sandbox(sandbox: AsyncSandbox, session_id: str) -> None:
     the model prompts the user to connect.
     """
     try:
-        # AsyncSandbox.commands.run() already executes through a shell, so
-        # the script can be passed straight through — no bash -c wrapper.
         result = await sandbox.commands.run(
-            _SANDBOX_BOOTSTRAP_SCRIPT,
+            f"bash -c {shlex.quote(_SANDBOX_BOOTSTRAP_SCRIPT)}",
             timeout=_BOOTSTRAP_TIMEOUT_SECONDS,
         )
         if result.exit_code != 0:
