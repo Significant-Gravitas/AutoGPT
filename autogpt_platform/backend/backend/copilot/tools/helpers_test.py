@@ -265,14 +265,20 @@ class TestNewlyRegisteredBlockCosts:
     """
 
     def test_perplexity_block_registered(self):
-        from backend.blocks.perplexity import PerplexityBlock
+        from backend.blocks.perplexity import PerplexityBlock, PerplexityModel
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert PerplexityBlock in BLOCK_COSTS
         entries = BLOCK_COSTS[PerplexityBlock]
-        # Sonar, Sonar Pro, Sonar Deep Research all priced distinctly.
-        assert len(entries) == 3
-        assert {e.cost_amount for e in entries} == {1, 5, 10}
+        # Pin model->cost mapping so swapped prices fail the regression test.
+        costs_by_model = {
+            entry.cost_filter["model"]: entry.cost_amount for entry in entries
+        }
+        assert costs_by_model == {
+            PerplexityModel.SONAR: 1,
+            PerplexityModel.SONAR_PRO: 5,
+            PerplexityModel.SONAR_DEEP_RESEARCH: 10,
+        }
 
     def test_fact_checker_block_registered(self):
         from backend.blocks.jina.fact_checker import FactCheckerBlock

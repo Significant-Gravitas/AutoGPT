@@ -757,8 +757,11 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     PerplexityBlock: [
         # Sonar Deep Research: up to $5/1K searches + $8/1M reasoning tokens.
         # Flat-charge 10 credits mirrors the LLM table's SONAR_DEEP_RESEARCH
-        # entry; real per-run cost is also piped into the microdollar counter
-        # when invoked through copilot.
+        # entry. Block execution decrements only the user credit wallet via
+        # spend_credits(); the microdollar rate-limit counter is not touched
+        # for run_block invocations. The actual per-run provider spend is
+        # recorded separately as provider_cost on PlatformCostLog when
+        # OpenRouter reports usage.
         BlockCost(
             cost_amount=10,
             cost_filter={
