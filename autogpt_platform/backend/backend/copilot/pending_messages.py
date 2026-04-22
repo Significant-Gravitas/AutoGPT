@@ -247,21 +247,11 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
     follow-ups on the floor instead of running them (the bug fixed by commit
     b64be73). The atomic ``LPOP`` drain at turn start is the primary consumer;
     anything pushed after the drain window belongs to the next turn by
-    definition.
-
-    Legitimate callers:
-
-    - Pod cleanup fail-close when a turn can't be resumed on another pod —
-      the user will retry and dropping the buffer is better than silently
-      replaying messages against a different turn later.
-    - Operator/debug escape hatch for a stuck session.
+    definition. Retained only as an operator/debug escape hatch for manually
+    clearing a stuck session and as a fixture in the unit tests.
     """
     redis = await get_redis_async()
-    # Delete BOTH the primary buffer and the persist queue. If a turn drained
-    # follow-ups into the persist queue and then fail-closed before they were
-    # consumed, leaving the persist entries behind would attach stale
-    # follow-ups to a later unrelated tool result on the same session.
-    await redis.delete(_buffer_key(session_id), _persist_queue_key(session_id))
+    await redis.delete(_buffer_key(session_id))
 
 
 # Per-message and total-block caps for inline tool-boundary injection.

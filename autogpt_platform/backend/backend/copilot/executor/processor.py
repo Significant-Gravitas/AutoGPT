@@ -35,11 +35,19 @@ SHUTDOWN_ERROR_MESSAGE = (
     "Copilot executor shut down before this turn finished. Please retry."
 )
 
-# Max time execute() blocks after calling future.cancel() before falling back
-# to the sync fail-close path. Gives _execute_async's own finally a chance to
+# Max time execute() blocks after calling future.cancel() / when draining a
+# soon-to-be-cancelled future. Gives _execute_async's own finally a chance to
 # publish the accurate terminal state over the Redis CAS; long enough to let
 # an in-flight Redis call settle, short enough that shutdown doesn't stall.
 _CANCEL_GRACE_SECONDS = 5.0
+
+# Max time the sync safety net itself spends on a single Redis CAS. Without
+# this bound the whole point of ``sync_fail_close_session`` is defeated —
+# ``mark_session_completed`` would hang on the same broken Redis that caused
+# the original failure. On timeout we give up silently; worst case the
+# session stays ``running`` until the stale-session watchdog reaps it, but
+# at least the pool worker thread isn't blocked forever.
+_FAIL_CLOSE_REDIS_TIMEOUT = 10.0
 
 
 def sync_fail_close_session(
@@ -57,12 +65,26 @@ def sync_fail_close_session(
     ``execution_loop`` — the worker loop is the one we suspect of being
     broken (dead thread, stale Redis client, etc.). A new loop gives us a
     new thread-local Redis client that doesn't inherit the bad state.
+
+    The inner ``asyncio.wait_for`` bounds the Redis call so a genuinely
+    unreachable Redis can't hang the safety net for the full redis-py
+    default TCP timeout.
     """
-    try:
-        asyncio.run(
+
+    async def _bounded() -> None:
+        await asyncio.wait_for(
             stream_registry.mark_session_completed(
                 session_id, error_message=SHUTDOWN_ERROR_MESSAGE
-            )
+            ),
+            timeout=_FAIL_CLOSE_REDIS_TIMEOUT,
+        )
+
+    try:
+        asyncio.run(_bounded())
+    except asyncio.TimeoutError:
+        log.warning(
+            f"sync fail-close timed out after {_FAIL_CLOSE_REDIS_TIMEOUT}s "
+            f"(session={session_id})"
         )
     except Exception as e:
         log.warning(f"sync fail-close mark_session_completed failed: {e}")
