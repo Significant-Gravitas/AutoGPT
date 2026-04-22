@@ -400,13 +400,18 @@ class TestNormalizeModelName:
     def test_strips_anthropic_prefix(self, _direct_anthropic_config):
         assert _normalize_model_name("anthropic/claude-opus-4-6") == "claude-opus-4-6"
 
-    def test_strips_openai_prefix(self, _direct_anthropic_config):
-        assert _normalize_model_name("openai/gpt-4o") == "gpt-4o"
-
-    def test_strips_google_prefix(self, _direct_anthropic_config):
-        # Direct-Anthropic mode strips the prefix AND converts version dots
-        # to hyphens (Anthropic API rejects dot-versioned model IDs).
-        assert _normalize_model_name("google/gemini-2.5-flash") == "gemini-2-5-flash"
+    def test_rejects_non_anthropic_vendor_in_direct_mode(
+        self, _direct_anthropic_config
+    ):
+        """Direct-Anthropic mode must fail loudly on non-Anthropic vendor
+        slugs — silent strip would send e.g. ``gpt-4o`` to the Anthropic
+        API and produce an opaque model_not_found error."""
+        with pytest.raises(ValueError, match="requires an Anthropic model"):
+            _normalize_model_name("openai/gpt-4o")
+        with pytest.raises(ValueError, match="requires an Anthropic model"):
+            _normalize_model_name("moonshotai/kimi-k2.6")
+        with pytest.raises(ValueError, match="requires an Anthropic model"):
+            _normalize_model_name("google/gemini-2.5-flash")
 
     def test_already_normalized_unchanged(self, _direct_anthropic_config):
         assert (

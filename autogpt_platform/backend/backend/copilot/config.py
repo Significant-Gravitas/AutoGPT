@@ -256,9 +256,10 @@ class ChatConfig(BaseSettings):
         Field(
             default=None,
             description="Thinking effort level: 'low', 'medium', 'high', 'max', or None. "
-            "Only applies to models with extended thinking (Opus). "
-            "Sonnet doesn't have extended thinking — setting effort on Sonnet "
-            "can cause <internal_reasoning> tag leaks. "
+            "Applies to models that emit a reasoning channel — Opus (extended "
+            "thinking) and Kimi K2.6 (OpenRouter ``reasoning`` extension lit "
+            "up by #12871).  Sonnet does not have extended thinking — setting "
+            "effort on Sonnet can cause <internal_reasoning> tag leaks. "
             "None = let the model decide. Override via CHAT_CLAUDE_AGENT_THINKING_EFFORT.",
         )
     )

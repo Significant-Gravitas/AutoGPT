@@ -690,13 +690,25 @@ def _normalize_model_name(raw_model: str) -> str:
     2. **Direct Anthropic** — strip the OpenRouter ``anthropic/`` prefix
        and convert dots to hyphens (``"claude-opus-4.6"`` →
        ``"claude-opus-4-6"``) since the Anthropic Messages API rejects
-       both the prefix and dot-separated versions.
+       both the prefix and dot-separated versions.  Raises ``ValueError``
+       when a non-Anthropic vendor slug is paired with direct-Anthropic
+       mode — silently stripping ``moonshotai/`` would send ``kimi-k2.6``
+       to the Anthropic API and produce an opaque ``model_not_found``
+       error far from the misconfiguration source.
     """
     if config.openrouter_active:
         return raw_model
     model = raw_model
     if "/" in model:
-        model = model.split("/", 1)[1]
+        vendor, model = model.split("/", 1)
+        if vendor != "anthropic":
+            raise ValueError(
+                f"Direct-Anthropic mode (use_openrouter=False or missing "
+                f"OpenRouter credentials) requires an Anthropic model, got "
+                f"vendor={vendor!r} from model={raw_model!r}. Set "
+                f"CHAT_THINKING_STANDARD_MODEL/CHAT_THINKING_ADVANCED_MODEL "
+                f"to an anthropic/* slug, or enable OpenRouter."
+            )
     return model.replace(".", "-")
 
 
@@ -3866,7 +3878,13 @@ async def stream_chat_completion_sdk(
             log_prefix=log_prefix,
             cost_usd=turn_cost_usd,
             model=sdk_model or config.thinking_standard_model,
-            provider="anthropic",
+            # ``provider`` is a label on the cost-analytics row, not the
+            # cost source — that always comes from
+            # ``ResultMessage.total_cost_usd`` reported by the SDK.  Track
+            # the actual upstream so the row matches reality regardless of
+            # which vendor's model the slug points at: OpenRouter when
+            # ``openrouter_active``, Anthropic otherwise.
+            provider="open_router" if config.openrouter_active else "anthropic",
         )
 
         # --- Persist session messages ---
