@@ -478,10 +478,11 @@ class TestBaselineReasoningEmitterRenderFlag:
         assert events == []
         assert emitter.is_open is False
 
-    def test_render_off_skips_persistence(self):
-        """When render is off the emitter must NOT append a ``role="reasoning"``
-        row to ``session_messages`` — hydration would re-render it, undoing
-        the operator's intent."""
+    def test_render_off_still_persists(self):
+        """Persistence is decoupled from the render flag — session
+        transcript always keeps the ``role="reasoning"`` row so audit
+        and ``--resume``-equivalent replay never lose thinking text.
+        The frontend gates rendering separately."""
         session: list[ChatMessage] = []
         emitter = BaselineReasoningEmitter(session, render_in_ui=False)
 
@@ -489,7 +490,9 @@ class TestBaselineReasoningEmitterRenderFlag:
         emitter.on_delta(_delta(reasoning="part two"))
         emitter.close()
 
-        assert session == []
+        assert len(session) == 1
+        assert session[0].role == "reasoning"
+        assert session[0].content == "part one part two"
 
     def test_render_off_rotates_block_id_between_sessions(self):
         """Even with wire events silenced the block id must rotate on close,
