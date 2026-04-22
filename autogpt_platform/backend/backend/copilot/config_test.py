@@ -52,6 +52,11 @@ class TestOpenrouterActive:
             use_openrouter=False,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
+            # Pin SDK slugs to anthropic/* so the new
+            # _validate_sdk_model_vendor_compatibility allows construction
+            # in explicit direct-Anthropic mode.
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         assert cfg.openrouter_active is False
 
