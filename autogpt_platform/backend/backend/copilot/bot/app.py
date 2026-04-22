@@ -8,7 +8,13 @@ import logging
 from concurrent.futures import Future
 
 from backend.platform_linking.models import Platform
-from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    UnhealthyServiceError,
+    endpoint_to_async,
+    expose,
+)
 from backend.util.settings import Settings
 
 from .adapters.base import PlatformAdapter
@@ -27,6 +33,14 @@ _NO_ADAPTER_SLEEP_SECONDS = 3600
 class CoPilotChatBridge(AppService):
     """Bridges AutoPilot to external chat platforms via per-platform adapters."""
 
+    def __init__(self):
+        super().__init__()
+        # Flipped to True once `_run_adapters` reaches its blocking gather
+        # (or the no-adapter idle loop), and back to False if the task exits
+        # for any reason. Consumed by `health_check` so orchestrators can
+        # restart the pod when the bridge is dead-but-listening.
+        self._adapters_healthy = False
+
     @classmethod
     def get_port(cls) -> int:
         return Settings().config.copilot_chat_bridge_port
@@ -35,7 +49,7 @@ class CoPilotChatBridge(AppService):
         future = asyncio.run_coroutine_threadsafe(
             self._run_adapters(), self.shared_event_loop
         )
-        future.add_done_callback(_log_adapters_exit)
+        future.add_done_callback(self._on_adapters_exit)
         super().run_service()
 
     async def _run_adapters(self) -> None:
@@ -48,6 +62,7 @@ class CoPilotChatBridge(AppService):
                 "Set AUTOPILOT_BOT_DISCORD_TOKEN (or another platform token) to "
                 "enable an adapter."
             )
+            self._adapters_healthy = True
             try:
                 while True:
                     await asyncio.sleep(_NO_ADAPTER_SLEEP_SECONDS)
@@ -58,11 +73,31 @@ class CoPilotChatBridge(AppService):
         for adapter in adapters:
             adapter.on_message(handler.handle)
 
+        self._adapters_healthy = True
         try:
             await asyncio.gather(*(a.start() for a in adapters))
         finally:
             await asyncio.gather(*(a.stop() for a in adapters), return_exceptions=True)
             await api.close()
+
+    def _on_adapters_exit(self, future: "Future[None]") -> None:
+        """Surface exceptions from `_run_adapters` and flip the health flag.
+
+        `run_coroutine_threadsafe` would otherwise swallow the exception
+        into the returned future, leaving the FastAPI health endpoint
+        cheerfully reporting OK on a dead bridge.
+        """
+        self._adapters_healthy = False
+        exc = future.exception()
+        if exc is not None:
+            logger.error("CoPilotChatBridge adapters crashed: %r", exc, exc_info=exc)
+        else:
+            logger.warning("CoPilotChatBridge adapters exited without error")
+
+    async def health_check(self) -> str:
+        if not self._adapters_healthy:
+            raise UnhealthyServiceError("CoPilotChatBridge adapter task is not running")
+        return await super().health_check()
 
     @expose
     async def send_message_to_channel(
@@ -105,16 +140,6 @@ class CoPilotChatBridgeClient(AppServiceClient):
         CoPilotChatBridge.send_message_to_channel
     )
     send_dm = endpoint_to_async(CoPilotChatBridge.send_dm)
-
-
-def _log_adapters_exit(future: "Future[None]") -> None:
-    """Surface exceptions from ``_run_adapters`` — the coroutine is launched
-    via ``run_coroutine_threadsafe``, which swallows them into the returned
-    future otherwise.
-    """
-    exc = future.exception()
-    if exc is not None:
-        logger.error("CoPilotChatBridge adapters crashed: %r", exc, exc_info=exc)
 
 
 def _build_adapters(api: PlatformAPI) -> list[PlatformAdapter]:

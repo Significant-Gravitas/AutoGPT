@@ -193,10 +193,15 @@ class DiscordAdapter(PlatformAdapter):
             return "thread"
         return "channel"
 
-    @staticmethod
-    def _strip_mentions(message: discord.Message) -> str:
+    def _strip_mentions(self, message: discord.Message) -> str:
+        """Strip the bot's own mention; replace other users' raw mention
+        tokens with `@displayname` so the LLM keeps the context.
+        """
         text = message.content
+        bot_id = self._client.user.id if self._client.user else None
         for user in message.mentions:
-            text = text.replace(f"<@{user.id}>", "")
-            text = text.replace(f"<@!{user.id}>", "")
+            raw_tokens = (f"<@{user.id}>", f"<@!{user.id}>")
+            replacement = "" if user.id == bot_id else f"@{user.display_name}"
+            for token in raw_tokens:
+                text = text.replace(token, replacement)
         return text.strip()
