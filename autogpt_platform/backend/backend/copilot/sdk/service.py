@@ -4028,6 +4028,20 @@ async def stream_chat_completion_sdk(
             and collected_gen_ids
         )
 
+        # CLI project dir — used by the reconcile task to sweep for
+        # compaction subagents' gen-IDs.  ``sdk_cwd`` is the per-session
+        # CLI working directory; the CLI encodes it into the project-dir
+        # name the same way ``encode_cwd_for_cli`` does, and writes
+        # the main transcript + any ``subagents/`` alongside it under
+        # ``~/.claude/projects/<encoded>/``.  Empty when sdk_cwd isn't
+        # set (shouldn't happen in practice for SDK turns).
+        cli_project_dir: str | None = None
+        if sdk_cwd:
+            cli_project_dir = os.path.join(
+                os.path.expanduser("~/.claude/projects"),
+                encode_cwd_for_cli(sdk_cwd),
+            )
+
         if _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
             # task that queries OpenRouter's authoritative
@@ -4064,6 +4078,7 @@ async def stream_chat_completion_sdk(
                     cache_read_tokens=turn_cache_read_tokens,
                     cache_creation_tokens=turn_cache_creation_tokens,
                     generation_ids=collected_gen_ids,
+                    cli_project_dir=cli_project_dir,
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,

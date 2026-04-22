@@ -61,6 +61,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=[],
+                cli_project_dir=None,
                 fallback_cost_usd=0.05,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -84,6 +85,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-1"],
+                cli_project_dir=None,
                 fallback_cost_usd=0.02,
                 api_key=None,
                 log_prefix="[test]",
@@ -115,6 +117,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-1776842410"],
+                cli_project_dir=None,
                 fallback_cost_usd=0.01858,  # rate-card estimate, deliberately wrong
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -155,6 +158,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-a", "gen-b"],
+                cli_project_dir=None,
                 fallback_cost_usd=0.037,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -198,6 +202,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-a", "gen-b"],
+                cli_project_dir=None,
                 fallback_cost_usd=fallback,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -232,6 +237,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-a"],
+                cli_project_dir=None,
                 fallback_cost_usd=0.02,
                 api_key="sk-bad",
                 log_prefix="[test]",
@@ -273,6 +279,7 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-a"],
+                cli_project_dir=None,
                 fallback_cost_usd=0.05,
                 api_key="sk-or-test",
                 log_prefix="[test]",
@@ -306,9 +313,101 @@ class TestRecordTurnCostFromOpenRouter:
                 cache_read_tokens=0,
                 cache_creation_tokens=0,
                 generation_ids=["gen-a"],
+                cli_project_dir=None,
                 fallback_cost_usd=fallback,
                 api_key="sk-or-test",
                 log_prefix="[test]",
             )
         mock_persist.assert_called_once()
         assert mock_persist.call_args.kwargs["cost_usd"] == fallback
+
+    @pytest.mark.asyncio
+    async def test_compaction_subagent_gen_ids_are_swept(self, tmp_path):
+        """CLI-internal compaction spawns a subagent JSONL with its own
+        ``gen-`` IDs that the live adapter doesn't see.  When
+        ``cli_project_dir`` is supplied the reconcile walks the tree,
+        discovers the compaction gen-IDs, and reconciles the full cost."""
+        main = tmp_path / "abc123.jsonl"
+        main.write_text(
+            '{"type":"assistant","message":{"id":"gen-main-1","content":[]}}\n'
+        )
+        sub_dir = tmp_path / "subagents"
+        sub_dir.mkdir()
+        (sub_dir / "agent-acompact-xyz.jsonl").write_text(
+            '{"type":"assistant","message":{"id":"gen-compact-1","content":[]}}\n'
+            '{"type":"assistant","message":{"id":"gen-compact-2","content":[]}}\n'
+        )
+
+        costs_by_id = {
+            "gen-main-1": 0.020,
+            "gen-compact-1": 0.005,
+            "gen-compact-2": 0.003,
+        }
+
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
+            gen_id = kwargs.get("params", {}).get("id")
+            return httpx.Response(
+                200, json=_mock_generation_response(costs_by_id[gen_id])
+            )
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="anthropic/claude-opus-4.7",
+                prompt_tokens=1000,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-main-1"],
+                cli_project_dir=str(tmp_path),
+                fallback_cost_usd=0.05,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+            )
+        mock_persist.assert_called_once()
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(
+            sum(costs_by_id.values()), rel=1e-9
+        )
+
+    @pytest.mark.asyncio
+    async def test_compaction_sweep_no_subagents_is_noop(self, tmp_path):
+        """No compaction happened → reconcile uses only the caller's
+        gen-IDs, same as when cli_project_dir is None."""
+        main = tmp_path / "abc123.jsonl"
+        main.write_text(
+            '{"type":"assistant","message":{"id":"gen-main-1","content":[]}}\n'
+        )
+
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
+            return httpx.Response(200, json=_mock_generation_response(0.02))
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=1000,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-main-1"],
+                cli_project_dir=str(tmp_path),
+                fallback_cost_usd=0.05,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+            )
+        mock_persist.assert_called_once()
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(0.02)

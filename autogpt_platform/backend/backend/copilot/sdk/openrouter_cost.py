@@ -28,11 +28,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
 
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.util import json
 
 if TYPE_CHECKING:
     from backend.copilot.model import ChatSession
@@ -149,6 +152,75 @@ async def _fetch_generation_cost(
     return None
 
 
+def _gen_ids_from_jsonl(path: Path) -> set[str]:
+    """Extract ``gen-`` message IDs from every assistant entry in a
+    Claude CLI JSONL file.
+
+    Tolerant of malformed lines: single bad JSON object doesn't block
+    the whole file.  Also reads ``redacted_thinking`` / ``thinking``
+    entries that share an ID with their parent (via ``jq -u`` in the
+    CLI) and dedups by caller.
+    """
+    ids: set[str] = set()
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                entry = json.loads(line, fallback=None)
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("type") != "assistant":
+                    continue
+                message = entry.get("message")
+                if not isinstance(message, dict):
+                    continue
+                msg_id = message.get("id")
+                if isinstance(msg_id, str) and msg_id.startswith("gen-"):
+                    ids.add(msg_id)
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.debug(
+            "Failed to scan JSONL for gen-IDs: path=%s err=%s",
+            path,
+            exc,
+        )
+    return ids
+
+
+def _discover_turn_gen_ids(project_dir: Path, known: list[str]) -> list[str]:
+    """Scan a CLI project directory for every ``gen-`` ID seen this turn.
+
+    The main session transcript (``<session_id>.jsonl``) carries the
+    user-visible LLM rounds — those IDs are already on ``known`` because
+    we captured them live from ``AssistantMessage.message_id``.  What's
+    NOT on ``known`` is the CLI's internal compaction LLM calls: when
+    the CLI compacts mid-stream it spawns a subagent JSONL under
+    ``<project_dir>/subagents/agent-acompact-*.jsonl`` whose own
+    ``gen-`` IDs we never see in the main stream.  Those calls are
+    billed by OpenRouter but would otherwise be invisible to our
+    reconcile.
+
+    Walks every ``*.jsonl`` under ``project_dir`` (including the
+    ``subagents/`` subdir), extracts all ``gen-`` IDs, merges with
+    ``known``, preserves ``known`` ordering so the main-turn IDs come
+    first.
+    """
+    merged: list[str] = list(known)
+    seen = set(merged)
+    if not project_dir.exists():
+        return merged
+    try:
+        for jsonl in project_dir.rglob("*.jsonl"):
+            for gen_id in _gen_ids_from_jsonl(jsonl):
+                if gen_id not in seen:
+                    seen.add(gen_id)
+                    merged.append(gen_id)
+    except OSError as exc:
+        logger.debug("Failed to walk project_dir=%s: %s", project_dir, exc)
+    return merged
+
+
 async def record_turn_cost_from_openrouter(
     *,
     session: "ChatSession",
@@ -159,6 +231,7 @@ async def record_turn_cost_from_openrouter(
     cache_read_tokens: int,
     cache_creation_tokens: int,
     generation_ids: list[str],
+    cli_project_dir: str | None,
     fallback_cost_usd: float | None,
     api_key: str | None,
     log_prefix: str,
@@ -184,13 +257,34 @@ async def record_turn_cost_from_openrouter(
     completely empty.  Keeps behaviour at-worst equivalent to the
     rate-card estimate that came before this task existed.
     """
-    if not generation_ids:
-        return
     if not api_key:
         logger.debug(
             "%s OpenRouter cost record skipped: no API key available",
             log_prefix,
         )
+        return
+
+    # Merge in any gen-IDs from CLI subagent JSONLs the live stream
+    # didn't surface — chiefly SDK-internal compaction, which spawns a
+    # summarisation LLM call under ``<project_dir>/subagents/...`` that
+    # OpenRouter bills but doesn't emit via our main adapter.  Safe no-op
+    # when no compaction happened (the dir is empty of subagents) or the
+    # CLI wrote nothing there.
+    if cli_project_dir:
+        merged_ids = _discover_turn_gen_ids(
+            Path(os.path.expanduser(cli_project_dir)), generation_ids
+        )
+        if len(merged_ids) != len(generation_ids):
+            logger.info(
+                "%s[cost-record] discovered %d additional gen-IDs in "
+                "CLI project dir (compaction / subagent) — reconcile "
+                "covers all",
+                log_prefix,
+                len(merged_ids) - len(generation_ids),
+            )
+        generation_ids = merged_ids
+
+    if not generation_ids:
         return
 
     try:
