@@ -104,3 +104,34 @@ async def test_revoke_tokens_propagates_http_failure(mocker: MockerFixture):
     result = await _handler().revoke_tokens(_creds())
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_revoke_tokens_uses_bounded_retries(mocker: MockerFixture):
+    """Cursor Medium (thread PRRT_kwDOJKSTjM58rtx1): the platform's
+    ``Requests`` helper retries *indefinitely* on 429/5xx by default
+    (no ``stop`` condition in tenacity unless ``retry_max_attempts`` is
+    passed). If Google's revoke endpoint transiently returns a 429 or
+    5xx, ``revoke_tokens`` would hang forever and block the credential
+    deletion API call.
+
+    Pin the bound: ``Requests`` must be constructed with a finite
+    ``retry_max_attempts`` so revoke always terminates."""
+    mock_response = MagicMock()
+    mock_response.ok = True
+    mock_post = AsyncMock(return_value=mock_response)
+    mock_requests_cls = mocker.patch(
+        "backend.integrations.oauth.google.Requests",
+        return_value=MagicMock(post=mock_post),
+    )
+
+    await _handler().revoke_tokens(_creds())
+
+    assert mock_requests_cls.call_count == 1
+    _, kwargs = mock_requests_cls.call_args
+    retry_max_attempts = kwargs.get("retry_max_attempts")
+    assert retry_max_attempts is not None, (
+        "Requests was constructed without retry_max_attempts — retries are "
+        "unbounded, and a transient 429/5xx from Google would hang revoke."
+    )
+    assert retry_max_attempts >= 1
