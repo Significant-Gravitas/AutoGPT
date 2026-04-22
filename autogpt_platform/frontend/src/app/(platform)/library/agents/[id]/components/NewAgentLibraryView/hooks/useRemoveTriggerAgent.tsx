@@ -39,7 +39,7 @@ export function useRemoveTriggerAgent({
   const queryClient = useQueryClient();
   const [showDialog, setShowDialog] = useState(false);
 
-  const { mutateAsync: deleteLibraryAgent, isPending } =
+  const { mutate: deleteLibraryAgent, isPending } =
     useDeleteV2DeleteLibraryAgent({
       mutation: {
         onSuccess: async () => {

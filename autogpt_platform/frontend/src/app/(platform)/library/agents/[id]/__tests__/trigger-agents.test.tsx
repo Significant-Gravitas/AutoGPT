@@ -1,5 +1,6 @@
 import {
   getDeleteV2DeleteLibraryAgentMockHandler,
+  getDeleteV2DeleteLibraryAgentMockHandler422,
   getGetV2GetLibraryAgentMockHandler,
   getGetV2GetLibraryAgentResponseMock,
   getGetV2ListTriggerAgentsMockHandler,
@@ -46,6 +47,13 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
     isUserLoading: false,
     supabase: {},
   }),
+}));
+
+const mockToast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  useToast: () => ({ toast: mockToast, toasts: [], dismiss: vi.fn() }),
+  toast: mockToast,
+  useToastOnFail: () => vi.fn(),
 }));
 
 // Per-test render wrapper so we can set the nuqs initial URL state
@@ -108,6 +116,7 @@ const emptySchedulesHandler =
 describe("Library agent view — trigger agents", () => {
   beforeEach(() => {
     server.resetHandlers();
+    mockToast.mockClear();
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
@@ -381,5 +390,54 @@ describe("Library agent view — trigger agents", () => {
       expect(deleteCalls).toContain(TRIGGER_ID);
     });
     expect(deleteCalls).not.toContain(PARENT_ID);
+  });
+
+  test("delete error shows a destructive toast via the hook's onError path", async () => {
+    const user = userEvent.setup();
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Error Case",
+      is_hidden: true,
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptyPresetsHandler,
+      emptySchedulesHandler,
+      getGetV2ListTriggerAgentsMockHandler([triggerAgent]),
+      // Backend rejects the delete with 422 — exercises the hook's
+      // onError path and proves the mutation doesn't crash with an
+      // unhandled rejection when the request fails.
+      getDeleteV2DeleteLibraryAgentMockHandler422(),
+    );
+
+    renderWithInitialParams(
+      <NewAgentLibraryView />,
+      `activeTab=triggers&activeItem=${TRIGGER_ID}`,
+    );
+
+    await screen.findByText("Error Case");
+
+    const removeButton = await screen.findByRole("button", {
+      name: /remove trigger/i,
+    });
+    await user.click(removeButton);
+
+    const confirmButton = await screen.findByRole("button", {
+      name: /^remove trigger$/i,
+    });
+    await user.click(confirmButton);
+
+    // The hook's onError called toast() with the failure title —
+    // a success would produce a different title ("Trigger removed").
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: expect.stringMatching(/failed to remove trigger/i),
+          variant: "destructive",
+        }),
+      );
+    });
   });
 });
