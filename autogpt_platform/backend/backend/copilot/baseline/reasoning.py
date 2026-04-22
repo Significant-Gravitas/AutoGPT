@@ -50,13 +50,13 @@ _VISIBLE_REASONING_TYPES = frozenset({"reasoning.text", "reasoning.summary"})
 # (~4,700 deltas per turn in one observed session, vs ~28 for Sonnet); without
 # coalescing, every chunk is one Redis ``xadd`` + one SSE frame + one React
 # re-render of the non-virtualised chat list, which paint-storms the browser
-# main thread and freezes the UI.  Batching into ~32-char / ~40 ms windows
-# cuts the event rate ~100x while staying snappy enough that the Reasoning
+# main thread and freezes the UI.  Batching into ~64-char / ~50 ms windows
+# cuts the event rate ~150x while staying snappy enough that the Reasoning
 # collapse still feels live (well under the ~100 ms perceptual threshold).
 # Per-delta persistence to ``session.messages`` stays granular — we only
 # coalesce the *wire* emission.
-_COALESCE_MIN_CHARS = 32
-_COALESCE_MAX_INTERVAL_MS = 40.0
+_COALESCE_MIN_CHARS = 64
+_COALESCE_MAX_INTERVAL_MS = 50.0
 
 
 class ReasoningDetail(BaseModel):
