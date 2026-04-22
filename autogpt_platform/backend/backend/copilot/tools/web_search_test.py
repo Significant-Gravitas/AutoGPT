@@ -168,10 +168,7 @@ class TestExtractResults:
             answer="Sonar's synthesised, web-grounded answer text.",
             citations=[{"title": "t", "url": "https://e"}],
         )
-        assert (
-            _extract_answer(resp)
-            == "Sonar's synthesised, web-grounded answer text."
-        )
+        assert _extract_answer(resp) == "Sonar's synthesised, web-grounded answer text."
 
     def test_extract_answer_returns_empty_when_no_choices(self):
         resp = ChatCompletion.model_construct(
