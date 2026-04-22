@@ -54,6 +54,24 @@ class ManagedCredentialProvider(ABC):
     async def deprovision(self, user_id: str, credential: Credentials) -> None:
         """Revoke external resources during account deletion."""
 
+    async def post_provision(
+        self,
+        user_id: str,
+        store: IntegrationCredentialsStore,
+        credential: Credentials,
+    ) -> None:
+        """Optional cleanup hook run *after* the credential is durably stored.
+
+        Runs inside the same provision lock as ``provision`` + the credential
+        upsert, so subclasses can safely mutate other per-user state
+        (e.g. clear a legacy migration field) knowing the new managed
+        credential is already durable — a failure here does not cause data
+        loss, because the managed credential is already in place and the
+        next provision call short-circuits on ``has_managed_credential``.
+        Default: no-op.
+        """
+        _ = user_id, store, credential
+
 
 # ---------------------------------------------------------------------------
 # Registry
@@ -135,6 +153,21 @@ async def _provision_under_lock(
             return True
         credential = await provider.provision(user_id)
         await store.add_managed_credential(user_id, credential)
+        # Run the post-provision cleanup hook only after the managed
+        # credential is durably stored.  If it raises, the managed
+        # credential is still in place and future provision calls
+        # short-circuit on has_managed_credential — no duplicate
+        # upstream resource, no data loss on migration paths.
+        try:
+            await provider.post_provision(user_id, store, credential)
+        except Exception:
+            logger.warning(
+                "post_provision hook failed for provider=%s user=%s; "
+                "managed credential is persisted so retry is safe",
+                name,
+                user_id,
+                exc_info=True,
+            )
         logger.info(
             "Provisioned managed credential for provider=%s user=%s",
             name,

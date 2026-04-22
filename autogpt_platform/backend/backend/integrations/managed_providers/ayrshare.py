@@ -64,7 +64,7 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
         # and keeps the module importable at startup from
         # managed_providers/__init__.py.
         store = IntegrationCredentialsStore()
-        profile_key = await _get_or_create_profile_key(user_id, store)
+        profile_key = await _read_or_create_profile_key(user_id, store)
         return APIKeyCredentials(
             provider=self.provider_name,
             title="Ayrshare (managed by AutoGPT)",
@@ -84,27 +84,55 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
             user_id,
         )
 
+    async def post_provision(
+        self,
+        user_id: str,
+        store: IntegrationCredentialsStore,
+        credential: Credentials,
+    ) -> None:
+        """Clear the legacy ``ayrshare_profile_key`` side-channel after migration.
 
-async def _get_or_create_profile_key(
+        Runs only after the managed credential is durably stored.  If the
+        legacy field is still populated, the profile key now lives in two
+        places — clear the old one so the eventual schema removal has
+        nothing to chase.  A failure here is harmless: the managed
+        credential is already persisted, subsequent provision calls
+        short-circuit, and the legacy field stays until the next successful
+        migration attempt.
+        """
+        _ = credential  # unused; the side channel is provider-specific
+        async with store.edit_user_integrations(user_id) as user_integrations:
+            if user_integrations.managed_credentials.ayrshare_profile_key is not None:
+                logger.debug(
+                    "[ayrshare] Clearing legacy profile_key for user %s", user_id
+                )
+                user_integrations.managed_credentials.ayrshare_profile_key = None
+
+
+async def _read_or_create_profile_key(
     user_id: str, store: IntegrationCredentialsStore
 ) -> str:
     """Return the Ayrshare profile key for *user_id*, creating one if needed.
 
-    Reuses a legacy ``managed_credentials.ayrshare_profile_key`` entry when
-    present (pre-migration data) and clears the legacy field in the same
-    write, so the follow-up removal of that field has nothing to chase.
-    Otherwise creates a fresh profile via the Ayrshare API.
+    **Read-only for the legacy field.**  When
+    ``managed_credentials.ayrshare_profile_key`` is populated (pre-migration
+    data), it is reused verbatim so existing linked socials keep working.
+    The legacy field is *not* cleared here — that happens in
+    :meth:`AyrshareManagedProvider.post_provision`, which runs only after
+    the managed credential is durably stored.  If this function cleared
+    eagerly and the subsequent ``add_managed_credential`` failed, a retry
+    would see an empty legacy field and create a *fresh* Ayrshare profile,
+    orphaning the user's linked social accounts.
     """
-    async with store.edit_user_integrations(user_id) as user_integrations:
-        legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
-        if legacy_key:
-            logger.debug("[ayrshare] Migrating legacy profile key for user %s", user_id)
-            user_integrations.managed_credentials.ayrshare_profile_key = None
-            return (
-                legacy_key.get_secret_value()
-                if isinstance(legacy_key, SecretStr)
-                else str(legacy_key)
-            )
+    user_integrations = await store._get_user_integrations(user_id)
+    legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
+    if legacy_key:
+        logger.debug("[ayrshare] Reusing legacy profile key for user %s", user_id)
+        return (
+            legacy_key.get_secret_value()
+            if isinstance(legacy_key, SecretStr)
+            else str(legacy_key)
+        )
 
     try:
         client = AyrshareClient()
