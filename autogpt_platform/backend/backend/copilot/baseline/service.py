@@ -82,7 +82,7 @@ from backend.copilot.service import (
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.tools import execute_tool, get_available_tools
+from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -1624,7 +1624,10 @@ async def stream_chat_completion_baseline(
                         openai_messages[i]["content"] = text
                 break
 
-    tools = get_available_tools()
+    disabled_tool_groups: list[ToolGroup] = []
+    if not graphiti_enabled:
+        disabled_tool_groups.append("graphiti")
+    tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---
     if permissions is not None:

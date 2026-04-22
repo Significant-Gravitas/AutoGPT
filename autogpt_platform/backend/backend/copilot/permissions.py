@@ -52,9 +52,14 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from backend.copilot.tools import ToolGroup
 
 # ---------------------------------------------------------------------------
 # Constants — single source of truth for all accepted tool names
@@ -370,13 +375,17 @@ def apply_tool_permissions(
     permissions: CopilotPermissions,
     *,
     use_e2b: bool = False,
+    disabled_groups: Iterable[ToolGroup] = (),
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
     Takes the base allowed/disallowed lists from
     :func:`~backend.copilot.sdk.tool_adapter.get_copilot_tool_names` /
     :func:`~backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools` and
-    applies *permissions* on top.
+    applies *permissions* on top.  Tools belonging to any *disabled_groups*
+    are hidden from the base allowed list — use this to gate capability
+    groups (e.g. ``"graphiti"`` when the memory backend is off for the
+    current user).
 
     Returns:
         ``(allowed_tools, extra_disallowed)`` where *allowed_tools* is the
@@ -393,7 +402,9 @@ def apply_tool_permissions(
     )
     from backend.copilot.tools import TOOL_REGISTRY
 
-    base_allowed = get_copilot_tool_names(use_e2b=use_e2b)
+    base_allowed = get_copilot_tool_names(
+        use_e2b=use_e2b, disabled_groups=disabled_groups
+    )
     base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
     if permissions.is_empty():
