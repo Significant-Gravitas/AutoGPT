@@ -85,7 +85,7 @@ describe("RateLimitGate", () => {
 
   it("opens the reset dialog when usage has a positive reset cost", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: { reset_cost: 50, weekly: { limit: 100, used: 100 } },
+      data: { reset_cost: 50, weekly: { percent_used: 100 } },
       isSuccess: true,
       isError: false,
     });
@@ -132,7 +132,7 @@ describe("RateLimitGate", () => {
   it("falls back to a toast when reset cost is non-positive (credit reset unavailable)", () => {
     const onDismiss = vi.fn();
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: { reset_cost: 0, weekly: { limit: 100, used: 100 } },
+      data: { reset_cost: 0, weekly: { percent_used: 100 } },
       isSuccess: true,
       isError: false,
     });
