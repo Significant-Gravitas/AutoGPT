@@ -2,7 +2,7 @@
 name: pr-polish
 description: Alternate /pr-review and /pr-address on a PR until the PR is truly mergeable — no new review findings, zero unresolved inline threads, zero unaddressed top-level reviews or issue comments, all CI checks green, and two consecutive quiet polls after CI settles. Use when the user wants a PR polished to merge-ready without setting a fixed number of rounds.
 user-invocable: true
-args: "[PR number or URL] — if omitted, finds PR for current branch."
+argument-hint: "[PR number or URL] — if omitted, finds PR for current branch."
 metadata:
   author: autogpt-team
   version: "1.0.0"
@@ -178,6 +178,18 @@ Skill(skill="pr-address", args=pr_url)
 ```
 
 After each child invocation, re-query GitHub state directly — never trust a summary for the stop condition. The orchestrator's `ORCHESTRATOR:DONE` is verified against actual GraphQL / REST responses per the rules in `pr-address`'s "Verify actual count before outputting ORCHESTRATOR:DONE" section.
+
+### **Auto-continue: do NOT end your response between child skills**
+
+`/pr-polish` is a single orchestration task — one invocation drives the PR all the way to merge-ready. When a child `Skill()` call returns control to you:
+
+- Do NOT summarize and stop.
+- Do NOT wait for user confirmation to continue.
+- Immediately, in the same response, perform the next loop step: state diff → decide next action → next `Skill()` call or polling sleep.
+
+The child skill returning is a **loop iteration boundary**, not a conversation turn boundary. You are expected to keep going until one of the exit conditions in the opening section is met (2 consecutive clean polls, `_MAX_ROUNDS` hit, or an unrecoverable error).
+
+If the user needs to approve a risky action mid-loop (e.g., a force-push or a destructive git operation), pause there — but not at the routine "round N finished, round N+1 needed" boundary. Those are silent transitions.
 
 ## GitHub rate limits
 
