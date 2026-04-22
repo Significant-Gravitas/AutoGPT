@@ -795,12 +795,18 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 # ``_acquire_auto_credentials`` deliberately doesn't set
                 # the kwarg in that case because the value isn't available
                 # at prep time; the executor fills it in before we reach
-                # ``_execute``. Trust it if a resolved ``_credentials_id``
-                # is present — the consumer block's picker-token helper
-                # (or equivalent) will re-acquire creds at run time.
+                # ``_execute``. Trust it if the ``_credentials_id`` KEY
+                # is present — its value may be explicitly ``None`` in
+                # the chained case (see sentry thread
+                # PRRT_kwDOJKSTjM58sJfA). Checking truthiness here would
+                # falsely preempt run() for every valid chained graph
+                # that ships ``_credentials_id=None`` in the picker
+                # object. Mirror ``_acquire_auto_credentials``'s own
+                # skip rule, which treats ``cred_id is None`` as a
+                # chained-skip signal.
                 field_name = info["field_name"]
                 field_value = input_data.get(field_name)
-                if isinstance(field_value, dict) and field_value.get("_credentials_id"):
+                if isinstance(field_value, dict) and "_credentials_id" in field_value:
                     continue
                 raise BlockExecutionError(
                     message=(
