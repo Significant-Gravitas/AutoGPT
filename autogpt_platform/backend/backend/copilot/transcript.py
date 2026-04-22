@@ -195,16 +195,12 @@ def strip_stale_thinking_blocks(content: str) -> str:
         is_last_turn = (
             last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
         ) or (last_asst_msg_id is None and i == last_asst_idx)
-        if (
-            msg.get("role") == "assistant"
-            and not is_last_turn
-            and isinstance(msg.get("content"), list)
-        ):
+        if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
             content_blocks = msg["content"]
             filtered = [
                 b
                 for b in content_blocks
-                if not (isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES)
+                if not _should_strip_thinking_block(b, is_last_turn=is_last_turn)
             ]
             if len(filtered) < len(content_blocks):
                 stripped_count += len(content_blocks) - len(filtered)
@@ -310,24 +306,26 @@ def strip_for_upload(content: str) -> str:
         if uid in reparented:
             needs_reserialize = True
 
-        # Strip stale thinking blocks from non-last assistant entries
+        # Strip stale thinking blocks from non-last assistant entries.
+        # Also strip *signature-less* thinking blocks from the last entry —
+        # those come from non-Anthropic providers (e.g. Kimi K2.6 via
+        # OpenRouter) and are rejected with ``Invalid `signature` in
+        # `thinking` block`` if a subsequent turn is dispatched to an
+        # Anthropic model that re-validates them.  Anthropic-emitted
+        # thinking blocks always carry a non-empty ``signature`` field, so
+        # this filter is a no-op on Sonnet/Opus turns and only kicks in
+        # when the prior turn ran on a non-Anthropic vendor.
         if last_asst_idx is not None:
             msg = entry.get("message", {})
             is_last_turn = (
                 last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
             ) or (last_asst_msg_id is None and i == last_asst_idx)
-            if (
-                msg.get("role") == "assistant"
-                and not is_last_turn
-                and isinstance(msg.get("content"), list)
-            ):
+            if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
                 content_blocks = msg["content"]
                 filtered = [
                     b
                     for b in content_blocks
-                    if not (
-                        isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES
-                    )
+                    if not _should_strip_thinking_block(b, is_last_turn=is_last_turn)
                 ]
                 if len(filtered) < len(content_blocks):
                     thinking_stripped += len(content_blocks) - len(filtered)
@@ -949,6 +947,32 @@ ENTRY_TYPE_MESSAGE = "message"
 
 
 _THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+
+
+def _should_strip_thinking_block(block: object, *, is_last_turn: bool) -> bool:
+    """Return True when *block* is a thinking block that should be removed
+    from a transcript entry before upload.
+
+    Two cases:
+
+    1. **Stale (non-last entry)** — every thinking block in non-last
+       assistant entries is dropped to save tokens; Anthropic only
+       requires the LAST turn's thinking to be value-identical.
+    2. **Signature-less (any entry)** — thinking blocks emitted by
+       non-Anthropic providers (Kimi K2.6 via OpenRouter, DeepSeek)
+       lack the cryptographic ``signature`` field that Anthropic models
+       validate on replay.  Leaving them on the last turn breaks any
+       subsequent advanced-tier toggle (Kimi → Opus) with the opaque
+       ``Invalid `signature` in `thinking` block`` API error.
+    """
+    if not isinstance(block, dict):
+        return False
+    if block.get("type") not in _THINKING_BLOCK_TYPES:
+        return False
+    if not is_last_turn:
+        return True
+    signature = block.get("signature")
+    return not (isinstance(signature, str) and signature)
 
 
 def _flatten_assistant_content(blocks: list) -> str:

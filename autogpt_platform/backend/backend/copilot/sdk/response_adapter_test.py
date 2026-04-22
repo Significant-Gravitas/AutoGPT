@@ -298,6 +298,36 @@ def test_text_after_thinking_closes_reasoning_and_opens_text():
     assert re_idx < ts_idx
 
 
+def test_thinking_after_text_in_same_message_renders_reasoning_first():
+    """Kimi K2.6 (and other non-Anthropic OpenRouter providers) place
+    ``reasoning`` AFTER the visible text in the response, so the SDK
+    builds an ``AssistantMessage`` with content = [TextBlock, ThinkingBlock].
+    Without reordering, the UI would show the answer first and the
+    reasoning panel below it — the opposite of the natural reading
+    order Anthropic models produce.  response_adapter must hoist
+    ThinkingBlocks to the front so ``reasoning-start/delta/end`` events
+    hit the SSE stream BEFORE the ``text-*`` events."""
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[
+            TextBlock(text="63"),
+            ThinkingBlock(thinking="7 times 9 is 63", signature=""),
+        ],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    # ReasoningStart must land before TextStart in the emitted stream
+    assert "StreamReasoningStart" in types
+    assert "StreamTextStart" in types
+    assert types.index("StreamReasoningStart") < types.index("StreamTextStart")
+    # ReasoningDelta payload is intact
+    assert any(
+        isinstance(r, StreamReasoningDelta) and r.delta == "7 times 9 is 63"
+        for r in results
+    )
+
+
 def test_tool_use_after_thinking_closes_reasoning():
     """Opening a tool also closes an open reasoning block."""
     adapter = _adapter()

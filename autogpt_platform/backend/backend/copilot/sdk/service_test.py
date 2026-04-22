@@ -15,6 +15,7 @@ from .service import (
     _build_system_prompt_value,
     _is_sdk_disconnect_error,
     _normalize_model_name,
+    _override_cost_for_non_anthropic,
     _prepare_file_attachments,
     _resolve_sdk_model,
     _safe_close_sdk_client,
@@ -706,3 +707,79 @@ class TestIdleTimeoutConstant:
 
     def test_idle_timeout_is_10_min(self):
         assert _IDLE_TIMEOUT_SECONDS == 10 * 60
+
+
+class TestOverrideCostForNonAnthropic:
+    """Verifies that turn costs routed through OpenRouter to non-Anthropic
+    vendors use the platform's per-model rate card instead of the SDK
+    CLI's static Anthropic pricing table — which silently falls back to
+    Sonnet rates for unknown models and over-bills by ~5x."""
+
+    def test_kimi_cost_recomputed_from_rate_card(self):
+        """Kimi K2.6 @ $0.60 input / $2.80 output per MTok.  29564 prompt
+        tokens + 78 completion should land at ~$0.018, not $0.09 (Sonnet)."""
+        recomputed = _override_cost_for_non_anthropic(
+            raw_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.089862,  # what the SDK CLI reported (Sonnet price)
+            prompt_tokens=29564,
+            completion_tokens=78,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
+        assert recomputed == pytest.approx(expected, rel=1e-9)
+        # Sanity-check against a hand-computed magnitude.
+        assert 0.017 < recomputed < 0.019
+
+    def test_anthropic_cost_unchanged(self):
+        """Anthropic slugs pass through the SDK-reported value since the
+        CLI's pricing table is correct for them."""
+        result = _override_cost_for_non_anthropic(
+            raw_model="anthropic/claude-sonnet-4.6",
+            sdk_reported_usd=0.089862,
+            prompt_tokens=29564,
+            completion_tokens=78,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert result == 0.089862
+
+    def test_unknown_non_anthropic_vendor_passes_through(self):
+        """A non-Anthropic slug not in the rate card falls back to the
+        SDK-reported value — best-effort rather than misleading zero."""
+        result = _override_cost_for_non_anthropic(
+            raw_model="deepseek/some-new-model",
+            sdk_reported_usd=0.05,
+            prompt_tokens=10000,
+            completion_tokens=500,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert result == 0.05
+
+    def test_none_model_passes_through(self):
+        """Subscription mode / no-model case returns the SDK value."""
+        result = _override_cost_for_non_anthropic(
+            raw_model=None,
+            sdk_reported_usd=0.07,
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert result == 0.07
+
+    def test_cache_tokens_folded_into_prompt(self):
+        """Since the Moonshot endpoints don't report discounted cached-
+        input pricing, cache_read/creation tokens are priced at the same
+        rate as regular prompt tokens."""
+        recomputed = _override_cost_for_non_anthropic(
+            raw_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.5,
+            prompt_tokens=1000,
+            completion_tokens=0,
+            cache_read_tokens=5000,
+            cache_creation_tokens=2000,
+        )
+        expected = (1000 + 5000 + 2000) * 0.60 / 1_000_000
+        assert recomputed == pytest.approx(expected, rel=1e-9)

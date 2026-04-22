@@ -115,7 +115,21 @@ class SDKResponseAdapter:
                 responses.append(StreamStartStep())
                 self.step_open = True
 
-            for block in sdk_message.content:
+            # Hoist ThinkingBlocks to the front of the iteration so the UI
+            # sees reasoning *before* the answer it produced — that's the
+            # natural reading order and the way Anthropic models emit them.
+            # OpenRouter passthrough providers (Moonshot/Kimi, DeepSeek)
+            # often place ``reasoning`` after the visible text in the
+            # response, which would make ``ReasoningCollapse`` render under
+            # the assistant message instead of above it.  ToolUse and other
+            # block types stay in their original relative order so tool
+            # call sequences remain coherent.
+            blocks = sorted(
+                sdk_message.content,
+                key=lambda b: 0 if isinstance(b, ThinkingBlock) else 1,
+            )
+
+            for block in blocks:
                 if isinstance(block, TextBlock):
                     if block.text:
                         # Reasoning and text are distinct UI parts; close

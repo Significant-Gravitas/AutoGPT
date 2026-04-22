@@ -591,7 +591,16 @@ class TestStripForUpload:
                 "role": "assistant",
                 "id": "msg_new",
                 "content": [
-                    {"type": "thinking", "thinking": "fresh thinking"},
+                    # Anthropic-style thinking block — has a signature so
+                    # ``_should_strip_thinking_block`` preserves it on the
+                    # last turn.  Without the signature (e.g. emitted by
+                    # Kimi K2.6 via OpenRouter) it would be stripped — see
+                    # ``test_strips_signatureless_thinking_from_last_turn``.
+                    {
+                        "type": "thinking",
+                        "thinking": "fresh thinking",
+                        "signature": "anthropic-signed-blob",
+                    },
                     {"type": "text", "text": "new answer"},
                 ],
             },
@@ -623,6 +632,49 @@ class TestStripForUpload:
         new_content = new_asst["message"]["content"]
         new_types = [b["type"] for b in new_content if isinstance(b, dict)]
         assert "thinking" in new_types  # last assistant preserved
+
+    def test_strips_signatureless_thinking_from_last_turn(self):
+        """Kimi K2.6 (and other non-Anthropic OpenRouter providers) emit
+        thinking blocks without the Anthropic ``signature`` field.  When
+        a subsequent advanced-tier toggle replays the transcript to Opus,
+        Anthropic's API rejects the signature-less block with ``Invalid
+        `signature` in `thinking` block`` — so strip_for_upload must drop
+        them from the LAST assistant entry too, not just stale ones."""
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": "",
+            "message": {"role": "user", "content": "hi"},
+        }
+        # Last (and only) assistant entry with a Kimi-shape thinking block
+        asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "role": "assistant",
+                "id": "msg_kimi",
+                "content": [
+                    # No ``signature`` field → non-Anthropic provider
+                    {"type": "thinking", "thinking": "kimi reasoning"},
+                    {"type": "text", "text": "answer"},
+                ],
+            },
+        }
+        content = _make_jsonl(user, asst)
+        result = strip_for_upload(content)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+        asst_entry = next(
+            e for e in entries if e.get("message", {}).get("id") == "msg_kimi"
+        )
+        types = [
+            b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
+        ]
+        assert "thinking" not in types, (
+            "Signature-less thinking block on last turn must be stripped "
+            "to prevent Anthropic API rejection on model-switch replay"
+        )
+        assert "text" in types, "Text content must survive stripping"
 
     def test_empty_content(self):
         result = strip_for_upload("")
