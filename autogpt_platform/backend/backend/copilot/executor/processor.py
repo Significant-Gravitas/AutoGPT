@@ -18,6 +18,7 @@ from backend.copilot.config import ChatConfig, CopilotMode
 from backend.copilot.response_model import StreamError
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import ClusterLock
 from backend.util.decorator import error_logged
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -64,12 +65,26 @@ def sync_fail_close_session(
     Uses a fresh ``asyncio.run`` loop rather than the worker's
     ``execution_loop`` — the worker loop is the one we suspect of being
     broken (dead thread, stale Redis client, etc.). A new loop gives us a
-    new thread-local Redis client that doesn't inherit the bad state.
+    new thread-local Redis client that doesn't inherit the bad state, but
+    only if we ALSO drop the ``@thread_cached`` ``AsyncRedis`` cache for
+    this thread — otherwise the second call in the same worker thread
+    picks up the previous loop's client, which is now bound to a closed
+    loop and raises ``RuntimeError: Event loop is closed``. The
+    ``clear_cache()`` call below forces a fresh client per invocation.
 
     The inner ``asyncio.wait_for`` bounds the Redis call so a genuinely
     unreachable Redis can't hang the safety net for the full redis-py
     default TCP timeout.
     """
+    # Drop the thread-local AsyncRedis cache so the fresh asyncio.run loop
+    # below gets a fresh client. Without this, turn 2+ on the same worker
+    # thread trips over the closed loop from turn 1's asyncio.run.
+    clear_cache = getattr(get_redis_async, "clear_cache", None)
+    if clear_cache is not None:
+        try:
+            clear_cache()
+        except Exception as e:
+            log.warning(f"sync fail-close clear_cache failed: {e}")
 
     async def _bounded() -> None:
         await asyncio.wait_for(

@@ -10,6 +10,8 @@ the real production helpers from ``processor.py`` so the routing logic
 has meaningful coverage.
 """
 
+import asyncio
+import concurrent.futures
 import logging
 import threading
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -309,3 +311,138 @@ class TestSyncFailCloseSession:
             sync_fail_close_session("sess-2", _make_log())  # must not raise
 
         mock_mark.assert_awaited_once()
+
+    def test_bounded_timeout_when_redis_hangs(self) -> None:
+        """Scenario D: Redis unreachable — the inner ``asyncio.wait_for``
+        must fire and the helper must return without blocking the worker.
+
+        Simulates a wedged Redis by sleeping past the 10s fail-close budget.
+        The helper must return within the configured grace (+ a small
+        scheduler margin) and must not re-raise.
+        """
+        import time as _time
+
+        from backend.copilot.executor.processor import _FAIL_CLOSE_REDIS_TIMEOUT
+
+        async def _hang(*_args, **_kwargs):
+            await asyncio.sleep(_FAIL_CLOSE_REDIS_TIMEOUT + 5)
+
+        with patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=_hang,
+        ):
+            start = _time.monotonic()
+            sync_fail_close_session("sess-hang", _make_log())  # must not raise
+            elapsed = _time.monotonic() - start
+
+        # wait_for should fire at _FAIL_CLOSE_REDIS_TIMEOUT; allow 2s slack
+        # for loop startup + teardown. If the timeout is missing/broken the
+        # helper would block the full sleep duration.
+        assert elapsed < _FAIL_CLOSE_REDIS_TIMEOUT + 2.0, (
+            f"sync_fail_close_session hung for {elapsed:.1f}s — bounded "
+            f"timeout did not fire"
+        )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end execute() safety-net coverage — the PR's core invariant
+# ---------------------------------------------------------------------------
+
+
+class TestExecuteSafetyNet:
+    """``CoPilotProcessor.execute`` must always invoke
+    ``sync_fail_close_session`` in its ``finally`` so a session never stays
+    ``status=running`` in Redis.
+
+    Validates the four deploy-time scenarios the PR targets:
+
+    * A — SIGTERM mid-turn: ``cancel`` event fires, ``_execute`` returns,
+      safety net still runs.
+    * B — happy path: normal completion, safety net runs (cheap CAS no-op).
+    * C — zombie Redis state: the async ``mark_session_completed`` in
+      ``_execute_async`` blows up, but the outer safety net marks the
+      session failed anyway.
+    * D — covered by ``TestSyncFailCloseSession::test_bounded_timeout…``.
+    """
+
+    def _run_execute_in_thread(self, proc: CoPilotProcessor, cancel: threading.Event):
+        """``CoPilotProcessor.execute`` expects to be called from a pool
+        worker thread that has *no* running event loop, so we always run
+        it off the main thread to preserve that invariant. Returns the
+        future so callers can inspect both result and exception paths."""
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            fut = pool.submit(proc.execute, _make_entry(), cancel, MagicMock())
+            # Block until execute() returns (or raises) so the safety net
+            # has run by the time we inspect mocks.
+            try:
+                fut.result(timeout=30)
+            except BaseException:
+                pass
+            return fut
+        finally:
+            pool.shutdown(wait=True)
+
+    def test_happy_path_invokes_safety_net(self) -> None:
+        """Scenario B: normal completion still runs the sync safety net.
+        Proves the ``finally`` always fires, even when nothing went wrong —
+        ``mark_session_completed``'s atomic CAS makes this a cheap no-op
+        in production."""
+        mock_mark = AsyncMock()
+        proc = CoPilotProcessor()
+        with patch.object(proc, "_execute"), patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mock_mark,
+        ):
+            self._run_execute_in_thread(proc, threading.Event())
+
+        mock_mark.assert_awaited_once()
+        assert mock_mark.await_args is not None
+        assert mock_mark.await_args.args[0] == "sess-1"
+
+    def test_sigterm_mid_turn_invokes_safety_net(self) -> None:
+        """Scenario A: worker raises (simulating future.cancel + grace
+        timeout escaping ``_execute``); ``execute`` must still reach the
+        safety net in its ``finally`` and mark the session failed."""
+        mock_mark = AsyncMock()
+        proc = CoPilotProcessor()
+        with patch.object(
+            proc,
+            "_execute",
+            side_effect=concurrent.futures.TimeoutError("grace expired"),
+        ), patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mock_mark,
+        ):
+            self._run_execute_in_thread(proc, threading.Event())
+
+        mock_mark.assert_awaited_once()
+
+    def test_zombie_redis_async_path_still_marks_session_failed(self) -> None:
+        """Scenario C: ``_execute_async``'s own ``mark_session_completed``
+        call is broken (simulating the exact async-Redis hiccup that caused
+        the original zombie sessions). The outer ``sync_fail_close_session``
+        uses a *fresh* ``asyncio.run`` loop with a fresh Redis client so it
+        succeeds where the async path failed."""
+        call_log: list[str] = []
+
+        async def _ok(*args, **kwargs):
+            call_log.append("sync-ok")
+
+        def _broken_execute(entry, cancel, cluster_lock, log):
+            # Simulate the async path raising because its Redis client is
+            # wedged (the pre-fix zombie-session scenario).
+            raise RuntimeError("async Redis client broken")
+
+        proc = CoPilotProcessor()
+        with patch.object(proc, "_execute", side_effect=_broken_execute), patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=_ok,
+        ):
+            self._run_execute_in_thread(proc, threading.Event())
+
+        # The sync safety net must have fired despite the async path
+        # blowing up — this is the core guarantee of the PR.
+        assert call_log == [
+            "sync-ok"
+        ], f"expected sync_fail_close_session to run once, got {call_log!r}"

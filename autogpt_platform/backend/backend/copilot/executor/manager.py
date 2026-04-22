@@ -153,8 +153,7 @@ class CoPilotExecutor(AppProcess):
 
             while (
                 self.active_tasks
-                and (time.monotonic() - start_time)
-                < GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+                and (time.monotonic() - start_time) < GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
             ):
                 self._cleanup_completed_tasks()
                 if not self.active_tasks:
@@ -214,9 +213,7 @@ class CoPilotExecutor(AppProcess):
                 lock.release()
                 logger.info(f"{prefix} Released lock for {session_id}")
             except Exception as e:
-                logger.error(
-                    f"{prefix} Failed to release lock for {session_id}: {e}"
-                )
+                logger.error(f"{prefix} Failed to release lock for {session_id}: {e}")
 
         logger.info(f"{prefix} Graceful shutdown completed")
 
