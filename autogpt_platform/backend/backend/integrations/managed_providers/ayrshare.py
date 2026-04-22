@@ -19,9 +19,12 @@ Redis lock + upsert path as AgentMail.
 
 Legacy compatibility: on first provision we migrate
 ``UserIntegrations.managed_credentials.ayrshare_profile_key`` (pre-migration
-data) into the new managed credential and clear the legacy field in the
-same write — so the eventual removal of the legacy schema field has
-nothing to chase.
+data) into the new managed credential.  The legacy field is then cleared
+in :meth:`AyrshareManagedProvider.post_provision`, which runs only after
+``add_managed_credential`` has durably stored the managed credential —
+this ordering ensures that a failure between ``provision`` and the
+persist step leaves the legacy key intact so a retry can still reuse it
+(covered by ``TestMigrationOrderingSafety``).
 
 User-visible caveat: provisioning the profile creates the Ayrshare profile
 but does not link any social accounts.  The user still needs to open the
