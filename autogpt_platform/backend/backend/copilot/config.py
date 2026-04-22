@@ -92,8 +92,10 @@ class ChatConfig(BaseSettings):
         description="Model to use for generating session titles (should be fast/cheap)",
     )
     simulation_model: str = Field(
-        default="google/gemini-2.5-flash",
-        description="Model for dry-run block simulation (should be fast/cheap with good JSON output)",
+        default="google/gemini-2.5-flash-lite",
+        description="Model for dry-run block simulation (should be fast/cheap with good JSON output). "
+        "Gemini 2.5 Flash-Lite is ~3x cheaper than Flash ($0.10/$0.40 vs $0.30/$1.20 per MTok) "
+        "with JSON-mode reliability adequate for shape-matching block outputs.",
     )
     api_key: str | None = Field(default=None, description="OpenAI API key")
     base_url: str | None = Field(
