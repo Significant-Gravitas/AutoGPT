@@ -50,15 +50,9 @@ def _enable_google_blocks_for_auto_cred_tests(request, monkeypatch):
     # file are unaffected.
     if not request.node.name.startswith("test_auto_credentials_"):
         return
-    monkeypatch.setattr(
-        "backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False
-    )
-    monkeypatch.setattr(
-        "backend.blocks.google.gmail.GOOGLE_OAUTH_IS_CONFIGURED", True
-    )
-    monkeypatch.setattr(
-        "backend.blocks.google._auth.GOOGLE_OAUTH_IS_CONFIGURED", True
-    )
+    monkeypatch.setattr("backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False)
+    monkeypatch.setattr("backend.blocks.google.gmail.GOOGLE_OAUTH_IS_CONFIGURED", True)
+    monkeypatch.setattr("backend.blocks.google._auth.GOOGLE_OAUTH_IS_CONFIGURED", True)
 
 
 @pytest.mark.asyncio(loop_scope="session")
