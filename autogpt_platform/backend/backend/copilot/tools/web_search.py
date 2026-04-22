@@ -44,10 +44,14 @@ logger = logging.getLogger(__name__)
 _chat_config = ChatConfig()
 
 _QUICK_MODEL = "perplexity/sonar"
-_QUICK_MAX_TOKENS = 1024
+# Sonar base can emit up to ~4K output; cap at the provider ceiling so the
+# model stops when the answer is complete rather than when our budget trips.
+_QUICK_MAX_TOKENS = 4096
 
 _DEEP_MODEL = "perplexity/sonar-deep-research"
-_DEEP_MAX_TOKENS = 4096
+# Deep runs can produce long structured writeups — ~4x the quick ceiling
+# is enough headroom for multi-source comparisons without uncapping.
+_DEEP_MAX_TOKENS = _QUICK_MAX_TOKENS * 4
 
 _DEFAULT_MAX_RESULTS = 5
 _HARD_MAX_RESULTS = 20
