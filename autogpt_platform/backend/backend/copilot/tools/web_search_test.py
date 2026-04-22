@@ -25,7 +25,12 @@ from openai.types.chat.chat_completion_message import (
 from backend.copilot.model import ChatSession
 
 from .models import ErrorResponse, WebSearchResponse
-from .web_search import WebSearchTool, _extract_cost_usd, _extract_results
+from .web_search import (
+    WebSearchTool,
+    _extract_answer,
+    _extract_cost_usd,
+    _extract_results,
+)
 
 
 def _usage(
@@ -68,6 +73,7 @@ def _citation(*, url: str, title: str, content: str | None = None) -> Annotation
 def _fake_response(
     *,
     citations: list[dict] | None = None,
+    answer: str = "ok",
     prompt_tokens: int = 120,
     completion_tokens: int = 40,
     cost: object = 0.01,
@@ -86,7 +92,7 @@ def _fake_response(
     message = ChatCompletionMessage.model_construct(
         None,
         role="assistant",
-        content="ok",
+        content=answer,
         annotations=annotations,
     )
     choice = Choice.model_construct(
@@ -156,6 +162,28 @@ class TestExtractResults:
             usage=_usage(),
         )
         assert _extract_results(resp, limit=10) == []
+
+    def test_extract_answer_returns_message_content(self):
+        resp = _fake_response(
+            answer="Sonar's synthesised, web-grounded answer text.",
+            citations=[{"title": "t", "url": "https://e"}],
+        )
+        assert (
+            _extract_answer(resp)
+            == "Sonar's synthesised, web-grounded answer text."
+        )
+
+    def test_extract_answer_returns_empty_when_no_choices(self):
+        resp = ChatCompletion.model_construct(
+            None,
+            id="cmpl-test",
+            object="chat.completion",
+            created=0,
+            model="perplexity/sonar",
+            choices=[],
+            usage=_usage(),
+        )
+        assert _extract_answer(resp) == ""
 
     def test_snippet_clamped_to_max_chars(self):
         long_body = "x" * 5000
@@ -239,6 +267,7 @@ class TestWebSearchToolDispatch:
                     "content": "greeting",
                 }
             ],
+            answer="Kimi K2.6 launched 2026-04-20 [1].",
             cost=0.01,
         )
         mock_client = self._mock_client(fake_resp)
@@ -275,6 +304,7 @@ class TestWebSearchToolDispatch:
             )
 
         assert isinstance(result, WebSearchResponse)
+        assert result.answer == "Kimi K2.6 launched 2026-04-20 [1]."
         assert len(result.results) == 1
         assert result.results[0].snippet == "greeting"
 

@@ -69,9 +69,13 @@ class WebSearchTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Search the web for live info (news, recent docs). Returns "
-            "{title, url, snippet}; use web_fetch to deep-dive a URL. "
-            "Prefer one targeted query over many reformulations."
+            "Search the web for live info (news, recent docs). Returns a "
+            "synthesised answer grounded in fresh page content plus "
+            "{title, url, snippet} citations — read the answer first "
+            "before reaching for web_fetch. Set deep=true when the user "
+            "asks for research / comparison / in-depth analysis; leave "
+            "deep=false for quick fact lookups. Prefer one targeted "
+            "query over many reformulations."
         )
 
     @property
@@ -94,8 +98,10 @@ class WebSearchTool(BaseTool):
                 "deep": {
                     "type": "boolean",
                     "description": (
-                        "True for multi-step research over many sources. "
-                        "Slower; use only when a single search won't suffice."
+                        "Set true when the user asks to 'research', "
+                        "'compare', 'investigate', or 'go deep' — runs "
+                        "multi-step agentic research over many sources. "
+                        "Slower; leave false for direct questions."
                     ),
                     "default": False,
                 },
@@ -171,6 +177,7 @@ class WebSearchTool(BaseTool):
                 session_id=session_id,
             )
 
+        answer = _extract_answer(resp)
         results = _extract_results(resp, limit=max_results)
         cost_usd = _extract_cost_usd(resp.usage)
 
@@ -191,10 +198,25 @@ class WebSearchTool(BaseTool):
         return WebSearchResponse(
             message=f"Found {len(results)} result(s) for {query!r}.",
             query=query,
+            answer=answer,
             results=results,
             search_requests=1 if results else 0,
             session_id=session_id,
         )
+
+
+def _extract_answer(resp: ChatCompletion) -> str:
+    """Return the synthesised answer text from Sonar's response.
+
+    Sonar reads every page it cites and writes a web-grounded synthesis
+    into ``choices[0].message.content`` on the same call we pay for.
+    Surfacing it saves the agent from re-fetching citation URLs — many
+    are bot-protected and ``web_fetch`` can't reach them.
+    """
+    if not resp.choices:
+        return ""
+    content = resp.choices[0].message.content
+    return content or ""
 
 
 def _extract_results(resp: ChatCompletion, *, limit: int) -> list[WebSearchResult]:

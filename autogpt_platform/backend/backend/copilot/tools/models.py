@@ -602,11 +602,13 @@ class WebSearchResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.WEB_SEARCH
     query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
     results: list[WebSearchResult] = Field(default_factory=list)
-    # Backend-reported usage for this call (copied from Anthropic's
-    # ``usage.server_tool_use``).  Surfaces as metadata for frontend
-    # debug panels but is also what drives rate-limit / cost tracking
-    # via ``persist_and_record_usage(provider="anthropic")``.
     search_requests: int = 0
 
 
