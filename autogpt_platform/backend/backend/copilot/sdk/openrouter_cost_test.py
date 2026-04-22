@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -518,3 +518,130 @@ class TestRecordTurnCostFromOpenRouter:
         assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(
             sum(costs_by_id.values()), rel=1e-9
         )
+
+
+class TestLangfuseTraceBackfill:
+    """Reconciled cost is mirrored back onto the Langfuse trace as a
+    child event so operators see the real number alongside the SDK-CLI
+    rate-card estimate the OTel bridge already wrote."""
+
+    @pytest.mark.asyncio
+    async def test_event_emitted_with_real_cost_when_trace_id_supplied(self):
+        real_cost = 0.025
+        mock_lf = MagicMock()
+
+        async def _get(self, url, **kwargs):  # noqa: ARG001
+            return httpx.Response(200, json=_mock_generation_response(real_cost))
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ),
+            patch("httpx.AsyncClient.get", new=_get),
+            patch("langfuse.get_client", return_value=mock_lf),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=29669,
+                completion_tokens=280,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-1"],
+                cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
+                fallback_cost_usd=0.018,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+                langfuse_trace_id="trace-abc",
+            )
+
+        mock_lf.create_event.assert_called_once()
+        kwargs = mock_lf.create_event.call_args.kwargs
+        assert kwargs["trace_context"] == {"trace_id": "trace-abc"}
+        assert kwargs["name"] == "openrouter-cost-reconcile"
+        meta = kwargs["metadata"]
+        assert meta["cost_usd"] == pytest.approx(real_cost, rel=1e-9)
+        assert meta["fallback_cost_usd"] == pytest.approx(0.018, rel=1e-9)
+        assert meta["prompt_tokens"] == 29669
+        assert meta["completion_tokens"] == 280
+        assert meta["model"] == "moonshotai/kimi-k2.6"
+        assert meta["provider"] == "open_router"
+
+    @pytest.mark.asyncio
+    async def test_no_event_when_trace_id_missing(self):
+        """Anthropic-direct turns and any path without an active Langfuse
+        OTel context don't have a trace_id — backfill is a no-op."""
+        mock_lf = MagicMock()
+
+        async def _get(self, url, **kwargs):  # noqa: ARG001
+            return httpx.Response(200, json=_mock_generation_response(0.01))
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ),
+            patch("httpx.AsyncClient.get", new=_get),
+            patch("langfuse.get_client", return_value=mock_lf),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=100,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-1"],
+                cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
+                fallback_cost_usd=0.005,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+                langfuse_trace_id=None,
+            )
+
+        mock_lf.create_event.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_backfill_failure_swallowed_does_not_break_persist(self):
+        """If Langfuse is unavailable, the reconcile still persists the
+        cost row — backfill is best-effort and must not raise."""
+        mock_lf = MagicMock()
+        mock_lf.create_event = MagicMock(side_effect=RuntimeError("network down"))
+
+        async def _get(self, url, **kwargs):  # noqa: ARG001
+            return httpx.Response(200, json=_mock_generation_response(0.02))
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+            patch("langfuse.get_client", return_value=mock_lf),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=100,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-1"],
+                cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
+                fallback_cost_usd=0.018,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+                langfuse_trace_id="trace-xyz",
+            )
+
+        mock_persist.assert_called_once()

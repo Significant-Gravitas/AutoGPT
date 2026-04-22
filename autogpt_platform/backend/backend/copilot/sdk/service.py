@@ -4064,6 +4064,11 @@ async def stream_chat_completion_sdk(
         # point belongs to the next turn.
 
         # --- Close OTEL context (with cost attributes) ---
+        # Captured before __exit__ so the reconcile task (launched below,
+        # after the span closes) can attach a backfill event to this turn's
+        # Langfuse trace.  Without it, Langfuse shows the rate-card estimate
+        # only — for non-Anthropic OpenRouter routes that's wildly wrong.
+        langfuse_trace_id: str | None = None
         if _otel_ctx is not None:
             try:
                 span = otel_trace.get_current_span()
@@ -4083,6 +4088,12 @@ async def stream_chat_completion_sdk(
                         span.set_attribute("gen_ai.usage.cost_usd", turn_cost_usd)
             except Exception:
                 logger.debug("Failed to set OTEL cost attributes", exc_info=True)
+            try:
+                from langfuse import get_client
+
+                langfuse_trace_id = get_client().get_current_trace_id()
+            except Exception:
+                logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
             try:
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
@@ -4161,6 +4172,7 @@ async def stream_chat_completion_sdk(
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,
+                    langfuse_trace_id=langfuse_trace_id,
                 )
             )
         else:

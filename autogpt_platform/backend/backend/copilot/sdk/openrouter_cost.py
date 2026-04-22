@@ -256,6 +256,7 @@ async def record_turn_cost_from_openrouter(
     fallback_cost_usd: float | None,
     api_key: str | None,
     log_prefix: str,
+    langfuse_trace_id: str | None = None,
 ) -> None:
     """Persist turn cost from OpenRouter's authoritative ``/generation``.
 
@@ -397,3 +398,36 @@ async def record_turn_cost_from_openrouter(
             log_prefix,
             exc,
         )
+
+    # Backfill the Langfuse trace with reconciled cost + token usage.  The
+    # OTel span for the turn closes before this background task runs, so the
+    # Langfuse trace UI otherwise shows the SDK-CLI rate-card estimate (which
+    # for non-Anthropic OpenRouter routes is wildly wrong — Sonnet pricing on
+    # Kimi tokens, ~5x too high).  Emitting a child event with the real
+    # numbers gives operators a single Langfuse view per turn instead of
+    # cross-referencing pod logs.
+    if langfuse_trace_id and real_cost is not None:
+        try:
+            from langfuse import get_client
+
+            get_client().create_event(
+                trace_context={"trace_id": langfuse_trace_id},
+                name="openrouter-cost-reconcile",
+                metadata={
+                    "cost_usd": real_cost,
+                    "fallback_cost_usd": fallback_cost_usd,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "cache_read_tokens": cache_read_tokens,
+                    "cache_creation_tokens": cache_creation_tokens,
+                    "generation_id_count": len(generation_ids),
+                    "model": model,
+                    "provider": "open_router",
+                },
+            )
+        except Exception:
+            logger.debug(
+                "%s[cost-record] Langfuse event emit failed",
+                log_prefix,
+                exc_info=True,
+            )
