@@ -109,6 +109,7 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
+from ..tools import ToolGroup
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
@@ -3071,8 +3072,6 @@ async def stream_chat_completion_sdk(
             max_subtasks=config.claude_agent_max_subtasks,
             on_compact=compaction.on_compact,
         )
-
-        from backend.copilot.tools import ToolGroup
 
         disabled_tool_groups: list[ToolGroup] = []
         if not graphiti_enabled:

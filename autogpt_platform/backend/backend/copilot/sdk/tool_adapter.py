@@ -34,7 +34,7 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY, ToolGroup
+from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
@@ -897,8 +897,6 @@ def get_copilot_tool_names(
     *disabled_groups* are filtered out — see ``ToolGroup`` / ``TOOL_GROUPS``
     in ``backend.copilot.tools`` for the full list.
     """
-    from backend.copilot.tools import tool_names_in_groups
-
     hidden_short_names = tool_names_in_groups(disabled_groups)
     hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
 
