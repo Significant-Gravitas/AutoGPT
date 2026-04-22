@@ -99,20 +99,14 @@ class SDKResponseAdapter:
         # Anthropic streaming events (``content_block_start`` /
         # ``content_block_delta`` / ``content_block_stop``) as
         # ``StreamEvent`` messages AHEAD of the summary ``AssistantMessage``.
-        # We consume those for live per-token emission; the summary-message
-        # path is gated per-kind (thinking / text tracked separately) so a
-        # block that only arrives in the summary still reaches the wire.
-        # ``_block_types_by_index`` maps the Anthropic block index to its
-        # type so ``content_block_delta`` knows whether to route to reasoning
-        # or text.  ``_streamed_thinking_from_partial`` /
-        # ``_streamed_text_from_partial`` flip True only when that specific
-        # kind actually reached the wire via ``StreamEvent``; if one of them
-        # stays False (OpenRouter proxy drops deltas, CLI emits only the
-        # summary for short blocks, etc.) we let the summary fill the gap to
-        # avoid truncating the response.
+        # We consume those for live per-token emission and suppress the
+        # duplicate text/thinking from the summary.  ``_block_types_by_index``
+        # maps the Anthropic block index to its type so ``content_block_delta``
+        # knows whether to route to reasoning or text.  ``_partial_emitted``
+        # flips True as soon as any delta is emitted, which gates the
+        # summary-message path.
         self._block_types_by_index: dict[int, str] = {}
-        self._streamed_thinking_from_partial: bool = False
-        self._streamed_text_from_partial: bool = False
+        self._partial_emitted: bool = False
         # Coalescing for thinking_delta — Anthropic emits ~1 event per token
         # (hundreds per turn), same rationale as ``BaselineReasoningEmitter``.
         # Text deltas are naturally coarser (~paragraph) so we let them through
@@ -163,20 +157,16 @@ class SDKResponseAdapter:
                 responses.append(StreamStartStep())
                 self.step_open = True
 
-            # When ``include_partial_messages=True`` is active the CLI
-            # streams text + thinking deltas via ``StreamEvent`` ahead of
-            # this summary.  We gate the summary PER KIND so a block that
-            # didn't actually stream via partial (OpenRouter proxy quirks,
-            # signature-only encrypted thinking, short blocks that ship
-            # only in the summary) still reaches the wire.  Otherwise we
-            # truncate the response for the user.  ``ToolUseBlock`` always
-            # emits from the summary — partial input_json_delta is not
-            # forwarded, the frontend widgets need the final payload.
-            suppress_summary_text = self._streamed_text_from_partial
-            suppress_summary_thinking = self._streamed_thinking_from_partial
+            # When ``include_partial_messages=True`` is active the CLI has
+            # already streamed text + thinking deltas via ``StreamEvent``
+            # ahead of this summary, so re-emitting them here would duplicate
+            # content on the wire.  ``_partial_emitted`` flips on the first
+            # ``StreamEvent`` we handle; the summary is still walked for
+            # ``ToolUseBlock`` (the partial path doesn't emit tool events).
+            summary_text_thinking_suppressed = self._partial_emitted
             for block in sdk_message.content:
                 if isinstance(block, TextBlock):
-                    if block.text and not suppress_summary_text:
+                    if block.text and not summary_text_thinking_suppressed:
                         # Reasoning and text are distinct UI parts; close
                         # any open reasoning block before opening text so
                         # the AI SDK transport doesn't merge them.
@@ -212,7 +202,7 @@ class SDKResponseAdapter:
                     # into the SDK transcript via
                     # ``_format_sdk_content_blocks`` is unaffected — that
                     # feeds ``--resume`` continuity, not the UI.
-                    if block.thinking and not suppress_summary_thinking:
+                    if block.thinking and not summary_text_thinking_suppressed:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
                         responses.append(
@@ -470,10 +460,9 @@ class SDKResponseAdapter:
         consumed here because the frontend only needs the final input to
         dispatch the tool widget.
 
-        ``_streamed_text_from_partial`` / ``_streamed_thinking_from_partial``
-        flip True only when the corresponding kind actually emits a delta,
-        so the summary-message branch can suppress duplicates per-kind
-        without losing content that only arrived in the summary.
+        ``_partial_emitted`` is flipped True on the first emission so the
+        ``AssistantMessage`` branch knows to skip the duplicate text/thinking
+        content that arrives in the summary.
         """
         raw: dict[str, Any] = evt.event or {}
         event_type = raw.get("type")
@@ -489,10 +478,12 @@ class SDKResponseAdapter:
                 self._end_reasoning_if_open(responses)
                 self._ensure_text_started(responses)
                 self._text_since_last_tool_result = True
+                self._partial_emitted = True
             elif block_type == "thinking":
                 self._end_text_if_open(responses)
                 self._ensure_reasoning_started(responses)
                 self._last_thinking_flush_monotonic = time.monotonic()
+                self._partial_emitted = True
             # tool_use / input_json_delta content is deferred to the
             # ``AssistantMessage`` branch.
 
@@ -505,7 +496,7 @@ class SDKResponseAdapter:
                     self._ensure_text_started(responses)
                     responses.append(StreamTextDelta(id=self.text_block_id, delta=text))
                     self._text_since_last_tool_result = True
-                    self._streamed_text_from_partial = True
+                    self._partial_emitted = True
             elif delta_type == "thinking_delta":
                 chunk = delta.get("thinking") or ""
                 if chunk:
@@ -526,7 +517,7 @@ class SDKResponseAdapter:
                         )
                         self._pending_thinking_delta = ""
                         self._last_thinking_flush_monotonic = now
-                    self._streamed_thinking_from_partial = True
+                    self._partial_emitted = True
             # Other delta types (``signature_delta``, ``input_json_delta``)
             # aren't surfaced on the wire.
 
