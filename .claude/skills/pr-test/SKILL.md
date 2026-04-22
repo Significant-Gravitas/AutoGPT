@@ -781,6 +781,19 @@ Upload screenshots to the PR using the GitHub Git API (no local git operations �
 
 **CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
 
+**CRITICAL — NEVER paste absolute local paths into the PR comment.** Strings like `/Users/…`, `/home/…`, `C:\…` are useless to every reviewer except you. Before posting, grep the final body for `/Users/`, `/home/`, `/tmp/`, `/private/`, `C:\`, `~/` and either drop those lines entirely or rewrite them as repo-relative paths (`autogpt_platform/backend/…`). The PR comment is an artifact reviewers on GitHub read — it must be self-contained on github.com. Keep local paths in `$RESULTS_DIR/test-report.md` for yourself; only copy the *content* they reference (excerpts, test names, log lines) into the PR comment, not the path.
+
+**Pre-post sanity check** (paste after building the comment body, before `gh api ... comments`):
+
+```bash
+# Reject any local-looking absolute path or home-dir shortcut in the body
+if grep -nE '(^|[^A-Za-z])(/Users/|/home/|/tmp/|/private/|C:\\|~/)[A-Za-z0-9]' "$COMMENT_FILE" ; then
+  echo "ABORT: local filesystem paths detected in PR comment body."
+  echo "Remove or rewrite as repo-relative (autogpt_platform/...) before posting."
+  exit 1
+fi
+```
+
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)
 REPO="Significant-Gravitas/AutoGPT"
