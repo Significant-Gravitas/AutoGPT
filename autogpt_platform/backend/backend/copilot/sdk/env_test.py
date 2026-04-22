@@ -345,3 +345,60 @@ class TestClaudeCodeTmpdir:
 
         assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/sub-workspace"
         assert result["ANTHROPIC_API_KEY"] == ""
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE — Moonshot gate
+# ---------------------------------------------------------------------------
+
+
+class TestAutocompactPctOverrideMoonshotGate:
+    """Override is set for Anthropic / unknown models, skipped for Moonshot.
+
+    Moonshot's OpenRouter endpoint silently drops cache writes
+    (cache_create=0 in observed traces), so the 50% threshold's
+    cache-cost rationale doesn't apply there.  Forcing aggressive
+    compaction made the CLI auto-compact 3+ times per turn against
+    Kimi's larger effective window — each compaction added a slow
+    extra LLM round-trip.
+    """
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            None,
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-7",
+            "claude-sonnet-4-6",
+        ],
+    )
+    def test_override_set_for_non_moonshot(self, model):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k2.6",
+            "moonshotai/kimi-k2.5",
+            "moonshotai/kimi-k3.0",
+        ],
+    )
+    def test_override_skipped_for_moonshot(self, model):
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model=model,
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result

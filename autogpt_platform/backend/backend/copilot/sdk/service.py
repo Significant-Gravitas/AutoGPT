@@ -3234,11 +3234,6 @@ async def stream_chat_completion_sdk(
             permissions=permissions,
         )
 
-        # Fail fast when no API credentials are available at all.
-        # sdk_cwd routes the CLI's temp dir into the per-session workspace
-        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
-        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id, sdk_cwd=sdk_cwd)
-
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
@@ -3250,7 +3245,18 @@ async def stream_chat_completion_sdk(
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
         # Resolve model (request tier → LD per-user override → config default).
+        # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
+        # Moonshot autocompact gate) can branch on the resolved slug.
         sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
+
+        # sdk_cwd routes the CLI's temp dir into the per-session workspace
+        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        sdk_env = build_sdk_env(
+            session_id=session_id,
+            user_id=user_id,
+            sdk_cwd=sdk_cwd,
+            model=sdk_model,
+        )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()

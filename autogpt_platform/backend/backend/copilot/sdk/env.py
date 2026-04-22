@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -27,6 +28,7 @@ def build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
     sdk_cwd: str | None = None,
+    model: str | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
@@ -40,6 +42,11 @@ def build_sdk_env(
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
     history persistence, auto-memory writes, and non-essential traffic.
+
+    *model* is the resolved SDK model slug (e.g. ``"moonshotai/kimi-k2.6"``
+    or ``"anthropic/claude-sonnet-4-6"``).  Used to gate model-specific env
+    vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
+    Moonshot since the cache-cost rationale doesn't apply there).
     """
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
@@ -106,7 +113,15 @@ def build_sdk_env(
     # Trigger context compaction earlier — default is 70% of 200K = 140K.
     # Set to 50% = 100K to keep context smaller and reduce cache creation costs.
     # Context >200K accounts for 54% of total cost despite being only 3% of calls.
-    env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "50"
+    #
+    # Skipped for Moonshot (Kimi) routes: prompt cache creation is a no-op on
+    # Moonshot's OpenRouter endpoint (cache_create returns 0), so the
+    # cache-cost rationale doesn't apply.  Forcing 50% threshold made the CLI
+    # auto-compact 3+ times per turn against Kimi's larger effective context,
+    # each compaction adding a slow LLM round-trip.  Letting the CLI use its
+    # default (~93% of perceived window) cuts compaction passes to 0-1.
+    if not is_moonshot_model(model):
+        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "50"
 
     # Disable gzip on API responses to prevent ZlibError decompression
     # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
