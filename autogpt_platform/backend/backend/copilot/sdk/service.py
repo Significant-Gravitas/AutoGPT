@@ -3208,6 +3208,17 @@ async def stream_chat_completion_sdk(
             sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
+        if config.sdk_include_partial_messages:
+            # Opt into per-token streaming — the CLI emits raw Anthropic
+            # ``content_block_delta`` events as ``StreamEvent`` messages
+            # ahead of each summary ``AssistantMessage`` so reasoning and
+            # text land on the wire token-by-token (matching the baseline
+            # path's UX shipped in #12873).  ``SDKResponseAdapter`` consumes
+            # the partial stream via ``_handle_stream_event`` and emits
+            # only the tail diff from the subsequent summary, so content
+            # never double-emits and a summary-only short block still
+            # reaches the UI.
+            sdk_options_kwargs["include_partial_messages"] = True
 
         if sdk_env:
             sdk_options_kwargs["env"] = sdk_env

@@ -7,12 +7,15 @@ the frontend expects.
 
 import json
 import logging
+import time
 import uuid
+from typing import Any
 
 from claude_agent_sdk import (
     AssistantMessage,
     Message,
     ResultMessage,
+    StreamEvent,
     SystemMessage,
     TextBlock,
     ThinkingBlock,
@@ -46,6 +49,16 @@ from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
 logger = logging.getLogger(__name__)
 
 
+# Coalescing thresholds for ``thinking_delta`` events on the SDK partial
+# stream — matches the baseline window (see
+# ``baseline/reasoning.py::_COALESCE_MIN_CHARS``).  Anthropic's extended-
+# thinking channel emits ~1 event per token (~4,700 per Kimi K2.6 turn);
+# a 64-char / 50 ms window halves the event rate vs 32/40 while staying
+# well under the ~100 ms perceptual threshold.
+_THINKING_COALESCE_MIN_CHARS = 64
+_THINKING_COALESCE_MAX_INTERVAL_MS = 50.0
+
+
 class SDKResponseAdapter:
     """Adapter for converting Claude Agent SDK messages to Vercel AI SDK format.
 
@@ -74,6 +87,32 @@ class SDKResponseAdapter:
         # case so the turn renders as cleanly complete.
         self._text_since_last_tool_result = False
         self._any_tool_results_seen = False
+        # --- Partial-message streaming state (CHAT_SDK_INCLUDE_PARTIAL_MESSAGES)
+        # When ``include_partial_messages=True`` is set on
+        # ``ClaudeAgentOptions``, the CLI emits raw Anthropic streaming
+        # events (``content_block_start`` / ``content_block_delta`` /
+        # ``content_block_stop``) as ``StreamEvent`` messages ahead of
+        # each summary ``AssistantMessage``.  We consume those for
+        # per-token wire emission and reconcile against the summary to
+        # catch any tail content the partial stream missed (short blocks
+        # the CLI emits summary-only, OpenRouter proxy quirks, encrypted
+        # thinking).
+        #
+        # ``_emitted_text_by_index`` / ``_emitted_thinking_by_index`` track
+        # cumulative emitted content per content-block index.  On the
+        # summary ``AssistantMessage`` we emit only
+        # ``full_text[len(already_emitted):]`` per block so the wire
+        # never sees the same text twice but also never misses a tail.
+        # Indices are scoped to a single Anthropic message — the maps
+        # reset on ``message_start`` (a new AssistantMessage).
+        self._emitted_text_by_index: dict[int, str] = {}
+        self._emitted_thinking_by_index: dict[int, str] = {}
+        self._block_types_by_index: dict[int, str] = {}
+        # Coalescing buffer for ``thinking_delta`` — text_delta is
+        # naturally coarser so we let it through unbuffered.
+        self._pending_thinking_delta: str = ""
+        self._pending_thinking_index: int | None = None
+        self._last_thinking_flush_monotonic: float = 0.0
 
     @property
     def has_unresolved_tool_calls(self) -> bool:
@@ -98,6 +137,15 @@ class SDKResponseAdapter:
                 # key TTLs expire during gaps where no real chunks are
                 # produced (task_progress events were previously silent).
                 responses.append(StreamHeartbeat())
+
+        elif isinstance(sdk_message, StreamEvent):
+            # Raw Anthropic streaming events — only delivered when
+            # ``include_partial_messages=True`` is set on
+            # ``ClaudeAgentOptions`` (gated by
+            # ``config.sdk_include_partial_messages``).  Drives per-token
+            # emission of text + thinking; tool_use and other structural
+            # events stay on the ``AssistantMessage`` path.
+            self._handle_stream_event(sdk_message, responses)
 
         elif isinstance(sdk_message, AssistantMessage):
             # Flush any SDK built-in tool calls that didn't get a UserMessage
@@ -124,22 +172,37 @@ class SDKResponseAdapter:
             # the assistant message instead of above it.  ToolUse and other
             # block types stay in their original relative order so tool
             # call sequences remain coherent.
-            blocks = sorted(
-                sdk_message.content,
-                key=lambda b: 0 if isinstance(b, ThinkingBlock) else 1,
+            #
+            # Note: when ``include_partial_messages=True`` is active the
+            # per-token stream already emitted reasoning + text in their
+            # natural on-the-wire order via ``_handle_stream_event``.  The
+            # summary walk below falls through to ``_emit_text_tail`` /
+            # ``_emit_thinking_tail`` which emit only the diff, preserving
+            # that ordering without duplicating content.
+            blocks_with_idx = sorted(
+                enumerate(sdk_message.content),
+                key=lambda pair: 0 if isinstance(pair[1], ThinkingBlock) else 1,
             )
 
-            for block in blocks:
+            for block_index, block in blocks_with_idx:
                 if isinstance(block, TextBlock):
-                    if block.text:
-                        # Reasoning and text are distinct UI parts; close
-                        # any open reasoning block before opening text so
-                        # the AI SDK transport doesn't merge them.
+                    # Reasoning and text are distinct UI parts; close any
+                    # open reasoning block before opening text so the AI
+                    # SDK transport doesn't merge them.
+                    tail = self._text_tail_for_block(block_index, block.text)
+                    if tail:
                         self._end_reasoning_if_open(responses)
                         self._ensure_text_started(responses)
                         responses.append(
-                            StreamTextDelta(id=self.text_block_id, delta=block.text)
+                            StreamTextDelta(id=self.text_block_id, delta=tail)
                         )
+                        self._text_since_last_tool_result = True
+                        self._emitted_text_by_index[block_index] = block.text
+                    elif block.text:
+                        # Partial stream already emitted the full text.
+                        # Record the final value so a later reconcile
+                        # against the same index doesn't re-emit.
+                        self._emitted_text_by_index[block_index] = block.text
                         self._text_since_last_tool_result = True
 
                 elif isinstance(block, ThinkingBlock):
@@ -156,15 +219,19 @@ class SDKResponseAdapter:
                     # it live, extended_thinking turns that end
                     # thinking-only left the UI stuck on "Thought for Xs"
                     # with nothing rendered until a page refresh.
-                    if block.thinking:
+                    tail = self._thinking_tail_for_block(block_index, block.thinking)
+                    if tail:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
                         responses.append(
                             StreamReasoningDelta(
                                 id=self.reasoning_block_id,
-                                delta=block.thinking,
+                                delta=tail,
                             )
                         )
+                        self._emitted_thinking_by_index[block_index] = block.thinking
+                    elif block.thinking:
+                        self._emitted_thinking_by_index[block_index] = block.thinking
 
                 elif isinstance(block, ToolUseBlock):
                     self._end_text_if_open(responses)
@@ -372,10 +439,238 @@ class SDKResponseAdapter:
             self.has_started_reasoning = True
 
     def _end_reasoning_if_open(self, responses: list[StreamBaseResponse]) -> None:
-        """End the current reasoning block if one is open."""
+        """End the current reasoning block if one is open.
+
+        Drains any buffered thinking_delta text so the tail isn't lost
+        when the block closes before the coalesce window elapses.
+        """
         if self.has_started_reasoning and not self.has_ended_reasoning:
+            if self._pending_thinking_delta:
+                responses.append(
+                    StreamReasoningDelta(
+                        id=self.reasoning_block_id,
+                        delta=self._pending_thinking_delta,
+                    )
+                )
+                idx = self._pending_thinking_index
+                if idx is not None:
+                    self._emitted_thinking_by_index[idx] = (
+                        self._emitted_thinking_by_index.get(idx, "")
+                        + self._pending_thinking_delta
+                    )
+                self._pending_thinking_delta = ""
+                self._pending_thinking_index = None
             responses.append(StreamReasoningEnd(id=self.reasoning_block_id))
             self.has_ended_reasoning = True
+
+    # ------------------------------------------------------------------
+    # Partial-message streaming (CHAT_SDK_INCLUDE_PARTIAL_MESSAGES)
+    # ------------------------------------------------------------------
+
+    def _reset_partial_stream_state(self) -> None:
+        """Clear per-message partial-stream state.
+
+        Anthropic's ``content_block`` indices are scoped to a single
+        message — when a fresh ``message_start`` event arrives (new
+        ``AssistantMessage`` turn) the maps must reset so indices from
+        the previous message don't suppress genuine content in the new
+        one.
+        """
+        self._emitted_text_by_index = {}
+        self._emitted_thinking_by_index = {}
+        self._block_types_by_index = {}
+        self._pending_thinking_delta = ""
+        self._pending_thinking_index = None
+
+    def _text_tail_for_block(self, index: int, full_text: str) -> str:
+        """Return the text the summary carries that the partial stream
+        hasn't already emitted for ``index``.
+
+        When partial streaming is off, ``_emitted_text_by_index`` is
+        empty and this returns the full text.  When partial streaming
+        delivered a *prefix* of the summary's text we return only the
+        tail.  When the two views disagree (rare: partial content isn't
+        a prefix of the summary) the summary wins defensively so the
+        user sees the authoritative content even though a duplicate
+        renders briefly.
+        """
+        if not full_text:
+            return ""
+        already = self._emitted_text_by_index.get(index, "")
+        if not already:
+            return full_text
+        if full_text.startswith(already):
+            return full_text[len(already) :]
+        # Partial diverged from summary — fall back to summary (rare but
+        # observed when OpenRouter proxies rewrite content between the
+        # partial and summary phases).  Log so we notice if it becomes
+        # common in production.
+        logger.warning(
+            "SDK partial/summary text diverged at index %d "
+            "(already=%d chars, full=%d chars) — emitting summary to "
+            "avoid losing authoritative content",
+            index,
+            len(already),
+            len(full_text),
+        )
+        return full_text
+
+    def _thinking_tail_for_block(self, index: int, full_thinking: str) -> str:
+        """Diff a summary ``ThinkingBlock`` against partial-stream state.
+
+        Same semantics as :meth:`_text_tail_for_block` but sourced from
+        ``_emitted_thinking_by_index``.  If a partial stream chunk is
+        still buffered in ``_pending_thinking_delta`` for this index it
+        is folded into the "already emitted" side so we don't emit it
+        twice.
+        """
+        if not full_thinking:
+            return ""
+        already = self._emitted_thinking_by_index.get(index, "")
+        if self._pending_thinking_index == index:
+            already = already + self._pending_thinking_delta
+        if not already:
+            return full_thinking
+        if full_thinking.startswith(already):
+            return full_thinking[len(already) :]
+        logger.warning(
+            "SDK partial/summary thinking diverged at index %d "
+            "(already=%d chars, full=%d chars) — emitting summary",
+            index,
+            len(already),
+            len(full_thinking),
+        )
+        return full_thinking
+
+    def _handle_stream_event(
+        self, evt: StreamEvent, responses: list[StreamBaseResponse]
+    ) -> None:
+        """Translate raw Anthropic streaming events into wire events.
+
+        Handles four event types; everything else (``message_delta``
+        stop reasons, ``signature_delta``, ``input_json_delta``,
+        ``ping``, ...) is ignored because the summary ``AssistantMessage``
+        carries their effects.
+
+        * ``message_start`` — new message boundary, reset per-index maps
+        * ``content_block_start`` — open text / reasoning block on the
+          wire and remember the block type at that index
+        * ``content_block_delta`` — forward ``text_delta`` immediately
+          and coalesce ``thinking_delta`` (64-char / 50 ms window)
+        * ``content_block_stop`` — drain any buffered thinking and close
+          the corresponding wire block
+        """
+        raw: dict[str, Any] = evt.event or {}
+        event_type = raw.get("type")
+
+        if event_type == "message_start":
+            self._reset_partial_stream_state()
+            return
+
+        if event_type == "content_block_start":
+            block = raw.get("content_block") or {}
+            index = raw.get("index")
+            block_type = block.get("type")
+            if not isinstance(index, int) or not isinstance(block_type, str):
+                return
+            self._block_types_by_index[index] = block_type
+            if block_type == "text":
+                self._end_reasoning_if_open(responses)
+                self._ensure_text_started(responses)
+                self._emitted_text_by_index.setdefault(index, "")
+                # Seed any preamble the block_start carries.
+                seed = block.get("text") or ""
+                if seed:
+                    responses.append(StreamTextDelta(id=self.text_block_id, delta=seed))
+                    self._emitted_text_by_index[index] = seed
+                    self._text_since_last_tool_result = True
+            elif block_type == "thinking":
+                self._end_text_if_open(responses)
+                self._ensure_reasoning_started(responses)
+                self._emitted_thinking_by_index.setdefault(index, "")
+                self._last_thinking_flush_monotonic = time.monotonic()
+            # tool_use / server_tool_use / redacted_thinking blocks stay
+            # on the ``AssistantMessage`` path — the frontend widgets
+            # need the final ``input`` payload which only arrives in the
+            # summary.
+            return
+
+        if event_type == "content_block_delta":
+            index = raw.get("index")
+            if not isinstance(index, int):
+                return
+            delta = raw.get("delta") or {}
+            delta_type = delta.get("type")
+            if delta_type == "text_delta":
+                chunk = delta.get("text") or ""
+                if not chunk:
+                    return
+                self._ensure_text_started(responses)
+                responses.append(StreamTextDelta(id=self.text_block_id, delta=chunk))
+                self._emitted_text_by_index[index] = (
+                    self._emitted_text_by_index.get(index, "") + chunk
+                )
+                self._text_since_last_tool_result = True
+            elif delta_type == "thinking_delta":
+                chunk = delta.get("thinking") or ""
+                if not chunk:
+                    return
+                self._ensure_reasoning_started(responses)
+                # Flush the coalesce buffer if the index changed — shouldn't
+                # happen in practice but guard against interleaved indices.
+                if (
+                    self._pending_thinking_index is not None
+                    and self._pending_thinking_index != index
+                ):
+                    self._flush_pending_thinking(responses)
+                self._pending_thinking_delta += chunk
+                self._pending_thinking_index = index
+                now = time.monotonic()
+                elapsed_ms = (now - self._last_thinking_flush_monotonic) * 1000.0
+                if (
+                    len(self._pending_thinking_delta) >= _THINKING_COALESCE_MIN_CHARS
+                    or elapsed_ms >= _THINKING_COALESCE_MAX_INTERVAL_MS
+                ):
+                    self._flush_pending_thinking(responses)
+                    self._last_thinking_flush_monotonic = now
+            # Other delta types (``signature_delta``, ``input_json_delta``)
+            # are CLI / tool-dispatch plumbing — not surfaced on the wire.
+            return
+
+        if event_type == "content_block_stop":
+            index = raw.get("index")
+            if not isinstance(index, int):
+                return
+            block_type = self._block_types_by_index.pop(index, None)
+            if block_type == "text":
+                self._end_text_if_open(responses)
+            elif block_type == "thinking":
+                self._end_reasoning_if_open(responses)
+            return
+
+    def _flush_pending_thinking(self, responses: list[StreamBaseResponse]) -> None:
+        """Drain the coalesce buffer into a ``StreamReasoningDelta``.
+
+        Separate from ``_end_reasoning_if_open`` because the coalesce
+        window can flush mid-block (threshold hit) without closing the
+        reasoning block.
+        """
+        if not self._pending_thinking_delta:
+            return
+        responses.append(
+            StreamReasoningDelta(
+                id=self.reasoning_block_id,
+                delta=self._pending_thinking_delta,
+            )
+        )
+        idx = self._pending_thinking_index
+        if idx is not None:
+            self._emitted_thinking_by_index[idx] = (
+                self._emitted_thinking_by_index.get(idx, "")
+                + self._pending_thinking_delta
+            )
+        self._pending_thinking_delta = ""
+        self._pending_thinking_index = None
 
     def _flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
         """Emit outputs for tool calls that didn't receive a UserMessage result.

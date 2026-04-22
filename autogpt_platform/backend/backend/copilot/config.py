@@ -291,6 +291,22 @@ class ChatConfig(BaseSettings):
         "(24h, permanent) TTL option — see "
         "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.",
     )
+    sdk_include_partial_messages: bool = Field(
+        default=False,
+        description="Enable per-token streaming on the SDK path by setting "
+        "``include_partial_messages=True`` on ``ClaudeAgentOptions``.  The "
+        "CLI then emits raw Anthropic ``content_block_delta`` events as "
+        "``StreamEvent`` messages ahead of each summary "
+        "``AssistantMessage``, so long answers and extended-thinking "
+        "reasoning land on the wire token-by-token instead of popping in "
+        "as a lump at ``content_block_stop``.  Matches the perceptual "
+        "progress the baseline path has shipped since #12873.  Off by "
+        "default to keep the rollout staged; the adapter falls back to "
+        "summary-only emission when this flag is False.  See "
+        "``docs/sdk-per-token-streaming-followup.md`` for the diff-based "
+        "reconcile logic that prevents partial/summary double-emission "
+        "and truncation when the two views disagree.",
+    )
     claude_agent_cli_path: str | None = Field(
         default=None,
         description="Optional explicit path to a Claude Code CLI binary. "
