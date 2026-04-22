@@ -32,6 +32,22 @@ export async function fetchPickerAccessToken(
   return token;
 }
 
+/**
+ * Whether a saved credential's granted scopes cover every scope the picker
+ * is asking for.  Pulled out of openPicker() so the scope-gate can be
+ * exercised directly — the hook flow around it needs a browser env and
+ * is hard to test in isolation.  `undefined` required-scopes is treated
+ * as "no scope requirement".
+ */
+export function hasAllRequiredScopes(
+  credentialScopes: readonly string[] | null | undefined,
+  requiredScopes: readonly string[] | null | undefined,
+): boolean {
+  if (!requiredScopes || requiredScopes.length === 0) return true;
+  const granted = new Set(credentialScopes || []);
+  return requiredScopes.every((scope) => granted.has(scope));
+}
+
 const defaultScopes = ["https://www.googleapis.com/auth/drive.file"];
 
 type TokenClient = {
@@ -145,13 +161,7 @@ export function useGoogleDrivePicker(options: Props) {
           const cred = okData(response);
 
           if (cred && cred.type === "oauth2") {
-            const credentialScopes = new Set(cred.scopes || []);
-            const requiredScopesSet = new Set(requestedScopes);
-            const hasRequiredScopes = Array.from(requiredScopesSet).every(
-              (scope) => credentialScopes.has(scope),
-            );
-
-            if (!hasRequiredScopes) {
+            if (!hasAllRequiredScopes(cred.scopes, requestedScopes)) {
               const error = new Error(
                 "The saved Google OAuth credentials do not have the required permissions. Please sign in again with the correct permissions.",
               );
