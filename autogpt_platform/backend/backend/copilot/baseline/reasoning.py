@@ -266,6 +266,13 @@ class BaselineReasoningEmitter:
         self._pending_delta: str = ""
         self._last_flush_monotonic: float = 0.0
         self._render_in_ui = render_in_ui
+        # Diagnostic counters — logged once at close() so we can spot
+        # "all reasoning arrives at flush-on-close" regressions without
+        # having to enable debug logging on every chunk.
+        self._flush_count: int = 0
+        self._deferred_chunks: int = 0
+        self._total_text_chars: int = 0
+        self._first_delta_monotonic: float | None = None
 
     @property
     def is_open(self) -> bool:
@@ -296,12 +303,16 @@ class BaselineReasoningEmitter:
         # chunks per turn, folding the two calls into one cuts ~4,700
         # syscalls off the hot path without changing semantics.
         now = time.monotonic()
+        self._total_text_chars += len(text)
+        if self._first_delta_monotonic is None:
+            self._first_delta_monotonic = now
         if not self._open:
             if self._render_in_ui:
                 events.append(StreamReasoningStart(id=self._block_id))
                 events.append(StreamReasoningDelta(id=self._block_id, delta=text))
             self._open = True
             self._last_flush_monotonic = now
+            self._flush_count += 1
             if self._session_messages is not None:
                 self._current_row = ChatMessage(role="reasoning", content=text)
                 self._session_messages.append(self._current_row)
@@ -318,6 +329,9 @@ class BaselineReasoningEmitter:
                 )
             self._pending_delta = ""
             self._last_flush_monotonic = now
+            self._flush_count += 1
+        else:
+            self._deferred_chunks += 1
         return events
 
     def _should_flush_pending(self, now: float) -> bool:
@@ -347,15 +361,33 @@ class BaselineReasoningEmitter:
         """
         if not self._open:
             return []
+        tail_drained = bool(self._pending_delta)
         events: list[StreamBaseResponse] = []
         if self._render_in_ui:
             if self._pending_delta:
                 events.append(
                     StreamReasoningDelta(id=self._block_id, delta=self._pending_delta)
                 )
+                self._flush_count += 1
             events.append(StreamReasoningEnd(id=self._block_id))
+        now = time.monotonic()
+        first = self._first_delta_monotonic or now
+        duration_ms = (now - first) * 1000.0
+        logger.info(
+            "[Baseline reasoning] block closed: flushes=%d deferred=%d chars=%d "
+            "duration=%.0fms tail_drained=%s",
+            self._flush_count,
+            self._deferred_chunks,
+            self._total_text_chars,
+            duration_ms,
+            tail_drained,
+        )
         self._pending_delta = ""
         self._open = False
         self._block_id = str(uuid.uuid4())
         self._current_row = None
+        self._flush_count = 0
+        self._deferred_chunks = 0
+        self._total_text_chars = 0
+        self._first_delta_monotonic = None
         return events
