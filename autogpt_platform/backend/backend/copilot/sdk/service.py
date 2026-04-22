@@ -3772,15 +3772,17 @@ async def stream_chat_completion_sdk(
 
         if ended_with_stream_error:
             logger.warning(
-                "%s Stream ended with SDK error after %d messages",
+                "%s Stream ended with SDK error after %d messages (compaction=%s)",
                 log_prefix,
                 len(session.messages),
+                compaction.get_log_summary(),
             )
         else:
             logger.info(
-                "%s Stream completed successfully with %d messages",
+                "%s Stream completed successfully with %d messages (compaction=%s)",
                 log_prefix,
                 len(session.messages),
+                compaction.get_log_summary(),
             )
     except GeneratorExit:
         # GeneratorExit is raised when the async generator is closed by the
