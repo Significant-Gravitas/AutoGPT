@@ -9,7 +9,7 @@ from backend.data.model import APIKeyCredentials
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareManagedProvider,
     _read_or_create_profile_key,
-    _settings_available,
+    settings_available,
 )
 
 _USER_ID = "user-ayrshare-test"
@@ -20,21 +20,15 @@ class TestIsAvailable:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_is_available_always_false(self):
-        """Returning False keeps ensure_managed_credentials from auto-provisioning.
+        """is_available returns False regardless of org-level config.
 
         Profile quota is a real per-user subscription cost, so provisioning
         must only happen when the user explicitly opens the social-connect
-        flow via /api/integrations/ayrshare/sso_url.
+        flow via /api/integrations/ayrshare/sso_url.  Callers who actually
+        want to provision use ensure_managed_credential() directly, which
+        bypasses this gate.
         """
-        # Even with both org secrets populated, is_available stays False —
-        # callers who actually want to provision use
-        # ensure_managed_credential() directly, bypassing this gate.
-        with patch(
-            "backend.integrations.managed_providers.ayrshare.Settings"
-        ) as mock_settings:
-            mock_settings.return_value.secrets.ayrshare_api_key = "api-key"
-            mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
-            assert await AyrshareManagedProvider().is_available() is False
+        assert await AyrshareManagedProvider().is_available() is False
 
 
 class TestSettingsAvailable:
@@ -46,7 +40,7 @@ class TestSettingsAvailable:
         ) as mock_settings:
             mock_settings.return_value.secrets.ayrshare_api_key = "api-key"
             mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
-            assert _settings_available() is True
+            assert settings_available() is True
 
     def test_returns_false_when_api_key_missing(self):
         with patch(
@@ -54,7 +48,7 @@ class TestSettingsAvailable:
         ) as mock_settings:
             mock_settings.return_value.secrets.ayrshare_api_key = ""
             mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
-            assert _settings_available() is False
+            assert settings_available() is False
 
     def test_returns_false_when_jwt_key_missing(self):
         with patch(
@@ -62,7 +56,7 @@ class TestSettingsAvailable:
         ) as mock_settings:
             mock_settings.return_value.secrets.ayrshare_api_key = "api-key"
             mock_settings.return_value.secrets.ayrshare_jwt_key = ""
-            assert _settings_available() is False
+            assert settings_available() is False
 
 
 class TestReadOrCreateProfileKey:
@@ -75,15 +69,21 @@ class TestReadOrCreateProfileKey:
     """
 
     def _mock_store(self, legacy_key: SecretStr | None):
-        """Build a minimal store stub that returns a UserIntegrations-like obj."""
+        """Build a minimal store stub that yields a UserIntegrations-like obj
+        via the ``edit_user_integrations`` async context manager — the same
+        public API the production code uses."""
         managed = MagicMock()
         managed.ayrshare_profile_key = legacy_key
 
         user_integrations = MagicMock()
         user_integrations.managed_credentials = managed
 
+        cm = AsyncMock()
+        cm.__aenter__ = AsyncMock(return_value=user_integrations)
+        cm.__aexit__ = AsyncMock(return_value=None)
+
         store = MagicMock()
-        store._get_user_integrations = AsyncMock(return_value=user_integrations)
+        store.edit_user_integrations = MagicMock(return_value=cm)
         return store, user_integrations
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -189,21 +189,22 @@ class TestProvision:
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_provision_returns_managed_api_key_credential(self):
+        """provision now receives the caller-supplied store (framework-injected)."""
+        store = MagicMock()
         with patch(
             "backend.integrations.managed_providers.ayrshare."
             "_read_or_create_profile_key",
             new=AsyncMock(return_value="profile-key-xyz"),
-        ):
-            with patch(
-                "backend.integrations.managed_providers.ayrshare."
-                "IntegrationCredentialsStore"
-            ):
-                creds = await AyrshareManagedProvider().provision(_USER_ID)
+        ) as read_mock:
+            creds = await AyrshareManagedProvider().provision(_USER_ID, store)
 
         assert isinstance(creds, APIKeyCredentials)
         assert creds.provider == "ayrshare"
         assert creds.is_managed is True
         assert creds.api_key.get_secret_value() == "profile-key-xyz"
+        # The store passed into provision must be the one forwarded to the
+        # internal read helper — no hidden construction of a fresh store.
+        read_mock.assert_awaited_once_with(_USER_ID, store)
 
 
 class TestMigrationOrderingSafety:
@@ -218,8 +219,8 @@ class TestMigrationOrderingSafety:
     async def test_add_managed_credential_failure_retains_legacy_key(self):
         from backend.integrations.managed_credentials import _provision_under_lock
 
-        # Mock store: has_managed_credential=False, _get_user_integrations
-        # returns a UserIntegrations with the legacy key populated, and
+        # Mock store: has_managed_credential=False, edit_user_integrations
+        # yields a UserIntegrations with the legacy key populated, and
         # add_managed_credential raises to simulate a DB blip.  Because
         # _provision_under_lock fails before post_provision runs, the
         # legacy key must remain untouched — a retry will reuse it.
@@ -230,6 +231,10 @@ class TestMigrationOrderingSafety:
         user_integrations = MagicMock()
         user_integrations.managed_credentials = managed
 
+        edit_cm = AsyncMock()
+        edit_cm.__aenter__ = AsyncMock(return_value=user_integrations)
+        edit_cm.__aexit__ = AsyncMock(return_value=None)
+
         lock_cm = AsyncMock()
         lock_cm.__aenter__ = AsyncMock(return_value=None)
         lock_cm.__aexit__ = AsyncMock(return_value=None)
@@ -239,18 +244,15 @@ class TestMigrationOrderingSafety:
         store = MagicMock()
         store.locks = AsyncMock(return_value=locks)
         store.has_managed_credential = AsyncMock(return_value=False)
-        store._get_user_integrations = AsyncMock(return_value=user_integrations)
+        store.edit_user_integrations = MagicMock(return_value=edit_cm)
         store.add_managed_credential = AsyncMock(side_effect=RuntimeError("DB blip"))
 
-        # Patch the store constructor inside provision() so we inject our mock.
-        with patch(
-            "backend.integrations.managed_providers.ayrshare."
-            "IntegrationCredentialsStore",
-            return_value=store,
-        ):
-            provider = AyrshareManagedProvider()
-            with pytest.raises(RuntimeError, match="DB blip"):
-                await _provision_under_lock(_USER_ID, store, "ayrshare", provider)
+        # provision now receives the caller-supplied store directly, so no
+        # constructor patch is needed — the framework threads the same mock
+        # from _provision_under_lock into AyrshareManagedProvider.provision.
+        provider = AyrshareManagedProvider()
+        with pytest.raises(RuntimeError, match="DB blip"):
+            await _provision_under_lock(_USER_ID, store, "ayrshare", provider)
 
         # The legacy key MUST still be populated — otherwise a retry would
         # create a fresh Ayrshare profile and orphan the user's socials.

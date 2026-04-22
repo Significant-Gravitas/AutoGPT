@@ -44,10 +44,16 @@ class ManagedCredentialProvider(ABC):
         """Return ``True`` when the org-level configuration is present."""
 
     @abstractmethod
-    async def provision(self, user_id: str) -> Credentials:
+    async def provision(
+        self, user_id: str, store: IntegrationCredentialsStore
+    ) -> Credentials:
         """Create external resources and return a credential.
 
-        The returned credential **must** have ``is_managed=True``.
+        The returned credential **must** have ``is_managed=True``.  The
+        caller-supplied *store* is the same instance the framework will use
+        for :meth:`post_provision` and the credential upsert; subclasses
+        should thread it through when they need to read per-user state
+        (e.g. Ayrshare's legacy migration read).
         """
 
     @abstractmethod
@@ -62,12 +68,19 @@ class ManagedCredentialProvider(ABC):
     ) -> None:
         """Optional cleanup hook run *after* the credential is durably stored.
 
-        Runs inside the same provision lock as ``provision`` + the credential
-        upsert, so subclasses can safely mutate other per-user state
-        (e.g. clear a legacy migration field) knowing the new managed
-        credential is already durable — a failure here does not cause data
-        loss, because the managed credential is already in place and the
-        next provision call short-circuits on ``has_managed_credential``.
+        Runs inside the provision lock, immediately after
+        ``add_managed_credential`` returns.  Subclasses can safely mutate
+        other per-user state (e.g. clear a legacy migration field) knowing
+        the new managed credential is already durable.
+
+        **Must be idempotent and retry-safe.** The framework swallows any
+        exception raised here and only logs a warning — the managed
+        credential is already persisted, so subsequent provision calls
+        short-circuit on ``has_managed_credential`` and this hook never
+        runs again for that credential.  If a subclass needs the hook to
+        retry on failure, it must drive that retry explicitly (e.g. a
+        scheduled job), not rely on the provision path.
+
         Default: no-op.
         """
         _ = user_id, store, credential
@@ -151,7 +164,7 @@ async def _provision_under_lock(
         # Re-check under lock to avoid duplicate provisioning.
         if await store.has_managed_credential(user_id, name):
             return True
-        credential = await provider.provision(user_id)
+        credential = await provider.provision(user_id, store)
         await store.add_managed_credential(user_id, credential)
         # Run the post-provision cleanup hook only after the managed
         # credential is durably stored.  If it raises, the managed

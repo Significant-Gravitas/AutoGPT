@@ -59,11 +59,9 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
         # which bypasses this gate.
         return False
 
-    async def provision(self, user_id: str) -> Credentials:
-        # Lazy import: avoids a managed_providers → credentials_store cycle
-        # and keeps the module importable at startup from
-        # managed_providers/__init__.py.
-        store = IntegrationCredentialsStore()
+    async def provision(
+        self, user_id: str, store: IntegrationCredentialsStore
+    ) -> Credentials:
         profile_key = await _read_or_create_profile_key(user_id, store)
         return APIKeyCredentials(
             provider=self.provider_name,
@@ -123,9 +121,15 @@ async def _read_or_create_profile_key(
     eagerly and the subsequent ``add_managed_credential`` failed, a retry
     would see an empty legacy field and create a *fresh* Ayrshare profile,
     orphaning the user's linked social accounts.
+
+    We borrow ``edit_user_integrations`` as a read — the context manager
+    yields the same ``UserIntegrations`` object as an internal getter would,
+    and the write-back is a no-op when no fields are mutated.  This keeps
+    us on the store's public API instead of reaching for a private
+    ``_get_user_integrations`` accessor.
     """
-    user_integrations = await store._get_user_integrations(user_id)
-    legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
+    async with store.edit_user_integrations(user_id) as user_integrations:
+        legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
     if legacy_key:
         logger.debug("[ayrshare] Reusing legacy profile key for user %s", user_id)
         return (
@@ -146,7 +150,7 @@ async def _read_or_create_profile_key(
     return profile.profileKey
 
 
-def _settings_available() -> bool:
+def settings_available() -> bool:
     """True when Ayrshare org-level secrets are configured.
 
     Exposed so on-demand callers (e.g. the SSO-URL route) can pre-flight the
