@@ -327,9 +327,7 @@ def strip_for_upload(content: str) -> str:
             ) or (last_asst_msg_id is None and i == last_asst_idx)
             if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
                 content_blocks = msg["content"]
-                producing_model = (
-                    msg.get("model") if isinstance(msg, dict) else None
-                )
+                producing_model = msg.get("model") if isinstance(msg, dict) else None
                 filtered = [
                     b
                     for b in content_blocks

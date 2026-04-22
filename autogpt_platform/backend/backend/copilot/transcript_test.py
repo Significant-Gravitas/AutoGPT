@@ -720,9 +720,7 @@ class TestStripForUpload:
         result = strip_for_upload(content)
         entries = [json.loads(line) for line in result.strip().split("\n")]
         asst_entry = next(
-            e
-            for e in entries
-            if e.get("message", {}).get("id") == "msg_kimi_shim"
+            e for e in entries if e.get("message", {}).get("id") == "msg_kimi_shim"
         )
         types = [
             b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
@@ -848,9 +846,9 @@ class TestStripForUpload:
         types = [
             b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
         ]
-        assert "thinking" in types, (
-            "Anthropic-signed thinking on last turn must survive strip"
-        )
+        assert (
+            "thinking" in types
+        ), "Anthropic-signed thinking on last turn must survive strip"
         assert "text" in types
 
     def test_empty_content(self):
