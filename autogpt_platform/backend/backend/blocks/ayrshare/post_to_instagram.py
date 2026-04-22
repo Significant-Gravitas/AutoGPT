@@ -11,7 +11,12 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._util import BaseAyrshareInput, InstagramUserTag, create_ayrshare_client, get_profile_key
+from ._util import (
+    BaseAyrshareInput,
+    InstagramUserTag,
+    create_ayrshare_client,
+    get_profile_key,
+)
 
 
 class PostToInstagramBlock(Block):

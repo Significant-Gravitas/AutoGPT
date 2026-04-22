@@ -9,7 +9,12 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._util import BaseAyrshareInput, CarouselItem, create_ayrshare_client, get_profile_key
+from ._util import (
+    BaseAyrshareInput,
+    CarouselItem,
+    create_ayrshare_client,
+    get_profile_key,
+)
 
 
 class PostToFacebookBlock(Block):

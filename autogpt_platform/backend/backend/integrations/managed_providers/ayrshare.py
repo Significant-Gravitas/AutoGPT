@@ -98,9 +98,7 @@ async def _get_or_create_profile_key(
     async with store.edit_user_integrations(user_id) as user_integrations:
         legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
         if legacy_key:
-            logger.debug(
-                "[ayrshare] Migrating legacy profile key for user %s", user_id
-            )
+            logger.debug("[ayrshare] Migrating legacy profile key for user %s", user_id)
             user_integrations.managed_credentials.ayrshare_profile_key = None
             return (
                 legacy_key.get_secret_value()
@@ -127,6 +125,4 @@ def _settings_available() -> bool:
     config before calling :func:`~backend.integrations.managed_credentials.ensure_managed_credential`.
     """
     settings = Settings()
-    return bool(
-        settings.secrets.ayrshare_api_key and settings.secrets.ayrshare_jwt_key
-    )
+    return bool(settings.secrets.ayrshare_api_key and settings.secrets.ayrshare_jwt_key)
