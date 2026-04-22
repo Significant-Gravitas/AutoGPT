@@ -331,6 +331,24 @@ class TestSyncFailCloseSession:
 
         mock_mark.assert_awaited_once()
 
+    def test_closed_execution_loop_skipped_cleanly(self) -> None:
+        """If cleanup_worker has already stopped the execution_loop by the
+        time the safety net fires, ``run_coroutine_threadsafe`` raises
+        RuntimeError. Expected behavior: log + return without propagating."""
+        dead_loop = asyncio.new_event_loop()
+        dead_loop.close()
+
+        mock_mark = AsyncMock()
+        with patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mock_mark,
+        ):
+            # Must not raise even though the loop is closed
+            sync_fail_close_session("sess-closed-loop", _make_log(), dead_loop)
+
+        # mark_session_completed was never scheduled because the loop was dead
+        mock_mark.assert_not_awaited()
+
     def test_bounded_timeout_when_redis_hangs(self, exec_loop) -> None:
         """Scenario D: Redis unreachable — the inner ``asyncio.wait_for``
         must fire and the helper must return without blocking the worker.
