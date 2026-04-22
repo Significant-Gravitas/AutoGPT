@@ -395,7 +395,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=True,
             api_key="or-key",
@@ -412,7 +412,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
@@ -430,7 +430,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=True,
             api_key=None,
@@ -447,7 +447,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model="claude-sonnet-4-5-20250514",
             use_openrouter=True,
             api_key="or-key",
@@ -462,7 +462,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
@@ -477,7 +477,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="claude-opus-4.6",
+            thinking_standard_model="claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,

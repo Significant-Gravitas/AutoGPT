@@ -321,14 +321,17 @@ def _filter_tools_by_permissions(
 def _resolve_baseline_model(tier: CopilotLlmModel | None) -> str:
     """Pick the model for the baseline path based on the per-request tier.
 
-    The baseline (fast) and SDK (extended thinking) paths now share the
-    same tier-based model resolution — only the *path* differs between
-    "fast" and "extended_thinking".  ``'advanced'`` → Opus;
-    ``'standard'`` / ``None`` → the config default (Sonnet).
+    Baseline resolves independently of SDK via the ``fast_*_model`` cells
+    of the (path, tier) matrix.  ``'standard'`` / ``None`` picks Kimi
+    K2.6 by default (cheap + OpenRouter ``reasoning`` support);
+    ``'advanced'`` picks Opus by default so the advanced tier is a clean
+    A/B against the SDK advanced tier — same model, different path —
+    isolating reasoning-wire + cache differences from model capability.
+    Both defaults are overridable per ``CHAT_FAST_*_MODEL`` env vars.
     """
-    from backend.copilot.service import resolve_chat_model
-
-    return resolve_chat_model(tier)
+    if tier == "advanced":
+        return config.fast_advanced_model
+    return config.fast_standard_model
 
 
 @dataclass
@@ -760,6 +763,19 @@ async def _baseline_tool_executor(
             input=tool_args,
         )
     )
+
+    # Announce the tool call to the session so in-turn guards like
+    # ``require_guide_read`` can see it *right now*, before the tool
+    # actually runs.  Without this, the tool_call row lives only in
+    # ``state.session_messages`` until the ``finally`` block flushes it
+    # into ``session.messages`` at turn end — so a second tool in the
+    # same turn (e.g. ``create_agent`` after ``get_agent_building_guide``)
+    # scans a stale ``session.messages`` and the guard re-fires despite
+    # the guide having been called.  The announce-set is cleared at turn
+    # end; we deliberately don't touch ``session.messages`` here to avoid
+    # duplicating the assistant row that ``_baseline_conversation_updater``
+    # will append at round end.
+    session.announce_inflight_tool_call(tool_name)
 
     try:
         result: StreamToolOutputAvailable = await execute_tool(
@@ -1806,6 +1822,16 @@ async def stream_chat_completion_baseline(
         yield StreamError(errorText=error_msg, code="baseline_error")
         # Still persist whatever we got
     finally:
+        # In-flight tool-call announcements are only meaningful for the
+        # current turn; clear at the top of the outer finally so the next
+        # turn starts with a clean scratch buffer even if one of the
+        # awaited cleanup steps below (usage persistence, session upsert,
+        # transcript upload) raises.  The buffer is a process-local scratch
+        # set — if we leak it into the next turn the guide-read guard would
+        # observe a phantom in-flight call and skip its gate, so this must
+        # run unconditionally.
+        session.clear_inflight_tool_calls()
+
         # Pending messages are drained atomically at turn start and
         # between tool rounds, so there's nothing to clear in finally.
         # Any message pushed after the final drain window stays in the

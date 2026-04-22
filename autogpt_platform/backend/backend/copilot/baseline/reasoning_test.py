@@ -12,6 +12,7 @@ from backend.copilot.baseline.reasoning import (
     BaselineReasoningEmitter,
     OpenRouterDeltaExtension,
     ReasoningDetail,
+    _is_reasoning_route,
     reasoning_extra_body,
 )
 from backend.copilot.model import ChatMessage
@@ -135,6 +136,59 @@ class TestOpenRouterDeltaExtension:
         assert ext.visible_text() == "real"
 
 
+class TestIsReasoningRoute:
+    def test_anthropic_routes(self):
+        assert _is_reasoning_route("anthropic/claude-sonnet-4-6")
+        assert _is_reasoning_route("claude-3-5-sonnet-20241022")
+        assert _is_reasoning_route("anthropic.claude-3-5-sonnet")
+        assert _is_reasoning_route("ANTHROPIC/Claude-Opus")  # case-insensitive
+
+    def test_moonshot_kimi_routes(self):
+        # OpenRouter advertises the ``reasoning`` extension on Moonshot
+        # endpoints — both K2.6 (the new baseline default) and the
+        # reasoning-native kimi-k2-thinking variant.
+        assert _is_reasoning_route("moonshotai/kimi-k2.6")
+        assert _is_reasoning_route("moonshotai/kimi-k2-thinking")
+        assert _is_reasoning_route("moonshotai/kimi-k2.5")
+        # Direct (non-OpenRouter) model ids also resolve via the ``kimi-``
+        # prefix so a future bare ``kimi-k3`` id would still match.
+        assert _is_reasoning_route("kimi-k2-instruct")
+        # Provider-prefixed bare kimi ids (without the ``moonshotai/``
+        # prefix) are also recognised — the match anchors on the final
+        # path segment.
+        assert _is_reasoning_route("openrouter/kimi-k2.6")
+
+    def test_other_providers_rejected(self):
+        assert not _is_reasoning_route("openai/gpt-4o")
+        assert not _is_reasoning_route("google/gemini-2.5-pro")
+        assert not _is_reasoning_route("xai/grok-4")
+        assert not _is_reasoning_route("meta-llama/llama-3.3-70b-instruct")
+        assert not _is_reasoning_route("deepseek/deepseek-r1")
+
+    def test_kimi_substring_false_positives_rejected(self):
+        # Regression: the previous implementation matched any model whose
+        # name contained the substring ``kimi`` — including unrelated model
+        # ids like ``hakimi``.  The anchored match below rejects them.
+        assert not _is_reasoning_route("some-provider/hakimi-large")
+        assert not _is_reasoning_route("hakimi")
+        assert not _is_reasoning_route("akimi-7b")
+
+    def test_claude_substring_false_positives_rejected(self):
+        # Regression (Sentry review on #12871): ``'claude' in lowered``
+        # matched any substring — a custom
+        # ``someprovider/claude-mock-v1`` set via
+        # ``CHAT_FAST_STANDARD_MODEL`` would inherit the reasoning
+        # extra_body and take a 400 from its upstream.  The anchored
+        # match requires either an ``anthropic`` / ``anthropic.`` /
+        # ``anthropic/`` prefix, or a bare ``claude-`` id with no
+        # provider prefix.
+        assert not _is_reasoning_route("someprovider/claude-mock-v1")
+        assert not _is_reasoning_route("custom/claude-like-model")
+        # Same principle for Kimi — a non-Moonshot provider prefix is
+        # rejected even when the model id starts with ``kimi-``.
+        assert not _is_reasoning_route("other/kimi-pro")
+
+
 class TestReasoningExtraBody:
     def test_anthropic_route_returns_fragment(self):
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", 4096) == {
@@ -146,16 +200,30 @@ class TestReasoningExtraBody:
             "reasoning": {"max_tokens": 2048}
         }
 
-    def test_non_anthropic_route_returns_none(self):
+    def test_kimi_routes_return_fragment(self):
+        # Kimi K2.6 ships the same OpenRouter ``reasoning`` extension as
+        # Anthropic, so the gate widened with this PR and the fragment
+        # must now materialise on Moonshot routes too.
+        assert reasoning_extra_body("moonshotai/kimi-k2.6", 8192) == {
+            "reasoning": {"max_tokens": 8192}
+        }
+        assert reasoning_extra_body("moonshotai/kimi-k2-thinking", 4096) == {
+            "reasoning": {"max_tokens": 4096}
+        }
+
+    def test_non_reasoning_route_returns_none(self):
         assert reasoning_extra_body("openai/gpt-4o", 4096) is None
         assert reasoning_extra_body("google/gemini-2.5-pro", 4096) is None
+        assert reasoning_extra_body("xai/grok-4", 4096) is None
 
     def test_zero_max_tokens_kill_switch(self):
         # Operator kill switch: ``max_thinking_tokens <= 0`` disables the
-        # ``reasoning`` extra_body fragment even on an Anthropic route.
-        # Lets us silence reasoning without dropping the SDK path's budget.
+        # ``reasoning`` extra_body fragment on ANY reasoning route (Anthropic
+        # or Kimi).  Lets us silence reasoning without dropping the SDK
+        # path's budget.
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", 0) is None
         assert reasoning_extra_body("anthropic/claude-sonnet-4-6", -1) is None
+        assert reasoning_extra_body("moonshotai/kimi-k2.6", 0) is None
 
 
 class TestBaselineReasoningEmitter:
@@ -171,7 +239,12 @@ class TestBaselineReasoningEmitter:
         assert emitter.is_open is True
 
     def test_subsequent_deltas_reuse_block_id_without_new_start(self):
-        emitter = BaselineReasoningEmitter()
+        # Disable coalescing so each chunk flushes immediately — this test
+        # is about the Start/Delta/block-id state machine, not the coalesce
+        # window.  Coalescing behaviour is covered below.
+        emitter = BaselineReasoningEmitter(
+            coalesce_min_chars=0, coalesce_max_interval_ms=0
+        )
         first = emitter.on_delta(_delta(reasoning="a"))
         second = emitter.on_delta(_delta(reasoning="b"))
 
@@ -224,6 +297,106 @@ class TestBaselineReasoningEmitter:
         deltas = [e for e in events if isinstance(e, StreamReasoningDelta)]
         assert len(deltas) == 1
         assert deltas[0].delta == "plan: do the thing"
+
+
+class TestReasoningDeltaCoalescing:
+    """Coalescing batches fine-grained provider chunks into bigger wire
+    frames.  OpenRouter's Kimi K2.6 emits ~4,700 reasoning-delta chunks
+    per turn vs ~28 for Sonnet; without batching, every chunk becomes one
+    Redis ``xadd`` + one SSE event + one React re-render of the
+    non-virtualised chat list, which paint-storms the browser.  These
+    tests pin the batching contract: small chunks buffer until the
+    char-size or time threshold trips, large chunks still flush
+    immediately, and ``close()`` never drops tail text."""
+
+    def test_small_chunks_after_first_buffer_until_threshold(self):
+        # Generous time threshold so size alone controls flush timing.
+        emitter = BaselineReasoningEmitter(
+            coalesce_min_chars=32, coalesce_max_interval_ms=60_000
+        )
+        # First chunk always flushes immediately (so UI renders without
+        # waiting).
+        first = emitter.on_delta(_delta(reasoning="hi "))
+        assert any(isinstance(e, StreamReasoningStart) for e in first)
+        assert sum(isinstance(e, StreamReasoningDelta) for e in first) == 1
+
+        # Subsequent small chunks buffer silently — 5 × 4 chars = 20 chars,
+        # still under the 32-char threshold.
+        for _ in range(5):
+            assert emitter.on_delta(_delta(reasoning="abcd")) == []
+
+        # Once the threshold is crossed, the accumulated buffer flushes
+        # as a single StreamReasoningDelta carrying every buffered chunk.
+        flush = emitter.on_delta(_delta(reasoning="efghijklmnop"))
+        assert len(flush) == 1
+        assert isinstance(flush[0], StreamReasoningDelta)
+        assert flush[0].delta == "abcd" * 5 + "efghijklmnop"
+
+    def test_time_based_flush_when_chars_stay_below_threshold(self, monkeypatch):
+        # Fake ``time.monotonic`` so we can drive the time-based branch
+        # deterministically without real sleeps.
+        from backend.copilot.baseline import reasoning as rmod
+
+        fake_now = [0.0]
+        monkeypatch.setattr(rmod.time, "monotonic", lambda: fake_now[0])
+
+        emitter = BaselineReasoningEmitter(
+            coalesce_min_chars=1000, coalesce_max_interval_ms=40
+        )
+        # t=0: first chunk flushes immediately.
+        first = emitter.on_delta(_delta(reasoning="a"))
+        assert sum(isinstance(e, StreamReasoningDelta) for e in first) == 1
+
+        # t=10 ms: still under 40 ms → buffer.
+        fake_now[0] = 0.010
+        assert emitter.on_delta(_delta(reasoning="b")) == []
+
+        # t=50 ms since last flush → time threshold trips, flush fires.
+        fake_now[0] = 0.060
+        flushed = emitter.on_delta(_delta(reasoning="c"))
+        assert len(flushed) == 1
+        assert isinstance(flushed[0], StreamReasoningDelta)
+        assert flushed[0].delta == "bc"
+
+    def test_close_flushes_tail_buffer_before_end(self):
+        emitter = BaselineReasoningEmitter(
+            coalesce_min_chars=1000, coalesce_max_interval_ms=60_000
+        )
+        emitter.on_delta(_delta(reasoning="first"))  # flushes (first chunk)
+        emitter.on_delta(_delta(reasoning=" middle "))  # buffered
+        emitter.on_delta(_delta(reasoning="tail"))  # buffered
+
+        events = emitter.close()
+        assert len(events) == 2
+        assert isinstance(events[0], StreamReasoningDelta)
+        assert events[0].delta == " middle tail"
+        assert isinstance(events[1], StreamReasoningEnd)
+
+    def test_coalesce_disabled_flushes_every_chunk(self):
+        emitter = BaselineReasoningEmitter(
+            coalesce_min_chars=0, coalesce_max_interval_ms=0
+        )
+        first = emitter.on_delta(_delta(reasoning="a"))
+        second = emitter.on_delta(_delta(reasoning="b"))
+        assert sum(isinstance(e, StreamReasoningDelta) for e in first) == 1
+        assert sum(isinstance(e, StreamReasoningDelta) for e in second) == 1
+
+    def test_persistence_stays_per_delta_even_when_wire_coalesces(self):
+        """DB row content must track every chunk so a crash mid-turn
+        persists the full reasoning-so-far, even if the coalesce window
+        never flushed those chunks to the wire."""
+        session: list[ChatMessage] = []
+        emitter = BaselineReasoningEmitter(
+            session,
+            coalesce_min_chars=1000,
+            coalesce_max_interval_ms=60_000,
+        )
+        emitter.on_delta(_delta(reasoning="first "))
+        emitter.on_delta(_delta(reasoning="chunk "))
+        emitter.on_delta(_delta(reasoning="three"))
+        # No close; verify the persisted row already has everything.
+        assert len(session) == 1
+        assert session[0].content == "first chunk three"
 
 
 class TestReasoningPersistence:

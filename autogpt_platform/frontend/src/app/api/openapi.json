@@ -14642,6 +14642,7 @@
           "browser_screenshot",
           "bash_exec",
           "web_fetch",
+          "web_search",
           "feature_request_search",
           "feature_request_created",
           "memory_store",

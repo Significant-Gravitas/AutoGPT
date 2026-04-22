@@ -45,6 +45,7 @@ from .run_sub_session import RunSubSessionTool
 from .search_docs import SearchDocsTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
+from .web_search import WebSearchTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
@@ -93,6 +94,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_agent_building_guide": GetAgentBuildingGuideTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
+    "web_search": WebSearchTool(),
     # Agent-browser multi-step automation (navigate, act, screenshot)
     "browser_navigate": BrowserNavigateTool(),
     "browser_act": BrowserActTool(),

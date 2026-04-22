@@ -76,6 +76,7 @@ class ResponseType(str, Enum):
 
     # Web
     WEB_FETCH = "web_fetch"
+    WEB_SEARCH = "web_search"
 
     # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
@@ -583,6 +584,30 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class WebSearchResult(BaseModel):
+    """One entry in a web_search tool response."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    page_age: str | None = None
+
+
+class WebSearchResponse(ToolResponseBase):
+    """Response for web_search tool — mirrors the shape of the SDK's
+    native ``WebSearch`` tool so the LLM sees a consistent interface
+    regardless of which path dispatched the call."""
+
+    type: ResponseType = ResponseType.WEB_SEARCH
+    query: str
+    results: list[WebSearchResult] = Field(default_factory=list)
+    # Backend-reported usage for this call (copied from Anthropic's
+    # ``usage.server_tool_use``).  Surfaces as metadata for frontend
+    # debug panels but is also what drives rate-limit / cost tracking
+    # via ``persist_and_record_usage(provider="anthropic")``.
+    search_requests: int = 0
 
 
 class BashExecResponse(ToolResponseBase):

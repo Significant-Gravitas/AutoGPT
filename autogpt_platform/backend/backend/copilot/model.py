@@ -20,7 +20,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 )
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 
 from backend.data.db_accessors import chat_db, library_db
 from backend.data.graph import GraphSettings
@@ -205,6 +205,15 @@ class ChatSessionInfo(BaseModel):
 
 class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
+    # In-flight tool-call names for the CURRENT turn.  Not persisted to
+    # DB and not serialised on the wire — ``PrivateAttr`` keeps this a
+    # process-local scratch buffer that's invisible to ``model_dump`` /
+    # ``model_dump_json`` / the redis cache path.  Populated by the
+    # baseline tool executor the moment a tool is dispatched so in-turn
+    # guards (e.g. ``require_guide_read``) can see the call before it
+    # lands in ``messages`` at turn-end.  Cleared when the turn
+    # completes.
+    _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
     @classmethod
     def new(
@@ -241,6 +250,56 @@ class ChatSession(ChatSessionInfo):
             **ChatSessionInfo.from_db(prisma_session).model_dump(),
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
+
+    def announce_inflight_tool_call(self, tool_name: str) -> None:
+        """Record that *tool_name* is being dispatched in the current turn.
+
+        Called by the baseline tool executor **before** the tool actually
+        runs (the announcement is about dispatch, not success).  If the
+        tool raises, the name stays in the buffer for the rest of the
+        turn — that matches the guide-read gate's contract ("was the tool
+        called?") but means any future gate wanting *successful*
+        dispatches would need its own tracking.
+
+        Lets in-turn guards (see
+        ``copilot/tools/helpers.py::require_guide_read``) see a tool
+        call the moment it's issued, instead of waiting for the
+        ``session.messages`` flush at turn end — fixing a loop where a
+        second tool in the same turn re-fires a guard despite the
+        guarding tool having already been called (seen on Kimi K2.6 in
+        particular because its aggressive tool-call chaining exercises
+        this path much more than Sonnet does).  The buffer is cleared by
+        :meth:`clear_inflight_tool_calls` at turn end.
+        """
+        self._inflight_tool_calls.add(tool_name)
+
+    def clear_inflight_tool_calls(self) -> None:
+        """Reset the in-flight tool-call announcement buffer."""
+        self._inflight_tool_calls.clear()
+
+    def has_tool_been_called(self, tool_name: str) -> bool:
+        """True when *tool_name* has been called in this session.
+
+        Checks the in-flight announcement buffer (for calls dispatched
+        in the *current* turn but not yet flushed into ``messages``) and
+        the durable ``messages`` history (for past turns + prior rounds
+        within this turn whose writes already landed).  The durable
+        scan is session-wide, not turn-scoped: a matching tool call
+        anywhere in ``messages`` counts.  This matches the guide-read
+        contract — once the guide has been read in the session, the
+        agent doesn't need to re-read it for later create/edit/fix
+        tools.
+        """
+        if tool_name in self._inflight_tool_calls:
+            return True
+        for msg in reversed(self.messages):
+            if msg.role != "assistant" or not msg.tool_calls:
+                continue
+            for tc in msg.tool_calls:
+                name = tc.get("function", {}).get("name") or tc.get("name")
+                if name == tool_name:
+                    return True
+        return False
 
     def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
         """Attach a tool_call to the current turn's assistant message.

@@ -21,7 +21,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # response shape carries) and the dry_run description. Keeps the
 # regression gate effective while accepting a deliberate ~120-token
 # spend on LLM-decision-critical copy.
-_CHAR_BUDGET = 32_500
+# Bumped 32500 -> 32800 on PR #12871 for the new web_search tool
+# (server-side Anthropic beta). Description already trimmed to the
+# minimum viable copy; the bump absorbs the schema skeleton cost
+# (~300 chars / ~75 tokens) for a new LLM-facing primitive.
+_CHAR_BUDGET = 32_800
 
 
 @pytest.fixture(scope="module")

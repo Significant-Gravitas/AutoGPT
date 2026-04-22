@@ -1404,6 +1404,16 @@ class TestApplyPromptCacheMarkers:
         assert not _is_anthropic_model("xai/grok-4")
         assert not _is_anthropic_model("meta-llama/llama-3.3-70b-instruct")
 
+    def test_is_anthropic_model_rejects_kimi_routes(self):
+        """Regression guard: Kimi K2.6 is a reasoning route (reasoning
+        extra_body is sent) but NOT an Anthropic route — Moonshot does
+        its own auto prompt caching, so ``cache_control`` markers must
+        NOT be applied. OpenRouter silently drops them today, but if
+        they ever start failing fast we'd want the gate tight."""
+        assert not _is_anthropic_model("moonshotai/kimi-k2.6")
+        assert not _is_anthropic_model("moonshotai/kimi-k2-thinking")
+        assert not _is_anthropic_model("kimi-k2-instruct")
+
     def test_cache_control_uses_configured_ttl(self, monkeypatch):
         """TTL comes from ChatConfig.baseline_prompt_cache_ttl — defaults
         to 1h so the static prefix (system + tools) stays warm across
@@ -1829,7 +1839,7 @@ class TestBaselineReasoningStreaming:
 
     @pytest.mark.asyncio
     async def test_reasoning_param_absent_on_non_anthropic_routes(self):
-        """Non-Anthropic routes (e.g. OpenAI) must not receive ``reasoning``."""
+        """Non-reasoning routes (e.g. OpenAI) must not receive ``reasoning``."""
         state = _BaselineStreamState(model="openai/gpt-4o")
 
         mock_client = MagicMock()
@@ -1849,6 +1859,54 @@ class TestBaselineReasoningStreaming:
 
         extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
         assert "reasoning" not in extra_body
+
+    @pytest.mark.asyncio
+    async def test_kimi_route_sends_reasoning_but_no_cache_control(self):
+        """Kimi K2.6 is the default fast_model and sends ``reasoning`` via
+        OpenRouter's unified extension.  It must NOT receive ``cache_control``
+        markers or the ``anthropic-beta`` header — Moonshot uses its own
+        auto-caching and those Anthropic-only fields would either get
+        silently dropped or (worst case) 400 on a future provider change."""
+        state = _BaselineStreamState(model="moonshotai/kimi-k2.6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[
+                    {"role": "system", "content": "you are a helpful assistant"},
+                    {"role": "user", "content": "hi"},
+                ],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {"name": "echo", "parameters": {}},
+                    }
+                ],
+                state=state,
+            )
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        extra_body = call_kwargs["extra_body"]
+        # Reasoning param on — the whole point of picking Kimi is the
+        # cheap-but-still-reasoning-capable path.
+        assert "reasoning" in extra_body
+        assert extra_body["reasoning"]["max_tokens"] > 0
+        # Anthropic-only fields stay off.
+        assert "extra_headers" not in call_kwargs
+        sys_msg = call_kwargs["messages"][0]
+        sys_content = sys_msg.get("content")
+        if isinstance(sys_content, list):
+            assert all("cache_control" not in block for block in sys_content)
+        tools = call_kwargs.get("tools", [])
+        for t in tools:
+            assert "cache_control" not in t
 
     @pytest.mark.asyncio
     async def test_reasoning_only_stream_still_closes_block(self):

@@ -63,21 +63,123 @@ def _make_session_messages(*roles: str) -> list[ChatMessage]:
 
 
 class TestResolveBaselineModel:
-    """Baseline model resolution honours the per-request tier toggle."""
+    """Baseline model resolution honours the per-request tier toggle.
 
-    def test_advanced_tier_selects_advanced_model(self):
-        assert _resolve_baseline_model("advanced") == config.advanced_model
+    Baseline reads the ``fast_*_model`` cells of the (path, tier) matrix
+    and never falls through to the SDK-side ``thinking_*_model`` cells.
+    Default routing:
+    - ``standard`` / ``None`` → ``config.fast_standard_model`` (Kimi K2.6)
+    - ``advanced`` → ``config.fast_advanced_model`` (Opus — same as SDK's
+      advanced tier, so the advanced A/B isolates path differences)
+    """
 
-    def test_standard_tier_selects_default_model(self):
-        assert _resolve_baseline_model("standard") == config.model
+    def test_advanced_tier_selects_fast_advanced_model(self):
+        assert _resolve_baseline_model("advanced") == config.fast_advanced_model
 
-    def test_none_tier_selects_default_model(self):
-        """Baseline users without a tier MUST keep the default (standard)."""
-        assert _resolve_baseline_model(None) == config.model
+    def test_standard_tier_selects_fast_standard_model(self):
+        assert _resolve_baseline_model("standard") == config.fast_standard_model
 
-    def test_standard_and_advanced_models_differ(self):
-        """Advanced tier defaults to a different (Opus) model than standard."""
-        assert config.model != config.advanced_model
+    def test_none_tier_selects_fast_standard_model(self):
+        """Baseline users without a tier get the cheap fast-standard default."""
+        assert _resolve_baseline_model(None) == config.fast_standard_model
+
+    def test_fast_standard_default_is_kimi(self):
+        """Shipped default: Kimi K2.6 on the baseline standard cell.
+
+        Asserts the declared ``Field`` default — env-independent — so a
+        deploy-time ``CHAT_FAST_STANDARD_MODEL`` rollback override
+        doesn't fail CI while still pinning the shipped default.
+        """
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["fast_standard_model"].default
+            == "moonshotai/kimi-k2.6"
+        )
+
+    def test_fast_advanced_default_is_opus(self):
+        """Shipped default: Opus on the baseline advanced cell — mirrors
+        the SDK advanced cell so the advanced-tier A/B stays clean
+        (same model, different path)."""
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["fast_advanced_model"].default
+            == "anthropic/claude-opus-4.7"
+        )
+
+    def test_standard_cells_diverge_across_paths(self):
+        """The whole point of the split: baseline cheap (Kimi) vs SDK
+        Anthropic-only (Sonnet).  If the shipped standard defaults ever
+        collapse to the same value someone lost the cost savings.
+        Checked against ``Field`` defaults, not the env-backed singleton."""
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["thinking_standard_model"].default
+            != ChatConfig.model_fields["fast_standard_model"].default
+        )
+
+    def test_standard_and_advanced_cells_differ_on_fast(self):
+        """Advanced tier defaults to a different model than standard on
+        the baseline path.  Checked against declared ``Field`` defaults
+        so operator env overrides don't flake the test."""
+        from backend.copilot.config import ChatConfig
+
+        assert (
+            ChatConfig.model_fields["fast_standard_model"].default
+            != ChatConfig.model_fields["fast_advanced_model"].default
+        )
+
+    def test_legacy_env_aliases_route_to_new_fields(self, monkeypatch):
+        """Backward compat: the pre-split env var names must still bind.
+
+        The four-field matrix was introduced with ``validation_alias``
+        entries so that existing deployments setting ``CHAT_MODEL`` /
+        ``CHAT_ADVANCED_MODEL`` / ``CHAT_FAST_MODEL`` continue to override
+        the same effective cell without a rename.  Construct a fresh
+        ``ChatConfig`` with each legacy name set and confirm it lands on
+        the new field.
+        """
+        from backend.copilot.config import ChatConfig
+
+        monkeypatch.setenv("CHAT_MODEL", "legacy/sonnet-via-chat-model")
+        monkeypatch.setenv("CHAT_ADVANCED_MODEL", "legacy/opus-via-advanced")
+        monkeypatch.setenv("CHAT_FAST_MODEL", "legacy/fast-via-fast-model")
+
+        cfg = ChatConfig()
+
+        assert cfg.thinking_standard_model == "legacy/sonnet-via-chat-model"
+        assert cfg.thinking_advanced_model == "legacy/opus-via-advanced"
+        assert cfg.fast_standard_model == "legacy/fast-via-fast-model"
+
+    def test_all_four_new_env_vars_bind_to_their_cells(self, monkeypatch):
+        """Each of the four (path, tier) cells must be overridable via
+        its documented ``CHAT_*_*_MODEL`` env var — including
+        ``CHAT_FAST_ADVANCED_MODEL`` which was missing a
+        ``validation_alias`` in the original split and only bound
+        implicitly through ``env_prefix``.  Pinning all four here so
+        that whenever someone touches the config shape, an accidental
+        unbinding fails CI instead of silently ignoring operator
+        overrides.
+        """
+        from backend.copilot.config import ChatConfig
+
+        monkeypatch.setenv("CHAT_FAST_STANDARD_MODEL", "explicit/fast-std")
+        monkeypatch.setenv("CHAT_FAST_ADVANCED_MODEL", "explicit/fast-adv")
+        monkeypatch.setenv("CHAT_THINKING_STANDARD_MODEL", "explicit/think-std")
+        monkeypatch.setenv("CHAT_THINKING_ADVANCED_MODEL", "explicit/think-adv")
+        # Clear the legacy aliases so they don't win priority in
+        # ``AliasChoices`` (first match wins).
+        for legacy in ("CHAT_MODEL", "CHAT_ADVANCED_MODEL", "CHAT_FAST_MODEL"):
+            monkeypatch.delenv(legacy, raising=False)
+
+        cfg = ChatConfig()
+
+        assert cfg.fast_standard_model == "explicit/fast-std"
+        assert cfg.fast_advanced_model == "explicit/fast-adv"
+        assert cfg.thinking_standard_model == "explicit/think-std"
+        assert cfg.thinking_advanced_model == "explicit/think-adv"
 
 
 class TestLoadPriorTranscript:

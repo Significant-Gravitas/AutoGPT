@@ -450,7 +450,9 @@ async def _reduce_context(
     # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
         compacted = await compact_transcript(
-            transcript_content, model=config.model, log_prefix=log_prefix
+            transcript_content,
+            model=config.thinking_standard_model,
+            log_prefix=log_prefix,
         )
         if (
             compacted
@@ -700,7 +702,7 @@ def _resolve_sdk_model() -> str | None:
     """Resolve the model name for the Claude Agent SDK CLI.
 
     Uses `config.claude_agent_model` if set, otherwise derives from
-    `config.model` via :func:`_normalize_model_name`.
+    `config.thinking_standard_model` via :func:`_normalize_model_name`.
 
     When `use_claude_code_subscription` is enabled and no explicit
     `claude_agent_model` is set, returns `None` so the CLI uses the
@@ -710,7 +712,7 @@ def _resolve_sdk_model() -> str | None:
         return config.claude_agent_model
     if config.use_claude_code_subscription:
         return None
-    return _normalize_model_name(config.model)
+    return _normalize_model_name(config.thinking_standard_model)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -739,7 +741,7 @@ async def _resolve_sdk_model_for_request(
     cost (reported by the SDK) already reflects model-pricing differences.
     """
     if model == "advanced":
-        sdk_model = _normalize_model_name(config.advanced_model)
+        sdk_model = _normalize_model_name(config.thinking_advanced_model)
         logger.info(
             "[SDK] [%s] Per-request model override: advanced (%s)",
             session_id[:12] if session_id else "?",
@@ -1191,7 +1193,10 @@ async def _compress_messages(
 
     try:
         result = await _run_compression(
-            messages_dict, config.model, "[SDK]", target_tokens=target_tokens
+            messages_dict,
+            config.thinking_standard_model,
+            "[SDK]",
+            target_tokens=target_tokens,
         )
     except Exception as exc:
         # Guard against timeouts or unexpected errors in compression —
@@ -3745,15 +3750,17 @@ async def stream_chat_completion_sdk(
 
         if ended_with_stream_error:
             logger.warning(
-                "%s Stream ended with SDK error after %d messages",
+                "%s Stream ended with SDK error after %d messages (compaction=%s)",
                 log_prefix,
                 len(session.messages),
+                compaction.get_log_summary(),
             )
         else:
             logger.info(
-                "%s Stream completed successfully with %d messages",
+                "%s Stream completed successfully with %d messages (compaction=%s)",
                 log_prefix,
                 len(session.messages),
+                compaction.get_log_summary(),
             )
     except GeneratorExit:
         # GeneratorExit is raised when the async generator is closed by the
@@ -3856,7 +3863,7 @@ async def stream_chat_completion_sdk(
             cache_creation_tokens=turn_cache_creation_tokens,
             log_prefix=log_prefix,
             cost_usd=turn_cost_usd,
-            model=sdk_model or config.model,
+            model=sdk_model or config.thinking_standard_model,
             provider="anthropic",
         )
 

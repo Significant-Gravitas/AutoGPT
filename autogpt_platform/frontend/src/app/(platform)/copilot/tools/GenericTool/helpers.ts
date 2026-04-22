@@ -60,6 +60,7 @@ export function getToolCategory(toolName: string): ToolCategory {
     case "bash_exec":
       return "bash";
     case "web_fetch":
+    case "web_search":
     case "WebSearch":
     case "WebFetch":
       return "web";
@@ -114,6 +115,7 @@ function getInputSummary(toolName: string, input: unknown): string | null {
     case "web_fetch":
     case "WebFetch":
       return typeof inp.url === "string" ? inp.url : null;
+    case "web_search":
     case "WebSearch":
       return typeof inp.query === "string" ? inp.query : null;
     case "browser_navigate":
@@ -220,7 +222,7 @@ export function getAnimationText(
             ? `Running: ${shortSummary}`
             : "Running command\u2026";
         case "web":
-          if (toolName === "WebSearch") {
+          if (toolName === "WebSearch" || toolName === "web_search") {
             return shortSummary
               ? `Searching "${shortSummary}"`
               : "Searching the web\u2026";
@@ -282,7 +284,7 @@ export function getAnimationText(
           // exit status here would just double up.
           return shortSummary ? `Ran: ${shortSummary}` : "Command completed";
         case "web":
-          if (toolName === "WebSearch") {
+          if (toolName === "WebSearch" || toolName === "web_search") {
             return shortSummary
               ? `Searched "${shortSummary}"`
               : "Web search completed";
@@ -352,7 +354,9 @@ export function getAnimationText(
         case "bash":
           return "Command failed";
         case "web":
-          return toolName === "WebSearch" ? "Search failed" : "Fetch failed";
+          return toolName === "WebSearch" || toolName === "web_search"
+            ? "Search failed"
+            : "Fetch failed";
         case "browser":
           return "Browser action failed";
         default:
