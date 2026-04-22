@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Iterable
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
@@ -33,7 +34,7 @@ from backend.copilot.sdk.file_ref import (
     expand_file_refs_in_args,
     read_file_bytes,
 )
-from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools import TOOL_REGISTRY, ToolGroup, tool_names_in_groups
 from backend.copilot.tools.base import BaseTool
 from backend.util.truncate import truncate
 
@@ -779,7 +780,9 @@ def create_copilot_mcp_server(*, use_e2b: bool = False):
 # In E2B mode, all five are disabled — MCP equivalents provide direct sandbox
 # access.  read_file also handles local tool-results and ephemeral reads.
 _SDK_BUILTIN_FILE_TOOLS = ["Read", "Write", "Edit", "Glob", "Grep"]
-_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "WebSearch", "TodoWrite"]
+# WebSearch moved to ``SDK_DISALLOWED_TOOLS`` — routed through
+# ``mcp__copilot__web_search`` so cost tracking is unified across paths.
+_SDK_BUILTIN_ALWAYS = ["Task", "Agent", "TodoWrite"]
 _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 
 # SDK built-in tools that must be explicitly blocked.
@@ -805,6 +808,7 @@ _SDK_BUILTIN_TOOLS = [*_SDK_BUILTIN_FILE_TOOLS, *_SDK_BUILTIN_ALWAYS]
 SDK_DISALLOWED_TOOLS = [
     "Bash",
     "WebFetch",
+    "WebSearch",
     "AskUserQuestion",
     "Write",
     "Edit",
@@ -850,9 +854,29 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
+# Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
+# Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
+# keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
+# there is no double exposure.  Public (no leading underscore) so a future
+# refactor renaming it is visible at both call sites —
+# ``permissions.apply_tool_permissions`` maps short tool names back to the
+# CLI built-in form for SDK mode.
+BASELINE_ONLY_MCP_TOOLS: frozenset[str] = frozenset({"TodoWrite"})
+
+
+def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
+    return [
+        f"{MCP_TOOL_PREFIX}{name}"
+        for name in TOOL_REGISTRY.keys()
+        if name not in BASELINE_ONLY_MCP_TOOLS and name not in hidden
+    ]
+
+
 # Static tool name list for the non-E2B case (backward compatibility).
+# Includes all capability-gated tools; per-user filtering happens in
+# ``get_copilot_tool_names`` when the caller passes ``disabled_groups``.
 COPILOT_TOOL_NAMES = [
-    *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+    *_registry_mcp_tools(),
     f"{MCP_TOOL_PREFIX}{WRITE_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{READ_TOOL_NAME}",
     f"{MCP_TOOL_PREFIX}{EDIT_TOOL_NAME}",
@@ -861,20 +885,31 @@ COPILOT_TOOL_NAMES = [
 ]
 
 
-def get_copilot_tool_names(*, use_e2b: bool = False) -> list[str]:
+def get_copilot_tool_names(
+    *,
+    use_e2b: bool = False,
+    disabled_groups: Iterable[ToolGroup] = (),
+) -> list[str]:
     """Build the ``allowed_tools`` list for :class:`ClaudeAgentOptions`.
 
     When *use_e2b* is True the SDK built-in file tools are replaced by MCP
-    equivalents that route to the E2B sandbox.
+    equivalents that route to the E2B sandbox.  Tools belonging to any of
+    *disabled_groups* are filtered out — see ``ToolGroup`` / ``TOOL_GROUPS``
+    in ``backend.copilot.tools`` for the full list.
     """
+    hidden_short_names = tool_names_in_groups(disabled_groups)
+    hidden_mcp_names = {f"{MCP_TOOL_PREFIX}{n}" for n in hidden_short_names}
+
     if not use_e2b:
-        return list(COPILOT_TOOL_NAMES)
+        if not hidden_mcp_names:
+            return list(COPILOT_TOOL_NAMES)
+        return [n for n in COPILOT_TOOL_NAMES if n not in hidden_mcp_names]
 
     # In E2B mode, Write/Edit are NOT registered (E2B uses write_file/edit_file
     # from E2B_FILE_TOOLS instead), so don't include them here.
     # _READ_TOOL_NAME is still needed for SDK tool-result reads.
     return [
-        *[f"{MCP_TOOL_PREFIX}{name}" for name in TOOL_REGISTRY.keys()],
+        *_registry_mcp_tools(hidden=hidden_short_names),
         f"{MCP_TOOL_PREFIX}{_READ_TOOL_NAME}",
         *[f"{MCP_TOOL_PREFIX}{name}" for name in E2B_FILE_TOOL_NAMES],
         *_SDK_BUILTIN_ALWAYS,

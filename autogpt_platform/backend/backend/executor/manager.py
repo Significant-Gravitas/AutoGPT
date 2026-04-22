@@ -366,7 +366,7 @@ async def execute_node(
 
     try:
         if execution_context.dry_run and _dry_run_input is None:
-            block_iter = simulate_block(node_block, input_data)
+            block_iter = simulate_block(node_block, input_data, user_id=user_id)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 

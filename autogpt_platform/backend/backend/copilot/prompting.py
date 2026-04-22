@@ -145,31 +145,12 @@ When the user asks to interact with a service or API, follow this order:
 
 **Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
 
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
-
-### Delegating to another autopilot (sub-autopilot pattern)
-Use the **`run_sub_session`** tool to delegate a task to a fresh
-sub-AutoPilot. The sub has its own full tool set and can perform
-multi-step work autonomously.
-
-- `prompt` (required): the task description.
-- `system_context` (optional): extra context prepended to the prompt.
-- `sub_autopilot_session_id` (optional): continue an existing
-  sub-AutoPilot — pass the `sub_autopilot_session_id` returned by a
-  previous completed run.
-- `wait_for_result` (default 60, max 300): seconds to wait inline. If
-  the sub isn't done by then you get `status="running"` + a
-  `sub_session_id` — call **`get_sub_session_result`** with that id
-  (wait up to 300s more per call) until it returns `completed` or
-  `error`. Works across turns — safe to reconnect in a later message.
-
-Use this when a task is complex enough to benefit from a separate
-autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration. Do NOT invoke `AutoPilotBlock`
-via `run_block` — it's hidden from `run_block` by design because the
-dedicated tool handles the async lifecycle correctly.
+### Complex multi-step work
+- Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
+- Delegate self-contained subtasks to `run_sub_session` to keep their
+  intermediate tool calls out of the parent context.
+- Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
+  instead.
 
 """
 

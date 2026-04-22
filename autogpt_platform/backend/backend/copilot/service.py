@@ -42,17 +42,18 @@ settings = Settings()
 
 
 def resolve_chat_model(tier: CopilotLlmModel | None) -> str:
-    """Return the configured OpenRouter model string for the given tier.
+    """Return the configured SDK model for the given tier.
 
-    Shared by the baseline (fast) and SDK (extended thinking) paths so
-    both honor the same standard/advanced env-var configuration.  ``None``
-    and ``'standard'`` fall through to ``config.model``; ``'advanced'``
-    uses ``config.advanced_model``.  Keep this flat — if a third tier
-    shows up later, extend here and both paths pick it up for free.
+    The SDK (extended-thinking) path is Anthropic-only — the Claude Agent
+    SDK CLI refuses non-Anthropic endpoints — so both SDK tiers resolve
+    to the ``thinking_*_model`` cells.  Baseline has its own resolver
+    (``_resolve_baseline_model``) that reads the ``fast_*_model`` cells;
+    the two paths diverge deliberately at the config layer so a cheaper
+    baseline provider can't break SDK, or vice versa.
     """
     if tier == "advanced":
-        return config.advanced_model
-    return config.model
+        return config.thinking_advanced_model
+    return config.thinking_standard_model
 
 
 _client: LangfuseAsyncOpenAI | None = None
