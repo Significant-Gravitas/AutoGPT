@@ -9,7 +9,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
 class PostToTelegramBlock(Block):
@@ -104,7 +104,7 @@ class PostToTelegramBlock(Block):
             random_post=input_data.random_post,
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
-            profile_key=credentials.api_key.get_secret_value(),
+            profile_key=get_profile_key(credentials),
         )
         yield "post_result", response
         if response.postIds:

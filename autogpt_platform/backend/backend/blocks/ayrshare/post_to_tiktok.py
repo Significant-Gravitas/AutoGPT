@@ -11,7 +11,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client
+from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
 class TikTokVisibility(str, Enum):
@@ -235,7 +235,7 @@ class PostToTikTokBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             tiktok_options=tiktok_options if tiktok_options else None,
-            profile_key=credentials.api_key.get_secret_value(),
+            profile_key=get_profile_key(credentials),
         )
         yield "post_result", response
         if response.postIds:
