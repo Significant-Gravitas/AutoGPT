@@ -331,11 +331,13 @@ def test_empty_thinking_block_is_ignored():
     assert [type(r).__name__ for r in results] == ["StreamStartStep"]
 
 
-def test_render_reasoning_in_ui_false_suppresses_thinking_events():
-    """``render_reasoning_in_ui=False`` silences ``StreamReasoning*`` on
-    the wire — the frontend sees a text-only stream.  Persistence via
-    ``_format_sdk_content_blocks`` is handled elsewhere; this test only
-    pins the wire contract.
+def test_render_reasoning_in_ui_false_still_emits_adapter_events():
+    """With the persist/render decoupling the adapter is flag-agnostic:
+    it always emits ``StreamReasoning*`` so the session transcript keeps a
+    durable reasoning record.  Wire-level suppression when
+    ``render_reasoning_in_ui=False`` happens at the SDK service yield
+    boundary, not here — see
+    ``backend/copilot/sdk/service.py::_filter_reasoning_events``.
     """
     adapter = SDKResponseAdapter(
         message_id="m",
@@ -348,14 +350,17 @@ def test_render_reasoning_in_ui_false_suppresses_thinking_events():
     )
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
-    assert "StreamReasoningStart" not in types
-    assert "StreamReasoningDelta" not in types
-    assert "StreamReasoningEnd" not in types
+    assert "StreamReasoningStart" in types
+    assert "StreamReasoningDelta" in types
 
 
-def test_render_reasoning_off_text_after_thinking_emits_no_reasoning_end():
-    """With rendering off the ReasoningEnd is never synthesized when text
-    follows — no ReasoningStart ever hit the wire, so no close is due."""
+def test_render_reasoning_off_text_after_thinking_still_closes_reasoning():
+    """Adapter still emits a ``StreamReasoningEnd`` when text follows a
+    thinking block — decoupled from the render flag.  The service layer
+    drops the reasoning events at yield time; the adapter's structural
+    open/close pairing must not depend on the flag or downstream filters
+    would see orphan reasoning starts on the persisted transcript.
+    """
     adapter = SDKResponseAdapter(
         message_id="m",
         session_id="s",
@@ -371,7 +376,7 @@ def test_render_reasoning_off_text_after_thinking_emits_no_reasoning_end():
         AssistantMessage(content=[TextBlock(text="hello")], model="test")
     )
     types = [type(r).__name__ for r in results]
-    assert "StreamReasoningEnd" not in types
+    assert "StreamReasoningEnd" in types
     assert "StreamTextStart" in types
     assert "StreamTextDelta" in types
 
