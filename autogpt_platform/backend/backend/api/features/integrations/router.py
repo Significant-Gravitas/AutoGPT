@@ -844,11 +844,17 @@ async def _upgrade_existing_credential(
             detail="Username mismatch: authenticated as a different user",
         )
 
-    merged_scopes = list(set(existing.scopes) | set(new_credentials.scopes))
-    new_credentials.id = existing.id
-    new_credentials.title = existing.title
-    new_credentials.scopes = merged_scopes
-    new_credentials.metadata = {
+    # Operate on a copy so the caller's ``new_credentials`` object is not
+    # mutated out from under them.  Every caller today immediately discards
+    # or replaces its reference, but the implicit-merge path in
+    # ``_merge_or_create_credential`` reads ``credentials.scopes`` before
+    # calling into us — a future reader after the call would otherwise
+    # silently see the overwritten values.
+    merged = new_credentials.model_copy(deep=True)
+    merged.id = existing.id
+    merged.title = existing.title
+    merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
+    merged.metadata = {
         **(existing.metadata or {}),
         **(new_credentials.metadata or {}),
     }
@@ -859,13 +865,13 @@ async def _upgrade_existing_credential(
     # re-auth from scratch. Username is similarly sticky: if we've already
     # resolved it for this credential, keep it rather than silently
     # blanking it on an incremental upgrade.
-    if not new_credentials.refresh_token and existing.refresh_token:
-        new_credentials.refresh_token = existing.refresh_token
-        new_credentials.refresh_token_expires_at = existing.refresh_token_expires_at
-    if not new_credentials.username and existing.username:
-        new_credentials.username = existing.username
-    await creds_manager.update(user_id, new_credentials)
-    return new_credentials
+    if not merged.refresh_token and existing.refresh_token:
+        merged.refresh_token = existing.refresh_token
+        merged.refresh_token_expires_at = existing.refresh_token_expires_at
+    if not merged.username and existing.username:
+        merged.username = existing.username
+    await creds_manager.update(user_id, merged)
+    return merged
 
 
 # --------------------------- UTILITIES ---------------------------- #

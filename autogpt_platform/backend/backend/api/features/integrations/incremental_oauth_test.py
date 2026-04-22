@@ -1053,3 +1053,78 @@ class TestImplicitMergeScopeGuard:
         assert resp.status_code == 200
         mock_mgr.update.assert_called_once()
         mock_mgr.create.assert_not_called()
+
+
+class TestUpgradeExistingCredentialDoesNotMutateCaller:
+    """Cursor Low (thread PRRT_kwDOJKSTjM58rern): ``_upgrade_existing_credential``
+    used to mutate the caller's ``new_credentials`` object in-place
+    (overwriting id/title/scopes/metadata/refresh_token/username). Safe
+    today because all callers immediately replace their reference, but
+    fragile — a future reader of ``credentials`` after the call would
+    silently see overwritten values. Pin the contract so the caller's
+    object stays intact."""
+
+    @pytest.mark.asyncio
+    async def test_caller_credentials_object_is_unchanged_after_upgrade(self):
+        from backend.api.features.integrations.router import (
+            _upgrade_existing_credential,
+        )
+
+        existing = _make_google_oauth2_cred(
+            cred_id="existing-cred-id",
+            scopes=["https://www.googleapis.com/auth/gmail.readonly"],
+            username="alice@gmail.com",
+            title="Existing title",
+        )
+        new_credentials = _make_google_oauth2_cred(
+            cred_id="new-cred-id-from-exchange",
+            scopes=[
+                "https://www.googleapis.com/auth/gmail.readonly",
+                "https://www.googleapis.com/auth/calendar.readonly",
+            ],
+            username="alice@gmail.com",
+            title="New title from exchange",
+        )
+
+        # Snapshot the caller's object BEFORE the call so we can detect
+        # any in-place mutation by comparing afterwards.
+        snapshot = new_credentials.model_copy(deep=True)
+
+        with (
+            patch(
+                "backend.api.features.integrations.router.is_system_credential",
+                return_value=False,
+            ),
+            patch("backend.api.features.integrations.router.creds_manager") as mock_mgr,
+        ):
+            mock_mgr.store.get_creds_by_id = AsyncMock(return_value=existing)
+            mock_mgr.update = AsyncMock()
+
+            returned = await _upgrade_existing_credential(
+                TEST_USER_ID, existing.id, new_credentials
+            )
+
+        # Caller's object must not have been touched — no id/title/scopes
+        # rewrite, no refresh_token/username/metadata mutation.
+        assert new_credentials.id == snapshot.id
+        assert new_credentials.title == snapshot.title
+        assert new_credentials.scopes == snapshot.scopes
+        assert new_credentials.metadata == snapshot.metadata
+        assert new_credentials.username == snapshot.username
+        assert (
+            new_credentials.refresh_token.get_secret_value()
+            if new_credentials.refresh_token
+            else None
+        ) == (
+            snapshot.refresh_token.get_secret_value()
+            if snapshot.refresh_token
+            else None
+        )
+
+        # The returned object carries the merged state, and is persisted.
+        assert returned.id == existing.id
+        assert set(returned.scopes) == {
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/calendar.readonly",
+        }
+        mock_mgr.update.assert_called_once()
