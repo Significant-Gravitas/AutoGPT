@@ -136,11 +136,15 @@ export function buildRenderSegments(
   return segments;
 }
 
+function isReasoningBoundary(part: MessagePart): boolean {
+  return part.type === "reasoning" || isReasoningToolPart(part);
+}
+
 export function splitReasoningAndResponse(parts: MessagePart[]): {
   reasoning: MessagePart[];
   response: MessagePart[];
 } {
-  const lastReasoningIndex = parts.findLastIndex((p) => isReasoningToolPart(p));
+  const lastReasoningIndex = parts.findLastIndex(isReasoningBoundary);
 
   if (lastReasoningIndex === -1) {
     return { reasoning: [], response: parts };

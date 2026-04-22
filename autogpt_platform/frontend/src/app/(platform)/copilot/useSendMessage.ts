@@ -19,8 +19,16 @@ interface Args {
   sessionId: string | null;
   sendMessage: SendMessageFn;
   createSession: () => Promise<string | undefined>;
-  isUserStoppingRef: React.MutableRefObject<string | null>;
+  isUserStoppingRef: React.MutableRefObject<boolean>;
 }
+
+// Module-scope so the queued send survives the CopilotChatHost remount that
+// fires when sessionId transitions from null to the freshly-created id. Per-
+// instance React refs would be wiped in that window — the "new"-keyed host
+// unmounts after createSession resolves and the "<id>"-keyed host mounts with
+// fresh refs, so a drain effect inside the hook would see no queue.
+let queuedFirstSend: { text: string; files: File[] } | null = null;
+let pendingFileParts: FileUIPart[] = [];
 
 /**
  * Orchestrates send-message flow: validates input, uploads attached files,
@@ -28,9 +36,10 @@ interface Args {
  * once the session is ready.
  *
  * The "wait for session creation then send" path is implemented via a
- * queued ref + effect rather than promise chaining because `sendMessage`
- * closes over the stream's `sessionId` via `useChat` — we need React to
- * re-render with the new sessionId before the bound transport can send.
+ * queued module variable + effect rather than promise chaining because
+ * `sendMessage` closes over the stream's `sessionId` via `useChat` — we need
+ * React to re-render with the new sessionId before the bound transport can
+ * send.
  */
 export function useSendMessage({
   sessionId,
@@ -39,9 +48,6 @@ export function useSendMessage({
   isUserStoppingRef,
 }: Args) {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
-  const queuedSendRef = useRef<{ text: string; files: File[] } | null>(null);
-  // Pre-built file parts from workflow import (already uploaded, skip re-upload).
-  const pendingFilePartsRef = useRef<FileUIPart[]>([]);
 
   async function uploadFiles(
     files: File[],
@@ -128,11 +134,11 @@ export function useSendMessage({
   dispatchRef.current = dispatchToSession;
 
   useEffect(() => {
-    if (!sessionId || !queuedSendRef.current) return;
-    const queued = queuedSendRef.current;
-    queuedSendRef.current = null;
-    const prebuiltParts = pendingFilePartsRef.current;
-    pendingFilePartsRef.current = [];
+    if (!sessionId || !queuedFirstSend) return;
+    const queued = queuedFirstSend;
+    queuedFirstSend = null;
+    const prebuiltParts = pendingFileParts;
+    pendingFileParts = [];
     void dispatchRef.current(
       sessionId,
       queued.text,
@@ -165,24 +171,28 @@ export function useSendMessage({
       }
     }
 
-    isUserStoppingRef.current = null;
+    isUserStoppingRef.current = false;
 
     if (sessionId) {
-      const prebuiltParts = pendingFilePartsRef.current;
-      pendingFilePartsRef.current = [];
+      const prebuiltParts = pendingFileParts;
+      pendingFileParts = [];
       await dispatchToSession(sessionId, trimmed, files ?? [], prebuiltParts);
       return;
     }
 
-    queuedSendRef.current = { text: trimmed, files: files ?? [] };
+    queuedFirstSend = { text: trimmed, files: files ?? [] };
     try {
       await createSession();
     } catch (err) {
-      queuedSendRef.current = null;
-      pendingFilePartsRef.current = [];
+      queuedFirstSend = null;
+      pendingFileParts = [];
       throw err;
     }
   }
 
-  return { onSend, isUploadingFiles, pendingFilePartsRef };
+  function setPendingFileParts(parts: FileUIPart[]) {
+    pendingFileParts = parts;
+  }
+
+  return { onSend, isUploadingFiles, setPendingFileParts };
 }

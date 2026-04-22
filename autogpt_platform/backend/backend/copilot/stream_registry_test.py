@@ -335,3 +335,94 @@ async def test_mark_session_completed_survives_lock_release_redis_error():
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
     ), "StreamFinish must still be published even if lock DELETE raises"
+
+
+# ---------------------------------------------------------------------------
+# Cursor emission: StreamCursor must follow every replayed chunk so the
+# frontend can track the last-delivered Redis XADD id and pass it back as
+# `last_chunk_id` on reconnect, enabling incremental resume instead of the
+# full 0-0 replay that the old strip/snapshot dance papered over.
+# ---------------------------------------------------------------------------
+
+
+def test_stream_cursor_to_sse_shape():
+    """`data-cursor` is surfaced as an AI-SDK v5 data part with `{chunkId}`."""
+    from backend.copilot.response_model import StreamCursor
+
+    sse = StreamCursor(chunkId="1700000000000-0").to_sse()
+    assert (
+        sse
+        == 'data: {"type": "data-cursor", "data": {"chunkId": "1700000000000-0"}}\n\n'
+    )
+
+
+@pytest.mark.asyncio
+async def test_subscribe_to_session_emits_cursor_after_every_replayed_chunk():
+    """During replay, the subscriber queue must contain `[chunk, cursor]`
+    pairs so the client can record the Redis id it has just processed."""
+    import orjson
+
+    from backend.copilot.response_model import (
+        StreamCursor,
+        StreamTextDelta,
+        StreamTextEnd,
+        StreamTextStart,
+    )
+
+    # Three chunks recorded in Redis for a completed turn. Completed status
+    # means the listener branch is skipped and only the replay path runs,
+    # which keeps the test hermetic.
+    stream_key_msgs = [
+        (
+            "9999-0",
+            {"data": orjson.dumps(StreamTextStart(id="blk-1").model_dump()).decode()},
+        ),
+        (
+            "9999-1",
+            {
+                "data": orjson.dumps(
+                    StreamTextDelta(id="blk-1", delta="hi").model_dump()
+                ).decode()
+            },
+        ),
+        (
+            "9999-2",
+            {"data": orjson.dumps(StreamTextEnd(id="blk-1").model_dump()).decode()},
+        ),
+    ]
+
+    fake_redis = AsyncMock()
+    fake_redis.hgetall = AsyncMock(
+        return_value={
+            "user_id": "u1",
+            "session_id": "sess-1",
+            "turn_id": "turn-1",
+            "status": "completed",  # finished → no listener task
+        }
+    )
+    fake_redis.xread = AsyncMock(return_value=[("stream-key", stream_key_msgs)])
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        queue = await stream_registry.subscribe_to_session(
+            session_id="sess-1", user_id="u1", last_message_id="0-0"
+        )
+
+    assert queue is not None
+
+    delivered = []
+    while not queue.empty():
+        delivered.append(queue.get_nowait())
+
+    # Three chunks × (chunk + cursor) = 6, plus a terminal StreamFinish.
+    assert len(delivered) == 7
+    assert isinstance(delivered[0], StreamTextStart)
+    assert isinstance(delivered[1], StreamCursor)
+    assert delivered[1].chunkId == "9999-0"
+    assert isinstance(delivered[2], StreamTextDelta)
+    assert isinstance(delivered[3], StreamCursor)
+    assert delivered[3].chunkId == "9999-1"
+    assert isinstance(delivered[4], StreamTextEnd)
+    assert isinstance(delivered[5], StreamCursor)
+    assert delivered[5].chunkId == "9999-2"

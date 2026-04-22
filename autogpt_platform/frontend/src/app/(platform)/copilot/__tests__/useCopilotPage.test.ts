@@ -27,7 +27,7 @@ vi.mock("../useSendMessage", () => ({
   useSendMessage: () => ({
     onSend: vi.fn(),
     isUploadingFiles: false,
-    pendingFilePartsRef: { current: [] },
+    setPendingFileParts: vi.fn(),
   }),
 }));
 vi.mock("../useSessionTitlePoll", () => ({

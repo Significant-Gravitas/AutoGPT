@@ -2476,7 +2476,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nArgs:\n    session_id: The chat session identifier.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse (SSE) when an active stream exists,\n    or 204 No Content when there is nothing to resume.",
+        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nWhen the frontend passes ``last_chunk_id`` (the ``chunkId`` it saw on the\nmost recent ``data-cursor`` part before disconnecting), XREAD resumes at\nthe exclusive successor and only unseen chunks are re-delivered. Without\nthe cursor we fall back to a full replay from ``0-0``.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2485,6 +2485,15 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "last_chunk_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Last Chunk Id"
+            }
           }
         ],
         "responses": {

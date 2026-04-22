@@ -11,6 +11,10 @@ function textPart(text: string): MessagePart {
   return { type: "text", text } as MessagePart;
 }
 
+function reasoningPart(text: string): MessagePart {
+  return { type: "reasoning", text, state: "done" } as MessagePart;
+}
+
 function toolPart(
   toolName: string,
   state: string = "output-available",
@@ -324,5 +328,49 @@ describe("splitReasoningAndResponse", () => {
     expect(result.reasoning[0]).toBe(parts[0]);
     expect(result.reasoning[1]).toBe(parts[1]);
     expect(result.response).toHaveLength(1);
+  });
+
+  it("moves a native reasoning part into reasoning when text follows", () => {
+    const parts = [reasoningPart("Thinking through this..."), textPart("Done")];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toHaveLength(1);
+    expect(result.reasoning[0]).toBe(parts[0]);
+    expect(result.response).toHaveLength(1);
+    expect((result.response[0] as { text: string }).text).toBe("Done");
+  });
+
+  it("keeps a trailing native reasoning part in response when no text follows", () => {
+    const parts = [textPart("Hello"), reasoningPart("Thinking...")];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toEqual([]);
+    expect(result.response).toEqual(parts);
+  });
+
+  it("sweeps a native reasoning part emitted after the last reasoning tool into reasoning", () => {
+    const parts = [
+      toolPart("find_block"),
+      reasoningPart("Post-tool thinking"),
+      textPart("Final answer"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toHaveLength(2);
+    expect(result.reasoning[0]).toBe(parts[0]);
+    expect(result.reasoning[1]).toBe(parts[1]);
+    expect(result.response).toHaveLength(1);
+    expect((result.response[0] as { text: string }).text).toBe("Final answer");
+  });
+
+  it("splits on reasoning parts alone when no reasoning tools are present", () => {
+    const parts = [
+      reasoningPart("Step 1"),
+      reasoningPart("Step 2"),
+      textPart("Here's the answer"),
+    ];
+    const result = splitReasoningAndResponse(parts);
+    expect(result.reasoning).toHaveLength(2);
+    expect(result.response).toHaveLength(1);
+    expect((result.response[0] as { text: string }).text).toBe(
+      "Here's the answer",
+    );
   });
 });

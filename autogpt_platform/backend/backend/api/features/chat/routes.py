@@ -1168,6 +1168,7 @@ async def get_pending_messages(
 )
 async def resume_session_stream(
     session_id: str,
+    last_chunk_id: str | None = None,
     user_id: str = Security(auth.get_user_id),
 ):
     """
@@ -1177,31 +1178,24 @@ async def resume_session_stream(
     Checks for an active (in-progress) task on the session and either replays
     the full SSE stream or returns 204 No Content if nothing is running.
 
-    Args:
-        session_id: The chat session identifier.
-        user_id: Optional authenticated user ID.
-
-    Returns:
-        StreamingResponse (SSE) when an active stream exists,
-        or 204 No Content when there is nothing to resume.
+    When the frontend passes ``last_chunk_id`` (the ``chunkId`` it saw on the
+    most recent ``data-cursor`` part before disconnecting), XREAD resumes at
+    the exclusive successor and only unseen chunks are re-delivered. Without
+    the cursor we fall back to a full replay from ``0-0``.
     """
     import asyncio
 
-    active_session, last_message_id = await stream_registry.get_active_session(
+    active_session, _latest_backend_id = await stream_registry.get_active_session(
         session_id, user_id
     )
 
     if not active_session:
         return Response(status_code=204)
 
-    # Always replay from the beginning ("0-0") on resume.
-    # We can't use last_message_id because it's the latest ID in the backend
-    # stream, not the latest the frontend received — the gap causes lost
-    # messages. The frontend deduplicates replayed content.
     subscriber_queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
-        last_message_id="0-0",
+        last_message_id=last_chunk_id or "0-0",
     )
 
     if subscriber_queue is None:

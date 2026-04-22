@@ -46,8 +46,6 @@ export function useCopilotPage() {
     error,
     isReconnecting,
     isSyncing,
-    isRetrievingStream,
-    streamRetrievalFailed,
     isUserStoppingRef,
     rateLimitMessage,
     dismissRateLimit,
@@ -103,7 +101,7 @@ export function useCopilotPage() {
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
-    pendingFilePartsRef,
+    setPendingFileParts,
   } = useSendMessage({
     sessionId,
     sendMessage,
@@ -156,7 +154,7 @@ export function useCopilotPage() {
     await sendNewMessage(message, files);
   }
 
-  useWorkflowImportAutoSubmit({ onSend, pendingFilePartsRef });
+  useWorkflowImportAutoSubmit({ onSend, setPendingFileParts });
 
   useSessionTitlePoll({ sessionId, status, isReconnecting });
 
@@ -168,8 +166,6 @@ export function useCopilotPage() {
     stop,
     isReconnecting,
     isSyncing,
-    isRetrievingStream,
-    streamRetrievalFailed,
     isLoadingSession,
     isSessionError,
     isCreatingSession,

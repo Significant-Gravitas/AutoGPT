@@ -80,6 +80,21 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
   useGetFlag: () => false,
 }));
 
+// Auth check moved into CopilotPage directly — default to a logged-in
+// user so the page renders past its loading gate.
+const mockSupabase = vi.fn(() => ({ isUserLoading: false, isLoggedIn: true }));
+vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
+  useSupabase: () => mockSupabase(),
+}));
+
+// sessionId is read via nuqs to key the chat-host subtree; stub it so
+// tests can control the key/session without hitting URL state.
+let mockSessionIdForQueryState: string | null = null;
+vi.mock("nuqs", () => ({
+  parseAsString: {},
+  useQueryState: () => [mockSessionIdForQueryState, vi.fn()],
+}));
+
 // Build the base mock return value for useCopilotPage
 const basePageState = {
   sessionId: null as string | null,
@@ -117,6 +132,12 @@ afterEach(() => {
   cleanup();
   mockUseCopilotPage.mockReset();
   mockUseCopilotPage.mockImplementation(() => basePageState);
+  mockSupabase.mockReset();
+  mockSupabase.mockImplementation(() => ({
+    isUserLoading: false,
+    isLoggedIn: true,
+  }));
+  mockSessionIdForQueryState = null;
 });
 
 describe("CopilotPage test-mode banner", () => {
@@ -128,6 +149,7 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("does not show test-mode banner when session exists but sessionDryRun is false", () => {
+    mockSessionIdForQueryState = "session-abc";
     mockUseCopilotPage.mockReturnValue({
       ...basePageState,
       sessionId: "session-abc",
@@ -140,6 +162,7 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("shows test-mode banner when session exists and sessionDryRun is true", () => {
+    mockSessionIdForQueryState = "session-abc";
     mockUseCopilotPage.mockReturnValue({
       ...basePageState,
       sessionId: "session-abc",
@@ -164,11 +187,8 @@ describe("CopilotPage test-mode banner", () => {
   });
 
   it("shows loading spinner when user is loading", () => {
-    mockUseCopilotPage.mockReturnValue({
-      ...basePageState,
-      isUserLoading: true,
-      isLoggedIn: false,
-    });
+    // Auth check moved to CopilotPage — mock useSupabase directly.
+    mockSupabase.mockReturnValue({ isUserLoading: true, isLoggedIn: false });
     render(<CopilotPage />);
     expect(screen.getByTestId("scale-loader")).toBeDefined();
     expect(screen.queryByTestId("chat-container")).toBeNull();

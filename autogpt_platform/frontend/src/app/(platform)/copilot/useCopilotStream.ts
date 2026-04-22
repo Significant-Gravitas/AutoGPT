@@ -217,6 +217,10 @@ export function useCopilotStream({
   // mount (= this session), so a boolean is enough; cross-session scoping
   // is no longer needed because the parent remounts on session switch.
   const isUserStoppingRef = useRef(false);
+  // Flipped to `false` during mount cleanup so async callbacks that were
+  // already in flight (e.g. the post-stream settle in `onFinish`) bail out
+  // instead of arming new timers / HTTP requests against a torn-down mount.
+  const isMountedRef = useRef(true);
 
   function handleReconnect() {
     if (!sessionId) return;
@@ -305,7 +309,9 @@ export function useCopilotStream({
 
       // Check if backend executor is still running after clean close.
       await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
+      if (!isMountedRef.current) return;
       const result = await refetchSession();
+      if (!isMountedRef.current) return;
       if (hasActiveBackendStream(result)) {
         handleReconnect();
       }
@@ -511,6 +517,7 @@ export function useCopilotStream({
   useMountEffect(() => {
     setMessagesRef.current([]);
     return () => {
+      isMountedRef.current = false;
       const sid = sessionIdRef.current;
       // Clear any armed reconnect / forced-timeout timers before they can
       // fire against a torn-down mount (and toast into the void).
@@ -548,7 +555,9 @@ export function useCopilotStream({
       setIsSyncing(true);
       try {
         const result = await refetchSession();
-        // Bail out if the session changed while the refetch was in flight.
+        // Bail out if the session changed or the host unmounted while
+        // the refetch was in flight.
+        if (!isMountedRef.current) return;
         if (sessionIdRef.current !== sid) return;
 
         if (hasActiveBackendStream(result)) {
@@ -562,7 +571,7 @@ export function useCopilotStream({
       } catch (err) {
         console.warn("[copilot] wake re-sync failed", err);
       } finally {
-        setIsSyncing(false);
+        if (isMountedRef.current) setIsSyncing(false);
       }
     }
 

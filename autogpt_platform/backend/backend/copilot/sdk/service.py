@@ -2036,6 +2036,13 @@ async def _run_stream_attempt(
             for ev in ctx.compaction.emit_pre_query(ctx.session):
                 yield ev
 
+        # Narrate the silent gap between dispatching the query and the
+        # SDK's first real chunk — usually <1s but can stretch to several
+        # seconds on cold-starts or large contexts. The frontend prefers
+        # this over the generic "Thinking…" copy; fast turns replace it
+        # with content immediately.
+        yield StreamStatus(message="Contacting the model\u2026")
+
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
                 *ctx.attachments.image_blocks,

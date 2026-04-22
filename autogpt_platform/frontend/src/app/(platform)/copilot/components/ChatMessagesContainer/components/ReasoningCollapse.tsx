@@ -1,38 +1,21 @@
 "use client";
 
-import { CaretRightIcon, LightbulbIcon } from "@phosphor-icons/react";
-import { useState } from "react";
+import { ChatCircleDotsIcon } from "@phosphor-icons/react";
 
 interface Props {
   children: React.ReactNode;
 }
 
 export function ReasoningCollapse({ children }: Props) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="my-1">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-700"
-      >
-        <CaretRightIcon
-          size={10}
-          weight="bold"
-          className={
-            "transition-transform duration-150 " + (open ? "rotate-90" : "")
-          }
-        />
-        <LightbulbIcon size={12} weight="bold" />
-        <span>{open ? "Hide reasoning" : "Show reasoning"}</span>
-      </button>
-      {open && (
-        <div className="mt-1 space-y-1 border-l-2 border-zinc-200 pl-3">
+    <div className="my-1 flex items-start gap-1.5 text-xs text-zinc-500">
+      <ChatCircleDotsIcon size={14} weight="bold" className="mt-0.5 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <span className="font-medium">Reasoning:</span>{" "}
+        <span className="[&_pre]:m-0 [&_pre]:inline [&_pre]:whitespace-pre-wrap [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-xs [&_pre]:text-zinc-500">
           {children}
-        </div>
-      )}
+        </span>
+      </div>
     </div>
   );
 }

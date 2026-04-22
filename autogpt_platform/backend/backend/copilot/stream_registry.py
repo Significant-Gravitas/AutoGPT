@@ -39,6 +39,7 @@ from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_k
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
+    StreamCursor,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -48,6 +49,7 @@ from .response_model import (
     StreamReasoningStart,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -515,6 +517,9 @@ async def subscribe_to_session(
                         chunk = _reconstruct_chunk(chunk_data)
                         if chunk:
                             await subscriber_queue.put(chunk)
+                            await subscriber_queue.put(
+                                StreamCursor(chunkId=replay_last_id)
+                            )
                             replayed_count += 1
                     except Exception as e:
                         logger.warning(f"Failed to replay message: {e}")
@@ -689,6 +694,17 @@ async def _stream_listener(
                             try:
                                 await asyncio.wait_for(
                                     subscriber_queue.put(chunk),
+                                    timeout=QUEUE_PUT_TIMEOUT,
+                                )
+                                # Emit cursor AFTER the chunk so the frontend
+                                # records the Redis ID it has actually
+                                # processed. On reconnect it passes this back
+                                # as last_chunk_id and XREAD resumes at the
+                                # exclusive successor, avoiding duplicates.
+                                await asyncio.wait_for(
+                                    subscriber_queue.put(
+                                        StreamCursor(chunkId=current_id)
+                                    ),
                                     timeout=QUEUE_PUT_TIMEOUT,
                                 )
                                 # Update last delivered ID on successful delivery
@@ -1093,6 +1109,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.ERROR.value: StreamError,
         ResponseType.USAGE.value: StreamUsage,
         ResponseType.HEARTBEAT.value: StreamHeartbeat,
+        ResponseType.STATUS.value: StreamStatus,
     }
 
     chunk_type = chunk_data.get("type")

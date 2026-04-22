@@ -88,10 +88,10 @@ function extractPromptFromUrl(): {
  */
 export function useWorkflowImportAutoSubmit({
   onSend,
-  pendingFilePartsRef,
+  setPendingFileParts,
 }: {
   onSend: (message: string) => Promise<void>;
-  pendingFilePartsRef: React.MutableRefObject<FileUIPart[]>;
+  setPendingFileParts: (parts: FileUIPart[]) => void;
 }) {
   const { setInitialPrompt } = useCopilotUIStore();
   const hasProcessedUrlPrompt = useRef(false);
@@ -106,7 +106,7 @@ export function useWorkflowImportAutoSubmit({
 
     if (urlPrompt.autosubmit) {
       if (urlPrompt.filePart) {
-        pendingFilePartsRef.current = [urlPrompt.filePart];
+        setPendingFileParts([urlPrompt.filePart]);
       }
       void onSend(urlPrompt.prompt).catch(() => {
         setInitialPrompt(urlPrompt.prompt);
@@ -114,5 +114,5 @@ export function useWorkflowImportAutoSubmit({
     } else {
       setInitialPrompt(urlPrompt.prompt);
     }
-  }, [onSend, setInitialPrompt, pendingFilePartsRef]);
+  }, [onSend, setInitialPrompt, setPendingFileParts]);
 }

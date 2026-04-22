@@ -52,7 +52,8 @@ class ResponseType(str, Enum):
     ERROR = "error"
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
-    STATUS = "status"
+    STATUS = "data-status"
+    CURSOR = "data-cursor"
 
 
 class StreamBaseResponse(BaseModel):
@@ -308,17 +309,49 @@ class StreamHeartbeat(StreamBaseResponse):
         return ": heartbeat\n\n"
 
 
+class StreamCursor(StreamBaseResponse):
+    """Redis-stream cursor delivered to the client after every chunk.
+
+    The AI SDK v5 surfaces ``type="data-<name>"`` frames as data parts on
+    the corresponding message. The frontend reads the most recent
+    ``chunkId`` out of ``message.parts`` and passes it back as
+    ``?last_chunk_id=...`` when the SDK reconnects the SSE stream, so the
+    backend can resume XREAD from where the client actually stopped
+    instead of always replaying the full turn from ``0-0``.
+    """
+
+    type: ResponseType = ResponseType.CURSOR
+    chunkId: str = Field(..., description="Redis Stream message ID (XADD)")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part."""
+        data = {
+            "type": self.type.value,
+            "data": {"chunkId": self.chunkId},
+        }
+        return f"data: {json.dumps(data)}\n\n"
+
+
 class StreamStatus(StreamBaseResponse):
     """Transient status notification shown to the user during long operations.
 
-    Used to provide feedback when the backend performs behind-the-scenes work
-    (e.g., compacting conversation context on a retry) that would otherwise
-    leave the user staring at an unexplained pause.
-
-    Sent as a proper ``data:`` event so the frontend can display it to the
-    user.  The AI SDK stream parser gracefully skips unknown chunk types
-    (logs a console warning), so this does not break the stream.
+    Emitted when the backend is about to enter a phase that would otherwise
+    leave the user staring at a silent "Thinking…" bubble — e.g. the first
+    LLM call, the continuation after a tool result, compacting conversation
+    context on retry, or activating a fallback model. The frontend reads
+    the latest `data-status` part on the current assistant message and uses
+    its `message` in place of the generic "Thinking…" copy.
     """
 
     type: ResponseType = ResponseType.STATUS
     message: str = Field(..., description="Human-readable status message")
+
+    def to_sse(self) -> str:
+        """Emit as an AI SDK v5 data part so the client surfaces it as
+        `type="data-status"` on `message.parts` instead of dropping it as
+        an unknown chunk type."""
+        data = {
+            "type": self.type.value,
+            "data": {"message": self.message},
+        }
+        return f"data: {json.dumps(data)}\n\n"

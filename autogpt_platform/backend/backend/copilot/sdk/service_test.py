@@ -718,7 +718,4 @@ class TestHumaniseToolList:
         )
 
     def test_three_plus_collapse_extras(self):
-        assert (
-            _humanise_tool_list(["a", "b", "c", "d"])
-            == "'a', 'b', and 2 other"
-        )
+        assert _humanise_tool_list(["a", "b", "c", "d"]) == "'a', 'b', and 2 other"

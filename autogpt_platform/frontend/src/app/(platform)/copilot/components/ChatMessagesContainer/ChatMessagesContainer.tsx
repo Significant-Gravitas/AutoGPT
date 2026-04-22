@@ -33,7 +33,6 @@ import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { StepsCollapse } from "./components/StepsCollapse";
-import { RetrievalIndicator } from "./components/RetrievalIndicator";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
 interface Props {
@@ -49,12 +48,6 @@ interface Props {
   historicalDurations?: Map<string, number>;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
-  /** True while the replay of an active backend stream is being fetched —
-   *  drives the dedicated "Retrieving your conversation…" placeholder. */
-  isRetrievingStream?: boolean;
-  /** True once the retrieval has exceeded its hard timeout; the chat shows
-   *  an inline "Failed to retrieve latest conversation" banner. */
-  streamRetrievalFailed?: boolean;
 }
 
 function renderSegments(
@@ -265,8 +258,6 @@ export function ChatMessagesContainer({
   onRetry,
   historicalDurations,
   queuedMessages,
-  isRetrievingStream,
-  streamRetrievalFailed,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -290,7 +281,12 @@ export function ChatMessagesContainer({
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    const parts = lastMessage.parts;
+    // Ignore bookkeeping parts — data-cursor fires after every chunk and
+    // data-status is transient copy for the Thinking indicator; neither
+    // counts as "real" content that hides the indicator.
+    const parts = lastMessage.parts.filter(
+      (p) => p.type !== "data-cursor" && p.type !== "data-status",
+    );
     if (parts.length === 0) return false;
 
     const lastPart = parts[parts.length - 1];
@@ -321,21 +317,37 @@ export function ChatMessagesContainer({
     return false;
   })();
 
+  // Surface the latest `data-status` message from the live assistant when
+  // the Thinking indicator is up — but only if it wasn't invalidated by a
+  // more recent content part (in which case the model has moved on and the
+  // status is stale).
+  const latestStatusMessage = (() => {
+    if (lastMessage?.role !== "assistant") return null;
+    for (let i = lastMessage.parts.length - 1; i >= 0; i--) {
+      const part = lastMessage.parts[i];
+      if (part.type === "data-cursor") continue;
+      if (part.type === "data-status") {
+        const data = (part as { data?: { message?: unknown } }).data;
+        return typeof data?.message === "string" ? data.message : null;
+      }
+      // Any other part = the model has produced output past the status.
+      return null;
+    }
+    return null;
+  })();
+
   const showThinking =
     status === "submitted" || (status === "streaming" && !hasInflight);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
   const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
-  // While the client is fetching the replay for an active backend stream,
-  // and until the hard retrieval timeout fires, swap the generic
-  // "Thinking…" bubble for a dedicated placeholder that makes the wait
-  // legible (and surfaces an inline reload prompt on timeout).
-  const showRetrieval = !!(isRetrievingStream || streamRetrievalFailed);
-  const indicator = showRetrieval ? (
-    <RetrievalIndicator failed={streamRetrievalFailed} />
-  ) : (
-    <ThinkingIndicator active={showThinking} elapsedSeconds={elapsedSeconds} />
+  const indicator = (
+    <ThinkingIndicator
+      active={showThinking}
+      elapsedSeconds={elapsedSeconds}
+      statusMessage={latestStatusMessage}
+    />
   );
-  const showIndicator = showRetrieval || showThinking;
+  const showIndicator = showThinking;
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.
@@ -394,7 +406,14 @@ export function ChatMessagesContainer({
             isAssistant &&
             messageIndex <= messages.length - 1 &&
             (!nextMessage || nextMessage.role === "user");
-          const textParts = message.parts.filter(
+          // data-cursor / data-status parts are internal bookkeeping —
+          // strip them before any render/split logic so they never reach
+          // the user UI. (data-status surfaces via ThinkingIndicator;
+          // data-cursor drives resume-cursor tracking.)
+          const renderableParts = message.parts.filter(
+            (p) => p.type !== "data-cursor" && p.type !== "data-status",
+          );
+          const textParts = renderableParts.filter(
             (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
           );
           const lastTextPart = textParts[textParts.length - 1];
@@ -410,7 +429,7 @@ export function ChatMessagesContainer({
             textParts.length > 0 &&
             !hasErrorMarker;
 
-          const fileParts = message.parts.filter(
+          const fileParts = renderableParts.filter(
             (p): p is FileUIPart => p.type === "file",
           );
 
@@ -419,13 +438,13 @@ export function ChatMessagesContainer({
           const isFinalized =
             message.role === "assistant" && !isCurrentlyStreaming;
           const { reasoning, response } = isFinalized
-            ? splitReasoningAndResponse(message.parts)
-            : { reasoning: [] as MessagePart[], response: message.parts };
+            ? splitReasoningAndResponse(renderableParts)
+            : { reasoning: [] as MessagePart[], response: renderableParts };
           const hasReasoning = reasoning.length > 0;
 
           // Note: when interactive tools are pinned from reasoning into response,
           // this index approximates their position (used only for React keys).
-          const responseStartIndex = message.parts.length - response.length;
+          const responseStartIndex = renderableParts.length - response.length;
           const responseSegments =
             message.role === "assistant"
               ? buildRenderSegments(response, responseStartIndex)
@@ -455,7 +474,7 @@ export function ChatMessagesContainer({
                       message.id,
                       isLastAssistant ? onRetry : undefined,
                     )
-                  : message.parts.map((part, i) => (
+                  : renderableParts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
                         part={part}
