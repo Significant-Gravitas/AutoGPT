@@ -313,11 +313,19 @@ function getWebAccordionData(
     : null;
 
   if (results) {
+    const deep = inp.deep === true;
+    const noun = deep ? "research source" : "search result";
+    const answer = getStringField(output, "answer");
     return {
-      title: `${results.length} search result${results.length === 1 ? "" : "s"}`,
+      title: `${results.length} ${noun}${results.length === 1 ? "" : "s"}`,
       description: query ? truncate(query, 80) : undefined,
       content: (
         <div className="space-y-3">
+          {answer && (
+            <div className="whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800">
+              {answer}
+            </div>
+          )}
           {results.map((r, i) => {
             const title = getStringField(r, "title") ?? "(untitled)";
             const href = getStringField(r, "url") ?? "";

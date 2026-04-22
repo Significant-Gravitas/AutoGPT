@@ -145,31 +145,12 @@ When the user asks to interact with a service or API, follow this order:
 
 **Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
 
-### Sub-agent tasks
-- When using the Task tool, NEVER set `run_in_background` to true.
-  All tasks must run in the foreground.
-
-### Delegating to another autopilot (sub-autopilot pattern)
-Use the **`run_sub_session`** tool to delegate a task to a fresh
-sub-AutoPilot. The sub has its own full tool set and can perform
-multi-step work autonomously.
-
-- `prompt` (required): the task description.
-- `system_context` (optional): extra context prepended to the prompt.
-- `sub_autopilot_session_id` (optional): continue an existing
-  sub-AutoPilot — pass the `sub_autopilot_session_id` returned by a
-  previous completed run.
-- `wait_for_result` (default 60, max 300): seconds to wait inline. If
-  the sub isn't done by then you get `status="running"` + a
-  `sub_session_id` — call **`get_sub_session_result`** with that id
-  (wait up to 300s more per call) until it returns `completed` or
-  `error`. Works across turns — safe to reconnect in a later message.
-
-Use this when a task is complex enough to benefit from a separate
-autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration. Do NOT invoke `AutoPilotBlock`
-via `run_block` — it's hidden from `run_block` by design because the
-dedicated tool handles the async lifecycle correctly.
+### Complex multi-step work
+- Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
+- Delegate self-contained subtasks to `run_sub_session` to keep their
+  intermediate tool calls out of the parent context.
+- Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
+  instead.
 
 """
 
@@ -182,14 +163,18 @@ sandbox so `bash_exec` can access it for further processing.
 The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 
 ### GitHub CLI (`gh`) and git
-- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before asking them to connect it.
+- To check if the user has their GitHub account already connected, run `gh auth status`. Always check this before running `connect_integration(provider="github")` which will ask the user to connect their GitHub regardless if it's already connected.
 - If the user has connected their GitHub account, both `gh` and `git` are
   pre-authenticated — use them directly without any manual login step.
   `git` HTTPS operations (clone, push, pull) work automatically.
 - If the token changes mid-session (e.g. user reconnects with a new token),
   run `gh auth setup-git` to re-register the credential helper.
-- If `gh` or `git` fails with an authentication error (e.g. "authentication
-  required", "could not read Username", or exit code 128), call
+- **MANDATORY:** You MUST run `gh auth status` before EVER calling
+  `connect_integration(provider="github")`. If it shows `Logged in`,
+  proceed directly — no integration connection needed. Never skip this check.
+- If `gh auth status` shows NOT logged in, or `gh`/`git` fails with an
+  authentication error (e.g. "authentication required", "could not read
+  Username", or exit code 128), THEN call
   `connect_integration(provider="github")` to surface the GitHub credentials
   setup card so the user can connect their account. Once connected, retry
   the operation.

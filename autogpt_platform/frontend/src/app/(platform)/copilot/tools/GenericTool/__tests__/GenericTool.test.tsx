@@ -141,6 +141,7 @@ describe("GenericTool", () => {
     function makeWebSearchPart(
       results: Array<Record<string, unknown>>,
       query = "kimi k2.6",
+      answer = "",
     ): ToolUIPart {
       return {
         type: "tool-web_search",
@@ -149,6 +150,7 @@ describe("GenericTool", () => {
         input: { query },
         output: {
           type: "web_search_response",
+          answer,
           results,
           query,
           search_requests: 1,
@@ -252,6 +254,25 @@ describe("GenericTool", () => {
       // rather than the raw substring.
       const normalized = (container.textContent ?? "").replace(/ /g, " ");
       expect(normalized).toContain('Searched "kimi k2.6"');
+    });
+
+    it("renders the synthesised answer above the citations when present", () => {
+      render(
+        <GenericTool
+          part={makeWebSearchPart(
+            [
+              { title: "Citation 1", url: "https://example.com/one" },
+              { title: "Citation 2", url: "https://example.com/two" },
+            ],
+            "kimi k2.6 launch",
+            "Kimi K2.6 launched on 2026-04-20 with SWE-Bench parity to Opus.",
+          )}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { expanded: false }));
+      expect(
+        screen.getByText(/Kimi K2\.6 launched on 2026-04-20/),
+      ).not.toBeNull();
     });
 
     it("uses '(untitled)' when a search result has no title", () => {

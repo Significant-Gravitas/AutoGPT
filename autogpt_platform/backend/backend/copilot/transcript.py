@@ -195,16 +195,17 @@ def strip_stale_thinking_blocks(content: str) -> str:
         is_last_turn = (
             last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
         ) or (last_asst_msg_id is None and i == last_asst_idx)
-        if (
-            msg.get("role") == "assistant"
-            and not is_last_turn
-            and isinstance(msg.get("content"), list)
-        ):
+        if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
             content_blocks = msg["content"]
+            producing_model = msg.get("model") if isinstance(msg, dict) else None
             filtered = [
                 b
                 for b in content_blocks
-                if not (isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES)
+                if not _should_strip_thinking_block(
+                    b,
+                    is_last_turn=is_last_turn,
+                    producing_model=producing_model,
+                )
             ]
             if len(filtered) < len(content_blocks):
                 stripped_count += len(content_blocks) - len(filtered)
@@ -310,23 +311,30 @@ def strip_for_upload(content: str) -> str:
         if uid in reparented:
             needs_reserialize = True
 
-        # Strip stale thinking blocks from non-last assistant entries
+        # Strip stale thinking blocks from non-last assistant entries.
+        # Also strip *signature-less* thinking blocks from the last entry —
+        # those come from non-Anthropic providers (e.g. Kimi K2.6 via
+        # OpenRouter) and are rejected with ``Invalid `signature` in
+        # `thinking` block`` if a subsequent turn is dispatched to an
+        # Anthropic model that re-validates them.  Anthropic-emitted
+        # thinking blocks always carry a non-empty ``signature`` field, so
+        # this filter is a no-op on Sonnet/Opus turns and only kicks in
+        # when the prior turn ran on a non-Anthropic vendor.
         if last_asst_idx is not None:
             msg = entry.get("message", {})
             is_last_turn = (
                 last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
             ) or (last_asst_msg_id is None and i == last_asst_idx)
-            if (
-                msg.get("role") == "assistant"
-                and not is_last_turn
-                and isinstance(msg.get("content"), list)
-            ):
+            if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
                 content_blocks = msg["content"]
+                producing_model = msg.get("model") if isinstance(msg, dict) else None
                 filtered = [
                     b
                     for b in content_blocks
-                    if not (
-                        isinstance(b, dict) and b.get("type") in _THINKING_BLOCK_TYPES
+                    if not _should_strip_thinking_block(
+                        b,
+                        is_last_turn=is_last_turn,
+                        producing_model=producing_model,
                     )
                 ]
                 if len(filtered) < len(content_blocks):
@@ -949,6 +957,92 @@ ENTRY_TYPE_MESSAGE = "message"
 
 
 _THINKING_BLOCK_TYPES = frozenset({"thinking", "redacted_thinking"})
+
+
+def _is_anthropic_model(model: str | None) -> bool:
+    """True when *model* is an Anthropic-issued slug.
+
+    Used to decide whether a thinking block's signature is
+    cryptographically valid for Anthropic replay.  Non-Anthropic vendors
+    routed through OpenRouter's Anthropic-compat shim (Kimi K2.6,
+    DeepSeek, GPT-OSS) sometimes emit thinking blocks with a
+    placeholder signature — it passes a non-empty string check but
+    fails Anthropic's cryptographic validation, producing the opaque
+    ``Invalid signature in thinking block`` 400 on the next turn
+    whenever the model toggle switches to Sonnet/Opus.
+    """
+    return isinstance(model, str) and model.startswith("anthropic/")
+
+
+def _should_strip_thinking_block(
+    block: object,
+    *,
+    is_last_turn: bool,
+    producing_model: str | None = None,
+) -> bool:
+    """Return True when *block* is a thinking block that should be removed
+    from a transcript entry before upload.
+
+    Strip only when the block CAN'T be replayed safely.  Never strip a
+    valid Anthropic-issued thinking block — it carries real reasoning
+    state that preserves context continuity on ``--resume``.
+
+    Strip rules (first match wins):
+
+    1. **Non-Anthropic producer (any position)** — thinking blocks from
+       Kimi / DeepSeek / GPT-OSS via OpenRouter's Anthropic-compat shim
+       carry either no signature or a placeholder string that passes a
+       non-empty check but fails Anthropic's cryptographic validation.
+       Strip unconditionally; they also add low-value tokens to the
+       replay context.
+    2. **Malformed ``thinking`` (any position, Anthropic producer,
+       empty signature)** — shouldn't happen in practice, but if the
+       signature is missing / empty the block can't be validated.
+       Safer to drop than to 400 the next turn.
+    3. **Stale non-last entry with unknown producer** — when the
+       caller doesn't wire ``producing_model`` through (legacy paths /
+       older tests) we can't tell if the block is safe to keep; fall
+       back to the old behaviour of dropping non-last thinking blocks
+       to avoid replaying an unverifiable block to Anthropic.
+
+    Preserved:
+
+    * Anthropic ``thinking`` with non-empty signature — at any
+      position, last OR non-last.  Keeping prior-turn reasoning
+      chains helps continuity on multi-round SDK resumes without any
+      risk of signature rejection.
+    * Anthropic ``redacted_thinking`` — carries an encrypted ``data``
+      payload instead of a ``signature``; by design signature-less,
+      but Anthropic-issued and safely replayable.
+    """
+    if not isinstance(block, dict):
+        return False
+    btype = block.get("type")
+    if btype not in _THINKING_BLOCK_TYPES:
+        return False
+    # Legacy call sites pass producing_model=None — preserve the old
+    # "strip-all-non-last-thinking" heuristic for those so we don't
+    # regress callers that haven't been updated.
+    if producing_model is None:
+        if not is_last_turn:
+            return True
+        if btype != "thinking":
+            return False
+        signature = block.get("signature")
+        return not (isinstance(signature, str) and signature)
+    # Non-Anthropic producer — strip at any position.  These blocks
+    # CAN'T be cryptographically validated by Anthropic on replay.
+    if not _is_anthropic_model(producing_model):
+        return True
+    # Anthropic producer, redacted_thinking: always preserve — the
+    # ``data`` field is the signature analog.
+    if btype == "redacted_thinking":
+        return False
+    # Anthropic producer, ``thinking``: keep iff it has a real
+    # (non-empty) signature.  Empty-signature Anthropic thinking
+    # shouldn't happen but guard against it anyway.
+    signature = block.get("signature")
+    return not (isinstance(signature, str) and signature)
 
 
 def _flatten_assistant_content(blocks: list) -> str:

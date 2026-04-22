@@ -21,6 +21,7 @@ from backend.copilot.baseline.service import (
     _is_anthropic_model,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
+    _supports_prompt_cache_markers,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
@@ -39,7 +40,10 @@ from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallRe
 class TestBaselineStreamState:
     def test_defaults(self):
         state = _BaselineStreamState()
-        assert state.pending_events == []
+        # ``pending_events`` is an asyncio.Queue now (live SSE channel).
+        # The durable inspection view is ``emitted_events``.
+        assert state.pending_events.empty()
+        assert state.emitted_events == []
         assert state.assistant_text == ""
         assert state.text_started is False
         assert state.turn_prompt_tokens == 0
@@ -1687,7 +1691,7 @@ class TestBaselineReasoningStreaming:
                 state=state,
             )
 
-        types = [type(e).__name__ for e in state.pending_events]
+        types = [type(e).__name__ for e in state.emitted_events]
         assert "StreamReasoningStart" in types
         assert "StreamReasoningDelta" in types
         assert "StreamReasoningEnd" in types
@@ -1702,14 +1706,14 @@ class TestBaselineReasoningStreaming:
         # a fresh id after the reasoning-end rotation.
         reasoning_ids = {
             e.id
-            for e in state.pending_events
+            for e in state.emitted_events
             if isinstance(
                 e, (StreamReasoningStart, StreamReasoningDelta, StreamReasoningEnd)
             )
         }
         text_ids = {
             e.id
-            for e in state.pending_events
+            for e in state.emitted_events
             if isinstance(e, (StreamTextStart, StreamTextDelta, StreamTextEnd))
         }
         assert len(reasoning_ids) == 1
@@ -1717,7 +1721,7 @@ class TestBaselineReasoningStreaming:
         assert reasoning_ids.isdisjoint(text_ids)
 
         combined = "".join(
-            e.delta for e in state.pending_events if isinstance(e, StreamReasoningDelta)
+            e.delta for e in state.emitted_events if isinstance(e, StreamReasoningDelta)
         )
         assert combined == "thinking... more"
 
@@ -1759,7 +1763,7 @@ class TestBaselineReasoningStreaming:
 
         # A reasoning-end must have been emitted — this is the tool_calls
         # branch's responsibility, not the stream-end cleanup.
-        types = [type(e).__name__ for e in state.pending_events]
+        types = [type(e).__name__ for e in state.emitted_events]
         assert "StreamReasoningStart" in types
         assert "StreamReasoningEnd" in types
 
@@ -1802,7 +1806,7 @@ class TestBaselineReasoningStreaming:
                     state=state,
                 )
 
-        types = [type(e).__name__ for e in state.pending_events]
+        types = [type(e).__name__ for e in state.emitted_events]
         # The reasoning block was opened, the exception fired, and the
         # finally block must have closed it before emitting the finish
         # step.
@@ -1861,12 +1865,14 @@ class TestBaselineReasoningStreaming:
         assert "reasoning" not in extra_body
 
     @pytest.mark.asyncio
-    async def test_kimi_route_sends_reasoning_but_no_cache_control(self):
-        """Kimi K2.6 is the default fast_model and sends ``reasoning`` via
-        OpenRouter's unified extension.  It must NOT receive ``cache_control``
-        markers or the ``anthropic-beta`` header — Moonshot uses its own
-        auto-caching and those Anthropic-only fields would either get
-        silently dropped or (worst case) 400 on a future provider change."""
+    async def test_kimi_route_sends_reasoning_and_cache_control(self):
+        """Kimi K2.6 (Moonshot via OpenRouter's Anthropic-compat endpoint)
+        accepts ``cache_control: {type: ephemeral}`` on the system block
+        and the last tool — the endpoint honours the marker and lifts
+        cache hit rate on continuation turns from near-zero (Moonshot's
+        auto-caching drifts) to the Anthropic ~60-95% ballpark.  The
+        ``anthropic-beta`` header stays off because Moonshot doesn't need
+        it; OpenRouter would strip the unknown header anyway."""
         state = _BaselineStreamState(model="moonshotai/kimi-k2.6")
 
         mock_client = MagicMock()
@@ -1898,15 +1904,29 @@ class TestBaselineReasoningStreaming:
         # cheap-but-still-reasoning-capable path.
         assert "reasoning" in extra_body
         assert extra_body["reasoning"]["max_tokens"] > 0
-        # Anthropic-only fields stay off.
-        assert "extra_headers" not in call_kwargs
+        # No ``anthropic-beta`` header — that beta is specifically for
+        # native Anthropic endpoints; Moonshot's shim accepts
+        # ``cache_control`` without it, and sending it would be wasted
+        # bytes (OR strips it before forwarding to Moonshot).
+        assert "extra_headers" not in call_kwargs or not call_kwargs.get(
+            "extra_headers"
+        )
+        # System block MUST carry ``cache_control`` so Moonshot's cache
+        # breakpoint is honoured.  The cached system-message builder
+        # emits list-shape content with the marker on the first (and
+        # only) block — assert on that shape.
         sys_msg = call_kwargs["messages"][0]
         sys_content = sys_msg.get("content")
-        if isinstance(sys_content, list):
-            assert all("cache_control" not in block for block in sys_content)
-        tools = call_kwargs.get("tools", [])
-        for t in tools:
-            assert "cache_control" not in t
+        assert isinstance(
+            sys_content, list
+        ), "Cached system message should be a list-shape content block"
+        assert any(
+            "cache_control" in block for block in sys_content if isinstance(block, dict)
+        ), "Kimi system message should now carry cache_control markers"
+        # Tool-level cache marking is applied by ``stream_chat_completion_baseline``
+        # (see ``_mark_tools_with_cache_control``) before tools reach
+        # ``_baseline_llm_caller``, so this unit test doesn't exercise
+        # that path — covered by the outer integration test.
 
     @pytest.mark.asyncio
     async def test_reasoning_only_stream_still_closes_block(self):
@@ -1935,7 +1955,7 @@ class TestBaselineReasoningStreaming:
                 state=state,
             )
 
-        types = [type(e).__name__ for e in state.pending_events]
+        types = [type(e).__name__ for e in state.emitted_events]
         assert "StreamReasoningStart" in types
         assert "StreamReasoningEnd" in types
         # No text was produced — no text events should be emitted.
@@ -2006,3 +2026,55 @@ class TestBaselineReasoningStreaming:
         reasoning_rows = [m for m in state.session_messages if m.role == "reasoning"]
         assert len(reasoning_rows) == 1
         assert reasoning_rows[0].content == "first thought"
+
+
+class TestSupportsPromptCacheMarkers:
+    """``_supports_prompt_cache_markers`` is the widened gate for
+    emitting ``cache_control`` markers on message content.  It's a
+    superset of ``_is_anthropic_model`` that ALSO admits Moonshot
+    (whose Anthropic-compat endpoint honours the marker) while keeping
+    the False answer for OpenAI / Grok / Gemini (which 400 on the
+    unknown field)."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "anthropic/claude-sonnet-4-6",
+            "claude-3-5-sonnet-20241022",
+            "anthropic.claude-3-5-sonnet",
+            "ANTHROPIC/Claude-Opus",
+        ],
+    )
+    def test_anthropic_routes_are_supported(self, model):
+        assert _supports_prompt_cache_markers(model) is True
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k2.6",
+            "moonshotai/kimi-k2-thinking",
+            "moonshotai/kimi-k2.5",
+            "moonshotai/kimi-k3.0",  # future SKU
+        ],
+    )
+    def test_moonshot_routes_are_supported(self, model):
+        """The whole reason this predicate exists — Moonshot must be
+        True even though ``_is_anthropic_model`` is False for it."""
+        assert _supports_prompt_cache_markers(model) is True
+        # Verify this is strictly wider than the anthropic-only check.
+        assert _is_anthropic_model(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "openai/gpt-4o",
+            "google/gemini-2.5-pro",
+            "xai/grok-4",
+            "meta-llama/llama-3.3-70b-instruct",
+            "deepseek/deepseek-v3",
+        ],
+    )
+    def test_other_providers_still_rejected(self, model):
+        """Regression guard: OpenAI/Grok/Gemini still 400 on
+        ``cache_control``, so the widened gate must keep them out."""
+        assert _supports_prompt_cache_markers(model) is False

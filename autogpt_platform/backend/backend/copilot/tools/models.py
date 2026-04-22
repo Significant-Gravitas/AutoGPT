@@ -88,6 +88,9 @@ class ResponseType(str, Enum):
     MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
     MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
 
+    # Planning
+    TODO_WRITE = "todo_write"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):
@@ -602,11 +605,13 @@ class WebSearchResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.WEB_SEARCH
     query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
     results: list[WebSearchResult] = Field(default_factory=list)
-    # Backend-reported usage for this call (copied from Anthropic's
-    # ``usage.server_tool_use``).  Surfaces as metadata for frontend
-    # debug panels but is also what drives rate-limit / cost tracking
-    # via ``persist_and_record_usage(provider="anthropic")``.
     search_requests: int = 0
 
 
@@ -839,3 +844,36 @@ class MemoryForgetConfirmResponse(ToolResponseBase):
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
+
+
+# --- Planning ---
+
+
+class TodoItem(BaseModel):
+    """One entry in a ``TodoWrite`` checklist.
+
+    Mirrors the schema used by Claude Code's built-in ``TodoWrite`` tool so
+    the frontend's ``GenericTool`` accordion renders baseline-emitted todos
+    identically to SDK-emitted ones.
+    """
+
+    content: str = Field(description="Imperative description of the task.")
+    activeForm: str = Field(
+        description="Present-continuous form shown while the task is running.",
+    )
+    status: Literal["pending", "in_progress", "completed"] = Field(
+        default="pending",
+    )
+
+
+class TodoWriteResponse(ToolResponseBase):
+    """Ack returned by ``TodoWrite``.
+
+    The tool is effectively stateless — the authoritative task list lives in
+    the assistant's latest tool-call arguments, which are replayed from the
+    transcript on each turn. The tool output only needs to confirm that the
+    update was accepted so the model can proceed.
+    """
+
+    type: ResponseType = ResponseType.TODO_WRITE
+    todos: list[TodoItem] = Field(default_factory=list)
