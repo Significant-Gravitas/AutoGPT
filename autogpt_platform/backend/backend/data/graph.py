@@ -943,6 +943,19 @@ class GraphModel(Graph, GraphMeta):
                     )
                     continue
 
+                # Catch-all: any other type (int, bool, list, ...) falls
+                # through both isinstance checks today and reaches
+                # `_acquire_auto_credentials` at execute time, where
+                # ``.get("_credentials_id")`` on a non-dict raises
+                # AttributeError. Surface a clean error here instead.
+                if not isinstance(value, (str, dict)):
+                    node_errors[node.id][field_name] = (
+                        f"{field_name!r} is set to a {type(value).__name__} "
+                        f"value ({value!r}). This field expects an object "
+                        f"carrying the user's credentials. {remediation}"
+                    )
+                    continue
+
             # Validate dependencies between fields
             for field_name in input_fields.keys():
                 field_json_schema = InputSchema.get_field_schema(field_name)

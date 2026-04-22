@@ -2130,3 +2130,31 @@ def test_auto_credentials_validator_ignores_regular_credentials_fields():
         f"Unexpected Drive-picker remediation on a non-auto-credentials "
         f"block: {node_err}"
     )
+
+
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        pytest.param(42, id="int"),
+        pytest.param(True, id="bool"),
+        pytest.param(["1KAv8h", "fileid"], id="list"),
+    ],
+)
+def test_auto_credentials_non_str_non_dict_value_rejected(bad_value):
+    """Cursor Low (thread PRRT_kwDOJKSTjM58r5Vu): the validator's
+    auto-credential anti-pattern branch only covered `isinstance(value,
+    str)` and `isinstance(value, dict)`. Any other type (int, bool,
+    list, ...) fell through silently — which later crashes inside
+    ``_acquire_auto_credentials`` at execute time when it tries to
+    ``.get("_credentials_id")`` on a non-dict.
+
+    Pin the catch-all: any non-str/non-dict value must emit the same
+    re-auth guidance pointing at ``AgentGoogleDriveFileInputBlock``."""
+    graph = _sheets_graph(bad_value)
+
+    errors = GraphModel._validate_graph_get_errors(graph)
+
+    assert graph.nodes[0].id in errors, f"no error emitted for {bad_value!r}"
+    msg = errors[graph.nodes[0].id]["spreadsheet"]
+    # Must point the user at the correct fix (the Drive input block).
+    assert "AgentGoogleDriveFileInputBlock" in msg
