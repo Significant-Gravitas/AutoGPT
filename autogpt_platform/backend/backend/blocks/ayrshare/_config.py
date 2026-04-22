@@ -8,20 +8,14 @@ Ayrshare block fits the standard credential flow:
 
     credentials: CredentialsMetaInput = ayrshare.credentials_field(...)
 
-and ``run_block`` / ``resolve_block_credentials`` take care of the rest.  No
-more side-channel ``managed_credentials.ayrshare_profile_key`` lookups.
+``run_block`` / ``resolve_block_credentials`` take care of the rest.
 
-We intentionally do NOT call ``with_api_key("AYRSHARE_API_KEY", ...)`` — that
-would create an org-level default credential whose ``api_key`` is the admin
-key, which would be wrong to hand to a block as a "profile key".  Passing an
-unused env-var name keeps the auth-type registered (``api_key``) without
-materialising a default credential.
+``with_managed_api_key()`` registers ``api_key`` as a supported auth type
+without the env-var-backed default credential that ``with_api_key()`` would
+create — the org-level ``AYRSHARE_API_KEY`` is the admin key and must never
+reach a block as a "profile key".
 """
 
 from backend.sdk import ProviderBuilder
 
-ayrshare = (
-    ProviderBuilder("ayrshare")
-    .with_api_key("_AYRSHARE_PROFILE_KEY_UNUSED", "Ayrshare Profile Key")
-    .build()
-)
+ayrshare = ProviderBuilder("ayrshare").with_managed_api_key().build()

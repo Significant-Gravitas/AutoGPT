@@ -91,6 +91,19 @@ class ProviderBuilder:
             )
         return self
 
+    def with_managed_api_key(self) -> "ProviderBuilder":
+        """Declare api_key auth support without an env-var-backed default credential.
+
+        Use for providers whose API key is provisioned per-user by a
+        :class:`~backend.integrations.managed_credentials.ManagedCredentialProvider`
+        (e.g. Ayrshare's profile key).  Equivalent to :meth:`with_api_key` but
+        skips both the env-var lookup and the default-credential registration
+        — nothing can accidentally leak an org-level key into blocks as if it
+        were a per-user credential.
+        """
+        self._supported_auth_types.add("api_key")
+        return self
+
     def with_api_key_from_settings(
         self, settings_attr: str, title: str
     ) -> "ProviderBuilder":
