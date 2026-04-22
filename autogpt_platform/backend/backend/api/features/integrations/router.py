@@ -47,7 +47,14 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
-from backend.integrations.managed_credentials import ensure_managed_credentials
+from backend.integrations.managed_credentials import (
+    ensure_managed_credential,
+    ensure_managed_credentials,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    AyrshareManagedProvider,
+    _settings_available as ayrshare_settings_available,
+)
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -1092,6 +1099,12 @@ async def get_ayrshare_sso_url(
     hosted social-linking page; all profile lifecycle logic lives with the
     managed provider.
     """
+    if not ayrshare_settings_available():
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ayrshare integration is not configured",
+        )
+
     try:
         client = AyrshareClient()
     except MissingConfigError:
@@ -1100,10 +1113,19 @@ async def get_ayrshare_sso_url(
             detail="Ayrshare integration is not configured",
         )
 
-    # Provision the managed Ayrshare credential if this user has never had
-    # one — normally ensure_managed_credentials is fired on credential-list
-    # GET, but we hit it defensively here so the SSO URL always works.
-    await ensure_managed_credentials(user_id, creds_manager.store)
+    # On-demand provisioning: AyrshareManagedProvider opts out of the
+    # startup sweep (profile quota is per-user subscription-bound).  This
+    # endpoint is the only trigger that provisions a profile — one Ayrshare
+    # profile per user who actually opens the connect flow, not one per
+    # every authenticated user.
+    provisioned = await ensure_managed_credential(
+        user_id, creds_manager.store, AyrshareManagedProvider()
+    )
+    if not provisioned:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision Ayrshare profile",
+        )
 
     ayrshare_creds = [
         c

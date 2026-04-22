@@ -100,27 +100,72 @@ async def _ensure_one(
     try:
         if not await provider.is_available():
             return True
-        # Use a distributed Redis lock so the check-then-provision operation
-        # is atomic across all workers, preventing duplicate external
-        # resource provisioning (e.g. AgentMail API keys).
-        locks = await store.locks()
-        key = (f"user:{user_id}", f"managed-provision:{name}")
-        async with locks.locked(key):
-            # Re-check under lock to avoid duplicate provisioning.
-            if await store.has_managed_credential(user_id, name):
-                return True
-            credential = await provider.provision(user_id)
-            await store.add_managed_credential(user_id, credential)
-            logger.info(
-                "Provisioned managed credential for provider=%s user=%s",
-                name,
-                user_id,
-            )
-            return True
+        return await _provision_under_lock(user_id, store, name, provider)
     except Exception:
         logger.warning(
             "Failed to provision managed credential for provider=%s user=%s",
             name,
+            user_id,
+            exc_info=True,
+        )
+        return False
+
+
+async def _provision_under_lock(
+    user_id: str,
+    store: IntegrationCredentialsStore,
+    name: str,
+    provider: ManagedCredentialProvider,
+) -> bool:
+    """Provision a credential under a distributed Redis lock (double-check).
+
+    Separated from :func:`_ensure_one` so on-demand callers can invoke it
+    via :func:`ensure_managed_credential` without re-entering the
+    ``is_available`` gate — that gate is what the ``ensure_managed_credentials``
+    sweep uses to skip opt-out providers.
+    """
+    # Use a distributed Redis lock so the check-then-provision operation
+    # is atomic across all workers, preventing duplicate external
+    # resource provisioning (e.g. AgentMail API keys).
+    locks = await store.locks()
+    key = (f"user:{user_id}", f"managed-provision:{name}")
+    async with locks.locked(key):
+        # Re-check under lock to avoid duplicate provisioning.
+        if await store.has_managed_credential(user_id, name):
+            return True
+        credential = await provider.provision(user_id)
+        await store.add_managed_credential(user_id, credential)
+        logger.info(
+            "Provisioned managed credential for provider=%s user=%s",
+            name,
+            user_id,
+        )
+        return True
+
+
+async def ensure_managed_credential(
+    user_id: str,
+    store: IntegrationCredentialsStore,
+    provider: ManagedCredentialProvider,
+) -> bool:
+    """Provision *provider*'s managed credential for *user_id* on demand.
+
+    Bypasses the provider's ``is_available()`` gate — callers are expected to
+    have validated org-level config themselves (e.g. the Ayrshare SSO-URL
+    endpoint checks its secrets before invoking this).  Use for providers
+    that opt out of the ``ensure_managed_credentials`` startup sweep because
+    provisioning has per-user cost or quota implications.
+
+    Returns ``True`` on success, ``False`` on transient failure.
+    """
+    try:
+        return await _provision_under_lock(
+            user_id, store, provider.provider_name, provider
+        )
+    except Exception:
+        logger.warning(
+            "Failed to provision managed credential for provider=%s user=%s",
+            provider.provider_name,
             user_id,
             exc_info=True,
         )
