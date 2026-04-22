@@ -54,7 +54,7 @@ class ChatConfig(BaseSettings):
         "``reasoning`` + ``include_reasoning`` extension params on the "
         "Moonshot endpoints — so the baseline reasoning plumbing lights up "
         "without provider-specific code.  Roll back to the Anthropic route "
-        "via ``CHAT_FAST_STANDARD_MODEL=anthropic/claude-sonnet-4-6`` (then "
+        "via ``CHAT_FAST_STANDARD_MODEL=anthropic/claude-sonnet-4.6`` (then "
         "``cache_control`` breakpoints reactivate via "
         "``_is_anthropic_model``).",
     )
