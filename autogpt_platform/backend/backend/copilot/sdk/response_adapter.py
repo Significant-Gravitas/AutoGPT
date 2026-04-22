@@ -105,15 +105,6 @@ class SDKResponseAdapter:
         # the CLI emits summary-only, OpenRouter proxy quirks, encrypted
         # thinking).
         #
-        # ``_emitted_text_by_index`` / ``_emitted_thinking_by_index`` track
-        # cumulative emitted content per content-block index.  On the
-        # summary ``AssistantMessage`` we emit only
-        # ``full_text[len(already_emitted):]`` per block so the wire
-        # never sees the same text twice but also never misses a tail.
-        # Indices are scoped to a single Anthropic message — the maps
-        # reset on ``message_start`` (a new AssistantMessage).
-        self._emitted_text_by_index: dict[int, str] = {}
-        self._emitted_thinking_by_index: dict[int, str] = {}
         self._block_types_by_index: dict[int, str] = {}
         # Running partial-stream buffers.  Summary AssistantMessages can
         # arrive *before* the corresponding ``content_block_stop`` event
@@ -493,12 +484,6 @@ class SDKResponseAdapter:
                         delta=self._pending_thinking_delta,
                     )
                 )
-                idx = self._pending_thinking_index
-                if idx is not None:
-                    self._emitted_thinking_by_index[idx] = (
-                        self._emitted_thinking_by_index.get(idx, "")
-                        + self._pending_thinking_delta
-                    )
                 self._partial_thinking_buffer += self._pending_thinking_delta
                 self._pending_thinking_delta = ""
                 self._pending_thinking_index = None
@@ -524,8 +509,6 @@ class SDKResponseAdapter:
         to either match the wrong prefix (silently dropping new content)
         or diverge and fall back to re-emitting the whole block.
         """
-        self._emitted_text_by_index = {}
-        self._emitted_thinking_by_index = {}
         self._block_types_by_index = {}
         self._partial_text_buffer = ""
         self._partial_thinking_buffer = ""
@@ -599,66 +582,6 @@ class SDKResponseAdapter:
         self._partial_thinking_buffer = ""
         return full_thinking
 
-    def _text_tail_for_block(self, index: int, full_text: str) -> str:
-        """Return the text the summary carries that the partial stream
-        hasn't already emitted for ``index``.
-
-        When partial streaming is off, ``_emitted_text_by_index`` is
-        empty and this returns the full text.  When partial streaming
-        delivered a *prefix* of the summary's text we return only the
-        tail.  When the two views disagree (rare: partial content isn't
-        a prefix of the summary) the summary wins defensively so the
-        user sees the authoritative content even though a duplicate
-        renders briefly.
-        """
-        if not full_text:
-            return ""
-        already = self._emitted_text_by_index.get(index, "")
-        if not already:
-            return full_text
-        if full_text.startswith(already):
-            return full_text[len(already) :]
-        # Partial diverged from summary — fall back to summary (rare but
-        # observed when OpenRouter proxies rewrite content between the
-        # partial and summary phases).  Log so we notice if it becomes
-        # common in production.
-        logger.warning(
-            "SDK partial/summary text diverged at index %d "
-            "(already=%d chars, full=%d chars) — emitting summary to "
-            "avoid losing authoritative content",
-            index,
-            len(already),
-            len(full_text),
-        )
-        return full_text
-
-    def _thinking_tail_for_block(self, index: int, full_thinking: str) -> str:
-        """Diff a summary ``ThinkingBlock`` against partial-stream state.
-
-        Same semantics as :meth:`_text_tail_for_block` but sourced from
-        ``_emitted_thinking_by_index``.  If a partial stream chunk is
-        still buffered in ``_pending_thinking_delta`` for this index it
-        is folded into the "already emitted" side so we don't emit it
-        twice.
-        """
-        if not full_thinking:
-            return ""
-        already = self._emitted_thinking_by_index.get(index, "")
-        if self._pending_thinking_index == index:
-            already = already + self._pending_thinking_delta
-        if not already:
-            return full_thinking
-        if full_thinking.startswith(already):
-            return full_thinking[len(already) :]
-        logger.warning(
-            "SDK partial/summary thinking diverged at index %d "
-            "(already=%d chars, full=%d chars) — emitting summary",
-            index,
-            len(already),
-            len(full_thinking),
-        )
-        return full_thinking
-
     def _handle_stream_event(
         self, evt: StreamEvent, responses: list[StreamBaseResponse]
     ) -> None:
@@ -694,17 +617,15 @@ class SDKResponseAdapter:
             if block_type == "text":
                 self._end_reasoning_if_open(responses)
                 self._ensure_text_started(responses)
-                self._emitted_text_by_index.setdefault(index, "")
                 # Seed any preamble the block_start carries.
                 seed = block.get("text") or ""
                 if seed:
                     responses.append(StreamTextDelta(id=self.text_block_id, delta=seed))
-                    self._emitted_text_by_index[index] = seed
+                    self._partial_text_buffer += seed
                     self._text_since_last_tool_result = True
             elif block_type == "thinking":
                 self._end_text_if_open(responses)
                 self._ensure_reasoning_started(responses)
-                self._emitted_thinking_by_index.setdefault(index, "")
                 self._last_thinking_flush_monotonic = time.monotonic()
             # tool_use / server_tool_use / redacted_thinking blocks stay
             # on the ``AssistantMessage`` path — the frontend widgets
@@ -724,9 +645,6 @@ class SDKResponseAdapter:
                     return
                 self._ensure_text_started(responses)
                 responses.append(StreamTextDelta(id=self.text_block_id, delta=chunk))
-                self._emitted_text_by_index[index] = (
-                    self._emitted_text_by_index.get(index, "") + chunk
-                )
                 self._partial_text_buffer += chunk
                 self._text_since_last_tool_result = True
             elif delta_type == "thinking_delta":
@@ -761,10 +679,8 @@ class SDKResponseAdapter:
                 return
             block_type = self._block_types_by_index.pop(index, None)
             if block_type == "text":
-                self._emitted_text_by_index.pop(index, "")
                 self._end_text_if_open(responses)
             elif block_type == "thinking":
-                self._emitted_thinking_by_index.pop(index, "")
                 self._end_reasoning_if_open(responses)
             return
 
@@ -783,12 +699,6 @@ class SDKResponseAdapter:
                 delta=self._pending_thinking_delta,
             )
         )
-        idx = self._pending_thinking_index
-        if idx is not None:
-            self._emitted_thinking_by_index[idx] = (
-                self._emitted_thinking_by_index.get(idx, "")
-                + self._pending_thinking_delta
-            )
         self._partial_thinking_buffer += self._pending_thinking_delta
         self._pending_thinking_delta = ""
         self._pending_thinking_index = None
