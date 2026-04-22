@@ -27,6 +27,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ResultMessage,
+    StreamEvent,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -2529,16 +2530,36 @@ async def _run_stream_attempt(
             # flush the assistant message before tool_calls are set on it
             # (text and tool_use arrive as separate SDK events), the
             # tool_calls update is lost — the next flush starts past it.
-            _msgs_since_flush += 1
+            #
+            # With ``include_partial_messages=True`` the CLI delivers
+            # hundreds of ``StreamEvent`` messages per turn — incrementing
+            # ``_msgs_since_flush`` on each one trips the threshold long
+            # before the assistant text is complete, saving a truncated
+            # prefix that subsequent deltas can never extend (append-only).
+            # Count only messages that produce a persisted row boundary
+            # (AssistantMessage, UserMessage, ResultMessage) and skip
+            # raw StreamEvents.  Also skip when text or reasoning is
+            # still in-flight on the adapter: the row is live and a flush
+            # would lock it at its current length.
+            if not isinstance(sdk_msg, StreamEvent):
+                _msgs_since_flush += 1
             now = time.monotonic()
             has_pending_tools = (
                 acc.has_appended_assistant
                 and acc.accumulated_tool_calls
                 and not acc.has_tool_results
             )
-            if not has_pending_tools and (
-                _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
-                or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
+            adapter = state.adapter
+            has_open_block = (
+                adapter.has_started_text and not adapter.has_ended_text
+            ) or (adapter.has_started_reasoning and not adapter.has_ended_reasoning)
+            if (
+                not has_pending_tools
+                and not has_open_block
+                and (
+                    _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
+                    or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
+                )
             ):
                 try:
                     await asyncio.shield(upsert_chat_session(ctx.session))
