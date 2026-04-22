@@ -10,6 +10,7 @@ from backend.data.db import connect
 from backend.data.includes import library_agent_include
 
 from . import db
+from . import model as library_model
 
 
 @pytest.mark.asyncio
@@ -463,6 +464,135 @@ async def test_list_library_agents_skips_failed_agent(mocker):
 
     assert len(result.agents) == 0
     assert result.pagination.total_items == 1
+
+
+@pytest.mark.asyncio
+async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
+    """list_trigger_agents queries hidden LibraryAgents whose graph
+    contains an AgentExecutorBlock node whose constantInput.graph_id
+    matches the parent's graph_id. Verify the filter is wired up
+    correctly — this is the load-bearing logic since the relationship
+    is derived (no link table)."""
+    parent_agent = library_model.LibraryAgent(
+        id="parent-id",
+        graph_id="parent-graph-id",
+        graph_version=1,
+        name="Parent",
+        description="The parent",
+        image_url=None,
+        creator_name="",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        has_human_in_the_loop=False,
+        has_sensitive_action=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        is_favorite=False,
+        is_hidden=False,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=mocker.AsyncMock(return_value=parent_agent),
+    )
+
+    trigger_prisma = prisma.models.LibraryAgent(
+        id="trig-1",
+        userId="test-user",
+        agentGraphId="trig-graph-id",
+        settings="{}",  # type: ignore
+        agentGraphVersion=1,
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        isHidden=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=prisma.models.AgentGraph(
+            id="trig-graph-id",
+            version=1,
+            name="Trigger Agent",
+            description="Watches for new stuff",
+            userId="test-user",
+            isActive=True,
+            createdAt=datetime.now(),
+        ),
+    )
+
+    mock_find_many = mocker.AsyncMock(return_value=[trigger_prisma])
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_many = mock_find_many
+
+    result = await db.list_trigger_agents(
+        user_id="test-user", library_agent_id="parent-id"
+    )
+
+    assert len(result) == 1
+    assert result[0].id == "trig-1"
+    assert result[0].graph_id == "trig-graph-id"
+
+    # Verify the where clause filters on the parent's graph_id via the
+    # AgentExecutorBlock's constantInput JSON path — the core of the
+    # derived-relationship query.
+    where = mock_find_many.call_args.kwargs["where"]
+    assert where["userId"] == "test-user"
+    assert where["isHidden"] is True
+    assert where["isDeleted"] is False
+    assert where["isArchived"] is False
+    nodes_some = where["AgentGraph"]["is"]["Nodes"]["some"]
+    assert nodes_some["agentBlockId"] == db._AGENT_EXECUTOR_BLOCK_ID
+    assert nodes_some["constantInput"]["path"] == ["graph_id"]
+    assert nodes_some["constantInput"]["equals"] == prisma.Json("parent-graph-id")
+
+
+@pytest.mark.asyncio
+async def test_list_trigger_agents_returns_empty_when_no_triggers(mocker):
+    """When the parent has no trigger agents, return an empty list
+    rather than raising — the Triggers tab hides itself in that case."""
+    parent_agent = library_model.LibraryAgent(
+        id="parent-id",
+        graph_id="parent-graph-id",
+        graph_version=1,
+        name="Parent",
+        description="",
+        image_url=None,
+        creator_name="",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        has_human_in_the_loop=False,
+        has_sensitive_action=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        is_favorite=False,
+        is_hidden=False,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=mocker.AsyncMock(return_value=parent_agent),
+    )
+
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    result = await db.list_trigger_agents(
+        user_id="test-user", library_agent_id="parent-id"
+    )
+    assert result == []
 
 
 @pytest.mark.asyncio
