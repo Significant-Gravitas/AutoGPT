@@ -346,10 +346,12 @@ class _BaselineStreamState:
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
-    # ``list`` drained per ``tool_call_loop`` iteration; on Kimi K2.6 a single
-    # round can stream reasoning for 3+ minutes before yielding, freezing the UI.
-    # The queue is single-producer (the streaming loop) / single-consumer (the
-    # outer async-gen yield loop); ``None`` is the close sentinel.
+    # ``list`` drained per ``tool_call_loop`` iteration, so any model with
+    # extended thinking (Anthropic via OpenRouter, Moonshot, future reasoning
+    # routes) froze the UI for the entire duration of each LLM round before
+    # flushing the backlog in one burst.  The queue is single-producer (the
+    # streaming loop) / single-consumer (the outer async-gen yield loop);
+    # ``None`` is the close sentinel.
     pending_events: asyncio.Queue[StreamBaseResponse | None] = field(
         default_factory=asyncio.Queue
     )
@@ -1702,10 +1704,10 @@ async def stream_chat_completion_baseline(
     # Run the tool-call loop concurrently with the event consumer so
     # ``StreamReasoning*`` / ``StreamText*`` deltas emitted inside
     # ``_baseline_llm_caller`` reach the SSE wire DURING the upstream LLM
-    # stream instead of only at iteration boundaries.  On Kimi K2.6 a
-    # single reasoning round can run 3+ minutes before the OpenRouter
-    # stream closes — buffering events until then froze the UI for the
-    # whole window.
+    # stream instead of only at iteration boundaries.  Any reasoning route
+    # that streams for several minutes per round (extended thinking on
+    # Anthropic / Moonshot / future providers) would otherwise freeze the
+    # UI for the whole window before flushing the backlog in one burst.
     loop_result_holder: list[Any] = [None]
     loop_task: asyncio.Task[None] | None = None
 
