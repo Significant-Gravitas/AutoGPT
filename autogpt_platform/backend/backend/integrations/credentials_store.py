@@ -525,20 +525,6 @@ class IntegrationCredentialsStore:
             ]
             user_integrations.credentials.append(credential)
 
-    async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
-        """Set the Ayrshare profile key for a user.
-
-        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
-        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
-
-        Args:
-            user_id: The ID of the user to set the profile key for
-            profile_key: The profile key to set
-        """
-        _profile_key = SecretStr(profile_key)
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
-
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(

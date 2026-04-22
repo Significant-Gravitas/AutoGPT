@@ -14,7 +14,7 @@ from fastapi import (
     Security,
     status,
 )
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
@@ -29,15 +29,14 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
     OAuth2Credentials,
-    UserIntegrations,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
-from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.credentials_store import (
@@ -1084,11 +1083,14 @@ def _get_provider_oauth_handler(
 async def get_ayrshare_sso_url(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AyrshareSSOResponse:
-    """
-    Generate an SSO URL for Ayrshare social media integration.
+    """Generate a JWT SSO URL so the user can link their social accounts.
 
-    Returns:
-        dict: Contains the SSO URL for Ayrshare integration
+    The per-user Ayrshare profile key is provisioned and persisted as a
+    standard ``is_managed=True`` credential by
+    :class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.
+    This endpoint only signs a short-lived JWT pointing at the Ayrshare-
+    hosted social-linking page; all profile lifecycle logic lives with the
+    managed provider.
     """
     try:
         client = AyrshareClient()
@@ -1098,66 +1100,48 @@ async def get_ayrshare_sso_url(
             detail="Ayrshare integration is not configured",
         )
 
-    # Ayrshare profile key is stored in the credentials store
-    # It is generated when creating a new profile, if there is no profile key,
-    # we create a new profile and store the profile key in the credentials store
+    # Provision the managed Ayrshare credential if this user has never had
+    # one — normally ensure_managed_credentials is fired on credential-list
+    # GET, but we hit it defensively here so the SSO URL always works.
+    await ensure_managed_credentials(user_id, creds_manager.store)
 
-    user_integrations: UserIntegrations = await get_user_integrations(user_id)
-    profile_key = user_integrations.managed_credentials.ayrshare_profile_key
-
-    if not profile_key:
-        logger.debug(f"Creating new Ayrshare profile for user {user_id}")
-        try:
-            profile = await client.create_profile(
-                title=f"User {user_id}", messaging_active=True
-            )
-            profile_key = profile.profileKey
-            await creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
-        except Exception as e:
-            logger.error(f"Error creating Ayrshare profile for user {user_id}: {e}")
-            raise HTTPException(
-                status_code=HTTP_502_BAD_GATEWAY,
-                detail="Failed to create Ayrshare profile",
-            )
-    else:
-        logger.debug(f"Using existing Ayrshare profile for user {user_id}")
-
-    profile_key_str = (
-        profile_key.get_secret_value()
-        if isinstance(profile_key, SecretStr)
-        else str(profile_key)
-    )
+    ayrshare_creds = [
+        c
+        for c in await creds_manager.store.get_creds_by_provider(user_id, "ayrshare")
+        if c.is_managed and isinstance(c, APIKeyCredentials)
+    ]
+    if not ayrshare_creds:
+        logger.error(
+            "Ayrshare credential provisioning did not produce a credential "
+            "for user %s",
+            user_id,
+        )
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision Ayrshare profile",
+        )
+    profile_key_str = ayrshare_creds[0].api_key.get_secret_value()
 
     private_key = settings.secrets.ayrshare_jwt_key
-    # Ayrshare JWT expiry is 2880 minutes (48 hours)
+    # Ayrshare JWT max lifetime is 2880 minutes (48 h).
     max_expiry_minutes = 2880
     try:
-        logger.debug(f"Generating Ayrshare JWT for user {user_id}")
         jwt_response = await client.generate_jwt(
             private_key=private_key,
             profile_key=profile_key_str,
+            # NOTE: Enabled platforms are rolled out one at a time.
             allowed_social=[
-                # NOTE: We are enabling platforms one at a time
-                # to speed up the development process
-                # SocialPlatform.FACEBOOK,
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,
                 SocialPlatform.INSTAGRAM,
                 SocialPlatform.YOUTUBE,
-                # SocialPlatform.REDDIT,
-                # SocialPlatform.TELEGRAM,
-                # SocialPlatform.GOOGLE_MY_BUSINESS,
-                # SocialPlatform.PINTEREST,
                 SocialPlatform.TIKTOK,
-                # SocialPlatform.BLUESKY,
-                # SocialPlatform.SNAPCHAT,
-                # SocialPlatform.THREADS,
             ],
             expires_in=max_expiry_minutes,
             verify=True,
         )
-    except Exception as e:
-        logger.error(f"Error generating Ayrshare JWT for user {user_id}: {e}")
+    except Exception as exc:
+        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
         raise HTTPException(
             status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
         )
