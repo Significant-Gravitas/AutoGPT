@@ -87,9 +87,6 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
-    # Task-list tool mirroring Claude Code's built-in.  SDK mode uses the
-    # CLI-native ``TodoWrite`` — the MCP wrapper here is filtered out of
-    # SDK's allowed_tools in ``sdk/tool_adapter.py``.
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
