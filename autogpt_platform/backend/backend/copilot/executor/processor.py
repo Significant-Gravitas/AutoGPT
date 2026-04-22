@@ -335,8 +335,17 @@ class CoPilotProcessor:
                     cluster_lock.refresh()
 
             if not future.cancelled():
-                # Get result to propagate any exceptions
-                future.result()
+                # Propagate exceptions from _execute_async. Bounded timeout
+                # so a wedged event loop (cancel() couldn't land within the
+                # grace window) can't trap us in here forever — on timeout we
+                # escape to the finally and the sync safety net fires.
+                try:
+                    future.result(timeout=_CANCEL_GRACE_SECONDS)
+                except concurrent.futures.TimeoutError:
+                    log.warning(
+                        "Future did not complete within grace window; "
+                        "falling through to sync fail-close"
+                    )
         finally:
             # Last-line-of-defense ONLY when the async path didn't reach its
             # own finally: future is None (submit failed) or not done (stuck
