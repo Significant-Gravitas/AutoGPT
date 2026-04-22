@@ -1,5 +1,10 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/atoms/Tooltip/BaseTooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
@@ -9,6 +14,10 @@ import { useCopilotUIStore } from "../../store";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
+import {
+  UsageLimitReachedCard,
+  useIsUsageLimitReached,
+} from "../UsageLimits/UsageLimitReachedCard";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 export interface ChatContainerProps {
@@ -77,8 +86,10 @@ export const ChatContainer = ({
   const isStreaming = status === "streaming" || status === "submitted";
   // The input is only truly disabled when the session isn't ready at all
   // (reconnecting, syncing, loading, or errored) — NOT during normal streaming.
-  const isInputDisabled =
+  const isSessionUnavailable =
     !!isReconnecting || !!isSyncing || isLoadingSession || !!isSessionError;
+  const isLimitReached = useIsUsageLimitReached();
+  const isInputDisabled = isSessionUnavailable || isLimitReached;
   const inputLayoutId = "copilot-2-chat-input";
 
   // Retry: re-send the last user message (used by ErrorCard on transient errors)
@@ -126,19 +137,30 @@ export const ChatContainer = ({
                 className="relative px-3 pb-2 pt-2"
               >
                 <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />
-                <ChatInput
-                  inputId="chat-input-session"
-                  onSend={onSend}
-                  disabled={isInputDisabled}
-                  isStreaming={isStreaming}
-                  isUploadingFiles={isUploadingFiles}
-                  onStop={onStop}
-                  onEnqueue={onEnqueue}
-                  placeholder="What else can I help with?"
-                  droppedFiles={droppedFiles}
-                  onDroppedFilesConsumed={onDroppedFilesConsumed}
-                  hasSession={!!sessionId}
-                />
+                {isLimitReached && <UsageLimitReachedCard />}
+                <Tooltip open={isLimitReached ? undefined : false}>
+                  <TooltipTrigger asChild>
+                    <div>
+                      <ChatInput
+                        inputId="chat-input-session"
+                        onSend={onSend}
+                        disabled={isInputDisabled}
+                        isStreaming={isStreaming}
+                        isUploadingFiles={isUploadingFiles}
+                        onStop={onStop}
+                        onEnqueue={onEnqueue}
+                        placeholder="What else can I help with?"
+                        droppedFiles={droppedFiles}
+                        onDroppedFilesConsumed={onDroppedFilesConsumed}
+                        hasSession={!!sessionId}
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-sm">
+                    You&apos;ve reached your usage limit. Reset your daily limit
+                    or wait for it to refresh before sending more messages.
+                  </TooltipContent>
+                </Tooltip>
               </motion.div>
             </div>
           ) : (
