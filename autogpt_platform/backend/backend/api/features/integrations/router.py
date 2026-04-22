@@ -51,8 +51,8 @@ from backend.integrations.managed_credentials import (
     ensure_managed_credential,
     ensure_managed_credentials,
 )
+from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
 from backend.integrations.managed_providers.ayrshare import (
-    AyrshareManagedProvider,
     _settings_available as ayrshare_settings_available,
 )
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
