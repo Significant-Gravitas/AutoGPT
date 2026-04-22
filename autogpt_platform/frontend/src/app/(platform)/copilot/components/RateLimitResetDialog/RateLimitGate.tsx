@@ -63,6 +63,7 @@ export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
       resetMessage={rateLimitMessage ?? ""}
       isWeeklyExhausted={
         hasUsage &&
+        !!usage.weekly &&
         usage.weekly.limit > 0 &&
         usage.weekly.used >= usage.weekly.limit
       }

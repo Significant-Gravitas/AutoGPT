@@ -494,7 +494,8 @@ def _humanise_tool_list(names: list[str]) -> str:
     if len(quoted) == 2:
         return f"{quoted[0]} and {quoted[1]}"
     extras = len(quoted) - 2
-    return f"{quoted[0]}, {quoted[1]}, and {extras} other"
+    suffix = "others" if extras > 1 else "other"
+    return f"{quoted[0]}, {quoted[1]}, and {extras} {suffix}"
 
 
 def _append_error_marker(
