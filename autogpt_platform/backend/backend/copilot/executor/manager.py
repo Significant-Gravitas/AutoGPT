@@ -140,22 +140,30 @@ class CoPilotExecutor(AppProcess):
         and its own logging. See each ``_phase_*`` method's docstring for
         what that step does and why it happens in that order.
 
-        Happy path: SIGTERM → :meth:`_phase_stop_new_work` stops the
-        consumer → :meth:`_phase_drain_inflight` signals cancel and waits
-        → each turn hits its own ``finally`` and marks the session
-        ``failed`` → ``active_tasks`` drains → :meth:`_phase_fail_close`
-        is a no-op → :meth:`_phase_teardown` releases resources.
+        Happy path: SIGTERM → :meth:`_phase_reject_new_work` sets the flag
+        that gates ``_handle_run_message`` (new deliveries get nacked) →
+        :meth:`_phase_drain_inflight` signals cancel and waits → each
+        turn hits its own ``finally`` and marks the session ``failed`` →
+        ``active_tasks`` drains → :meth:`_phase_fail_close` is a no-op →
+        :meth:`_phase_teardown` tells pika to exit ``start_consuming()``
+        and releases resources.
 
-        Stuck-turn path: if a turn can't be cancelled within the grace
-        window (network hang, event loop dead), :meth:`_phase_fail_close`
-        force-marks it failed, rejects the RabbitMQ delivery (so it's not
-        redelivered and double-executed on another pod), clears its
-        pending buffer, and releases the cluster lock.
+        Stuck-turn path: :meth:`_phase_fail_close` force-marks stuck
+        turns ``failed``, rejects their RabbitMQ deliveries (while the
+        channel is still consuming — threadsafe callbacks only fire
+        while pika's ioloop is active), clears their pending buffer,
+        and releases the cluster lock.
+
+        Order invariant: ``_phase_teardown`` must run LAST because it
+        calls ``channel.stop_consuming()`` — once that returns, any
+        ``add_callback_threadsafe`` calls queued to that connection
+        (including the ones in phase 3's nack path) silently fail to
+        execute.
         """
         pid = os.getpid()
         logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
 
-        self._phase_stop_new_work(pid)
+        self._phase_reject_new_work(pid)
         self._phase_drain_inflight(pid)
         self._phase_fail_close(pid)
         self._phase_teardown(pid)
@@ -164,21 +172,21 @@ class CoPilotExecutor(AppProcess):
 
     # --- cleanup phases ----------------------------------------------------
 
-    def _phase_stop_new_work(self, pid: int) -> None:
-        """Phase 1: tell the RabbitMQ consumer to stop taking new deliveries.
+    def _phase_reject_new_work(self, pid: int) -> None:
+        """Phase 1: flag the consumer to nack newly-arriving deliveries.
 
-        ``stop_consuming`` also gates ``_handle_run_message`` — messages
-        that arrive after this point are nacked+requeued for another pod.
+        Only sets the Python ``stop_consuming`` event that
+        ``_handle_run_message`` checks — does NOT call
+        ``channel.stop_consuming()`` yet. That call exits pika's ioloop,
+        which would prevent phase 3's threadsafe-queued ``basic_nack``
+        callbacks from ever executing. Actual consumer shutdown is
+        deferred to :meth:`_phase_teardown`.
         """
-        try:
-            self.stop_consuming.set()
-            run_channel = self.run_client.get_channel()
-            run_channel.connection.add_callback_threadsafe(
-                lambda: run_channel.stop_consuming()
-            )
-            logger.info(f"[cleanup {pid}] Consumer has been signaled to stop")
-        except Exception as e:
-            logger.error(f"[cleanup {pid}] Error stopping consumer: {e}")
+        self.stop_consuming.set()
+        logger.info(
+            f"[cleanup {pid}] Consumer flagged: new deliveries will be nacked "
+            f"(channel.stop_consuming deferred to teardown)"
+        )
 
     def _phase_drain_inflight(self, pid: int) -> None:
         """Phase 2: signal cancel to every in-flight turn and wait it out.
