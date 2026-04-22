@@ -1418,7 +1418,7 @@ async def test_validate_node_input_credentials_auto_creds_empty_string_id(
 ):
     """A ``_credentials_id`` set to an empty string is a corrupted state —
     the validator must treat it like a missing credential, not silently
-    pass. Without this guard, \`if cred_id and isinstance(cred_id, str)\`
+    pass. Without this guard, ``if cred_id and isinstance(cred_id, str)``
     evaluated to False and the node ran with no credentials injected."""
     from backend.executor.utils import _validate_node_input_credentials
 
@@ -1499,6 +1499,100 @@ async def test_validate_node_input_credentials_auto_creds_skipped_when_none(
 
     # No error - chained data with None cred_id is valid
     assert mock_node.id not in errors
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_optional_none_value_skips(
+    mocker: MockerFixture,
+):
+    """Sentry HIGH regression: if input_default[field_name] is explicitly
+    ``None`` (e.g. cleared by ``_reassign_ids`` on fork) and the field is
+    optional, the validator previously silently skipped the whole
+    auto-credentials block — ``has_missing_credentials`` never flipped
+    true and the node never landed in ``nodes_to_skip``. Then
+    ``_acquire_auto_credentials`` would hit ``field_data is None`` at
+    runtime and raise ``ValueError`` instead of cleanly skipping.
+
+    The validator must treat an explicitly-None value as a missing
+    credential and, for optional fields, add the node to
+    ``nodes_to_skip`` instead."""
+    from backend.executor.utils import _validate_node_input_credentials
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-cleared-on-fork"
+    mock_node.credentials_optional = True
+    # input_default has the field but its value was cleared to None
+    mock_node.input_default = {"spreadsheet": None}
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, nodes_to_skip = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    # Optional + missing → node MUST land in nodes_to_skip so the executor
+    # never enters a run that would crash in `_acquire_auto_credentials`.
+    assert mock_node.id not in errors
+    assert mock_node.id in nodes_to_skip
+
+
+@pytest.mark.asyncio
+async def test_validate_node_input_credentials_auto_creds_required_none_value_errors(
+    mocker: MockerFixture,
+):
+    """Sentry HIGH regression, required-field variant. If
+    ``input_default[field_name]`` is explicitly ``None`` and the field is
+    required, the validator must surface a
+    ``CRED_ERR_NOT_AVAILABLE_PREFIX`` error so the dry-run gate fires
+    before we enter `run()` — rather than silently letting the node pass
+    validation and crashing inside `_acquire_auto_credentials`."""
+    from backend.executor.utils import (
+        _validate_node_input_credentials,
+        is_credential_validation_error_message,
+    )
+
+    mock_node = mocker.MagicMock()
+    mock_node.id = "node-cleared-on-fork-required"
+    mock_node.credentials_optional = False
+    mock_node.input_default = {"spreadsheet": None}
+
+    mock_block = mocker.MagicMock()
+    mock_block.input_schema.get_credentials_fields.return_value = {}
+    mock_block.input_schema.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+    mock_block.input_schema.get_required_fields.return_value = ["spreadsheet"]
+    mock_node.block = mock_block
+
+    mock_graph = mocker.MagicMock()
+    mock_graph.nodes = [mock_node]
+
+    errors, _ = await _validate_node_input_credentials(
+        graph=mock_graph,
+        user_id="some-user",
+        nodes_input_masks=None,
+    )
+
+    assert mock_node.id in errors
+    assert "spreadsheet" in errors[mock_node.id]
+    assert is_credential_validation_error_message(errors[mock_node.id]["spreadsheet"])
 
 
 # ============================================================================

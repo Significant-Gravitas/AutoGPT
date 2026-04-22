@@ -431,6 +431,40 @@ async def _validate_node_input_credentials(
                         field_name, field_value
                     )
 
+                if field_value is None:
+                    # Sentry HIGH: an explicitly-None value (e.g. cleared by
+                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # credentials were there and are now gone. Treat as
+                    # missing so optional fields hit `nodes_to_skip` and
+                    # required fields surface a clean re-auth message —
+                    # don't silently fall through to `_acquire_auto_credentials`
+                    # which would then crash with ValueError at runtime.
+                    # NOTE: this branch only fires when the key is
+                    # explicitly `None`. If the field is absent from
+                    # `input_default` altogether (chained from upstream
+                    # via `input_links`), `.get()` also returns None — but
+                    # that path is handled at execute time by
+                    # `_acquire_auto_credentials` skipping fields not in
+                    # `input_data`. To keep this validator from over-reaching
+                    # in that case, callers set the field explicitly to
+                    # `None` only for the cleared-fork scenario.
+                    field_is_explicitly_none = field_name in node.input_default or (
+                        nodes_input_masks
+                        and node.id in nodes_input_masks
+                        and field_name in nodes_input_masks[node.id]
+                    )
+                    if not field_is_explicitly_none:
+                        continue
+                    has_missing_credentials = True
+                    if field_is_optional:
+                        continue
+                    credential_errors[node.id][field_name] = (
+                        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} no file selected "
+                        "for this field. Please select a file via the "
+                        "picker to authenticate."
+                    )
+                    continue
+
                 if field_value and isinstance(field_value, dict):
                     if "_credentials_id" not in field_value:
                         # Key removed (e.g., on fork) — needs re-auth. Use the
