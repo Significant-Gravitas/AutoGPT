@@ -34,6 +34,10 @@ Update the `current` round counter at the start of each iteration; mark `complet
 
 ```bash
 PR=${ARG:-$(gh pr list --head "$(git branch --show-current)" --repo Significant-Gravitas/AutoGPT --json number --jq '.[0].number')}
+if [ -z "$PR" ] || [ "$PR" = "null" ]; then
+  echo "No PR found for current branch. Provide a PR number or URL as the skill arg."
+  exit 1
+fi
 echo "Polishing PR #$PR"
 ```
 
@@ -80,9 +84,15 @@ gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}/reviews" --paginate \
   --jq '[.[] | select((.body // "") != "") | {id, user: .user.login, state, submitted_at}]' \
   > /tmp/baseline_reviews.json
 
-# Issue comments — count + latest id per non-bot, non-author comment
+# Issue comments — count + latest id per non-bot, non-author comment.
+# Bots are filtered by User.type == "Bot" (GitHub sets this for app/bot
+# accounts like coderabbitai, github-actions, sentry-io). The author is
+# filtered by comparing login to the PR author — export it so jq can see it.
+AUTHOR=$(gh api "repos/Significant-Gravitas/AutoGPT/pulls/${PR}" --jq '.user.login')
 gh api "repos/Significant-Gravitas/AutoGPT/issues/${PR}/comments" --paginate \
-  --jq '[.[] | {id, user: .user.login, created_at}]' \
+  --jq --arg author "$AUTHOR" \
+      '[.[] | select(.user.type != "Bot" and .user.login != $author)
+            | {id, user: .user.login, created_at}]' \
   > /tmp/baseline_issue_comments.json
 ```
 
@@ -102,13 +112,18 @@ If any of the four buckets is non-empty → not done; invoke `/pr-address` and l
 Once `/pr-review` produces zero new findings, do **not** exit yet. Bots (coderabbitai, sentry, autogpt-reviewer) commonly post late reviews after CI settles — 30–90 seconds after the final push. Poll at 60-second intervals:
 
 ```text
+NON_SUCCESS_TERMINAL = {"failure", "cancelled", "timed_out", "action_required", "startup_failure"}
 clean_polls = 0
 required_clean = 2
 while clean_polls < required_clean:
-    # 1. CI gate
+    # 1. CI gate — any terminal non-success conclusion (not just "failure")
+    # must trigger /pr-address. "success", "skipped", "neutral" are clean;
+    # anything else (including cancelled, timed_out, action_required) is a
+    # blocker that won't self-resolve.
     ci = fetch_check_runs(PR)
-    if any ci.conclusion == "failure":
+    if any ci.conclusion in NON_SUCCESS_TERMINAL:
         invoke_skill("pr-address", PR)  # address failures + any new comments
+        baseline = snapshot_state(PR)   # reset — push during address invalidates old baseline
         clean_polls = 0
         continue
     if any ci.conclusion is None (still in_progress):
@@ -120,6 +135,8 @@ while clean_polls < required_clean:
     new_reviews = diff_against_baseline(reviews)
     if threads or new_issue_comments or new_reviews:
         invoke_skill("pr-address", PR)
+        baseline = snapshot_state(PR)   # reset — the address loop just dealt with these,
+                                        # otherwise they stay "new" relative to the old baseline forever
         clean_polls = 0
         continue
 

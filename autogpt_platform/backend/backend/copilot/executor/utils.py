@@ -121,6 +121,22 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             # Consumer timeout matches the pod graceful-shutdown window so a
             # rolling deploy never forces redelivery of a turn that the pod
             # is still legitimately finishing.
+            #
+            # MIGRATION NOTE: changing this value on an existing durable queue
+            # triggers RabbitMQ PRECONDITION_FAILED (inequivalent arg) because
+            # queue declarations must match the live queue exactly. To roll
+            # this out, apply the new timeout as a server-side policy BEFORE
+            # the first deploy that carries this value:
+            #
+            #     rabbitmqctl set_policy copilot-consumer-timeout \
+            #       "^copilot_execution_queue$" \
+            #       '{"consumer-timeout": 21600000}' \
+            #       --apply-to queues
+            #
+            # The policy value takes effect immediately without redeclaring.
+            # Once the queue is idle, drain + delete + redeploy lets the
+            # argument below become the authoritative source and the policy
+            # can be removed.
             "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS
             * 1000,
         },

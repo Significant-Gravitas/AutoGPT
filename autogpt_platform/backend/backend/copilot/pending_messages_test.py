@@ -78,11 +78,13 @@ class _FakeRedis:
             return list(lst[start:])
         return list(lst[start : stop + 1])
 
-    async def delete(self, key: str) -> int:
-        if key in self.lists:
-            del self.lists[key]
-            return 1
-        return 0
+    async def delete(self, *keys: str) -> int:
+        removed = 0
+        for key in keys:
+            if key in self.lists:
+                del self.lists[key]
+                removed += 1
+        return removed
 
     def pipeline(self, transaction: bool = True) -> "_FakePipeline":
         # Returns a fake pipeline that records ops and replays them in
@@ -217,6 +219,24 @@ async def test_clear_is_idempotent(fake_redis: _FakeRedis) -> None:
     # Clearing an already-empty buffer should not raise
     await clear_pending_messages_unsafe("sess_empty")
     await clear_pending_messages_unsafe("sess_empty")
+
+
+@pytest.mark.asyncio
+async def test_clear_also_drops_persist_queue(fake_redis: _FakeRedis) -> None:
+    """Fail-close must drop both the primary buffer AND the persist queue.
+
+    Otherwise stale follow-up messages in ``copilot:pending-persist:*`` can
+    ride a later unrelated tool result on the same session.
+    """
+    session_id = "sess_persist"
+    # Seed both Redis keys so we can verify both are removed.
+    fake_redis.lists["copilot:pending:" + session_id] = ['{"content":"a"}']
+    fake_redis.lists["copilot:pending-persist:" + session_id] = ['{"content":"b"}']
+
+    await clear_pending_messages_unsafe(session_id)
+
+    assert "copilot:pending:" + session_id not in fake_redis.lists
+    assert "copilot:pending-persist:" + session_id not in fake_redis.lists
 
 
 # ── Publish hook ────────────────────────────────────────────────────

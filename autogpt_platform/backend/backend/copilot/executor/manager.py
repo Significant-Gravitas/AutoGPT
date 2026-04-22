@@ -11,6 +11,8 @@ import threading
 import time
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import dataclass
+from typing import Callable
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.exceptions import AMQPChannelError, AMQPConnectionError
@@ -28,7 +30,7 @@ from backend.util.process import AppProcess
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
-from .processor import execute_copilot_turn, init_worker
+from .processor import SHUTDOWN_ERROR_MESSAGE, execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_CANCEL_QUEUE_NAME,
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -38,6 +40,29 @@ from .utils import (
     create_copilot_queue_config,
     get_session_lock_key,
 )
+
+# Type alias for the RabbitMQ ack/nack closure — (reject, requeue) → None.
+# Stored per-session so cleanup's fail-close can reject orphan deliveries
+# (RabbitMQ otherwise redelivers them, producing duplicate execution on a
+# turn we already marked ``failed``).
+_AckCallback = Callable[[bool, bool], None]
+
+
+@dataclass
+class _ActiveTask:
+    """Per-session handles cleanup needs to terminate a turn cleanly.
+
+    Packs everything ``cleanup()`` may need — the future to observe, the
+    cancel event to signal, the ack callback to reject the delivery on
+    fail-close, and the cluster lock to release. Kept as a dataclass so the
+    intent of each field is self-documenting at the call site.
+    """
+
+    future: Future
+    cancel_event: threading.Event
+    ack: _AckCallback
+    cluster_lock: ClusterLock
+
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 settings = Settings()
@@ -75,7 +100,10 @@ class CoPilotExecutor(AppProcess):
     def __init__(self):
         super().__init__()
         self.pool_size = settings.config.num_copilot_workers
-        self.active_tasks: dict[str, tuple[Future, threading.Event]] = {}
+        # Single authoritative per-session record. Packs future + cancel +
+        # ack + lock so cleanup can drive termination through one structure
+        # instead of juggling parallel dicts.
+        self.active_tasks: dict[str, _ActiveTask] = {}
         self.executor_id = str(uuid.uuid4())
 
         self._executor = None
@@ -86,7 +114,6 @@ class CoPilotExecutor(AppProcess):
         self._run_thread = None
         self._run_client = None
 
-        self._task_locks: dict[str, ClusterLock] = {}
         self._active_tasks_lock = threading.Lock()
 
     # ============ Main Entry Points (AppProcess interface) ============ #
@@ -107,24 +134,42 @@ class CoPilotExecutor(AppProcess):
             time.sleep(1e5)
 
     def cleanup(self):
-        """Graceful shutdown with active execution waiting.
+        """Graceful shutdown.
 
-        The expected path: SIGTERM → consumer stops taking new jobs → any
-        in-flight turns wind down through their own ``cancel_event`` →
-        processor's ``finally`` calls ``mark_session_completed`` → future
-        completes → ``active_tasks`` drains → cleanup exits.
+        Runs as four sequential phases, each with a single responsibility
+        and its own logging. See each ``_phase_*`` method's docstring for
+        what that step does and why it happens in that order.
 
-        Fail-close path: if a turn ignores the cancel or is stuck on a
-        blocking I/O call when the grace window expires, we still mark the
-        session ``failed`` and clear its pending-message buffer here so the
-        frontend sees a clean terminal state instead of a zombie
-        ``status=running`` that only the 65-minute stale-watchdog would
-        eventually reap.
+        Happy path: SIGTERM → :meth:`_phase_stop_new_work` stops the
+        consumer → :meth:`_phase_drain_inflight` signals cancel and waits
+        → each turn hits its own ``finally`` and marks the session
+        ``failed`` → ``active_tasks`` drains → :meth:`_phase_fail_close`
+        is a no-op → :meth:`_phase_teardown` releases resources.
+
+        Stuck-turn path: if a turn can't be cancelled within the grace
+        window (network hang, event loop dead), :meth:`_phase_fail_close`
+        force-marks it failed, rejects the RabbitMQ delivery (so it's not
+        redelivered and double-executed on another pod), clears its
+        pending buffer, and releases the cluster lock.
         """
         pid = os.getpid()
         logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
 
-        # Signal the consumer thread to stop
+        self._phase_stop_new_work(pid)
+        self._phase_drain_inflight(pid)
+        self._phase_fail_close(pid)
+        self._phase_teardown(pid)
+
+        logger.info(f"[cleanup {pid}] Graceful shutdown completed")
+
+    # --- cleanup phases ----------------------------------------------------
+
+    def _phase_stop_new_work(self, pid: int) -> None:
+        """Phase 1: tell the RabbitMQ consumer to stop taking new deliveries.
+
+        ``stop_consuming`` also gates ``_handle_run_message`` — messages
+        that arrive after this point are nacked+requeued for another pod.
+        """
         try:
             self.stop_consuming.set()
             run_channel = self.run_client.get_channel()
@@ -135,77 +180,46 @@ class CoPilotExecutor(AppProcess):
         except Exception as e:
             logger.error(f"[cleanup {pid}] Error stopping consumer: {e}")
 
-        # Signal cancellation to all in-flight turns so they break out of the
-        # stream loop, hit the finally in processor._execute_async, and call
-        # mark_session_completed on their own. Without this the wait loop
-        # below is purely passive and the turns keep running until the pod
-        # is SIGKILL'd — leaving the session status "running" in Redis and
-        # the frontend stuck on queued bubbles.
+    def _phase_drain_inflight(self, pid: int) -> None:
+        """Phase 2: signal cancel to every in-flight turn and wait it out.
+
+        Setting each task's ``cancel_event`` lets the async stream loop
+        break and hit its own ``finally`` (which publishes the accurate
+        terminal state). Without the active signal, the wait below is
+        passive and turns keep running until SIGKILL — which is what
+        caused the zombie-session bug this PR fixes.
+        """
+        self._signal_cancel_to_active()
+        self._wait_for_active_to_drain(pid)
+
+    def _phase_fail_close(self, pid: int) -> None:
+        """Phase 3: force-terminate any turn that didn't drain in time.
+
+        Marks the Redis session ``failed``, rejects the RabbitMQ delivery
+        (non-requeued — we already marked it failed, so redelivery would
+        produce duplicate execution on another pod), clears its pending
+        buffer, and releases the cluster lock. All steps are idempotent.
+        """
         with self._active_tasks_lock:
-            pending_cancels = list(self.active_tasks.items())
-        if pending_cancels:
-            logger.info(
-                f"[cleanup {pid}] Signalling cancel to {len(pending_cancels)} "
-                f"in-flight task(s)"
-            )
-            for session_id, (_future, cancel_event) in pending_cancels:
-                try:
-                    cancel_event.set()
-                except Exception as e:
-                    logger.warning(
-                        f"[cleanup {pid}] Failed to signal cancel for "
-                        f"{session_id}: {e}"
-                    )
+            orphan_ids = list(self.active_tasks.keys())
+        if not orphan_ids:
+            return
 
-        # Wait for active executions to complete
-        if self.active_tasks:
-            logger.info(
-                f"[cleanup {pid}] Waiting for {len(self.active_tasks)} active tasks to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
-            )
+        logger.warning(
+            f"[cleanup {pid}] {len(orphan_ids)} task(s) still running "
+            f"after {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s — fail-closing"
+        )
+        self._fail_close_redis_state(orphan_ids, pid)
+        for session_id in orphan_ids:
+            self._reject_orphan_delivery(session_id, pid)
 
-            start_time = time.monotonic()
-            last_refresh = start_time
-            lock_refresh_interval = settings.config.cluster_lock_timeout / 10
+    def _phase_teardown(self, pid: int) -> None:
+        """Phase 4: tear down consumers, worker threads, and remaining locks.
 
-            while (
-                self.active_tasks
-                and (time.monotonic() - start_time) < GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            ):
-                self._cleanup_completed_tasks()
-                if not self.active_tasks:
-                    break
-
-                # Refresh cluster locks periodically
-                current_time = time.monotonic()
-                if current_time - last_refresh >= lock_refresh_interval:
-                    for lock in list(self._task_locks.values()):
-                        try:
-                            lock.refresh()
-                        except Exception as e:
-                            logger.warning(
-                                f"[cleanup {pid}] Failed to refresh lock: {e}"
-                            )
-                    last_refresh = current_time
-
-                logger.info(
-                    f"[cleanup {pid}] {len(self.active_tasks)} tasks still active, waiting..."
-                )
-                time.sleep(10.0)
-
-        # Fail-close any turn that didn't drain — mark the Redis session
-        # "failed" and drop its pending buffer so the frontend sees a
-        # terminal state immediately instead of a zombie running session.
-        # Idempotent: mark_session_completed no-ops if already terminal.
-        with self._active_tasks_lock:
-            orphan_sessions = list(self.active_tasks.keys())
-        if orphan_sessions:
-            logger.warning(
-                f"[cleanup {pid}] {len(orphan_sessions)} task(s) still running "
-                f"after {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s — fail-closing"
-            )
-            self._fail_close_orphan_sessions(orphan_sessions, pid)
-
-        # Stop message consumers
+        Runs last because tearing down earlier would prevent phase 3's
+        RabbitMQ rejections (the channel would already be closed) and
+        cluster-lock releases (Redis teardown may already be in flight).
+        """
         if self._run_thread:
             self._stop_message_consumers(
                 self._run_thread, self.run_client, "[cleanup][run]"
@@ -215,7 +229,6 @@ class CoPilotExecutor(AppProcess):
                 self._cancel_thread, self.cancel_client, "[cleanup][cancel]"
             )
 
-        # Clean up worker threads (closes per-loop workspace storage sessions)
         if self._executor:
             from .processor import cleanup_worker
 
@@ -232,58 +245,146 @@ class CoPilotExecutor(AppProcess):
             logger.info(f"[cleanup {pid}] Shutting down executor...")
             self._executor.shutdown(wait=False)
 
-        # Release any remaining locks
-        for session_id, lock in list(self._task_locks.items()):
+        # Release any cluster locks for sessions that completed normally via
+        # on_run_done but whose release hasn't been observed yet. Orphan
+        # sessions already had their locks released in phase 3.
+        with self._active_tasks_lock:
+            remaining = list(self.active_tasks.items())
+        for session_id, task in remaining:
+            self._release_lock(session_id, task.cluster_lock, pid)
+
+    # --- cleanup helpers ---------------------------------------------------
+
+    def _signal_cancel_to_active(self) -> None:
+        """Set ``cancel_event`` on every active task so they exit fast."""
+        with self._active_tasks_lock:
+            tasks = list(self.active_tasks.items())
+        if not tasks:
+            return
+        pid = os.getpid()
+        logger.info(
+            f"[cleanup {pid}] Signalling cancel to {len(tasks)} in-flight task(s)"
+        )
+        for session_id, task in tasks:
             try:
-                lock.release()
-                logger.info(f"[cleanup {pid}] Released lock for {session_id}")
+                task.cancel_event.set()
             except Exception as e:
-                logger.error(
-                    f"[cleanup {pid}] Failed to release lock for {session_id}: {e}"
+                logger.warning(
+                    f"[cleanup {pid}] Failed to signal cancel for {session_id}: {e}"
                 )
 
-        logger.info(f"[cleanup {pid}] Graceful shutdown completed")
+    def _wait_for_active_to_drain(self, pid: int) -> None:
+        """Block until ``active_tasks`` is empty or the grace window expires."""
+        if not self.active_tasks:
+            return
 
-    def _fail_close_orphan_sessions(self, session_ids: list[str], pid: int) -> None:
-        """Mark sessions as failed + clear their pending buffers.
+        logger.info(
+            f"[cleanup {pid}] Waiting for {len(self.active_tasks)} active tasks "
+            f"to complete (timeout: {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s)..."
+        )
 
-        Runs a fresh asyncio loop because ``cleanup()`` is called from the
-        main (sync) thread of ``execute_run_command`` — the per-worker
-        execution loops belong to worker threads and may already be stopped.
+        start_time = time.monotonic()
+        last_refresh = start_time
+        lock_refresh_interval = settings.config.cluster_lock_timeout / 10
+
+        while (
+            self.active_tasks
+            and (time.monotonic() - start_time) < GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+        ):
+            self._cleanup_completed_tasks()
+            if not self.active_tasks:
+                return
+
+            now = time.monotonic()
+            if now - last_refresh >= lock_refresh_interval:
+                self._refresh_all_cluster_locks(pid)
+                last_refresh = now
+
+            logger.info(
+                f"[cleanup {pid}] {len(self.active_tasks)} tasks still active, waiting..."
+            )
+            time.sleep(10.0)
+
+    def _refresh_all_cluster_locks(self, pid: int) -> None:
+        """Keep the cluster locks alive while we wait for turns to finish."""
+        with self._active_tasks_lock:
+            locks = [task.cluster_lock for task in self.active_tasks.values()]
+        for lock in locks:
+            try:
+                lock.refresh()
+            except Exception as e:
+                logger.warning(f"[cleanup {pid}] Failed to refresh lock: {e}")
+
+    def _fail_close_redis_state(self, session_ids: list[str], pid: int) -> None:
+        """Mark orphan sessions ``failed`` + clear their pending buffers.
+
+        Uses a fresh ``asyncio.run`` loop because cleanup runs on the main
+        (sync) thread of ``execute_run_command`` and the per-worker
+        execution loops may already be stopped. A new loop also gives us
+        a new thread-local Redis client that doesn't inherit any bad
+        state from the turn that got stuck.
         """
 
-        async def _do_one(session_id: str) -> None:
+        async def _fail_one(session_id: str) -> None:
             try:
                 await stream_registry.mark_session_completed(
-                    session_id,
-                    error_message=(
-                        "Copilot executor shut down before this turn finished. "
-                        "Please retry."
-                    ),
+                    session_id, error_message=SHUTDOWN_ERROR_MESSAGE
                 )
             except Exception as e:
                 logger.error(
-                    f"[cleanup {pid}] Failed to mark session completed "
-                    f"for {session_id}: {e}"
+                    f"[cleanup {pid}] mark_session_completed failed for "
+                    f"{session_id}: {e}"
                 )
             try:
                 await clear_pending_messages_unsafe(session_id)
             except Exception as e:
                 logger.warning(
-                    f"[cleanup {pid}] Failed to clear pending buffer "
-                    f"for {session_id}: {e}"
+                    f"[cleanup {pid}] clear_pending_messages_unsafe failed for "
+                    f"{session_id}: {e}"
                 )
 
-        async def _do_all() -> None:
+        async def _fail_all() -> None:
             await asyncio.gather(
-                *(_do_one(sid) for sid in session_ids),
+                *(_fail_one(sid) for sid in session_ids),
                 return_exceptions=True,
             )
 
         try:
-            asyncio.run(_do_all())
+            asyncio.run(_fail_all())
         except Exception as e:
-            logger.error(f"[cleanup {pid}] fail-close loop failed: {e}", exc_info=True)
+            logger.error(
+                f"[cleanup {pid}] fail-close redis loop failed: {e}", exc_info=True
+            )
+
+    def _reject_orphan_delivery(self, session_id: str, pid: int) -> None:
+        """Reject the RabbitMQ delivery + release the cluster lock.
+
+        Must run AFTER marking the session failed — otherwise RabbitMQ
+        could redeliver to another pod that still sees ``status=running``
+        and run the turn again.
+        """
+        with self._active_tasks_lock:
+            task = self.active_tasks.pop(session_id, None)
+        if task is None:
+            return
+        try:
+            task.ack(True, False)  # reject without requeue
+        except Exception as e:
+            logger.warning(
+                f"[cleanup {pid}] Failed to reject orphan delivery for "
+                f"{session_id}: {e}"
+            )
+        self._release_lock(session_id, task.cluster_lock, pid)
+
+    def _release_lock(self, session_id: str, lock: ClusterLock, pid: int) -> None:
+        """Release one cluster lock, logging any failure."""
+        try:
+            lock.release()
+            logger.info(f"[cleanup {pid}] Released lock for {session_id}")
+        except Exception as e:
+            logger.error(
+                f"[cleanup {pid}] Failed to release lock for {session_id}: {e}"
+            )
 
     # ============ RabbitMQ Consumer Methods ============ #
 
@@ -368,10 +469,10 @@ class CoPilotExecutor(AppProcess):
             logger.debug(f"Cancel received for {session_id} but not active")
             return
 
-        _, cancel_event = self.active_tasks[session_id]
+        task = self.active_tasks[session_id]
         logger.info(f"Received cancel for {session_id}")
-        if not cancel_event.is_set():
-            cancel_event.set()
+        if not task.cancel_event.is_set():
+            task.cancel_event.set()
         else:
             logger.debug(f"Cancel already set for {session_id}")
 
@@ -478,8 +579,6 @@ class CoPilotExecutor(AppProcess):
 
         # Execute the task
         try:
-            self._task_locks[session_id] = cluster_lock
-
             logger.info(
                 f"Acquired cluster lock for {session_id}, "
                 f"executor_id={self.executor_id}"
@@ -489,12 +588,16 @@ class CoPilotExecutor(AppProcess):
             future = self.executor.submit(
                 execute_copilot_turn, entry, cancel_event, cluster_lock
             )
-            self.active_tasks[session_id] = (future, cancel_event)
+            with self._active_tasks_lock:
+                self.active_tasks[session_id] = _ActiveTask(
+                    future=future,
+                    cancel_event=cancel_event,
+                    ack=ack_message,
+                    cluster_lock=cluster_lock,
+                )
         except Exception as e:
             logger.warning(f"Failed to setup execution for {session_id}: {e}")
             cluster_lock.release()
-            if session_id in self._task_locks:
-                del self._task_locks[session_id]
             ack_message(reject=True, requeue=True)
             return
 
@@ -516,12 +619,20 @@ class CoPilotExecutor(AppProcess):
                 error_msg = str(e) or type(e).__name__
                 logger.exception(f"Error in run completion callback: {error_msg}")
             finally:
-                # Release the cluster lock
-                if session_id in self._task_locks:
+                # Release the cluster lock — if the task was still tracked in
+                # active_tasks, it holds the authoritative reference.
+                with self._active_tasks_lock:
+                    task = self.active_tasks.pop(session_id, None)
+                if task is not None:
                     logger.info(f"Releasing cluster lock for {session_id}")
-                    self._task_locks[session_id].release()
-                    del self._task_locks[session_id]
-                self._cleanup_completed_tasks()
+                    try:
+                        task.cluster_lock.release()
+                    except Exception as release_err:
+                        logger.warning(
+                            f"Failed to release cluster lock for {session_id}: "
+                            f"{release_err}"
+                        )
+                self._update_metrics()
 
         future.add_done_callback(on_run_done)
 
@@ -531,8 +642,8 @@ class CoPilotExecutor(AppProcess):
         """Remove completed futures from active_tasks and update metrics."""
         completed_tasks = []
         with self._active_tasks_lock:
-            for session_id, (future, _) in list(self.active_tasks.items()):
-                if future.done():
+            for session_id, task in list(self.active_tasks.items()):
+                if task.future.done():
                     completed_tasks.append(session_id)
                     self.active_tasks.pop(session_id, None)
                     logger.info(f"Cleaned up completed session {session_id}")

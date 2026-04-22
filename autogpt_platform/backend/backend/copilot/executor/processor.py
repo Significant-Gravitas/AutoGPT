@@ -5,6 +5,7 @@ in a thread-local context, following the graph executor pattern.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import os
 import subprocess
@@ -30,9 +31,15 @@ from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
 
-_SHUTDOWN_ERROR_MESSAGE = (
+SHUTDOWN_ERROR_MESSAGE = (
     "Copilot executor shut down before this turn finished. Please retry."
 )
+
+# Max time execute() blocks after calling future.cancel() before falling back
+# to the sync fail-close path. Gives _execute_async's own finally a chance to
+# publish the accurate terminal state over the Redis CAS; long enough to let
+# an in-flight Redis call settle, short enough that shutdown doesn't stall.
+_CANCEL_GRACE_SECONDS = 5.0
 
 
 def sync_fail_close_session(
@@ -46,13 +53,15 @@ def sync_fail_close_session(
     ``status == "running"``, so calling this after a normal completion/error
     is a cheap no-op.
 
-    Uses ``asyncio.run`` — the pool worker thread isn't running a loop of
-    its own (the turn's loop lives on the daemon ``execution_thread``).
+    Uses a fresh ``asyncio.run`` loop rather than the worker's
+    ``execution_loop`` — the worker loop is the one we suspect of being
+    broken (dead thread, stale Redis client, etc.). A new loop gives us a
+    new thread-local Redis client that doesn't inherit the bad state.
     """
     try:
         asyncio.run(
             stream_registry.mark_session_completed(
-                session_id, error_message=_SHUTDOWN_ERROR_MESSAGE
+                session_id, error_message=SHUTDOWN_ERROR_MESSAGE
             )
         )
     except Exception as e:
@@ -296,6 +305,7 @@ class CoPilotProcessor:
         log.info("Starting execution")
 
         start_time = time.monotonic()
+        future: "concurrent.futures.Future[None] | None" = None
         try:
             # Run the async execution in our event loop
             future = asyncio.run_coroutine_threadsafe(
@@ -311,6 +321,15 @@ class CoPilotProcessor:
                     if cancel.is_set():
                         log.info("Cancellation requested")
                         future.cancel()
+                        # Give _execute_async's own finally a short window to
+                        # publish the accurate terminal state (e.g. "Operation
+                        # cancelled") before the sync safety net below fires —
+                        # otherwise they race on the same Redis CAS and the
+                        # less-informative shutdown message can win.
+                        try:
+                            future.result(timeout=_CANCEL_GRACE_SECONDS)
+                        except BaseException:
+                            pass
                         break
                     # Refresh cluster lock to maintain ownership
                     cluster_lock.refresh()
@@ -319,12 +338,14 @@ class CoPilotProcessor:
                 # Get result to propagate any exceptions
                 future.result()
         finally:
-            # Last-line-of-defense: guarantees the Redis session status moves
-            # out of ``running`` even if ``_execute_async``'s own ``finally``
-            # didn't fire (event loop died, pool thread was interrupted, etc).
-            # ``mark_session_completed`` is a CAS on ``status == "running"`` so
-            # the happy path no-ops here.
-            sync_fail_close_session(entry.session_id, log)
+            # Last-line-of-defense ONLY when the async path didn't reach its
+            # own finally: future is None (submit failed) or not done (stuck
+            # thread / event loop died). On normal completion / cancel /
+            # exception, ``_execute_async.finally`` already published the
+            # terminal state — don't clobber its error message with the
+            # generic shutdown one.
+            if future is None or not future.done():
+                sync_fail_close_session(entry.session_id, log)
 
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")

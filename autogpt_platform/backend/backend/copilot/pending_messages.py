@@ -257,7 +257,11 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
     - Operator/debug escape hatch for a stuck session.
     """
     redis = await get_redis_async()
-    await redis.delete(_buffer_key(session_id))
+    # Delete BOTH the primary buffer and the persist queue. If a turn drained
+    # follow-ups into the persist queue and then fail-closed before they were
+    # consumed, leaving the persist entries behind would attach stale
+    # follow-ups to a later unrelated tool result on the same session.
+    await redis.delete(_buffer_key(session_id), _persist_queue_key(session_id))
 
 
 # Per-message and total-block caps for inline tool-boundary injection.
