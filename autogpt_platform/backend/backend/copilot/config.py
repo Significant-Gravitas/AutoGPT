@@ -473,24 +473,38 @@ class ChatConfig(BaseSettings):
         instead of failing visibly at boot.  Mirror the same check here so
         the operator sees the actionable error before any traffic lands.
 
+        Covers all three SDK fields that flow through ``_normalize_model_name``:
+        primary tier (``thinking_standard_model``), advanced tier override
+        (``thinking_advanced_model``), and fallback model
+        (``claude_agent_fallback_model`` via ``_resolve_fallback_model``).
+
         Skipped when ``use_claude_code_subscription=True`` because the
         subscription path resolves the model to ``None`` (CLI default) and
-        never calls ``_normalize_model_name``.
+        never calls ``_normalize_model_name``.  Empty fallback strings are
+        also skipped (no fallback configured).
         """
         if self.use_claude_code_subscription:
             return self
-        if not self.openrouter_active:
-            for field_name in ("thinking_standard_model", "thinking_advanced_model"):
-                value: str = getattr(self, field_name)
-                if "/" in value and value.split("/", 1)[0] != "anthropic":
-                    raise ValueError(
-                        f"Direct-Anthropic mode (use_openrouter=False or "
-                        f"missing OpenRouter credentials) requires an "
-                        f"Anthropic model for {field_name}, got {value!r}. "
-                        f"Set CHAT_THINKING_STANDARD_MODEL / "
-                        f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* "
-                        f"slug, or enable OpenRouter."
-                    )
+        if self.openrouter_active:
+            return self
+        for field_name in (
+            "thinking_standard_model",
+            "thinking_advanced_model",
+            "claude_agent_fallback_model",
+        ):
+            value: str = getattr(self, field_name)
+            if not value or "/" not in value:
+                continue
+            if value.split("/", 1)[0] != "anthropic":
+                raise ValueError(
+                    f"Direct-Anthropic mode (use_openrouter=False or "
+                    f"missing OpenRouter credentials) requires an "
+                    f"Anthropic model for {field_name}, got {value!r}. "
+                    f"Set CHAT_THINKING_STANDARD_MODEL / "
+                    f"CHAT_THINKING_ADVANCED_MODEL / "
+                    f"CHAT_CLAUDE_AGENT_FALLBACK_MODEL to an anthropic/* "
+                    f"slug, or enable OpenRouter."
+                )
         return self
 
     # Prompt paths for different contexts

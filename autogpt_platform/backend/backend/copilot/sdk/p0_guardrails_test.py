@@ -46,8 +46,11 @@ class TestResolveFallbackModel:
 
             assert _resolve_fallback_model() is None
 
-    def test_strips_provider_prefix(self):
-        """OpenRouter-style 'anthropic/claude-sonnet-4-...' is stripped."""
+    def test_keeps_full_slug_when_openrouter_active(self):
+        """OpenRouter routes by ``vendor/model`` slug — _normalize_model_name
+        now preserves the prefix when openrouter_active is True so non-
+        Anthropic vendors stay routable.  Anthropic slugs are passed
+        through unchanged in this mode (PR #12878)."""
         cfg = _make_config(
             claude_agent_fallback_model="anthropic/claude-sonnet-4-20250514",
             use_openrouter=True,
@@ -59,8 +62,7 @@ class TestResolveFallbackModel:
 
             result = _resolve_fallback_model()
 
-        assert result == "claude-sonnet-4-20250514"
-        assert "/" not in result
+        assert result == "anthropic/claude-sonnet-4-20250514"
 
     def test_dots_replaced_for_direct_anthropic(self):
         """Direct Anthropic requires hyphen-separated versions."""

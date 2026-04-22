@@ -226,3 +226,33 @@ class TestSdkModelVendorCompatibility:
                 thinking_standard_model="anthropic/claude-sonnet-4-6",
                 thinking_advanced_model="moonshotai/kimi-k2.6",
             )
+
+    def test_fallback_model_also_validated(self):
+        """``claude_agent_fallback_model`` flows through
+        ``_normalize_model_name`` via ``_resolve_fallback_model`` so the
+        same direct-Anthropic guard applies."""
+        with pytest.raises(Exception, match="claude_agent_fallback_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="anthropic/claude-opus-4-7",
+                claude_agent_fallback_model="moonshotai/kimi-k2.6",
+            )
+
+    def test_empty_fallback_skipped(self):
+        """Empty ``claude_agent_fallback_model`` (no fallback configured)
+        must not trip the validator — the fallback-disabled state is
+        intentional and shouldn't require a placeholder anthropic/* slug."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            claude_agent_fallback_model="",
+        )
+        assert cfg.claude_agent_fallback_model == ""
