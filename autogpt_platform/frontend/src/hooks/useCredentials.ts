@@ -12,6 +12,58 @@ import {
 } from "@/lib/autogpt-server-api";
 import { getHostFromUrl } from "@/lib/utils/url";
 
+export function classifyCredentials(
+  allSaved: readonly CredentialsMetaResponse[],
+  credsInputSchema: BlockIOCredentialsSubSchema,
+  discriminatorValue: string | undefined,
+): {
+  savedCredentials: CredentialsMetaResponse[];
+  upgradeableCredentials: CredentialsMetaResponse[];
+} {
+  const savedCredentials: CredentialsMetaResponse[] = [];
+  const upgradeableCredentials: CredentialsMetaResponse[] = [];
+  const supportedTypes = credsInputSchema.credentials_types;
+
+  for (const c of allSaved) {
+    if (!supportedTypes.includes(c.type)) continue;
+
+    // MCP OAuth2 credentials filter by server URL — not upgradeable
+    if (c.type === "oauth2" && c.provider === "mcp") {
+      if (discriminatorValue != null && c.host === discriminatorValue) {
+        savedCredentials.push(c);
+      }
+      continue;
+    }
+
+    if (c.type === "oauth2") {
+      const requiredScopes = credsInputSchema.credentials_scopes;
+      // Set.prototype.isSupersetOf is ES2025 and this project targets
+      // ES2022 — fall back to an array every() check so the picker's
+      // scope filter runs cleanly on current Node/browser baselines.
+      const credScopes = new Set(c.scopes);
+      const hasAllScopes =
+        !requiredScopes || requiredScopes.every((s) => credScopes.has(s));
+      if (hasAllScopes) {
+        savedCredentials.push(c);
+      } else {
+        upgradeableCredentials.push(c);
+      }
+      continue;
+    }
+
+    if (c.type === "host_scoped") {
+      if (discriminatorValue && getHostFromUrl(discriminatorValue) == c.host) {
+        savedCredentials.push(c);
+      }
+      continue;
+    }
+
+    savedCredentials.push(c);
+  }
+
+  return { savedCredentials, upgradeableCredentials };
+}
+
 export type CredentialsData =
   | {
       provider: string;
@@ -88,46 +140,11 @@ export default function useCredentials(
     return null;
   }
 
-  const savedCredentials: CredentialsMetaResponse[] = [];
-  const upgradeableCredentials: CredentialsMetaResponse[] = [];
-
-  for (const c of provider.savedCredentials) {
-    const supportedTypes = credsInputSchema.credentials_types;
-    if (!supportedTypes.includes(c.type)) continue;
-
-    // MCP OAuth2 credentials filter by server URL — not upgradeable
-    if (c.type === "oauth2" && c.provider === "mcp") {
-      if (discriminatorValue != null && c.host === discriminatorValue) {
-        savedCredentials.push(c);
-      }
-      continue;
-    }
-
-    if (c.type === "oauth2") {
-      const requiredScopes = credsInputSchema.credentials_scopes;
-      // Set.prototype.isSupersetOf is ES2025 and this project targets
-      // ES2022 — fall back to an array every() check so the picker's
-      // scope filter runs cleanly on current Node/browser baselines.
-      const credScopes = new Set(c.scopes);
-      const hasAllScopes =
-        !requiredScopes || requiredScopes.every((s) => credScopes.has(s));
-      if (hasAllScopes) {
-        savedCredentials.push(c);
-      } else {
-        upgradeableCredentials.push(c);
-      }
-      continue;
-    }
-
-    if (c.type === "host_scoped") {
-      if (discriminatorValue && getHostFromUrl(discriminatorValue) == c.host) {
-        savedCredentials.push(c);
-      }
-      continue;
-    }
-
-    savedCredentials.push(c);
-  }
+  const { savedCredentials, upgradeableCredentials } = classifyCredentials(
+    provider.savedCredentials,
+    credsInputSchema,
+    discriminatorValue,
+  );
 
   return {
     ...provider,

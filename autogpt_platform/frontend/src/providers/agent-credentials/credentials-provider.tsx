@@ -68,6 +68,36 @@ export type CredentialsProvidersContextType = {
 export const CredentialsProvidersContext =
   createContext<CredentialsProvidersContextType | null>(null);
 
+/**
+ * Replace an existing credential entry (matched by id) or append a new one,
+ * producing a fresh providers map.  Used by both OAuth callback paths and
+ * the "create credential" flows so a scope upgrade doesn't duplicate rows
+ * in the sidebar.  Pure so it can be exercised directly in tests without
+ * dragging in React state machinery.
+ */
+export function upsertProviderCredentials(
+  prev: CredentialsProvidersContextType | null,
+  provider: CredentialsProviderName,
+  credentials: CredentialsMetaResponse,
+): CredentialsProvidersContextType | null {
+  if (!prev || !prev[provider]) return prev;
+
+  const existing = prev[provider].savedCredentials;
+  const idx = existing.findIndex((c) => c.id === credentials.id);
+  const updated =
+    idx >= 0
+      ? existing.map((c, i) => (i === idx ? credentials : c))
+      : [...existing, credentials];
+
+  return {
+    ...prev,
+    [provider]: {
+      ...prev[provider],
+      savedCredentials: updated,
+    },
+  };
+}
+
 export default function CredentialsProvider({
   children,
 }: {
@@ -88,24 +118,9 @@ export default function CredentialsProvider({
       provider: CredentialsProviderName,
       credentials: CredentialsMetaResponse,
     ) => {
-      setProviders((prev) => {
-        if (!prev || !prev[provider]) return prev;
-
-        const existing = prev[provider].savedCredentials;
-        const idx = existing.findIndex((c) => c.id === credentials.id);
-        const updated =
-          idx >= 0
-            ? existing.map((c, i) => (i === idx ? credentials : c))
-            : [...existing, credentials];
-
-        return {
-          ...prev,
-          [provider]: {
-            ...prev[provider],
-            savedCredentials: updated,
-          },
-        };
-      });
+      setProviders((prev) =>
+        upsertProviderCredentials(prev, provider, credentials),
+      );
     },
     [setProviders],
   );
