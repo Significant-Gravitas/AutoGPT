@@ -366,37 +366,71 @@ class TestNormalizeModelName:
     The per-request model toggle calls _normalize_model_name with either
     ``config.thinking_advanced_model`` (for 'advanced') or
     ``config.thinking_standard_model`` (for 'standard').  These tests verify
-    the OpenRouter/provider-prefix stripping that keeps the value compatible
-    with the Claude CLI.
+    the OpenRouter/direct-Anthropic split: OpenRouter routes by full
+    ``vendor/model`` slug, while direct-Anthropic strips the prefix and
+    converts dots to hyphens.
     """
 
-    def test_strips_anthropic_prefix(self):
+    @pytest.fixture
+    def _direct_anthropic_config(self, monkeypatch: pytest.MonkeyPatch):
+        """Force ``config.openrouter_active = False`` for prefix-strip tests."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+    @pytest.fixture
+    def _openrouter_config(self, monkeypatch: pytest.MonkeyPatch):
+        """Force ``config.openrouter_active = True`` for slug-preservation tests."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+    def test_strips_anthropic_prefix(self, _direct_anthropic_config):
         assert _normalize_model_name("anthropic/claude-opus-4-6") == "claude-opus-4-6"
 
-    def test_strips_openai_prefix(self):
+    def test_strips_openai_prefix(self, _direct_anthropic_config):
         assert _normalize_model_name("openai/gpt-4o") == "gpt-4o"
 
-    def test_strips_google_prefix(self):
-        assert _normalize_model_name("google/gemini-2.5-flash") == "gemini-2.5-flash"
+    def test_strips_google_prefix(self, _direct_anthropic_config):
+        # Direct-Anthropic mode strips the prefix AND converts version dots
+        # to hyphens (Anthropic API rejects dot-versioned model IDs).
+        assert _normalize_model_name("google/gemini-2.5-flash") == "gemini-2-5-flash"
 
-    def test_already_normalized_unchanged(self):
+    def test_already_normalized_unchanged(self, _direct_anthropic_config):
         assert (
             _normalize_model_name("claude-sonnet-4-20250514")
             == "claude-sonnet-4-20250514"
         )
 
-    def test_empty_string_unchanged(self):
+    def test_empty_string_unchanged(self, _direct_anthropic_config):
         assert _normalize_model_name("") == ""
 
-    def test_opus_model_roundtrip(self):
-        """The exact string used for the 'opus' toggle strips correctly."""
-        assert _normalize_model_name("anthropic/claude-opus-4-6") == "claude-opus-4-6"
+    def test_opus_model_dot_to_hyphen(self, _direct_anthropic_config):
+        """Direct-Anthropic mode: dots in versions become hyphens."""
+        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
 
-    def test_sonnet_openrouter_model(self):
-        """Sonnet model as stored in config (OpenRouter-prefixed) strips cleanly."""
+    def test_openrouter_keeps_anthropic_slug(self, _openrouter_config):
+        """OpenRouter routes by full slug — keep prefix and dots intact."""
         assert (
-            _normalize_model_name("anthropic/claude-sonnet-4-6") == "claude-sonnet-4-6"
+            _normalize_model_name("anthropic/claude-sonnet-4.6")
+            == "anthropic/claude-sonnet-4.6"
         )
+
+    def test_openrouter_keeps_kimi_slug(self, _openrouter_config):
+        """Non-Anthropic vendors (Moonshot) require the prefix to route."""
+        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
 
 
 # ---------------------------------------------------------------------------

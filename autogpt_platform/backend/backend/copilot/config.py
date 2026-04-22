@@ -65,17 +65,20 @@ class ChatConfig(BaseSettings):
         "Override via ``CHAT_FAST_ADVANCED_MODEL``.",
     )
     thinking_standard_model: str = Field(
-        default="anthropic/claude-sonnet-4-6",
+        default="moonshotai/kimi-k2.6",
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",
         ),
         description="SDK (extended-thinking) path, 'standard' / ``None`` "
-        "tier.  Sonnet by default: the Claude Agent SDK CLI only speaks to "
-        "Anthropic endpoints, so the standard SDK tier has to stay on an "
-        "Anthropic model regardless of what the baseline path runs.  "
-        "Override via ``CHAT_THINKING_STANDARD_MODEL`` (legacy "
-        "``CHAT_MODEL`` still honored).",
+        "tier.  Kimi K2.6 by default: routed via OpenRouter's Anthropic-"
+        "compatible ``/v1/messages`` endpoint, which the Claude Agent SDK "
+        "CLI accepts as a drop-in ``ANTHROPIC_BASE_URL`` target.  The same "
+        "cost/capability rationale as the baseline path applies — ~5x "
+        "cheaper than Sonnet at SWE-Bench parity.  Roll back to Sonnet via "
+        "``CHAT_THINKING_STANDARD_MODEL=anthropic/claude-sonnet-4-6`` (then "
+        "the SDK ``cache_control`` markers reactivate).  Direct-Anthropic "
+        "deployments (no OpenRouter) must override to an Anthropic model.",
     )
     thinking_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",

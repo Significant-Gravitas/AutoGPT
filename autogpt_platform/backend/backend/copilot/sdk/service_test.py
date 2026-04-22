@@ -359,7 +359,8 @@ class TestNormalizeModelName:
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
 
-    def test_dots_preserved_for_openrouter(self, monkeypatch, _clean_config_env):
+    def test_openrouter_keeps_full_slug(self, monkeypatch, _clean_config_env):
+        """OpenRouter routes by ``vendor/model`` slug — keep prefix and dots."""
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
@@ -369,7 +370,11 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4.6"
+        assert (
+            _normalize_model_name("anthropic/claude-opus-4.6")
+            == "anthropic/claude-opus-4.6"
+        )
+        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
 
     def test_no_prefix_no_dots(self, monkeypatch, _clean_config_env):
         from backend.copilot import config as cfg_mod
@@ -390,8 +395,9 @@ class TestNormalizeModelName:
 class TestResolveSdkModel:
     """Tests for _resolve_sdk_model — model ID resolution for the SDK CLI."""
 
-    def test_openrouter_active_keeps_dots(self, monkeypatch, _clean_config_env):
-        """When OpenRouter is fully active, model keeps dot-separated version."""
+    def test_openrouter_active_keeps_full_slug(self, monkeypatch, _clean_config_env):
+        """When OpenRouter is fully active, the canonical vendor/model slug
+        is preserved so OpenRouter can route to the correct provider."""
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
@@ -403,7 +409,23 @@ class TestResolveSdkModel:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-opus-4.6"
+        assert _resolve_sdk_model() == "anthropic/claude-opus-4.6"
+
+    def test_openrouter_active_kimi_slug(self, monkeypatch, _clean_config_env):
+        """Non-Anthropic models (Kimi via Moonshot) require the prefix to
+        survive OpenRouter routing — strip would leave an unroutable slug."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="moonshotai/kimi-k2.6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "moonshotai/kimi-k2.6"
 
     def test_openrouter_disabled_normalizes_to_hyphens(
         self, monkeypatch, _clean_config_env

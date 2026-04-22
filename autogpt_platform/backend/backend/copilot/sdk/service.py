@@ -678,24 +678,26 @@ async def _iter_sdk_messages(
 def _normalize_model_name(raw_model: str) -> str:
     """Normalize a model name for the current routing configuration.
 
-    Applies two transformations shared by both the primary and fallback
-    model resolution paths:
+    Two routing modes:
 
-    1. **Strip provider prefix** — OpenRouter-style names like
-       ``"anthropic/claude-opus-4.6"`` are reduced to ``"claude-opus-4.6"``.
-    2. **Dot-to-hyphen conversion** — when *not* routing through OpenRouter
-       the direct Anthropic API requires hyphen-separated versions
-       (``"claude-opus-4-6"``), so dots are replaced with hyphens.
+    1. **OpenRouter active** — the canonical OpenRouter slug is
+       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4.6"``,
+       ``"moonshotai/kimi-k2.6"``).  Pass the prefixed name through
+       unchanged so OpenRouter can route to the correct provider.  Anthropic
+       names happen to also resolve when stripped, but non-Anthropic vendors
+       (Moonshot, Google, etc.) do not — keeping the prefix is the only form
+       that works for every model in the catalog.
+    2. **Direct Anthropic** — strip the OpenRouter ``anthropic/`` prefix
+       and convert dots to hyphens (``"claude-opus-4.6"`` →
+       ``"claude-opus-4-6"``) since the Anthropic Messages API rejects
+       both the prefix and dot-separated versions.
     """
+    if config.openrouter_active:
+        return raw_model
     model = raw_model
     if "/" in model:
         model = model.split("/", 1)[1]
-    # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
-    # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
-    # when NOT routing through OpenRouter.
-    if not config.openrouter_active:
-        model = model.replace(".", "-")
-    return model
+    return model.replace(".", "-")
 
 
 def _resolve_sdk_model() -> str | None:
