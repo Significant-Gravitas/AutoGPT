@@ -7,12 +7,15 @@ the frontend expects.
 
 import json
 import logging
+import time
 import uuid
+from typing import Any
 
 from claude_agent_sdk import (
     AssistantMessage,
     Message,
     ResultMessage,
+    StreamEvent,
     SystemMessage,
     TextBlock,
     ThinkingBlock,
@@ -44,6 +47,16 @@ from backend.copilot.response_model import (
 from .tool_adapter import MCP_TOOL_PREFIX, pop_pending_tool_output
 
 logger = logging.getLogger(__name__)
+
+
+# Coalescing thresholds for ``thinking_delta`` events on the SDK partial
+# stream — matches the baseline window (see
+# ``baseline/reasoning.py::_COALESCE_MIN_CHARS``).  Anthropic's extended-
+# thinking streams ~1 event per token which paint-storms the non-virtualised
+# chat list; a 64-char / 50 ms window halves the event rate vs 32/40 while
+# staying well under the ~100 ms perceptual threshold.
+_THINKING_COALESCE_MIN_CHARS = 64
+_THINKING_COALESCE_MAX_INTERVAL_MS = 50.0
 
 
 class SDKResponseAdapter:
@@ -81,6 +94,25 @@ class SDKResponseAdapter:
         # case so the turn renders as cleanly complete.
         self._text_since_last_tool_result = False
         self._any_tool_results_seen = False
+        # Partial-stream state — used when ``include_partial_messages=True``
+        # is set on ``ClaudeAgentOptions``.  The CLI then emits raw
+        # Anthropic streaming events (``content_block_start`` /
+        # ``content_block_delta`` / ``content_block_stop``) as
+        # ``StreamEvent`` messages AHEAD of the summary ``AssistantMessage``.
+        # We consume those for live per-token emission and suppress the
+        # duplicate text/thinking from the summary.  ``_block_types_by_index``
+        # maps the Anthropic block index to its type so ``content_block_delta``
+        # knows whether to route to reasoning or text.  ``_partial_emitted``
+        # flips True as soon as any delta is emitted, which gates the
+        # summary-message path.
+        self._block_types_by_index: dict[int, str] = {}
+        self._partial_emitted: bool = False
+        # Coalescing for thinking_delta — Anthropic emits ~1 event per token
+        # (hundreds per turn), same rationale as ``BaselineReasoningEmitter``.
+        # Text deltas are naturally coarser (~paragraph) so we let them through
+        # unbuffered.
+        self._pending_thinking_delta: str = ""
+        self._last_thinking_flush_monotonic: float = 0.0
 
     @property
     def has_unresolved_tool_calls(self) -> bool:
@@ -106,6 +138,9 @@ class SDKResponseAdapter:
                 # produced (task_progress events were previously silent).
                 responses.append(StreamHeartbeat())
 
+        elif isinstance(sdk_message, StreamEvent):
+            self._handle_stream_event(sdk_message, responses)
+
         elif isinstance(sdk_message, AssistantMessage):
             # Flush any SDK built-in tool calls that didn't get a UserMessage
             # result (e.g. WebSearch, Read handled internally by the CLI).
@@ -122,9 +157,16 @@ class SDKResponseAdapter:
                 responses.append(StreamStartStep())
                 self.step_open = True
 
+            # When ``include_partial_messages=True`` is active the CLI has
+            # already streamed text + thinking deltas via ``StreamEvent``
+            # ahead of this summary, so re-emitting them here would duplicate
+            # content on the wire.  ``_partial_emitted`` flips on the first
+            # ``StreamEvent`` we handle; the summary is still walked for
+            # ``ToolUseBlock`` (the partial path doesn't emit tool events).
+            summary_text_thinking_suppressed = self._partial_emitted
             for block in sdk_message.content:
                 if isinstance(block, TextBlock):
-                    if block.text:
+                    if block.text and not summary_text_thinking_suppressed:
                         # Reasoning and text are distinct UI parts; close
                         # any open reasoning block before opening text so
                         # the AI SDK transport doesn't merge them.
@@ -160,7 +202,7 @@ class SDKResponseAdapter:
                     # into the SDK transcript via
                     # ``_format_sdk_content_blocks`` is unaffected — that
                     # feeds ``--resume`` continuity, not the UI.
-                    if block.thinking:
+                    if block.thinking and not summary_text_thinking_suppressed:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
                         responses.append(
@@ -382,8 +424,115 @@ class SDKResponseAdapter:
     def _end_reasoning_if_open(self, responses: list[StreamBaseResponse]) -> None:
         """End the current reasoning block if one is open."""
         if self.has_started_reasoning and not self.has_ended_reasoning:
+            # Drain any buffered thinking text so the tail isn't lost when
+            # the block closes before the coalesce window elapses.
+            if self._pending_thinking_delta:
+                responses.append(
+                    StreamReasoningDelta(
+                        id=self.reasoning_block_id,
+                        delta=self._pending_thinking_delta,
+                    )
+                )
+                self._pending_thinking_delta = ""
             responses.append(StreamReasoningEnd(id=self.reasoning_block_id))
             self.has_ended_reasoning = True
+
+    def _handle_stream_event(
+        self, evt: StreamEvent, responses: list[StreamBaseResponse]
+    ) -> None:
+        """Translate raw Anthropic ``content_block_*`` events into wire events.
+
+        When ``include_partial_messages=True`` is set on ``ClaudeAgentOptions``,
+        the CLI emits a ``StreamEvent`` per Anthropic streaming chunk AHEAD
+        of the summary ``AssistantMessage``.  This handler routes:
+
+        * ``content_block_start`` — open a text or reasoning block on the wire
+        * ``content_block_delta`` with ``text_delta`` — forward as
+          ``StreamTextDelta``
+        * ``content_block_delta`` with ``thinking_delta`` — coalesce into a
+          64-char / 50 ms window and emit as ``StreamReasoningDelta``
+        * ``content_block_stop`` — close the corresponding block
+        * other types (``message_start`` / ``message_delta`` / ``*_stop``) are
+          ignored; the summary ``AssistantMessage`` carries their effects
+
+        Tool-use blocks still go through the ``AssistantMessage`` branch —
+        ``input_json_delta`` partial streaming for tool args is not yet
+        consumed here because the frontend only needs the final input to
+        dispatch the tool widget.
+
+        ``_partial_emitted`` is flipped True on the first emission so the
+        ``AssistantMessage`` branch knows to skip the duplicate text/thinking
+        content that arrives in the summary.
+        """
+        raw: dict[str, Any] = evt.event or {}
+        event_type = raw.get("type")
+
+        if event_type == "content_block_start":
+            block = raw.get("content_block") or {}
+            index = raw.get("index")
+            block_type = block.get("type")
+            if not isinstance(index, int) or not isinstance(block_type, str):
+                return
+            self._block_types_by_index[index] = block_type
+            if block_type == "text":
+                self._end_reasoning_if_open(responses)
+                self._ensure_text_started(responses)
+                self._text_since_last_tool_result = True
+                self._partial_emitted = True
+            elif block_type == "thinking":
+                self._end_text_if_open(responses)
+                self._ensure_reasoning_started(responses)
+                self._last_thinking_flush_monotonic = time.monotonic()
+                self._partial_emitted = True
+            # tool_use / input_json_delta content is deferred to the
+            # ``AssistantMessage`` branch.
+
+        elif event_type == "content_block_delta":
+            delta = raw.get("delta") or {}
+            delta_type = delta.get("type")
+            if delta_type == "text_delta":
+                text = delta.get("text") or ""
+                if text:
+                    self._ensure_text_started(responses)
+                    responses.append(StreamTextDelta(id=self.text_block_id, delta=text))
+                    self._text_since_last_tool_result = True
+                    self._partial_emitted = True
+            elif delta_type == "thinking_delta":
+                chunk = delta.get("thinking") or ""
+                if chunk:
+                    self._ensure_reasoning_started(responses)
+                    self._pending_thinking_delta += chunk
+                    now = time.monotonic()
+                    elapsed_ms = (now - self._last_thinking_flush_monotonic) * 1000.0
+                    if (
+                        len(self._pending_thinking_delta)
+                        >= _THINKING_COALESCE_MIN_CHARS
+                        or elapsed_ms >= _THINKING_COALESCE_MAX_INTERVAL_MS
+                    ):
+                        responses.append(
+                            StreamReasoningDelta(
+                                id=self.reasoning_block_id,
+                                delta=self._pending_thinking_delta,
+                            )
+                        )
+                        self._pending_thinking_delta = ""
+                        self._last_thinking_flush_monotonic = now
+                    self._partial_emitted = True
+            # Other delta types (``signature_delta``, ``input_json_delta``)
+            # aren't surfaced on the wire.
+
+        elif event_type == "content_block_stop":
+            index = raw.get("index")
+            if not isinstance(index, int):
+                return
+            block_type = self._block_types_by_index.pop(index, None)
+            if block_type == "text":
+                self._end_text_if_open(responses)
+            elif block_type == "thinking":
+                self._end_reasoning_if_open(responses)
+            # No tool-use close handling here — the summary AssistantMessage
+            # emits StreamToolInputStart/Available at ``ToolUseBlock`` which
+            # carries the final input payload.
 
     def _flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
         """Emit outputs for tool calls that didn't receive a UserMessage result.
