@@ -168,9 +168,31 @@ class BlockSchema(BaseModel):
         return cls.cached_jsonschema
 
     @classmethod
-    def validate_data(cls, data: BlockInput) -> str | None:
+    def validate_data(
+        cls,
+        data: BlockInput,
+        exclude_fields: set[str] | None = None,
+    ) -> str | None:
+        schema = cls.jsonschema()
+        if exclude_fields:
+            # Drop the excluded fields from both the properties and the
+            # ``required`` list so jsonschema doesn't flag them as missing.
+            # Used by the dry-run path to skip credentials validation while
+            # still validating the remaining block inputs.
+            schema = {
+                **schema,
+                "properties": {
+                    k: v
+                    for k, v in schema.get("properties", {}).items()
+                    if k not in exclude_fields
+                },
+                "required": [
+                    r for r in schema.get("required", []) if r not in exclude_fields
+                ],
+            }
+            data = {k: v for k, v in data.items() if k not in exclude_fields}
         return json.validate_with_jsonschema(
-            schema=cls.jsonschema(),
+            schema=schema,
             data={k: v for k, v in data.items() if v is not None},
         )
 
@@ -717,11 +739,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         # (e.g. AgentExecutorBlock) get proper input validation.
         is_dry_run = getattr(kwargs.get("execution_context"), "dry_run", False)
         if is_dry_run:
+            # Credential fields may be absent (LLM-built agents often skip
+            # wiring them) or nullified earlier in the pipeline. Validate
+            # the non-credential inputs against a schema with those fields
+            # excluded — stripping only the data while keeping them in the
+            # ``required`` list would falsely report ``'credentials' is a
+            # required property``.
             cred_field_names = set(self.input_schema.get_credentials_fields().keys())
-            non_cred_data = {
-                k: v for k, v in input_data.items() if k not in cred_field_names
-            }
-            if error := self.input_schema.validate_data(non_cred_data):
+            if error := self.input_schema.validate_data(
+                input_data, exclude_fields=cred_field_names
+            ):
                 raise BlockInputError(
                     message=f"Unable to execute block with invalid input data: {error}",
                     block_name=self.name,

@@ -15,8 +15,10 @@ from .service import (
     _build_system_prompt_value,
     _is_sdk_disconnect_error,
     _normalize_model_name,
+    _override_cost_for_non_anthropic,
     _prepare_file_attachments,
     _resolve_sdk_model,
+    _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
 )
 
@@ -177,70 +179,18 @@ class TestPromptSupplement:
         assert "## Tool notes" in local_supplement
         assert "## Tool notes" in e2b_supplement
 
-    def test_baseline_supplement_includes_tool_docs(self):
-        """Baseline mode MUST include tool documentation (direct API needs it)."""
-        from backend.copilot.prompting import get_baseline_supplement
+    def test_baseline_supplement_has_shared_notes_no_tool_list(self):
+        """Baseline now relies on the OpenAI tools array for schemas and only
+        appends SHARED_TOOL_NOTES (workflow rules not present in any schema).
+        The old auto-generated ``## AVAILABLE TOOLS`` list is gone — it was
+        ~4.3K tokens of pure duplication of the tools array."""
+        from backend.copilot.prompting import SHARED_TOOL_NOTES
 
-        supplement = get_baseline_supplement()
-
-        # MUST have tool list section
-        assert "## AVAILABLE TOOLS" in supplement
-
-        # Should NOT have environment-specific notes (SDK-only)
-        assert "## Tool notes" not in supplement
-
-    def test_baseline_supplement_includes_key_tools(self):
-        """Baseline supplement should document all essential tools."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Core agent workflow tools (always available)
-        assert "`create_agent`" in docs
-        assert "`run_agent`" in docs
-        assert "`find_library_agent`" in docs
-        assert "`edit_agent`" in docs
-
-        # MCP integration (always available)
-        assert "`run_mcp_tool`" in docs
-
-        # Folder management (always available)
-        assert "`create_folder`" in docs
-
-        # Browser tools only if available (Playwright may not be installed in CI)
-        if (
-            TOOL_REGISTRY.get("browser_navigate")
-            and TOOL_REGISTRY["browser_navigate"].is_available
-        ):
-            assert "`browser_navigate`" in docs
-
-    def test_baseline_supplement_includes_workflows(self):
-        """Baseline supplement should include workflow guidance in tool descriptions."""
-        from backend.copilot.prompting import get_baseline_supplement
-
-        docs = get_baseline_supplement()
-
-        # Workflows are now in individual tool descriptions (not separate sections)
-        # Check that key workflow concepts appear in tool descriptions
-        assert "agent_json" in docs or "find_block" in docs
-        assert "run_mcp_tool" in docs
-
-    def test_baseline_supplement_completeness(self):
-        """All available tools from TOOL_REGISTRY should appear in baseline supplement."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Verify each available registered tool is documented
-        # (matches _generate_tool_documentation which filters by is_available)
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
-            assert (
-                f"`{tool_name}`" in docs
-            ), f"Tool '{tool_name}' missing from baseline supplement"
+        assert "## AVAILABLE TOOLS" not in SHARED_TOOL_NOTES
+        # Keep the high-value workflow rules that are NOT in any tool schema.
+        assert "@@agptfile:" in SHARED_TOOL_NOTES
+        assert "Tool Discovery Priority" in SHARED_TOOL_NOTES
+        assert "run_sub_session" in SHARED_TOOL_NOTES
 
     def test_pause_task_scheduled_before_transcript_upload(self):
         """Pause is scheduled as a background task before transcript upload begins.
@@ -283,21 +233,6 @@ class TestPromptSupplement:
         # create_task schedules pause, then upload is awaited — pause runs
         # concurrently during upload's first yield. The ordering guarantee is
         # that create_task is CALLED before upload is AWAITED (see source order).
-
-    def test_baseline_supplement_no_duplicate_tools(self):
-        """No tool should appear multiple times in baseline supplement."""
-        from backend.copilot.prompting import get_baseline_supplement
-        from backend.copilot.tools import TOOL_REGISTRY
-
-        docs = get_baseline_supplement()
-
-        # Count occurrences of each available tool in the entire supplement
-        for tool_name, tool in TOOL_REGISTRY.items():
-            if not tool.is_available:
-                continue
-            # Count how many times this tool appears as a bullet point
-            count = docs.count(f"- **`{tool_name}`**")
-            assert count == 1, f"Tool '{tool_name}' appears {count} times (should be 1)"
 
 
 # ---------------------------------------------------------------------------
@@ -422,11 +357,16 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            # Pin SDK slugs to anthropic/* so the new
+            # _validate_sdk_model_vendor_compatibility allows construction.
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
 
-    def test_dots_preserved_for_openrouter(self, monkeypatch, _clean_config_env):
+    def test_openrouter_keeps_full_slug(self, monkeypatch, _clean_config_env):
+        """OpenRouter routes by ``vendor/model`` slug — keep prefix and dots."""
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
@@ -436,7 +376,11 @@ class TestNormalizeModelName:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4.6"
+        assert (
+            _normalize_model_name("anthropic/claude-opus-4.6")
+            == "anthropic/claude-opus-4.6"
+        )
+        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
 
     def test_no_prefix_no_dots(self, monkeypatch, _clean_config_env):
         from backend.copilot import config as cfg_mod
@@ -446,6 +390,8 @@ class TestNormalizeModelName:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert (
@@ -457,12 +403,13 @@ class TestNormalizeModelName:
 class TestResolveSdkModel:
     """Tests for _resolve_sdk_model — model ID resolution for the SDK CLI."""
 
-    def test_openrouter_active_keeps_dots(self, monkeypatch, _clean_config_env):
-        """When OpenRouter is fully active, model keeps dot-separated version."""
+    def test_openrouter_active_keeps_full_slug(self, monkeypatch, _clean_config_env):
+        """When OpenRouter is fully active, the canonical vendor/model slug
+        is preserved so OpenRouter can route to the correct provider."""
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=True,
             api_key="or-key",
@@ -470,7 +417,23 @@ class TestResolveSdkModel:
             use_claude_code_subscription=False,
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _resolve_sdk_model() == "claude-opus-4.6"
+        assert _resolve_sdk_model() == "anthropic/claude-opus-4.6"
+
+    def test_openrouter_active_kimi_slug(self, monkeypatch, _clean_config_env):
+        """Non-Anthropic models (Kimi via Moonshot) require the prefix to
+        survive OpenRouter routing — strip would leave an unroutable slug."""
+        from backend.copilot import config as cfg_mod
+
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="moonshotai/kimi-k2.6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+        assert _resolve_sdk_model() == "moonshotai/kimi-k2.6"
 
     def test_openrouter_disabled_normalizes_to_hyphens(
         self, monkeypatch, _clean_config_env
@@ -479,7 +442,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
@@ -497,7 +460,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=True,
             api_key=None,
@@ -514,7 +477,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model="claude-sonnet-4-5-20250514",
             use_openrouter=True,
             api_key="or-key",
@@ -529,7 +492,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="anthropic/claude-opus-4.6",
+            thinking_standard_model="anthropic/claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
@@ -544,7 +507,7 @@ class TestResolveSdkModel:
         from backend.copilot import config as cfg_mod
 
         cfg = cfg_mod.ChatConfig(
-            model="claude-opus-4.6",
+            thinking_standard_model="claude-opus-4.6",
             claude_agent_model=None,
             use_openrouter=False,
             api_key=None,
@@ -553,6 +516,213 @@ class TestResolveSdkModel:
         )
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
         assert _resolve_sdk_model() == "claude-opus-4-6"
+
+
+class TestResolveSdkModelForRequestLdFallback:
+    """``_resolve_sdk_model_for_request`` must fail soft when the LD value
+    can't be normalised for the active routing mode — flagged as MAJOR by
+    CodeRabbit + HIGH by Sentry when it was a hard ValueError."""
+
+    @pytest.mark.asyncio
+    async def test_direct_anthropic_mode_rejects_kimi_ld_value_and_falls_back(
+        self, monkeypatch, _clean_config_env
+    ):
+        """LD serves ``moonshotai/kimi-k2.6`` but we're on direct-Anthropic
+        (no OpenRouter key).  ``_normalize_model_name`` raises; the
+        resolver must log + return the config-default path instead of
+        500-ing the turn."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-abc", user_id="user-1"
+            )
+
+        # Fallback == tier-specific config default (thinking_standard_model
+        # normalised to hyphen-form for direct-Anthropic mode).
+        assert resolved == "claude-sonnet-4-6"
+
+    @pytest.mark.asyncio
+    async def test_openrouter_mode_accepts_ld_kimi_value(
+        self, monkeypatch, _clean_config_env
+    ):
+        """On OpenRouter the Kimi slug is legitimate — no fallback,
+        value returned as-is."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-abc", user_id="user-1"
+            )
+        assert resolved == "moonshotai/kimi-k2.6"
+
+    @pytest.mark.asyncio
+    async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
+        self, monkeypatch, _clean_config_env
+    ):
+        """An LD-rejected ADVANCED slug must fall back to the advanced
+        config default (Opus) — not the standard default (Sonnet).
+        Using ``_resolve_sdk_model()`` as the fallback silently
+        downgraded the user's chosen tier.  Flagged MAJOR by CodeRabbit
+        + HIGH by Sentry on the first fail-soft commit."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv", user_id="user-1"
+            )
+
+        # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
+        assert resolved == "claude-opus-4-7"
+
+    @pytest.mark.asyncio
+    async def test_standard_ld_override_wins_over_subscription(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Bug reported in local test: subscription mode + LD serving Kimi
+        on ``copilot-thinking-standard-model`` returned ``None`` (CLI
+        picked subscription default Opus), silently ignoring the LD
+        override.  An LD value different from the config default is an
+        explicit admin decision and must win."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std-sub", user_id="user-1"
+            )
+        # Expect LD-served Kimi, NOT None (the old subscription-default bypass)
+        assert resolved == "moonshotai/kimi-k2.6"
+
+    @pytest.mark.asyncio
+    async def test_standard_subscription_survives_trailing_whitespace_in_env(
+        self, monkeypatch, _clean_config_env
+    ):
+        """``_resolve_thinking_model_for_user`` strips whitespace from the LD
+        side; the config tier default must be stripped too, otherwise a
+        stray trailing space in ``CHAT_THINKING_STANDARD_MODEL`` makes
+        ``resolved == tier_default`` spuriously False and bypasses
+        subscription-default mode.  Sentry HIGH on L856."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing spaces
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-ws", user_id="user-1"
+            )
+        assert resolved is None, (
+            "LD value semantically matches the whitespace-padded config "
+            "default — subscription mode must still win and return None"
+        )
+
+    @pytest.mark.asyncio
+    async def test_standard_subscription_default_honoured_when_ld_matches_config(
+        self, monkeypatch, _clean_config_env
+    ):
+        """When LD serves the SAME value as the config default (i.e. the
+        flag is effectively unset / no override), subscription mode still
+        wins and we return ``None`` so the CLI uses the subscription
+        default model."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std-nop", user_id="user-1"
+            )
+        assert resolved is None
+
+    @pytest.mark.asyncio
+    async def test_advanced_tier_consults_ld_under_subscription(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Subscription mode bypasses LD only on the standard tier —
+        the advanced tier always consults LD because the user explicitly
+        asked for the premium path.  A subscription + advanced request
+        with LD-served Opus must return Opus (not ``None``)."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv-sub", user_id="user-1"
+            )
+        assert resolved == "anthropic/claude-opus-4.7"
 
 
 # ---------------------------------------------------------------------------
@@ -700,6 +870,17 @@ class TestSystemPromptPreset:
         assert result["append"] == ""
         assert result["exclude_dynamic_sections"] is True
 
+    def test_resume_and_fresh_share_the_same_static_prefix(self):
+        """Every turn (fresh + --resume) must emit the same preset dict
+        so the cross-user cache prefix match works on all turns.  This
+        relies on CLI ≥ 2.1.98 (installed in the Docker image); older
+        CLIs would crash on --resume + excludeDynamicSections=True."""
+        fresh = _build_system_prompt_value("sys", cross_user_cache=True)
+        resumed = _build_system_prompt_value("sys", cross_user_cache=True)
+        assert fresh == resumed
+        assert isinstance(fresh, dict)
+        assert fresh.get("exclude_dynamic_sections") is True
+
     def test_default_config_is_enabled(self, _clean_config_env):
         """The default value for claude_agent_cross_user_prompt_cache is True."""
         cfg = cfg_mod.ChatConfig(
@@ -707,6 +888,8 @@ class TestSystemPromptPreset:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is True
 
@@ -718,6 +901,8 @@ class TestSystemPromptPreset:
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is False
 
@@ -730,3 +915,79 @@ class TestIdleTimeoutConstant:
 
     def test_idle_timeout_is_10_min(self):
         assert _IDLE_TIMEOUT_SECONDS == 10 * 60
+
+
+class TestOverrideCostForNonAnthropic:
+    """Verifies that turn costs routed through OpenRouter to non-Anthropic
+    vendors use the platform's per-model rate card instead of the SDK
+    CLI's static Anthropic pricing table — which silently falls back to
+    Sonnet rates for unknown models and over-bills by ~5x."""
+
+    def test_kimi_cost_recomputed_from_rate_card(self):
+        """Kimi K2.6 @ $0.60 input / $2.80 output per MTok.  29564 prompt
+        tokens + 78 completion should land at ~$0.018, not $0.09 (Sonnet)."""
+        recomputed = _override_cost_for_non_anthropic(
+            raw_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.089862,  # what the SDK CLI reported (Sonnet price)
+            prompt_tokens=29564,
+            completion_tokens=78,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
+        assert recomputed == pytest.approx(expected, rel=1e-9)
+        # Sanity-check against a hand-computed magnitude.
+        assert 0.017 < recomputed < 0.019
+
+    def test_anthropic_cost_unchanged(self):
+        """Anthropic slugs pass through the SDK-reported value since the
+        CLI's pricing table is correct for them."""
+        result = _override_cost_for_non_anthropic(
+            raw_model="anthropic/claude-sonnet-4.6",
+            sdk_reported_usd=0.089862,
+            prompt_tokens=29564,
+            completion_tokens=78,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert result == 0.089862
+
+    def test_unknown_non_anthropic_vendor_passes_through(self):
+        """A non-Anthropic slug not in the rate card falls back to the
+        SDK-reported value — best-effort rather than misleading zero."""
+        result = _override_cost_for_non_anthropic(
+            raw_model="deepseek/some-new-model",
+            sdk_reported_usd=0.05,
+            prompt_tokens=10000,
+            completion_tokens=500,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert result == 0.05
+
+    def test_none_model_passes_through(self):
+        """Subscription mode / no-model case returns the SDK value."""
+        result = _override_cost_for_non_anthropic(
+            raw_model=None,
+            sdk_reported_usd=0.07,
+            prompt_tokens=100,
+            completion_tokens=10,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+        )
+        assert result == 0.07
+
+    def test_cache_tokens_folded_into_prompt(self):
+        """Since the Moonshot endpoints don't report discounted cached-
+        input pricing, cache_read/creation tokens are priced at the same
+        rate as regular prompt tokens."""
+        recomputed = _override_cost_for_non_anthropic(
+            raw_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.5,
+            prompt_tokens=1000,
+            completion_tokens=0,
+            cache_read_tokens=5000,
+            cache_creation_tokens=2000,
+        )
+        expected = (1000 + 5000 + 2000) * 0.60 / 1_000_000
+        assert recomputed == pytest.approx(expected, rel=1e-9)

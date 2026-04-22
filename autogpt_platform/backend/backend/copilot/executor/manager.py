@@ -34,6 +34,7 @@ from .utils import (
     CancelCoPilotEvent,
     CoPilotExecutionEntry,
     create_copilot_queue_config,
+    get_session_lock_key,
 )
 
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
@@ -366,7 +367,7 @@ class CoPilotExecutor(AppProcess):
         # Try to acquire cluster-wide lock
         cluster_lock = ClusterLock(
             redis=redis.get_redis(),
-            key=f"copilot:session:{session_id}:lock",
+            key=get_session_lock_key(session_id),
             owner_id=self.executor_id,
             timeout=settings.config.cluster_lock_timeout,
         )

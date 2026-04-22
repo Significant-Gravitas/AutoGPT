@@ -27,6 +27,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ClaudeSDKClient,
     ResultMessage,
+    StreamEvent,
     TextBlock,
     ThinkingBlock,
     ToolResultBlock,
@@ -48,13 +49,15 @@ from ..config import ChatConfig, CopilotLlmModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    STOPPED_BY_USER_MARKER,
     STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
+from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..model_router import resolve_model
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -70,7 +73,6 @@ from ..pending_message_helpers import (
     persist_session_safe,
 )
 from ..pending_messages import (
-    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -96,6 +98,10 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
+from ..builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
+)
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -105,6 +111,7 @@ from ..service import (
 )
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
+from ..tools import ToolGroup
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tracking import track_user_message
@@ -125,6 +132,7 @@ from ..transcript import (
 from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionTracker, filter_compaction_messages
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
+from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -164,11 +172,6 @@ _MAX_STREAM_ATTEMPTS = 3
 # guidance on the first empty call, giving the model a chance to
 # self-correct.  The limit is generous to allow recovery attempts.
 _EMPTY_TOOL_CALL_LIMIT = 5
-
-# Cost multiplier for Opus model turns — Opus is ~5× more expensive than Sonnet
-# ($15/$75 vs $3/$15 per M tokens).  Applied to rate-limit counters so Opus
-# turns deplete quota proportionally faster.
-_OPUS_COST_MULTIPLIER = 5.0
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -365,6 +368,14 @@ class _RetryState:
     # ``detect_gap`` picks them up as gap-fill entries instead of assuming the
     # JSONL already covers them.
     midturn_user_rows: int = 0
+    # OpenRouter generation IDs collected across all attempts of this turn.
+    # Populated from ``AssistantMessage.message_id`` when routed via
+    # OpenRouter (``gen-...`` prefix).  Consumed by the finally block to
+    # fire ``record_turn_cost_from_openrouter`` for non-Anthropic models —
+    # the CLI's static-Anthropic-priced estimate is replaced with the
+    # authoritative ``/generation`` total_cost.  Lives on ``_RetryState``
+    # (not per-attempt ``_StreamAccumulator``) so it survives retries.
+    generation_ids: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -451,7 +462,9 @@ async def _reduce_context(
     # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
         compacted = await compact_transcript(
-            transcript_content, model=config.model, log_prefix=log_prefix
+            transcript_content,
+            model=config.thinking_standard_model,
+            log_prefix=log_prefix,
         )
         if (
             compacted
@@ -677,41 +690,118 @@ async def _iter_sdk_messages(
 def _normalize_model_name(raw_model: str) -> str:
     """Normalize a model name for the current routing configuration.
 
-    Applies two transformations shared by both the primary and fallback
-    model resolution paths:
+    Two routing modes:
 
-    1. **Strip provider prefix** — OpenRouter-style names like
-       ``"anthropic/claude-opus-4.6"`` are reduced to ``"claude-opus-4.6"``.
-    2. **Dot-to-hyphen conversion** — when *not* routing through OpenRouter
-       the direct Anthropic API requires hyphen-separated versions
-       (``"claude-opus-4-6"``), so dots are replaced with hyphens.
+    1. **OpenRouter active** — the canonical OpenRouter slug is
+       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4.6"``,
+       ``"moonshotai/kimi-k2.6"``).  Pass the prefixed name through
+       unchanged so OpenRouter can route to the correct provider.  Anthropic
+       names happen to also resolve when stripped, but non-Anthropic vendors
+       (Moonshot, Google, etc.) do not — keeping the prefix is the only form
+       that works for every model in the catalog.
+    2. **Direct Anthropic** — strip the OpenRouter ``anthropic/`` prefix
+       and convert dots to hyphens (``"claude-opus-4.6"`` →
+       ``"claude-opus-4-6"``) since the Anthropic Messages API rejects
+       both the prefix and dot-separated versions.  Raises ``ValueError``
+       when a non-Anthropic vendor slug is paired with direct-Anthropic
+       mode — silently stripping ``moonshotai/`` would send ``kimi-k2.6``
+       to the Anthropic API and produce an opaque ``model_not_found``
+       error far from the misconfiguration source.
     """
+    if config.openrouter_active:
+        return raw_model
     model = raw_model
     if "/" in model:
-        model = model.split("/", 1)[1]
-    # OpenRouter uses dots in versions (claude-opus-4.6) but the direct
-    # Anthropic API requires hyphens (claude-opus-4-6).  Only normalise
-    # when NOT routing through OpenRouter.
-    if not config.openrouter_active:
-        model = model.replace(".", "-")
-    return model
+        vendor, model = model.split("/", 1)
+        if vendor != "anthropic":
+            raise ValueError(
+                f"Direct-Anthropic mode (use_openrouter=False or missing "
+                f"OpenRouter credentials) requires an Anthropic model, got "
+                f"vendor={vendor!r} from model={raw_model!r}. Set "
+                f"CHAT_THINKING_STANDARD_MODEL/CHAT_THINKING_ADVANCED_MODEL "
+                f"to an anthropic/* slug, or enable OpenRouter."
+            )
+    return model.replace(".", "-")
+
+
+# Per-million-token rates ($USD) for non-Anthropic OpenRouter slugs that
+# the Claude Agent SDK CLI doesn't recognise.  The CLI's bundled pricing
+# table only knows Anthropic models — for anything else its
+# ``ResultMessage.total_cost_usd`` silently falls back to Sonnet rates,
+# over-billing by ~5x for cheaper models like Kimi K2.6.  Values are taken
+# directly from each provider's published rate card and must be kept in
+# sync when prices change.  Cache discounts are not applied — Kimi via
+# OpenRouter does not currently expose a separate cached-input price.
+_NON_ANTHROPIC_RATES_USD_PER_MTOK: dict[str, tuple[float, float]] = {
+    # vendor/model: (input_per_mtok, output_per_mtok)
+    "moonshotai/kimi-k2.6": (0.60, 2.80),
+    "moonshotai/kimi-k2-thinking": (0.60, 2.80),
+    "moonshotai/kimi-k2.5": (0.60, 2.80),
+    "moonshotai/kimi-k2": (0.60, 2.80),
+}
+
+
+def _override_cost_for_non_anthropic(
+    raw_model: str | None,
+    sdk_reported_usd: float,
+    prompt_tokens: int,
+    completion_tokens: int,
+    cache_read_tokens: int,
+    cache_creation_tokens: int,
+) -> float:
+    """Recompute turn cost from a known rate card for non-Anthropic models.
+
+    The Claude Agent SDK CLI's ``total_cost_usd`` is computed from a
+    static Anthropic pricing table baked into the binary — it doesn't
+    know Kimi/DeepSeek/etc rates and silently bills at Sonnet prices,
+    which would over-charge a Kimi-default deployment by ~5x.  Mirror
+    the baseline path's behaviour by computing the real cost from the
+    token counts whenever we recognise the slug; otherwise trust the
+    SDK number (correct for Anthropic models, best-effort for unknown
+    providers).
+    """
+    if raw_model is None:
+        return sdk_reported_usd
+    rates = _NON_ANTHROPIC_RATES_USD_PER_MTOK.get(raw_model)
+    if rates is None:
+        return sdk_reported_usd
+    input_rate, output_rate = rates
+    # Treat cache reads/creation as plain prompt tokens since OpenRouter
+    # does not currently report a discounted cached-input price for the
+    # tracked Moonshot endpoints.
+    total_prompt = prompt_tokens + cache_read_tokens + cache_creation_tokens
+    return (total_prompt * input_rate + completion_tokens * output_rate) / 1_000_000
 
 
 def _resolve_sdk_model() -> str | None:
-    """Resolve the model name for the Claude Agent SDK CLI.
+    """Resolve the SDK-CLI model name from static config (no LD lookup).
 
-    Uses `config.claude_agent_model` if set, otherwise derives from
-    `config.model` via :func:`_normalize_model_name`.
+    ``config.claude_agent_model`` is an explicit override that wins
+    unconditionally.  When the Claude Code subscription is enabled and no
+    override is set, returns ``None`` so the CLI picks the model for the
+    user's subscription plan.  Otherwise derives from
+    ``config.thinking_standard_model``.
 
-    When `use_claude_code_subscription` is enabled and no explicit
-    `claude_agent_model` is set, returns `None` so the CLI uses the
-    default model for the user's subscription plan.
+    For per-user routing (LaunchDarkly overrides), see
+    :func:`_resolve_sdk_model_for_request`.
     """
     if config.claude_agent_model:
         return config.claude_agent_model
     if config.use_claude_code_subscription:
         return None
-    return _normalize_model_name(config.model)
+    return _normalize_model_name(config.thinking_standard_model)
+
+
+async def _resolve_thinking_model_for_user(
+    tier: "CopilotLlmModel",
+    user_id: str | None,
+) -> str:
+    """LD-aware thinking-tier model pick for a specific user.
+
+    Consults ``copilot-thinking-{tier}-model`` and falls back to the
+    ``ChatConfig`` default on missing user / missing flag.
+    """
+    return await resolve_model("thinking", tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -725,46 +815,97 @@ def _resolve_fallback_model() -> str | None:
     return _normalize_model_name(raw)
 
 
-async def _resolve_model_and_multiplier(
+async def _resolve_sdk_model_for_request(
     model: "CopilotLlmModel | None",
     session_id: str,
-) -> tuple[str | None, float]:
-    """Resolve the SDK model string and rate-limit cost multiplier for a turn.
+    user_id: str | None = None,
+) -> str | None:
+    """Resolve the SDK model string for a turn.
 
     Priority (highest first):
-    1. Explicit per-request ``model`` tier from the frontend toggle.
-    2. Global config default (``_resolve_sdk_model()``).
-
-    Returns a ``(sdk_model, cost_multiplier)`` pair.
-    ``sdk_model`` is ``None`` when the Claude Code subscription default applies.
-    ``cost_multiplier`` is 5.0 for Opus, 1.0 otherwise.
+    1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
+    2. LaunchDarkly ``copilot-thinking-{tier}-model`` if it serves a value
+       different from the config default for *user_id*.  An LD-served
+       override wins over subscription mode so admins can route specific
+       users to a specific model without flipping subscription on/off.
+    3. ``config.use_claude_code_subscription`` on the standard tier —
+       returns ``None`` so the CLI picks the subscription default (this
+       branch fires when LD has no opinion, i.e. the value equals the
+       config default).
+    4. ``ChatConfig`` static default for the tier.
     """
-    sdk_model = _resolve_sdk_model()
+    if config.claude_agent_model:
+        return config.claude_agent_model
 
-    if model == "advanced":
-        sdk_model = _normalize_model_name(config.advanced_model)
+    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
+    # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
+    # comparison below spuriously diverge — ``resolve_model`` already strips
+    # the LD side, so both halves must end up whitespace-normalised to stay
+    # equal when they're semantically equal.  Downstream ``_normalize_model_name``
+    # also benefits from the strip.
+    tier_default = (
+        config.thinking_advanced_model
+        if tier_name == "advanced"
+        else config.thinking_standard_model
+    ).strip()
+
+    resolved = await _resolve_thinking_model_for_user(tier_name, user_id)
+
+    # Subscription mode on standard tier only wins when LD has no opinion
+    # (value == config default ⇒ admin hasn't explicitly pointed this
+    # user somewhere).  Any LD override — even to the same value with
+    # stripped whitespace normalised — is an explicit admin choice that
+    # must be honoured.  Without this, a subscription-mode deployment
+    # silently ignores the ``copilot-thinking-standard-model`` flag
+    # entirely, which defeats the point of cohort-based routing.
+    ld_overrides_default = resolved != tier_default
+    if (
+        not ld_overrides_default
+        and tier_name == "standard"
+        and config.use_claude_code_subscription
+    ):
         logger.info(
-            "[SDK] [%s] Per-request model override: advanced (%s)",
+            "[SDK] [%s] Subscription default (tier=standard, LD unset)",
             session_id[:12] if session_id else "?",
+        )
+        return None
+    try:
+        sdk_model = _normalize_model_name(resolved)
+    except ValueError as exc:
+        # The per-user LD value didn't pass ``_normalize_model_name``'s
+        # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
+        # direct-Anthropic deployment that has no OpenRouter route).  Fail
+        # soft to the TIER-SPECIFIC config default — using the generic
+        # ``_resolve_sdk_model()`` here would pin advanced-tier requests to
+        # ``thinking_standard_model`` (Sonnet) whenever LD misconfigures
+        # the advanced cell, silently downgrading the user's chosen tier.
+        try:
+            sdk_model = _normalize_model_name(tier_default)
+        except ValueError:
+            # Config default is *also* invalid for the active routing
+            # mode — this is a deployment-level misconfig that the
+            # ``model_validator`` should catch at startup.  Re-raise the
+            # original LD error so the issue surfaces loudly rather than
+            # returning something misleading.
+            raise exc
+        logger.warning(
+            "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
+            "back to tier default %s",
+            session_id[:12] if session_id else "?",
+            resolved,
+            tier_name,
+            exc,
             sdk_model,
         )
-        return sdk_model, _OPUS_COST_MULTIPLIER
-
-    if model == "standard":
-        # Reset to config default — respects subscription mode (None = CLI default).
-        sdk_model = _resolve_sdk_model()
-        logger.info(
-            "[SDK] [%s] Per-request model override: standard (%s)",
-            session_id[:12] if session_id else "?",
-            sdk_model or "subscription-default",
-        )
-        return sdk_model, 1.0
-
-    # No per-request override; derive multiplier from final resolved model.
-    cost_multiplier = (
-        _OPUS_COST_MULTIPLIER if sdk_model and "opus" in sdk_model else 1.0
+        return sdk_model
+    logger.info(
+        "[SDK] [%s] Resolved model for tier=%s: %s",
+        session_id[:12] if session_id else "?",
+        tier_name,
+        sdk_model,
     )
-    return sdk_model, cost_multiplier
+    return sdk_model
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -828,7 +969,11 @@ async def _do_transient_backoff(
     """
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
-    state.adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+    state.adapter = SDKResponseAdapter(
+        message_id=message_id,
+        session_id=session_id,
+        render_reasoning_in_ui=config.render_reasoning_in_ui,
+    )
     state.usage.reset()
 
 
@@ -847,16 +992,25 @@ def _is_fallback_stderr(line: str) -> bool:
 
 def _build_system_prompt_value(
     system_prompt: str,
+    *,
     cross_user_cache: bool,
 ) -> str | SystemPromptPreset:
     """Build the ``system_prompt`` argument for :class:`ClaudeAgentOptions`.
 
     When *cross_user_cache* is enabled, returns a :class:`SystemPromptPreset`
-    dict so the Claude Code default prompt becomes a cacheable prefix shared
-    across all users; our custom *system_prompt* is appended after it.
+    with ``exclude_dynamic_sections=True`` so every turn — Turn 1 *and*
+    resumed turns — shares the same static prefix and hits the cross-user
+    prompt cache.  Our custom *system_prompt* is appended after the preset.
 
-    When disabled (or if the SDK is too old to support ``SystemPromptPreset``),
-    the raw *system_prompt* string is returned unchanged.
+    Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
+    is combined with ``--resume``).  The SDK bundles CLI 2.1.116 at
+    ``claude-agent-sdk >= 0.1.64``, so the pin in ``pyproject.toml`` is
+    the single source of truth — no external install needed.
+
+    When *cross_user_cache* is disabled, the raw *system_prompt* string is
+    returned.  Note this causes the CLI to REPLACE its built-in prompt via
+    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset),
+    which loses Claude Code's default prompt and its cache markers entirely.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
@@ -1189,7 +1343,10 @@ async def _compress_messages(
 
     try:
         result = await _run_compression(
-            messages_dict, config.model, "[SDK]", target_tokens=target_tokens
+            messages_dict,
+            config.thinking_standard_model,
+            "[SDK]",
+            target_tokens=target_tokens,
         )
     except Exception as exc:
         # Guard against timeouts or unexpected errors in compression —
@@ -2077,6 +2234,24 @@ async def _run_stream_attempt(
                 len(state.adapter.resolved_tool_calls),
             )
 
+            # Capture OpenRouter generation IDs from each
+            # ``AssistantMessage.message_id`` — when routed via OpenRouter
+            # these are ``gen-...`` slugs we can use post-turn to query
+            # ``/api/v1/generation?id=`` for the authoritative per-turn
+            # cost and token counts (the CLI's ``total_cost_usd`` is
+            # computed from a static Anthropic pricing table that
+            # silently over-bills non-Anthropic routes).  Direct-Anthropic
+            # turns produce ``msg_...`` IDs which the generation endpoint
+            # doesn't know about — harmlessly ignored at reconcile time.
+            if isinstance(sdk_msg, AssistantMessage):
+                msg_id = sdk_msg.message_id
+                if (
+                    msg_id is not None
+                    and msg_id.startswith("gen-")
+                    and msg_id not in state.generation_ids
+                ):
+                    state.generation_ids.append(msg_id)
+
             # Log AssistantMessage API errors (e.g. invalid_request)
             # so we can debug Anthropic API 400s surfaced by the CLI.
             sdk_error = getattr(sdk_msg, "error", None)
@@ -2245,7 +2420,23 @@ async def _run_stream_attempt(
                         state.usage.completion_tokens,
                     )
                 if sdk_msg.total_cost_usd is not None:
-                    state.usage.cost_usd = sdk_msg.total_cost_usd
+                    # The SDK CLI's ``total_cost_usd`` is computed from a
+                    # static Anthropic pricing table baked into the CLI
+                    # binary.  When we route through OpenRouter to a non-
+                    # Anthropic model (e.g. Kimi K2.6) the CLI doesn't
+                    # know the real per-token price and silently falls
+                    # back to Sonnet rates — over-billing the user ~5x.
+                    # Recompute from a known rate card for non-Anthropic
+                    # OpenRouter slugs so the cost row, the rate-limit
+                    # counter, and the UI cost display reflect reality.
+                    state.usage.cost_usd = _override_cost_for_non_anthropic(
+                        raw_model=getattr(state.options, "model", None),
+                        sdk_reported_usd=sdk_msg.total_cost_usd,
+                        prompt_tokens=state.usage.prompt_tokens,
+                        completion_tokens=state.usage.completion_tokens,
+                        cache_read_tokens=state.usage.cache_read_tokens,
+                        cache_creation_tokens=state.usage.cache_creation_tokens,
+                    )
 
             # Emit compaction end if SDK finished compacting.
             # Sync TranscriptBuilder with the CLI's active context.
@@ -2367,6 +2558,18 @@ async def _run_stream_attempt(
                     skip_strip=response is tail_delta,
                 )
                 if dispatched is not None:
+                    # Persistence (via _dispatch_response) always runs so the
+                    # session transcript keeps role='reasoning' rows; the
+                    # wire is gated so UI can suppress rendering.
+                    if not state.adapter.render_reasoning_in_ui and isinstance(
+                        dispatched,
+                        (
+                            StreamReasoningStart,
+                            StreamReasoningDelta,
+                            StreamReasoningEnd,
+                        ),
+                    ):
+                        continue
                     yield dispatched
 
                 # Mid-turn follow-up persistence: the MCP tool wrapper drains
@@ -2427,16 +2630,36 @@ async def _run_stream_attempt(
             # flush the assistant message before tool_calls are set on it
             # (text and tool_use arrive as separate SDK events), the
             # tool_calls update is lost — the next flush starts past it.
-            _msgs_since_flush += 1
+            #
+            # With ``include_partial_messages=True`` the CLI delivers
+            # hundreds of ``StreamEvent`` messages per turn — incrementing
+            # ``_msgs_since_flush`` on each one trips the threshold long
+            # before the assistant text is complete, saving a truncated
+            # prefix that subsequent deltas can never extend (append-only).
+            # Count only messages that produce a persisted row boundary
+            # (AssistantMessage, UserMessage, ResultMessage) and skip
+            # raw StreamEvents.  Also skip when text or reasoning is
+            # still in-flight on the adapter: the row is live and a flush
+            # would lock it at its current length.
+            if not isinstance(sdk_msg, StreamEvent):
+                _msgs_since_flush += 1
             now = time.monotonic()
             has_pending_tools = (
                 acc.has_appended_assistant
                 and acc.accumulated_tool_calls
                 and not acc.has_tool_results
             )
-            if not has_pending_tools and (
-                _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
-                or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
+            adapter = state.adapter
+            has_open_block = (
+                adapter.has_started_text and not adapter.has_ended_text
+            ) or (adapter.has_started_reasoning and not adapter.has_ended_reasoning)
+            if (
+                not has_pending_tools
+                and not has_open_block
+                and (
+                    _msgs_since_flush >= _FLUSH_MESSAGE_THRESHOLD
+                    or (now - _last_flush_time) >= _FLUSH_INTERVAL_SECONDS
+                )
             ):
                 try:
                     await asyncio.shield(upsert_chat_session(ctx.session))
@@ -2504,10 +2727,7 @@ async def _run_stream_attempt(
         for r in closing_responses:
             yield r
         ctx.session.messages.append(
-            ChatMessage(
-                role="assistant",
-                content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
-            )
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER)
         )
 
     if (
@@ -2725,6 +2945,24 @@ async def _restore_cli_session_for_turn(
     return result
 
 
+async def _maybe_prepend_builder_context(
+    session: ChatSession,
+    user_id: str | None,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<builder_context>`` block to the user message.
+
+    No-op for non-user messages and for sessions without a bound graph.
+    Extracted from the SDK stream body so Pyright's complexity analyser
+    stays within budget on the already-large ``stream_chat_completion_sdk``.
+    """
+    if not is_user_message or not session.metadata.builder_graph_id:
+        return query_message
+    block = await build_builder_context_turn_prefix(session, user_id)
+    return block + query_message if block else query_message
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -2737,7 +2975,7 @@ async def stream_chat_completion_sdk(
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
     **_kwargs: Any,
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Stream chat completion using Claude Agent SDK.
 
     Args:
@@ -2780,6 +3018,10 @@ async def stream_chat_completion_sdk(
             session_id[:12],
         )
         session.messages.pop()
+
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
+    prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
@@ -2894,7 +3136,12 @@ async def stream_chat_completion_sdk(
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
-    model_cost_multiplier: float = 1.0
+    # Wall-clock timestamp captured before the CLI runs so the
+    # OpenRouter reconcile can filter subagent JSONLs by mtime — only
+    # files created during THIS turn contribute gen-IDs.  Without this
+    # the sweep would pick up prior turns' compaction files that persist
+    # under ``<session_id>/subagents/``, double-billing the user.
+    turn_start_ts = time.time()
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -2958,10 +3205,17 @@ async def stream_chat_completion_sdk(
         graphiti_enabled = await is_enabled_for_user(user_id)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        # Append the builder-session block (graph id+name + full building
+        # guide) AFTER the shared supplements so the system prompt is
+        # byte-identical across turns of the same builder session — Claude's
+        # prompt cache keeps the ~20KB guide warm for the whole session.
+        # Empty string for non-builder sessions preserves cross-user caching.
+        builder_session_suffix = await build_builder_system_prompt_suffix(session)
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
+            + builder_session_suffix
         )
 
         # Warm context: pre-load relevant facts from Graphiti on first turn.
@@ -3011,10 +3265,8 @@ async def stream_chat_completion_sdk(
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
-        # Resolve model and cost multiplier (request tier → config default).
-        sdk_model, model_cost_multiplier = await _resolve_model_and_multiplier(
-            model, session_id
-        )
+        # Resolve model (request tier → LD per-user override → config default).
+        sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -3026,10 +3278,18 @@ async def stream_chat_completion_sdk(
             on_compact=compaction.on_compact,
         )
 
+        disabled_tool_groups: list[ToolGroup] = []
+        if not graphiti_enabled:
+            disabled_tool_groups.append("graphiti")
+
         if permissions is not None:
-            allowed, disallowed = apply_tool_permissions(permissions, use_e2b=use_e2b)
+            allowed, disallowed = apply_tool_permissions(
+                permissions, use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+            )
         else:
-            allowed = get_copilot_tool_names(use_e2b=use_e2b)
+            allowed = get_copilot_tool_names(
+                use_e2b=use_e2b, disabled_groups=disabled_tool_groups
+            )
             disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
         def _on_stderr(line: str) -> None:
@@ -3049,15 +3309,17 @@ async def stream_chat_completion_sdk(
                     sid,
                 )
 
-        # Use SystemPromptPreset for cross-user prompt caching.
-        # WORKAROUND: CLI 2.1.97 (sdk 0.1.58) exits code 1 when
-        # excludeDynamicSections=True is in the initialize request AND
-        # --resume is active.  Disable the preset on resumed turns.
-        # Turn 1 still gets the preset (no --resume).
-        _cross_user = config.claude_agent_cross_user_prompt_cache and not use_resume
+        # Use SystemPromptPreset with exclude_dynamic_sections=True on
+        # every turn — including resumed ones — so all turns share the
+        # same static prefix and hit the cross-user prompt cache.
+        #
+        # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
+        # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
+        # CLI 2.1.116, so the pin in pyproject.toml is sufficient — no
+        # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
-            cross_user_cache=_cross_user,
+            cross_user_cache=config.claude_agent_cross_user_prompt_cache,
         )
 
         sdk_options_kwargs: dict[str, Any] = {
@@ -3078,20 +3340,36 @@ async def stream_chat_completion_sdk(
             "max_turns": config.claude_agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
-            # max_thinking_tokens: cap extended thinking output per LLM call.
-            # Thinking tokens are billed at output rate ($75/M for Opus) and
-            # account for ~54% of total cost.  8192 is the default.
-            # Intentionally sent for all models including Sonnet — the CLI
-            # silently ignores this field for non-Opus models (those without
-            # native extended thinking), so it is safe to pass unconditionally.
-            "max_thinking_tokens": config.claude_agent_max_thinking_tokens,
         }
+        # max_thinking_tokens: cap extended thinking output per LLM call.
+        # Thinking tokens are billed at output rate ($75/M for Opus) and
+        # account for ~54% of total cost.  8192 is the default.
+        # Intentionally sent for all models including Sonnet — the CLI
+        # silently ignores this field for non-Opus models (those without
+        # native extended thinking), so it is safe to pass unconditionally.
+        # Setting to 0 acts as the kill switch (same as baseline): omit the
+        # kwarg so the CLI falls back to its default (extended thinking off).
+        if config.claude_agent_max_thinking_tokens > 0:
+            sdk_options_kwargs["max_thinking_tokens"] = (
+                config.claude_agent_max_thinking_tokens
+            )
         # effort: only set for models with extended thinking (Opus).
         # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
         if config.claude_agent_thinking_effort:
             sdk_options_kwargs["effort"] = config.claude_agent_thinking_effort
         if sdk_model:
             sdk_options_kwargs["model"] = sdk_model
+        if config.sdk_include_partial_messages:
+            # Opt into per-token streaming — the CLI emits raw Anthropic
+            # ``content_block_delta`` events as ``StreamEvent`` messages
+            # ahead of each summary ``AssistantMessage`` so reasoning and
+            # text land on the wire token-by-token (matching the baseline
+            # path's UX shipped in #12873).  ``SDKResponseAdapter`` consumes
+            # the partial stream via ``_handle_stream_event`` and emits
+            # only the tail diff from the subsequent summary, so content
+            # never double-emits and a summary-only short block still
+            # reaches the UI.
+            sdk_options_kwargs["include_partial_messages"] = True
 
         if sdk_env:
             sdk_options_kwargs["env"] = sdk_env
@@ -3123,7 +3401,11 @@ async def stream_chat_completion_sdk(
 
         options = ClaudeAgentOptions(**sdk_options_kwargs)  # type: ignore[arg-type]  # dynamic kwargs
 
-        adapter = SDKResponseAdapter(message_id=message_id, session_id=session_id)
+        adapter = SDKResponseAdapter(
+            message_id=message_id,
+            session_id=session_id,
+            render_reasoning_in_ui=config.render_reasoning_in_ui,
+        )
 
         # Propagate user_id/session_id as OTEL context attributes so the
         # langsmith tracing integration attaches them to every span.  This
@@ -3191,10 +3473,7 @@ async def stream_chat_completion_sdk(
             # Chronological combine: items typed BEFORE this request
             # arrived go ahead of ``current_message``; items typed AFTER
             # (race path, queued while /stream was still processing) go
-            # after.  ``pending_texts`` is kept around because downstream
-            # code (the executor's update_message_content_by_sequence
-            # call) needs the pre-combine list.
-            pending_texts = pending_texts_from(pending_messages)
+            # after.
             current_message = combine_pending_with_current(
                 pending_messages,
                 current_message,
@@ -3287,6 +3566,18 @@ async def stream_chat_completion_sdk(
 
         # warm_ctx is injected via inject_user_context above (warm_ctx= kwarg).
         # No separate injection needed here.
+
+        # Inject per-turn builder context when the session is bound to a
+        # graph via ``metadata.builder_graph_id``.  Runs on EVERY user turn
+        # (including resumes) so the LLM always sees the live graph snapshot
+        # — if the user edits the graph between turns, the next turn carries
+        # the updated nodes/links.  The block also carries the full
+        # agent-building guide, replacing the per-turn
+        # ``get_agent_building_guide`` round-trip.  Not persisted to the
+        # transcript: the snapshot is stale-by-definition after the turn ends.
+        query_message = await _maybe_prepend_builder_context(
+            session, user_id, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -3417,15 +3708,12 @@ async def stream_chat_completion_sdk(
                     # fail with "Session ID already in use".
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry.pop("session_id", None)
-                # Recompute system_prompt for retry — ctx.use_resume may have
-                # changed (context reduction enabled --resume).  CLI 2.1.97
-                # crashes when excludeDynamicSections=True is combined with
-                # --resume, so disable the cross-user preset on resumed turns.
-                _cross_user_retry = (
-                    config.claude_agent_cross_user_prompt_cache and not ctx.use_resume
-                )
+                # Recompute system_prompt for retry — the preset is safe on
+                # every turn (requires CLI ≥ 2.1.98, installed in the Docker
+                # image and configured via CHAT_CLAUDE_AGENT_CLI_PATH).
                 sdk_options_kwargs_retry["system_prompt"] = _build_system_prompt_value(
-                    system_prompt, cross_user_cache=_cross_user_retry
+                    system_prompt,
+                    cross_user_cache=config.claude_agent_cross_user_prompt_cache,
                 )
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 # Retry intentionally omits prior_messages (transcript+gap context) and
@@ -3445,8 +3733,15 @@ async def stream_chat_completion_sdk(
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via
                 # inject_user_context — no separate injection needed.
+                # Re-inject per-turn builder context so retries carry the
+                # same live graph snapshot + guide as the initial attempt.
+                state.query_message = await _maybe_prepend_builder_context(
+                    session, user_id, is_user_message, state.query_message
+                )
                 state.adapter = SDKResponseAdapter(
-                    message_id=message_id, session_id=session_id
+                    message_id=message_id,
+                    session_id=session_id,
+                    render_reasoning_in_ui=config.render_reasoning_in_ui,
                 )
                 # Reset token accumulators so a failed attempt's partial
                 # usage is not double-counted in the successful attempt.
@@ -3702,15 +3997,17 @@ async def stream_chat_completion_sdk(
 
         if ended_with_stream_error:
             logger.warning(
-                "%s Stream ended with SDK error after %d messages",
+                "%s Stream ended with SDK error after %d messages (compaction=%s)",
                 log_prefix,
                 len(session.messages),
+                compaction.get_log_summary(),
             )
         else:
             logger.info(
-                "%s Stream completed successfully with %d messages",
+                "%s Stream completed successfully with %d messages (compaction=%s)",
                 log_prefix,
                 len(session.messages),
+                compaction.get_log_summary(),
             )
     except GeneratorExit:
         # GeneratorExit is raised when the async generator is closed by the
@@ -3804,19 +4101,103 @@ async def stream_chat_completion_sdk(
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
-        await persist_and_record_usage(
-            session=session,
-            user_id=user_id,
-            prompt_tokens=turn_prompt_tokens,
-            completion_tokens=turn_completion_tokens,
-            cache_read_tokens=turn_cache_read_tokens,
-            cache_creation_tokens=turn_cache_creation_tokens,
-            log_prefix=log_prefix,
-            cost_usd=turn_cost_usd,
-            model=sdk_model or config.model,
-            provider="anthropic",
-            model_cost_multiplier=model_cost_multiplier,
+        effective_model = sdk_model or config.thinking_standard_model
+        # ``state`` is populated lazily inside the retry loop; when the
+        # turn exits before the first attempt runs (e.g. very early
+        # validation error) it's still None, so ``generation_ids`` is
+        # empty by definition.
+        collected_gen_ids: list[str] = (
+            list(state.generation_ids) if state is not None else []
         )
+        _use_openrouter_reconcile = bool(
+            config.openrouter_active
+            and config.sdk_reconcile_openrouter_cost
+            and collected_gen_ids
+        )
+
+        # CLI project dir — used by the reconcile task to sweep for
+        # compaction subagents' gen-IDs.  ``sdk_cwd`` is the per-session
+        # CLI working directory; the CLI encodes it into the project-dir
+        # name the same way ``encode_cwd_for_cli`` does, and writes
+        # the main transcript + any ``subagents/`` alongside it under
+        # ``~/.claude/projects/<encoded>/``.  Empty when sdk_cwd isn't
+        # set (shouldn't happen in practice for SDK turns).
+        cli_project_dir: str | None = None
+        if sdk_cwd:
+            cli_project_dir = os.path.join(
+                os.path.expanduser("~/.claude/projects"),
+                encode_cwd_for_cli(sdk_cwd),
+            )
+
+        if _use_openrouter_reconcile:
+            # Defer the single cost-and-rate-limit write to a background
+            # task that queries OpenRouter's authoritative
+            # ``/generation?id=`` for every round in this turn.  Covers
+            # all vendors:
+            #
+            # * Non-Anthropic (Kimi et al): the CLI's ``total_cost_usd``
+            #   is computed from a static Anthropic rate table that
+            #   doesn't know the model — silently over-bills by ~5x.
+            #   The reconcile replaces it with OpenRouter's real bill.
+            # * Anthropic via OpenRouter: the CLI's number matches
+            #   Anthropic's own rates penny-for-penny in the common
+            #   case, but the reconcile catches any rate change the
+            #   CLI binary hasn't picked up and any OpenRouter-side
+            #   divergence (cache-discount accounting, promo pricing).
+            #
+            # The task calls ``persist_and_record_usage`` exactly once
+            # per turn — same method as the sync path, so append-only
+            # cost-log + rate-limit counter update together.  The sync
+            # path below is skipped entirely when the reconcile fires,
+            # so no double-counting.  Kill-switch:
+            # ``CHAT_SDK_RECONCILE_OPENROUTER_COST=false``.
+            #
+            # Brief window (~0.5-2s) where the rate-limit counter is
+            # unaware of this turn — back-to-back turns in that window
+            # see a stale counter.
+            asyncio.create_task(
+                record_turn_cost_from_openrouter(
+                    session=session,
+                    user_id=user_id,
+                    model=effective_model,
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                    cache_read_tokens=turn_cache_read_tokens,
+                    cache_creation_tokens=turn_cache_creation_tokens,
+                    generation_ids=collected_gen_ids,
+                    cli_project_dir=cli_project_dir,
+                    cli_session_id=session_id,
+                    turn_start_ts=turn_start_ts,
+                    fallback_cost_usd=turn_cost_usd,
+                    api_key=config.api_key,
+                    log_prefix=log_prefix,
+                )
+            )
+        else:
+            # Reconcile disabled, OpenRouter inactive, or subscription
+            # path (no gen-IDs).  Record the SDK CLI's
+            # ``total_cost_usd`` synchronously: accurate for Anthropic
+            # (same rate card as billing); for non-Anthropic it's the
+            # rate-card estimate that ``_override_cost_for_non_anthropic``
+            # caps (still 1.5-2x off vs real OpenRouter bill, but much
+            # closer than the ~5x Sonnet-rate fallback).
+            await persist_and_record_usage(
+                session=session,
+                user_id=user_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+                log_prefix=log_prefix,
+                cost_usd=turn_cost_usd,
+                model=effective_model,
+                # ``provider`` labels the cost-analytics row; the cost
+                # value still comes from the SDK-reported number.
+                # Tracks the actual upstream so the row matches reality:
+                # OpenRouter when ``openrouter_active``, Anthropic
+                # otherwise.
+                provider=("open_router" if config.openrouter_active else "anthropic"),
+            )
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator

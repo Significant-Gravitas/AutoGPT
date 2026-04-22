@@ -26,10 +26,11 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -49,20 +50,24 @@ from backend.data.auth import api_key as api_key_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    PendingChangeUnknown,
     RefundRequest,
     TransactionHistory,
     UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_auto_top_up,
+    get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_credit_model,
     handle_subscription_payment_failure,
     modify_stripe_subscription_for_tier,
+    release_pending_subscription_schedule,
     set_auto_top_up,
     set_subscription_tier,
     sync_subscription_from_stripe,
+    sync_subscription_schedule_from_stripe,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -92,6 +97,7 @@ from backend.data.user import (
     update_user_notification_preference,
     update_user_timezone,
 )
+from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -698,15 +704,21 @@ class SubscriptionTierRequest(BaseModel):
     cancel_url: str = ""
 
 
-class SubscriptionCheckoutResponse(BaseModel):
-    url: str
-
-
 class SubscriptionStatusResponse(BaseModel):
     tier: Literal["FREE", "PRO", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> amount in cents
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
+    pending_tier: Optional[Literal["FREE", "PRO", "BUSINESS"]] = None
+    pending_tier_effective_at: Optional[datetime] = None
+    url: str = Field(
+        default="",
+        description=(
+            "Populated only when POST /credits/subscription starts a Stripe Checkout"
+            " Session (FREE → paid upgrade). Empty string in all other branches —"
+            " the client redirects to this URL when non-empty."
+        ),
+    )
 
 
 def _validate_checkout_redirect_url(url: str) -> bool:
@@ -804,17 +816,42 @@ async def get_subscription_status(
     current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
 
-    return SubscriptionStatusResponse(
+    try:
+        pending = await get_pending_subscription_change(user_id)
+    except (stripe.StripeError, PendingChangeUnknown):
+        # Swallow Stripe-side failures (rate limits, transient network) AND
+        # PendingChangeUnknown (LaunchDarkly price-id lookup failed). Both
+        # propagate past the cache so the next request retries fresh instead
+        # of serving a stale None for the TTL window. Let real bugs (KeyError,
+        # AttributeError, etc.) propagate so they surface in Sentry.
+        logger.exception(
+            "get_subscription_status: failed to resolve pending change for user %s",
+            user_id,
+        )
+        pending = None
+
+    response = SubscriptionStatusResponse(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
         proration_credit_cents=proration_credit,
     )
+    if pending is not None:
+        pending_tier_enum, pending_effective_at = pending
+        if pending_tier_enum == SubscriptionTier.FREE:
+            response.pending_tier = "FREE"
+        elif pending_tier_enum == SubscriptionTier.PRO:
+            response.pending_tier = "PRO"
+        elif pending_tier_enum == SubscriptionTier.BUSINESS:
+            response.pending_tier = "BUSINESS"
+        if response.pending_tier is not None:
+            response.pending_tier_effective_at = pending_effective_at
+    return response
 
 
 @v1_router.post(
     path="/credits/subscription",
-    summary="Start a Stripe Checkout session to upgrade subscription tier",
+    summary="Update subscription tier or start a Stripe Checkout session",
     operation_id="updateSubscriptionTier",
     tags=["credits"],
     dependencies=[Security(requires_user)],
@@ -822,7 +859,7 @@ async def get_subscription_status(
 async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
-) -> SubscriptionCheckoutResponse:
+) -> SubscriptionStatusResponse:
     # Pydantic validates tier is one of FREE/PRO/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
 
@@ -833,6 +870,29 @@ async def update_subscription_tier(
             status_code=403,
             detail="ENTERPRISE subscription changes must be managed by an administrator",
         )
+
+    # Same-tier request = "stay on my current tier" = cancel any pending
+    # scheduled change (paid→paid downgrade or paid→FREE cancel). This is the
+    # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
+    # route. Safe when no pending change exists: release_pending_subscription_schedule
+    # returns False and we simply return the current status.
+    if (user.subscription_tier or SubscriptionTier.FREE) == tier:
+        try:
+            await release_pending_subscription_schedule(user_id)
+        except stripe.StripeError as e:
+            logger.exception(
+                "Stripe error releasing pending subscription change for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel the pending subscription change right now. "
+                    "Please try again or contact support."
+                ),
+            )
+        return await get_subscription_status(user_id)
 
     payment_enabled = await is_feature_enabled(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
@@ -871,9 +931,9 @@ async def update_subscription_tier(
                 # admin-granted tier. Update DB immediately since the
                 # subscription.deleted webhook will never fire.
                 await set_subscription_tier(user_id, tier)
-            return SubscriptionCheckoutResponse(url="")
+            return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
-        return SubscriptionCheckoutResponse(url="")
+        return await get_subscription_status(user_id)
 
     # Paid tier changes require payment to be enabled — block self-service upgrades
     # when the flag is off.  Admins use the /api/admin/ routes to set tiers directly.
@@ -882,15 +942,6 @@ async def update_subscription_tier(
             status_code=422,
             detail=f"Subscription not available for tier {tier}",
         )
-
-    # No-op short-circuit: if the user is already on the requested paid tier,
-    # do NOT create a new Checkout Session. Without this guard, a duplicate
-    # request (double-click, retried POST, stale page) creates a second
-    # subscription for the same price; the user would be charged for both
-    # until `_cleanup_stale_subscriptions` runs from the resulting webhook —
-    # which only fires after the second charge has cleared.
-    if (user.subscription_tier or SubscriptionTier.FREE) == tier:
-        return SubscriptionCheckoutResponse(url="")
 
     # Paid→paid tier change: if the user already has a Stripe subscription,
     # modify it in-place with proration instead of creating a new Checkout
@@ -901,14 +952,14 @@ async def update_subscription_tier(
         try:
             modified = await modify_stripe_subscription_for_tier(user_id, tier)
             if modified:
-                return SubscriptionCheckoutResponse(url="")
+                return await get_subscription_status(user_id)
             # modify_stripe_subscription_for_tier returns False when no active
             # Stripe subscription exists — i.e. the user has an admin-granted
             # paid tier with no Stripe record.  In that case, update the DB
             # tier directly (same as the FREE-downgrade path for admin-granted
             # users) rather than sending them through a new Checkout Session.
             await set_subscription_tier(user_id, tier)
-            return SubscriptionCheckoutResponse(url="")
+            return await get_subscription_status(user_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except stripe.StripeError as e:
@@ -978,7 +1029,9 @@ async def update_subscription_tier(
             ),
         )
 
-    return SubscriptionCheckoutResponse(url=url)
+    status = await get_subscription_status(user_id)
+    status.url = url
+    return status
 
 
 @v1_router.post(
@@ -1042,6 +1095,18 @@ async def stripe_webhook(request: Request):
         "customer.subscription.deleted",
     ):
         await sync_subscription_from_stripe(data_object)
+
+    # `subscription_schedule.updated` is deliberately omitted: our own
+    # `SubscriptionSchedule.create` + `.modify` calls in
+    # `_schedule_downgrade_at_period_end` would fire that event right back at us
+    # and loop redundant traffic through this handler. We only care about state
+    # transitions (released / completed); phase advance to the new price is
+    # already covered by `customer.subscription.updated`.
+    if event_type in (
+        "subscription_schedule.released",
+        "subscription_schedule.completed",
+    ):
+        await sync_subscription_schedule_from_stripe(data_object)
 
     if event_type == "invoice.payment_failed":
         await handle_subscription_payment_failure(data_object)
@@ -1640,6 +1705,10 @@ async def enable_execution_sharing(
     # Generate a unique share token
     share_token = str(uuid.uuid4())
 
+    # Remove stale allowlist records before updating the token — prevents a
+    # window where old records + new token could coexist.
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Update the execution with share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1647,6 +1716,14 @@ async def enable_execution_sharing(
         is_shared=True,
         share_token=share_token,
         shared_at=datetime.now(timezone.utc),
+    )
+
+    # Create allowlist of workspace files referenced in outputs
+    await execution_db.create_shared_execution_files(
+        execution_id=graph_exec_id,
+        share_token=share_token,
+        user_id=user_id,
+        outputs=execution.outputs,
     )
 
     # Return the share URL
@@ -1674,6 +1751,9 @@ async def disable_execution_sharing(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
+    # Remove shared file allowlist records
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Remove share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1697,6 +1777,43 @@ async def get_shared_execution(
         raise HTTPException(status_code=404, detail="Shared execution not found")
 
     return execution
+
+
+@v1_router.get(
+    "/public/shared/{share_token}/files/{file_id}/download",
+    summary="Download a file from a shared execution",
+    operation_id="download_shared_file",
+    tags=["graphs"],
+)
+async def download_shared_file(
+    share_token: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+    file_id: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+) -> Response:
+    """Download a workspace file from a shared execution (no auth required).
+
+    Validates that the file was explicitly exposed when sharing was enabled.
+    Returns a uniform 404 for all failure modes to prevent enumeration attacks.
+    """
+    # Single-query validation against the allowlist
+    execution_id = await execution_db.get_shared_execution_file(
+        share_token=share_token, file_id=file_id
+    )
+    if not execution_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Look up the actual file (no workspace scoping needed — the allowlist
+    # already validated that this file belongs to the shared execution)
+    file = await get_workspace_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return await create_file_download_response(file, inline=True)
 
 
 ########################################################

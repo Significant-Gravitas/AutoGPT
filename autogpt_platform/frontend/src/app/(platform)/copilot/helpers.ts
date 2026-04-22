@@ -185,6 +185,28 @@ export function disconnectSessionStream(sessionId: string): void {
 }
 
 /**
+ * Decide whether a reconnect request must be coalesced onto the debounce
+ * window boundary, rather than firing immediately.
+ *
+ * Returns the remaining milliseconds until the window closes (so the caller
+ * can schedule a `setTimeout` for that delay) when the previous resume
+ * happened inside the window, or `null` to let the reconnect proceed now.
+ *
+ * `lastResumeAt === 0` signals "no reconnect has fired yet in this session"
+ * — the first reconnect always passes through regardless of `now`.
+ */
+export function shouldDebounceReconnect(
+  lastResumeAt: number,
+  now: number,
+  windowMs: number,
+): number | null {
+  if (lastResumeAt <= 0) return null;
+  const sinceLastResume = now - lastResumeAt;
+  if (sinceLastResume >= windowMs) return null;
+  return windowMs - sinceLastResume;
+}
+
+/**
  * Deduplicate messages by ID and by consecutive content fingerprint.
  *
  * ID dedup catches exact duplicates within the same source.

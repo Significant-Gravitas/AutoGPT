@@ -20,12 +20,13 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 )
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
-from pydantic import BaseModel
+from pydantic import BaseModel, PrivateAttr
 
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, library_db
+from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import DatabaseError, RedisError
+from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
 from .config import ChatConfig
 
@@ -53,6 +54,12 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+
+    # Builder-panel binding: when set, the session is locked to the given
+    # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
+    # this graph and reject calls targeting a different agent.  Also used
+    # as a lookup key so refreshing the builder resumes the same chat.
+    builder_graph_id: str | None = None
 
 
 class ChatMessage(BaseModel):
@@ -198,9 +205,24 @@ class ChatSessionInfo(BaseModel):
 
 class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
+    # In-flight tool-call names for the CURRENT turn.  Not persisted to
+    # DB and not serialised on the wire — ``PrivateAttr`` keeps this a
+    # process-local scratch buffer that's invisible to ``model_dump`` /
+    # ``model_dump_json`` / the redis cache path.  Populated by the
+    # baseline tool executor the moment a tool is dispatched so in-turn
+    # guards (e.g. ``require_guide_read``) can see the call before it
+    # lands in ``messages`` at turn-end.  Cleared when the turn
+    # completes.
+    _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
     @classmethod
-    def new(cls, user_id: str, *, dry_run: bool) -> Self:
+    def new(
+        cls,
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+    ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -210,7 +232,10 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
-            metadata=ChatSessionMetadata(dry_run=dry_run),
+            metadata=ChatSessionMetadata(
+                dry_run=dry_run,
+                builder_graph_id=builder_graph_id,
+            ),
         )
 
     @classmethod
@@ -225,6 +250,56 @@ class ChatSession(ChatSessionInfo):
             **ChatSessionInfo.from_db(prisma_session).model_dump(),
             messages=[ChatMessage.from_db(m) for m in prisma_session.Messages],
         )
+
+    def announce_inflight_tool_call(self, tool_name: str) -> None:
+        """Record that *tool_name* is being dispatched in the current turn.
+
+        Called by the baseline tool executor **before** the tool actually
+        runs (the announcement is about dispatch, not success).  If the
+        tool raises, the name stays in the buffer for the rest of the
+        turn — that matches the guide-read gate's contract ("was the tool
+        called?") but means any future gate wanting *successful*
+        dispatches would need its own tracking.
+
+        Lets in-turn guards (see
+        ``copilot/tools/helpers.py::require_guide_read``) see a tool
+        call the moment it's issued, instead of waiting for the
+        ``session.messages`` flush at turn end — fixing a loop where a
+        second tool in the same turn re-fires a guard despite the
+        guarding tool having already been called (seen on Kimi K2.6 in
+        particular because its aggressive tool-call chaining exercises
+        this path much more than Sonnet does).  The buffer is cleared by
+        :meth:`clear_inflight_tool_calls` at turn end.
+        """
+        self._inflight_tool_calls.add(tool_name)
+
+    def clear_inflight_tool_calls(self) -> None:
+        """Reset the in-flight tool-call announcement buffer."""
+        self._inflight_tool_calls.clear()
+
+    def has_tool_been_called(self, tool_name: str) -> bool:
+        """True when *tool_name* has been called in this session.
+
+        Checks the in-flight announcement buffer (for calls dispatched
+        in the *current* turn but not yet flushed into ``messages``) and
+        the durable ``messages`` history (for past turns + prior rounds
+        within this turn whose writes already landed).  The durable
+        scan is session-wide, not turn-scoped: a matching tool call
+        anywhere in ``messages`` counts.  This matches the guide-read
+        contract — once the guide has been read in the session, the
+        agent doesn't need to re-read it for later create/edit/fix
+        tools.
+        """
+        if tool_name in self._inflight_tool_calls:
+            return True
+        for msg in reversed(self.messages):
+            if msg.role != "assistant" or not msg.tool_calls:
+                continue
+            for tc in msg.tool_calls:
+                name = tc.get("function", {}).get("name") or tc.get("name")
+                if name == tool_name:
+                    return True
+        return False
 
     def add_tool_call_to_current_turn(self, tool_call: dict) -> None:
         """Attach a tool_call to the current turn's assistant message.
@@ -712,20 +787,32 @@ async def append_and_save_message(
         return session
 
 
-async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
+async def create_chat_session(
+    user_id: str,
+    *,
+    dry_run: bool,
+    builder_graph_id: str | None = None,
+) -> ChatSession:
     """Create a new chat session and persist it.
 
     Args:
         user_id: The authenticated user ID.
         dry_run: When True, run_block and run_agent tool calls in this
             session are forced to use dry-run simulation mode.
+        builder_graph_id: When set, locks the session to the given graph.
+            The builder panel uses this to bind a chat to the currently-
+            opened agent and to resume the same session on refresh.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
-    session = ChatSession.new(user_id, dry_run=dry_run)
+    session = ChatSession.new(
+        user_id,
+        dry_run=dry_run,
+        builder_graph_id=builder_graph_id,
+    )
 
     # Create in database first - fail fast if this fails
     try:
@@ -747,6 +834,58 @@ async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
         logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
     return session
+
+
+async def get_or_create_builder_session(
+    user_id: str,
+    graph_id: str,
+) -> ChatSession:
+    """Return the user's builder session for *graph_id*, creating it if absent.
+
+    The session pointer is stored on
+    ``LibraryAgent.settings.builder_chat_session_id``. Ownership is enforced
+    by ``get_library_agent_by_graph_id`` (filters on ``userId``); a miss
+    raises :class:`NotFoundError` (HTTP 404), which also blocks graph-id
+    probing by unauthorized callers.
+    """
+    library_agent = await library_db().get_library_agent_by_graph_id(
+        user_id=user_id, graph_id=graph_id
+    )
+    if library_agent is None:
+        raise NotFoundError(f"Graph {graph_id} not found")
+
+    existing_sid = library_agent.settings.builder_chat_session_id
+    if existing_sid:
+        session = await get_chat_session(existing_sid, user_id)
+        if session is not None:
+            return session
+
+    # Serialise create-and-claim so concurrent callers for the same
+    # (user_id, graph_id) don't each mint a session and orphan one
+    # (double-click / two-tab race — sentry 13632535).
+    async with _get_session_lock(f"builder:{user_id}:{graph_id}"):
+        library_agent = await library_db().get_library_agent_by_graph_id(
+            user_id=user_id, graph_id=graph_id
+        )
+        if library_agent is None:
+            raise NotFoundError(f"Graph {graph_id} not found")
+        existing_sid = library_agent.settings.builder_chat_session_id
+        if existing_sid:
+            session = await get_chat_session(existing_sid, user_id)
+            if session is not None:
+                return session
+
+        session = await create_chat_session(
+            user_id,
+            dry_run=False,
+            builder_graph_id=graph_id,
+        )
+        await library_db().update_library_agent(
+            library_agent_id=library_agent.id,
+            user_id=user_id,
+            settings=GraphSettings(builder_chat_session_id=session.session_id),
+        )
+        return session
 
 
 async def get_user_sessions(

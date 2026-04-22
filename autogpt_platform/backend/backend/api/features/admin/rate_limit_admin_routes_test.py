@@ -85,10 +85,10 @@ def test_get_rate_limit(
     data = response.json()
     assert data["user_id"] == target_user_id
     assert data["user_email"] == _TARGET_EMAIL
-    assert data["daily_token_limit"] == 2_500_000
-    assert data["weekly_token_limit"] == 12_500_000
-    assert data["daily_tokens_used"] == 500_000
-    assert data["weekly_tokens_used"] == 3_000_000
+    assert data["daily_cost_limit_microdollars"] == 2_500_000
+    assert data["weekly_cost_limit_microdollars"] == 12_500_000
+    assert data["daily_cost_used_microdollars"] == 500_000
+    assert data["weekly_cost_used_microdollars"] == 3_000_000
     assert data["tier"] == "FREE"
 
     configured_snapshot.assert_match(
@@ -117,7 +117,7 @@ def test_get_rate_limit_by_email(
     data = response.json()
     assert data["user_id"] == target_user_id
     assert data["user_email"] == _TARGET_EMAIL
-    assert data["daily_token_limit"] == 2_500_000
+    assert data["daily_cost_limit_microdollars"] == 2_500_000
 
 
 def test_get_rate_limit_by_email_not_found(
@@ -160,9 +160,9 @@ def test_reset_user_usage_daily_only(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["daily_tokens_used"] == 0
+    assert data["daily_cost_used_microdollars"] == 0
     # Weekly is untouched
-    assert data["weekly_tokens_used"] == 3_000_000
+    assert data["weekly_cost_used_microdollars"] == 3_000_000
     assert data["tier"] == "FREE"
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
@@ -192,8 +192,8 @@ def test_reset_user_usage_daily_and_weekly(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["daily_tokens_used"] == 0
-    assert data["weekly_tokens_used"] == 0
+    assert data["daily_cost_used_microdollars"] == 0
+    assert data["weekly_cost_used_microdollars"] == 0
     assert data["tier"] == "FREE"
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=True)

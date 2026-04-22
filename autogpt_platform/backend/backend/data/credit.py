@@ -15,7 +15,7 @@ from prisma.enums import (
     OnboardingStep,
     SubscriptionTier,
 )
-from prisma.errors import UniqueViolationError
+from prisma.errors import PrismaError, UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User, UserBalance
 from prisma.types import CreditRefundRequestCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
@@ -1280,6 +1280,12 @@ async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
     from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
 
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
+    # Invalidate the pending-change cache too — an admin tier override or the
+    # webhook-driven phase transition means any cached pending-change state
+    # (schedule, cancel_at_period_end) is likely stale. Without this the
+    # billing page can show a pending change for up to 30s after the tier
+    # has already flipped.
+    get_pending_subscription_change.cache_delete(user_id)
 
 
 async def _cancel_customer_subscriptions(
@@ -1330,6 +1336,21 @@ async def _cancel_customer_subscriptions(
                 continue
             seen_ids.add(sub_id)
             if at_period_end:
+                # Stripe rejects modify(cancel_at_period_end=True) with 400 when a
+                # Subscription Schedule is attached (e.g. the user previously
+                # queued a paid→paid downgrade and is now clicking "Cancel").
+                # Release the schedule first so the cancel flag can be set; the
+                # schedule's pending phase change is superseded by the cancel.
+                existing_schedule = sub.schedule
+                if existing_schedule:
+                    schedule_id = (
+                        existing_schedule
+                        if isinstance(existing_schedule, str)
+                        else existing_schedule.id
+                    )
+                    await _release_schedule_ignoring_terminal(
+                        schedule_id, "_cancel_customer_subscriptions"
+                    )
                 await run_in_threadpool(
                     stripe.Subscription.modify, sub_id, cancel_at_period_end=True
                 )
@@ -1366,6 +1387,8 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
         cancelled_count = await _cancel_customer_subscriptions(
             customer_id, at_period_end=True
         )
+        if cancelled_count > 0:
+            get_pending_subscription_change.cache_delete(user_id)
         return cancelled_count > 0
     except stripe.StripeError:
         logger.warning(
@@ -1415,18 +1438,224 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
         return 0
 
 
+# Ordered from least- to most-privileged. Used to distinguish upgrades
+# (move right) from downgrades (move left); ENTERPRISE is admin-managed and
+# never reached via self-service flows.
+_TIER_ORDER: tuple[SubscriptionTier, ...] = (
+    SubscriptionTier.FREE,
+    SubscriptionTier.PRO,
+    SubscriptionTier.BUSINESS,
+    SubscriptionTier.ENTERPRISE,
+)
+
+
+def _tier_rank(tier: SubscriptionTier) -> int:
+    return _TIER_ORDER.index(tier)
+
+
+def is_tier_upgrade(current: SubscriptionTier, target: SubscriptionTier) -> bool:
+    return _tier_rank(target) > _tier_rank(current)
+
+
+def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bool:
+    return _tier_rank(target) < _tier_rank(current)
+
+
+class PendingChangeUnknown(Exception):
+    """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
+    price-id lookup failed). Propagates past the @cached wrapper so the next
+    request retries instead of serving a stale `None` for the TTL window."""
+
+
+async def _get_active_subscription(customer_id: str) -> stripe.Subscription | None:
+    """Return the customer's active or trialing subscription, or None."""
+    for status in ("active", "trialing"):
+        subs = await stripe.Subscription.list_async(
+            customer=customer_id, status=status, limit=1
+        )
+        if subs.data:
+            return subs.data[0]
+    return None
+
+
+# Substrings Stripe uses in InvalidRequestError messages when the schedule is
+# already in a terminal state (released / completed / canceled) and therefore
+# cannot be released again. We only swallow the error when one of these appears;
+# anything else (typo'd schedule id, wrong subscription, 404, etc.) must
+# propagate so bugs aren't masked as silent no-ops.
+_TERMINAL_SCHEDULE_ERROR_SUBSTRINGS = (
+    "already been released",
+    "already released",
+    "already been completed",
+    "already completed",
+    "already been canceled",
+    "already been cancelled",
+    "already canceled",
+    "already cancelled",
+    "is not active",
+    "is not in a state",
+)
+
+
+async def _release_schedule_ignoring_terminal(
+    schedule_id: str, log_context: str
+) -> bool:
+    """Release a Stripe schedule; swallow InvalidRequestError on terminal state.
+
+    Returns True if the release call succeeded, False if the schedule was
+    already in a terminal (released / completed / canceled) state. Any other
+    Stripe error — including non-terminal InvalidRequestErrors such as typo'd
+    ids or 404s — propagates so the caller can surface the failure instead of
+    silently masking a bug.
+    """
+    try:
+        await stripe.SubscriptionSchedule.release_async(schedule_id)
+        return True
+    except stripe.InvalidRequestError as e:
+        message = getattr(e, "user_message", None) or str(e)
+        if not any(
+            marker in message.lower() for marker in _TERMINAL_SCHEDULE_ERROR_SUBSTRINGS
+        ):
+            logger.warning(
+                "%s: schedule %s release failed with non-terminal"
+                " InvalidRequestError (%s); re-raising",
+                log_context,
+                schedule_id,
+                message,
+            )
+            raise
+        logger.warning(
+            "%s: schedule %s not releasable (%s); treating as already released",
+            log_context,
+            schedule_id,
+            message,
+        )
+        return False
+
+
+async def _schedule_downgrade_at_period_end(
+    sub: stripe.Subscription,
+    new_price_id: str,
+    user_id: str,
+    tier: SubscriptionTier,
+) -> None:
+    """Create a Subscription Schedule that defers a tier change to period end.
+
+    Stripe's Subscription Schedule drives an existing subscription through a
+    series of phases. By keeping the current price for the remainder of the
+    billing period and switching to ``new_price_id`` afterwards, the user does
+    NOT receive an immediate proration charge and keeps their current tier
+    until period end.
+
+    Stripe allows at most one active schedule per subscription and rejects
+    ``SubscriptionSchedule.create`` if either (a) a schedule is already
+    attached to the subscription or (b) ``cancel_at_period_end=True`` is set.
+    Both conditions mean the user is overwriting a pending change they made
+    earlier (e.g. BUSINESS→FREE cancel, now switching to BUSINESS→PRO
+    downgrade). We clear the conflicting state first so the new schedule can
+    be created. These defensive reads serialize through Stripe's own atomic
+    operations — by the time modify/release returns, the subscription is in a
+    known-clean state for the subsequent create.
+    """
+    sub_id = sub.id
+    # ``sub["items"]`` (dict-item) rather than ``sub.items`` because the latter
+    # is shadowed by Python's dict.items() method on StripeObject.
+    items = sub["items"].data
+    if not items:
+        raise ValueError(f"Subscription {sub_id} has no items; cannot schedule")
+    price = items[0].price
+    current_price_id = price if isinstance(price, str) else price.id
+    period_start: int = sub["current_period_start"]
+    period_end: int = sub["current_period_end"]
+
+    if sub.cancel_at_period_end:
+        await stripe.Subscription.modify_async(sub_id, cancel_at_period_end=False)
+        logger.info(
+            "_schedule_downgrade_at_period_end: cleared cancel_at_period_end"
+            " on sub %s for user %s before scheduling downgrade",
+            sub_id,
+            user_id,
+        )
+    if sub.schedule:
+        existing_schedule_id = (
+            sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+        )
+        await _release_schedule_ignoring_terminal(
+            existing_schedule_id, "_schedule_downgrade_at_period_end"
+        )
+
+    # Create + modify as a two-step transaction. If modify fails (network,
+    # Stripe 500) the created schedule is orphaned AND attached to the
+    # subscription, which blocks any future Stripe-side change until manually
+    # released. Roll back by releasing the orphan, then re-raise so the caller
+    # sees the original failure.
+    schedule = await stripe.SubscriptionSchedule.create_async(from_subscription=sub_id)
+    try:
+        await stripe.SubscriptionSchedule.modify_async(
+            schedule.id,
+            phases=[
+                {
+                    "items": [{"price": current_price_id, "quantity": 1}],
+                    "start_date": period_start,
+                    "end_date": period_end,
+                    "proration_behavior": "none",
+                },
+                {
+                    "items": [{"price": new_price_id, "quantity": 1}],
+                    "proration_behavior": "none",
+                },
+            ],
+            metadata={"user_id": user_id, "pending_tier": tier.value},
+        )
+    except stripe.StripeError:
+        logger.exception(
+            "_schedule_downgrade_at_period_end: modify failed for schedule %s"
+            " on sub %s user %s; attempting rollback release",
+            schedule.id,
+            sub_id,
+            user_id,
+        )
+        try:
+            await _release_schedule_ignoring_terminal(
+                schedule.id, "_schedule_downgrade_at_period_end_rollback"
+            )
+        except stripe.StripeError:
+            logger.exception(
+                "_schedule_downgrade_at_period_end: rollback release also failed"
+                " for orphaned schedule %s on sub %s user %s; manual cleanup"
+                " required",
+                schedule.id,
+                sub_id,
+                user_id,
+            )
+        raise
+    logger.info(
+        "modify_stripe_subscription_for_tier: scheduled sub %s downgrade for user %s → %s at %d",
+        sub_id,
+        user_id,
+        tier,
+        period_end,
+    )
+
+
 async def modify_stripe_subscription_for_tier(
     user_id: str, tier: SubscriptionTier
 ) -> bool:
-    """Modify an existing Stripe subscription to a new paid tier using proration.
+    """Change a Stripe subscription to a new paid tier.
 
-    For paid→paid tier changes (e.g. PRO↔BUSINESS), modifying the existing
-    subscription is preferable to cancelling + creating a new one via Checkout:
-    Stripe handles proration automatically, crediting unused time on the old plan
-    and charging the pro-rated amount for the new plan in the same billing cycle.
+    Upgrades (e.g. PRO→BUSINESS) apply immediately via ``stripe.Subscription.modify``
+    with ``proration_behavior="create_prorations"``: Stripe credits unused time on
+    the old plan and charges the pro-rated amount for the new plan in the same
+    billing cycle.
+
+    Downgrades (e.g. BUSINESS→PRO) are deferred to the end of the current billing
+    period via a Stripe Subscription Schedule: the user keeps their current tier
+    for the time they already paid for, and the new tier takes effect when the
+    next invoice is generated. The DB tier flip happens via the webhook fired
+    when the schedule advances to its next phase.
 
     Returns:
-        True  — a subscription was found and modified successfully.
+        True  — a subscription was found and modified/scheduled successfully.
         False — no active/trialing subscription exists (e.g. admin-granted tier or
                 first-time paid signup); caller should fall back to Checkout.
 
@@ -1437,41 +1666,262 @@ async def modify_stripe_subscription_for_tier(
     if not price_id:
         raise ValueError(f"No Stripe price ID configured for tier {tier}")
 
-    # Guard: only proceed if the user already has a Stripe customer ID.  Calling
-    # get_stripe_customer_id for a user with no Stripe record (e.g. admin-granted tier)
-    # would create an orphaned customer object if the subsequent Subscription.list call
-    # fails.  Return False early so the API layer falls back to Checkout instead.
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return False
+    current_tier = user.subscription_tier or SubscriptionTier.FREE
 
-    customer_id = user.stripe_customer_id
-    for status in ("active", "trialing"):
-        subscriptions = await run_in_threadpool(
-            stripe.Subscription.list, customer=customer_id, status=status, limit=1
-        )
-        if not subscriptions.data:
-            continue
-        sub = subscriptions.data[0]
-        sub_id = sub["id"]
-        items = sub.get("items", {}).get("data", [])
-        if not items:
-            continue
-        item_id = items[0]["id"]
-        await run_in_threadpool(
-            stripe.Subscription.modify,
-            sub_id,
-            items=[{"id": item_id, "price": price_id}],
-            proration_behavior="create_prorations",
-        )
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return False
+    items = sub["items"].data
+    if not items:
+        return False
+    sub_id = sub.id
+
+    # Invalidate the cache unconditionally on exit (success OR failure): any
+    # Stripe mutation below — clearing cancel_at_period_end, releasing an old
+    # schedule, creating a new one — may have landed partially before an error
+    # was raised, and the cached pending-change state would otherwise go stale
+    # for up to 30s until the TTL expires.
+    try:
+        if is_tier_downgrade(current_tier, tier):
+            await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
+            return True
+
+        # Upgrade path. If a schedule is attached from a previous pending
+        # downgrade, release it first — an upgrade expresses the user's
+        # intent to be on this tier immediately, which overrides any pending
+        # deferred change. Ignore terminal-state errors from release.
+        if sub.schedule:
+            existing_schedule_id = (
+                sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+            )
+            await _release_schedule_ignoring_terminal(
+                existing_schedule_id, "modify_stripe_subscription_for_tier"
+            )
+
+        # If a paid→FREE cancel is pending (cancel_at_period_end=True), clear it
+        # as part of the upgrade — the user is explicitly choosing to stay on a
+        # paid tier. Without this, the sub would be upgraded AND still cancelled
+        # at period end, leaving a confusing dual state.
+        modify_kwargs: dict = {
+            "items": [{"id": items[0].id, "price": price_id}],
+            "proration_behavior": "create_prorations",
+        }
+        if sub.cancel_at_period_end:
+            modify_kwargs["cancel_at_period_end"] = False
+
+        await stripe.Subscription.modify_async(sub_id, **modify_kwargs)
+        # Flip the DB tier immediately. The customer.subscription.updated webhook
+        # will also fire and set it again — idempotent. Without this synchronous
+        # update, the UI refetches before the webhook lands and shows the old
+        # tier, making the upgrade look like a no-op to the user.
+        #
+        # Swallow DB-write exceptions here: Stripe is authoritative and the
+        # modify above already succeeded (the user has been charged). If the
+        # DB write fails and we re-raised, the API would return 5xx and the UI
+        # would surface a failed upgrade to a user who was already charged.
+        # The customer.subscription.updated webhook will reconcile the DB shortly.
+        #
+        # Only catch actual DB/connection failures — letting KeyError,
+        # AttributeError etc. propagate so programming errors surface in Sentry
+        # instead of being silently masked as benign DB-write-swallow events.
+        try:
+            await set_subscription_tier(user_id, tier)
+        except (PrismaError, ConnectionError, asyncio.TimeoutError):
+            logger.exception(
+                "modify_stripe_subscription_for_tier: Stripe modify on sub %s"
+                " succeeded for user %s → %s but DB tier flip failed; webhook"
+                " will reconcile",
+                sub_id,
+                user_id,
+                tier,
+            )
         logger.info(
-            "modify_stripe_subscription_for_tier: modified sub %s for user %s → %s",
+            "modify_stripe_subscription_for_tier: upgraded sub %s for user %s → %s",
             sub_id,
             user_id,
             tier,
         )
         return True
-    return False
+    finally:
+        get_pending_subscription_change.cache_delete(user_id)
+
+
+async def release_pending_subscription_schedule(user_id: str) -> bool:
+    """Cancel any pending subscription change (scheduled downgrade or cancellation).
+
+    Two pending-change mechanisms can be attached to a Stripe subscription:
+
+    - **Subscription Schedule** (paid→paid downgrade): ``stripe.SubscriptionSchedule.release``
+      detaches the schedule and lets the subscription continue on its current
+      phase's price.
+    - **cancel_at_period_end=True** (paid→FREE cancel): clearing that flag via
+      ``stripe.Subscription.modify`` keeps the subscription active indefinitely.
+
+    Returns True if a pending change was found and reverted, False otherwise.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return False
+
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return False
+
+    sub_id = sub.id
+    did_anything = False
+    schedule_released = False
+    schedule_id: str | None = None
+    try:
+        if sub.schedule:
+            schedule_id = (
+                sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+            )
+            schedule_released = await _release_schedule_ignoring_terminal(
+                schedule_id, "release_pending_subscription_schedule"
+            )
+            if schedule_released:
+                logger.info(
+                    "release_pending_subscription_schedule: released schedule %s for user %s",
+                    schedule_id,
+                    user_id,
+                )
+                did_anything = True
+        if sub.cancel_at_period_end:
+            try:
+                await stripe.Subscription.modify_async(
+                    sub_id, cancel_at_period_end=False
+                )
+            except stripe.StripeError:
+                if schedule_released:
+                    logger.exception(
+                        "release_pending_subscription_schedule: partial release"
+                        " — schedule %s released but cancel_at_period_end clear"
+                        " failed on sub %s for user %s; manual reconciliation"
+                        " may be needed",
+                        schedule_id,
+                        sub_id,
+                        user_id,
+                    )
+                raise
+            did_anything = True
+            logger.info(
+                "release_pending_subscription_schedule: cleared cancel_at_period_end"
+                " on sub %s for user %s",
+                sub_id,
+                user_id,
+            )
+    finally:
+        if did_anything:
+            get_pending_subscription_change.cache_delete(user_id)
+    return did_anything
+
+
+@cached(ttl_seconds=30, maxsize=512, cache_none=True, shared_cache=True)
+async def get_pending_subscription_change(
+    user_id: str,
+) -> tuple[SubscriptionTier, datetime] | None:
+    """Return ``(pending_tier, effective_at)`` when a change is queued, else ``None``.
+
+    Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
+    and ``cancel_at_period_end=True`` (paid→FREE cancel).
+
+    Cached for 30 seconds per user_id. *Why the cache exists:* this function
+    runs on every dashboard/home fetch and would otherwise fire
+    2× Subscription.list + 1× Schedule.retrieve per page load. A busy user
+    polling the billing page would quickly brush up against Stripe's per-API
+    rate limits; the 30s TTL absorbs dashboard polling while being short
+    enough that the UI reconciles quickly after a downgrade / cancel action.
+
+    *Invalidation contract.* Every call-site that mutates Stripe state which
+    could change the pending-change answer MUST call
+    ``get_pending_subscription_change.cache_delete(user_id)`` so the UI never
+    shows a stale pending badge after a user-visible action. Current
+    invalidators (keep this list in sync when adding new mutators):
+
+    - ``set_subscription_tier`` — admin or webhook-driven tier flip.
+    - ``modify_stripe_subscription_for_tier`` — ``finally`` block (covers
+      upgrade path clear + downgrade-schedule create + any partial failure).
+    - ``release_pending_subscription_schedule`` — ``finally`` block when a
+      schedule release OR ``cancel_at_period_end`` clear succeeded.
+    - ``cancel_stripe_subscription`` — after scheduling period-end cancel.
+    - ``sync_subscription_from_stripe`` — webhook entry point.
+    - ``set_user_tier`` (``backend.copilot.rate_limit``) — admin tier override
+      invalidates any cached pending state keyed off the old tier.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        # Short-circuit for users with no Stripe customer (admin-granted tiers,
+        # FREE-only users): skip the Stripe API calls entirely.
+        return None
+
+    pro_price, biz_price = await asyncio.gather(
+        get_subscription_price_id(SubscriptionTier.PRO),
+        get_subscription_price_id(SubscriptionTier.BUSINESS),
+    )
+    price_to_tier: dict[str, SubscriptionTier] = {}
+    if pro_price:
+        price_to_tier[pro_price] = SubscriptionTier.PRO
+    if biz_price:
+        price_to_tier[biz_price] = SubscriptionTier.BUSINESS
+    if not price_to_tier:
+        logger.warning(
+            "get_pending_subscription_change: no Stripe price IDs resolvable for"
+            " PRO/BUSINESS (LaunchDarkly fetch failed?); raising to bypass the"
+            " None cache so the next request retries fresh"
+        )
+        raise PendingChangeUnknown(
+            "Stripe price lookup failed; pending-change state cannot be determined"
+        )
+
+    sub = await _get_active_subscription(user.stripe_customer_id)
+    if sub is None:
+        return None
+    period_end = sub.current_period_end
+    if not isinstance(period_end, int):
+        return None
+    effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
+    if sub.cancel_at_period_end:
+        return SubscriptionTier.FREE, effective_at
+    if not sub.schedule:
+        return None
+    schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
+    schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
+    return _next_phase_tier_and_start(schedule, price_to_tier)
+
+
+def _next_phase_tier_and_start(
+    schedule: stripe.SubscriptionSchedule,
+    price_to_tier: dict[str, SubscriptionTier],
+) -> tuple[SubscriptionTier, datetime] | None:
+    """Return (tier, start_datetime) of the phase that follows the active one.
+
+    Using the phase's own ``start_date`` (not the subscription's current_period_end)
+    is correct even for schedules created outside this flow — a dashboard-authored
+    schedule can have phase transitions at arbitrary timestamps.
+    """
+    now = int(time.time())
+    for phase in schedule.phases or []:
+        if not isinstance(phase.start_date, int) or phase.start_date <= now:
+            continue
+        # ``phase["items"]`` because ``phase.items`` is shadowed by dict.items().
+        items = phase["items"] or []
+        if not items:
+            continue
+        price = items[0].price
+        price_id = price if isinstance(price, str) else price.id
+        if price_id in price_to_tier:
+            return price_to_tier[price_id], datetime.fromtimestamp(
+                phase.start_date, tz=timezone.utc
+            )
+        logger.warning(
+            "next_phase_tier_and_start: unknown price %s on schedule %s",
+            price_id,
+            schedule.id,
+        )
+    return None
 
 
 async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
@@ -1732,6 +2182,50 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
     await set_subscription_tier(user.id, tier)
+    # Tier changed — bust any cached pending-change view so the next
+    # dashboard fetch reflects the new state immediately.
+    get_pending_subscription_change.cache_delete(user.id)
+
+
+async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
+    """Sync the DB tier from a ``subscription_schedule.*`` webhook event.
+
+    Stripe fires ``subscription_schedule.released`` / ``.completed`` /
+    ``.updated`` when a schedule advances phases or is detached. The regular
+    ``customer.subscription.updated`` webhook with the new price covers the
+    phase transition in most cases, but listening to schedule events is a
+    safety net that also catches releases done via the Stripe dashboard.
+
+    The schedule payload doesn't carry the active price directly — it carries
+    a ``subscription`` id that we look up to get the current item.
+
+    Webhook-ordering safety: we deliberately funnel both event sources through
+    ``sync_subscription_from_stripe`` so they share one code path and one DB
+    write. That function is idempotent — it no-ops when ``current_tier ==
+    tier`` — so concurrent or out-of-order deliveries of
+    ``subscription_schedule.*`` and ``customer.subscription.updated`` converge
+    to the same DB state regardless of which arrives first.
+    """
+    # When a schedule is released, Stripe clears `subscription` and moves the id
+    # to `released_subscription`. Fall back to that so `.released` events — the
+    # main reason we listen to schedule webhooks as a safety net — are processed.
+    sub_id = stripe_schedule.get("subscription") or stripe_schedule.get(
+        "released_subscription"
+    )
+    if not isinstance(sub_id, str) or not sub_id:
+        logger.warning(
+            "sync_subscription_schedule_from_stripe: no 'subscription' id; skipping"
+        )
+        return
+    try:
+        sub = await stripe.Subscription.retrieve_async(sub_id)
+    except stripe.StripeError:
+        logger.warning(
+            "sync_subscription_schedule_from_stripe: failed to retrieve sub %s",
+            sub_id,
+        )
+        return
+    await sync_subscription_from_stripe(dict(sub))
 
 
 async def handle_subscription_payment_failure(invoice: dict) -> None:

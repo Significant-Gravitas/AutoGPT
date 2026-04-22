@@ -181,7 +181,9 @@ async def execute_block(
             # (e.g., "42" → 42, string booleans → bool, enum defaults applied).
             coerce_inputs_to_schema(input_data, block.input_schema)
             outputs: dict[str, list[Any]] = defaultdict(list)
-            async for output_name, output_data in simulate_block(block, input_data):
+            async for output_name, output_data in simulate_block(
+                block, input_data, user_id=user_id
+            ):
                 outputs[output_name].append(output_data)
             # simulator signals internal failure via ("error", "[SIMULATOR ERROR …]")
             sim_error = outputs.get("error", [])
@@ -787,26 +789,28 @@ def _resolve_discriminated_credentials(
 _AGENT_GUIDE_TOOL_NAME = "get_agent_building_guide"
 
 
-def _guide_read_in_session(session: ChatSession) -> bool:
-    """True if this session's assistant messages include a guide tool call."""
-    for msg in reversed(session.messages):
-        if msg.role != "assistant" or not msg.tool_calls:
-            continue
-        for tc in msg.tool_calls:
-            name = tc.get("function", {}).get("name") or tc.get("name")
-            if name == _AGENT_GUIDE_TOOL_NAME:
-                return True
-    return False
-
-
 def require_guide_read(session: ChatSession, tool_name: str):
     """Return an ErrorResponse if the guide hasn't been loaded this session.
 
     Import inline to keep ``helpers.py`` free of tool-response imports.
+    Uses :meth:`ChatSession.has_tool_been_called` which checks both the
+    persisted ``messages`` list (session-wide) and the in-flight
+    announcement buffer — so a guide call dispatched earlier in the
+    *current* turn (before ``session.messages`` flushes at turn end) is
+    recognised too.  Otherwise a second tool in the same turn would
+    re-fire this guard despite the guide having been called — seen on
+    Kimi K2.6 in particular because its aggressive tool-call chaining
+    exercises this path far more than Sonnet does.
     """
     from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
-    if _guide_read_in_session(session):
+    # Builder-bound sessions always receive the guide inline via the
+    # per-turn ``<builder_context>`` injection (see
+    # ``backend.copilot.builder_context``), so no tool-call gate is needed —
+    # requiring one would waste a round-trip every turn.
+    if session.metadata.builder_graph_id:
+        return None
+    if session.has_tool_been_called(_AGENT_GUIDE_TOOL_NAME):
         return None
     return ErrorResponse(
         message=(

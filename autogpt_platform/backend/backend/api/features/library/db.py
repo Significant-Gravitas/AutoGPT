@@ -743,6 +743,7 @@ async def update_library_agent_version_and_settings(
         graph=agent_graph,
         hitl_safe_mode=library.settings.human_in_the_loop_safe_mode,
         sensitive_action_safe_mode=library.settings.sensitive_action_safe_mode,
+        builder_chat_session_id=library.settings.builder_chat_session_id,
     )
     if updated_settings != library.settings:
         library = await update_library_agent(

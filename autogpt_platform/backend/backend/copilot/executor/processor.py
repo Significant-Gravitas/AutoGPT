@@ -361,26 +361,34 @@ class CoPilotProcessor:
                 permissions=entry.permissions,
                 request_arrival_at=entry.request_arrival_at,
             )
-            async for chunk in stream_registry.stream_and_publish(
+            published_stream = stream_registry.stream_and_publish(
                 session_id=entry.session_id,
                 turn_id=entry.turn_id,
                 stream=raw_stream,
-            ):
-                if cancel.is_set():
-                    log.info("Cancel requested, breaking stream")
-                    break
+            )
+            # Explicit aclose() on early exit: ``async for … break`` does
+            # not close the generator, so GeneratorExit would never reach
+            # stream_chat_completion_sdk, leaving its stream lock held
+            # until GC eventually runs.
+            try:
+                async for chunk in published_stream:
+                    if cancel.is_set():
+                        log.info("Cancel requested, breaking stream")
+                        break
 
-                # Capture StreamError so mark_session_completed receives
-                # the error message (stream_and_publish yields but does
-                # not publish StreamError — that's done by mark_session_completed).
-                if isinstance(chunk, StreamError):
-                    error_msg = chunk.errorText
-                    break
+                    # Capture StreamError so mark_session_completed receives
+                    # the error message (stream_and_publish yields but does
+                    # not publish StreamError — that's done by mark_session_completed).
+                    if isinstance(chunk, StreamError):
+                        error_msg = chunk.errorText
+                        break
 
-                current_time = time.monotonic()
-                if current_time - last_refresh >= refresh_interval:
-                    cluster_lock.refresh()
-                    last_refresh = current_time
+                    current_time = time.monotonic()
+                    if current_time - last_refresh >= refresh_interval:
+                        cluster_lock.refresh()
+                        last_refresh = current_time
+            finally:
+                await published_stream.aclose()
 
             # Stream loop completed
             if cancel.is_set():

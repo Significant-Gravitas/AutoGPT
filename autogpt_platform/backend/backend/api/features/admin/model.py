@@ -14,3 +14,70 @@ class UserHistoryResponse(BaseModel):
 class AddUserCreditsResponse(BaseModel):
     new_balance: int
     transaction_key: str
+
+
+class ExecutionDiagnosticsResponse(BaseModel):
+    """Response model for execution diagnostics"""
+
+    # Current execution state
+    running_executions: int
+    queued_executions_db: int
+    queued_executions_rabbitmq: int
+    cancel_queue_depth: int
+
+    # Orphaned execution detection
+    orphaned_running: int
+    orphaned_queued: int
+
+    # Failure metrics
+    failed_count_1h: int
+    failed_count_24h: int
+    failure_rate_24h: float
+
+    # Long-running detection
+    stuck_running_24h: int
+    stuck_running_1h: int
+    oldest_running_hours: float | None
+
+    # Stuck queued detection
+    stuck_queued_1h: int
+    queued_never_started: int
+
+    # Invalid state detection (data corruption - no auto-actions)
+    invalid_queued_with_start: int
+    invalid_running_without_start: int
+
+    # Throughput metrics
+    completed_1h: int
+    completed_24h: int
+    throughput_per_hour: float
+
+    timestamp: str
+
+
+class AgentDiagnosticsResponse(BaseModel):
+    """Response model for agent diagnostics"""
+
+    agents_with_active_executions: int
+    timestamp: str
+
+
+class ScheduleHealthMetrics(BaseModel):
+    """Response model for schedule diagnostics"""
+
+    total_schedules: int
+    user_schedules: int
+    system_schedules: int
+
+    # Orphan detection
+    orphaned_deleted_graph: int
+    orphaned_no_library_access: int
+    orphaned_invalid_credentials: int
+    orphaned_validation_failed: int
+    total_orphaned: int
+
+    # Upcoming
+    schedules_next_hour: int
+    schedules_next_24h: int
+
+    timestamp: str
