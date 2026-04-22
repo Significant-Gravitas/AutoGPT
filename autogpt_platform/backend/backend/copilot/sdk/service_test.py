@@ -4,6 +4,7 @@ import asyncio
 import base64
 import os
 from dataclasses import dataclass
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -914,3 +915,225 @@ class TestIdleTimeoutConstant:
 
     def test_idle_timeout_is_10_min(self):
         assert _IDLE_TIMEOUT_SECONDS == 10 * 60
+
+
+# ---------------------------------------------------------------------------
+# _RetryState.observed_model — Moonshot cost-override input
+# ---------------------------------------------------------------------------
+
+
+class TestRetryStateObservedModel:
+    """Regression guards for the ``observed_model`` field added to
+    ``_RetryState``.  The Moonshot cost override reads this — when a
+    fallback model activates mid-attempt, the requested primary
+    (``state.options.model``) no longer matches what actually ran."""
+
+    def _make_state(self, *, options_model: str | None = "primary/model"):
+        """Build a minimally-valid ``_RetryState``.  All the heavy
+        collaborators are ``MagicMock()`` — the field we care about is
+        a plain Optional[str], so the surrounding scaffolding just needs
+        to let the dataclass instantiate."""
+        from .service import _RetryState, _TokenUsage
+
+        options = MagicMock()
+        options.model = options_model
+        return _RetryState(
+            options=options,
+            query_message="",
+            was_compacted=False,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=MagicMock(),
+            transcript_builder=MagicMock(),
+            usage=_TokenUsage(),
+        )
+
+    def test_default_is_none(self):
+        state = self._make_state()
+        assert state.observed_model is None
+
+    def test_assigned_from_assistant_message_model(self):
+        """Simulates the population path in ``_run_stream_attempt``:
+        ``observed`` is pulled off the ``AssistantMessage.model`` attr
+        and assigned onto ``state.observed_model`` when it's a non-empty
+        string."""
+        state = self._make_state()
+        # Simulates the inline assignment the generator does on each
+        # AssistantMessage — a non-empty string lands on state.
+        assistant_like = SimpleNamespace(model="anthropic/claude-sonnet-4-6")
+        observed = getattr(assistant_like, "model", None)
+        if isinstance(observed, str) and observed:
+            state.observed_model = observed
+        assert state.observed_model == "anthropic/claude-sonnet-4-6"
+
+    def test_empty_string_model_is_not_assigned(self):
+        """Guard against overwriting a real observed value with an
+        empty-string model (the generator's ``and observed`` check)."""
+        state = self._make_state()
+        state.observed_model = "moonshotai/kimi-k2.6"  # seeded from a prior msg
+        assistant_like = SimpleNamespace(model="")
+        observed = getattr(assistant_like, "model", None)
+        if isinstance(observed, str) and observed:
+            state.observed_model = observed
+        assert state.observed_model == "moonshotai/kimi-k2.6"
+
+    def test_missing_model_attr_leaves_observed_untouched(self):
+        state = self._make_state()
+        state.observed_model = "moonshotai/kimi-k2.6"
+        # AssistantMessage may not carry ``.model`` on older SDK rels.
+        assistant_like = SimpleNamespace()  # no ``.model`` attr
+        observed = getattr(assistant_like, "model", None)
+        if isinstance(observed, str) and observed:
+            state.observed_model = observed
+        assert state.observed_model == "moonshotai/kimi-k2.6"
+
+
+# ---------------------------------------------------------------------------
+# Moonshot cost-override gate — decision logic at the call site
+# ---------------------------------------------------------------------------
+
+
+class TestMoonshotCostOverrideGate:
+    """Regression guards for the decision logic in
+    ``_run_stream_attempt`` that picks between the CLI-reported cost
+    and the Moonshot rate-card override.  The code:
+
+        active_model = state.observed_model or getattr(state.options, "model", None)
+        if _is_moonshot_model(active_model):
+            state.usage.cost_usd = _override_cost_for_moonshot(...)
+        else:
+            state.usage.cost_usd = sdk_msg.total_cost_usd
+
+    is critical-path billing logic — make sure observed_model wins over
+    the requested primary, and Anthropic turns pass through untouched."""
+
+    def _decide_cost(
+        self,
+        *,
+        observed_model: str | None,
+        options_model: str | None,
+        sdk_reported_usd: float,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+    ) -> float:
+        """Mirror of the real decision block — lets us assert the gate
+        without constructing the whole 1000-line generator."""
+        from .service import _is_moonshot_model, _override_cost_for_moonshot
+
+        active_model = observed_model or options_model
+        if _is_moonshot_model(active_model):
+            return _override_cost_for_moonshot(
+                model=active_model,
+                sdk_reported_usd=sdk_reported_usd,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+            )
+        return sdk_reported_usd
+
+    def test_anthropic_turn_passes_sdk_cost_through(self):
+        """Anthropic — the CLI's pricing table is authoritative, so
+        ``state.usage.cost_usd`` is set to ``sdk_msg.total_cost_usd``
+        unchanged."""
+        cost = self._decide_cost(
+            observed_model="anthropic/claude-sonnet-4-6",
+            options_model="anthropic/claude-sonnet-4-6",
+            sdk_reported_usd=0.123,
+        )
+        assert cost == 0.123
+
+    def test_moonshot_turn_uses_rate_card_override(self):
+        """Moonshot — the CLI would silently bill at Sonnet rates, so
+        the override recomputes from the Moonshot rate card."""
+        cost = self._decide_cost(
+            observed_model="moonshotai/kimi-k2.6",
+            options_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.089862,  # CLI's Sonnet-priced estimate.
+            prompt_tokens=29564,
+            completion_tokens=78,
+        )
+        expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
+        assert cost == pytest.approx(expected, rel=1e-9)
+        # Sanity: ~5x cheaper than the CLI's Sonnet-priced number.
+        assert cost < 0.089862 / 4
+
+    def test_observed_model_wins_over_options_primary(self):
+        """The whole point of ``observed_model``: a Moonshot-primary
+        request that fell back to Anthropic must NOT get Moonshot
+        pricing applied.  The gate follows the observed model, not the
+        requested primary."""
+        cost = self._decide_cost(
+            observed_model="anthropic/claude-sonnet-4-6",
+            options_model="moonshotai/kimi-k2.6",  # what we ASKED for
+            sdk_reported_usd=0.123,
+            prompt_tokens=1000,
+            completion_tokens=100,
+        )
+        # Observed == Anthropic → CLI-reported cost passes through unchanged.
+        assert cost == 0.123
+
+    def test_anthropic_to_moonshot_fallback_uses_override(self):
+        """The inverse: an Anthropic-primary request that fell back to
+        Moonshot must get the Moonshot override applied — the CLI is
+        still billing at Sonnet rates for the fallback response."""
+        cost = self._decide_cost(
+            observed_model="moonshotai/kimi-k2.6",
+            options_model="anthropic/claude-sonnet-4-6",
+            sdk_reported_usd=0.089862,
+            prompt_tokens=29564,
+            completion_tokens=78,
+        )
+        expected = (29564 * 0.60 + 78 * 2.80) / 1_000_000
+        assert cost == pytest.approx(expected, rel=1e-9)
+
+    def test_no_observed_falls_back_to_options_model(self):
+        """First AssistantMessage hasn't arrived yet (or the SDK didn't
+        emit ``.model``) — the gate falls back to the requested primary."""
+        cost = self._decide_cost(
+            observed_model=None,
+            options_model="moonshotai/kimi-k2.6",
+            sdk_reported_usd=0.089862,
+            prompt_tokens=100,
+            completion_tokens=10,
+        )
+        expected = (100 * 0.60 + 10 * 2.80) / 1_000_000
+        assert cost == pytest.approx(expected, rel=1e-9)
+
+    def test_both_none_passes_sdk_cost_through(self):
+        """Subscription mode — ``options.model`` may be None and no
+        AssistantMessage has arrived yet.  ``None`` is not a Moonshot
+        slug so the SDK number lands unchanged."""
+        cost = self._decide_cost(
+            observed_model=None,
+            options_model=None,
+            sdk_reported_usd=0.05,
+        )
+        assert cost == 0.05
+
+
+# ---------------------------------------------------------------------------
+# Moonshot helper re-exports — keep imports stable for call-site code
+# ---------------------------------------------------------------------------
+
+
+class TestMoonshotHelperReexports:
+    """``sdk/service.py`` imports the Moonshot helpers under local
+    aliases (``_is_moonshot_model``, ``_override_cost_for_moonshot``).
+    Regression guard so a refactor doesn't silently break the import
+    path the hot-loop code relies on."""
+
+    def test_is_moonshot_model_aliased(self):
+        from backend.copilot.moonshot import is_moonshot_model as canonical
+
+        from .service import _is_moonshot_model
+
+        assert _is_moonshot_model is canonical
+
+    def test_override_cost_for_moonshot_aliased(self):
+        from backend.copilot.moonshot import override_cost_usd as canonical
+
+        from .service import _override_cost_for_moonshot
+
+        assert _override_cost_for_moonshot is canonical

@@ -21,6 +21,7 @@ from backend.copilot.baseline.service import (
     _is_anthropic_model,
     _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
+    _supports_prompt_cache_markers,
 )
 from backend.copilot.model import ChatMessage
 from backend.copilot.response_model import (
@@ -2025,3 +2026,55 @@ class TestBaselineReasoningStreaming:
         reasoning_rows = [m for m in state.session_messages if m.role == "reasoning"]
         assert len(reasoning_rows) == 1
         assert reasoning_rows[0].content == "first thought"
+
+
+class TestSupportsPromptCacheMarkers:
+    """``_supports_prompt_cache_markers`` is the widened gate for
+    emitting ``cache_control`` markers on message content.  It's a
+    superset of ``_is_anthropic_model`` that ALSO admits Moonshot
+    (whose Anthropic-compat endpoint honours the marker) while keeping
+    the False answer for OpenAI / Grok / Gemini (which 400 on the
+    unknown field)."""
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "anthropic/claude-sonnet-4-6",
+            "claude-3-5-sonnet-20241022",
+            "anthropic.claude-3-5-sonnet",
+            "ANTHROPIC/Claude-Opus",
+        ],
+    )
+    def test_anthropic_routes_are_supported(self, model):
+        assert _supports_prompt_cache_markers(model) is True
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k2.6",
+            "moonshotai/kimi-k2-thinking",
+            "moonshotai/kimi-k2.5",
+            "moonshotai/kimi-k3.0",  # future SKU
+        ],
+    )
+    def test_moonshot_routes_are_supported(self, model):
+        """The whole reason this predicate exists — Moonshot must be
+        True even though ``_is_anthropic_model`` is False for it."""
+        assert _supports_prompt_cache_markers(model) is True
+        # Verify this is strictly wider than the anthropic-only check.
+        assert _is_anthropic_model(model) is False
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "openai/gpt-4o",
+            "google/gemini-2.5-pro",
+            "xai/grok-4",
+            "meta-llama/llama-3.3-70b-instruct",
+            "deepseek/deepseek-v3",
+        ],
+    )
+    def test_other_providers_still_rejected(self, model):
+        """Regression guard: OpenAI/Grok/Gemini still 400 on
+        ``cache_control``, so the widened gate must keep them out."""
+        assert _supports_prompt_cache_markers(model) is False
