@@ -55,6 +55,18 @@ vi.mock("../helpers", () => ({
   resolveInProgressTools: (msgs: UIMessage[]) => msgs,
   getSendSuppressionReason: () => null,
   disconnectSessionStream: (sid: string) => mockDisconnectSessionStream(sid),
+  findLatestCursorChunkId: (messages: UIMessage[]): string | null => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const parts = messages[i].parts;
+      for (let j = parts.length - 1; j >= 0; j--) {
+        const part = parts[j] as { type?: unknown; data?: unknown };
+        if (part?.type !== "data-cursor") continue;
+        const data = part.data as { chunkId?: unknown } | undefined;
+        if (data && typeof data.chunkId === "string") return data.chunkId;
+      }
+    }
+    return null;
+  },
 }));
 
 // --- ai SDK mock (DefaultChatTransport must be constructible) ---

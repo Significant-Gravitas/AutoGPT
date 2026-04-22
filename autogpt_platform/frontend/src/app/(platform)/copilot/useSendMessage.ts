@@ -3,6 +3,7 @@ import { uploadFileDirect } from "@/lib/direct-upload";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
+import { useCopilotStreamStore } from "./copilotStreamStore";
 
 const MAX_FILES = 10;
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -22,24 +23,16 @@ interface Args {
   isUserStoppingRef: React.MutableRefObject<boolean>;
 }
 
-// Module-scope so the queued send survives the CopilotChatHost remount that
-// fires when sessionId transitions from null to the freshly-created id. Per-
-// instance React refs would be wiped in that window — the "new"-keyed host
-// unmounts after createSession resolves and the "<id>"-keyed host mounts with
-// fresh refs, so a drain effect inside the hook would see no queue.
-let queuedFirstSend: { text: string; files: File[] } | null = null;
-let pendingFileParts: FileUIPart[] = [];
-
 /**
  * Orchestrates send-message flow: validates input, uploads attached files,
  * creates a session if one doesn't exist yet, and dispatches the message
  * once the session is ready.
  *
- * The "wait for session creation then send" path is implemented via a
- * queued module variable + effect rather than promise chaining because
- * `sendMessage` closes over the stream's `sessionId` via `useChat` — we need
- * React to re-render with the new sessionId before the bound transport can
- * send.
+ * The "wait for session creation then send" path uses a slot on the Zustand
+ * stream store (rather than React refs) because `CopilotPage` keys the chat
+ * subtree by sessionId — the moment a session is created the `"new"`-keyed
+ * host unmounts and the `"<id>"`-keyed one mounts with fresh refs. The store
+ * slot survives that remount so the new host can pick up the pending send.
  */
 export function useSendMessage({
   sessionId,
@@ -134,17 +127,12 @@ export function useSendMessage({
   dispatchRef.current = dispatchToSession;
 
   useEffect(() => {
-    if (!sessionId || !queuedFirstSend) return;
-    const queued = queuedFirstSend;
-    queuedFirstSend = null;
-    const prebuiltParts = pendingFileParts;
-    pendingFileParts = [];
-    void dispatchRef.current(
-      sessionId,
-      queued.text,
-      queued.files,
-      prebuiltParts,
-    );
+    if (!sessionId) return;
+    const { send, parts } = useCopilotStreamStore
+      .getState()
+      .takePendingFirstSend();
+    if (!send) return;
+    void dispatchRef.current(sessionId, send.text, send.files, parts);
   }, [sessionId]);
 
   async function onSend(message: string, files?: File[]) {
@@ -174,24 +162,34 @@ export function useSendMessage({
     isUserStoppingRef.current = false;
 
     if (sessionId) {
-      const prebuiltParts = pendingFileParts;
-      pendingFileParts = [];
-      await dispatchToSession(sessionId, trimmed, files ?? [], prebuiltParts);
+      const { pendingFileParts, setPendingFileParts } =
+        useCopilotStreamStore.getState();
+      setPendingFileParts([]);
+      await dispatchToSession(
+        sessionId,
+        trimmed,
+        files ?? [],
+        pendingFileParts,
+      );
       return;
     }
 
-    queuedFirstSend = { text: trimmed, files: files ?? [] };
+    useCopilotStreamStore
+      .getState()
+      .setPendingFirstSend({ text: trimmed, files: files ?? [] });
     try {
       await createSession();
     } catch (err) {
-      queuedFirstSend = null;
-      pendingFileParts = [];
+      const { setPendingFirstSend, setPendingFileParts } =
+        useCopilotStreamStore.getState();
+      setPendingFirstSend(null);
+      setPendingFileParts([]);
       throw err;
     }
   }
 
   function setPendingFileParts(parts: FileUIPart[]) {
-    pendingFileParts = parts;
+    useCopilotStreamStore.getState().setPendingFileParts(parts);
   }
 
   return { onSend, isUploadingFiles, setPendingFileParts };

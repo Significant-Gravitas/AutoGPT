@@ -206,6 +206,26 @@ export function disconnectSessionStream(sessionId: string): void {
 }
 
 /**
+ * Scan a message list for the most recent `data-cursor` part — the Redis
+ * Stream XADD id the backend emitted after its previous chunk — and return
+ * the raw `chunkId`. Returns `null` if no cursor parts have been received
+ * yet (e.g. the backend hasn't shipped the first chunk of the current turn,
+ * or this is an older turn from before cursor emission existed).
+ */
+export function findLatestCursorChunkId(messages: UIMessage[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const parts = messages[i].parts;
+    for (let j = parts.length - 1; j >= 0; j--) {
+      const part = parts[j] as { type?: unknown; data?: unknown };
+      if (part?.type !== "data-cursor") continue;
+      const data = part.data as { chunkId?: unknown } | undefined;
+      if (data && typeof data.chunkId === "string") return data.chunkId;
+    }
+  }
+  return null;
+}
+
+/**
  * Decide whether a reconnect request must be coalesced onto the debounce
  * window boundary, rather than firing immediately.
  *
