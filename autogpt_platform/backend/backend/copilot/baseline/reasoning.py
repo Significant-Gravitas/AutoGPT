@@ -302,7 +302,7 @@ class BaselineReasoningEmitter:
                 events.append(StreamReasoningDelta(id=self._block_id, delta=text))
             self._open = True
             self._last_flush_monotonic = now
-            if self._render_in_ui and self._session_messages is not None:
+            if self._session_messages is not None:
                 self._current_row = ChatMessage(role="reasoning", content=text)
                 self._session_messages.append(self._current_row)
             return events

@@ -163,13 +163,12 @@ class SDKResponseAdapter:
                     if block.thinking:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
-                        if self.render_reasoning_in_ui:
-                            responses.append(
-                                StreamReasoningDelta(
-                                    id=self.reasoning_block_id,
-                                    delta=block.thinking,
-                                )
+                        responses.append(
+                            StreamReasoningDelta(
+                                id=self.reasoning_block_id,
+                                delta=block.thinking,
                             )
+                        )
 
                 elif isinstance(block, ToolUseBlock):
                     self._end_text_if_open(responses)
@@ -366,15 +365,13 @@ class SDKResponseAdapter:
         """Start (or restart) a reasoning block if needed.
 
         Each ``ThinkingBlock`` the SDK emits gets its own streaming block
-        on the wire so the frontend can render a new ``Reasoning`` part
-        per LLM turn (rather than concatenating across the whole session).
-
-        No-op when ``render_reasoning_in_ui=False`` — callers still drive
-        the method on every ``ThinkingBlock`` so persistence stays in
-        lockstep, but nothing reaches the wire.
+        so the frontend can render a new ``Reasoning`` part per LLM turn
+        (rather than concatenating across the whole session).  Events
+        are emitted unconditionally — the caller filters them out of the
+        SSE wire when ``render_reasoning_in_ui=False`` but still feeds
+        them through ``_dispatch_response`` so the session transcript
+        keeps a ``role='reasoning'`` row.
         """
-        if not self.render_reasoning_in_ui:
-            return
         if not self.has_started_reasoning or self.has_ended_reasoning:
             if self.has_ended_reasoning:
                 self.reasoning_block_id = str(uuid.uuid4())
@@ -383,13 +380,7 @@ class SDKResponseAdapter:
             self.has_started_reasoning = True
 
     def _end_reasoning_if_open(self, responses: list[StreamBaseResponse]) -> None:
-        """End the current reasoning block if one is open.
-
-        No-op when ``render_reasoning_in_ui=False`` — no start was emitted,
-        so no end is needed.
-        """
-        if not self.render_reasoning_in_ui:
-            return
+        """End the current reasoning block if one is open."""
         if self.has_started_reasoning and not self.has_ended_reasoning:
             responses.append(StreamReasoningEnd(id=self.reasoning_block_id))
             self.has_ended_reasoning = True

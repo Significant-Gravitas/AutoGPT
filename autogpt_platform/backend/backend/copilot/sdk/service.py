@@ -2378,6 +2378,18 @@ async def _run_stream_attempt(
                     skip_strip=response is tail_delta,
                 )
                 if dispatched is not None:
+                    # Persistence (via _dispatch_response) always runs so the
+                    # session transcript keeps role='reasoning' rows; the
+                    # wire is gated so UI can suppress rendering.
+                    if not state.adapter.render_reasoning_in_ui and isinstance(
+                        dispatched,
+                        (
+                            StreamReasoningStart,
+                            StreamReasoningDelta,
+                            StreamReasoningEnd,
+                        ),
+                    ):
+                        continue
                     yield dispatched
 
                 # Mid-turn follow-up persistence: the MCP tool wrapper drains
