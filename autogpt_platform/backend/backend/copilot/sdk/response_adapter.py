@@ -246,6 +246,19 @@ class SDKResponseAdapter:
                     # into the SDK transcript via
                     # ``_format_sdk_content_blocks`` is unaffected — that
                     # feeds ``--resume`` continuity, not the UI.
+                    #
+                    # Flush any pending coalesce buffer to the wire BEFORE
+                    # computing the tail — otherwise a summary that
+                    # arrives between the last partial delta and the
+                    # ``content_block_stop`` event (race: summary is
+                    # flushed by the CLI as soon as the block is complete
+                    # provider-side, with stop lagging as a separate
+                    # frame) would see ``_partial_thinking_buffer``
+                    # missing the pending prefix, and
+                    # ``_thinking_tail_for_summary_block`` would emit the
+                    # full block — duplicating the tail that
+                    # ``_end_reasoning_if_open`` still drains on stop.
+                    self._flush_pending_thinking(responses)
                     tail = self._thinking_tail_for_summary_block(block.thinking)
                     if tail:
                         self._end_text_if_open(responses)
