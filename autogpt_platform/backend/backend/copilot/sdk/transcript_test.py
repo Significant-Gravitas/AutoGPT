@@ -1315,6 +1315,28 @@ class TestStripStaleThinkingBlocks:
         assert "thinking" not in types
         assert "text" in types
 
+    def test_preserves_redacted_thinking_on_last_turn(self) -> None:
+        """``redacted_thinking`` blocks are signature-less by design
+        (encrypted ``data`` field instead).  Stripping them on the last
+        turn would violate Anthropic's value-identity requirement for
+        multi-turn replay.  The signature rule only applies to plain
+        ``thinking`` blocks."""
+        entry = self._asst_entry(
+            "msg_anthropic",
+            [
+                # Anthropic-emitted redacted_thinking: has ``data``,
+                # never has ``signature``.
+                {"type": "redacted_thinking", "data": "encrypted_blob"},
+                {"type": "text", "text": "response"},
+            ],
+        )
+        content = _make_jsonl(entry)
+        result = strip_stale_thinking_blocks(content)
+        lines = [json.loads(ln) for ln in result.strip().split("\n")]
+        types = [b["type"] for b in lines[0]["message"]["content"]]
+        assert "redacted_thinking" in types
+        assert "text" in types
+
     def test_no_assistant_entries_returns_unchanged(self) -> None:
         """Transcripts with only user entries should pass through unchanged."""
         user = self._user_entry("hello")

@@ -953,24 +953,38 @@ def _should_strip_thinking_block(block: object, *, is_last_turn: bool) -> bool:
     """Return True when *block* is a thinking block that should be removed
     from a transcript entry before upload.
 
-    Two cases:
+    Three cases:
 
-    1. **Stale (non-last entry)** — every thinking block in non-last
-       assistant entries is dropped to save tokens; Anthropic only
-       requires the LAST turn's thinking to be value-identical.
-    2. **Signature-less (any entry)** — thinking blocks emitted by
-       non-Anthropic providers (Kimi K2.6 via OpenRouter, DeepSeek)
-       lack the cryptographic ``signature`` field that Anthropic models
-       validate on replay.  Leaving them on the last turn breaks any
-       subsequent advanced-tier toggle (Kimi → Opus) with the opaque
-       ``Invalid `signature` in `thinking` block`` API error.
+    1. **Stale (non-last entry)** — every thinking / redacted_thinking
+       block in non-last assistant entries is dropped to save tokens;
+       Anthropic only requires the LAST turn's thinking to be
+       value-identical.
+    2. **Signature-less ``thinking`` (any entry)** — ``thinking`` blocks
+       emitted by non-Anthropic providers (Kimi K2.6 via OpenRouter,
+       DeepSeek) lack the cryptographic ``signature`` field that
+       Anthropic models validate on replay.  Leaving them on the last
+       turn breaks any subsequent advanced-tier toggle (Kimi → Opus)
+       with the opaque ``Invalid `signature` in `thinking` block`` API
+       error.
+    3. **``redacted_thinking`` on the last turn is always preserved** —
+       Anthropic-emitted redacted_thinking blocks carry an encrypted
+       ``data`` payload instead of a ``signature``.  They're always
+       signature-less by design and stripping them on the last turn
+       would violate Anthropic's value-identity requirement for
+       multi-turn replay.  The non-last rule still strips them because
+       those tokens don't help ``--resume`` context.
     """
     if not isinstance(block, dict):
         return False
-    if block.get("type") not in _THINKING_BLOCK_TYPES:
+    btype = block.get("type")
+    if btype not in _THINKING_BLOCK_TYPES:
         return False
     if not is_last_turn:
         return True
+    # Last-turn: only the ``thinking`` type is subject to the signature
+    # check — redacted_thinking is always preserved on the last turn.
+    if btype != "thinking":
+        return False
     signature = block.get("signature")
     return not (isinstance(signature, str) and signature)
 
