@@ -243,8 +243,11 @@ class BaselineReasoningEmitter:
     in-place as further deltas arrive; :meth:`close` drops the reference
     but leaves the appended row intact.
 
-    ``render_in_ui=False`` suppresses wire events + persistence row;
-    state machine still advances.
+    ``render_in_ui=False`` suppresses only the live wire events
+    (``StreamReasoning*``); the ``role='reasoning'`` persistence row is
+    still appended so ``convertChatSessionToUiMessages.ts`` can hydrate
+    the reasoning bubble on reload.  The state machine advances
+    identically either way.
     """
 
     def __init__(
