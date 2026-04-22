@@ -838,7 +838,7 @@ class AgentValidator:
                     f"'_credentials_id'. Remove input_default['"
                     f"{field_name}'], add an AgentGoogleDriveFileInputBlock "
                     f"node with appropriate 'allowed_views' (e.g. "
-                    f"['SPREADSHEETS'] for Sheets, ['DOCUMENTS'] for Docs, "
+                    f"['SPREADSHEETS'] for Sheets, ['DOCS'] for Docs, "
                     f"['PRESENTATIONS'] for Slides), and link its 'result' "
                     f"output to this node's '{field_name}' input."
                 )

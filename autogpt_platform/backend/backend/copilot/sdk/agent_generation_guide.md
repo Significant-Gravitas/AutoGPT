@@ -160,7 +160,7 @@ rendered by `AgentGoogleDriveFileInputBlock` does this at run time.
 - Required `input_default` fields: `name` (str)
 - Set `allowed_views` to the scope of the consumer:
   - `["SPREADSHEETS"]` for Sheets blocks (read/write/append/update)
-  - `["DOCUMENTS"]` for Docs blocks
+  - `["DOCS"]` for Docs blocks
   - `["PRESENTATIONS"]` for Slides blocks
   - Omit or leave default (`["DOCS", "SPREADSHEETS", "PRESENTATIONS"]`) for
     generic Drive blocks
