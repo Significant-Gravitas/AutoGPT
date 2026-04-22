@@ -393,7 +393,7 @@ class TestEnsureManagedCredentials:
             _PROVIDERS.update(saved)
             _provisioned_users.pop("user-1", None)
 
-        provider.provision.assert_awaited_once_with("user-1")
+        provider.provision.assert_awaited_once_with("user-1", store)
         store.add_managed_credential.assert_awaited_once_with("user-1", cred)
 
     @pytest.mark.asyncio
