@@ -4015,9 +4015,16 @@ async def stream_chat_completion_sdk(
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
         effective_model = sdk_model or config.thinking_standard_model
+        # ``state`` is populated lazily inside the retry loop; when the
+        # turn exits before the first attempt runs (e.g. very early
+        # validation error) it's still None, so ``generation_ids`` is
+        # empty by definition.
+        collected_gen_ids: list[str] = (
+            list(state.generation_ids) if state is not None else []
+        )
         _is_non_anthropic_openrouter = bool(
             config.openrouter_active
-            and state.generation_ids
+            and collected_gen_ids
             and not effective_model.startswith("anthropic/")
         )
 
@@ -4044,7 +4051,7 @@ async def stream_chat_completion_sdk(
                     completion_tokens=turn_completion_tokens,
                     cache_read_tokens=turn_cache_read_tokens,
                     cache_creation_tokens=turn_cache_creation_tokens,
-                    generation_ids=list(state.generation_ids),
+                    generation_ids=collected_gen_ids,
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,
