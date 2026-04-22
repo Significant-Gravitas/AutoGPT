@@ -13,6 +13,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm import extract_openrouter_cost
 from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
@@ -245,6 +246,15 @@ class PerplexityBlock(Block):
                 self.execution_stats.output_token_count = (
                     response.usage.completion_tokens
                 )
+            # OpenRouter's ``x-total-cost`` response header carries the real
+            # per-request USD cost. Piping it into ``provider_cost`` lets the
+            # copilot ``run_block`` path charge the microdollar rate-limit
+            # counter with the actual spend instead of relying on the flat
+            # credit-table fallback. See
+            # ``backend.copilot.tools.helpers::execute_block``.
+            cost = extract_openrouter_cost(response)
+            if cost is not None:
+                self.execution_stats.provider_cost = cost
 
             return {"response": response_content, "annotations": annotations or []}
 

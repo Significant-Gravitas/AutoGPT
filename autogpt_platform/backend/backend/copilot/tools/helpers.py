@@ -18,13 +18,16 @@ from backend.copilot.constants import (
     MAX_TOOL_WAIT_SECONDS,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.rate_limit import record_cost_usage
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.data.platform_cost import usd_to_microdollars
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
+from backend.integrations.credentials_store import is_system_credential
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util.exceptions import BlockError, InsufficientBalanceError
 from backend.util.type import coerce_inputs_to_schema
@@ -150,6 +153,86 @@ async def _charge_block_credits(
         # Intentionally swallow. Block already executed with possible side
         # effects; the caller must still return BlockOutputResponse. The
         # BILLING_LEAK log above is the signal for reconciliation.
+
+
+def _uses_only_system_credentials(
+    matched_credentials: dict[str, CredentialsMetaInput],
+) -> bool:
+    """Return True when every credential attached to the block is system-issued.
+
+    User BYOK credentials mean the user is paying the upstream provider
+    directly, so AutoGPT's infra-cost (microdollar) counter must not be
+    charged for that inference — microdollars only meter AutoGPT-funded
+    spend. When the block has no credential fields (e.g. free utility
+    blocks), we treat the run as system-funded: there's no third-party
+    API cost to attribute to the user, and keeping the counter ticking
+    for ``run_block`` calls that actually did cost us money is what
+    closes the leak the investigation identified.
+    """
+    if not matched_credentials:
+        return True
+    return all(is_system_credential(cred.id) for cred in matched_credentials.values())
+
+
+async def _record_block_microdollar_cost(
+    *,
+    block: AnyBlockSchema,
+    fallback_credit_cost: int,
+    user_id: str,
+    matched_credentials: dict[str, CredentialsMetaInput],
+) -> None:
+    """Pipe a copilot-invoked block's real per-run cost into the microdollar counter.
+
+    Reads the block's typed ``execution_stats.provider_cost`` (USD) that paid-
+    API blocks set after hitting their upstream provider (OpenRouter's
+    ``x-total-cost``, Exa's ``cost_dollars.total``, Anthropic/OpenAI totals,
+    etc.). When the block didn't report a real cost, falls back to converting
+    the flat ``BLOCK_COSTS`` credit charge into a synthetic microdollar value
+    so the counter isn't silently zero for blocks that still cost AutoGPT
+    money — better an under-estimate than a bypass.
+
+    Skipped entirely for BYOK runs: if the user brought their own API key,
+    they're paying the provider directly and microdollars (AutoGPT infra
+    cost) should not tick. Direct-run agent graph executions bypass this
+    helper — they never enter ``execute_block``; see ``executor/manager.py``
+    for that path, which already owns its own ``PlatformCostLog`` flow via
+    ``log_system_credential_cost``.
+    """
+    if not _uses_only_system_credentials(matched_credentials):
+        return
+
+    provider_cost_usd = block.execution_stats.provider_cost
+    cost_microdollars: int | None = None
+    if provider_cost_usd is not None and provider_cost_usd > 0:
+        cost_microdollars = usd_to_microdollars(provider_cost_usd)
+    elif fallback_credit_cost > 0:
+        # 1 credit == 1 cent == 10_000 microdollars — matches the wallet's
+        # long-standing cents-per-credit convention. Used only when the
+        # block didn't populate provider_cost, so the microdollar counter
+        # still moves and run_block can't be used to silently burn past
+        # daily / weekly caps.
+        cost_microdollars = fallback_credit_cost * 10_000
+
+    if cost_microdollars is None or cost_microdollars <= 0:
+        return
+
+    try:
+        await record_cost_usage(
+            user_id=user_id,
+            cost_microdollars=cost_microdollars,
+        )
+    except Exception as e:
+        # record_cost_usage already swallows Redis failures (fail-open). An
+        # exception escaping here means an unexpected accounting bug — log
+        # loudly but never fail the user-facing block output.
+        logger.error(
+            "Failed to record block microdollar cost: user=%s block=%s "
+            "cost_microdollars=%s: %s",
+            user_id,
+            block.name,
+            cost_microdollars,
+            e,
+        )
 
 
 async def execute_block(
@@ -311,6 +394,22 @@ async def execute_block(
                         synthetic_node_id=synthetic_node_id,
                     )
                 )
+
+            # Pipe the block's real provider cost into the copilot microdollar
+            # counter so ``run_block`` can't be used to fan out paid inference
+            # past the user's daily / weekly copilot cap. Shielded so an outer
+            # cancellation landing here still lets the counter tick. Runs
+            # after credit charging so ``charge_handled`` already gates the
+            # cancel-finally against double-credit-charging — the microdollar
+            # path is independent and runs only on the success branch.
+            await asyncio.shield(
+                _record_block_microdollar_cost(
+                    block=block,
+                    fallback_credit_cost=cost,
+                    user_id=user_id,
+                    matched_credentials=matched_credentials,
+                )
+            )
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",

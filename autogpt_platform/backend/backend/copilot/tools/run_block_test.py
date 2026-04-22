@@ -7,6 +7,7 @@ import pytest
 from backend.blocks._base import BlockType
 from backend.copilot.context import _current_permissions
 from backend.copilot.permissions import CopilotPermissions
+from backend.data.model import NodeExecutionStats
 
 from ._test_data import make_session
 from .models import (
@@ -35,6 +36,7 @@ def make_mock_block(
     mock.input_schema.jsonschema.return_value = {"properties": {}, "required": []}
     mock.input_schema.get_credentials_fields_info.return_value = {}
     mock.input_schema.get_credentials_fields.return_value = {}
+    mock.execution_stats = NodeExecutionStats()
 
     async def _no_review(input_data, **kwargs):
         return False, input_data
@@ -67,6 +69,7 @@ def make_mock_block_with_schema(
     mock.input_schema.jsonschema.return_value = input_schema
     mock.input_schema.get_credentials_fields_info.return_value = {}
     mock.input_schema.get_credentials_fields.return_value = {}
+    mock.execution_stats = NodeExecutionStats()
 
     output_schema = {
         "properties": output_properties or {"result": {"type": "string"}},
@@ -673,6 +676,7 @@ class TestExecuteBlockTimeout:
             "required": [],
         }
         mock_block.input_schema.get_credentials_fields.return_value = {}
+        mock_block.execution_stats = NodeExecutionStats()
 
         async def _hang(_input, **_kwargs):
             await asyncio.sleep(10)
@@ -819,6 +823,7 @@ class TestExecuteBlockTimeout:
             "required": [],
         }
         mock_block.input_schema.get_credentials_fields.return_value = {}
+        mock_block.execution_stats = NodeExecutionStats()
 
         async def _one_then_done(_input, **_kw):
             yield "result", "done"

@@ -9,8 +9,31 @@ when Redis is unavailable to avoid blocking users.
 Storing microdollars rather than tokens means the counter already reflects
 real model pricing (including cache discounts and provider surcharges), so
 this module carries no pricing table — the cost comes from OpenRouter's
-``usage.cost`` field (baseline) or the Claude Agent SDK's reported total
-cost (SDK path).
+``usage.cost`` field (baseline), the Claude Agent SDK's reported total
+cost (SDK path), or a paid-API block's ``NodeExecutionStats.provider_cost``
+piped through ``backend.copilot.tools.helpers::execute_block``.
+
+Boundary with the credit wallet
+===============================
+
+Microdollars (this module) and credits (``backend.data.block_cost_config``)
+are intentionally separate budgets:
+
+* **Credits** are the user-facing prepaid wallet. Every block invocation
+  that has a ``BlockCost`` entry decrements credits — this is what the
+  user buys, tops up, and sees on the billing page.  Marketplace blocks
+  may also charge credits to block creators. The credit charge is a flat
+  per-run amount sourced from ``BLOCK_COSTS``.
+* **Microdollars** meter AutoGPT's **operator-side infrastructure cost**
+  — the real USD we spend on upstream providers (OpenRouter, Anthropic,
+  Exa, Perplexity, ...) when a user drives the copilot. They gate the
+  chat loop and the ``run_block`` fan-out so a single user can't burn
+  the daily / weekly infra budget regardless of their credit balance.
+  BYOK runs (user supplied their own API key) do **not** decrement this
+  counter — the user is paying the provider, not us.
+
+A future ``C`` option in the investigation is to unify these into one
+wallet; until then the boundary above is the contract.
 """
 
 import asyncio

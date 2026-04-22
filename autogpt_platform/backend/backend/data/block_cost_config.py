@@ -22,6 +22,7 @@ from backend.blocks.enrichlayer.linkedin import (
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
+from backend.blocks.jina.fact_checker import FactCheckerBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import (
     MODEL_METADATA,
@@ -33,6 +34,7 @@ from backend.blocks.llm import (
     LlmModel,
 )
 from backend.blocks.orchestrator import OrchestratorBlock
+from backend.blocks.perplexity import PerplexityBlock, PerplexityModel
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
@@ -292,6 +294,23 @@ LLM_COST = (
 )
 
 # =============== This is the exhaustive list of cost for each Block =============== #
+#
+# BLOCK_COSTS drives the **credit wallet** — the user-facing balance that funds
+# block executions regardless of where they run (builder, graph execution,
+# copilot ``run_block`` tool). A missing entry here makes the block run for
+# free from the wallet's perspective, even when the upstream provider charges
+# real USD. See ``backend.executor.utils::block_usage_cost`` for the lookup
+# and ``backend.copilot.tools.helpers::execute_block`` for the copilot-side
+# charge path.
+#
+# Credits are **not** the same as copilot microdollar rate-limit counters
+# (``backend.copilot.rate_limit``). Microdollars track AutoGPT's infra cost
+# (OpenRouter / Anthropic inference spend) and gate the chat loop; credits
+# track the user's prepaid balance. A block running inside copilot ``run_block``
+# now decrements both: the credit wallet via this table and the microdollar
+# counter via ``execute_block``'s pipe-through of ``NodeExecutionStats.provider_cost``.
+# See the module docstring on ``backend.copilot.rate_limit`` for the full
+# boundary.
 
 BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIConversationBlock: LLM_COST,
@@ -713,6 +732,59 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
+    ],
+    PerplexityBlock: [
+        # Sonar Deep Research: up to $5/1K searches + $8/1M reasoning tokens.
+        # Flat-charge 10 credits mirrors the LLM table's SONAR_DEEP_RESEARCH
+        # entry; real per-run cost is also piped into the microdollar counter
+        # when invoked through copilot.
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "model": PerplexityModel.SONAR_DEEP_RESEARCH,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+        ),
+        # Sonar Pro: $1/1M input + $1/1M output + $0.005/search.
+        BlockCost(
+            cost_amount=5,
+            cost_filter={
+                "model": PerplexityModel.SONAR_PRO,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+        ),
+        # Sonar (default): $0.2/1M input + $0.2/1M output + $0.005/search.
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "model": PerplexityModel.SONAR,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+        ),
+    ],
+    FactCheckerBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
+                }
+            },
+        )
     ],
     OrchestratorBlock: LLM_COST,
     VideoNarrationBlock: [
