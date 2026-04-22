@@ -57,6 +57,7 @@ from ..constants import (
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
+from ..model_router import resolve_model
 from ..moonshot import (
     is_moonshot_model as _is_moonshot_model,
     override_cost_usd as _override_cost_for_moonshot,
@@ -734,20 +735,34 @@ def _normalize_model_name(raw_model: str) -> str:
 
 
 def _resolve_sdk_model() -> str | None:
-    """Resolve the model name for the Claude Agent SDK CLI.
+    """Resolve the SDK-CLI model name from static config (no LD lookup).
 
-    Uses `config.claude_agent_model` if set, otherwise derives from
-    `config.thinking_standard_model` via :func:`_normalize_model_name`.
+    ``config.claude_agent_model`` is an explicit override that wins
+    unconditionally.  When the Claude Code subscription is enabled and no
+    override is set, returns ``None`` so the CLI picks the model for the
+    user's subscription plan.  Otherwise derives from
+    ``config.thinking_standard_model``.
 
-    When `use_claude_code_subscription` is enabled and no explicit
-    `claude_agent_model` is set, returns `None` so the CLI uses the
-    default model for the user's subscription plan.
+    For per-user routing (LaunchDarkly overrides), see
+    :func:`_resolve_sdk_model_for_request`.
     """
     if config.claude_agent_model:
         return config.claude_agent_model
     if config.use_claude_code_subscription:
         return None
     return _normalize_model_name(config.thinking_standard_model)
+
+
+async def _resolve_thinking_model_for_user(
+    tier: "CopilotLlmModel",
+    user_id: str | None,
+) -> str:
+    """LD-aware thinking-tier model pick for a specific user.
+
+    Consults ``copilot-thinking-{tier}-model`` and falls back to the
+    ``ChatConfig`` default on missing user / missing flag.
+    """
+    return await resolve_model("thinking", tier, user_id, config=config)
 
 
 def _resolve_fallback_model() -> str | None:
@@ -764,37 +779,94 @@ def _resolve_fallback_model() -> str | None:
 async def _resolve_sdk_model_for_request(
     model: "CopilotLlmModel | None",
     session_id: str,
+    user_id: str | None = None,
 ) -> str | None:
     """Resolve the SDK model string for a turn.
 
     Priority (highest first):
-    1. Explicit per-request ``model`` tier from the frontend toggle.
-    2. Global config default (``_resolve_sdk_model()``).
-
-    Returns ``None`` when the Claude Code subscription default applies.
-    Rate-limit accounting no longer applies a multiplier — the real turn
-    cost (reported by the SDK) already reflects model-pricing differences.
+    1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
+    2. LaunchDarkly ``copilot-thinking-{tier}-model`` if it serves a value
+       different from the config default for *user_id*.  An LD-served
+       override wins over subscription mode so admins can route specific
+       users to a specific model without flipping subscription on/off.
+    3. ``config.use_claude_code_subscription`` on the standard tier —
+       returns ``None`` so the CLI picks the subscription default (this
+       branch fires when LD has no opinion, i.e. the value equals the
+       config default).
+    4. ``ChatConfig`` static default for the tier.
     """
-    if model == "advanced":
-        sdk_model = _normalize_model_name(config.thinking_advanced_model)
+    if config.claude_agent_model:
+        return config.claude_agent_model
+
+    tier_name: "CopilotLlmModel" = "advanced" if model == "advanced" else "standard"
+    # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
+    # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
+    # comparison below spuriously diverge — ``resolve_model`` already strips
+    # the LD side, so both halves must end up whitespace-normalised to stay
+    # equal when they're semantically equal.  Downstream ``_normalize_model_name``
+    # also benefits from the strip.
+    tier_default = (
+        config.thinking_advanced_model
+        if tier_name == "advanced"
+        else config.thinking_standard_model
+    ).strip()
+
+    resolved = await _resolve_thinking_model_for_user(tier_name, user_id)
+
+    # Subscription mode on standard tier only wins when LD has no opinion
+    # (value == config default ⇒ admin hasn't explicitly pointed this
+    # user somewhere).  Any LD override — even to the same value with
+    # stripped whitespace normalised — is an explicit admin choice that
+    # must be honoured.  Without this, a subscription-mode deployment
+    # silently ignores the ``copilot-thinking-standard-model`` flag
+    # entirely, which defeats the point of cohort-based routing.
+    ld_overrides_default = resolved != tier_default
+    if (
+        not ld_overrides_default
+        and tier_name == "standard"
+        and config.use_claude_code_subscription
+    ):
         logger.info(
-            "[SDK] [%s] Per-request model override: advanced (%s)",
+            "[SDK] [%s] Subscription default (tier=standard, LD unset)",
             session_id[:12] if session_id else "?",
+        )
+        return None
+    try:
+        sdk_model = _normalize_model_name(resolved)
+    except ValueError as exc:
+        # The per-user LD value didn't pass ``_normalize_model_name``'s
+        # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
+        # direct-Anthropic deployment that has no OpenRouter route).  Fail
+        # soft to the TIER-SPECIFIC config default — using the generic
+        # ``_resolve_sdk_model()`` here would pin advanced-tier requests to
+        # ``thinking_standard_model`` (Sonnet) whenever LD misconfigures
+        # the advanced cell, silently downgrading the user's chosen tier.
+        try:
+            sdk_model = _normalize_model_name(tier_default)
+        except ValueError:
+            # Config default is *also* invalid for the active routing
+            # mode — this is a deployment-level misconfig that the
+            # ``model_validator`` should catch at startup.  Re-raise the
+            # original LD error so the issue surfaces loudly rather than
+            # returning something misleading.
+            raise exc
+        logger.warning(
+            "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
+            "back to tier default %s",
+            session_id[:12] if session_id else "?",
+            resolved,
+            tier_name,
+            exc,
             sdk_model,
         )
         return sdk_model
-
-    if model == "standard":
-        # Reset to config default — respects subscription mode (None = CLI default).
-        sdk_model = _resolve_sdk_model()
-        logger.info(
-            "[SDK] [%s] Per-request model override: standard (%s)",
-            session_id[:12] if session_id else "?",
-            sdk_model or "subscription-default",
-        )
-        return sdk_model
-
-    return _resolve_sdk_model()
+    logger.info(
+        "[SDK] [%s] Resolved model for tier=%s: %s",
+        session_id[:12] if session_id else "?",
+        tier_name,
+        sdk_model,
+    )
+    return sdk_model
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -3177,8 +3249,8 @@ async def stream_chat_completion_sdk(
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
-        # Resolve model (request tier → config default).
-        sdk_model = await _resolve_sdk_model_for_request(model, session_id)
+        # Resolve model (request tier → LD per-user override → config default).
+        sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()

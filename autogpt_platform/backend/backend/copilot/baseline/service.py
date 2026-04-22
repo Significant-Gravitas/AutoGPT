@@ -45,6 +45,7 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.model_router import resolve_model
 from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
@@ -319,20 +320,17 @@ def _filter_tools_by_permissions(
     ]
 
 
-def _resolve_baseline_model(tier: CopilotLlmModel | None) -> str:
+async def _resolve_baseline_model(
+    tier: CopilotLlmModel | None, user_id: str | None
+) -> str:
     """Pick the model for the baseline path based on the per-request tier.
 
-    Baseline resolves independently of SDK via the ``fast_*_model`` cells
-    of the (path, tier) matrix.  ``'standard'`` / ``None`` picks Kimi
-    K2.6 by default (cheap + OpenRouter ``reasoning`` support);
-    ``'advanced'`` picks Opus by default so the advanced tier is a clean
-    A/B against the SDK advanced tier — same model, different path —
-    isolating reasoning-wire + cache differences from model capability.
-    Both defaults are overridable per ``CHAT_FAST_*_MODEL`` env vars.
+    Delegates to :func:`copilot.model_router.resolve_model` so the
+    ``(fast, tier)`` cell is LD-overridable per user.  ``None`` tier
+    maps to ``"standard"``.
     """
-    if tier == "advanced":
-        return config.fast_advanced_model
-    return config.fast_standard_model
+    tier_name = "advanced" if tier == "advanced" else "standard"
+    return await resolve_model("fast", tier_name, user_id, config=config)
 
 
 @dataclass
@@ -1382,7 +1380,7 @@ async def stream_chat_completion_baseline(
     # Select model based on the per-request tier toggle (standard / advanced).
     # The path (fast vs extended_thinking) is already decided — we're in the
     # baseline (fast) path; ``mode`` is accepted for logging parity only.
-    active_model = _resolve_baseline_model(model)
+    active_model = await _resolve_baseline_model(model, user_id)
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None

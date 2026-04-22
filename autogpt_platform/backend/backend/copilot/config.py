@@ -43,42 +43,29 @@ class ChatConfig(BaseSettings):
     # ``CHAT_FAST_MODEL``) are preserved via ``validation_alias`` so
     # existing deployments continue to override the same effective cell.
     fast_standard_model: str = Field(
-        default="moonshotai/kimi-k2.6",
+        default="anthropic/claude-sonnet-4-6",
         validation_alias=AliasChoices(
             "CHAT_FAST_STANDARD_MODEL",
             "CHAT_FAST_MODEL",
         ),
-        description="Baseline path, 'standard' / ``None`` tier.  Kimi K2.6 "
-        "by default: ~5x cheaper input and ~5.4x cheaper output than Sonnet, "
-        "SWE-Bench Verified parity with Opus, and OpenRouter advertises the "
-        "``reasoning`` + ``include_reasoning`` extension params on the "
-        "Moonshot endpoints — so the baseline reasoning plumbing lights up "
-        "without provider-specific code.  Roll back to the Anthropic route "
-        "via ``CHAT_FAST_STANDARD_MODEL=anthropic/claude-sonnet-4.6`` (then "
-        "``cache_control`` breakpoints reactivate via "
-        "``_is_anthropic_model``).",
+        description="Baseline path, 'standard' / ``None`` tier.  Per-user "
+        "overrides flow through the ``copilot-fast-standard-model`` LD flag "
+        "(see ``copilot/model_router.py``); this value is the fallback.",
     )
     fast_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",
         validation_alias=AliasChoices("CHAT_FAST_ADVANCED_MODEL"),
-        description="Baseline path, 'advanced' tier.  Opus by default. "
-        "Override via ``CHAT_FAST_ADVANCED_MODEL``.",
+        description="Baseline path, 'advanced' tier.  LD override: "
+        "``copilot-fast-advanced-model``.",
     )
     thinking_standard_model: str = Field(
-        default="moonshotai/kimi-k2.6",
+        default="anthropic/claude-sonnet-4-6",
         validation_alias=AliasChoices(
             "CHAT_THINKING_STANDARD_MODEL",
             "CHAT_MODEL",
         ),
         description="SDK (extended-thinking) path, 'standard' / ``None`` "
-        "tier.  Kimi K2.6 by default: routed via OpenRouter's Anthropic-"
-        "compatible ``/v1/messages`` endpoint, which the Claude Agent SDK "
-        "CLI accepts as a drop-in ``ANTHROPIC_BASE_URL`` target.  The same "
-        "cost/capability rationale as the baseline path applies — ~5x "
-        "cheaper than Sonnet at SWE-Bench parity.  Roll back to Sonnet via "
-        "``CHAT_THINKING_STANDARD_MODEL=anthropic/claude-sonnet-4.6`` (then "
-        "the SDK ``cache_control`` markers reactivate).  Direct-Anthropic "
-        "deployments (no OpenRouter) must override to an Anthropic model.",
+        "tier.  LD override: ``copilot-thinking-standard-model``.",
     )
     thinking_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",
@@ -86,9 +73,8 @@ class ChatConfig(BaseSettings):
             "CHAT_THINKING_ADVANCED_MODEL",
             "CHAT_ADVANCED_MODEL",
         ),
-        description="SDK (extended-thinking) path, 'advanced' tier.  Opus "
-        "by default.  Override via ``CHAT_THINKING_ADVANCED_MODEL`` "
-        "(legacy ``CHAT_ADVANCED_MODEL`` still honored).",
+        description="SDK (extended-thinking) path, 'advanced' tier.  LD "
+        "override: ``copilot-thinking-advanced-model``.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",
