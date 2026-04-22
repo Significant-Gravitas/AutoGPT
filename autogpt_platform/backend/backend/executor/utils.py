@@ -338,6 +338,23 @@ async def _validate_node_input_credentials(
         # Track if any credential field is missing for this node
         has_missing_credentials = False
 
+        # Local helper: mark the node as skippable when a per-field branch
+        # decides the field is optional-and-missing. We add to
+        # `nodes_to_skip` here rather than relying on the post-loop
+        # guard — that guard only fires when the NODE-level
+        # ``is_creds_optional`` is True. For auto-credential fields the
+        # optionality is usually field-level (``field_name not in
+        # required_fields`` because the schema default is None), so
+        # deferring would let the node silently pass validation and then
+        # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
+        # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
+        # field) to avoid redefining the closure each inner-loop
+        # iteration — see Cursor thread PRRT_kwDOJKSTjM58sEDe.
+        def _mark_optional_skip() -> None:
+            nonlocal has_missing_credentials
+            has_missing_credentials = True
+            nodes_to_skip.add(node.id)
+
         # A credential field is optional if the node metadata says so, or if
         # the block schema declares a default for the field.
         required_fields = block.input_schema.get_required_fields()
@@ -430,21 +447,6 @@ async def _validate_node_input_credentials(
                     field_value = nodes_input_masks[node.id].get(
                         field_name, field_value
                     )
-
-                # Local helper: mark the node as skippable when a field
-                # is optional-and-missing.  We add to `nodes_to_skip` here
-                # rather than relying on the post-loop guard — that guard
-                # only fires when the NODE-level ``is_creds_optional`` is
-                # True.  For auto-credential fields the optionality is
-                # usually field-level (``field_name not in required_fields``
-                # because the schema default is None), so deferring would
-                # let the node silently pass validation and then crash in
-                # ``_acquire_auto_credentials`` at runtime.  See Cursor
-                # thread PRRT_kwDOJKSTjM58r_37.
-                def _mark_optional_skip() -> None:
-                    nonlocal has_missing_credentials
-                    has_missing_credentials = True
-                    nodes_to_skip.add(node.id)
 
                 if field_value is None:
                     # Sentry HIGH: an explicitly-None value (e.g. cleared by

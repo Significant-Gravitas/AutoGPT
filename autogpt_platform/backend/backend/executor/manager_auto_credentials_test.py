@@ -414,3 +414,58 @@ async def test_acquire_auto_credentials_rejects_empty_string_credential_id(
 
     # Never tried to acquire the (empty) credential.
     manager.acquire.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad_value",
+    [
+        pytest.param("1KAv8hhChef7a5ycn6Al1M4DdkiG_PVcKQ_tYkRpGA-I", id="bare-string"),
+        pytest.param(42, id="int"),
+        pytest.param(True, id="bool"),
+        pytest.param(["a", "b"], id="list"),
+    ],
+)
+async def test_acquire_auto_credentials_rejects_non_dict_value_with_type_message(
+    mocker: MockerFixture,
+    bad_value,
+):
+    """Cursor Medium (thread PRRT_kwDOJKSTjM58sEDl): the ``else`` branch
+    in ``_acquire_auto_credentials`` used to raise "No file selected"
+    for ANY truthy non-dict ``field_data`` (e.g. a bare Drive ID
+    string).  That message is misleading when the value *was*
+    supplied — it's just the wrong shape.  The graph validator catches
+    bare strings at save time, but API callers / legacy graphs can
+    still reach the runtime.
+
+    Pin the tighter contract: a non-dict value must raise an error
+    that names both the field *and* the type it received."""
+    from backend.executor.manager import _acquire_auto_credentials
+
+    manager = mocker.AsyncMock()
+    input_model = mocker.MagicMock()
+    input_model.get_auto_credentials_fields.return_value = {
+        "credentials": {
+            "field_name": "spreadsheet",
+            "config": {"provider": "google", "type": "oauth2"},
+        }
+    }
+
+    input_data = {"spreadsheet": bad_value}
+
+    with pytest.raises(ValueError) as exc_info:
+        await _acquire_auto_credentials(
+            input_model=input_model,
+            input_data=input_data,
+            creds_manager=manager,
+            user_id="user-1",
+        )
+
+    msg = str(exc_info.value)
+    # Must mention the field name.
+    assert "spreadsheet" in msg
+    # Must describe the actual type rather than the misleading
+    # "No file selected" — anchor on the type name so the fix
+    # can't silently regress to the old generic message.
+    assert type(bad_value).__name__ in msg
+    manager.acquire.assert_not_called()

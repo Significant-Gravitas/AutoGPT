@@ -216,13 +216,27 @@ async def _acquire_auto_credentials(
             elif field_data is None and field_name not in input_data:
                 # Field not in input_data at all = connected from upstream block, skip
                 pass
-            else:
+            elif field_data is None or field_data == "":
                 # field_data is None/empty but key IS in input_data = user didn't select
                 provider = info.get("config", {}).get("provider", "external service")
                 raise ValueError(
                     f"No file selected for '{field_name}'. "
                     f"Please select a file to provide "
                     f"{provider.capitalize()} authentication."
+                )
+            else:
+                # field_data is truthy but NOT a dict (e.g. bare Drive ID
+                # string, int, list). The graph validator catches this at
+                # save time, but API callers / legacy graphs can still
+                # reach here — surface what the value actually is instead
+                # of the misleading "No file selected" message.
+                provider = info.get("config", {}).get("provider", "external service")
+                raise ValueError(
+                    f"Invalid {type(field_data).__name__} value for "
+                    f"'{field_name}': this field expects a picker-populated "
+                    f"object carrying the user's credentials, not a bare "
+                    f"value. Please re-select the file via the picker to "
+                    f"provide {provider.capitalize()} authentication."
                 )
     except BaseException:
         # Release any locks already acquired so failures on later fields
