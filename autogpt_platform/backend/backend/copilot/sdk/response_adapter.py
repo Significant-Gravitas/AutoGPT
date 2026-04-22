@@ -504,10 +504,18 @@ class SDKResponseAdapter:
         ``AssistantMessage`` turn) the maps must reset so indices from
         the previous message don't suppress genuine content in the new
         one.
+
+        Also clears ``_partial_*_buffer``: multi-round turns (tool use)
+        emit a ``message_start`` per LLM round, and leftover prefix
+        content from round N would cause the summary walk in round N+1
+        to either match the wrong prefix (silently dropping new content)
+        or diverge and fall back to re-emitting the whole block.
         """
         self._emitted_text_by_index = {}
         self._emitted_thinking_by_index = {}
         self._block_types_by_index = {}
+        self._partial_text_buffer = ""
+        self._partial_thinking_buffer = ""
         self._pending_thinking_delta = ""
         self._pending_thinking_index = None
 
