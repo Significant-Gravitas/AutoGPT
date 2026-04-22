@@ -88,9 +88,8 @@ class ResponseType(str, Enum):
     MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
     MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
 
-    # Planning / delegation
+    # Planning
     TODO_WRITE = "todo_write"
-    TASK = "task"
 
 
 # Base response model
@@ -847,7 +846,7 @@ class MemoryForgetConfirmResponse(ToolResponseBase):
     failed_uuids: list[str] = Field(default_factory=list)
 
 
-# --- Planning / delegation ---
+# --- Planning ---
 
 
 class TodoItem(BaseModel):
@@ -878,27 +877,3 @@ class TodoWriteResponse(ToolResponseBase):
 
     type: ResponseType = ResponseType.TODO_WRITE
     todos: list[TodoItem] = Field(default_factory=list)
-
-
-class TaskResponse(ToolResponseBase):
-    """Result of a delegated ``Task`` in-process sub-agent run.
-
-    The sub-agent runs a fresh tool-call loop with an isolated message
-    history, then returns only its final assistant text. Intermediate tool
-    calls and thinking stay inside the sub-agent's loop so the parent
-    context is not polluted.
-    """
-
-    type: ResponseType = ResponseType.TASK
-    description: str = ""
-    response: str = Field(
-        default="",
-        description="Final assistant text the sub-agent produced.",
-    )
-    iterations: int = 0
-    tool_calls: list[str] = Field(
-        default_factory=list,
-        description="Names of tools the sub-agent invoked (for observability).",
-    )
-    status: Literal["completed", "max_iterations", "error"] = "completed"
-    error: str | None = None

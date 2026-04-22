@@ -582,10 +582,11 @@ class TestApplyToolPermissions:
 
 class TestSdkBuiltinToolNames:
     def test_expected_builtins_present(self):
-        # Task and TodoWrite are NOT in SDK_BUILTIN_TOOL_NAMES: baseline ships
-        # MCP-wrapped platform versions for model-flexibility parity, and SDK
-        # mode sources them from the CLI-native originals outside the
-        # PLATFORM vs SDK_BUILTIN classification used by permissions.
+        # ``TodoWrite`` is DELIBERATELY absent: baseline ships an MCP-wrapped
+        # platform version for model-flexibility parity, so it appears in
+        # PLATFORM_TOOL_NAMES / TOOL_REGISTRY instead. ``Task`` remains
+        # SDK-only — baseline uses ``run_sub_session`` for the equivalent
+        # context-isolation role.
         expected = {
             "Agent",
             "Read",
@@ -593,10 +594,10 @@ class TestSdkBuiltinToolNames:
             "Edit",
             "Glob",
             "Grep",
+            "Task",
             "WebSearch",
         }
         assert expected.issubset(SDK_BUILTIN_TOOL_NAMES)
-        assert "Task" not in SDK_BUILTIN_TOOL_NAMES
         assert "TodoWrite" not in SDK_BUILTIN_TOOL_NAMES
 
     def test_platform_names_match_tool_registry(self):

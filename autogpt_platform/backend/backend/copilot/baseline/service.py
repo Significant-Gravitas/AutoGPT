@@ -16,10 +16,9 @@ import shutil
 import tempfile
 import uuid
 from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
-from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import partial
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
@@ -84,7 +83,6 @@ from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
-from backend.copilot.tools.models import TaskResponse
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -123,29 +121,6 @@ _background_tasks: set[asyncio.Task[Any]] = set()
 
 # Maximum number of tool-call rounds before forcing a text response.
 _MAX_TOOL_ROUNDS = 30
-
-# Task (in-process sub-agent) safeguards.
-# Depth cap keeps runaway recursion from exhausting tokens or the OpenRouter
-# credit budget; the iteration cap bounds a single sub-agent's own tool-call
-# loop (separate from the parent's _MAX_TOOL_ROUNDS).
-_MAX_TASK_DEPTH = 2
-_MAX_TASK_ITERATIONS = 15
-
-# Tracks Task nesting for the current request context — inspected by
-# ``_run_task_subagent`` to refuse deeper spawns. ContextVars survive across
-# ``await`` points which lets the depth check work inside the async
-# ``tool_call_loop``.
-_TASK_DEPTH_VAR: ContextVar[int] = ContextVar("copilot_baseline_task_depth", default=0)
-
-_TASK_INNER_SYSTEM_PROMPT = (
-    "You are an in-process sub-agent invoked via the `Task` tool by a "
-    "parent copilot. Execute the task described in the user message using "
-    "the tools available to you, then return a concise final summary. "
-    "Intermediate tool calls and reasoning stay hidden from the parent — "
-    "only your final message is surfaced back. Do not invoke the `Task` "
-    "tool yourself; keep focus on the requested unit of work and stop as "
-    "soon as you have a usable answer."
-)
 
 # Max seconds to wait for transcript upload in the finally block before
 # letting it continue as a background task (tracked in _background_tasks).
@@ -843,27 +818,13 @@ async def _baseline_tool_executor(
     session.announce_inflight_tool_call(tool_name)
 
     try:
-        if tool_name == "Task":
-            # In-process sub-agent: baseline's answer to the SDK's CLI-native
-            # Task tool. The outer ``execute_tool`` dispatch would hit the
-            # TaskTool stub and return an error; we spin up a nested
-            # ``tool_call_loop`` here so the parent context stays clean.
-            result: StreamToolOutputAvailable = await _run_task_subagent(
-                tool_call_id=tool_call_id,
-                tool_args=tool_args,
-                tools=tools,
-                parent_state=state,
-                user_id=user_id,
-                session=session,
-            )
-        else:
-            result = await execute_tool(
-                tool_name=tool_name,
-                parameters=tool_args,
-                user_id=user_id,
-                session=session,
-                tool_call_id=tool_call_id,
-            )
+        result: StreamToolOutputAvailable = await execute_tool(
+            tool_name=tool_name,
+            parameters=tool_args,
+            user_id=user_id,
+            session=session,
+            tool_call_id=tool_call_id,
+        )
         _emit(state, result)
         tool_output = (
             result.output if isinstance(result.output, str) else str(result.output)
@@ -896,243 +857,6 @@ async def _baseline_tool_executor(
             content=error_output,
             is_error=True,
         )
-
-
-def _task_error_output(
-    tool_call_id: str,
-    message: str,
-    *,
-    description: str = "",
-) -> StreamToolOutputAvailable:
-    """Build a ``StreamToolOutputAvailable`` for a Task that failed pre-flight.
-
-    Error cases (parse failure, missing prompt, depth cap) short-circuit
-    before the nested loop starts so parent-side usage accounting stays
-    untouched.
-    """
-    body = TaskResponse(
-        message=message,
-        description=description,
-        response="",
-        status="error",
-        error=message,
-    )
-    return StreamToolOutputAvailable(
-        toolCallId=tool_call_id,
-        toolName="Task",
-        output=body.model_dump_json(exclude_none=True),
-        success=False,
-    )
-
-
-def _inner_task_conversation_updater(
-    messages: list[dict[str, Any]],
-    response: LLMLoopResponse,
-    tool_results: list[ToolCallResult] | None = None,
-) -> None:
-    """Stripped-down conversation updater used by in-process Task sub-agents.
-
-    The sub-agent's message list needs to grow so the tool_call_loop can
-    follow assistant/tool turns to a natural finish, but we deliberately
-    skip the parent's transcript-builder and session-message writes so the
-    sub-agent's step-by-step trace doesn't pollute the user-visible
-    conversation history.
-    """
-    _mutate_openai_messages(messages, response, tool_results)
-
-
-async def _run_task_subagent(
-    *,
-    tool_call_id: str,
-    tool_args: dict[str, Any],
-    tools: Sequence[Any],
-    parent_state: _BaselineStreamState,
-    user_id: str | None,
-    session: ChatSession,
-) -> StreamToolOutputAvailable:
-    """Execute a `Task` tool call as a nested, context-isolated loop.
-
-    The sub-agent runs with a fresh ``_BaselineStreamState`` so its streaming
-    events (text deltas, StreamStartStep/StreamFinishStep envelopes, nested
-    tool_use/tool_result pairs) stay out of the parent stream. When it
-    finishes we roll up token/cost counters to the parent state and return
-    only the final assistant text — that text becomes the tool_result the
-    parent LLM sees, so the parent context is never polluted by the
-    sub-agent's intermediate reasoning.
-
-    Safeguards:
-    - Depth cap via ``_TASK_DEPTH_VAR`` prevents runaway recursion.
-    - Iteration cap (``_MAX_TASK_ITERATIONS``) bounds one sub-agent's loop
-      independently of the parent's ``_MAX_TOOL_ROUNDS``.
-    - The inner tool list excludes ``Task`` so a sub-agent can't re-enter
-      this path; combined with the depth cap this gives defence in depth.
-    """
-    description = str(tool_args.get("description") or "").strip()
-    prompt = str(tool_args.get("prompt") or "").strip()
-
-    if not prompt:
-        return _task_error_output(
-            tool_call_id,
-            "Task requires a non-empty `prompt`.",
-            description=description,
-        )
-
-    depth = _TASK_DEPTH_VAR.get()
-    if depth >= _MAX_TASK_DEPTH:
-        return _task_error_output(
-            tool_call_id,
-            (
-                f"Task nesting depth limit reached (max {_MAX_TASK_DEPTH}). "
-                "Collapse the outer Task or perform the step inline."
-            ),
-            description=description,
-        )
-
-    inner_state = _BaselineStreamState(model=parent_state.model)
-    inner_messages: list[dict[str, Any]] = [
-        {"role": "system", "content": _TASK_INNER_SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
-    ]
-    inner_tools: list[Any] = [
-        t for t in tools if (t.get("function") or {}).get("name") != "Task"
-    ]
-    # The parent pre-marks ``cache_control`` on the last tool schema once per
-    # session for Anthropic routes (see ``_mark_tools_with_cache_control``
-    # in ``stream_chat_completion_baseline``).  Filtering ``Task`` off the
-    # end can drop that marker, which would make every sub-agent LLM round
-    # re-send the ~8 KB tool schema uncached.  Re-apply on Anthropic routes
-    # so each inner round hits the cache from round 2 onward; no-op for
-    # OpenAI / Grok / other providers where ``cache_control`` is unknown.
-    if _is_anthropic_model(parent_state.model) and inner_tools:
-        inner_tools = cast(list[Any], _mark_tools_with_cache_control(inner_tools))
-
-    tool_names_seen: list[str] = []
-    iterations = 0
-    final_response_text = ""
-    finished_naturally = True
-
-    inner_executor = partial(
-        _baseline_tool_executor,
-        state=inner_state,
-        user_id=user_id,
-        # NOTE: the sub-agent deliberately shares the parent's ``session``
-        # object — ``_baseline_tool_executor`` calls
-        # ``session.announce_inflight_tool_call(tool_name)`` which feeds
-        # in-turn guards like ``require_guide_read``.  Cross-contaminating
-        # the announce-set is the intended behaviour: if the parent calls
-        # ``get_agent_building_guide`` and the sub-agent then calls
-        # ``create_agent``, the guard should recognise the prereq was met.
-        # Message history and streaming events ARE isolated (fresh
-        # ``_BaselineStreamState`` above) — only the announce-set leaks.
-        session=session,
-    )
-    inner_llm = partial(_baseline_llm_caller, state=inner_state)
-
-    task_exc: Exception | None = None
-    token = _TASK_DEPTH_VAR.set(depth + 1)
-    try:
-        try:
-            async for loop_result in tool_call_loop(
-                messages=inner_messages,
-                tools=inner_tools,
-                llm_call=inner_llm,
-                execute_tool=inner_executor,
-                update_conversation=_inner_task_conversation_updater,
-                max_iterations=_MAX_TASK_ITERATIONS,
-                last_iteration_message=(
-                    "This is the final iteration — produce your summary now."
-                ),
-            ):
-                # Discard inner streaming events so only the Task envelope
-                # and its final summary reach the parent client.  The inner
-                # state's queue must be drained (not cleared — it's an
-                # ``asyncio.Queue``) each iteration so the next round's
-                # producers don't block on a full buffer.  Token accounting
-                # still happens via ``inner_state`` and rolls up after the
-                # loop exits.
-                while not inner_state.pending_events.empty():
-                    inner_state.pending_events.get_nowait()
-                inner_state.emitted_events.clear()
-                for tc in loop_result.last_tool_calls:
-                    tool_names_seen.append(tc.name)
-                iterations = loop_result.iterations
-                finished_naturally = loop_result.finished_naturally
-                if loop_result.finished_naturally:
-                    final_response_text = loop_result.response_text or ""
-        except Exception as exc:
-            task_exc = exc
-        # ``CancelledError`` / ``KeyboardInterrupt`` / ``SystemExit``
-        # derive from ``BaseException`` and are intentionally NOT caught
-        # here — they propagate through the outer ``finally`` below, which
-        # still resets the depth counter and rolls up usage before the
-        # exception reaches the caller.  Letting them bubble naturally
-        # avoids the ``except BaseException`` suppressor pattern.
-    finally:
-        _TASK_DEPTH_VAR.reset(token)
-        # Usage rolls up on every path (success, caught Exception, or
-        # propagating BaseException) so partial work is still billed.
-        _absorb_inner_usage(parent_state, inner_state)
-
-    if task_exc is not None:
-        logger.error(
-            "[Baseline] Task sub-agent failed: %s", task_exc, exc_info=task_exc
-        )
-        body = TaskResponse(
-            message=f"Task failed: {task_exc}",
-            description=description,
-            response="",
-            iterations=iterations,
-            tool_calls=tool_names_seen,
-            status="error",
-            error=str(task_exc),
-        )
-        return StreamToolOutputAvailable(
-            toolCallId=tool_call_id,
-            toolName="Task",
-            output=body.model_dump_json(exclude_none=True),
-            success=False,
-        )
-
-    status: Literal["completed", "max_iterations"] = (
-        "completed" if finished_naturally else "max_iterations"
-    )
-    body = TaskResponse(
-        message=(
-            "Task completed."
-            if status == "completed"
-            else f"Task hit iteration limit ({_MAX_TASK_ITERATIONS})."
-        ),
-        session_id=session.session_id,
-        description=description,
-        response=final_response_text,
-        iterations=iterations,
-        tool_calls=tool_names_seen,
-        status=status,
-    )
-    return StreamToolOutputAvailable(
-        toolCallId=tool_call_id,
-        toolName="Task",
-        output=body.model_dump_json(exclude_none=True),
-    )
-
-
-def _absorb_inner_usage(
-    parent_state: _BaselineStreamState,
-    inner_state: _BaselineStreamState,
-) -> None:
-    """Fold a sub-agent's token/cost counters back into the parent state.
-
-    Usage accounting happens once per turn via
-    ``persist_and_record_usage`` (see ``stream_chat_completion_baseline``);
-    the sub-agent runs under the same turn, so the user must still be
-    billed for its LLM calls.
-    """
-    parent_state.turn_prompt_tokens += inner_state.turn_prompt_tokens
-    parent_state.turn_completion_tokens += inner_state.turn_completion_tokens
-    parent_state.turn_cache_read_tokens += inner_state.turn_cache_read_tokens
-    parent_state.turn_cache_creation_tokens += inner_state.turn_cache_creation_tokens
-    if inner_state.cost_usd is not None:
-        parent_state.cost_usd = (parent_state.cost_usd or 0.0) + inner_state.cost_usd
 
 
 def _mutate_openai_messages(

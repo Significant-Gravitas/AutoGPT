@@ -32,12 +32,11 @@ from backend.copilot.tools import TOOL_REGISTRY
 # synthesised-answer wording in the top-level description so the LLM
 # reads the answer before reaching for `web_fetch`. Both are
 # LLM-decision-critical copy, not bloat.
-# Bumped 33200 -> 34600 when baseline gained MCP `TodoWrite` and `Task`
-# platform tools for parity with the Claude Code SDK's built-ins
-# (PR: feat/copilot-baseline-todowrite-task). The two new schemas add
-# ~1200 chars / ~300 tokens combined; descriptions are already trimmed
-# to the minimum viable copy.
-_CHAR_BUDGET = 34_600
+# Bumped 33200 -> 34000 when baseline gained the MCP `TodoWrite` tool
+# for parity with the Claude Code SDK's built-in (PR #12879). The new
+# schema adds ~600 chars; description already trimmed to the minimum
+# viable copy.
+_CHAR_BUDGET = 34_000
 
 
 @pytest.fixture(scope="module")

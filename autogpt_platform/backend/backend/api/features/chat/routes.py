@@ -75,7 +75,6 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
-    TaskResponse,
     TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
@@ -1422,7 +1421,6 @@ ToolResponseUnion = (
     | MemoryForgetCandidatesResponse
     | MemoryForgetConfirmResponse
     | TodoWriteResponse
-    | TaskResponse
 )
 
 

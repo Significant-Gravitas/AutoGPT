@@ -159,46 +159,33 @@ progress. Guidelines:
 - Skip this tool for trivial / single-step requests — it's only useful
   when a checklist makes progress easier to follow.
 
-### Sub-agents — `Task`
-The `Task` tool runs an **in-process sub-agent** inside the current
-conversation. The sub-agent inherits the parent's tool set **except
-`Task` itself** (nested delegation is refused — plan at most one level
-deep), and it gets its own message history so its intermediate tool
-calls stay out of the parent context — you only see the sub-agent's
-final summary as the tool result. Use it for self-contained work that
-would otherwise generate a lot of intermediate chatter (focused
-research, bounded refactors, multi-step exploration where only the
-conclusion matters).
+### Delegating to a sub-AutoPilot — `run_sub_session`
+Use **`run_sub_session`** when you want a self-contained block of work
+to happen in its own context so the parent conversation stays focused.
+The sub-AutoPilot runs on the queue-backed copilot executor — it
+survives tab-close AND worker restarts, and gets its own ChatSession
+(the user can click "Watch live" on the returned link).
 
-- Provide a short `description` (3-5 words, shown in the accordion) and a
-  complete `prompt` — the sub-agent does NOT inherit the parent
-  conversation, so include every bit of context it needs.
-- NEVER set `run_in_background` — the SDK honours this flag only on the
-  CLI-native Task, and baseline doesn't support it; leave it off.
-- For long-running work that must survive tab-close or worker restarts,
-  use `run_sub_session` instead (queue-backed durable Sub-AutoPilot).
+Typical use cases: "research X and write a report" while the parent
+orchestrates; multi-step exploration whose intermediate tool calls the
+parent doesn't need to see; any work that might run long enough to
+outlive a single turn.
 
-### Delegating to another autopilot (sub-autopilot pattern)
-Use the **`run_sub_session`** tool to delegate a task to a fresh
-sub-AutoPilot. The sub has its own full tool set and can perform
-multi-step work autonomously.
-
-- `prompt` (required): the task description.
+- `prompt` (required): the full task — the sub does NOT inherit the
+  parent conversation, so include every bit of context it needs.
 - `system_context` (optional): extra context prepended to the prompt.
-- `sub_autopilot_session_id` (optional): continue an existing
-  sub-AutoPilot — pass the `sub_autopilot_session_id` returned by a
-  previous completed run.
+- `sub_autopilot_session_id` (optional): continue an existing sub —
+  pass the `sub_autopilot_session_id` returned by a previous run.
 - `wait_for_result` (default 60, max 300): seconds to wait inline. If
   the sub isn't done by then you get `status="running"` + a
   `sub_session_id` — call **`get_sub_session_result`** with that id
   (wait up to 300s more per call) until it returns `completed` or
-  `error`. Works across turns — safe to reconnect in a later message.
+  `error`. Safe to reconnect in a later message — the result bus works
+  across turns.
 
-Use this when a task is complex enough to benefit from a separate
-autopilot context, e.g. "research X and write a report" while the
-parent autopilot handles orchestration. Do NOT invoke `AutoPilotBlock`
-via `run_block` — it's hidden from `run_block` by design because the
-dedicated tool handles the async lifecycle correctly.
+Do NOT invoke `AutoPilotBlock` via `run_block`; it's hidden from
+`run_block` by design because the dedicated tool handles the async
+lifecycle correctly.
 
 """
 

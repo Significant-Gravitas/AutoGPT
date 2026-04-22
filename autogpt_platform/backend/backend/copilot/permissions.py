@@ -125,13 +125,15 @@ ToolName = Literal[
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
 # SDK built-in tool names — tools provided by the Claude Code CLI that our
-# code does not implement directly.  ``Task`` and ``TodoWrite`` are
-# DELIBERATELY excluded: baseline mode ships MCP-wrapped platform versions
-# of both (see ``tools/task.py`` / ``tools/todo_write.py``), while SDK mode
-# still uses the CLI-native originals via ``_SDK_BUILTIN_ALWAYS`` in
-# ``sdk/tool_adapter.py`` — the MCP copies are filtered out there.
+# code does not implement directly.  ``TodoWrite`` is DELIBERATELY excluded:
+# baseline mode ships an MCP-wrapped platform version
+# (``tools/todo_write.py``), while SDK mode still uses the CLI-native
+# original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
+# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# (for queue-backed context-isolation on baseline, use ``run_sub_session``
+# instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
-    {"Agent", "Edit", "Glob", "Grep", "Read", "WebSearch", "Write"}
+    {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
 # Platform tool names — everything that isn't an SDK built-in.

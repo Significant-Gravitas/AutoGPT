@@ -43,7 +43,6 @@ from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
 from .run_sub_session import RunSubSessionTool
 from .search_docs import SearchDocsTool
-from .task import TaskTool
 from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
@@ -88,10 +87,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "continue_run_block": ContinueRunBlockTool(),
     "run_sub_session": RunSubSessionTool(),
     "get_sub_session_result": GetSubSessionResultTool(),
-    # Planning + delegation (baseline parity with Claude Code built-ins).
-    # SDK mode uses the CLI's native Task/TodoWrite and these MCP versions
-    # are filtered out of SDK's allowed_tools in ``sdk/tool_adapter.py``.
-    "Task": TaskTool(),
+    # Task-list tool mirroring Claude Code's built-in.  SDK mode uses the
+    # CLI-native ``TodoWrite`` — the MCP wrapper here is filtered out of
+    # SDK's allowed_tools in ``sdk/tool_adapter.py``.
     "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),

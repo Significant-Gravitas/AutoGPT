@@ -2117,8 +2117,7 @@
                     {
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
                     },
-                    { "$ref": "#/components/schemas/TodoWriteResponse" },
-                    { "$ref": "#/components/schemas/TaskResponse" }
+                    { "$ref": "#/components/schemas/TodoWriteResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -14573,8 +14572,7 @@
           "memory_search",
           "memory_forget_candidates",
           "memory_forget_confirm",
-          "todo_write",
-          "task"
+          "todo_write"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -16069,55 +16067,6 @@
         "type": "object",
         "required": ["recent_searches", "providers", "top_blocks"],
         "title": "SuggestionsResponse"
-      },
-      "TaskResponse": {
-        "properties": {
-          "type": {
-            "$ref": "#/components/schemas/ResponseType",
-            "default": "task"
-          },
-          "message": { "type": "string", "title": "Message" },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id"
-          },
-          "description": {
-            "type": "string",
-            "title": "Description",
-            "default": ""
-          },
-          "response": {
-            "type": "string",
-            "title": "Response",
-            "description": "Final assistant text the sub-agent produced.",
-            "default": ""
-          },
-          "iterations": {
-            "type": "integer",
-            "title": "Iterations",
-            "default": 0
-          },
-          "tool_calls": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Tool Calls",
-            "description": "Names of tools the sub-agent invoked (for observability)."
-          },
-          "status": {
-            "type": "string",
-            "enum": ["completed", "max_iterations", "error"],
-            "title": "Status",
-            "default": "completed"
-          },
-          "error": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Error"
-          }
-        },
-        "type": "object",
-        "required": ["message"],
-        "title": "TaskResponse",
-        "description": "Result of a delegated ``Task`` in-process sub-agent run.\n\nThe sub-agent runs a fresh tool-call loop with an isolated message\nhistory, then returns only its final assistant text. Intermediate tool\ncalls and thinking stay inside the sub-agent's loop so the parent\ncontext is not polluted."
       },
       "TimezoneResponse": {
         "properties": {
