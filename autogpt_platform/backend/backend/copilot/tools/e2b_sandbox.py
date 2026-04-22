@@ -47,7 +47,6 @@ import asyncio
 import contextlib
 import logging
 import math
-import shlex
 from typing import Any, Awaitable, Callable, Literal
 
 from e2b import AsyncSandbox, SandboxLifecycle
@@ -91,36 +90,6 @@ _E2B_API_TIMEOUT_SECONDS = 10
 # lifetime" setting (recommended: set both to 48 h).
 _SANDBOX_ID_TTL = 48 * 3600  # 48 hours
 
-# --- Sandbox bootstrap --------------------------------------------------------
-# The E2B "base" template does not ship the GitHub CLI, so we install it on
-# first create.  The copilot prompt instructs the model to run ``gh auth
-# status`` before prompting the user to connect GitHub; without this bootstrap
-# that check flakily fails with "command not found".  The script is idempotent:
-# it exits immediately if ``gh`` is already on PATH.  Installation is to
-# ``/usr/local/bin`` via sudo (E2B base grants passwordless sudo to the default
-# user), so every subsequent ``bash_exec`` sees ``gh`` on the hardcoded PATH.
-#
-# Version pinned so sandboxes across a deploy are consistent.  Bump as needed.
-_GH_CLI_VERSION = "2.78.0"
-_SANDBOX_BOOTSTRAP_SCRIPT = f"""
-set -e
-if command -v gh >/dev/null 2>&1; then exit 0; fi
-case "$(uname -m)" in
-  x86_64) arch=amd64 ;;
-  aarch64|arm64) arch=arm64 ;;
-  *) echo "unsupported arch: $(uname -m)" >&2; exit 2 ;;
-esac
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-curl -fsSL "https://github.com/cli/cli/releases/download/v{_GH_CLI_VERSION}/gh_{_GH_CLI_VERSION}_linux_${{arch}}.tar.gz" -o "$tmp/gh.tgz"
-tar -xzf "$tmp/gh.tgz" -C "$tmp"
-sudo -n mv "$tmp"/gh_*/bin/gh /usr/local/bin/gh
-""".strip()
-
-# Bootstrap should finish in <20 s on a good link; 60 s leaves headroom for
-# slow CDN responses without blocking sandbox creation for users.
-_BOOTSTRAP_TIMEOUT_SECONDS = 60
-
 
 def _sandbox_key(session_id: str) -> str:
     return f"{_SANDBOX_KEY_PREFIX}{session_id}"
@@ -141,38 +110,6 @@ async def _set_stored_sandbox_id(session_id: str, sandbox_id: str) -> None:
 async def _clear_stored_sandbox_id(session_id: str) -> None:
     redis = await get_redis_async()
     await redis.delete(_sandbox_key(session_id))
-
-
-async def _bootstrap_sandbox(sandbox: AsyncSandbox, session_id: str) -> None:
-    """Install tools the copilot prompt expects on a fresh sandbox.
-
-    Currently installs the GitHub CLI (``gh``) if missing — the E2B ``base``
-    template does not include it, and the prompt instructs the model to run
-    ``gh auth status`` to check GitHub connection state.
-
-    Best-effort: on failure, log a warning and proceed.  The copilot's
-    existing ``connect_integration`` fallback still works for GitHub auth; a
-    missing ``gh`` just means the status check reports "not installed" and
-    the model prompts the user to connect.
-    """
-    try:
-        result = await sandbox.commands.run(
-            f"bash -c {shlex.quote(_SANDBOX_BOOTSTRAP_SCRIPT)}",
-            timeout=_BOOTSTRAP_TIMEOUT_SECONDS,
-        )
-        if result.exit_code != 0:
-            logger.warning(
-                "[E2B] sandbox bootstrap exit %s for %.12s: %s",
-                result.exit_code,
-                session_id,
-                (result.stderr or "").strip()[:200],
-            )
-    except Exception as exc:
-        logger.warning(
-            "[E2B] sandbox bootstrap failed for %.12s: %s",
-            session_id,
-            exc,
-        )
 
 
 async def _try_reconnect(
@@ -294,10 +231,6 @@ async def get_or_create_sandbox(
                 raise last_exc
 
             assert sandbox is not None  # guaranteed: last_exc is None iff break was hit
-            # Install gh CLI etc. on first create so the prompt's `gh auth
-            # status` check works reliably.  Filesystem persists across
-            # pause/resume, so this runs at most once per session.
-            await _bootstrap_sandbox(sandbox, session_id)
             try:
                 await _set_stored_sandbox_id(session_id, sandbox.sandbox_id)
             except Exception:
