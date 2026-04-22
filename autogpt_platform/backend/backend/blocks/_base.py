@@ -764,28 +764,54 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                     block_id=self.id,
                 )
 
-        # Ensure auto-credential kwargs are present and non-None before we
-        # hand off to run(). A missing auto-credential means the upstream
-        # field (e.g. a Google Drive picker) didn't embed a _credentials_id,
-        # or the executor couldn't resolve it. Without this guard, run()
-        # would crash with a TypeError (missing required kwarg) or an
-        # opaque AttributeError deep inside the provider SDK.
+        # Ensure auto-credential kwargs are present before we hand off to
+        # run(). A missing auto-credential means the upstream field (e.g.
+        # a Google Drive picker) didn't embed a _credentials_id, or the
+        # executor couldn't resolve it. Without this guard, run() would
+        # crash with a TypeError (missing required kwarg) or an opaque
+        # AttributeError deep inside the provider SDK.
+        #
+        # Only raise when the field is ALSO not populated in input_data.
+        # ``_acquire_auto_credentials`` intentionally skips setting the
+        # kwarg in two legitimate cases — ``_credentials_id`` is ``None``
+        # (chained from upstream) or the field is missing from
+        # ``input_data`` at prep time (connected from upstream block).
+        # In both cases the upstream block is expected to populate the
+        # field value by execute time; raising here would break the
+        # documented ``AgentGoogleDriveFileInputBlock`` chaining pattern.
         # Dry-run skips because the executor intentionally runs blocks
         # without resolved creds for schema validation.
         if not is_dry_run:
-            for kwarg_name in self.input_schema.get_auto_credentials_fields():
+            for (
+                kwarg_name,
+                info,
+            ) in self.input_schema.get_auto_credentials_fields().items():
                 kwargs.setdefault(kwarg_name, None)
-                if kwargs[kwarg_name] is None:
-                    raise BlockExecutionError(
-                        message=(
-                            f"Missing credentials for '{kwarg_name}'. "
-                            "Select a file via the picker (which carries "
-                            "its credentials), or connect credentials for "
-                            "this block."
-                        ),
-                        block_name=self.name,
-                        block_id=self.id,
-                    )
+                if kwargs[kwarg_name] is not None:
+                    continue
+                # Upstream-chained pattern: the field was populated by a
+                # prior node (e.g. AgentGoogleDriveFileInputBlock) whose
+                # output carries a resolved ``_credentials_id``.
+                # ``_acquire_auto_credentials`` deliberately doesn't set
+                # the kwarg in that case because the value isn't available
+                # at prep time; the executor fills it in before we reach
+                # ``_execute``. Trust it if a resolved ``_credentials_id``
+                # is present — the consumer block's picker-token helper
+                # (or equivalent) will re-acquire creds at run time.
+                field_name = info["field_name"]
+                field_value = input_data.get(field_name)
+                if isinstance(field_value, dict) and field_value.get("_credentials_id"):
+                    continue
+                raise BlockExecutionError(
+                    message=(
+                        f"Missing credentials for '{kwarg_name}'. "
+                        "Select a file via the picker (which carries "
+                        "its credentials), or connect credentials for "
+                        "this block."
+                    ),
+                    block_name=self.name,
+                    block_id=self.id,
+                )
 
         # Use the validated input data
         async for output_name, output_data in self.run(
