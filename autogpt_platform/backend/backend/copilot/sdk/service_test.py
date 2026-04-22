@@ -610,6 +610,62 @@ class TestResolveSdkModelForRequestLdFallback:
         assert resolved == "claude-opus-4-7"
 
     @pytest.mark.asyncio
+    async def test_standard_ld_override_wins_over_subscription(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Bug reported in local test: subscription mode + LD serving Kimi
+        on ``copilot-thinking-standard-model`` returned ``None`` (CLI
+        picked subscription default Opus), silently ignoring the LD
+        override.  An LD value different from the config default is an
+        explicit admin decision and must win."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std-sub", user_id="user-1"
+            )
+        # Expect LD-served Kimi, NOT None (the old subscription-default bypass)
+        assert resolved == "moonshotai/kimi-k2.6"
+
+    @pytest.mark.asyncio
+    async def test_standard_subscription_default_honoured_when_ld_matches_config(
+        self, monkeypatch, _clean_config_env
+    ):
+        """When LD serves the SAME value as the config default (i.e. the
+        flag is effectively unset / no override), subscription mode still
+        wins and we return ``None`` so the CLI uses the subscription
+        default model."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std-nop", user_id="user-1"
+            )
+        assert resolved is None
+
+    @pytest.mark.asyncio
     async def test_advanced_tier_consults_ld_under_subscription(
         self, monkeypatch, _clean_config_env
     ):
