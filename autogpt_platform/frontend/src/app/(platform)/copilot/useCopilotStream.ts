@@ -38,6 +38,21 @@ interface UseCopilotStreamArgs {
   copilotModel: CopilotLlmModel | undefined;
 }
 
+interface CoPilotCostEstimate {
+  resolved_path: "baseline" | "sdk";
+  resolved_model: string;
+  estimated_llm_calls: number;
+  estimated_prompt_tokens: number;
+  estimated_completion_tokens: number;
+  estimated_total_tokens: number;
+  estimated_cost_usd: number;
+  confirmation_threshold_usd: number;
+  threshold_source: "launchdarkly" | "default";
+  requires_confirmation: boolean;
+  rationale: string;
+  approval_token: string | null;
+}
+
 export function useCopilotStream({
   sessionId,
   hydratedMessages,
@@ -48,9 +63,86 @@ export function useCopilotStream({
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
+  const [pendingCostEstimate, setPendingCostEstimate] =
+    useState<CoPilotCostEstimate | null>(null);
+  const pendingCostEstimateRef = useRef<CoPilotCostEstimate | null>(null);
+  const costApprovalResolverRef = useRef<
+    ((token: string | null) => void) | null
+  >(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
   }
+
+  function resolveCostApproval(token: string | null) {
+    const resolver = costApprovalResolverRef.current;
+    costApprovalResolverRef.current = null;
+    pendingCostEstimateRef.current = null;
+    setPendingCostEstimate(null);
+    resolver?.(token);
+  }
+
+  function confirmCostEstimate() {
+    const token = pendingCostEstimateRef.current?.approval_token ?? null;
+    resolveCostApproval(token);
+  }
+
+  function dismissCostEstimate() {
+    resolveCostApproval(null);
+  }
+
+  async function waitForCostApproval(
+    estimate: CoPilotCostEstimate,
+  ): Promise<string | null> {
+    if (costApprovalResolverRef.current) {
+      resolveCostApproval(null);
+    }
+    pendingCostEstimateRef.current = estimate;
+    setPendingCostEstimate(estimate);
+    return new Promise((resolve) => {
+      costApprovalResolverRef.current = resolve;
+    });
+  }
+
+  async function fetchCostEstimate(
+    sid: string,
+    requestBody: {
+      message: string;
+      is_user_message: boolean;
+      context: null;
+      file_ids: string[] | null;
+      mode: CopilotMode | null;
+      model: CopilotLlmModel | null;
+    },
+    headers: Record<string, string>,
+  ): Promise<CoPilotCostEstimate> {
+    const response = await fetch(
+      `${environment.getAGPTServerBaseUrl()}/api/chat/sessions/${sid}/estimate`,
+      {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      },
+    );
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(detail || "Failed to estimate request cost");
+    }
+    return (await response.json()) as CoPilotCostEstimate;
+  }
+
+  useEffect(() => {
+    return () => {
+      const resolver = costApprovalResolverRef.current;
+      costApprovalResolverRef.current = null;
+      pendingCostEstimateRef.current = null;
+      resolver?.(null);
+    };
+  }, []);
+
   // Use refs for copilotMode and copilotModel so the transport closure always reads
   // the latest value without recreating the DefaultChatTransport (which would
   // reset useChat's internal Chat instance and break mid-session streaming).
@@ -79,19 +171,38 @@ export function useCopilotStream({
                   return match?.[1];
                 })
                 .filter(Boolean) as string[] | undefined;
+              const headers = await getCopilotAuthHeaders();
+              const requestBody = {
+                message: (
+                  last.parts?.map((p) => (p.type === "text" ? p.text : "")) ??
+                  []
+                ).join(""),
+                is_user_message: last.role === "user",
+                context: null,
+                file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
+                mode: copilotModeRef.current ?? null,
+                model: copilotModelRef.current ?? null,
+              };
+
+              const estimate = await fetchCostEstimate(
+                sessionId,
+                requestBody,
+                headers,
+              );
+              let approvalToken: string | null = null;
+              if (estimate.requires_confirmation) {
+                approvalToken = await waitForCostApproval(estimate);
+                if (!approvalToken) {
+                  throw new Error("Cost confirmation cancelled");
+                }
+              }
+
               return {
                 body: {
-                  message: (
-                    last.parts?.map((p) => (p.type === "text" ? p.text : "")) ??
-                    []
-                  ).join(""),
-                  is_user_message: last.role === "user",
-                  context: null,
-                  file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
-                  mode: copilotModeRef.current ?? null,
-                  model: copilotModelRef.current ?? null,
+                  ...requestBody,
+                  approval_token: approvalToken,
                 },
-                headers: await getCopilotAuthHeaders(),
+                headers,
               };
             },
             prepareReconnectToStreamRequest: async () => ({
@@ -220,6 +331,9 @@ export function useCopilotStream({
       } catch {
         // Not JSON — use message as-is
       }
+      if (errorDetail.includes("Cost confirmation cancelled")) {
+        return;
+      }
       const isRateLimited = errorDetail.toLowerCase().includes("usage limit");
       if (isRateLimited) {
         setRateLimitMessage(
@@ -295,7 +409,28 @@ export function useCopilotStream({
     if (suppressReason === "duplicate") return;
 
     lastSubmittedMsgRef.current = text;
-    return sdkSendMessage(...args);
+    try {
+      return await sdkSendMessage(...args);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes("Cost confirmation cancelled")
+      ) {
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const last = prev[prev.length - 1];
+          if (last.role !== "user") return prev;
+          const lastText =
+            last.parts
+              ?.map((p) => (p.type === "text" ? p.text : ""))
+              .join("") ?? "";
+          if (lastText !== text) return prev;
+          return prev.slice(0, -1);
+        });
+        return;
+      }
+      throw error;
+    }
   };
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams
@@ -467,6 +602,7 @@ export function useCopilotStream({
     isReconnectScheduledRef.current = false;
     setIsReconnectScheduled(false);
     setRateLimitMessage(null);
+    dismissCostEstimate();
     hasShownDisconnectToast.current = false;
     lastSubmittedMsgRef.current = null;
     setReconnectExhausted(false);
@@ -576,5 +712,8 @@ export function useCopilotStream({
     isUserStoppingRef,
     rateLimitMessage,
     dismissRateLimit,
+    pendingCostEstimate,
+    confirmCostEstimate,
+    dismissCostEstimate,
   };
 }

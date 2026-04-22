@@ -75,6 +75,9 @@ export function useCopilotPage() {
     isUserStoppingRef,
     rateLimitMessage,
     dismissRateLimit,
+    pendingCostEstimate,
+    confirmCostEstimate,
+    dismissCostEstimate,
   } = useCopilotStream({
     sessionId,
     hydratedMessages,
@@ -418,6 +421,9 @@ export function useCopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
+    pendingCostEstimate,
+    confirmCostEstimate,
+    dismissCostEstimate,
     // Dry run dev toggle
     // isDryRun = global preference for NEW sessions (from localStorage).
     // sessionDryRun = actual dry_run value of the CURRENT session (from API).

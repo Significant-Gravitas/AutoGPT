@@ -10,6 +10,7 @@ import pytest_mock
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
+from backend.copilot.cost_estimation import CoPilotTurnCostEstimate
 from backend.copilot.rate_limit import SubscriptionTier
 
 app = fastapi.FastAPI()
@@ -18,6 +19,23 @@ app.include_router(chat_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
+
+
+@pytest.fixture
+def test_user_id() -> str:
+    return TEST_USER_ID
+
+
+@pytest.fixture
+def mock_jwt_user(test_user_id: str):
+    def _get_jwt_payload():
+        return {
+            "sub": test_user_id,
+            "role": "authenticated",
+            "email": "test@example.com",
+        }
+
+    return {"get_jwt_payload": _get_jwt_payload}
 
 
 @pytest.fixture(autouse=True)
@@ -152,9 +170,18 @@ def _mock_stream_internals(
     """
     import types
 
+    fake_session = MagicMock()
+    fake_session.messages = []
+
     mocker.patch(
         "backend.api.features.chat.routes._validate_and_get_session",
-        return_value=None,
+        new_callable=AsyncMock,
+        return_value=fake_session,
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.estimate_copilot_turn_cost",
+        new_callable=AsyncMock,
+        return_value=MagicMock(requires_confirmation=False),
     )
     mock_save = mocker.patch(
         "backend.api.features.chat.routes.append_and_save_message",
@@ -350,6 +377,127 @@ def test_stream_chat_429_includes_reset_time(mocker: pytest_mock.MockerFixture):
     detail = response.json()["detail"]
     assert "2h" in detail
     assert "Resets in" in detail
+
+
+def test_estimate_returns_approval_token_when_confirmation_required(
+    mocker: pytest_mock.MockerFixture,
+):
+    """Estimate endpoint returns approval token when confirmation is required."""
+    fake_session = MagicMock()
+    fake_session.messages = []
+    mocker.patch(
+        "backend.api.features.chat.routes._validate_and_get_session",
+        new_callable=AsyncMock,
+        return_value=fake_session,
+    )
+
+    mocker.patch(
+        "backend.api.features.chat.routes.estimate_copilot_turn_cost",
+        new_callable=AsyncMock,
+        return_value=CoPilotTurnCostEstimate(
+            resolved_path="sdk",
+            resolved_model="claude-sonnet-4-6",
+            estimated_llm_calls=6,
+            estimated_prompt_tokens=120000,
+            estimated_completion_tokens=18000,
+            estimated_total_tokens=138000,
+            estimated_cost_usd=11.42,
+            confirmation_threshold_usd=10.0,
+            threshold_source="launchdarkly",
+            requires_confirmation=True,
+            rationale="Complex multi-step task",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.generate_cost_approval_token",
+        new_callable=AsyncMock,
+        return_value="approval-token-123",
+    )
+
+    response = client.post(
+        "/sessions/sess-1/estimate",
+        json={"message": "Plan and execute this in multiple steps"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["requires_confirmation"] is True
+    assert data["approval_token"] == "approval-token-123"
+
+
+def test_stream_chat_rejects_when_confirmation_required_and_token_missing(
+    mocker: pytest_mock.MockerFixture,
+):
+    """Stream endpoint should block execution when approval is required."""
+    internals = _mock_stream_internals(mocker)
+
+    mocker.patch(
+        "backend.api.features.chat.routes.estimate_copilot_turn_cost",
+        new_callable=AsyncMock,
+        return_value=CoPilotTurnCostEstimate(
+            resolved_path="sdk",
+            resolved_model="claude-sonnet-4-6",
+            estimated_llm_calls=6,
+            estimated_prompt_tokens=120000,
+            estimated_completion_tokens=18000,
+            estimated_total_tokens=138000,
+            estimated_cost_usd=11.42,
+            confirmation_threshold_usd=10.0,
+            threshold_source="launchdarkly",
+            requires_confirmation=True,
+            rationale="Complex multi-step task",
+        ),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "Run a costly multi-step task"},
+    )
+
+    assert response.status_code == 403
+    assert "confirmation" in response.json()["detail"].lower()
+    internals.enqueue.assert_not_called()
+
+
+def test_stream_chat_accepts_when_confirmation_required_and_token_valid(
+    mocker: pytest_mock.MockerFixture,
+):
+    """Stream endpoint should proceed with a valid approval token."""
+    internals = _mock_stream_internals(mocker)
+
+    mocker.patch(
+        "backend.api.features.chat.routes.estimate_copilot_turn_cost",
+        new_callable=AsyncMock,
+        return_value=CoPilotTurnCostEstimate(
+            resolved_path="sdk",
+            resolved_model="claude-sonnet-4-6",
+            estimated_llm_calls=6,
+            estimated_prompt_tokens=120000,
+            estimated_completion_tokens=18000,
+            estimated_total_tokens=138000,
+            estimated_cost_usd=11.42,
+            confirmation_threshold_usd=10.0,
+            threshold_source="launchdarkly",
+            requires_confirmation=True,
+            rationale="Complex multi-step task",
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.validate_cost_approval_token",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={
+            "message": "Run a costly multi-step task",
+            "approval_token": "approval-token-123",
+        },
+    )
+
+    assert response.status_code == 200
+    internals.enqueue.assert_called_once()
 
 
 # ─── Usage endpoint ───────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
 import { ChatSidebar } from "./components/ChatSidebar/ChatSidebar";
+import { CostConfirmationDialog } from "./components/CostConfirmationDialog/CostConfirmationDialog";
 import { DeleteChatDialog } from "./components/DeleteChatDialog/DeleteChatDialog";
 import { MobileDrawer } from "./components/MobileDrawer/MobileDrawer";
 import { MobileHeader } from "./components/MobileHeader/MobileHeader";
@@ -113,6 +114,9 @@ export function CopilotPage() {
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
+    pendingCostEstimate,
+    confirmCostEstimate,
+    dismissCostEstimate,
     // Dry run session state
     sessionDryRun,
   } = useCopilotPage();
@@ -248,6 +252,11 @@ export function CopilotPage() {
         />
       )}
       <NotificationDialog />
+      <CostConfirmationDialog
+        estimate={pendingCostEstimate}
+        onConfirm={confirmCostEstimate}
+        onCancel={dismissCostEstimate}
+      />
       <RateLimitResetDialog
         isOpen={!!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0}
         onClose={dismissRateLimit}
