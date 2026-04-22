@@ -194,7 +194,7 @@ class ChatConfig(BaseSettings):
     claude_agent_model: str | None = Field(
         default=None,
         description="Model for the Claude Agent SDK path. If None, derives from "
-        "the `model` field by stripping the OpenRouter provider prefix.",
+        "`thinking_standard_model` by stripping the OpenRouter provider prefix.",
     )
     claude_agent_max_buffer_size: int = Field(
         default=10 * 1024 * 1024,  # 10MB (default SDK is 1MB)
