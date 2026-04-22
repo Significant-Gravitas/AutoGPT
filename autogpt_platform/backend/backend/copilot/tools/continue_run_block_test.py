@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from prisma.enums import ReviewStatus
 
-from backend.data.model import NodeExecutionStats
-
 from ._test_data import make_session
 from .continue_run_block import ContinueRunBlockTool
 from .models import BlockOutputResponse, ErrorResponse
@@ -137,7 +135,6 @@ class TestContinueRunBlock:
 
         mock_block = MagicMock()
         mock_block.name = "Delete Branch"
-        mock_block.execution_stats = NodeExecutionStats()
 
         async def mock_execute(data, **kwargs):
             yield "result", "Branch deleted"

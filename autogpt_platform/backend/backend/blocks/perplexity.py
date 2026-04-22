@@ -248,10 +248,9 @@ class PerplexityBlock(Block):
                 )
             # OpenRouter's ``x-total-cost`` response header carries the real
             # per-request USD cost. Piping it into ``provider_cost`` lets the
-            # copilot ``run_block`` path charge the microdollar rate-limit
-            # counter with the actual spend instead of relying on the flat
-            # credit-table fallback. See
-            # ``backend.copilot.tools.helpers::execute_block``.
+            # direct-run ``PlatformCostLog`` flow
+            # (``executor.cost_tracking::log_system_credential_cost``) record
+            # the actual operator-side spend instead of inferring from tokens.
             cost = extract_openrouter_cost(response)
             if cost is not None:
                 self.execution_stats.provider_cost = cost

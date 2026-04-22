@@ -10,8 +10,7 @@ Storing microdollars rather than tokens means the counter already reflects
 real model pricing (including cache discounts and provider surcharges), so
 this module carries no pricing table — the cost comes from OpenRouter's
 ``usage.cost`` field (baseline), the Claude Agent SDK's reported total
-cost (SDK path), or a paid-API block's ``NodeExecutionStats.provider_cost``
-piped through ``backend.copilot.tools.helpers::execute_block``.
+cost (SDK path), web_search tool calls, and the prompt-simulation harness.
 
 Boundary with the credit wallet
 ===============================
@@ -23,17 +22,19 @@ are intentionally separate budgets:
   that has a ``BlockCost`` entry decrements credits — this is what the
   user buys, tops up, and sees on the billing page.  Marketplace blocks
   may also charge credits to block creators. The credit charge is a flat
-  per-run amount sourced from ``BLOCK_COSTS``.
+  per-run amount sourced from ``BLOCK_COSTS``.  Copilot ``run_block``
+  calls go through this path too: block execution bills the user's
+  credit wallet, not this counter.
 * **Microdollars** meter AutoGPT's **operator-side infrastructure cost**
-  — the real USD we spend on upstream providers (OpenRouter, Anthropic,
-  Exa, Perplexity, ...) when a user drives the copilot. They gate the
-  chat loop and the ``run_block`` fan-out so a single user can't burn
-  the daily / weekly infra budget regardless of their credit balance.
-  BYOK runs (user supplied their own API key) do **not** decrement this
-  counter — the user is paying the provider, not us.
+  for the copilot **LLM turn itself** — the real USD we spend on the
+  baseline model, Claude Agent SDK runs, the web_search tool, and the
+  prompt simulator. They gate the chat loop so a single user can't burn
+  the daily / weekly infra budget driving the chat regardless of their
+  credit balance. BYOK runs (user supplied their own API key) do **not**
+  decrement this counter — the user is paying the provider, not us.
 
-A future ``C`` option in the investigation is to unify these into one
-wallet; until then the boundary above is the contract.
+A future option is to unify these into one wallet; until then the
+boundary above is the contract.
 """
 
 import asyncio

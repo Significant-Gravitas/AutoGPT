@@ -29,16 +29,8 @@ _SESSION = "test-session-helpers"
 def _make_block(
     block_id: str = "block-1",
     name: str = "TestBlock",
-    provider_cost: float | None = None,
 ):
-    """Create a minimal mock block for execute_block().
-
-    ``provider_cost`` is written onto ``execution_stats.provider_cost`` so
-    the microdollar pipe-through in ``execute_block`` can be asserted
-    against a real typed value instead of a MagicMock.
-    """
-    from backend.data.model import NodeExecutionStats
-
+    """Create a minimal mock block for execute_block()."""
     mock = MagicMock()
     mock.id = block_id
     mock.name = name
@@ -46,7 +38,6 @@ def _make_block(
 
     mock.input_schema = MagicMock()
     mock.input_schema.get_credentials_fields_info.return_value = {}
-    mock.execution_stats = NodeExecutionStats(provider_cost=provider_cost)
 
     async def _execute(
         input_data: dict, **kwargs: Any
@@ -83,23 +74,6 @@ def _patch_credit_db(
             return_value=mock_credit,
         ),
         mock_credit,
-    )
-
-
-@pytest.fixture(autouse=True)
-def _no_real_redis(monkeypatch):
-    """Short-circuit ``record_cost_usage`` globally for this module.
-
-    ``execute_block`` now calls ``record_cost_usage`` after a successful
-    block run. Without this fixture every existing test would try to
-    reach Redis via the real implementation. Tests that need to assert
-    the microdollar pipe-through explicitly patch ``record_cost_usage``
-    inside the ``with patch(...)`` block, which overrides this fixture's
-    patch for their scope.
-    """
-    monkeypatch.setattr(
-        "backend.copilot.tools.helpers.record_cost_usage",
-        AsyncMock(),
     )
 
 
@@ -235,233 +209,45 @@ class TestExecuteBlockCreditCharging:
 
 
 # ---------------------------------------------------------------------------
-# Microdollar pipe-through tests (copilot rate-limit counter)
+# Unregistered block regression: blocks without BLOCK_COSTS entry still run
 # ---------------------------------------------------------------------------
 
 
-def _system_cred(cred_id: str):
-    """Build a CredentialsMetaInput pointing at a system credential.
-
-    Uses the real ``open_router_credentials.id`` so
-    ``is_system_credential`` returns True without monkey-patching it.
-    """
-    from backend.data.model import CredentialsMetaInput
-
-    return CredentialsMetaInput(
-        id=cred_id,
-        provider="open_router",
-        type="api_key",
-    )
-
-
-def _byok_cred():
-    """Build a CredentialsMetaInput with a user-owned (non-system) id."""
-    from backend.data.model import CredentialsMetaInput
-
-    return CredentialsMetaInput(
-        id="user-owned-cred-xyz",
-        provider="open_router",
-        type="api_key",
-    )
-
-
 @pytest.mark.asyncio(loop_scope="session")
-class TestExecuteBlockMicrodollarPipeThrough:
-    async def test_records_real_provider_cost_when_populated(self):
-        """provider_cost=$0.05 → record_cost_usage(50_000 microdollars)."""
-        from backend.integrations.credentials_store import open_router_credentials
+class TestUnregisteredBlockRunsFree:
+    """Ensure blocks not listed in BLOCK_COSTS execute cleanly at zero cost.
 
-        block = _make_block(provider_cost=0.05)
-        credit_patch, _ = _patch_credit_db()
+    A future refactor that accidentally turns an unregistered block into a
+    non-zero charge — or crashes when the BLOCK_COSTS lookup returns no
+    entry — would silently bill free blocks. ``block_usage_cost`` already
+    returns ``(0, {})`` for unregistered blocks; this test locks that
+    contract in at the copilot execution boundary.
+    """
+
+    async def test_unregistered_block_runs_without_charge(self):
+        block = _make_block(block_id="unregistered-block", name="UnregisteredBlock")
+        credit_patch, mock_credit = _patch_credit_db()
 
         with (
             _patch_workspace(),
-            patch(
-                "backend.copilot.tools.helpers.block_usage_cost",
-                return_value=(5, {}),
-            ),
             credit_patch,
-            patch(
-                "backend.copilot.tools.helpers.record_cost_usage",
-                new_callable=AsyncMock,
-            ) as mock_record,
-            patch(
-                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
-                return_value=MagicMock(
-                    get=AsyncMock(return_value=MagicMock()),
-                ),
-            ),
         ):
             result = await execute_block(
                 block=block,
-                block_id="block-1",
+                block_id="unregistered-block",
                 input_data={},
                 user_id=_USER,
                 session_id=_SESSION,
-                node_exec_id="exec-1",
-                matched_credentials={
-                    "credentials": _system_cred(open_router_credentials.id),
-                },
-                dry_run=False,
-            )
-
-        assert isinstance(result, BlockOutputResponse)
-        mock_record.assert_awaited_once_with(
-            user_id=_USER,
-            cost_microdollars=50_000,
-        )
-
-    async def test_falls_back_to_credit_cost_when_provider_cost_missing(self):
-        """No provider_cost → convert flat credit charge to microdollars."""
-        from backend.integrations.credentials_store import open_router_credentials
-
-        block = _make_block(provider_cost=None)
-        credit_patch, _ = _patch_credit_db()
-
-        with (
-            _patch_workspace(),
-            patch(
-                "backend.copilot.tools.helpers.block_usage_cost",
-                return_value=(3, {}),
-            ),
-            credit_patch,
-            patch(
-                "backend.copilot.tools.helpers.record_cost_usage",
-                new_callable=AsyncMock,
-            ) as mock_record,
-            patch(
-                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
-                return_value=MagicMock(
-                    get=AsyncMock(return_value=MagicMock()),
-                ),
-            ),
-        ):
-            await execute_block(
-                block=block,
-                block_id="block-1",
-                input_data={},
-                user_id=_USER,
-                session_id=_SESSION,
-                node_exec_id="exec-1",
-                matched_credentials={
-                    "credentials": _system_cred(open_router_credentials.id),
-                },
-                dry_run=False,
-            )
-
-        # 3 credits == 3 cents == 30_000 microdollars
-        mock_record.assert_awaited_once_with(
-            user_id=_USER,
-            cost_microdollars=30_000,
-        )
-
-    async def test_skips_microdollar_for_byok_credentials(self):
-        """User-owned credentials (BYOK) must not tick the microdollar counter."""
-        block = _make_block(provider_cost=0.05)
-        credit_patch, _ = _patch_credit_db()
-
-        with (
-            _patch_workspace(),
-            patch(
-                "backend.copilot.tools.helpers.block_usage_cost",
-                return_value=(5, {}),
-            ),
-            credit_patch,
-            patch(
-                "backend.copilot.tools.helpers.record_cost_usage",
-                new_callable=AsyncMock,
-            ) as mock_record,
-            patch(
-                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
-                return_value=MagicMock(
-                    get=AsyncMock(return_value=MagicMock()),
-                ),
-            ),
-        ):
-            await execute_block(
-                block=block,
-                block_id="block-1",
-                input_data={},
-                user_id=_USER,
-                session_id=_SESSION,
-                node_exec_id="exec-1",
-                matched_credentials={"credentials": _byok_cred()},
-                dry_run=False,
-            )
-
-        mock_record.assert_not_awaited()
-
-    async def test_skips_microdollar_when_no_cost_signal(self):
-        """Zero provider_cost and zero credits → counter stays still."""
-        block = _make_block(provider_cost=None)
-        credit_patch, _ = _patch_credit_db()
-
-        with (
-            _patch_workspace(),
-            patch(
-                "backend.copilot.tools.helpers.block_usage_cost",
-                return_value=(0, {}),
-            ),
-            credit_patch,
-            patch(
-                "backend.copilot.tools.helpers.record_cost_usage",
-                new_callable=AsyncMock,
-            ) as mock_record,
-        ):
-            await execute_block(
-                block=block,
-                block_id="block-1",
-                input_data={},
-                user_id=_USER,
-                session_id=_SESSION,
-                node_exec_id="exec-1",
+                node_exec_id="exec-unreg",
                 matched_credentials={},
-                dry_run=False,
-            )
-
-        mock_record.assert_not_awaited()
-
-    async def test_record_cost_failure_does_not_break_output(self):
-        """A record_cost_usage failure must not fail the block output."""
-        from backend.integrations.credentials_store import open_router_credentials
-
-        block = _make_block(provider_cost=0.05)
-        credit_patch, _ = _patch_credit_db()
-
-        with (
-            _patch_workspace(),
-            patch(
-                "backend.copilot.tools.helpers.block_usage_cost",
-                return_value=(5, {}),
-            ),
-            credit_patch,
-            patch(
-                "backend.copilot.tools.helpers.record_cost_usage",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("boom"),
-            ),
-            patch(
-                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
-                return_value=MagicMock(
-                    get=AsyncMock(return_value=MagicMock()),
-                ),
-            ),
-        ):
-            result = await execute_block(
-                block=block,
-                block_id="block-1",
-                input_data={},
-                user_id=_USER,
-                session_id=_SESSION,
-                node_exec_id="exec-1",
-                matched_credentials={
-                    "credentials": _system_cred(open_router_credentials.id),
-                },
                 dry_run=False,
             )
 
         assert isinstance(result, BlockOutputResponse)
         assert result.success is True
+        # Zero-cost lookup must not touch either credit-wallet endpoint.
+        mock_credit.get_credits.assert_not_awaited()
+        mock_credit.spend_credits.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -521,12 +307,9 @@ def _make_coerce_block(
     outputs: dict[str, list[Any]] | None = None,
 ) -> MagicMock:
     """Create a mock block with typed annotations and a simple execute method."""
-    from backend.data.model import NodeExecutionStats
-
     block = MagicMock()
     block.id = block_id
     block.name = name
-    block.execution_stats = NodeExecutionStats()
     block.input_schema = _make_block_schema(annotations)
 
     captured_inputs: dict[str, Any] = {}
