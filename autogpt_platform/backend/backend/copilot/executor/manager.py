@@ -134,25 +134,31 @@ class CoPilotExecutor(AppProcess):
             time.sleep(1e5)
 
     def cleanup(self):
-        """Graceful shutdown.
+        """Graceful shutdown — let in-flight turns finish naturally.
 
-        Runs as four sequential phases, each with a single responsibility
-        and its own logging. See each ``_phase_*`` method's docstring for
-        what that step does and why it happens in that order.
+        Runs as four sequential phases:
 
-        Happy path: SIGTERM → :meth:`_phase_reject_new_work` sets the flag
-        that gates ``_handle_run_message`` (new deliveries get nacked) →
-        :meth:`_phase_drain_inflight` signals cancel and waits → each
-        turn hits its own ``finally`` and marks the session ``failed`` →
-        ``active_tasks`` drains → :meth:`_phase_fail_close` is a no-op →
-        :meth:`_phase_teardown` tells pika to exit ``start_consuming()``
-        and releases resources.
+        1. :meth:`_phase_reject_new_work` — set the flag that gates
+           ``_handle_run_message``; any new deliveries get nacked.
+        2. :meth:`_phase_wait_for_drain` — passively wait for in-flight
+           turns to finish on their own (no pre-emptive cancellation).
+           Each turn's own ``finally`` publishes its terminal state.
+        3. :meth:`_phase_fail_close` — for turns still running after the
+           grace window (truly stuck), mark them failed + reject the
+           RabbitMQ delivery + clear pending buffer + release lock.
+        4. :meth:`_phase_teardown` — stop consumers, clean up workers,
+           release any remaining locks.
 
-        Stuck-turn path: :meth:`_phase_fail_close` force-marks stuck
-        turns ``failed``, rejects their RabbitMQ deliveries (while the
-        channel is still consuming — threadsafe callbacks only fire
-        while pika's ioloop is active), clears their pending buffer,
-        and releases the cluster lock.
+        Why no pre-emptive cancel of healthy turns: the goal is to let
+        every in-flight turn complete on its own. The zombie-session bug
+        this PR targets was never caused by SIGTERM killing the turn —
+        it was caused by a transient Redis failure mid-turn whose
+        reporting path (``_execute_async.finally → mark_session_completed``)
+        *also* hit the failure and silently swallowed it. That's handled
+        by :func:`sync_fail_close_session` in ``execute()``'s finally
+        (fresh asyncio loop + fresh Redis client on every turn exit).
+        Phase 3 is the safety net for the much rarer case where a turn
+        genuinely cannot finish inside the grace window.
 
         Order invariant: ``_phase_teardown`` must run LAST because it
         calls ``channel.stop_consuming()`` — once that returns, any
@@ -164,7 +170,7 @@ class CoPilotExecutor(AppProcess):
         logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
 
         self._phase_reject_new_work(pid)
-        self._phase_drain_inflight(pid)
+        self._phase_wait_for_drain(pid)
         self._phase_fail_close(pid)
         self._phase_teardown(pid)
 
@@ -188,16 +194,19 @@ class CoPilotExecutor(AppProcess):
             f"(channel.stop_consuming deferred to teardown)"
         )
 
-    def _phase_drain_inflight(self, pid: int) -> None:
-        """Phase 2: signal cancel to every in-flight turn and wait it out.
+    def _phase_wait_for_drain(self, pid: int) -> None:
+        """Phase 2: passively wait for in-flight turns to finish naturally.
 
-        Setting each task's ``cancel_event`` lets the async stream loop
-        break and hit its own ``finally`` (which publishes the accurate
-        terminal state). Without the active signal, the wait below is
-        passive and turns keep running until SIGKILL — which is what
-        caused the zombie-session bug this PR fixes.
+        No pre-emptive cancellation — in-flight turns keep running until
+        they finish on their own. Each turn's own ``finally`` publishes
+        the terminal state via ``mark_session_completed``. When a turn
+        exits, ``on_run_done`` removes it from ``active_tasks`` and
+        releases the cluster lock; we observe that through the drain
+        loop below.
+
+        Runs up to ``GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS``. Anything still
+        running after that is handled by :meth:`_phase_fail_close`.
         """
-        self._signal_cancel_to_active()
         self._wait_for_active_to_drain(pid)
 
     def _phase_fail_close(self, pid: int) -> None:
@@ -262,24 +271,6 @@ class CoPilotExecutor(AppProcess):
             self._release_lock(session_id, task.cluster_lock, pid)
 
     # --- cleanup helpers ---------------------------------------------------
-
-    def _signal_cancel_to_active(self) -> None:
-        """Set ``cancel_event`` on every active task so they exit fast."""
-        with self._active_tasks_lock:
-            tasks = list(self.active_tasks.items())
-        if not tasks:
-            return
-        pid = os.getpid()
-        logger.info(
-            f"[cleanup {pid}] Signalling cancel to {len(tasks)} in-flight task(s)"
-        )
-        for session_id, task in tasks:
-            try:
-                task.cancel_event.set()
-            except Exception as e:
-                logger.warning(
-                    f"[cleanup {pid}] Failed to signal cancel for {session_id}: {e}"
-                )
 
     def _wait_for_active_to_drain(self, pid: int) -> None:
         """Block until ``active_tasks`` is empty or the grace window expires."""
