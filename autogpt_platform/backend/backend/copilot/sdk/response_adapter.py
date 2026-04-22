@@ -68,9 +68,7 @@ class SDKResponseAdapter:
         self.reasoning_block_id = str(uuid.uuid4())
         self.has_started_reasoning = False
         self.has_ended_reasoning = True
-        # When False, reasoning wire events + persisted reasoning rows are
-        # suppressed; transcript continuity is unaffected.
-        self._render_reasoning_in_ui = render_reasoning_in_ui
+        self.render_reasoning_in_ui = render_reasoning_in_ui
         self.current_tool_calls: dict[str, dict[str, str]] = {}
         self.resolved_tool_calls: set[str] = set()
         self.step_open = False
@@ -165,7 +163,7 @@ class SDKResponseAdapter:
                     if block.thinking:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
-                        if self._render_reasoning_in_ui:
+                        if self.render_reasoning_in_ui:
                             responses.append(
                                 StreamReasoningDelta(
                                     id=self.reasoning_block_id,
@@ -375,7 +373,7 @@ class SDKResponseAdapter:
         the method on every ``ThinkingBlock`` so persistence stays in
         lockstep, but nothing reaches the wire.
         """
-        if not self._render_reasoning_in_ui:
+        if not self.render_reasoning_in_ui:
             return
         if not self.has_started_reasoning or self.has_ended_reasoning:
             if self.has_ended_reasoning:
@@ -390,7 +388,7 @@ class SDKResponseAdapter:
         No-op when ``render_reasoning_in_ui=False`` — no start was emitted,
         so no end is needed.
         """
-        if not self._render_reasoning_in_ui:
+        if not self.render_reasoning_in_ui:
             return
         if self.has_started_reasoning and not self.has_ended_reasoning:
             responses.append(StreamReasoningEnd(id=self.reasoning_block_id))
