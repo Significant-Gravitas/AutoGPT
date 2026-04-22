@@ -4022,26 +4022,38 @@ async def stream_chat_completion_sdk(
         collected_gen_ids: list[str] = (
             list(state.generation_ids) if state is not None else []
         )
-        _is_non_anthropic_openrouter = bool(
+        _use_openrouter_reconcile = bool(
             config.openrouter_active
+            and config.sdk_reconcile_openrouter_cost
             and collected_gen_ids
-            and not effective_model.startswith("anthropic/")
         )
 
-        if _is_non_anthropic_openrouter:
+        if _use_openrouter_reconcile:
             # Defer the single cost-and-rate-limit write to a background
-            # task so the turn isn't charged the SDK CLI's Anthropic-
-            # priced estimate (wrong for Kimi et al by ~5x before our
-            # rate-card override, still ~37% off after).  The task
-            # queries OpenRouter's authoritative ``/generation?id=``
-            # for every round in this turn and records the real cost in
-            # a single ``persist_and_record_usage`` call — same method
-            # as the sync path, so append-only log + rate-limit counter
-            # stay consistent and the turn is NEVER charged twice.
-            # Brief window (~0.5-2s) where the counter is unaware of
-            # this turn is the tradeoff; back-to-back turns in that
-            # window see a stale counter but the next turn's real cost
-            # still lands a moment later.
+            # task that queries OpenRouter's authoritative
+            # ``/generation?id=`` for every round in this turn.  Covers
+            # all vendors:
+            #
+            # * Non-Anthropic (Kimi et al): the CLI's ``total_cost_usd``
+            #   is computed from a static Anthropic rate table that
+            #   doesn't know the model — silently over-bills by ~5x.
+            #   The reconcile replaces it with OpenRouter's real bill.
+            # * Anthropic via OpenRouter: the CLI's number matches
+            #   Anthropic's own rates penny-for-penny in the common
+            #   case, but the reconcile catches any rate change the
+            #   CLI binary hasn't picked up and any OpenRouter-side
+            #   divergence (cache-discount accounting, promo pricing).
+            #
+            # The task calls ``persist_and_record_usage`` exactly once
+            # per turn — same method as the sync path, so append-only
+            # cost-log + rate-limit counter update together.  The sync
+            # path below is skipped entirely when the reconcile fires,
+            # so no double-counting.  Kill-switch:
+            # ``CHAT_SDK_RECONCILE_OPENROUTER_COST=false``.
+            #
+            # Brief window (~0.5-2s) where the rate-limit counter is
+            # unaware of this turn — back-to-back turns in that window
+            # see a stale counter.
             asyncio.create_task(
                 record_turn_cost_from_openrouter(
                     session=session,
@@ -4058,9 +4070,13 @@ async def stream_chat_completion_sdk(
                 )
             )
         else:
-            # Anthropic / subscription path: the SDK CLI's
-            # ``total_cost_usd`` is accurate (Anthropic's own pricing
-            # table, same as they bill), record it synchronously.
+            # Reconcile disabled, OpenRouter inactive, or subscription
+            # path (no gen-IDs).  Record the SDK CLI's
+            # ``total_cost_usd`` synchronously: accurate for Anthropic
+            # (same rate card as billing); for non-Anthropic it's the
+            # rate-card estimate that ``_override_cost_for_non_anthropic``
+            # caps (still 1.5-2x off vs real OpenRouter bill, but much
+            # closer than the ~5x Sonnet-rate fallback).
             await persist_and_record_usage(
                 session=session,
                 user_id=user_id,

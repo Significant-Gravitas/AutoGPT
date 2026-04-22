@@ -323,6 +323,25 @@ class ChatConfig(BaseSettings):
         "reconcile logic that prevents partial/summary double-emission "
         "and truncation when the two views disagree.",
     )
+    sdk_reconcile_openrouter_cost: bool = Field(
+        default=True,
+        description="Query OpenRouter's ``/api/v1/generation?id=`` after each "
+        "SDK turn and record the authoritative ``total_cost`` instead of the "
+        "Claude Agent SDK CLI's estimate.  Covers every OpenRouter-routed "
+        "SDK turn regardless of vendor — the CLI's static Anthropic pricing "
+        "table is accurate for Anthropic models (Sonnet/Opus via OpenRouter "
+        "bill at Anthropic's own rates, penny-for-penny), but the reconcile "
+        "catches any future rate change the CLI hasn't picked up and makes "
+        "non-Anthropic cost (Kimi et al) correct — real billed amount, "
+        "matching the baseline path's ``usage.cost`` read since #12864.  "
+        "Kill-switch for emergencies: set ``CHAT_SDK_RECONCILE_OPENROUTER_COST"
+        "=false`` to fall back to the CLI's ``total_cost_usd`` reported "
+        "synchronously (accurate-for-Anthropic / over-billed-for-Kimi).  "
+        "Tradeoff: 0.5-2s window between turn end and cost write; rate-limit "
+        "counter briefly unaware, back-to-back turns in that window see "
+        "stale state.  The alternative (writing an estimate sync then a "
+        "correction delta) would double-count the rate limit.",
+    )
     claude_agent_cli_path: str | None = Field(
         default=None,
         description="Optional explicit path to a Claude Code CLI binary. "
