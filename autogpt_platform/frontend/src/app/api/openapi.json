@@ -4515,7 +4515,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Ayrshare Sso Url",
-        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "description": "Generate a JWT SSO URL so the user can link their social accounts.\n\nThe per-user Ayrshare profile key is provisioned and persisted as a\nstandard ``is_managed=True`` credential by\n:class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.\nThis endpoint only signs a short-lived JWT pointing at the Ayrshare-\nhosted social-linking page; all profile lifecycle logic lives with the\nmanaged provider.",
         "operationId": "getV1GetAyrshareSsoUrl",
         "responses": {
           "200": {
