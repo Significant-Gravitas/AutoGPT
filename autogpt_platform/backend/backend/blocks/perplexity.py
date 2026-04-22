@@ -240,7 +240,11 @@ class PerplexityBlock(Block):
                         if "message" in choice and "annotations" in choice["message"]:
                             annotations = choice["message"]["annotations"]
 
-            # Update execution stats
+            # Update execution stats. ``execution_stats`` is instance state,
+            # so always reset token counters — a response without ``usage``
+            # must not leak a previous run's tokens into ``PlatformCostLog``.
+            self.execution_stats.input_token_count = 0
+            self.execution_stats.output_token_count = 0
             if response.usage:
                 self.execution_stats.input_token_count = response.usage.prompt_tokens
                 self.execution_stats.output_token_count = (
