@@ -312,12 +312,13 @@ class CoPilotProcessor:
     ):
         """Execute a CoPilot turn.
 
-        Runs the async logic in the worker's event loop and handles errors.
-
-        Args:
-            entry: The turn payload containing session and message info
-            cancel: Threading event to signal cancellation
-            cluster_lock: Distributed lock to prevent duplicate execution
+        Thin wrapper around :meth:`_execute`. The ``try/finally`` here
+        guarantees :func:`sync_fail_close_session` runs on every exit
+        path — normal completion, exception, or a wedged event loop
+        that escapes via :data:`_CANCEL_GRACE_SECONDS` timeout.
+        ``mark_session_completed`` is an atomic CAS on
+        ``status == "running"``, so when the async path already wrote a
+        terminal state the sync call is a cheap no-op.
         """
         log = CoPilotLogMetadata(
             logging.getLogger(__name__),
@@ -325,61 +326,62 @@ class CoPilotProcessor:
             user_id=entry.user_id,
         )
         log.info("Starting execution")
-
         start_time = time.monotonic()
-        future: "concurrent.futures.Future[None] | None" = None
         try:
-            # Run the async execution in our event loop
-            future = asyncio.run_coroutine_threadsafe(
-                self._execute_async(entry, cancel, cluster_lock, log),
-                self.execution_loop,
-            )
-
-            # Wait for completion, checking cancel periodically
-            while not future.done():
-                try:
-                    future.result(timeout=1.0)
-                except asyncio.TimeoutError:
-                    if cancel.is_set():
-                        log.info("Cancellation requested")
-                        future.cancel()
-                        # Give _execute_async's own finally a short window to
-                        # publish the accurate terminal state (e.g. "Operation
-                        # cancelled") before the sync safety net below fires —
-                        # otherwise they race on the same Redis CAS and the
-                        # less-informative shutdown message can win.
-                        try:
-                            future.result(timeout=_CANCEL_GRACE_SECONDS)
-                        except BaseException:
-                            pass
-                        break
-                    # Refresh cluster lock to maintain ownership
-                    cluster_lock.refresh()
-
-            if not future.cancelled():
-                # Propagate exceptions from _execute_async. Bounded timeout
-                # so a wedged event loop (cancel() couldn't land within the
-                # grace window) can't trap us in here forever — on timeout we
-                # escape to the finally and the sync safety net fires.
-                try:
-                    future.result(timeout=_CANCEL_GRACE_SECONDS)
-                except concurrent.futures.TimeoutError:
-                    log.warning(
-                        "Future did not complete within grace window; "
-                        "falling through to sync fail-close"
-                    )
+            self._execute(entry, cancel, cluster_lock, log)
         finally:
-            # Last-line-of-defense ONLY when the async path didn't reach its
-            # own finally: future is None (submit failed) or not done (stuck
-            # thread / event loop died). On normal completion / cancel /
-            # exception, ``_execute_async.finally`` already published the
-            # terminal state — don't clobber its error message with the
-            # generic shutdown one.
-            if future is None or not future.done():
-                sync_fail_close_session(entry.session_id, log)
-
+            sync_fail_close_session(entry.session_id, log)
             elapsed = time.monotonic() - start_time
             log.info(f"Execution completed in {elapsed:.2f}s")
+
+    def _execute(
+        self,
+        entry: CoPilotExecutionEntry,
+        cancel: threading.Event,
+        cluster_lock: ClusterLock,
+        log: CoPilotLogMetadata,
+    ):
+        """Submit the async turn to ``self.execution_loop`` and drive it.
+
+        Handles the sync/async boundary (cancel-event checks, cluster-lock
+        refresh, bounded waits) without any Redis-state cleanup logic —
+        that lives in :func:`sync_fail_close_session` which the outer
+        :meth:`execute` always invokes on exit.
+        """
+        future = asyncio.run_coroutine_threadsafe(
+            self._execute_async(entry, cancel, cluster_lock, log),
+            self.execution_loop,
+        )
+
+        # Wait for completion, checking cancel periodically
+        while not future.done():
+            try:
+                future.result(timeout=1.0)
+            except asyncio.TimeoutError:
+                if cancel.is_set():
+                    log.info("Cancellation requested")
+                    future.cancel()
+                    # Give _execute_async's own finally a short window to
+                    # publish its accurate terminal state before the outer
+                    # sync safety net fires.
+                    try:
+                        future.result(timeout=_CANCEL_GRACE_SECONDS)
+                    except BaseException:
+                        pass
+                    return
+                cluster_lock.refresh()
+
+        if not future.cancelled():
+            # Bounded timeout so a wedged event loop can't trap us here —
+            # on timeout we escape to execute()'s finally and the sync
+            # safety net fires.
+            try:
+                future.result(timeout=_CANCEL_GRACE_SECONDS)
+            except concurrent.futures.TimeoutError:
+                log.warning(
+                    "Future did not complete within grace window; "
+                    "falling through to sync fail-close"
+                )
 
     async def _execute_async(
         self,
