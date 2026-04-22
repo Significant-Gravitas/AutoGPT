@@ -5,12 +5,17 @@ import pytest
 from .config import ChatConfig
 
 # Env vars that the ChatConfig validators read — must be cleared so they don't
-# override the explicit constructor values we pass in each test.
+# override the explicit constructor values we pass in each test.  Includes the
+# SDK/baseline model aliases so a leftover ``CHAT_MODEL=...`` in the developer
+# or CI environment can't change whether
+# ``_validate_sdk_model_vendor_compatibility`` raises.
 _ENV_VARS_TO_CLEAR = (
     "CHAT_USE_E2B_SANDBOX",
     "CHAT_E2B_API_KEY",
     "E2B_API_KEY",
     "CHAT_USE_OPENROUTER",
+    "CHAT_USE_CLAUDE_AGENT_SDK",
+    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
     "CHAT_API_KEY",
     "OPEN_ROUTER_API_KEY",
     "OPENAI_API_KEY",
@@ -19,6 +24,14 @@ _ENV_VARS_TO_CLEAR = (
     "OPENAI_BASE_URL",
     "CHAT_CLAUDE_AGENT_CLI_PATH",
     "CLAUDE_AGENT_CLI_PATH",
+    "CHAT_FAST_STANDARD_MODEL",
+    "CHAT_FAST_MODEL",
+    "CHAT_FAST_ADVANCED_MODEL",
+    "CHAT_THINKING_STANDARD_MODEL",
+    "CHAT_THINKING_ADVANCED_MODEL",
+    "CHAT_MODEL",
+    "CHAT_ADVANCED_MODEL",
+    "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "CHAT_RENDER_REASONING_IN_UI",
     "CHAT_STREAM_REPLAY_COUNT",
 )
@@ -28,6 +41,22 @@ _ENV_VARS_TO_CLEAR = (
 def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in _ENV_VARS_TO_CLEAR:
         monkeypatch.delenv(var, raising=False)
+
+
+def _make_direct_safe_config(**kwargs) -> ChatConfig:
+    """Build a ``ChatConfig`` for tests that pass ``use_openrouter=False``
+    but aren't exercising the SDK vendor-compatibility validator.
+
+    Pins ``thinking_standard_model``/``thinking_advanced_model`` to anthropic/*
+    so the construction passes ``_validate_sdk_model_vendor_compatibility``
+    without each test having to repeat the override.
+    """
+    defaults: dict = {
+        "thinking_standard_model": "anthropic/claude-sonnet-4-6",
+        "thinking_advanced_model": "anthropic/claude-opus-4-7",
+    }
+    defaults.update(kwargs)
+    return ChatConfig(**defaults)
 
 
 class TestOpenrouterActive:
@@ -50,7 +79,7 @@ class TestOpenrouterActive:
         assert cfg.openrouter_active is False
 
     def test_disabled_returns_false_despite_credentials(self):
-        cfg = ChatConfig(
+        cfg = _make_direct_safe_config(
             use_openrouter=False,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
@@ -166,6 +195,101 @@ class TestClaudeAgentCliPathEnvFallback:
         monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", str(tmp_path))
         with pytest.raises(Exception, match="not a regular file"):
             ChatConfig()
+
+
+class TestSdkModelVendorCompatibility:
+    """``model_validator`` that fails fast on SDK model vs routing-mode
+    mismatch — see PR #12878 iteration-2 review.  Mirrors the runtime
+    guard in ``_normalize_model_name`` so misconfig surfaces at boot
+    instead of as a 500 on the first SDK turn."""
+
+    def test_direct_anthropic_with_kimi_override_raises(self):
+        """A non-Anthropic SDK model must fail at config load when the
+        deployment has no OpenRouter credentials."""
+        with pytest.raises(Exception, match="requires an Anthropic model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="moonshotai/kimi-k2.6",
+            )
+
+    def test_direct_anthropic_with_anthropic_default_succeeds(self):
+        """Direct-Anthropic mode is fine when both SDK slugs are anthropic/*
+        — which is the default after the LD-routed model rollout."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
+
+    def test_openrouter_with_kimi_override_succeeds(self):
+        """Kimi slug round-trips cleanly when OpenRouter is on — exercised
+        via the LD-flag override path in production."""
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+            thinking_standard_model="moonshotai/kimi-k2.6",
+        )
+        assert cfg.thinking_standard_model == "moonshotai/kimi-k2.6"
+
+    def test_subscription_mode_skips_check(self):
+        """Subscription path resolves the model to None and bypasses
+        ``_normalize_model_name``, so the slug check is skipped."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        assert cfg.use_claude_code_subscription is True
+
+    def test_advanced_tier_also_validated(self):
+        """Both standard and advanced SDK slugs are checked."""
+        with pytest.raises(Exception, match="thinking_advanced_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="moonshotai/kimi-k2.6",
+            )
+
+    def test_fallback_model_also_validated(self):
+        """``claude_agent_fallback_model`` flows through
+        ``_normalize_model_name`` via ``_resolve_fallback_model`` so the
+        same direct-Anthropic guard applies."""
+        with pytest.raises(Exception, match="claude_agent_fallback_model"):
+            ChatConfig(
+                use_openrouter=False,
+                api_key=None,
+                base_url=None,
+                use_claude_code_subscription=False,
+                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                thinking_advanced_model="anthropic/claude-opus-4-7",
+                claude_agent_fallback_model="moonshotai/kimi-k2.6",
+            )
+
+    def test_empty_fallback_skipped(self):
+        """Empty ``claude_agent_fallback_model`` (no fallback configured)
+        must not trip the validator — the fallback-disabled state is
+        intentional and shouldn't require a placeholder anthropic/* slug."""
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+            claude_agent_fallback_model="",
+        )
+        assert cfg.claude_agent_fallback_model == ""
 
 
 class TestRenderReasoningInUi:

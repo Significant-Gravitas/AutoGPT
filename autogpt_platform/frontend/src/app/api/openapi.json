@@ -2116,7 +2116,8 @@
                     },
                     {
                       "$ref": "#/components/schemas/MemoryForgetConfirmResponse"
-                    }
+                    },
+                    { "$ref": "#/components/schemas/TodoWriteResponse" }
                   ],
                   "title": "Response Getv2[Dummy] Tool Response Type Export For Codegen"
                 }
@@ -14570,7 +14571,8 @@
           "memory_store",
           "memory_search",
           "memory_forget_candidates",
-          "memory_forget_confirm"
+          "memory_forget_confirm",
+          "todo_write"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."
@@ -16681,6 +16683,52 @@
         "type": "object",
         "required": ["timezone"],
         "title": "TimezoneResponse"
+      },
+      "TodoItem": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "Imperative description of the task."
+          },
+          "activeForm": {
+            "type": "string",
+            "title": "Activeform",
+            "description": "Present-continuous form shown while the task is running."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "completed"],
+            "title": "Status",
+            "default": "pending"
+          }
+        },
+        "type": "object",
+        "required": ["content", "activeForm"],
+        "title": "TodoItem",
+        "description": "One entry in a ``TodoWrite`` checklist.\n\nMirrors the schema used by Claude Code's built-in ``TodoWrite`` tool so\nthe frontend's ``GenericTool`` accordion renders baseline-emitted todos\nidentically to SDK-emitted ones."
+      },
+      "TodoWriteResponse": {
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/ResponseType",
+            "default": "todo_write"
+          },
+          "message": { "type": "string", "title": "Message" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "todos": {
+            "items": { "$ref": "#/components/schemas/TodoItem" },
+            "type": "array",
+            "title": "Todos"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "TodoWriteResponse",
+        "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless — the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
       },
       "TokenIntrospectionResult": {
         "properties": {

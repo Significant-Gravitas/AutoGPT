@@ -45,6 +45,8 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.model_router import resolve_model
+from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
@@ -82,7 +84,7 @@ from backend.copilot.service import (
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
-from backend.copilot.tools import execute_tool, get_available_tools
+from backend.copilot.tools import ToolGroup, execute_tool, get_available_tools
 from backend.copilot.tracking import track_user_message
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
@@ -318,20 +320,17 @@ def _filter_tools_by_permissions(
     ]
 
 
-def _resolve_baseline_model(tier: CopilotLlmModel | None) -> str:
+async def _resolve_baseline_model(
+    tier: CopilotLlmModel | None, user_id: str | None
+) -> str:
     """Pick the model for the baseline path based on the per-request tier.
 
-    Baseline resolves independently of SDK via the ``fast_*_model`` cells
-    of the (path, tier) matrix.  ``'standard'`` / ``None`` picks Kimi
-    K2.6 by default (cheap + OpenRouter ``reasoning`` support);
-    ``'advanced'`` picks Opus by default so the advanced tier is a clean
-    A/B against the SDK advanced tier — same model, different path —
-    isolating reasoning-wire + cache differences from model capability.
-    Both defaults are overridable per ``CHAT_FAST_*_MODEL`` env vars.
+    Delegates to :func:`copilot.model_router.resolve_model` so the
+    ``(fast, tier)`` cell is LD-overridable per user.  ``None`` tier
+    maps to ``"standard"``.
     """
-    if tier == "advanced":
-        return config.fast_advanced_model
-    return config.fast_standard_model
+    tier_name = "advanced" if tier == "advanced" else "standard"
+    return await resolve_model("fast", tier_name, user_id, config=config)
 
 
 @dataclass
@@ -428,23 +427,37 @@ def _emit_all(
 def _is_anthropic_model(model: str) -> bool:
     """Return True if *model* routes to Anthropic (native or via OpenRouter).
 
-    Cache-control markers on message content + the ``anthropic-beta`` header
-    are Anthropic-specific.  OpenAI rejects the unknown ``cache_control``
-    field with a 400 ("Extra inputs are not permitted") and Grok / other
-    providers behave similarly.  OpenRouter strips unknown headers but
-    passes through ``cache_control`` on the body regardless of provider —
-    which would also fail when OpenRouter routes to a non-Anthropic model.
-
     Examples that return True:
       - ``anthropic/claude-sonnet-4-6`` (OpenRouter route)
       - ``claude-3-5-sonnet-20241022`` (direct Anthropic API)
       - ``anthropic.claude-3-5-sonnet`` (Bedrock-style)
 
     False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4``
-    etc.
+    etc.  Moonshot is False here too even though Moonshot's
+    Anthropic-compat endpoint honours ``cache_control`` — use
+    :func:`_supports_prompt_cache_markers` for the cache-gating decision,
+    which also allows Moonshot routes.  This function stays scoped to
+    "genuinely Anthropic" so callers that need the stricter check (e.g.
+    ``anthropic-beta`` header emission) keep their existing semantics.
     """
     lowered = model.lower()
     return "claude" in lowered or lowered.startswith("anthropic")
+
+
+def _supports_prompt_cache_markers(model: str) -> bool:
+    """Return True when *model* accepts Anthropic-style ``cache_control``.
+
+    Superset of :func:`_is_anthropic_model` — also allows Moonshot
+    (``moonshotai/*``), whose OpenRouter Anthropic-compat endpoint
+    honours the marker and empirically lifts cache hit rate on
+    continuation turns from near-zero (Moonshot's own automatic prefix
+    cache, which drifts readily) to the 60-95% Anthropic ballpark.
+
+    OpenAI / Grok / Gemini still 400 on ``cache_control``, so this
+    function returns False for those providers — add new vendors here
+    only after verifying their endpoint accepts the field.
+    """
+    return _is_anthropic_model(model) or is_moonshot_model(model)
 
 
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
@@ -567,19 +580,24 @@ async def _baseline_llm_caller(
     round_text = ""
     try:
         client = _get_openai_client()
-        # Cache markers are Anthropic-specific.  For OpenAI/Grok/other
-        # providers, leaving them on would trigger a 400 ("Extra inputs
-        # are not permitted" on cache_control).  Tools were precomputed
-        # in stream_chat_completion_baseline via _mark_tools_with_cache_control
-        # (only when the model was Anthropic), so on non-Anthropic routes
-        # tools ship without cache_control on the last entry too.
+        # Cache markers are accepted by Anthropic AND Moonshot (via OR's
+        # Anthropic-compat endpoint).  OpenAI/Grok/Gemini 400 on the
+        # unknown ``cache_control`` field — tools were precomputed in
+        # stream_chat_completion_baseline via _mark_tools_with_cache_control
+        # with the same gate, so on unsupported routes tools ship
+        # unmarked too.
         #
-        # `extra_body` `usage.include=true` asks OpenRouter to embed the real
-        # generation cost into the final usage chunk — required by the
-        # cost-based rate limiter in routes.py.  Separate from the Anthropic
+        # The ``anthropic-beta`` header is only emitted for genuinely
+        # Anthropic routes (see :func:`_is_anthropic_model`) — Moonshot
+        # doesn't need the beta header; sending it is a no-op but we
+        # keep the check strict for clarity.
+        #
+        # `extra_body` `usage.include=true` asks OpenRouter to embed the
+        # real generation cost into the final usage chunk — required by
+        # the cost-based rate limiter in routes.py.  Separate from the
         # caching headers, always sent.
-        is_anthropic = _is_anthropic_model(state.model)
-        if is_anthropic:
+        supports_cache = _supports_prompt_cache_markers(state.model)
+        if supports_cache:
             # Build the cached system dict once per session and splice it in
             # on each round.  The full ``messages`` list grows with every
             # tool call, so copying the entire list just to mutate index 0
@@ -595,7 +613,11 @@ async def _baseline_llm_caller(
                 final_messages = [state.cached_system_message, *messages[1:]]
             else:
                 final_messages = messages
-            extra_headers = _fresh_anthropic_caching_headers()
+            extra_headers = (
+                _fresh_anthropic_caching_headers()
+                if _is_anthropic_model(state.model)
+                else None
+            )
         else:
             final_messages = messages
             extra_headers = None
@@ -1358,7 +1380,7 @@ async def stream_chat_completion_baseline(
     # Select model based on the per-request tier toggle (standard / advanced).
     # The path (fast vs extended_thinking) is already decided — we're in the
     # baseline (fast) path; ``mode`` is accepted for logging parity only.
-    active_model = _resolve_baseline_model(model)
+    active_model = await _resolve_baseline_model(model, user_id)
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
@@ -1624,7 +1646,10 @@ async def stream_chat_completion_baseline(
                         openai_messages[i]["content"] = text
                 break
 
-    tools = get_available_tools()
+    disabled_tool_groups: list[ToolGroup] = []
+    if not graphiti_enabled:
+        disabled_tool_groups.append("graphiti")
+    tools = get_available_tools(disabled_groups=disabled_tool_groups)
 
     # --- Permission filtering ---
     if permissions is not None:
@@ -1635,9 +1660,10 @@ async def stream_chat_completion_baseline(
     # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
     # round of the tool-call loop.
     #
-    # Only apply to Anthropic routes — OpenAI/Grok/other providers would
-    # 400 on the unknown ``cache_control`` field inside tool definitions.
-    if _is_anthropic_model(active_model):
+    # Applies to Anthropic AND Moonshot routes — OpenAI/Grok/Gemini 400
+    # on the unknown ``cache_control`` field inside tool definitions, so
+    # the gate stays narrow (see :func:`_supports_prompt_cache_markers`).
+    if _supports_prompt_cache_markers(active_model):
         tools = cast(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
