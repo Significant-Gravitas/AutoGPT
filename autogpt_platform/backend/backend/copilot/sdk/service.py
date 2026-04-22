@@ -3117,15 +3117,6 @@ async def stream_chat_completion_sdk(
             "cwd": sdk_cwd,
             "max_buffer_size": config.claude_agent_max_buffer_size,
             "stderr": _on_stderr,
-            # Opt into per-delta streaming so thinking + text surface
-            # token-by-token via ``StreamEvent`` messages.  Without this
-            # flag the CLI only emits one complete ``AssistantMessage``
-            # per content block — long responses (and all reasoning) pop
-            # in as a single lump at block-stop.  ``SDKResponseAdapter``
-            # handles ``StreamEvent`` below and gates the final
-            # ``AssistantMessage`` emission so text/thinking are not
-            # double-sent on the wire.
-            "include_partial_messages": True,
             # --- P0 guardrails ---
             # fallback_model: SDK auto-retries with this cheaper model on
             # 529 (overloaded) errors, avoiding user-visible failures.
