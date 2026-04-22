@@ -655,38 +655,204 @@ class AgentValidator:
 
         return valid
 
-    def validate_io_blocks(self, agent: AgentDict) -> bool:
+    def _collect_io_block_ids(
+        self, blocks: list[dict[str, Any]]
+    ) -> tuple[set[str], set[str]]:
         """
-        Validate that the agent has at least one AgentInputBlock and one
-        AgentOutputBlock. These blocks define the agent's interface.
+        Build sets of all input/output block IDs from the blocks registry.
+
+        Input/output blocks are identified by ``uiType`` (populated from
+        ``Block.block_type`` at registration time). Specialized subclasses
+        like ``AgentGoogleDriveFileInputBlock`` count as input blocks even
+        though they have their own block IDs — this matches the runtime
+        behavior, where any subclass of ``AgentInputBlock`` exposes a
+        user-facing input. The literal base IDs are always included so the
+        function works even when called with a minimal blocks list (e.g.
+        unit tests).
+        """
+        input_ids: set[str] = {AGENT_INPUT_BLOCK_ID}
+        output_ids: set[str] = {AGENT_OUTPUT_BLOCK_ID}
+        for block in blocks:
+            block_id = block.get("id")
+            if not block_id:
+                continue
+            ui_type = block.get("uiType")
+            if ui_type == "Input":
+                input_ids.add(block_id)
+            elif ui_type == "Output":
+                output_ids.add(block_id)
+        return input_ids, output_ids
+
+    def validate_io_blocks(
+        self, agent: AgentDict, blocks: list[dict[str, Any]] | None = None
+    ) -> bool:
+        """
+        Validate that the agent has at least one input block and one output
+        block. These blocks define the agent's interface.
+
+        Any block whose ``uiType`` is ``"Input"`` satisfies the input
+        requirement — including specialized variants like
+        ``AgentGoogleDriveFileInputBlock``, ``AgentDropdownInputBlock``,
+        ``AgentTableInputBlock``, etc. The equivalent applies for outputs.
+        This prevents the validator from forcing agents to keep a throwaway
+        base ``AgentInputBlock`` alongside a real specialized input.
 
         Returns True if both are present, False otherwise.
         """
         valid = True
-        block_ids = {node.get("block_id") for node in agent.get("nodes", [])}
+        input_ids, output_ids = self._collect_io_block_ids(blocks or [])
+        node_block_ids = {
+            node.get("block_id")
+            for node in agent.get("nodes", [])
+            if node.get("block_id")
+        }
 
-        if AGENT_INPUT_BLOCK_ID not in block_ids:
+        if not node_block_ids & input_ids:
             self.add_error(
-                f"Agent is missing an AgentInputBlock (block_id: "
-                f"'{AGENT_INPUT_BLOCK_ID}'). Every agent must have at "
-                f"least one AgentInputBlock to define user-facing inputs. "
-                f"Add a node with block_id '{AGENT_INPUT_BLOCK_ID}' and "
-                f"set input_default with 'name' and optionally 'title'."
+                f"Agent is missing an input block. Every agent must have at "
+                f"least one input block to define user-facing inputs. Add a "
+                f"node using the base AgentInputBlock (block_id: "
+                f"'{AGENT_INPUT_BLOCK_ID}') or any specialized input block "
+                f"subclass (e.g. AgentGoogleDriveFileInputBlock, "
+                f"AgentDropdownInputBlock, AgentShortTextInputBlock). Set "
+                f"input_default with 'name' and optionally 'title'."
             )
             valid = False
 
-        if AGENT_OUTPUT_BLOCK_ID not in block_ids:
+        if not node_block_ids & output_ids:
             self.add_error(
-                f"Agent is missing an AgentOutputBlock (block_id: "
-                f"'{AGENT_OUTPUT_BLOCK_ID}'). Every agent must have at "
-                f"least one AgentOutputBlock to define user-facing outputs. "
-                f"Add a node with block_id '{AGENT_OUTPUT_BLOCK_ID}' and "
-                f"set input_default with 'name', then link 'value' from "
-                f"another block's output."
+                f"Agent is missing an output block. Every agent must have "
+                f"at least one output block to define user-facing outputs. "
+                f"Add a node using the base AgentOutputBlock (block_id: "
+                f"'{AGENT_OUTPUT_BLOCK_ID}') or any specialized output "
+                f"block subclass. Set input_default with 'name', then link "
+                f"'value' from another block's output."
             )
             valid = False
 
         return valid
+
+    def validate_google_drive_file_inputs(
+        self,
+        agent: AgentDict,
+        blocks: list[dict[str, Any]],
+        node_lookup: dict[str, dict[str, Any]] | None = None,
+    ) -> bool:
+        """
+        Detect the ``GoogleDriveFileField`` anti-pattern: a block with a
+        Google-Drive-picker input whose value is hardcoded in ``input_default``
+        instead of being linked from an ``AgentGoogleDriveFileInputBlock``.
+
+        Hardcoded Drive files fail at runtime because the graph executor
+        resolves the user's Google OAuth credential via the ``_credentials_id``
+        that the picker attaches to the file — a bare file ID (or an object
+        missing ``_credentials_id``) cannot be authenticated.
+
+        A field is flagged when **all** of these hold:
+        1. Its input schema has ``format == "google-drive-picker"``, OR an
+           ``auto_credentials`` marker (set by ``GoogleDriveFileField``).
+        2. The node sets a non-null value for the field in ``input_default``.
+        3. The field is not also fed by a link — if it is linked, the
+           hardcoded value is overridden at run time and is harmless.
+
+        The exception is ``AgentGoogleDriveFileInputBlock`` itself: its
+        ``value`` field uses the same picker format but is meant to carry a
+        default selection, so we skip that block ID.
+
+        Returns True if no anti-pattern is found, False otherwise.
+        """
+        valid = True
+        block_lookup = {b.get("id", ""): b for b in blocks}
+        if node_lookup is None:
+            node_lookup = self._build_node_lookup(agent)
+
+        # AgentGoogleDriveFileInputBlock legitimately stores a picker value
+        # in its own input — it is the producer, not a consumer.
+        drive_input_block_ids = {
+            block_id
+            for block_id, block in block_lookup.items()
+            if block.get("uiType") == "Input"
+            and self._block_has_drive_picker_field(block)
+        }
+
+        linked_sinks: dict[str, set[str]] = {}
+        for link in agent.get("links", []):
+            sink_id = link.get("sink_id")
+            sink_name = link.get("sink_name")
+            if not sink_id or not sink_name:
+                continue
+            linked_sinks.setdefault(sink_id, set()).add(sink_name)
+
+        for node in agent.get("nodes", []):
+            node_id = node.get("id", "unknown")
+            block_id = node.get("block_id", "")
+            if block_id in drive_input_block_ids:
+                continue
+
+            block = block_lookup.get(block_id)
+            if not block:
+                continue
+
+            input_default = node.get("input_default")
+            if not isinstance(input_default, dict) or not input_default:
+                continue
+
+            input_props = block.get("inputSchema", {}).get("properties", {})
+            if not isinstance(input_props, dict):
+                continue
+
+            node_linked_sinks = linked_sinks.get(node_id, set())
+            block_name = block.get("name", "Unknown Block")
+
+            for field_name, field_schema in input_props.items():
+                if not self._is_google_drive_picker_field(field_schema):
+                    continue
+                if field_name not in input_default:
+                    continue
+                value = input_default[field_name]
+                if value is None:
+                    continue
+                if field_name in node_linked_sinks:
+                    continue
+                self.add_error(
+                    f"Node '{node_id}' (block '{block_name}' - {block_id}) "
+                    f"has a hardcoded value for Google Drive file field "
+                    f"'{field_name}' in input_default. Drive files must be "
+                    f"provided at run time by an AgentGoogleDriveFileInputBlock "
+                    f"(block_id 'd3b32f15-6fd7-40e3-be52-e083f51b19a2') so "
+                    f"the user's OAuth credentials flow through via "
+                    f"'_credentials_id'. Remove input_default['"
+                    f"{field_name}'], add an AgentGoogleDriveFileInputBlock "
+                    f"node with appropriate 'allowed_views' (e.g. "
+                    f"['SPREADSHEETS'] for Sheets, ['DOCUMENTS'] for Docs, "
+                    f"['PRESENTATIONS'] for Slides), and link its 'result' "
+                    f"output to this node's '{field_name}' input."
+                )
+                valid = False
+
+        return valid
+
+    @staticmethod
+    def _is_google_drive_picker_field(field_schema: Any) -> bool:
+        """Return True if a field schema represents a GoogleDriveFileField."""
+        if not isinstance(field_schema, dict):
+            return False
+        if field_schema.get("format") == "google-drive-picker":
+            return True
+        auto_creds = field_schema.get("auto_credentials")
+        if isinstance(auto_creds, dict) and auto_creds.get("provider") == "google":
+            return True
+        return False
+
+    @classmethod
+    def _block_has_drive_picker_field(cls, block: dict[str, Any]) -> bool:
+        """Return True if the block exposes a GoogleDriveFileField input."""
+        input_props = block.get("inputSchema", {}).get("properties", {})
+        if not isinstance(input_props, dict):
+            return False
+        return any(
+            cls._is_google_drive_picker_field(schema) for schema in input_props.values()
+        )
 
     def validate_agent_executor_blocks(
         self,
@@ -1114,7 +1280,11 @@ class AgentValidator:
             ),
             (
                 "IO blocks",
-                self.validate_io_blocks(agent),
+                self.validate_io_blocks(agent, blocks),
+            ),
+            (
+                "Google Drive file inputs",
+                self.validate_google_drive_file_inputs(agent, blocks, node_lookup),
             ),
             # Always validate AgentExecutorBlock schemas to prevent
             # frontend crashes
