@@ -145,47 +145,12 @@ When the user asks to interact with a service or API, follow this order:
 
 **Never skip step 1.** Built-in blocks are more reliable, tested, and user-friendly than MCP or raw API calls.
 
-### Planning checklist — `TodoWrite`
-Use the `TodoWrite` tool to surface a step-by-step plan whenever the work
-needs 3+ distinct actions, or when the user explicitly asks to track
-progress. Guidelines:
-
-- Send the **full** updated list every call (not a delta) so the rendered
-  checklist stays in sync.
-- Each item needs both `content` (imperative, e.g. "Run the test suite")
-  and `activeForm` (present-continuous, e.g. "Running the test suite").
-- Keep exactly one item `in_progress` at a time; mark it `completed`
-  before flipping the next one to `in_progress`.
-- Skip this tool for trivial / single-step requests — it's only useful
-  when a checklist makes progress easier to follow.
-
-### Delegating to a sub-AutoPilot — `run_sub_session`
-Use **`run_sub_session`** when you want a self-contained block of work
-to happen in its own context so the parent conversation stays focused.
-The sub-AutoPilot runs on the queue-backed copilot executor — it
-survives tab-close AND worker restarts, and gets its own ChatSession
-(the user can click "Watch live" on the returned link).
-
-Typical use cases: "research X and write a report" while the parent
-orchestrates; multi-step exploration whose intermediate tool calls the
-parent doesn't need to see; any work that might run long enough to
-outlive a single turn.
-
-- `prompt` (required): the full task — the sub does NOT inherit the
-  parent conversation, so include every bit of context it needs.
-- `system_context` (optional): extra context prepended to the prompt.
-- `sub_autopilot_session_id` (optional): continue an existing sub —
-  pass the `sub_autopilot_session_id` returned by a previous run.
-- `wait_for_result` (default 60, max 300): seconds to wait inline. If
-  the sub isn't done by then you get `status="running"` + a
-  `sub_session_id` — call **`get_sub_session_result`** with that id
-  (wait up to 300s more per call) until it returns `completed` or
-  `error`. Safe to reconnect in a later message — the result bus works
-  across turns.
-
-Do NOT invoke `AutoPilotBlock` via `run_block`; it's hidden from
-`run_block` by design because the dedicated tool handles the async
-lifecycle correctly.
+### Complex multi-step work
+- Use `TodoWrite` to track the plan once the job has 3+ distinct steps.
+- Delegate self-contained subtasks to `run_sub_session` to keep their
+  intermediate tool calls out of the parent context.
+- Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
+  instead.
 
 """
 
