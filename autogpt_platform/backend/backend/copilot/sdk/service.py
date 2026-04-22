@@ -130,6 +130,7 @@ from ..transcript import (
 from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionTracker, filter_compaction_messages
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
+from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -365,6 +366,14 @@ class _RetryState:
     # ``detect_gap`` picks them up as gap-fill entries instead of assuming the
     # JSONL already covers them.
     midturn_user_rows: int = 0
+    # OpenRouter generation IDs collected across all attempts of this turn.
+    # Populated from ``AssistantMessage.message_id`` when routed via
+    # OpenRouter (``gen-...`` prefix).  Consumed by the finally block to
+    # fire ``record_turn_cost_from_openrouter`` for non-Anthropic models —
+    # the CLI's static-Anthropic-priced estimate is replaced with the
+    # authoritative ``/generation`` total_cost.  Lives on ``_RetryState``
+    # (not per-attempt ``_StreamAccumulator``) so it survives retries.
+    generation_ids: list[str] = dataclass_field(default_factory=list)
 
 
 @dataclass
@@ -2151,6 +2160,24 @@ async def _run_stream_attempt(
                 len(state.adapter.current_tool_calls),
                 len(state.adapter.resolved_tool_calls),
             )
+
+            # Capture OpenRouter generation IDs from each
+            # ``AssistantMessage.message_id`` — when routed via OpenRouter
+            # these are ``gen-...`` slugs we can use post-turn to query
+            # ``/api/v1/generation?id=`` for the authoritative per-turn
+            # cost and token counts (the CLI's ``total_cost_usd`` is
+            # computed from a static Anthropic pricing table that
+            # silently over-bills non-Anthropic routes).  Direct-Anthropic
+            # turns produce ``msg_...`` IDs which the generation endpoint
+            # doesn't know about — harmlessly ignored at reconcile time.
+            if isinstance(sdk_msg, AssistantMessage):
+                msg_id = sdk_msg.message_id
+                if (
+                    msg_id is not None
+                    and msg_id.startswith("gen-")
+                    and msg_id not in state.generation_ids
+                ):
+                    state.generation_ids.append(msg_id)
 
             # Log AssistantMessage API errors (e.g. invalid_request)
             # so we can debug Anthropic API 400s surfaced by the CLI.
@@ -3987,24 +4014,63 @@ async def stream_chat_completion_sdk(
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
         # exception interrupts the try block after StreamUsage was yielded.
-        await persist_and_record_usage(
-            session=session,
-            user_id=user_id,
-            prompt_tokens=turn_prompt_tokens,
-            completion_tokens=turn_completion_tokens,
-            cache_read_tokens=turn_cache_read_tokens,
-            cache_creation_tokens=turn_cache_creation_tokens,
-            log_prefix=log_prefix,
-            cost_usd=turn_cost_usd,
-            model=sdk_model or config.thinking_standard_model,
-            # ``provider`` is a label on the cost-analytics row, not the
-            # cost source — that always comes from
-            # ``ResultMessage.total_cost_usd`` reported by the SDK.  Track
-            # the actual upstream so the row matches reality regardless of
-            # which vendor's model the slug points at: OpenRouter when
-            # ``openrouter_active``, Anthropic otherwise.
-            provider="open_router" if config.openrouter_active else "anthropic",
+        effective_model = sdk_model or config.thinking_standard_model
+        _is_non_anthropic_openrouter = bool(
+            config.openrouter_active
+            and state.generation_ids
+            and not effective_model.startswith("anthropic/")
         )
+
+        if _is_non_anthropic_openrouter:
+            # Defer the single cost-and-rate-limit write to a background
+            # task so the turn isn't charged the SDK CLI's Anthropic-
+            # priced estimate (wrong for Kimi et al by ~5x before our
+            # rate-card override, still ~37% off after).  The task
+            # queries OpenRouter's authoritative ``/generation?id=``
+            # for every round in this turn and records the real cost in
+            # a single ``persist_and_record_usage`` call — same method
+            # as the sync path, so append-only log + rate-limit counter
+            # stay consistent and the turn is NEVER charged twice.
+            # Brief window (~0.5-2s) where the counter is unaware of
+            # this turn is the tradeoff; back-to-back turns in that
+            # window see a stale counter but the next turn's real cost
+            # still lands a moment later.
+            asyncio.create_task(
+                record_turn_cost_from_openrouter(
+                    session=session,
+                    user_id=user_id,
+                    model=effective_model,
+                    prompt_tokens=turn_prompt_tokens,
+                    completion_tokens=turn_completion_tokens,
+                    cache_read_tokens=turn_cache_read_tokens,
+                    cache_creation_tokens=turn_cache_creation_tokens,
+                    generation_ids=list(state.generation_ids),
+                    fallback_cost_usd=turn_cost_usd,
+                    api_key=config.api_key,
+                    log_prefix=log_prefix,
+                )
+            )
+        else:
+            # Anthropic / subscription path: the SDK CLI's
+            # ``total_cost_usd`` is accurate (Anthropic's own pricing
+            # table, same as they bill), record it synchronously.
+            await persist_and_record_usage(
+                session=session,
+                user_id=user_id,
+                prompt_tokens=turn_prompt_tokens,
+                completion_tokens=turn_completion_tokens,
+                cache_read_tokens=turn_cache_read_tokens,
+                cache_creation_tokens=turn_cache_creation_tokens,
+                log_prefix=log_prefix,
+                cost_usd=turn_cost_usd,
+                model=effective_model,
+                # ``provider`` labels the cost-analytics row; the cost
+                # value still comes from the SDK-reported number.
+                # Tracks the actual upstream so the row matches reality:
+                # OpenRouter when ``openrouter_active``, Anthropic
+                # otherwise.
+                provider=("open_router" if config.openrouter_active else "anthropic"),
+            )
 
         # --- Persist session messages ---
         # This MUST run in finally to persist messages even when the generator
