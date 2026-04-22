@@ -549,7 +549,8 @@ class TestResolveSdkModelForRequestLdFallback:
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
 
-        # Fallback == _resolve_sdk_model() on this config = "claude-sonnet-4-6"
+        # Fallback == tier-specific config default (thinking_standard_model
+        # normalised to hyphen-form for direct-Anthropic mode).
         assert resolved == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
@@ -576,6 +577,65 @@ class TestResolveSdkModelForRequestLdFallback:
                 model="standard", session_id="sess-abc", user_id="user-1"
             )
         assert resolved == "moonshotai/kimi-k2.6"
+
+    @pytest.mark.asyncio
+    async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
+        self, monkeypatch, _clean_config_env
+    ):
+        """An LD-rejected ADVANCED slug must fall back to the advanced
+        config default (Opus) — not the standard default (Sonnet).
+        Using ``_resolve_sdk_model()`` as the fallback silently
+        downgraded the user's chosen tier.  Flagged MAJOR by CodeRabbit
+        + HIGH by Sentry on the first fail-soft commit."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="moonshotai/kimi-k2.6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv", user_id="user-1"
+            )
+
+        # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
+        assert resolved == "claude-opus-4-7"
+
+    @pytest.mark.asyncio
+    async def test_advanced_tier_consults_ld_under_subscription(
+        self, monkeypatch, _clean_config_env
+    ):
+        """Subscription mode bypasses LD only on the standard tier —
+        the advanced tier always consults LD because the user explicitly
+        asked for the premium path.  A subscription + advanced request
+        with LD-served Opus must return Opus (not ``None``)."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv-sub", user_id="user-1"
+            )
+        assert resolved == "anthropic/claude-opus-4.7"
 
 
 # ---------------------------------------------------------------------------
