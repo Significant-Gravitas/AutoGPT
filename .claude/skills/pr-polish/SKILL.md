@@ -33,7 +33,12 @@ Update the `current` round counter at the start of each iteration; mark `complet
 ## Find the PR
 
 ```bash
-PR=${ARG:-$(gh pr list --head "$(git branch --show-current)" --repo Significant-Gravitas/AutoGPT --json number --jq '.[0].number')}
+ARG_PR="${ARG:-}"
+# Normalize URL → numeric ID if the skill arg is a pull-request URL.
+if [[ "$ARG_PR" =~ ^https?://github\.com/[^/]+/[^/]+/pull/([0-9]+) ]]; then
+  ARG_PR="${BASH_REMATCH[1]}"
+fi
+PR="${ARG_PR:-$(gh pr list --head "$(git branch --show-current)" --repo Significant-Gravitas/AutoGPT --json number --jq '.[0].number')}"
 if [ -z "$PR" ] || [ "$PR" = "null" ]; then
   echo "No PR found for current branch. Provide a PR number or URL as the skill arg."
   exit 1
