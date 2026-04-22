@@ -102,10 +102,12 @@ class WebSearchTool(BaseTool):
                 "deep": {
                     "type": "boolean",
                     "description": (
-                        "Set true when the user asks to 'research', "
-                        "'compare', 'investigate', or 'go deep' — runs "
-                        "multi-step agentic research over many sources. "
-                        "Slower; leave false for direct questions."
+                        "Only set true when the user EXPLICITLY asks for "
+                        "research, comparison, or in-depth investigation "
+                        "across many sources — it is ~100x more expensive "
+                        "and much slower than a normal search. Default "
+                        "false; do not flip it for ordinary fact lookups "
+                        "or fresh-news questions."
                     ),
                     "default": False,
                 },
