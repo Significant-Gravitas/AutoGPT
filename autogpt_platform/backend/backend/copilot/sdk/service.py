@@ -48,11 +48,12 @@ from ..config import ChatConfig, CopilotLlmModel, CopilotMode
 from ..constants import (
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
-    COPILOT_SYSTEM_PREFIX,
     FRIENDLY_TRANSIENT_MSG,
+    STOPPED_BY_USER_MARKER,
     STREAM_IDLE_TIMEOUT_SECONDS,
     is_transient_api_error,
 )
+from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
 from ..model import (
@@ -70,7 +71,6 @@ from ..pending_message_helpers import (
     persist_session_safe,
 )
 from ..pending_messages import (
-    PendingMessage,
     drain_pending_for_persist,
     push_pending_message,
 )
@@ -95,6 +95,10 @@ from ..response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
+)
+from ..builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
 )
 from ..service import (
     _build_system_prompt,
@@ -164,11 +168,6 @@ _MAX_STREAM_ATTEMPTS = 3
 # guidance on the first empty call, giving the model a chance to
 # self-correct.  The limit is generous to allow recovery attempts.
 _EMPTY_TOOL_CALL_LIMIT = 5
-
-# Cost multiplier for Opus model turns — Opus is ~5× more expensive than Sonnet
-# ($15/$75 vs $3/$15 per M tokens).  Applied to rate-limit counters so Opus
-# turns deplete quota proportionally faster.
-_OPUS_COST_MULTIPLIER = 5.0
 
 # User-facing error shown when the empty-tool-call circuit breaker trips.
 _CIRCUIT_BREAKER_ERROR_MSG = (
@@ -725,22 +724,20 @@ def _resolve_fallback_model() -> str | None:
     return _normalize_model_name(raw)
 
 
-async def _resolve_model_and_multiplier(
+async def _resolve_sdk_model_for_request(
     model: "CopilotLlmModel | None",
     session_id: str,
-) -> tuple[str | None, float]:
-    """Resolve the SDK model string and rate-limit cost multiplier for a turn.
+) -> str | None:
+    """Resolve the SDK model string for a turn.
 
     Priority (highest first):
     1. Explicit per-request ``model`` tier from the frontend toggle.
     2. Global config default (``_resolve_sdk_model()``).
 
-    Returns a ``(sdk_model, cost_multiplier)`` pair.
-    ``sdk_model`` is ``None`` when the Claude Code subscription default applies.
-    ``cost_multiplier`` is 5.0 for Opus, 1.0 otherwise.
+    Returns ``None`` when the Claude Code subscription default applies.
+    Rate-limit accounting no longer applies a multiplier — the real turn
+    cost (reported by the SDK) already reflects model-pricing differences.
     """
-    sdk_model = _resolve_sdk_model()
-
     if model == "advanced":
         sdk_model = _normalize_model_name(config.advanced_model)
         logger.info(
@@ -748,7 +745,7 @@ async def _resolve_model_and_multiplier(
             session_id[:12] if session_id else "?",
             sdk_model,
         )
-        return sdk_model, _OPUS_COST_MULTIPLIER
+        return sdk_model
 
     if model == "standard":
         # Reset to config default — respects subscription mode (None = CLI default).
@@ -758,13 +755,9 @@ async def _resolve_model_and_multiplier(
             session_id[:12] if session_id else "?",
             sdk_model or "subscription-default",
         )
-        return sdk_model, 1.0
+        return sdk_model
 
-    # No per-request override; derive multiplier from final resolved model.
-    cost_multiplier = (
-        _OPUS_COST_MULTIPLIER if sdk_model and "opus" in sdk_model else 1.0
-    )
-    return sdk_model, cost_multiplier
+    return _resolve_sdk_model()
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
@@ -847,16 +840,25 @@ def _is_fallback_stderr(line: str) -> bool:
 
 def _build_system_prompt_value(
     system_prompt: str,
+    *,
     cross_user_cache: bool,
 ) -> str | SystemPromptPreset:
     """Build the ``system_prompt`` argument for :class:`ClaudeAgentOptions`.
 
     When *cross_user_cache* is enabled, returns a :class:`SystemPromptPreset`
-    dict so the Claude Code default prompt becomes a cacheable prefix shared
-    across all users; our custom *system_prompt* is appended after it.
+    with ``exclude_dynamic_sections=True`` so every turn — Turn 1 *and*
+    resumed turns — shares the same static prefix and hits the cross-user
+    prompt cache.  Our custom *system_prompt* is appended after the preset.
 
-    When disabled (or if the SDK is too old to support ``SystemPromptPreset``),
-    the raw *system_prompt* string is returned unchanged.
+    Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
+    is combined with ``--resume``).  The SDK bundles CLI 2.1.116 at
+    ``claude-agent-sdk >= 0.1.64``, so the pin in ``pyproject.toml`` is
+    the single source of truth — no external install needed.
+
+    When *cross_user_cache* is disabled, the raw *system_prompt* string is
+    returned.  Note this causes the CLI to REPLACE its built-in prompt via
+    ``--system-prompt`` (vs ``--append-system-prompt`` for the preset),
+    which loses Claude Code's default prompt and its cache markers entirely.
 
     An empty *system_prompt* is accepted: the preset dict will have
     ``append: ""`` which the SDK treats as no custom suffix.
@@ -2504,10 +2506,7 @@ async def _run_stream_attempt(
         for r in closing_responses:
             yield r
         ctx.session.messages.append(
-            ChatMessage(
-                role="assistant",
-                content=f"{COPILOT_SYSTEM_PREFIX} Execution stopped by user",
-            )
+            ChatMessage(role="assistant", content=STOPPED_BY_USER_MARKER)
         )
 
     if (
@@ -2725,6 +2724,24 @@ async def _restore_cli_session_for_turn(
     return result
 
 
+async def _maybe_prepend_builder_context(
+    session: ChatSession,
+    user_id: str | None,
+    is_user_message: bool,
+    query_message: str,
+) -> str:
+    """Prepend the per-turn ``<builder_context>`` block to the user message.
+
+    No-op for non-user messages and for sessions without a bound graph.
+    Extracted from the SDK stream body so Pyright's complexity analyser
+    stays within budget on the already-large ``stream_chat_completion_sdk``.
+    """
+    if not is_user_message or not session.metadata.builder_graph_id:
+        return query_message
+    block = await build_builder_context_turn_prefix(session, user_id)
+    return block + query_message if block else query_message
+
+
 async def stream_chat_completion_sdk(
     session_id: str,
     message: str | None = None,
@@ -2737,7 +2754,7 @@ async def stream_chat_completion_sdk(
     model: CopilotLlmModel | None = None,
     request_arrival_at: float = 0.0,
     **_kwargs: Any,
-) -> AsyncIterator[StreamBaseResponse]:
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Stream chat completion using Claude Agent SDK.
 
     Args:
@@ -2780,6 +2797,10 @@ async def stream_chat_completion_sdk(
             session_id[:12],
         )
         session.messages.pop()
+
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the next turn's --resume transcript is well-formed.
+    prune_orphan_tool_calls(session.messages, log_prefix=f"[SDK] [{session_id[:12]}]")
 
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
@@ -2894,7 +2915,6 @@ async def stream_chat_completion_sdk(
     # Defaults ensure the finally block can always reference these safely even when
     # an early return (e.g. sdk_cwd error) skips their normal assignment below.
     sdk_model: str | None = None
-    model_cost_multiplier: float = 1.0
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
@@ -2958,10 +2978,17 @@ async def stream_chat_completion_sdk(
         graphiti_enabled = await is_enabled_for_user(user_id)
 
         graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
+        # Append the builder-session block (graph id+name + full building
+        # guide) AFTER the shared supplements so the system prompt is
+        # byte-identical across turns of the same builder session — Claude's
+        # prompt cache keeps the ~20KB guide warm for the whole session.
+        # Empty string for non-builder sessions preserves cross-user caching.
+        builder_session_suffix = await build_builder_system_prompt_suffix(session)
         system_prompt = (
             base_system_prompt
             + get_sdk_supplement(use_e2b=use_e2b)
             + graphiti_supplement
+            + builder_session_suffix
         )
 
         # Warm context: pre-load relevant facts from Graphiti on first turn.
@@ -3011,10 +3038,8 @@ async def stream_chat_completion_sdk(
 
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
-        # Resolve model and cost multiplier (request tier → config default).
-        sdk_model, model_cost_multiplier = await _resolve_model_and_multiplier(
-            model, session_id
-        )
+        # Resolve model (request tier → config default).
+        sdk_model = await _resolve_sdk_model_for_request(model, session_id)
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -3049,15 +3074,17 @@ async def stream_chat_completion_sdk(
                     sid,
                 )
 
-        # Use SystemPromptPreset for cross-user prompt caching.
-        # WORKAROUND: CLI 2.1.97 (sdk 0.1.58) exits code 1 when
-        # excludeDynamicSections=True is in the initialize request AND
-        # --resume is active.  Disable the preset on resumed turns.
-        # Turn 1 still gets the preset (no --resume).
-        _cross_user = config.claude_agent_cross_user_prompt_cache and not use_resume
+        # Use SystemPromptPreset with exclude_dynamic_sections=True on
+        # every turn — including resumed ones — so all turns share the
+        # same static prefix and hit the cross-user prompt cache.
+        #
+        # Requires CLI ≥ 2.1.98 (older CLIs crash when excludeDynamicSections
+        # is combined with --resume).  claude-agent-sdk >= 0.1.64 bundles
+        # CLI 2.1.116, so the pin in pyproject.toml is sufficient — no
+        # external install or env-var override needed.
         system_prompt_value = _build_system_prompt_value(
             system_prompt,
-            cross_user_cache=_cross_user,
+            cross_user_cache=config.claude_agent_cross_user_prompt_cache,
         )
 
         sdk_options_kwargs: dict[str, Any] = {
@@ -3078,14 +3105,19 @@ async def stream_chat_completion_sdk(
             "max_turns": config.claude_agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
-            # max_thinking_tokens: cap extended thinking output per LLM call.
-            # Thinking tokens are billed at output rate ($75/M for Opus) and
-            # account for ~54% of total cost.  8192 is the default.
-            # Intentionally sent for all models including Sonnet — the CLI
-            # silently ignores this field for non-Opus models (those without
-            # native extended thinking), so it is safe to pass unconditionally.
-            "max_thinking_tokens": config.claude_agent_max_thinking_tokens,
         }
+        # max_thinking_tokens: cap extended thinking output per LLM call.
+        # Thinking tokens are billed at output rate ($75/M for Opus) and
+        # account for ~54% of total cost.  8192 is the default.
+        # Intentionally sent for all models including Sonnet — the CLI
+        # silently ignores this field for non-Opus models (those without
+        # native extended thinking), so it is safe to pass unconditionally.
+        # Setting to 0 acts as the kill switch (same as baseline): omit the
+        # kwarg so the CLI falls back to its default (extended thinking off).
+        if config.claude_agent_max_thinking_tokens > 0:
+            sdk_options_kwargs["max_thinking_tokens"] = (
+                config.claude_agent_max_thinking_tokens
+            )
         # effort: only set for models with extended thinking (Opus).
         # Setting effort on Sonnet causes <internal_reasoning> tag leaks.
         if config.claude_agent_thinking_effort:
@@ -3191,10 +3223,7 @@ async def stream_chat_completion_sdk(
             # Chronological combine: items typed BEFORE this request
             # arrived go ahead of ``current_message``; items typed AFTER
             # (race path, queued while /stream was still processing) go
-            # after.  ``pending_texts`` is kept around because downstream
-            # code (the executor's update_message_content_by_sequence
-            # call) needs the pre-combine list.
-            pending_texts = pending_texts_from(pending_messages)
+            # after.
             current_message = combine_pending_with_current(
                 pending_messages,
                 current_message,
@@ -3287,6 +3316,18 @@ async def stream_chat_completion_sdk(
 
         # warm_ctx is injected via inject_user_context above (warm_ctx= kwarg).
         # No separate injection needed here.
+
+        # Inject per-turn builder context when the session is bound to a
+        # graph via ``metadata.builder_graph_id``.  Runs on EVERY user turn
+        # (including resumes) so the LLM always sees the live graph snapshot
+        # — if the user edits the graph between turns, the next turn carries
+        # the updated nodes/links.  The block also carries the full
+        # agent-building guide, replacing the per-turn
+        # ``get_agent_building_guide`` round-trip.  Not persisted to the
+        # transcript: the snapshot is stale-by-definition after the turn ends.
+        query_message = await _maybe_prepend_builder_context(
+            session, user_id, is_user_message, query_message
+        )
 
         # When running without --resume and no prior transcript in storage,
         # seed the transcript builder from compressed DB messages so that
@@ -3417,15 +3458,12 @@ async def stream_chat_completion_sdk(
                     # fail with "Session ID already in use".
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry.pop("session_id", None)
-                # Recompute system_prompt for retry — ctx.use_resume may have
-                # changed (context reduction enabled --resume).  CLI 2.1.97
-                # crashes when excludeDynamicSections=True is combined with
-                # --resume, so disable the cross-user preset on resumed turns.
-                _cross_user_retry = (
-                    config.claude_agent_cross_user_prompt_cache and not ctx.use_resume
-                )
+                # Recompute system_prompt for retry — the preset is safe on
+                # every turn (requires CLI ≥ 2.1.98, installed in the Docker
+                # image and configured via CHAT_CLAUDE_AGENT_CLI_PATH).
                 sdk_options_kwargs_retry["system_prompt"] = _build_system_prompt_value(
-                    system_prompt, cross_user_cache=_cross_user_retry
+                    system_prompt,
+                    cross_user_cache=config.claude_agent_cross_user_prompt_cache,
                 )
                 state.options = ClaudeAgentOptions(**sdk_options_kwargs_retry)  # type: ignore[arg-type]  # dynamic kwargs
                 # Retry intentionally omits prior_messages (transcript+gap context) and
@@ -3445,6 +3483,11 @@ async def stream_chat_completion_sdk(
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via
                 # inject_user_context — no separate injection needed.
+                # Re-inject per-turn builder context so retries carry the
+                # same live graph snapshot + guide as the initial attempt.
+                state.query_message = await _maybe_prepend_builder_context(
+                    session, user_id, is_user_message, state.query_message
+                )
                 state.adapter = SDKResponseAdapter(
                     message_id=message_id, session_id=session_id
                 )
@@ -3815,7 +3858,6 @@ async def stream_chat_completion_sdk(
             cost_usd=turn_cost_usd,
             model=sdk_model or config.model,
             provider="anthropic",
-            model_cost_multiplier=model_cost_multiplier,
         )
 
         # --- Persist session messages ---

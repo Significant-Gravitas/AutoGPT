@@ -62,6 +62,7 @@ class GraphSettings(BaseModel):
     sensitive_action_safe_mode: Annotated[
         bool, BeforeValidator(lambda v: v if v is not None else False)
     ] = False
+    builder_chat_session_id: str | None = None
 
     @classmethod
     def from_graph(
@@ -69,13 +70,14 @@ class GraphSettings(BaseModel):
         graph: "GraphModel",
         hitl_safe_mode: bool | None = None,
         sensitive_action_safe_mode: bool = False,
+        builder_chat_session_id: str | None = None,
     ) -> "GraphSettings":
-        # Default to True if not explicitly set
         if hitl_safe_mode is None:
             hitl_safe_mode = True
         return cls(
             human_in_the_loop_safe_mode=hitl_safe_mode,
             sensitive_action_safe_mode=sensitive_action_safe_mode,
+            builder_chat_session_id=builder_chat_session_id,
         )
 
 

@@ -45,7 +45,8 @@
       "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
-        "sensitive_action_safe_mode": false
+        "sensitive_action_safe_mode": false,
+        "builder_chat_session_id": null
       },
       "marketplace_listing": null
     },
@@ -94,7 +95,8 @@
       "next_scheduled_run": null,
       "settings": {
         "human_in_the_loop_safe_mode": true,
-        "sensitive_action_safe_mode": false
+        "sensitive_action_safe_mode": false,
+        "builder_chat_session_id": null
       },
       "marketplace_listing": null
     }

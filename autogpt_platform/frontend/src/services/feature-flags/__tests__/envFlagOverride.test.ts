@@ -59,3 +59,27 @@ describe("envFlagOverride", () => {
     expect(envFlagOverride(Flag.CHAT_MODE_OPTION)).toBeUndefined();
   });
 });
+
+describe("BUILDER_CHAT_PANEL default", () => {
+  beforeEach(() => {
+    delete process.env["NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL"];
+  });
+
+  it("is disabled by default so the feature only ships when LaunchDarkly enables it", () => {
+    // No env override configured → override helper must return undefined,
+    // which causes useGetFlag to fall through to the defaultFlags value. The
+    // default for a new gated feature MUST be false so a LaunchDarkly outage
+    // cannot expose the feature to all users.
+    expect(envFlagOverride(Flag.BUILDER_CHAT_PANEL)).toBeUndefined();
+  });
+
+  it("can still be force-enabled via the env override for local dev", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL"] = "true";
+    expect(envFlagOverride(Flag.BUILDER_CHAT_PANEL)).toBe(true);
+  });
+
+  it("can still be force-disabled via the env override for QA", () => {
+    process.env["NEXT_PUBLIC_FORCE_FLAG_BUILDER_CHAT_PANEL"] = "false";
+    expect(envFlagOverride(Flag.BUILDER_CHAT_PANEL)).toBe(false);
+  });
+});

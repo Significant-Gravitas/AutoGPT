@@ -101,25 +101,31 @@ class ChatConfig(BaseSettings):
         description="Cache TTL in seconds for Langfuse prompt (0 to disable caching)",
     )
 
-    # Rate limiting — token-based limits per day and per week.
-    # Per-turn token cost varies with context size: ~10-15K for early turns,
-    # ~30-50K mid-session, up to ~100K pre-compaction. Average across a
-    # session with compaction cycles is ~25-35K tokens/turn, so 2.5M daily
-    # allows ~70-100 turns/day.
+    # Rate limiting — cost-based limits per day and per week, stored in
+    # microdollars (1 USD = 1_000_000).  The counter tracks the real
+    # generation cost reported by the provider (OpenRouter ``usage.cost``
+    # or Claude Agent SDK ``total_cost_usd``), so cache discounts and
+    # cross-model price differences are already reflected — no token
+    # weighting or model multiplier is applied on top.
     # Checked at the HTTP layer (routes.py) before each turn.
     #
-    # These are base limits for the FREE tier. Higher tiers (PRO, BUSINESS,
+    # These are base limits for the FREE tier.  Higher tiers (PRO, BUSINESS,
     # ENTERPRISE) multiply these by their tier multiplier (see
-    # rate_limit.TIER_MULTIPLIERS). User tier is stored in the
+    # rate_limit.TIER_MULTIPLIERS).  User tier is stored in the
     # User.subscriptionTier DB column and resolved inside
     # get_global_rate_limits().
-    daily_token_limit: int = Field(
-        default=2_500_000,
-        description="Max tokens per day, resets at midnight UTC (0 = unlimited)",
+    #
+    # These defaults act as the ceiling when LaunchDarkly is unreachable;
+    # the live per-tier values come from the COPILOT_*_COST_LIMIT flags.
+    daily_cost_limit_microdollars: int = Field(
+        default=1_000_000,
+        description="Max cost per day in microdollars, resets at midnight UTC "
+        "(0 = unlimited).",
     )
-    weekly_token_limit: int = Field(
-        default=12_500_000,
-        description="Max tokens per week, resets Monday 00:00 UTC (0 = unlimited)",
+    weekly_cost_limit_microdollars: int = Field(
+        default=5_000_000,
+        description="Max cost per week in microdollars, resets Monday 00:00 UTC "
+        "(0 = unlimited).",
     )
 
     # Cost (in credits / cents) to reset the daily rate limit using credits.
@@ -186,12 +192,18 @@ class ChatConfig(BaseSettings):
     )
     claude_agent_max_thinking_tokens: int = Field(
         default=8192,
-        ge=1024,
+        ge=0,
         le=128000,
-        description="Maximum thinking/reasoning tokens per LLM call. "
-        "Extended thinking on Opus can generate 50k+ tokens at $75/M — "
-        "capping this is the single biggest cost lever. "
-        "8192 is sufficient for most tasks; increase for complex reasoning.",
+        description="Maximum thinking/reasoning tokens per LLM call. Applies "
+        "to both the Claude Agent SDK path (as ``max_thinking_tokens``) and "
+        "the baseline OpenRouter path (as ``extra_body.reasoning.max_tokens`` "
+        "on Anthropic routes). Extended thinking on Opus can generate 50k+ "
+        "tokens at $75/M — capping this is the single biggest cost lever. "
+        "8192 is sufficient for most tasks; increase for complex reasoning. "
+        "Set to 0 to disable extended thinking on both paths (kill switch): "
+        "baseline skips the ``reasoning`` extra_body; SDK omits the "
+        "``max_thinking_tokens`` kwarg so the CLI falls back to model default "
+        "(which, without the flag, leaves extended thinking off).",
     )
     claude_agent_thinking_effort: Literal["low", "medium", "high", "max"] | None = (
         Field(
@@ -218,6 +230,18 @@ class ChatConfig(BaseSettings):
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
         "from the prefix. Set to False to fall back to passing the system "
         "prompt as a raw string.",
+    )
+    baseline_prompt_cache_ttl: str = Field(
+        default="1h",
+        description="TTL for the ephemeral prompt-cache markers on the baseline "
+        "OpenRouter path. Anthropic supports only `5m` (default, 1.25x input "
+        "price for the write) or `1h` (2x input price for the write). 1h is "
+        "strictly cheaper overall when the static prefix gets >7 reads per "
+        "write-window; since the system prompt + tools array is identical "
+        "across all users in our workspace, 1h is the default so cross-user "
+        "reads amortise the higher write cost. Anthropic has no longer "
+        "(24h, permanent) TTL option — see "
+        "https://platform.claude.com/docs/en/build-with-claude/prompt-caching.",
     )
     claude_agent_cli_path: str | None = Field(
         default=None,

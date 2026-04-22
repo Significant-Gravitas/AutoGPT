@@ -11,10 +11,26 @@ from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
     _baseline_conversation_updater,
+    _baseline_llm_caller,
     _BaselineStreamState,
+    _build_cached_system_message,
     _compress_session_messages,
+    _extract_cache_creation_tokens,
+    _fresh_anthropic_caching_headers,
+    _fresh_ephemeral_cache_control,
+    _is_anthropic_model,
+    _mark_system_message_with_cache_control,
+    _mark_tools_with_cache_control,
 )
 from backend.copilot.model import ChatMessage
+from backend.copilot.response_model import (
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
+    StreamTextDelta,
+    StreamTextEnd,
+    StreamTextStart,
+)
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
@@ -574,37 +590,87 @@ class TestPrepareBaselineAttachments:
         assert blocks == []
 
 
+_COST_MISSING = object()
+
+
+def _make_usage_chunk(
+    *,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    cost: float | str | None | object = _COST_MISSING,
+    cached_tokens: int | None = None,
+    cache_creation_input_tokens: int | None = None,
+):
+    """Build a mock streaming chunk carrying usage (and optionally cost).
+
+    Provider-specific fields (``cost`` on usage, ``cache_creation_input_tokens``
+    on prompt_tokens_details) are set on ``model_extra`` because that's where
+    the baseline helper reads them from (typed ``CompletionUsage.model_extra``
+    rather than ``getattr``). Pass ``cost=None`` to emit an explicit-null cost
+    key; omit ``cost`` entirely to leave the key absent.
+    """
+    chunk = MagicMock()
+    chunk.choices = []
+    chunk.usage = MagicMock()
+    chunk.usage.prompt_tokens = prompt_tokens
+    chunk.usage.completion_tokens = completion_tokens
+    usage_extras: dict[str, float | str | None] = {}
+    if cost is not _COST_MISSING:
+        usage_extras["cost"] = cost  # type: ignore[assignment]
+    chunk.usage.model_extra = usage_extras
+
+    if cached_tokens is not None or cache_creation_input_tokens is not None:
+        # Build a real ``PromptTokensDetails`` so ``getattr(ptd,
+        # "cache_write_tokens", None)`` returns ``None`` on this SDK version
+        # (rather than a truthy MagicMock attribute) and the extraction
+        # helper's typed-attr vs model_extra fallback resolves correctly.
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": cached_tokens or 0})
+        if cache_creation_input_tokens is not None:
+            if ptd.model_extra is None:
+                object.__setattr__(ptd, "__pydantic_extra__", {})
+            assert ptd.model_extra is not None
+            ptd.model_extra["cache_creation_input_tokens"] = cache_creation_input_tokens
+        chunk.usage.prompt_tokens_details = ptd
+    else:
+        chunk.usage.prompt_tokens_details = None
+
+    return chunk
+
+
+def _make_stream_mock(*chunks):
+    """Build an async streaming response mock that yields *chunks* in order."""
+    stream = MagicMock()
+    stream.close = AsyncMock()
+
+    async def aiter():
+        for c in chunks:
+            yield c
+
+    stream.__aiter__ = lambda self: aiter()
+    return stream
+
+
 class TestBaselineCostExtraction:
-    """Tests for x-total-cost header extraction in _baseline_llm_caller."""
+    """Tests for ``usage.cost`` extraction in ``_baseline_llm_caller``.
+
+    Cost is read from the OpenRouter ``usage.cost`` field on the final
+    streaming chunk when the request body includes ``usage: {include: true}``
+    (handled by the baseline service via ``extra_body``).
+    """
 
     @pytest.mark.asyncio
-    async def test_cost_usd_extracted_from_response_header(self):
-        """state.cost_usd is set from x-total-cost header when present."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
+    async def test_cost_usd_extracted_from_usage_chunk(self):
+        """state.cost_usd is set from chunk.usage.cost when present."""
         state = _BaselineStreamState(model="gpt-4o-mini")
-
-        # Build a mock raw httpx response with the cost header
-        mock_raw_response = MagicMock()
-        mock_raw_response.headers = {"x-total-cost": "0.0123"}
-
-        # Build a mock async streaming response that yields no chunks but has
-        # a _response attribute pointing to the mock httpx response
-        mock_stream_response = MagicMock()
-        mock_stream_response._response = mock_raw_response
-
-        async def empty_aiter():
-            return
-            yield  # make it an async generator
-
-        mock_stream_response.__aiter__ = lambda self: empty_aiter()
+        chunk = _make_usage_chunk(
+            prompt_tokens=1000, completion_tokens=200, cost=0.0123
+        )
 
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
-            return_value=mock_stream_response
+            return_value=_make_stream_mock(chunk)
         )
 
         with patch(
@@ -622,29 +688,14 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_cost_usd_accumulates_across_calls(self):
         """cost_usd accumulates when _baseline_llm_caller is called multiple times."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="gpt-4o-mini")
-
-        def make_stream_mock(cost: str) -> MagicMock:
-            mock_raw = MagicMock()
-            mock_raw.headers = {"x-total-cost": cost}
-            mock_stream = MagicMock()
-            mock_stream._response = mock_raw
-
-            async def empty_aiter():
-                return
-                yield
-
-            mock_stream.__aiter__ = lambda self: empty_aiter()
-            return mock_stream
 
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
-            side_effect=[make_stream_mock("0.01"), make_stream_mock("0.02")]
+            side_effect=[
+                _make_stream_mock(_make_usage_chunk(prompt_tokens=500, cost=0.01)),
+                _make_stream_mock(_make_usage_chunk(prompt_tokens=600, cost=0.02)),
+            ]
         )
 
         with patch(
@@ -665,28 +716,64 @@ class TestBaselineCostExtraction:
         assert state.cost_usd == pytest.approx(0.03)
 
     @pytest.mark.asyncio
-    async def test_no_cost_when_header_absent(self):
-        """state.cost_usd remains None when response has no x-total-cost header."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
+    async def test_cost_usd_accepts_string_value(self):
+        """OpenRouter may emit cost as a string — it should still parse."""
         state = _BaselineStreamState(model="gpt-4o-mini")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        async def empty_aiter():
-            return
-            yield
-
-        mock_stream.__aiter__ = lambda self: empty_aiter()
+        chunk = _make_usage_chunk(prompt_tokens=10, cost="0.005")
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd == pytest.approx(0.005)
+
+    @pytest.mark.asyncio
+    async def test_cost_usd_none_when_usage_cost_missing(self):
+        """state.cost_usd stays None when the usage chunk lacks a cost field."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+        chunk = _make_usage_chunk(prompt_tokens=1000, completion_tokens=500)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+        # Token accumulators are still populated so the caller can log them.
+        assert state.turn_prompt_tokens == 1000
+        assert state.turn_completion_tokens == 500
+
+    @pytest.mark.asyncio
+    async def test_invalid_cost_string_leaves_cost_none(self):
+        """A non-numeric cost value is rejected without raising."""
+        state = _BaselineStreamState(model="gpt-4o-mini")
+        chunk = _make_usage_chunk(prompt_tokens=10, cost="not-a-number")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -701,28 +788,73 @@ class TestBaselineCostExtraction:
         assert state.cost_usd is None
 
     @pytest.mark.asyncio
-    async def test_cost_extracted_even_when_stream_raises(self):
-        """cost_usd is captured in the finally block even when streaming fails."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
+    async def test_negative_cost_is_ignored(self):
+        """Guard against negative cost values (shouldn't happen but be safe)."""
+        state = _BaselineStreamState(model="gpt-4o-mini")
+        chunk = _make_usage_chunk(prompt_tokens=10, cost=-0.01)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
         )
 
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+
+    @pytest.mark.asyncio
+    async def test_explicit_null_cost_is_logged_and_ignored(self, caplog):
+        """`{"cost": null}` is rejected and logged (not silently dropped)."""
+        state = _BaselineStreamState(model="openrouter/auto")
+        chunk = _make_usage_chunk(prompt_tokens=10, cost=None)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_openai_client",
+                return_value=mock_client,
+            ),
+            caplog.at_level("ERROR", logger="backend.copilot.baseline.service"),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert state.cost_usd is None
+        assert any(
+            "usage.cost is present but null" in rec.message for rec in caplog.records
+        )
+
+    @pytest.mark.asyncio
+    async def test_cost_not_captured_when_stream_raises_mid_chunk(self):
+        """If the stream aborts before emitting the usage chunk there is no cost."""
         state = _BaselineStreamState(model="gpt-4o-mini")
 
-        mock_raw = MagicMock()
-        mock_raw.headers = {"x-total-cost": "0.005"}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
+        stream = MagicMock()
+        stream.close = AsyncMock()
 
         async def failing_aiter():
             raise RuntimeError("stream error")
             yield  # make it an async generator
 
-        mock_stream.__aiter__ = lambda self: failing_aiter()
+        stream.__aiter__ = lambda self: failing_aiter()
 
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(return_value=stream)
 
         with (
             patch(
@@ -737,16 +869,12 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        assert state.cost_usd == pytest.approx(0.005)
+        # Stream aborted before yielding the usage chunk — cost stays None.
+        assert state.cost_usd is None
 
     @pytest.mark.asyncio
     async def test_no_cost_when_api_call_raises_before_stream(self):
-        """finally block is safe when response is None (API call failed before yielding)."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
+        """The helper is safe when the create() call itself raises."""
         state = _BaselineStreamState(model="gpt-4o-mini")
 
         mock_client = MagicMock()
@@ -767,84 +895,23 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # response was never assigned so cost extraction must not raise
-        assert state.cost_usd is None
-
-    @pytest.mark.asyncio
-    async def test_no_cost_when_header_missing(self):
-        """cost_usd remains None when x-total-cost is absent."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
-        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {}  # no x-total-cost
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 500
-        mock_chunk.usage.prompt_tokens_details = None
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
-
-        with patch(
-            "backend.copilot.baseline.service._get_openai_client",
-            return_value=mock_client,
-        ):
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "hi"}],
-                tools=[],
-                state=state,
-            )
-
         assert state.cost_usd is None
 
     @pytest.mark.asyncio
     async def test_cache_tokens_extracted_from_usage_details(self):
         """cache tokens are extracted from prompt_tokens_details.cached_tokens."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
+        state = _BaselineStreamState(model="openai/gpt-4o")
+        chunk = _make_usage_chunk(
+            prompt_tokens=1000,
+            completion_tokens=200,
+            cost=0.01,
+            cached_tokens=800,
         )
 
-        state = _BaselineStreamState(model="openai/gpt-4o")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {"x-total-cost": "0.01"}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        # Create a chunk with prompt_tokens_details
-        mock_ptd = MagicMock()
-        mock_ptd.cached_tokens = 800
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 200
-        mock_chunk.usage.prompt_tokens_details = mock_ptd
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
-
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -861,37 +928,20 @@ class TestBaselineCostExtraction:
 
     @pytest.mark.asyncio
     async def test_cache_creation_tokens_extracted_from_usage_details(self):
-        """cache_creation_tokens are extracted from prompt_tokens_details."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
+        """cache_creation_input_tokens is extracted from prompt_tokens_details."""
+        state = _BaselineStreamState(model="openai/gpt-4o")
+        chunk = _make_usage_chunk(
+            prompt_tokens=1000,
+            completion_tokens=200,
+            cost=0.01,
+            cached_tokens=0,
+            cache_creation_input_tokens=500,
         )
 
-        state = _BaselineStreamState(model="openai/gpt-4o")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {"x-total-cost": "0.01"}
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        mock_ptd = MagicMock()
-        mock_ptd.cached_tokens = 0
-        mock_ptd.cache_creation_input_tokens = 500
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 200
-        mock_chunk.usage.prompt_tokens_details = mock_ptd
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
-
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -908,37 +958,17 @@ class TestBaselineCostExtraction:
     @pytest.mark.asyncio
     async def test_token_accumulators_track_across_multiple_calls(self):
         """Token accumulators grow correctly across multiple _baseline_llm_caller calls."""
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
         state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
-
-        def make_stream(prompt_tokens: int, completion_tokens: int):
-            mock_raw = MagicMock()
-            mock_raw.headers = {}  # no x-total-cost
-            mock_stream = MagicMock()
-            mock_stream._response = mock_raw
-
-            mock_chunk = MagicMock()
-            mock_chunk.usage = MagicMock()
-            mock_chunk.usage.prompt_tokens = prompt_tokens
-            mock_chunk.usage.completion_tokens = completion_tokens
-            mock_chunk.usage.prompt_tokens_details = None
-            mock_chunk.choices = []
-
-            async def chunk_aiter():
-                yield mock_chunk
-
-            mock_stream.__aiter__ = lambda self: chunk_aiter()
-            return mock_stream
 
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(
             side_effect=[
-                make_stream(1000, 200),
-                make_stream(1100, 300),
+                _make_stream_mock(
+                    _make_usage_chunk(prompt_tokens=1000, completion_tokens=200)
+                ),
+                _make_stream_mock(
+                    _make_usage_chunk(prompt_tokens=1100, completion_tokens=300)
+                ),
             ]
         )
 
@@ -957,45 +987,33 @@ class TestBaselineCostExtraction:
                 state=state,
             )
 
-        # No x-total-cost header and empty pricing table -- cost_usd remains None
+        # No usage.cost on either chunk → cost stays None, tokens still accumulate.
         assert state.cost_usd is None
-        # Accumulators hold all tokens across both turns
         assert state.turn_prompt_tokens == 2100
         assert state.turn_completion_tokens == 500
 
+    @pytest.mark.parametrize(
+        "tools",
+        [
+            pytest.param([], id="no_tools"),
+            pytest.param([_make_tool("search")], id="with_tools"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_cost_usd_remains_none_when_header_missing(self):
-        """cost_usd stays None when x-total-cost header is absent.
+    async def test_baseline_requests_usage_include_extra_body(
+        self, tools: list[ChatCompletionToolParam]
+    ):
+        """The baseline call must pass extra_body={'usage': {'include': True}}.
 
-        Token counts are still tracked; persist_and_record_usage handles
-        the None cost by falling back to tracking_type='tokens'.
+        This guards the contract with OpenRouter that triggers inclusion of
+        the authoritative cost on the final usage chunk. Without it the
+        rate-limit counter stays at zero. Exercise both the no-tools and
+        tool-calling branches so a regression in either path trips the test.
         """
-        from backend.copilot.baseline.service import (
-            _baseline_llm_caller,
-            _BaselineStreamState,
-        )
-
-        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
-
-        mock_raw = MagicMock()
-        mock_raw.headers = {}  # no x-total-cost
-        mock_stream = MagicMock()
-        mock_stream._response = mock_raw
-
-        mock_chunk = MagicMock()
-        mock_chunk.usage = MagicMock()
-        mock_chunk.usage.prompt_tokens = 1000
-        mock_chunk.usage.completion_tokens = 500
-        mock_chunk.usage.prompt_tokens_details = None
-        mock_chunk.choices = []
-
-        async def chunk_aiter():
-            yield mock_chunk
-
-        mock_stream.__aiter__ = lambda self: chunk_aiter()
-
+        state = _BaselineStreamState(model="gpt-4o-mini")
+        create_mock = AsyncMock(return_value=_make_stream_mock())
         mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
+        mock_client.chat.completions.create = create_mock
 
         with patch(
             "backend.copilot.baseline.service._get_openai_client",
@@ -1003,13 +1021,15 @@ class TestBaselineCostExtraction:
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
-                tools=[],
+                tools=tools,
                 state=state,
             )
 
-        assert state.cost_usd is None
-        assert state.turn_prompt_tokens == 1000
-        assert state.turn_completion_tokens == 500
+        create_mock.assert_awaited_once()
+        await_args = create_mock.await_args
+        assert await_args is not None
+        assert await_args.kwargs["extra_body"] == {"usage": {"include": True}}
+        assert await_args.kwargs["stream_options"] == {"include_usage": True}
 
 
 class TestMidLoopPendingFlushOrdering:
@@ -1211,3 +1231,720 @@ class TestMidLoopPendingFlushOrdering:
         assert assistant_msgs[1].tool_calls is None
         # Crucially: only 2 assistant messages, not 3 (no duplicate)
         assert len(assistant_msgs) == 2
+
+
+class TestBuilderContextSplit:
+    """Cross-helper composition: the guide must land in the system prompt via
+    ``build_builder_system_prompt_suffix`` and NOT in the per-turn user prefix
+    via ``build_builder_context_turn_prefix``.
+
+    The baseline service composes these two blocks on each turn, so a drift
+    here (guide leaking into both, or missing from both) would kill Claude's
+    prompt-cache hit rate for builder sessions.
+    """
+
+    @pytest.mark.asyncio
+    async def test_guide_lives_in_system_prompt_not_user_message(self):
+        from backend.copilot.builder_context import (
+            BUILDER_CONTEXT_TAG,
+            BUILDER_SESSION_TAG,
+            build_builder_context_turn_prefix,
+            build_builder_system_prompt_suffix,
+        )
+        from backend.copilot.model import ChatSession
+
+        session = MagicMock(spec=ChatSession)
+        session.session_id = "s"
+        session.metadata = MagicMock()
+        session.metadata.builder_graph_id = "graph-1"
+
+        agent_json = {
+            "id": "graph-1",
+            "name": "Demo",
+            "version": 7,
+            "nodes": [
+                {
+                    "id": "n1",
+                    "block_id": "block-A",
+                    "input_default": {"name": "Input"},
+                    "metadata": {},
+                }
+            ],
+            "links": [],
+        }
+        guide_body = "# UNIQUE_GUIDE_MARKER body"
+        with (
+            patch(
+                "backend.copilot.builder_context.get_agent_as_json",
+                new=AsyncMock(return_value=agent_json),
+            ),
+            patch(
+                "backend.copilot.builder_context._load_guide",
+                return_value=guide_body,
+            ),
+        ):
+            suffix = await build_builder_system_prompt_suffix(session)
+            prefix = await build_builder_context_turn_prefix(session, "user-1")
+
+        # System prompt suffix carries <builder_session> and the guide.
+        assert f"<{BUILDER_SESSION_TAG}>" in suffix
+        assert guide_body in suffix
+        # Dynamic bits must NOT be in the suffix — otherwise renames and
+        # cross-graph sessions invalidate Claude's prompt cache.
+        assert "graph-1" not in suffix
+        assert "Demo" not in suffix
+
+        # Per-turn prefix carries <builder_context> with the full live
+        # snapshot (id, name, version, nodes) but NEVER the guide.
+        assert f"<{BUILDER_CONTEXT_TAG}>" in prefix
+        assert 'id="graph-1"' in prefix
+        assert 'name="Demo"' in prefix
+        assert 'version="7"' in prefix
+        assert guide_body not in prefix
+        assert "<building_guide>" not in prefix
+
+        # Guide appears in the combined on-the-wire payload exactly ONCE.
+        combined = suffix + "\n\n" + prefix
+        assert combined.count(guide_body) == 1
+
+
+class TestApplyPromptCacheMarkers:
+    """Tests for _apply_prompt_cache_markers — Anthropic ephemeral
+    cache_control markers on baseline OpenRouter requests."""
+
+    def test_system_message_converted_to_content_blocks(self):
+        messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "hello"},
+        ]
+
+        cached_messages = _mark_system_message_with_cache_control(messages)
+
+        assert cached_messages[0]["role"] == "system"
+        assert cached_messages[0]["content"] == [
+            {
+                "type": "text",
+                "text": "You are helpful.",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
+        ]
+        # User message must be untouched.
+        assert cached_messages[1] == {"role": "user", "content": "hello"}
+
+    def test_system_message_preserves_unknown_fields(self):
+        # Future-proofing: a system message with extra keys (e.g. "name") must
+        # keep them after the content-blocks conversion.
+        messages = [
+            {"role": "system", "content": "sys", "name": "developer"},
+        ]
+
+        cached_messages = _mark_system_message_with_cache_control(messages)
+
+        assert cached_messages[0]["name"] == "developer"
+        assert cached_messages[0]["role"] == "system"
+
+    def test_last_tool_gets_cache_control(self):
+        tools = [
+            {"type": "function", "function": {"name": "a"}},
+            {"type": "function", "function": {"name": "b"}},
+        ]
+
+        cached_tools = _mark_tools_with_cache_control(tools)
+
+        assert "cache_control" not in cached_tools[0]
+        assert cached_tools[-1]["cache_control"] == {
+            "type": "ephemeral",
+            "ttl": "1h",
+        }
+        # Last tool's other fields preserved.
+        assert cached_tools[-1]["function"] == {"name": "b"}
+
+    def test_does_not_mutate_input(self):
+        messages = [{"role": "system", "content": "sys"}]
+        tools = [{"type": "function", "function": {"name": "a"}}]
+
+        _mark_system_message_with_cache_control(messages)
+        _mark_tools_with_cache_control(tools)
+
+        assert messages == [{"role": "system", "content": "sys"}]
+        assert tools == [{"type": "function", "function": {"name": "a"}}]
+
+    def test_no_system_message_safe(self):
+        messages = [{"role": "user", "content": "hi"}]
+        cached_messages = _mark_system_message_with_cache_control(messages)
+        assert cached_messages == messages
+
+    def test_empty_tools_safe(self):
+        assert _mark_tools_with_cache_control([]) == []
+
+    def test_non_string_system_content_left_untouched(self):
+        # If the content is already a list of blocks (e.g. caller pre-marked),
+        # the helper must not overwrite it.
+        pre_marked = [
+            {
+                "type": "text",
+                "text": "sys",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
+        ]
+        messages = [{"role": "system", "content": pre_marked}]
+        cached_messages = _mark_system_message_with_cache_control(messages)
+        assert cached_messages[0]["content"] == pre_marked
+
+    def test_is_anthropic_model_matches_claude_and_anthropic_prefix(self):
+        assert _is_anthropic_model("anthropic/claude-sonnet-4-6")
+        assert _is_anthropic_model("claude-3-5-sonnet-20241022")
+        assert _is_anthropic_model("anthropic.claude-3-5-sonnet-20241022-v2:0")
+        assert _is_anthropic_model("ANTHROPIC/Claude-Opus")  # case insensitive
+
+    def test_is_anthropic_model_rejects_other_providers(self):
+        assert not _is_anthropic_model("openai/gpt-4o")
+        assert not _is_anthropic_model("openai/gpt-5")
+        assert not _is_anthropic_model("google/gemini-2.5-pro")
+        assert not _is_anthropic_model("xai/grok-4")
+        assert not _is_anthropic_model("meta-llama/llama-3.3-70b-instruct")
+
+    def test_cache_control_uses_configured_ttl(self, monkeypatch):
+        """TTL comes from ChatConfig.baseline_prompt_cache_ttl — defaults
+        to 1h so the static prefix (system + tools) stays warm across
+        workspace users past the 5-min default window."""
+        from backend.copilot.baseline import service as bsvc
+
+        assert bsvc.config.baseline_prompt_cache_ttl == "1h"
+        cc = bsvc._fresh_ephemeral_cache_control()
+        assert cc == {"type": "ephemeral", "ttl": "1h"}
+        monkeypatch.setattr(bsvc.config, "baseline_prompt_cache_ttl", "5m")
+        assert bsvc._fresh_ephemeral_cache_control() == {
+            "type": "ephemeral",
+            "ttl": "5m",
+        }
+
+    def test_fresh_helpers_return_distinct_objects(self):
+        """Regression guard: the `_fresh_*` helpers must return a NEW dict
+        on every call.  A future refactor returning a module-level constant
+        would silently reintroduce the shared-mutable-state bug flagged
+        during earlier review cycles."""
+        assert _fresh_ephemeral_cache_control() is not _fresh_ephemeral_cache_control()
+        assert (
+            _fresh_anthropic_caching_headers() is not _fresh_anthropic_caching_headers()
+        )
+
+    def test_extract_cache_creation_tokens_openrouter_typed_attr(self):
+        """Newer ``openai-python`` declares ``cache_write_tokens`` as a
+        typed attribute on ``PromptTokensDetails`` — it no longer lands in
+        ``model_extra``.  Verified empirically against the production
+        openai==1.113 installed in this venv: OpenRouter streaming
+        response populates ``ptd.cache_write_tokens`` directly while
+        ``ptd.model_extra`` is ``{}``.
+        """
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate(
+            {
+                "audio_tokens": 0,
+                "cached_tokens": 0,
+                "cache_write_tokens": 4432,
+                "video_tokens": 0,
+            }
+        )
+        assert getattr(ptd, "cache_write_tokens", None) == 4432
+        assert _extract_cache_creation_tokens(ptd) == 4432
+
+    def test_extract_cache_creation_tokens_openrouter_model_extra(self):
+        """Older SDKs that don't yet declare ``cache_write_tokens`` as a
+        typed field leave it in ``model_extra`` — the helper must still
+        find it there."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
+        # Force the value into model_extra (simulates the old SDK shape
+        # where the field wasn't typed yet).
+        if ptd.model_extra is None:
+            # Pydantic v2 sometimes exposes __pydantic_extra__ as None when
+            # extras are disabled; initialise to a dict to mutate safely.
+            object.__setattr__(ptd, "__pydantic_extra__", {})
+        assert ptd.model_extra is not None
+        ptd.model_extra["cache_write_tokens"] = 7777
+        assert _extract_cache_creation_tokens(ptd) == 7777
+
+    def test_extract_cache_creation_tokens_anthropic_native_field(self):
+        """Direct Anthropic API uses ``cache_creation_input_tokens`` —
+        falls through as the final path when neither
+        ``cache_write_tokens`` typed attr nor model_extra entry exists."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
+        if ptd.model_extra is None:
+            object.__setattr__(ptd, "__pydantic_extra__", {})
+        assert ptd.model_extra is not None
+        ptd.model_extra["cache_creation_input_tokens"] = 2048
+        assert _extract_cache_creation_tokens(ptd) == 2048
+
+    def test_extract_cache_creation_tokens_absent(self):
+        """Neither provider field present → 0 (non-Anthropic routes or
+        cache-miss responses)."""
+        from openai.types.completion_usage import PromptTokensDetails
+
+        ptd = PromptTokensDetails.model_validate({"cached_tokens": 0})
+        assert _extract_cache_creation_tokens(ptd) == 0
+
+    def test_build_cached_system_message_applies_cache_control(self):
+        """The single-message helper wraps the string content in a text block
+        with an ephemeral cache_control marker."""
+        out = _build_cached_system_message({"role": "system", "content": "hi"})
+        assert out["role"] == "system"
+        assert out["content"] == [
+            {
+                "type": "text",
+                "text": "hi",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
+        ]
+
+    def test_build_cached_system_message_preserves_extra_fields(self):
+        """Unknown keys (e.g. ``name``) survive the transformation."""
+        out = _build_cached_system_message(
+            {"role": "system", "content": "sys", "name": "dev"}
+        )
+        assert out["name"] == "dev"
+        assert out["role"] == "system"
+
+    def test_build_cached_system_message_non_string_passthrough(self):
+        """Pre-marked list content is returned as-is (shallow-copied)."""
+        pre_marked = [
+            {
+                "type": "text",
+                "text": "sys",
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            }
+        ]
+        out = _build_cached_system_message({"role": "system", "content": pre_marked})
+        assert out["content"] is pre_marked
+
+    @pytest.mark.asyncio
+    async def test_baseline_llm_caller_memoises_cached_system_message(self):
+        """The cached system dict is built once and reused across rounds.
+
+        Guards against the perf regression where the entire (growing)
+        ``messages`` list was copied on every tool-call iteration just to
+        mark the static system prompt.
+        """
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4")
+        chunk = _make_usage_chunk(prompt_tokens=10, completion_tokens=5)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=[_make_stream_mock(chunk), _make_stream_mock(chunk)]
+        )
+
+        messages: list[dict] = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "hi"},
+        ]
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(messages=messages, tools=[], state=state)
+            first_cached = state.cached_system_message
+            assert first_cached is not None
+            # Simulate the tool-call loop growing ``messages`` between rounds.
+            messages.append({"role": "assistant", "content": "ok"})
+            messages.append({"role": "user", "content": "follow up"})
+            await _baseline_llm_caller(messages=messages, tools=[], state=state)
+
+        # Same dict instance reused — not rebuilt per round.
+        assert state.cached_system_message is first_cached
+
+        # Second call's first message is the memoised system dict (not a new copy).
+        second_call_messages = mock_client.chat.completions.create.call_args_list[1][1][
+            "messages"
+        ]
+        assert second_call_messages[0] is first_cached
+        # And the tail messages were spliced in, not re-copied.
+        assert second_call_messages[1] is messages[1]
+        assert second_call_messages[-1] is messages[-1]
+
+    @pytest.mark.asyncio
+    async def test_baseline_llm_caller_skips_memoisation_for_non_anthropic(self):
+        """Non-Anthropic routes pass messages through unmodified — no cache
+        dict is built, no list splicing happens."""
+        state = _BaselineStreamState(model="openai/gpt-4o")
+        chunk = _make_usage_chunk(prompt_tokens=10, completion_tokens=5)
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(chunk)
+        )
+
+        messages: list[dict] = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "hi"},
+        ]
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(messages=messages, tools=[], state=state)
+
+        assert state.cached_system_message is None
+        # The exact same list object reaches the provider (no copy needed).
+        call_messages = mock_client.chat.completions.create.call_args[1]["messages"]
+        assert call_messages is messages
+
+
+def _make_delta_chunk(
+    *,
+    content: str | None = None,
+    reasoning: str | None = None,
+    reasoning_details: list | None = None,
+    reasoning_content: str | None = None,
+    tool_calls: list | None = None,
+):
+    """Build a streaming chunk with a configurable ``delta`` payload.
+
+    The ``delta`` is a real ``ChoiceDelta`` pydantic instance so OpenRouter
+    extension fields land on ``delta.model_extra`` — which is how
+    :class:`OpenRouterDeltaExtension` reads them in production.  Using a
+    raw ``MagicMock`` here would leave ``model_extra`` unset and silently
+    skip the reasoning parser.  ``tool_calls`` (when provided) must be
+    ``MagicMock`` entries compatible with the service's streaming loop;
+    they're set on the delta via ``object.__setattr__`` because pydantic
+    would otherwise reject the non-schema types.
+    """
+    from openai.types.chat.chat_completion_chunk import ChoiceDelta
+
+    payload: dict = {"role": "assistant"}
+    if content is not None:
+        payload["content"] = content
+    if reasoning is not None:
+        payload["reasoning"] = reasoning
+    if reasoning_content is not None:
+        payload["reasoning_content"] = reasoning_content
+    if reasoning_details is not None:
+        payload["reasoning_details"] = reasoning_details
+    delta = ChoiceDelta.model_validate(payload)
+    # ChoiceDelta's tool_calls schema expects OpenAI-typed entries; bypass
+    # validation so tests can use MagicMocks that mimic the streaming shape.
+    if tool_calls is not None:
+        object.__setattr__(delta, "tool_calls", tool_calls)
+
+    chunk = MagicMock()
+    chunk.usage = None
+    choice = MagicMock()
+    choice.delta = delta
+    chunk.choices = [choice]
+    return chunk
+
+
+def _make_tool_call_delta(*, index: int, call_id: str, name: str, arguments: str):
+    """Build a ``delta.tool_calls[i]`` entry for streaming tool-use."""
+    tc = MagicMock()
+    tc.index = index
+    tc.id = call_id
+    function = MagicMock()
+    function.name = name
+    function.arguments = arguments
+    tc.function = function
+    return tc
+
+
+class TestBaselineReasoningStreaming:
+    """End-to-end reasoning event emission through ``_baseline_llm_caller``."""
+
+    @pytest.mark.asyncio
+    async def test_reasoning_then_text_emits_paired_events(self):
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        chunks = [
+            _make_delta_chunk(reasoning="thinking..."),
+            _make_delta_chunk(reasoning=" more"),
+            _make_delta_chunk(content="final answer"),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(*chunks)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        types = [type(e).__name__ for e in state.pending_events]
+        assert "StreamReasoningStart" in types
+        assert "StreamReasoningDelta" in types
+        assert "StreamReasoningEnd" in types
+
+        # Reasoning must close before text opens — AI SDK v5 rejects
+        # interleaved reasoning / text parts.
+        reason_end = types.index("StreamReasoningEnd")
+        text_start = types.index("StreamTextStart")
+        assert reason_end < text_start
+
+        # All reasoning deltas share a single block id; the text block uses
+        # a fresh id after the reasoning-end rotation.
+        reasoning_ids = {
+            e.id
+            for e in state.pending_events
+            if isinstance(
+                e, (StreamReasoningStart, StreamReasoningDelta, StreamReasoningEnd)
+            )
+        }
+        text_ids = {
+            e.id
+            for e in state.pending_events
+            if isinstance(e, (StreamTextStart, StreamTextDelta, StreamTextEnd))
+        }
+        assert len(reasoning_ids) == 1
+        assert len(text_ids) == 1
+        assert reasoning_ids.isdisjoint(text_ids)
+
+        combined = "".join(
+            e.delta for e in state.pending_events if isinstance(e, StreamReasoningDelta)
+        )
+        assert combined == "thinking... more"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_then_tool_call_closes_reasoning_first(self):
+        """A tool_call arriving mid-reasoning must close the reasoning block
+        before the tool-use is flushed — AI SDK v5 treats reasoning and
+        tool-use as distinct UI parts and rejects interleaving."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        chunks = [
+            _make_delta_chunk(reasoning="deliberating..."),
+            _make_delta_chunk(
+                tool_calls=[
+                    _make_tool_call_delta(
+                        index=0,
+                        call_id="call_1",
+                        name="search",
+                        arguments='{"q":"x"}',
+                    )
+                ],
+            ),
+        ]
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(*chunks)
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            response = await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        # A reasoning-end must have been emitted — this is the tool_calls
+        # branch's responsibility, not the stream-end cleanup.
+        types = [type(e).__name__ for e in state.pending_events]
+        assert "StreamReasoningStart" in types
+        assert "StreamReasoningEnd" in types
+
+        # The tool_call was collected — confirms the tool-use path executed
+        # after reasoning closed (rather than silently dropping the tool).
+        assert len(response.tool_calls) == 1
+        assert response.tool_calls[0].name == "search"
+
+        # No text events — this stream had no content deltas.
+        assert "StreamTextStart" not in types
+
+    @pytest.mark.asyncio
+    async def test_reasoning_closed_on_mid_stream_exception(self):
+        """Regression guard: an exception during the streaming loop must
+        still emit ``StreamReasoningEnd`` (and ``StreamTextEnd`` when a
+        text block is open) before ``StreamFinishStep`` — the frontend
+        collapse relies on matched start/end pairs, and the outer handler
+        no longer patches these after-the-fact."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        async def failing_stream():
+            yield _make_delta_chunk(reasoning="thinking...")
+            raise RuntimeError("boom")
+
+        stream = MagicMock()
+        stream.close = AsyncMock()
+        stream.__aiter__ = lambda self: failing_stream()
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=stream)
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            with pytest.raises(RuntimeError):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+
+        types = [type(e).__name__ for e in state.pending_events]
+        # The reasoning block was opened, the exception fired, and the
+        # finally block must have closed it before emitting the finish
+        # step.
+        assert "StreamReasoningStart" in types
+        assert "StreamReasoningEnd" in types
+        assert "StreamFinishStep" in types
+        assert types.index("StreamReasoningEnd") < types.index("StreamFinishStep")
+        # Emitter is reset so a retried round starts with fresh ids.
+        assert state.reasoning_emitter.is_open is False
+
+    @pytest.mark.asyncio
+    async def test_reasoning_param_sent_on_anthropic_routes(self):
+        """Anthropic route gets ``reasoning.max_tokens`` on the request."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        assert "reasoning" in extra_body
+        assert extra_body["reasoning"]["max_tokens"] > 0
+
+    @pytest.mark.asyncio
+    async def test_reasoning_param_absent_on_non_anthropic_routes(self):
+        """Non-Anthropic routes (e.g. OpenAI) must not receive ``reasoning``."""
+        state = _BaselineStreamState(model="openai/gpt-4o")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        assert "reasoning" not in extra_body
+
+    @pytest.mark.asyncio
+    async def test_reasoning_only_stream_still_closes_block(self):
+        """Regression: a stream with only reasoning (no text, no tool_call)
+        must still emit a matching ``reasoning-end`` at stream close so the
+        frontend Reasoning collapse finalises.  Exercised here against
+        ``_baseline_llm_caller`` to cover the emitter's integration with
+        the finally-block, not just the unit emitter in reasoning_test.py.
+        """
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(
+                _make_delta_chunk(reasoning="just thinking"),
+            )
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        types = [type(e).__name__ for e in state.pending_events]
+        assert "StreamReasoningStart" in types
+        assert "StreamReasoningEnd" in types
+        # No text was produced — no text events should be emitted.
+        assert "StreamTextStart" not in types
+        assert "StreamTextDelta" not in types
+
+    @pytest.mark.asyncio
+    async def test_reasoning_param_suppressed_when_thinking_tokens_zero(self):
+        """Operator kill switch: setting ``claude_agent_max_thinking_tokens``
+        to 0 removes the ``reasoning`` fragment from ``extra_body`` even on
+        an Anthropic route.  Restores the zero-disables behaviour the old
+        ``baseline_reasoning_max_tokens`` config used to provide."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock()
+        )
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_openai_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
+                0,
+            ),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
+        assert "reasoning" not in extra_body
+
+    @pytest.mark.asyncio
+    async def test_reasoning_persists_to_state_session_messages(self):
+        """Integration guard: ``_BaselineStreamState.__post_init__`` wires
+        the emitter to ``state.session_messages``, so reasoning deltas
+        flowing through ``_baseline_llm_caller`` must produce a
+        ``role="reasoning"`` row on the state's session list.  Catches
+        regressions where the wiring silently breaks (e.g. a refactor
+        passes the wrong list reference)."""
+        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            return_value=_make_stream_mock(
+                _make_delta_chunk(reasoning="first "),
+                _make_delta_chunk(reasoning="thought"),
+                _make_delta_chunk(content="answer"),
+            )
+        )
+
+        with patch(
+            "backend.copilot.baseline.service._get_openai_client",
+            return_value=mock_client,
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        reasoning_rows = [m for m in state.session_messages if m.role == "reasoning"]
+        assert len(reasoning_rows) == 1
+        assert reasoning_rows[0].content == "first thought"

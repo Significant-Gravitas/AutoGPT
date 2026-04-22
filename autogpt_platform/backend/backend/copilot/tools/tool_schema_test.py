@@ -14,7 +14,11 @@ import pytest
 
 from backend.copilot.tools import TOOL_REGISTRY
 
-# Character budget (~4 chars/token heuristic, targeting ~8000 tokens)
+# Character budget (~4 chars/token heuristic, targeting ~8000 tokens).
+# Bumped 32000 -> 32500 on PR #12699 for wait_for_result and dry_run
+# docs on run_agent, then 32500 -> 33000 here to accommodate dev's
+# newly added tools (memory_*, run_sub_session, etc.) alongside the
+# schedule management tools (list_schedules, delete_schedule).
 _CHAR_BUDGET = 33_000
 
 

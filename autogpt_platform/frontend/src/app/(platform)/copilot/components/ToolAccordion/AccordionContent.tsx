@@ -51,7 +51,7 @@ export function ContentCardHeader({
 }) {
   return (
     <div className={cn("flex items-start justify-between gap-2", className)}>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 flex-1">{children}</div>
       {action}
     </div>
   );

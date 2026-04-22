@@ -15,16 +15,26 @@ import re
 import shutil
 import tempfile
 import uuid
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import orjson
 from langfuse import propagate_attributes
+from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
+from openai.types.completion_usage import PromptTokensDetails
 from opentelemetry import trace as otel_trace
 
+from backend.copilot.baseline.reasoning import (
+    BaselineReasoningEmitter,
+    reasoning_extra_body,
+)
+from backend.copilot.builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
+)
 from backend.copilot.config import CopilotLlmModel, CopilotMode
 from backend.copilot.context import get_workspace_manager, set_execution_context
 from backend.copilot.graphiti.config import is_enabled_for_user
@@ -38,7 +48,6 @@ from backend.copilot.model import (
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
-    pending_texts_from,
     persist_pending_as_user_rows,
     persist_session_safe,
 )
@@ -46,7 +55,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
 )
-from backend.copilot.prompting import get_baseline_supplement, get_graphiti_supplement
+from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -70,6 +79,7 @@ from backend.copilot.service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from backend.copilot.session_cleanup import prune_orphan_tool_calls
 from backend.copilot.thinking_stripper import ThinkingStripper as _ThinkingStripper
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tools import execute_tool, get_available_tools
@@ -125,6 +135,78 @@ _MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024
 
 # Matches characters unsafe for filenames.
 _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
+
+# OpenRouter-specific extra_body flag that embeds the real generation cost
+# into the final usage chunk. Module-level constant so we don't reallocate
+# an identical dict on every streaming call.
+_OPENROUTER_INCLUDE_USAGE_COST = {"usage": {"include": True}}
+
+
+def _extract_usage_cost(usage: CompletionUsage) -> float | None:
+    """Return the provider-reported USD cost on a streaming usage chunk.
+
+    OpenRouter piggybacks a ``cost`` field on the OpenAI-compatible usage
+    object when the request body includes ``usage: {"include": True}``.
+    The OpenAI SDK's typed ``CompletionUsage`` does not declare it, so we
+    read it off ``model_extra`` (the pydantic v2 container for extras) to
+    keep the access fully typed — no ``getattr``.
+
+    Returns ``None`` when the field is absent, explicitly null,
+    non-numeric, non-finite, or negative. Invalid values (including
+    present-but-null) are logged here — they indicate a provider bug
+    worth chasing; plain absences are silent so the caller can dedupe
+    the "missing cost" warning per stream.
+    """
+    extras = usage.model_extra or {}
+    if "cost" not in extras:
+        return None
+    raw = extras["cost"]
+    if raw is None:
+        logger.error("[Baseline] usage.cost is present but null")
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        logger.error("[Baseline] usage.cost is not numeric: %r", raw)
+        return None
+    if not math.isfinite(val) or val < 0:
+        logger.error("[Baseline] usage.cost is non-finite or negative: %r", val)
+        return None
+    return val
+
+
+def _extract_cache_creation_tokens(ptd: PromptTokensDetails) -> int:
+    """Return cache-write token count from an OpenAI-compatible
+    ``PromptTokensDetails``, handling provider-specific field names and
+    SDK-version shape differences.
+
+    Two shapes we care about:
+
+    - **OpenRouter** (our primary baseline provider) streams the cache-write
+      count as ``cache_write_tokens``.  Newer ``openai-python`` versions
+      declare this as a typed attribute on ``PromptTokensDetails``; older
+      versions expose it only in ``model_extra``.  Verified empirically:
+      cold-cache request returns ``cache_write_tokens`` > 0, warm-cache
+      request returns ``cached_tokens`` > 0 and ``cache_write_tokens`` = 0.
+    - **Direct Anthropic API** uses ``cache_creation_input_tokens`` —
+      never a typed attribute on the OpenAI SDK, always lives in
+      ``model_extra``.
+
+    Lookup order: typed attr → ``model_extra`` (OpenRouter) → ``model_extra``
+    (Anthropic-native).  ``getattr`` handles both the typed-attr case
+    (newer SDK) and the no-such-attr case (older SDK) — we can't only use
+    ``model_extra`` because when the field is typed it's filtered out of
+    ``model_extra``, leaving us at 0 on the modern happy path.
+    """
+    typed_val = getattr(ptd, "cache_write_tokens", None)
+    if typed_val:
+        return int(typed_val)
+    extras = ptd.model_extra or {}
+    return int(
+        extras.get("cache_write_tokens")
+        or extras.get("cache_creation_input_tokens")
+        or 0
+    )
 
 
 async def _prepare_baseline_attachments(
@@ -262,18 +344,166 @@ class _BaselineStreamState:
     assistant_text: str = ""
     text_block_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     text_started: bool = False
+    reasoning_emitter: BaselineReasoningEmitter = field(init=False)
     turn_prompt_tokens: int = 0
     turn_completion_tokens: int = 0
     turn_cache_read_tokens: int = 0
     turn_cache_creation_tokens: int = 0
     cost_usd: float | None = None
+    # Tracks whether we've already warned about a missing `cost` field in
+    # the usage chunk this stream, so non-OpenRouter providers don't
+    # generate one warning per streaming call.
+    cost_missing_logged: bool = False
     thinking_stripper: _ThinkingStripper = field(default_factory=_ThinkingStripper)
+    # MUTATE in place only — ``__post_init__`` hands this list reference to
+    # ``BaselineReasoningEmitter`` so reasoning rows can be appended as
+    # deltas stream in.  Reassigning (``state.session_messages = [...]``)
+    # would silently detach the emitter from the new list.
     session_messages: list[ChatMessage] = field(default_factory=list)
     # Tracks how much of ``assistant_text`` has already been flushed to
     # ``session.messages`` via mid-loop pending drains, so the ``finally``
     # block only appends the *new* assistant text (avoiding duplication of
     # round-1 text when round-1 entries were cleared from session_messages).
     _flushed_assistant_text_len: int = 0
+    # Memoised system-message dict with cache_control applied.  The system
+    # prompt is static within a session, so we build it once on the first
+    # LLM round and reuse the same dict on subsequent rounds — avoiding
+    # an O(N) dict-copy of the growing ``messages`` list on every tool-call
+    # iteration.  ``None`` means "not yet computed" (or the first message
+    # wasn't a system role, so no marking applies).
+    cached_system_message: dict[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        # Wire the reasoning emitter to ``session_messages`` so it can
+        # append ``role="reasoning"`` rows as reasoning streams in — the
+        # frontend's ``convertChatSessionToUiMessages`` relies on these
+        # rows to render the Reasoning collapse after the AI SDK's
+        # stream-end hydrate swaps in the DB-backed message list.
+        self.reasoning_emitter = BaselineReasoningEmitter(self.session_messages)
+
+
+def _is_anthropic_model(model: str) -> bool:
+    """Return True if *model* routes to Anthropic (native or via OpenRouter).
+
+    Cache-control markers on message content + the ``anthropic-beta`` header
+    are Anthropic-specific.  OpenAI rejects the unknown ``cache_control``
+    field with a 400 ("Extra inputs are not permitted") and Grok / other
+    providers behave similarly.  OpenRouter strips unknown headers but
+    passes through ``cache_control`` on the body regardless of provider —
+    which would also fail when OpenRouter routes to a non-Anthropic model.
+
+    Examples that return True:
+      - ``anthropic/claude-sonnet-4-6`` (OpenRouter route)
+      - ``claude-3-5-sonnet-20241022`` (direct Anthropic API)
+      - ``anthropic.claude-3-5-sonnet`` (Bedrock-style)
+
+    False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4``
+    etc.
+    """
+    lowered = model.lower()
+    return "claude" in lowered or lowered.startswith("anthropic")
+
+
+def _fresh_ephemeral_cache_control() -> dict[str, str]:
+    """Return a FRESH ephemeral ``cache_control`` dict each call.
+
+    The ``ttl`` is sourced from :attr:`ChatConfig.baseline_prompt_cache_ttl`
+    (default ``1h``) so the static prefix stays warm across many users'
+    requests in the same workspace cache.  Anthropic caches are keyed
+    per-workspace, so every copilot user reading the same system prompt
+    hits the same cached entry.
+
+    Using a shared module-level dict would let any downstream mutation
+    (e.g. the OpenAI SDK normalising fields in-place) poison every future
+    request's marker.  Construction is O(1) so the safety margin is free.
+    """
+    return {"type": "ephemeral", "ttl": config.baseline_prompt_cache_ttl}
+
+
+def _fresh_anthropic_caching_headers() -> dict[str, str]:
+    """Return a FRESH ``extra_headers`` dict requesting the Anthropic
+    prompt-caching beta.
+
+    Same reasoning as :func:`_fresh_ephemeral_cache_control`: never hand a
+    shared module-level dict to third-party SDKs.  OpenRouter auto-forwards
+    cache_control for Anthropic routes without this header, but passing it
+    makes the intent unambiguous on-wire and is a no-op for non-Anthropic
+    providers (unknown headers are dropped).
+    """
+    return {"anthropic-beta": "prompt-caching-2024-07-31"}
+
+
+def _mark_tools_with_cache_control(
+    tools: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of *tools* with ``cache_control`` on the last entry.
+
+    Marking the last tool is a cache breakpoint that covers the whole tool
+    schema block as a cacheable prefix segment.  Extracted from
+    :func:`_mark_system_message_with_cache_control` so callers can precompute
+    the marked tool list once per session — the tool set is static within a
+    request and the ~43 dict-copies would otherwise run on every LLM round
+    in the tool-call loop.
+
+    **Only call this for Anthropic model routes.**  Non-Anthropic providers
+    (OpenAI, Grok, Gemini) reject the unknown ``cache_control`` field with
+    a 400 schema validation error.  Gate via :func:`_is_anthropic_model`.
+    """
+    cached: list[dict[str, Any]] = [dict(t) for t in tools]
+    if cached:
+        cached[-1] = {
+            **cached[-1],
+            "cache_control": _fresh_ephemeral_cache_control(),
+        }
+    return cached
+
+
+def _build_cached_system_message(
+    system_message: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Return a copy of *system_message* with ``cache_control`` applied.
+
+    Anthropic's cache uses prefix-match with up to 4 explicit breakpoints.
+    Combined with the last-tool marker this gives two cache segments — the
+    system block alone, and system+all-tools — so requests that share only
+    the system prefix still get a partial cache hit.
+
+    The system message is rebuilt via spread (``{**original, ...}``) so any
+    unknown fields the caller set (e.g. ``name``) survive the transformation.
+    Non-Anthropic models silently ignore the markers.
+
+    Returns the original dict (shallow-copied) unchanged when the content
+    shape is unsupported (missing / non-string / empty) — callers should
+    splice it into the message list as-is in that case.
+    """
+    sys_copy = dict(system_message)
+    sys_content = sys_copy.get("content")
+    if isinstance(sys_content, str) and sys_content:
+        sys_copy["content"] = [
+            {
+                "type": "text",
+                "text": sys_content,
+                "cache_control": _fresh_ephemeral_cache_control(),
+            }
+        ]
+    return sys_copy
+
+
+def _mark_system_message_with_cache_control(
+    messages: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return a copy of *messages* with ``cache_control`` on the system block.
+
+    Thin wrapper around :func:`_build_cached_system_message` that preserves
+    the original list shape.  Prefer the memoised path in
+    ``_baseline_llm_caller`` (which builds the cached system dict once per
+    session) for hot-loop callers; this function is retained for call sites
+    outside the tool-call loop where per-call copying is acceptable.
+    """
+    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
+    if cached_messages and cached_messages[0].get("role") == "system":
+        cached_messages[0] = _build_cached_system_message(cached_messages[0])
+    return cached_messages
 
 
 async def _baseline_llm_caller(
@@ -292,26 +522,59 @@ async def _baseline_llm_caller(
     state.thinking_stripper = _ThinkingStripper()
 
     round_text = ""
-    response = None  # initialized before try so finally block can access it
     try:
         client = _get_openai_client()
-        typed_messages = cast(list[ChatCompletionMessageParam], messages)
-        if tools:
-            typed_tools = cast(list[ChatCompletionToolParam], tools)
-            response = await client.chat.completions.create(
-                model=state.model,
-                messages=typed_messages,
-                tools=typed_tools,
-                stream=True,
-                stream_options={"include_usage": True},
-            )
+        # Cache markers are Anthropic-specific.  For OpenAI/Grok/other
+        # providers, leaving them on would trigger a 400 ("Extra inputs
+        # are not permitted" on cache_control).  Tools were precomputed
+        # in stream_chat_completion_baseline via _mark_tools_with_cache_control
+        # (only when the model was Anthropic), so on non-Anthropic routes
+        # tools ship without cache_control on the last entry too.
+        #
+        # `extra_body` `usage.include=true` asks OpenRouter to embed the real
+        # generation cost into the final usage chunk — required by the
+        # cost-based rate limiter in routes.py.  Separate from the Anthropic
+        # caching headers, always sent.
+        is_anthropic = _is_anthropic_model(state.model)
+        if is_anthropic:
+            # Build the cached system dict once per session and splice it in
+            # on each round.  The full ``messages`` list grows with every
+            # tool call, so copying the entire list just to mutate index 0
+            # scales with conversation length (sentry flagged this); this
+            # splice touches only list slots, not message contents.
+            if (
+                state.cached_system_message is None
+                and messages
+                and messages[0].get("role") == "system"
+            ):
+                state.cached_system_message = _build_cached_system_message(messages[0])
+            if state.cached_system_message is not None and messages:
+                final_messages = [state.cached_system_message, *messages[1:]]
+            else:
+                final_messages = messages
+            extra_headers = _fresh_anthropic_caching_headers()
         else:
-            response = await client.chat.completions.create(
-                model=state.model,
-                messages=typed_messages,
-                stream=True,
-                stream_options={"include_usage": True},
-            )
+            final_messages = messages
+            extra_headers = None
+        typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
+        extra_body: dict[str, Any] = dict(_OPENROUTER_INCLUDE_USAGE_COST)
+        reasoning_param = reasoning_extra_body(
+            state.model, config.claude_agent_max_thinking_tokens
+        )
+        if reasoning_param:
+            extra_body.update(reasoning_param)
+        create_kwargs: dict[str, Any] = {
+            "model": state.model,
+            "messages": typed_messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            "extra_body": extra_body,
+        }
+        if extra_headers:
+            create_kwargs["extra_headers"] = extra_headers
+        if tools:
+            create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
+        response = await client.chat.completions.create(**create_kwargs)
         tool_calls_by_index: dict[int, dict[str, str]] = {}
 
         # Iterate under an inner try/finally so early exits (cancel, tool-call
@@ -323,24 +586,46 @@ async def _baseline_llm_caller(
                 if chunk.usage:
                     state.turn_prompt_tokens += chunk.usage.prompt_tokens or 0
                     state.turn_completion_tokens += chunk.usage.completion_tokens or 0
-                    # Extract cache token details when available (OpenAI /
-                    # OpenRouter include these in prompt_tokens_details).
-                    ptd = getattr(chunk.usage, "prompt_tokens_details", None)
+                    ptd = chunk.usage.prompt_tokens_details
                     if ptd:
-                        state.turn_cache_read_tokens += (
-                            getattr(ptd, "cached_tokens", 0) or 0
-                        )
-                        # cache_creation_input_tokens is reported by some providers
-                        # (e.g. Anthropic native) but not standard OpenAI streaming.
+                        state.turn_cache_read_tokens += ptd.cached_tokens or 0
                         state.turn_cache_creation_tokens += (
-                            getattr(ptd, "cache_creation_input_tokens", 0) or 0
+                            _extract_cache_creation_tokens(ptd)
                         )
+                    cost = _extract_usage_cost(chunk.usage)
+                    if cost is not None:
+                        state.cost_usd = (state.cost_usd or 0.0) + cost
+                    elif (
+                        "cost" not in (chunk.usage.model_extra or {})
+                        and not state.cost_missing_logged
+                    ):
+                        # Field absent (non-OpenRouter route, or OpenRouter
+                        # misconfigured) — warn once per stream so error
+                        # monitoring picks up persistent misses without
+                        # flooding. Invalid values already logged inside
+                        # _extract_usage_cost, so no duplicate warning here.
+                        logger.warning(
+                            "[Baseline] usage chunk missing cost (model=%s, "
+                            "prompt=%s, completion=%s) — rate-limit will "
+                            "skip this call",
+                            state.model,
+                            chunk.usage.prompt_tokens,
+                            chunk.usage.completion_tokens,
+                        )
+                        state.cost_missing_logged = True
 
                 delta = chunk.choices[0].delta if chunk.choices else None
                 if not delta:
                     continue
 
+                state.pending_events.extend(state.reasoning_emitter.on_delta(delta))
+
                 if delta.content:
+                    # Text and reasoning must not interleave on the wire — the
+                    # AI SDK maps distinct start/end pairs to distinct UI
+                    # parts.  Close any open reasoning block before emitting
+                    # the first text delta of this run.
+                    state.pending_events.extend(state.reasoning_emitter.close())
                     emit = state.thinking_stripper.process(delta.content)
                     if emit:
                         if not state.text_started:
@@ -354,6 +639,10 @@ async def _baseline_llm_caller(
                         )
 
                 if delta.tool_calls:
+                    # Same rule as the text branch: close any open reasoning
+                    # block before a tool_use starts so the AI SDK treats
+                    # reasoning and tool-use as distinct parts.
+                    state.pending_events.extend(state.reasoning_emitter.close())
                     for tc in delta.tool_calls:
                         idx = tc.index
                         if idx not in tool_calls_by_index:
@@ -378,6 +667,13 @@ async def _baseline_llm_caller(
             except Exception:
                 pass
 
+    finally:
+        # Close open blocks on both normal and exception paths so the
+        # frontend always sees matched start/end pairs.  An exception mid
+        # ``async for chunk in response`` would otherwise leave reasoning
+        # and/or text unterminated and only ``StreamFinishStep`` emitted —
+        # the Reasoning / Text collapses would never finalise.
+        state.pending_events.extend(state.reasoning_emitter.close())
         # Flush any buffered text held back by the thinking stripper.
         tail = state.thinking_stripper.flush()
         if tail:
@@ -388,26 +684,10 @@ async def _baseline_llm_caller(
             state.pending_events.append(
                 StreamTextDelta(id=state.text_block_id, delta=tail)
             )
-        # Close text block
         if state.text_started:
             state.pending_events.append(StreamTextEnd(id=state.text_block_id))
             state.text_started = False
             state.text_block_id = str(uuid.uuid4())
-    finally:
-        # Extract OpenRouter cost from response headers (in finally so we
-        # capture cost even when the stream errors mid-way — we already paid).
-        # Accumulate across multi-round tool-calling turns.
-        try:
-            # Access undocumented _response attribute — same pattern as
-            # extract_openrouter_cost() in blocks/llm.py.
-            cost_header = response._response.headers.get("x-total-cost")  # type: ignore[attr-defined]
-            if cost_header:
-                cost = float(cost_header)
-                if math.isfinite(cost) and cost >= 0:
-                    state.cost_usd = (state.cost_usd or 0.0) + cost
-        except (AttributeError, ValueError):
-            pass
-
         # Always persist partial text so the session history stays consistent,
         # even when the stream is interrupted by an exception.
         state.assistant_text += round_text
@@ -948,6 +1228,12 @@ async def stream_chat_completion_baseline(
             f"Session {session_id} not found. Please create a new session first."
         )
 
+    # Drop orphan tool_use + trailing stop-marker rows left by a previous
+    # Stop mid-tool-call so the new turn starts from a well-formed message list.
+    prune_orphan_tool_calls(
+        session.messages, log_prefix=f"[Baseline] [{session_id[:12]}]"
+    )
+
     # Strip any user-injected <user_context> tags on every turn.
     # Only the server-injected prefix on the first message is trusted.
     if message:
@@ -982,7 +1268,6 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        drained_at_start_content = pending_texts_from(drained_at_start_pending)
         # Chronological combine: pending typed BEFORE this /stream
         # request's arrival go ahead of ``message``; race-path follow-ups
         # typed AFTER (queued while /stream was still processing) go
@@ -1107,7 +1392,18 @@ async def stream_chat_completion_baseline(
     graphiti_enabled = await is_enabled_for_user(user_id)
 
     graphiti_supplement = get_graphiti_supplement() if graphiti_enabled else ""
-    system_prompt = base_system_prompt + get_baseline_supplement() + graphiti_supplement
+    # Append the builder-session block (graph id+name + full building guide)
+    # AFTER the shared supplements so the system prompt is byte-identical
+    # across turns of the same builder session — Claude's prompt cache keeps
+    # the ~20KB guide warm for the whole session.  Empty string for
+    # non-builder sessions keeps the cross-user cache hot.
+    builder_session_suffix = await build_builder_system_prompt_suffix(session)
+    system_prompt = (
+        base_system_prompt
+        + SHARED_TOOL_NOTES
+        + graphiti_supplement
+        + builder_session_suffix
+    )
 
     # Warm context: pre-load relevant facts from Graphiti on first turn.
     # Use the pre-drain count so pending messages drained at turn start
@@ -1191,6 +1487,26 @@ async def stream_chat_completion_baseline(
         # Do NOT append warm_ctx to user_message_for_transcript — it would
         # persist stale temporal context into the transcript for future turns.
 
+    # Inject the per-turn ``<builder_context>`` prefix when the session is
+    # bound to a graph via ``metadata.builder_graph_id``.  Runs on every
+    # user turn (not just the first) so the LLM always sees the live graph
+    # snapshot — if the user edits the graph between turns, the next turn
+    # carries the updated nodes/links. Only version + nodes + links here;
+    # the static guide + graph id live in the system prompt via
+    # ``build_builder_system_prompt_suffix`` (session-stable, prompt-cached).
+    # Prepended AFTER any <user_context>/<memory_context>/<env_context> blocks
+    # — same trust tier as those server-injected prefixes. Not persisted to
+    # the transcript: the snapshot is stale-by-definition after the turn ends.
+    if is_user_message and session.metadata.builder_graph_id:
+        builder_block = await build_builder_context_turn_prefix(session, user_id)
+        if builder_block:
+            for msg in reversed(openai_messages):
+                if msg["role"] == "user":
+                    existing = msg.get("content", "")
+                    if isinstance(existing, str):
+                        msg["content"] = builder_block + existing
+                    break
+
     # Append user message to transcript.
     # Always append when the message is present and is from the user,
     # even on duplicate-suppressed retries (is_new_message=False).
@@ -1256,6 +1572,18 @@ async def stream_chat_completion_baseline(
     # --- Permission filtering ---
     if permissions is not None:
         tools = _filter_tools_by_permissions(tools, permissions)
+
+    # Pre-mark cache_control on the last tool schema once per session.  The
+    # tool set is static within a request, so doing this here (instead of in
+    # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
+    # round of the tool-call loop.
+    #
+    # Only apply to Anthropic routes — OpenAI/Grok/other providers would
+    # 400 on the unknown ``cache_control`` field inside tool definitions.
+    if _is_anthropic_model(active_model):
+        tools = cast(
+            list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
+        )
 
     # Propagate execution context so tool handlers can read session-level flags.
     set_execution_context(
@@ -1464,25 +1792,14 @@ async def stream_chat_completion_baseline(
         _stream_error = True
         error_msg = str(e) or type(e).__name__
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
-        # Close any open text block.  The llm_caller's finally block
-        # already appended StreamFinishStep to pending_events, so we must
-        # insert StreamTextEnd *before* StreamFinishStep to preserve the
-        # protocol ordering:
-        #   StreamStartStep -> StreamTextStart -> ...deltas... ->
+        # ``_baseline_llm_caller``'s finally block closes any open
+        # reasoning / text blocks and appends ``StreamFinishStep`` on
+        # both normal and exception paths, so pending_events already has
+        # the correct protocol ordering:
+        #   StreamStartStep -> StreamReasoningStart -> ...deltas... ->
+        #   StreamReasoningEnd -> StreamTextStart -> ...deltas... ->
         #   StreamTextEnd -> StreamFinishStep
-        # Appending (or yielding directly) would place it after
-        # StreamFinishStep, violating the protocol.
-        if state.text_started:
-            # Find the last StreamFinishStep and insert before it.
-            insert_pos = len(state.pending_events)
-            for i in range(len(state.pending_events) - 1, -1, -1):
-                if isinstance(state.pending_events[i], StreamFinishStep):
-                    insert_pos = i
-                    break
-            state.pending_events.insert(
-                insert_pos, StreamTextEnd(id=state.text_block_id)
-            )
-        # Drain pending events in correct order
+        # Just drain what's buffered, then yield the error.
         for evt in state.pending_events:
             yield evt
         state.pending_events.clear()
@@ -1644,6 +1961,8 @@ async def stream_chat_completion_baseline(
             prompt_tokens=billed_prompt,
             completion_tokens=state.turn_completion_tokens,
             total_tokens=billed_prompt + state.turn_completion_tokens,
+            cache_read_tokens=state.turn_cache_read_tokens,
+            cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
     yield StreamFinish()

@@ -22,10 +22,11 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel
 
-from backend.data.db_accessors import chat_db
+from backend.data.db_accessors import chat_db, library_db
+from backend.data.graph import GraphSettings
 from backend.data.redis_client import get_redis_async
 from backend.util import json
-from backend.util.exceptions import DatabaseError, RedisError
+from backend.util.exceptions import DatabaseError, NotFoundError, RedisError
 
 from .config import ChatConfig
 
@@ -53,6 +54,12 @@ class ChatSessionMetadata(BaseModel):
     """
 
     dry_run: bool = False
+
+    # Builder-panel binding: when set, the session is locked to the given
+    # graph.  ``edit_agent`` / ``run_agent`` default their ``agent_id`` to
+    # this graph and reject calls targeting a different agent.  Also used
+    # as a lookup key so refreshing the builder resumes the same chat.
+    builder_graph_id: str | None = None
 
 
 class ChatMessage(BaseModel):
@@ -200,7 +207,13 @@ class ChatSession(ChatSessionInfo):
     messages: list[ChatMessage]
 
     @classmethod
-    def new(cls, user_id: str, *, dry_run: bool) -> Self:
+    def new(
+        cls,
+        user_id: str,
+        *,
+        dry_run: bool,
+        builder_graph_id: str | None = None,
+    ) -> Self:
         return cls(
             session_id=str(uuid.uuid4()),
             user_id=user_id,
@@ -210,7 +223,10 @@ class ChatSession(ChatSessionInfo):
             credentials={},
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
-            metadata=ChatSessionMetadata(dry_run=dry_run),
+            metadata=ChatSessionMetadata(
+                dry_run=dry_run,
+                builder_graph_id=builder_graph_id,
+            ),
         )
 
     @classmethod
@@ -712,20 +728,32 @@ async def append_and_save_message(
         return session
 
 
-async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
+async def create_chat_session(
+    user_id: str,
+    *,
+    dry_run: bool,
+    builder_graph_id: str | None = None,
+) -> ChatSession:
     """Create a new chat session and persist it.
 
     Args:
         user_id: The authenticated user ID.
         dry_run: When True, run_block and run_agent tool calls in this
             session are forced to use dry-run simulation mode.
+        builder_graph_id: When set, locks the session to the given graph.
+            The builder panel uses this to bind a chat to the currently-
+            opened agent and to resume the same session on refresh.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
             callers never receive a non-persisted session that only exists
             in cache (which would be lost when the cache expires).
     """
-    session = ChatSession.new(user_id, dry_run=dry_run)
+    session = ChatSession.new(
+        user_id,
+        dry_run=dry_run,
+        builder_graph_id=builder_graph_id,
+    )
 
     # Create in database first - fail fast if this fails
     try:
@@ -747,6 +775,58 @@ async def create_chat_session(user_id: str, *, dry_run: bool) -> ChatSession:
         logger.warning(f"Failed to cache new session {session.session_id}: {e}")
 
     return session
+
+
+async def get_or_create_builder_session(
+    user_id: str,
+    graph_id: str,
+) -> ChatSession:
+    """Return the user's builder session for *graph_id*, creating it if absent.
+
+    The session pointer is stored on
+    ``LibraryAgent.settings.builder_chat_session_id``. Ownership is enforced
+    by ``get_library_agent_by_graph_id`` (filters on ``userId``); a miss
+    raises :class:`NotFoundError` (HTTP 404), which also blocks graph-id
+    probing by unauthorized callers.
+    """
+    library_agent = await library_db().get_library_agent_by_graph_id(
+        user_id=user_id, graph_id=graph_id
+    )
+    if library_agent is None:
+        raise NotFoundError(f"Graph {graph_id} not found")
+
+    existing_sid = library_agent.settings.builder_chat_session_id
+    if existing_sid:
+        session = await get_chat_session(existing_sid, user_id)
+        if session is not None:
+            return session
+
+    # Serialise create-and-claim so concurrent callers for the same
+    # (user_id, graph_id) don't each mint a session and orphan one
+    # (double-click / two-tab race — sentry 13632535).
+    async with _get_session_lock(f"builder:{user_id}:{graph_id}"):
+        library_agent = await library_db().get_library_agent_by_graph_id(
+            user_id=user_id, graph_id=graph_id
+        )
+        if library_agent is None:
+            raise NotFoundError(f"Graph {graph_id} not found")
+        existing_sid = library_agent.settings.builder_chat_session_id
+        if existing_sid:
+            session = await get_chat_session(existing_sid, user_id)
+            if session is not None:
+                return session
+
+        session = await create_chat_session(
+            user_id,
+            dry_run=False,
+            builder_graph_id=graph_id,
+        )
+        await library_db().update_library_agent(
+            library_agent_id=library_agent.id,
+            user_id=user_id,
+            settings=GraphSettings(builder_chat_session_id=session.session_id),
+        )
+        return session
 
 
 async def get_user_sessions(
