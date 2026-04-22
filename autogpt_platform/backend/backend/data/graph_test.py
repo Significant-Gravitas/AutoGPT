@@ -39,6 +39,28 @@ def mock_embedding_functions():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _enable_google_blocks_for_auto_cred_tests(request, monkeypatch):
+    # The Google Sheets / Gmail blocks auto-disable when OAuth client
+    # env vars are unset — which is the case in CI. The graph validator
+    # short-circuits disabled blocks at graph.py:798 before reaching the
+    # auto-credentials branch we want to exercise. Flip the disable
+    # flags for the ``test_auto_credentials_*`` group so the validator
+    # actually runs the new anti-pattern check; other tests in this
+    # file are unaffected.
+    if not request.node.name.startswith("test_auto_credentials_"):
+        return
+    monkeypatch.setattr(
+        "backend.blocks.google.sheets.GOOGLE_SHEETS_DISABLED", False
+    )
+    monkeypatch.setattr(
+        "backend.blocks.google.gmail.GOOGLE_OAUTH_IS_CONFIGURED", True
+    )
+    monkeypatch.setattr(
+        "backend.blocks.google._auth.GOOGLE_OAUTH_IS_CONFIGURED", True
+    )
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_creation(server: SpinTestServer, snapshot: Snapshot):
     """
