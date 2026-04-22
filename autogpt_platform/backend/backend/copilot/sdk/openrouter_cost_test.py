@@ -206,6 +206,81 @@ class TestRecordTurnCostFromOpenRouter:
         assert mock_persist.call_args.kwargs["cost_usd"] == fallback
 
     @pytest.mark.asyncio
+    async def test_fast_fail_on_401_no_retries(self):
+        """Permanent client errors (401/403/400) must not retry — burning
+        the 30s retry window on an unauthenticated request wastes API
+        quota and delays the fallback."""
+        call_count = {"n": 0}
+
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
+            call_count["n"] += 1
+            return httpx.Response(401, text="unauthorized")
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=1000,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-a"],
+                fallback_cost_usd=0.02,
+                api_key="sk-bad",
+                log_prefix="[test]",
+            )
+        # Only one call — no retries.
+        assert call_count["n"] == 1
+        # Fallback was recorded (lookup failed → keep rate-limit counter live).
+        mock_persist.assert_called_once()
+        assert mock_persist.call_args.kwargs["cost_usd"] == 0.02
+
+    @pytest.mark.asyncio
+    async def test_retries_on_404_then_succeeds(self):
+        """Indexing lag: endpoint returns 404 initially, then 200 once the
+        billing row is indexed.  Retry budget should exhaust transient
+        states rather than giving up on first 404."""
+        seq = iter(
+            [
+                httpx.Response(404, text="not found"),
+                httpx.Response(200, json=_mock_generation_response(0.025)),
+            ]
+        )
+
+        async def _get(self, *args, **kwargs):  # noqa: ARG001
+            return next(seq)
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ) as mock_persist,
+            patch("httpx.AsyncClient.get", new=_get),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=1000,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-a"],
+                fallback_cost_usd=0.05,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+            )
+        mock_persist.assert_called_once()
+        assert mock_persist.call_args.kwargs["cost_usd"] == pytest.approx(0.025)
+
+    @pytest.mark.asyncio
     async def test_complete_lookup_failure_falls_back_to_estimate(self):
         """Every lookup fails → record the estimate so the rate-limit
         counter isn't left empty.  At-worst parity with the pre-task
