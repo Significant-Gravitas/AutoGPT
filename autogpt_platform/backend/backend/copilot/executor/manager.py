@@ -17,6 +17,8 @@ from pika.exceptions import AMQPChannelError, AMQPConnectionError
 from pika.spec import Basic, BasicProperties
 from prometheus_client import Gauge, start_http_server
 
+from backend.copilot import stream_registry
+from backend.copilot.pending_messages import clear_pending_messages_unsafe
 from backend.data import redis_client as redis
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.cluster_lock import ClusterLock
@@ -105,7 +107,20 @@ class CoPilotExecutor(AppProcess):
             time.sleep(1e5)
 
     def cleanup(self):
-        """Graceful shutdown with active execution waiting."""
+        """Graceful shutdown with active execution waiting.
+
+        The expected path: SIGTERM → consumer stops taking new jobs → any
+        in-flight turns wind down through their own ``cancel_event`` →
+        processor's ``finally`` calls ``mark_session_completed`` → future
+        completes → ``active_tasks`` drains → cleanup exits.
+
+        Fail-close path: if a turn ignores the cancel or is stuck on a
+        blocking I/O call when the grace window expires, we still mark the
+        session ``failed`` and clear its pending-message buffer here so the
+        frontend sees a clean terminal state instead of a zombie
+        ``status=running`` that only the 65-minute stale-watchdog would
+        eventually reap.
+        """
         pid = os.getpid()
         logger.info(f"[cleanup {pid}] Starting graceful shutdown...")
 
@@ -119,6 +134,28 @@ class CoPilotExecutor(AppProcess):
             logger.info(f"[cleanup {pid}] Consumer has been signaled to stop")
         except Exception as e:
             logger.error(f"[cleanup {pid}] Error stopping consumer: {e}")
+
+        # Signal cancellation to all in-flight turns so they break out of the
+        # stream loop, hit the finally in processor._execute_async, and call
+        # mark_session_completed on their own. Without this the wait loop
+        # below is purely passive and the turns keep running until the pod
+        # is SIGKILL'd — leaving the session status "running" in Redis and
+        # the frontend stuck on queued bubbles.
+        with self._active_tasks_lock:
+            pending_cancels = list(self.active_tasks.items())
+        if pending_cancels:
+            logger.info(
+                f"[cleanup {pid}] Signalling cancel to {len(pending_cancels)} "
+                f"in-flight task(s)"
+            )
+            for session_id, (_future, cancel_event) in pending_cancels:
+                try:
+                    cancel_event.set()
+                except Exception as e:
+                    logger.warning(
+                        f"[cleanup {pid}] Failed to signal cancel for "
+                        f"{session_id}: {e}"
+                    )
 
         # Wait for active executions to complete
         if self.active_tasks:
@@ -154,6 +191,19 @@ class CoPilotExecutor(AppProcess):
                     f"[cleanup {pid}] {len(self.active_tasks)} tasks still active, waiting..."
                 )
                 time.sleep(10.0)
+
+        # Fail-close any turn that didn't drain — mark the Redis session
+        # "failed" and drop its pending buffer so the frontend sees a
+        # terminal state immediately instead of a zombie running session.
+        # Idempotent: mark_session_completed no-ops if already terminal.
+        with self._active_tasks_lock:
+            orphan_sessions = list(self.active_tasks.keys())
+        if orphan_sessions:
+            logger.warning(
+                f"[cleanup {pid}] {len(orphan_sessions)} task(s) still running "
+                f"after {GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS}s — fail-closing"
+            )
+            self._fail_close_orphan_sessions(orphan_sessions, pid)
 
         # Stop message consumers
         if self._run_thread:
@@ -193,6 +243,47 @@ class CoPilotExecutor(AppProcess):
                 )
 
         logger.info(f"[cleanup {pid}] Graceful shutdown completed")
+
+    def _fail_close_orphan_sessions(self, session_ids: list[str], pid: int) -> None:
+        """Mark sessions as failed + clear their pending buffers.
+
+        Runs a fresh asyncio loop because ``cleanup()`` is called from the
+        main (sync) thread of ``execute_run_command`` — the per-worker
+        execution loops belong to worker threads and may already be stopped.
+        """
+
+        async def _do_one(session_id: str) -> None:
+            try:
+                await stream_registry.mark_session_completed(
+                    session_id,
+                    error_message=(
+                        "Copilot executor shut down before this turn finished. "
+                        "Please retry."
+                    ),
+                )
+            except Exception as e:
+                logger.error(
+                    f"[cleanup {pid}] Failed to mark session completed "
+                    f"for {session_id}: {e}"
+                )
+            try:
+                await clear_pending_messages_unsafe(session_id)
+            except Exception as e:
+                logger.warning(
+                    f"[cleanup {pid}] Failed to clear pending buffer "
+                    f"for {session_id}: {e}"
+                )
+
+        async def _do_all() -> None:
+            await asyncio.gather(
+                *(_do_one(sid) for sid in session_ids),
+                return_exceptions=True,
+            )
+
+        try:
+            asyncio.run(_do_all())
+        except Exception as e:
+            logger.error(f"[cleanup {pid}] fail-close loop failed: {e}", exc_info=True)
 
     # ============ RabbitMQ Consumer Methods ============ #
 

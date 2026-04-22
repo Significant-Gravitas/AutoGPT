@@ -20,6 +20,7 @@ from backend.copilot.executor.processor import (
     CoPilotProcessor,
     resolve_effective_mode,
     resolve_use_sdk_for_mode,
+    sync_fail_close_session,
 )
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
 
@@ -275,3 +276,36 @@ class TestExecuteAsyncAclose:
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+
+
+class TestSyncFailCloseSession:
+    """``sync_fail_close_session`` is the last-line-of-defense invoked from
+    ``CoPilotProcessor.execute``'s ``finally``. It must call
+    ``mark_session_completed`` even if there is no running asyncio event loop
+    on the calling (pool worker) thread, and must swallow Redis failures so a
+    transient outage doesn't prevent the future from completing."""
+
+    def test_invokes_mark_session_completed_with_shutdown_message(self) -> None:
+        mock_mark = AsyncMock()
+        with patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mock_mark,
+        ):
+            sync_fail_close_session("sess-1", _make_log())
+
+        mock_mark.assert_awaited_once()
+        assert mock_mark.await_args is not None
+        assert mock_mark.await_args.args[0] == "sess-1"
+        assert "shut down" in mock_mark.await_args.kwargs["error_message"].lower()
+
+    def test_swallows_redis_error(self) -> None:
+        # Raising from the mock ensures the helper catches the exception
+        # instead of propagating it back into execute()'s finally block.
+        mock_mark = AsyncMock(side_effect=RuntimeError("redis down"))
+        with patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=mock_mark,
+        ):
+            sync_fail_close_session("sess-2", _make_log())  # must not raise
+
+        mock_mark.assert_awaited_once()

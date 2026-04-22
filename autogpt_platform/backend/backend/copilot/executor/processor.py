@@ -30,6 +30,35 @@ from .utils import CoPilotExecutionEntry, CoPilotLogMetadata
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[CoPilotExecutor]")
 
 
+_SHUTDOWN_ERROR_MESSAGE = (
+    "Copilot executor shut down before this turn finished. Please retry."
+)
+
+
+def sync_fail_close_session(
+    session_id: str, log: "CoPilotLogMetadata | TruncatedLogger"
+) -> None:
+    """Synchronously mark *session_id* as failed from the pool worker thread.
+
+    Safety net invoked from ``CoPilotProcessor.execute``'s ``finally`` so the
+    Redis session meta never stays ``running`` when the worker's event loop
+    dies mid-turn. ``mark_session_completed`` is an atomic CAS on
+    ``status == "running"``, so calling this after a normal completion/error
+    is a cheap no-op.
+
+    Uses ``asyncio.run`` — the pool worker thread isn't running a loop of
+    its own (the turn's loop lives on the daemon ``execution_thread``).
+    """
+    try:
+        asyncio.run(
+            stream_registry.mark_session_completed(
+                session_id, error_message=_SHUTDOWN_ERROR_MESSAGE
+            )
+        )
+    except Exception as e:
+        log.warning(f"sync fail-close mark_session_completed failed: {e}")
+
+
 # ============ Mode Routing ============ #
 
 
@@ -267,31 +296,38 @@ class CoPilotProcessor:
         log.info("Starting execution")
 
         start_time = time.monotonic()
+        try:
+            # Run the async execution in our event loop
+            future = asyncio.run_coroutine_threadsafe(
+                self._execute_async(entry, cancel, cluster_lock, log),
+                self.execution_loop,
+            )
 
-        # Run the async execution in our event loop
-        future = asyncio.run_coroutine_threadsafe(
-            self._execute_async(entry, cancel, cluster_lock, log),
-            self.execution_loop,
-        )
+            # Wait for completion, checking cancel periodically
+            while not future.done():
+                try:
+                    future.result(timeout=1.0)
+                except asyncio.TimeoutError:
+                    if cancel.is_set():
+                        log.info("Cancellation requested")
+                        future.cancel()
+                        break
+                    # Refresh cluster lock to maintain ownership
+                    cluster_lock.refresh()
 
-        # Wait for completion, checking cancel periodically
-        while not future.done():
-            try:
-                future.result(timeout=1.0)
-            except asyncio.TimeoutError:
-                if cancel.is_set():
-                    log.info("Cancellation requested")
-                    future.cancel()
-                    break
-                # Refresh cluster lock to maintain ownership
-                cluster_lock.refresh()
+            if not future.cancelled():
+                # Get result to propagate any exceptions
+                future.result()
+        finally:
+            # Last-line-of-defense: guarantees the Redis session status moves
+            # out of ``running`` even if ``_execute_async``'s own ``finally``
+            # didn't fire (event loop died, pool thread was interrupted, etc).
+            # ``mark_session_completed`` is a CAS on ``status == "running"`` so
+            # the happy path no-ops here.
+            sync_fail_close_session(entry.session_id, log)
 
-        if not future.cancelled():
-            # Get result to propagate any exceptions
-            future.result()
-
-        elapsed = time.monotonic() - start_time
-        log.info(f"Execution completed in {elapsed:.2f}s")
+            elapsed = time.monotonic() - start_time
+            log.info(f"Execution completed in {elapsed:.2f}s")
 
     async def _execute_async(
         self,
