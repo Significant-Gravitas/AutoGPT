@@ -167,10 +167,6 @@ rendered by `AgentGoogleDriveFileInputBlock` does this at run time.
 - If the user pastes a Drive URL (e.g. `docs.google.com/spreadsheets/d/...`)
   in chat, still use the input block. Explain to the user that they will
   pick the file at run time; do NOT try to hardcode the ID from the URL.
-- The agent generator ships a validator (`validate_google_drive_file_inputs`)
-  that flags hardcoded Drive inputs with a specific error message — if you
-  see it, the fix is always the same: add an `AgentGoogleDriveFileInputBlock`
-  and wire its `result` output into the consumer's Drive field.
 
 **How to detect a field needs this pattern** (from a block's input schema):
 - Field `format == "google-drive-picker"`, OR
