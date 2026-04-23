@@ -1059,3 +1059,42 @@ class TestCompactionTargetTokens:
         ):
             mock_cfg.claude_agent_autocompact_pct_override = 1
             assert _compaction_target_tokens("anthropic/foo") == 10_000
+
+    @pytest.mark.asyncio
+    async def test_reduce_context_uses_runtime_model_for_target(self) -> None:
+        """Compactor LLM is fixed (Sonnet) but target must be sized for the
+        RUNTIME model that the CLI is actually serving — otherwise a Kimi
+        runtime gets a 200K-window-derived target while the CLI threshold
+        is computed against Kimi's 256K window.
+        """
+        from backend.copilot.sdk.service import _reduce_context
+
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        captured: dict = {}
+
+        async def fake_compact(content, *, model, log_prefix, target_tokens):
+            captured["target_tokens"] = target_tokens
+            captured["compactor_model"] = model
+            return None
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.compact_transcript",
+                side_effect=fake_compact,
+            ),
+            patch(
+                "backend.copilot.sdk.service._compaction_target_tokens",
+                side_effect=lambda m: 12345 if "kimi" in m else 99999,
+            ),
+        ):
+            await _reduce_context(
+                transcript,
+                False,
+                "sess",
+                "/tmp",
+                "[t]",
+                runtime_model="moonshotai/kimi-k2.6",
+            )
+
+        # Target derived from the RUNTIME model, not the compactor model.
+        assert captured["target_tokens"] == 12345

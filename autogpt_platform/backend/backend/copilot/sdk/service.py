@@ -474,6 +474,7 @@ async def _reduce_context(
     sdk_cwd: str,
     log_prefix: str,
     attempt: int = 1,
+    runtime_model: str | None = None,
 ) -> ReducedContext:
     """Prepare reduced context for a retry attempt.
 
@@ -500,11 +501,15 @@ async def _reduce_context(
     # retry runs without --resume.  The compacted builder state is still
     # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
+        # The compactor LLM is fixed (config.thinking_standard_model); the
+        # token target is sized against the RUNTIME model since that's the
+        # one whose CLI autocompact threshold we're trying to land below.
+        target_model = runtime_model or config.thinking_standard_model
         compacted = await compact_transcript(
             transcript_content,
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
-            target_tokens=_compaction_target_tokens(config.thinking_standard_model),
+            target_tokens=_compaction_target_tokens(target_model),
         )
         if (
             compacted
@@ -3726,6 +3731,7 @@ async def stream_chat_completion_sdk(
                     sdk_cwd,
                     log_prefix,
                     attempt=attempt,
+                    runtime_model=sdk_model,
                 )
                 state.transcript_builder = ctx.builder
                 state.use_resume = ctx.use_resume
