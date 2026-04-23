@@ -34,7 +34,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 from claude_agent_sdk.types import SystemPromptPreset
-from langfuse import propagate_attributes
+from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
@@ -4089,8 +4089,6 @@ async def stream_chat_completion_sdk(
             except Exception:
                 logger.debug("Failed to set OTEL cost attributes", exc_info=True)
             try:
-                from langfuse import get_client
-
                 langfuse_trace_id = get_client().get_current_trace_id()
             except Exception:
                 logger.debug("Failed to capture Langfuse trace_id", exc_info=True)

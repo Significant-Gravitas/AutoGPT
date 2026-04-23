@@ -530,7 +530,7 @@ class TestLangfuseTraceBackfill:
         real_cost = 0.025
         mock_lf = MagicMock()
 
-        async def _get(self, url, **kwargs):  # noqa: ARG001
+        async def _get(_self, _url, **_kwargs):
             return httpx.Response(200, json=_mock_generation_response(real_cost))
 
         with (
@@ -539,7 +539,10 @@ class TestLangfuseTraceBackfill:
                 new_callable=AsyncMock,
             ),
             patch("httpx.AsyncClient.get", new=_get),
-            patch("langfuse.get_client", return_value=mock_lf),
+            patch(
+                "backend.copilot.sdk.openrouter_cost.get_client",
+                return_value=mock_lf,
+            ),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -584,7 +587,7 @@ class TestLangfuseTraceBackfill:
         mock_lf = MagicMock()
         call_count = {"n": 0}
 
-        async def _get(self, url, **kwargs):  # noqa: ARG001
+        async def _get(_self, _url, **_kwargs):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 return httpx.Response(200, json=_mock_generation_response(0.012))
@@ -596,7 +599,10 @@ class TestLangfuseTraceBackfill:
                 new_callable=AsyncMock,
             ),
             patch("httpx.AsyncClient.get", new=_get),
-            patch("langfuse.get_client", return_value=mock_lf),
+            patch(
+                "backend.copilot.sdk.openrouter_cost.get_client",
+                return_value=mock_lf,
+            ),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -629,7 +635,7 @@ class TestLangfuseTraceBackfill:
         OTel context don't have a trace_id — backfill is a no-op."""
         mock_lf = MagicMock()
 
-        async def _get(self, url, **kwargs):  # noqa: ARG001
+        async def _get(_self, _url, **_kwargs):
             return httpx.Response(200, json=_mock_generation_response(0.01))
 
         with (
@@ -638,7 +644,10 @@ class TestLangfuseTraceBackfill:
                 new_callable=AsyncMock,
             ),
             patch("httpx.AsyncClient.get", new=_get),
-            patch("langfuse.get_client", return_value=mock_lf),
+            patch(
+                "backend.copilot.sdk.openrouter_cost.get_client",
+                return_value=mock_lf,
+            ),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),
@@ -667,7 +676,7 @@ class TestLangfuseTraceBackfill:
         mock_lf = MagicMock()
         mock_lf.create_event = MagicMock(side_effect=RuntimeError("network down"))
 
-        async def _get(self, url, **kwargs):  # noqa: ARG001
+        async def _get(_self, _url, **_kwargs):
             return httpx.Response(200, json=_mock_generation_response(0.02))
 
         with (
@@ -676,7 +685,10 @@ class TestLangfuseTraceBackfill:
                 new_callable=AsyncMock,
             ) as mock_persist,
             patch("httpx.AsyncClient.get", new=_get),
-            patch("langfuse.get_client", return_value=mock_lf),
+            patch(
+                "backend.copilot.sdk.openrouter_cost.get_client",
+                return_value=mock_lf,
+            ),
         ):
             await record_turn_cost_from_openrouter(
                 session=_session(),

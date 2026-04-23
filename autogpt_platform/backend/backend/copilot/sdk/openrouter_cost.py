@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+from langfuse import get_client
 
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.util import json
@@ -410,8 +411,6 @@ async def record_turn_cost_from_openrouter(
     # cross-referencing pod logs.
     if langfuse_trace_id and real_cost is not None:
         try:
-            from langfuse import get_client
-
             get_client().create_event(
                 trace_context={"trace_id": langfuse_trace_id},
                 name="openrouter-cost-reconcile",
