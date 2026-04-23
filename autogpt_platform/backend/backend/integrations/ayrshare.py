@@ -319,6 +319,11 @@ class AyrshareClient:
         # The endpoint returns either a bare list or a dict with a "profiles"
         # key depending on the account tier; handle both shapes.
         payload = response.json()
+        if isinstance(payload, dict) and payload.get("status") == "error":
+            raise AyrshareAPIException(
+                f"Ayrshare API returned error: {payload.get('message', 'Unknown error')}",
+                response.status,
+            )
         raw_profiles = (
             payload.get("profiles", payload) if isinstance(payload, dict) else payload
         )
