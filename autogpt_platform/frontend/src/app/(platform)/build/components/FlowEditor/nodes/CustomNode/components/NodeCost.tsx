@@ -35,14 +35,14 @@ function getCostLabel(blockCost: BlockCost): CostLabel {
     case BlockCostType.cost_usd:
       return {
         kind: "dynamic",
-        unitSuffix: "/$",
-        note: "Billed on provider-reported USD",
+        unitSuffix: "· by USD",
+        note: "Final charge scales with provider-reported USD spend",
       };
     case BlockCostType.tokens:
       return {
         kind: "dynamic",
-        unitSuffix: "/run",
-        note: "Billed per-token (floor shown)",
+        unitSuffix: "· by tokens",
+        note: "Floor shown; final charge scales with real token usage (cached tokens discounted)",
       };
     default:
       return { kind: "fixed", unitSuffix: `/${blockCost.cost_type}` };

@@ -90,7 +90,7 @@ describe("NodeCost", () => {
     expect(screen.getByText(/\/ 5 items/)).toBeTruthy();
   });
 
-  it("renders '/$' for COST_USD and shows approximate prefix for positive floor", () => {
+  it("renders '· by USD' for COST_USD and shows approximate prefix for positive floor", () => {
     render(
       <NodeCost
         blockCosts={[
@@ -100,7 +100,7 @@ describe("NodeCost", () => {
       />,
     );
     expect(screen.getByText(/~\$2\.00/)).toBeTruthy();
-    expect(screen.getByText(/\/\$/)).toBeTruthy();
+    expect(screen.getByText(/· by USD/)).toBeTruthy();
   });
 
   it("renders em-dash when dynamic cost has zero floor", () => {
@@ -115,7 +115,7 @@ describe("NodeCost", () => {
     expect(screen.getByText("—")).toBeTruthy();
   });
 
-  it("renders /run with floor hint for TOKENS", () => {
+  it("renders '· by tokens' with floor hint for TOKENS", () => {
     render(
       <NodeCost
         blockCosts={[
@@ -125,7 +125,7 @@ describe("NodeCost", () => {
       />,
     );
     expect(screen.getByText(/~\$1\.50/)).toBeTruthy();
-    expect(screen.getByText(/\/run/)).toBeTruthy();
+    expect(screen.getByText(/· by tokens/)).toBeTruthy();
   });
 
   it("renders /byte suffix for BYTE cost type", () => {
