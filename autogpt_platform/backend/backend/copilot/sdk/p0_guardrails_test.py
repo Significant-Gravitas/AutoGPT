@@ -210,7 +210,7 @@ class TestConfigDefaults:
 
     def test_max_turns_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_turns == 50
+        assert cfg.agent_max_turns == 100
 
     def test_max_budget_usd_default(self):
         cfg = _make_config()
@@ -506,21 +506,21 @@ class TestConfigValidators:
 
     def test_max_turns_rejects_zero(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=0)
+            _make_config(agent_max_turns=0)
 
     def test_max_turns_rejects_negative(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=-1)
+            _make_config(agent_max_turns=-1)
 
     def test_max_turns_rejects_above_10000(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=10001)
+            _make_config(agent_max_turns=10001)
 
     def test_max_turns_accepts_boundary_values(self):
-        cfg_low = _make_config(claude_agent_max_turns=1)
-        assert cfg_low.claude_agent_max_turns == 1
-        cfg_high = _make_config(claude_agent_max_turns=10000)
-        assert cfg_high.claude_agent_max_turns == 10000
+        cfg_low = _make_config(agent_max_turns=1)
+        assert cfg_low.agent_max_turns == 1
+        cfg_high = _make_config(agent_max_turns=10000)
+        assert cfg_high.agent_max_turns == 10000
 
     def test_max_budget_rejects_zero(self):
         with pytest.raises(ValidationError):

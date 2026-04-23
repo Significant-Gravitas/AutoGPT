@@ -207,14 +207,18 @@ class ChatConfig(BaseSettings):
         "overloaded). The SDK automatically retries with this cheaper model. "
         "Empty string disables the fallback (no --fallback-model flag passed to CLI).",
     )
-    claude_agent_max_turns: int = Field(
-        default=50,
+    agent_max_turns: int = Field(
+        default=100,
         ge=1,
         le=10000,
-        description="Maximum number of agentic turns (tool-use loops) per query. "
-        "Prevents runaway tool loops from burning budget. "
-        "Changed from 1000 to 50 in SDK 0.1.58 upgrade — override via "
-        "CHAT_CLAUDE_AGENT_MAX_TURNS env var if your workflows need more.",
+        validation_alias=AliasChoices(
+            "CHAT_AGENT_MAX_TURNS",
+            "CHAT_CLAUDE_AGENT_MAX_TURNS",
+        ),
+        description="Maximum number of tool-call rounds per turn — applies to "
+        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
+        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
+        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,

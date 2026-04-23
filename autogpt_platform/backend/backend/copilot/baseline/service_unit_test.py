@@ -10,9 +10,12 @@ import pytest
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
+    _BUDGET_EXHAUSTED_FALLBACK_TEXT,
     _baseline_conversation_updater,
     _baseline_llm_caller,
     _BaselineStreamState,
+    _budget_exhausted_notice_text,
+    _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
     _compress_session_messages,
     _extract_cache_creation_tokens,
@@ -2078,3 +2081,65 @@ class TestSupportsPromptCacheMarkers:
         """Regression guard: OpenAI/Grok/Gemini still 400 on
         ``cache_control``, so the widened gate must keep them out."""
         assert _supports_prompt_cache_markers(model) is False
+
+
+class TestBudgetExhaustedNoticeText:
+    """Tests for the fallback-notice decision used when the tool-round
+    budget is exhausted without a natural finish."""
+
+    def test_empty_text_returns_fallback(self):
+        assert _budget_exhausted_notice_text("") == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+    def test_whitespace_only_returns_fallback(self):
+        """A string of only whitespace is still "no visible response"."""
+        assert (
+            _budget_exhausted_notice_text("   \n\t  ")
+            == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        )
+
+    def test_non_empty_text_returns_none(self):
+        """When the model already summarised, stay quiet — no extra notice."""
+        assert _budget_exhausted_notice_text("Here is what I did...") is None
+
+    def test_fallback_text_is_user_facing(self):
+        """Guard against accidentally shipping an empty / internal string."""
+        assert _BUDGET_EXHAUSTED_FALLBACK_TEXT.strip()
+        assert "tool-call budget" in _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        assert "follow-up" in _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+class TestBuildBudgetExhaustedFallbackEvents:
+    """Tests for the helper that produces the stream events + text mutation
+    for a budget-exhausted turn with no terminal-round text."""
+
+    def test_empty_terminal_text_emits_three_events(self):
+        events, to_append = _build_budget_exhausted_fallback_events("")
+        assert to_append == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        assert len(events) == 3
+        assert isinstance(events[0], StreamTextStart)
+        assert isinstance(events[1], StreamTextDelta)
+        assert isinstance(events[2], StreamTextEnd)
+        # All three events share the same block id so the frontend groups
+        # them into a single text bubble.
+        assert events[0].id == events[1].id == events[2].id
+        # The delta carries the user-facing notice verbatim.
+        assert events[1].delta == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+    def test_non_empty_terminal_text_returns_empty(self):
+        """Model already produced visible final text → no fallback."""
+        events, to_append = _build_budget_exhausted_fallback_events(
+            "Here's what I did so far..."
+        )
+        assert events == []
+        assert to_append == ""
+
+    def test_whitespace_only_still_emits_fallback(self):
+        events, to_append = _build_budget_exhausted_fallback_events("   \n\t  ")
+        assert len(events) == 3
+        assert to_append == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+    def test_each_call_uses_fresh_block_id(self):
+        """Block IDs are UUIDs — two invocations must not collide."""
+        events_a, _ = _build_budget_exhausted_fallback_events("")
+        events_b, _ = _build_budget_exhausted_fallback_events("")
+        assert events_a[0].id != events_b[0].id
