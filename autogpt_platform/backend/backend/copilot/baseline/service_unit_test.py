@@ -15,6 +15,7 @@ from backend.copilot.baseline.service import (
     _baseline_llm_caller,
     _BaselineStreamState,
     _budget_exhausted_notice_text,
+    _build_budget_exhausted_fallback_events,
     _build_cached_system_message,
     _compress_session_messages,
     _extract_cache_creation_tokens,
@@ -2105,3 +2106,40 @@ class TestBudgetExhaustedNoticeText:
         assert _BUDGET_EXHAUSTED_FALLBACK_TEXT.strip()
         assert "tool-call budget" in _BUDGET_EXHAUSTED_FALLBACK_TEXT
         assert "follow-up" in _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+class TestBuildBudgetExhaustedFallbackEvents:
+    """Tests for the helper that produces the stream events + text mutation
+    for a budget-exhausted turn with no terminal-round text."""
+
+    def test_empty_terminal_text_emits_three_events(self):
+        events, to_append = _build_budget_exhausted_fallback_events("")
+        assert to_append == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        assert len(events) == 3
+        assert isinstance(events[0], StreamTextStart)
+        assert isinstance(events[1], StreamTextDelta)
+        assert isinstance(events[2], StreamTextEnd)
+        # All three events share the same block id so the frontend groups
+        # them into a single text bubble.
+        assert events[0].id == events[1].id == events[2].id
+        # The delta carries the user-facing notice verbatim.
+        assert events[1].delta == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+    def test_non_empty_terminal_text_returns_empty(self):
+        """Model already produced visible final text → no fallback."""
+        events, to_append = _build_budget_exhausted_fallback_events(
+            "Here's what I did so far..."
+        )
+        assert events == []
+        assert to_append == ""
+
+    def test_whitespace_only_still_emits_fallback(self):
+        events, to_append = _build_budget_exhausted_fallback_events("   \n\t  ")
+        assert len(events) == 3
+        assert to_append == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+    def test_each_call_uses_fresh_block_id(self):
+        """Block IDs are UUIDs — two invocations must not collide."""
+        events_a, _ = _build_budget_exhausted_fallback_events("")
+        events_b, _ = _build_budget_exhausted_fallback_events("")
+        assert events_a[0].id != events_b[0].id

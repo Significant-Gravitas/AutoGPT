@@ -139,16 +139,38 @@ _BUDGET_EXHAUSTED_FALLBACK_TEXT = (
 )
 
 
-def _budget_exhausted_notice_text(assistant_text: str) -> str | None:
+def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
     """Return the fallback notice when a budget-exhausted turn produced no
     visible text, or ``None`` when the model already summarised itself.
 
-    Factored out so callers can unit-test the decision without the
-    surrounding async streaming machinery.
+    ``terminal_round_text`` is the text added by the *final* round only —
+    earlier-round chatter shouldn't mask a silent final round.
     """
-    if assistant_text.strip():
+    if terminal_round_text.strip():
         return None
     return _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+def _build_budget_exhausted_fallback_events(
+    terminal_round_text: str,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Build the fallback stream events surfaced when a budget-exhausted
+    turn left the terminal round with no visible text.
+
+    Returns ``(events, text_to_append)``.  Empty list + empty string when
+    no fallback is needed.  Split out of the async generator so it's unit-
+    testable without the surrounding streaming machinery.
+    """
+    notice = _budget_exhausted_notice_text(terminal_round_text)
+    if notice is None:
+        return [], ""
+    block_id = str(uuid.uuid4())
+    events: list[StreamBaseResponse] = [
+        StreamTextStart(id=block_id),
+        StreamTextDelta(id=block_id, delta=notice),
+        StreamTextEnd(id=block_id),
+    ]
+    return events, notice
 
 
 # Max seconds to wait for transcript upload in the finally block before
@@ -1948,13 +1970,12 @@ async def stream_chat_completion_baseline(
             # Check only the *terminal* round's text — earlier rounds may
             # have produced chatter that doesn't explain the budget hit.
             terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
-            terminal_text = _budget_exhausted_notice_text(terminal_round_text)
-            if terminal_text is not None:
-                block_id = str(uuid.uuid4())
-                yield StreamTextStart(id=block_id)
-                yield StreamTextDelta(id=block_id, delta=terminal_text)
-                yield StreamTextEnd(id=block_id)
-                state.assistant_text += terminal_text
+            fallback_events, fallback_text = _build_budget_exhausted_fallback_events(
+                terminal_round_text
+            )
+            for evt in fallback_events:
+                yield evt
+            state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
         error_msg = str(e) or type(e).__name__
