@@ -6,11 +6,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToBlueskyBlock(Block):
     """Block for posting to Bluesky with Bluesky-specific options."""
 
@@ -69,12 +72,18 @@ class PostToBlueskyBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate character limit for Bluesky
         if len(input_data.post) > 300:
-            yield "error", f"Post text exceeds Bluesky's 300 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"Post text exceeds Bluesky's 300 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         # Validate media constraints for Bluesky

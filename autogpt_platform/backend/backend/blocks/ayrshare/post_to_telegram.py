@@ -6,11 +6,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToTelegramBlock(Block):
     """Block for posting to Telegram with Telegram-specific options."""
 
@@ -68,7 +71,10 @@ class PostToTelegramBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate Telegram constraints

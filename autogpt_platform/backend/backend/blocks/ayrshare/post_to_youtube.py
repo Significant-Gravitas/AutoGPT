@@ -9,8 +9,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
@@ -20,6 +22,7 @@ class YouTubeVisibility(str, Enum):
     UNLISTED = "unlisted"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToYouTubeBlock(Block):
     """Block for posting to YouTube with YouTube-specific options."""
 
@@ -149,7 +152,10 @@ class PostToYouTubeBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate YouTube constraints
@@ -158,11 +164,17 @@ class PostToYouTubeBlock(Block):
             return
 
         if len(input_data.title) > 100:
-            yield "error", f"YouTube title exceeds 100 character limit ({len(input_data.title)} characters)"
+            yield (
+                "error",
+                f"YouTube title exceeds 100 character limit ({len(input_data.title)} characters)",
+            )
             return
 
         if len(input_data.post) > 5000:
-            yield "error", f"YouTube description exceeds 5,000 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"YouTube description exceeds 5,000 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         # Check for forbidden characters
@@ -186,7 +198,10 @@ class PostToYouTubeBlock(Block):
         # Validate visibility option
         valid_visibility = ["private", "public", "unlisted"]
         if input_data.visibility not in valid_visibility:
-            yield "error", f"YouTube visibility must be one of: {', '.join(valid_visibility)}"
+            yield (
+                "error",
+                f"YouTube visibility must be one of: {', '.join(valid_visibility)}",
+            )
             return
 
         # Validate thumbnail URL format
@@ -202,12 +217,18 @@ class PostToYouTubeBlock(Block):
         if input_data.tags:
             total_tag_length = sum(len(tag) for tag in input_data.tags)
             if total_tag_length > 500:
-                yield "error", f"YouTube tags total length exceeds 500 characters ({total_tag_length} characters)"
+                yield (
+                    "error",
+                    f"YouTube tags total length exceeds 500 characters ({total_tag_length} characters)",
+                )
                 return
 
             for tag in input_data.tags:
                 if len(tag) < 2:
-                    yield "error", f"YouTube tag '{tag}' is too short (minimum 2 characters)"
+                    yield (
+                        "error",
+                        f"YouTube tag '{tag}' is too short (minimum 2 characters)",
+                    )
                     return
 
         # Validate subtitle URL
@@ -225,12 +246,18 @@ class PostToYouTubeBlock(Block):
                 return
 
         if input_data.subtitle_name and len(input_data.subtitle_name) > 150:
-            yield "error", f"YouTube subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)"
+            yield (
+                "error",
+                f"YouTube subtitle name exceeds 150 character limit ({len(input_data.subtitle_name)} characters)",
+            )
             return
 
         # Validate publish_at format if provided
         if input_data.publish_at and input_data.schedule_date:
-            yield "error", "Cannot use both 'publish_at' and 'schedule_date'. Use 'publish_at' for YouTube-controlled publishing."
+            yield (
+                "error",
+                "Cannot use both 'publish_at' and 'schedule_date'. Use 'publish_at' for YouTube-controlled publishing.",
+            )
             return
 
         # Convert datetime to ISO format if provided (only if not using publish_at)

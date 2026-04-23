@@ -22,6 +22,7 @@ from backend.blocks.enrichlayer.linkedin import (
 )
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
+from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.fact_checker import FactCheckerBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -956,12 +957,9 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # ClaudeCodeBlock runs an E2B sandbox (~$0.00003/sec compute) AND
-    # executes Claude Sonnet inside it. Real session cost is dominated by
-    # the LLM and varies $0.50–$2 per typical run. Flat 100 credits ($1.00)
-    # is a conservative-but-fair estimate; revisit once we expose the
-    # x-total-cost header from the in-sandbox Claude calls back to
-    # NodeExecutionStats.provider_cost.
+    # ClaudeCodeBlock runs an E2B sandbox AND executes Claude Sonnet inside it.
+    # Real cost $0.50-$2/run; flat 100 credits is conservative until we pipe
+    # x-total-cost from the in-sandbox Claude calls into provider_cost.
     ClaudeCodeBlock: [
         BlockCost(
             cost_amount=100,
@@ -970,6 +968,24 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": e2b_credentials.id,
                     "provider": e2b_credentials.provider,
                     "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # Ayrshare post blocks use the @cost(...) decorator directly on each block
+    # class (see backend/blocks/ayrshare/_cost.py). They can't be listed here
+    # because post_to_*.py imports from backend.sdk, which imports from this
+    # module — registering via decorator avoids the circular import.
+    # Jina chunking: $0.02/1M tokens. Flat 1 credit floor so the block is not
+    # wallet-free; embedding/search already have their own entries.
+    JinaChunkingBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
                 }
             },
         )

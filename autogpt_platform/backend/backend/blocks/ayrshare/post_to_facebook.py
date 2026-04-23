@@ -6,8 +6,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import (
     BaseAyrshareInput,
     CarouselItem,
@@ -16,6 +18,7 @@ from ._util import (
 )
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToFacebookBlock(Block):
     """Block for posting to Facebook with Facebook-specific options."""
 
@@ -131,7 +134,10 @@ class PostToFacebookBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Convert datetime to ISO format if provided

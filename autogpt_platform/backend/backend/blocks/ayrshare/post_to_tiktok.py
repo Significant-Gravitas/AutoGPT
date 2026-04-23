@@ -8,8 +8,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
@@ -19,6 +21,7 @@ class TikTokVisibility(str, Enum):
     FOLLOWERS = "followers"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToTikTokBlock(Block):
     """Block for posting to TikTok with TikTok-specific options."""
 
@@ -123,16 +126,25 @@ class PostToTikTokBlock(Block):
 
         client = create_ayrshare_client()
         if not client:
-            yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
+            yield (
+                "error",
+                "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY.",
+            )
             return
 
         # Validate TikTok constraints
         if len(input_data.post) > 2200:
-            yield "error", f"TikTok post text exceeds 2,200 character limit ({len(input_data.post)} characters)"
+            yield (
+                "error",
+                f"TikTok post text exceeds 2,200 character limit ({len(input_data.post)} characters)",
+            )
             return
 
         if not input_data.media_urls:
-            yield "error", "TikTok requires at least one media URL (either 1 video or up to 35 images)"
+            yield (
+                "error",
+                "TikTok requires at least one media URL (either 1 video or up to 35 images)",
+            )
             return
 
         # Check for video vs image constraints
@@ -150,7 +162,10 @@ class PostToTikTokBlock(Block):
         )
 
         if has_video and has_images:
-            yield "error", "TikTok does not support mixing video and images in the same post"
+            yield (
+                "error",
+                "TikTok does not support mixing video and images in the same post",
+            )
             return
 
         if has_video and len(input_data.media_urls) > 1:
@@ -163,13 +178,19 @@ class PostToTikTokBlock(Block):
 
         # Validate image cover index
         if has_images and input_data.image_cover_index >= len(input_data.media_urls):
-            yield "error", f"Image cover index {input_data.image_cover_index} is out of range (max: {len(input_data.media_urls) - 1})"
+            yield (
+                "error",
+                f"Image cover index {input_data.image_cover_index} is out of range (max: {len(input_data.media_urls) - 1})",
+            )
             return
 
         # Check for PNG files (not supported)
         has_png = any(url.lower().endswith(".png") for url in input_data.media_urls)
         if has_png:
-            yield "error", "TikTok does not support PNG files. Please use JPG, JPEG, or WEBP for images."
+            yield (
+                "error",
+                "TikTok does not support PNG files. Please use JPG, JPEG, or WEBP for images.",
+            )
             return
 
         # Convert datetime to ISO format if provided
