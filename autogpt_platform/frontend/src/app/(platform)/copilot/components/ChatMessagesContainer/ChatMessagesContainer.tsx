@@ -473,7 +473,21 @@ export function ChatMessagesContainer({
                 )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  {(() => {
+                    const createdAt = turnStats?.get(message.id)?.createdAt;
+                    if (!createdAt) return null;
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return null;
+                    return (
+                      <span className="text-[11px] tabular-nums text-neutral-500">
+                        {date.toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    );
+                  })()}
                   <CopyButton text={textParts.map((p) => p.text).join("\n")} />
                 </MessageActions>
               )}
