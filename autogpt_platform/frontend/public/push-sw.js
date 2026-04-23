@@ -46,6 +46,17 @@ self.addEventListener("activate", function (event) {
   event.waitUntil(self.clients.claim());
 });
 
+function isClientViewingTarget(client, targetUrl) {
+  if (client.visibilityState !== "visible" || !client.focused) return false;
+  try {
+    var clientUrl = new URL(client.url);
+    var target = new URL(targetUrl, self.location.origin);
+    return clientUrl.pathname === target.pathname;
+  } catch (_) {
+    return false;
+  }
+}
+
 self.addEventListener("push", function (event) {
   if (!event.data) return;
 
@@ -63,20 +74,31 @@ self.addEventListener("push", function (event) {
     targetUrl = "/copilot?sessionId=" + data.session_id;
   }
 
-  // Unique tag per push so repeat notifications aren't coalesced by the OS.
-  // Falls back to Date.now() if the backend omitted `id`.
-  var tag = data.type + ":" + data.event + ":" + (data.id || Date.now());
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then(function (clients) {
+        var userIsAlreadyLooking = clients.some(function (c) {
+          return isClientViewingTarget(c, targetUrl);
+        });
+        if (userIsAlreadyLooking) return;
 
-  var options = {
-    body: config.body,
-    icon: "/favicon.ico",
-    badge: "/favicon.ico",
-    tag: tag,
-    data: Object.assign({ url: targetUrl }, data),
-    renotify: true,
-  };
+        // Unique tag per push so repeat notifications aren't coalesced by the OS.
+        // Falls back to Date.now() if the backend omitted `id`.
+        var tag = data.type + ":" + data.event + ":" + (data.id || Date.now());
 
-  event.waitUntil(self.registration.showNotification(config.title, options));
+        var options = {
+          body: config.body,
+          icon: "/favicon.ico",
+          badge: "/favicon.ico",
+          tag: tag,
+          data: Object.assign({ url: targetUrl }, data),
+          renotify: true,
+        };
+
+        return self.registration.showNotification(config.title, options);
+      }),
+  );
 });
 
 self.addEventListener("notificationclick", function (event) {
