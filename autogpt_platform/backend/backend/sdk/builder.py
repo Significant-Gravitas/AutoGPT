@@ -147,7 +147,8 @@ class ProviderBuilder:
     ) -> "ProviderBuilder":
         """Set base cost for all blocks using this provider.
 
-        ``cost_divisor`` only applies to SECOND / ITEMS / TOKENS cost types.
+        ``cost_divisor`` only applies to SECOND / ITEMS. TOKENS is billed via
+        the TOKEN_COST rate table (per-model pricing) and ignores the divisor.
         Example: ``with_base_cost(1, BlockCostType.SECOND, cost_divisor=10)``
         bills 1 credit per 10 walltime seconds.
         """

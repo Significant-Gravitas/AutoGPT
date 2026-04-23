@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import threading
 import time
 from collections import defaultdict
@@ -19,7 +20,7 @@ from backend.data import workspace as workspace_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
@@ -168,17 +169,13 @@ def block_usage_cost(
             )
 
         if block_cost.cost_type == BlockCostType.COST_USD:
-            usd = stats.provider_cost if stats and stats.provider_cost else 0.0
-            import math
-
+            usd = _coerce_usd(stats)
             return (
                 max(0, math.ceil(usd * block_cost.cost_amount)),
                 block_cost.cost_filter,
             )
 
         if block_cost.cost_type == BlockCostType.TOKENS:
-            from backend.data.block_cost_config import compute_token_credits
-
             return (
                 compute_token_credits(input_data, stats),
                 block_cost.cost_filter,
@@ -202,6 +199,16 @@ def _coerce_items(stats: NodeExecutionStats | None) -> int:
     if stats.provider_cost_type and stats.provider_cost_type != "items":
         return 0
     return max(0, int(stats.provider_cost))
+
+
+def _coerce_usd(stats: NodeExecutionStats | None) -> float:
+    if not stats or stats.provider_cost is None:
+        return 0.0
+    # provider_cost is billable only when tagged as cost_usd — otherwise it
+    # encodes a non-dollar quantity (e.g. items) that would wildly over-bill.
+    if stats.provider_cost_type and stats.provider_cost_type != "cost_usd":
+        return 0.0
+    return max(0.0, float(stats.provider_cost))
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:

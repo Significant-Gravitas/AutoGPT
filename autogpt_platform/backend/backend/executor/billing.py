@@ -290,10 +290,23 @@ async def charge_reconciled_usage(
     """
     try:
         return await asyncio.to_thread(_charge_reconciled_usage_sync, node_exec, stats)
-    except InsufficientBalanceError:
-        logger.warning(
-            f"Post-flight reconciliation for {node_exec.block_id} exceeded user "
-            f"balance; skipping charge. Consider tightening pre-flight estimate."
+    except InsufficientBalanceError as e:
+        # Billing leak: work is already done, but the user cannot pay. Emit a
+        # structured ERROR so alerting can pick it up (same shape as
+        # charge_extra_runtime_cost's leak log).
+        logger.error(
+            "billing_leak: insufficient balance after post-flight reconciliation",
+            extra={
+                "billing_leak": True,
+                "user_id": node_exec.user_id,
+                "graph_id": node_exec.graph_id,
+                "graph_exec_id": node_exec.graph_exec_id,
+                "node_exec_id": node_exec.node_exec_id,
+                "block_id": node_exec.block_id,
+                "cost": abs(e.amount),
+                "balance": e.balance,
+                "error": str(e),
+            },
         )
         return 0, 0
     except Exception:

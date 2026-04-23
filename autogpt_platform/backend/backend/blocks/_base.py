@@ -111,9 +111,11 @@ class BlockCost(BaseModel):
     cost_filter: BlockInput
     cost_type: BlockCostType
     # cost_divisor: interpret cost_amount as "credits per cost_divisor units".
-    # Only meaningful for SECOND / ITEMS / TOKENS. Defaults to 1 so existing
-    # RUN/BYTE entries stay point-wise. Example: cost_amount=1, cost_divisor=10
-    # under SECOND means "1 credit per 10 seconds of walltime".
+    # Only meaningful for SECOND / ITEMS. TOKENS routes through TOKEN_COST
+    # rate tables (per-model input/output/cache pricing) and ignores
+    # cost_divisor entirely. Defaults to 1 so existing RUN/BYTE entries stay
+    # point-wise. Example: cost_amount=1, cost_divisor=10 under SECOND means
+    # "1 credit per 10 seconds of walltime".
     cost_divisor: int = 1
 
     def __init__(

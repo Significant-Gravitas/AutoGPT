@@ -81,6 +81,18 @@ def test_cost_usd_zero_when_no_stats(tmp_block_costs_override):
     assert cost == 0
 
 
+def test_cost_usd_ignores_non_usd_provider_cost(tmp_block_costs_override):
+    """provider_cost_type='items' should not be mistaken for dollars."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    block = SearchTheWebBlock()
+    # An items-typed provider_cost of 45 would otherwise be billed as $45.
+    stats = NodeExecutionStats(provider_cost=45, provider_cost_type="items")
+    cost, _ = block_usage_cost(block, {}, stats=stats)
+    assert cost == 0
+
+
 def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkeypatch):
     from backend.blocks.llm import LlmModel
 
