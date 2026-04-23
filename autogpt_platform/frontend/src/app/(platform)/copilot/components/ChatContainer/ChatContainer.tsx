@@ -39,7 +39,7 @@ export interface ChatContainerProps {
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
   onDroppedFilesConsumed?: () => void;
-  /** Per-message stats (durationMs, reasoningDurationMs, createdAt), keyed by message ID. */
+  /** Per-message stats (durationMs, createdAt), keyed by message ID. */
   turnStats?: TurnStatsMap;
 }
 export const ChatContainer = ({

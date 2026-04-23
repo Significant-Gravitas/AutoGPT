@@ -522,42 +522,6 @@ async def test_set_turn_duration_no_assistant_message(setup_test_user, test_user
     assert cached.messages[0].duration_ms is None
 
 
-@pytest.mark.asyncio(loop_scope="session")
-async def test_set_turn_duration_persists_reasoning_duration(
-    setup_test_user, test_user_id
-):
-    """reasoning_duration_ms must land on both the DB row and the cache patch.
-
-    Regression guard for the pairing between the wall-clock duration and the
-    thinking-only duration — they share the same code path and both have to
-    round-trip through Prisma and the in-place cache update.
-    """
-    session = ChatSession.new(user_id=test_user_id, dry_run=False)
-    session.messages = [
-        CopilotChatMessage(role="user", content="hello"),
-        CopilotChatMessage(role="assistant", content="hi there"),
-    ]
-    session = await upsert_chat_session(session)
-
-    await set_turn_duration(session.session_id, 1234, reasoning_duration_ms=500)
-
-    # Cache reflects both values on the last assistant message.
-    cached = await get_chat_session(session.session_id, test_user_id)
-    assert cached is not None
-    last_assistant = next(m for m in reversed(cached.messages) if m.role == "assistant")
-    assert last_assistant.duration_ms == 1234
-    assert last_assistant.reasoning_duration_ms == 500
-
-    # DB row carries the same values (read back via Prisma, bypassing cache).
-    db_row = await PrismaChatMessage.prisma().find_first(
-        where={"sessionId": session.session_id, "role": "assistant"},
-        order={"sequence": "desc"},
-    )
-    assert db_row is not None
-    assert db_row.durationMs == 1234
-    assert db_row.reasoningDurationMs == 500
-
-
 # ---------- update_message_content_by_sequence ----------
 
 

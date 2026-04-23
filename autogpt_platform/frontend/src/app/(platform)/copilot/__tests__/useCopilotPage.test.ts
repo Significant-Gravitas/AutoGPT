@@ -151,40 +151,12 @@ describe("useCopilotPage — turnStats map merge across pages", () => {
 
   it("merges historical (current-page) over paged (older) stats; current-page wins on overlap", () => {
     const pagedTurnStats = new Map([
-      [
-        "older",
-        {
-          durationMs: 1000,
-          reasoningDurationMs: 500,
-          createdAt: "2026-04-20T10:00:00Z",
-        },
-      ],
-      [
-        "shared",
-        {
-          durationMs: 2000,
-          reasoningDurationMs: 600,
-          createdAt: "2026-04-20T10:00:00Z",
-        },
-      ],
+      ["older", { durationMs: 1000, createdAt: "2026-04-20T10:00:00Z" }],
+      ["shared", { durationMs: 2000, createdAt: "2026-04-20T10:00:00Z" }],
     ]);
     const historicalTurnStats = new Map([
-      [
-        "current",
-        {
-          durationMs: 3000,
-          reasoningDurationMs: 1500,
-          createdAt: "2026-04-23T08:32:09Z",
-        },
-      ],
-      [
-        "shared",
-        {
-          durationMs: 4000,
-          reasoningDurationMs: 1700,
-          createdAt: "2026-04-23T08:32:09Z",
-        },
-      ],
+      ["current", { durationMs: 3000, createdAt: "2026-04-23T08:32:09Z" }],
+      ["shared", { durationMs: 4000, createdAt: "2026-04-23T08:32:09Z" }],
     ]);
 
     mockUseChatSession.mockReturnValue(
@@ -200,18 +172,15 @@ describe("useCopilotPage — turnStats map merge across pages", () => {
 
     expect(stats.get("older")).toEqual({
       durationMs: 1000,
-      reasoningDurationMs: 500,
       createdAt: "2026-04-20T10:00:00Z",
     });
     expect(stats.get("current")).toEqual({
       durationMs: 3000,
-      reasoningDurationMs: 1500,
       createdAt: "2026-04-23T08:32:09Z",
     });
-    // Current-page wins on shared keys across all fields.
+    // Current-page wins on shared keys.
     expect(stats.get("shared")).toEqual({
       durationMs: 4000,
-      reasoningDurationMs: 1700,
       createdAt: "2026-04-23T08:32:09Z",
     });
   });

@@ -13,39 +13,18 @@ describe("TurnStatsBar", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("prefers live elapsedSeconds over durationMs / reasoningDurationMs", () => {
+  it("prefers live elapsedSeconds over the persisted durationMs", () => {
     render(
       <TurnStatsBar
         turnMessages={EMPTY}
         elapsedSeconds={7}
-        stats={{ durationMs: 99_000, reasoningDurationMs: 50_000 }}
+        stats={{ durationMs: 99_000 }}
       />,
     );
     expect(screen.getByText(/Thought for 7s/)).toBeDefined();
   });
 
-  it("prefers reasoningDurationMs when the turn is finalized", () => {
-    render(
-      <TurnStatsBar
-        turnMessages={EMPTY}
-        stats={{ durationMs: 12_000, reasoningDurationMs: 3_500 }}
-      />,
-    );
-    // 3_500ms rounds to ~4s — never falls back to whole-turn 12s.
-    expect(screen.getByText(/Thought for 4s/)).toBeDefined();
-  });
-
-  it("floors reasoningDurationMs to a 1s minimum so sub-second rows still render", () => {
-    render(
-      <TurnStatsBar
-        turnMessages={EMPTY}
-        stats={{ reasoningDurationMs: 200 }}
-      />,
-    );
-    expect(screen.getByText(/Thought for 1s/)).toBeDefined();
-  });
-
-  it("falls back to durationMs for legacy rows that have no reasoning data", () => {
+  it("uses durationMs when the turn is finalized", () => {
     render(
       <TurnStatsBar turnMessages={EMPTY} stats={{ durationMs: 42_000 }} />,
     );

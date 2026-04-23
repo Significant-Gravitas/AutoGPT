@@ -17,20 +17,14 @@ function formatLocalDate(iso: string): string {
 }
 
 /**
- * Prefer live elapsedSeconds while streaming. Once the turn is finalized use
- * reasoningDurationMs when the backend recorded actual reasoning time — it
- * excludes tool execution, which the user perceives as dead time. Fall back
- * to the whole-turn wall clock for legacy rows that never had a
- * reasoningDurationMs recorded.
+ * Prefer live elapsedSeconds while streaming; fall back to the persisted
+ * whole-turn durationMs afterwards.
  */
 function resolveDisplaySeconds(
   elapsedSeconds: number | undefined,
   stats: TurnStats | undefined,
 ): number | undefined {
   if (elapsedSeconds !== undefined && elapsedSeconds > 0) return elapsedSeconds;
-  if (stats?.reasoningDurationMs && stats.reasoningDurationMs > 0) {
-    return Math.max(1, Math.round(stats.reasoningDurationMs / 1000));
-  }
   if (stats?.durationMs && stats.durationMs > 0) {
     return Math.round(stats.durationMs / 1000);
   }

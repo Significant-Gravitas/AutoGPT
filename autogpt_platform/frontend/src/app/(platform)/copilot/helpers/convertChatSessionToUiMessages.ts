@@ -3,7 +3,6 @@ import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
 export interface TurnStats {
   durationMs?: number;
-  reasoningDurationMs?: number;
   createdAt?: string;
 }
 
@@ -16,7 +15,6 @@ interface SessionChatMessage {
   tool_calls: unknown[] | null;
   sequence: number | null;
   duration_ms: number | null;
-  reasoning_duration_ms: number | null;
   created_at: string | null;
 }
 
@@ -49,10 +47,6 @@ function coerceSessionChatMessages(
         sequence: typeof msg.sequence === "number" ? msg.sequence : null,
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
-        reasoning_duration_ms:
-          typeof msg.reasoning_duration_ms === "number"
-            ? msg.reasoning_duration_ms
-            : null,
         // The API mutator transforms ISO strings to Date objects before
         // the data reaches here, so accept both string and Date.
         created_at:
@@ -314,11 +308,6 @@ export function convertChatSessionMessagesToUiMessages(
       if (msg.duration_ms != null) {
         patchStats(prevUI.id, { durationMs: msg.duration_ms });
       }
-      if (msg.reasoning_duration_ms != null) {
-        patchStats(prevUI.id, {
-          reasoningDurationMs: msg.reasoning_duration_ms,
-        });
-      }
       return;
     }
 
@@ -338,9 +327,6 @@ export function convertChatSessionMessagesToUiMessages(
     if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
       patch.durationMs = msg.duration_ms;
-    }
-    if (uiRole === "assistant" && msg.reasoning_duration_ms != null) {
-      patch.reasoningDurationMs = msg.reasoning_duration_ms;
     }
     if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });

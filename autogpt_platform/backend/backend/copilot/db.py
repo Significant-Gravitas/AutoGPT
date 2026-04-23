@@ -10,7 +10,6 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
-    ChatMessageUpdateInput,
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
@@ -619,13 +618,8 @@ async def update_message_content_by_sequence(
         return False
 
 
-async def set_turn_duration(
-    session_id: str,
-    duration_ms: int,
-    reasoning_duration_ms: int | None = None,
-) -> None:
-    """Set durationMs (and optionally reasoningDurationMs) on the last
-    assistant message in a session.
+async def set_turn_duration(session_id: str, duration_ms: int) -> None:
+    """Set durationMs on the last assistant message in a session.
 
     Updates the Redis cache in-place instead of invalidating it.
     Invalidation would delete the key, creating a window where concurrent
@@ -638,12 +632,9 @@ async def set_turn_duration(
         order={"sequence": "desc"},
     )
     if last_msg:
-        data: ChatMessageUpdateInput = {"durationMs": duration_ms}
-        if reasoning_duration_ms is not None:
-            data["reasoningDurationMs"] = reasoning_duration_ms
         await PrismaChatMessage.prisma().update(
             where={"id": last_msg.id},
-            data=data,
+            data={"durationMs": duration_ms},
         )
         # Update cache in-place rather than invalidating to avoid a
         # race window where the empty cache gets re-populated with
@@ -653,7 +644,5 @@ async def set_turn_duration(
             for msg in reversed(session.messages):
                 if msg.role == "assistant":
                     msg.duration_ms = duration_ms
-                    if reasoning_duration_ms is not None:
-                        msg.reasoning_duration_ms = reasoning_duration_ms
                     break
             await cache_chat_session(session)

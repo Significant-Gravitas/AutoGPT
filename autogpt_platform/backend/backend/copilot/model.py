@@ -72,7 +72,6 @@ class ChatMessage(BaseModel):
     function_call: dict | None = None
     sequence: int | None = None
     duration_ms: int | None = None
-    reasoning_duration_ms: int | None = None
     created_at: datetime | None = None
 
     @staticmethod
@@ -88,7 +87,6 @@ class ChatMessage(BaseModel):
             function_call=_parse_json_field(prisma_message.functionCall),
             sequence=prisma_message.sequence,
             duration_ms=prisma_message.durationMs,
-            reasoning_duration_ms=prisma_message.reasoningDurationMs,
             created_at=prisma_message.createdAt,
         )
 

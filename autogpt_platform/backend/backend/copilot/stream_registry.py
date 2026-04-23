@@ -224,34 +224,6 @@ Used by `publish_chunk` to avoid refreshing on every single chunk
 _META_TTL_REFRESH_INTERVAL = 60  # seconds
 
 
-async def _record_reasoning_event(
-    session_id: str,
-    chunk: "StreamReasoningStart | StreamReasoningEnd",
-) -> None:
-    """Accumulate actual model reasoning time in the session meta hash.
-
-    Called from ``publish_chunk`` for reasoning-start/end events so the final
-    ``set_turn_duration`` can distinguish pure thinking time from overall
-    wall-clock time (which includes tool execution).
-    """
-    redis = await get_redis_async()
-    meta_key = _get_session_meta_key(session_id)
-    if isinstance(chunk, StreamReasoningStart):
-        await redis.hset(meta_key, "reasoning_started_at", str(time.time()))  # type: ignore[misc]
-        return
-
-    started_at_raw = await redis.hget(meta_key, "reasoning_started_at")  # type: ignore[misc]
-    if not started_at_raw:
-        return
-    try:
-        started_at = float(started_at_raw)
-    except (ValueError, TypeError):
-        return
-    elapsed_ms = max(0, int((time.time() - started_at) * 1000))
-    await redis.hincrby(meta_key, "reasoning_ms_total", elapsed_ms)  # type: ignore[misc]
-    await redis.hdel(meta_key, "reasoning_started_at")  # type: ignore[misc]
-
-
 async def publish_chunk(
     turn_id: str,
     chunk: StreamBaseResponse,
@@ -276,14 +248,6 @@ async def publish_chunk(
     chunk_type = type(chunk).__name__
     chunk_json = chunk.model_dump_json()
     message_id = "0-0"
-
-    if session_id and isinstance(chunk, (StreamReasoningStart, StreamReasoningEnd)):
-        try:
-            await _record_reasoning_event(session_id, chunk)
-        except Exception as e:
-            logger.warning(
-                "Failed to record reasoning timing for %s: %s", session_id, e
-            )
 
     # Build log metadata
     log_meta = {
@@ -906,11 +870,10 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # Compute wall-clock duration from session created_at and snapshot the
-    # accumulated reasoning time.  Only persist when the session completed
-    # successfully and created_at was actually present in Redis meta.
+    # Compute wall-clock duration from session created_at.  Only persist when
+    # the session completed successfully and created_at was actually present
+    # in Redis meta (not a fallback).
     duration_ms: int | None = None
-    reasoning_duration_ms: int | None = None
     if meta and not error_message:
         created_at_raw = meta.get("created_at")
         if created_at_raw:
@@ -926,35 +889,11 @@ async def mark_session_completed(
                     session_id,
                     created_at_raw,
                 )
-        reasoning_raw = meta.get("reasoning_ms_total")
-        if reasoning_raw:
-            try:
-                reasoning_duration_ms = max(0, int(reasoning_raw))
-            except (ValueError, TypeError):
-                logger.warning(
-                    "Failed to parse reasoning_ms_total for %s (value=%r)",
-                    session_id,
-                    reasoning_raw,
-                )
-
-    # Reset per-turn reasoning tracking so the next turn in this session
-    # starts from zero. Both fields live on the session-scoped meta hash,
-    # so without this they accumulate across turns.
-    try:
-        await redis.hdel(meta_key, "reasoning_ms_total", "reasoning_started_at")  # type: ignore[misc]
-    except RedisError as e:
-        logger.warning(
-            f"Failed to reset reasoning counters for session {session_id}: {e}"
-        )
 
     # Persist duration on the last assistant message
     if duration_ms is not None:
         try:
-            await chat_db().set_turn_duration(
-                session_id,
-                duration_ms,
-                reasoning_duration_ms=reasoning_duration_ms,
-            )
+            await chat_db().set_turn_duration(session_id, duration_ms)
         except Exception as e:
             logger.warning(f"Failed to save turn duration for {session_id}: {e}")
 
