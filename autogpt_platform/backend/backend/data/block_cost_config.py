@@ -170,6 +170,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GROK_4_20_MULTI_AGENT: 5,
     LlmModel.GROK_CODE_FAST_1: 1,
     LlmModel.KIMI_K2: 1,
+    LlmModel.KIMI_K2_0905: 1,
+    LlmModel.KIMI_K2_5: 1,
+    LlmModel.KIMI_K2_6: 2,
+    LlmModel.KIMI_K2_THINKING: 2,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
     # Z.ai (Zhipu) models
