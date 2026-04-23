@@ -63,3 +63,61 @@ def test_bannerbear_base_cost_is_three_credits():
     block = BannerbearTextOverlayBlock()
     cost, _ = block_usage_cost(block, {})
     assert cost == 3
+
+
+def test_e2b_sandbox_blocks_have_two_credit_floor():
+    from backend.blocks.code_executor import (
+        ExecuteCodeBlock,
+        ExecuteCodeStepBlock,
+        InstantiateCodeSandboxBlock,
+    )
+    from backend.integrations.credentials_store import e2b_credentials
+
+    creds = {
+        "credentials": {
+            "id": e2b_credentials.id,
+            "provider": e2b_credentials.provider,
+            "type": e2b_credentials.type,
+        }
+    }
+    for block_cls in (
+        ExecuteCodeBlock,
+        InstantiateCodeSandboxBlock,
+        ExecuteCodeStepBlock,
+    ):
+        cost, _ = block_usage_cost(block_cls(), creds)
+        assert cost == 2, f"{block_cls.__name__} floor must be 2 credits, got {cost}"
+
+
+def test_fal_video_generator_has_ten_credit_floor():
+    from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
+    from backend.integrations.credentials_store import fal_credentials
+
+    cost, _ = block_usage_cost(
+        AIVideoGeneratorBlock(),
+        {
+            "credentials": {
+                "id": fal_credentials.id,
+                "provider": fal_credentials.provider,
+                "type": fal_credentials.type,
+            }
+        },
+    )
+    assert cost == 10
+
+
+def test_transcribe_youtube_has_one_credit_tooling_floor():
+    from backend.blocks.youtube import TranscribeYoutubeVideoBlock
+    from backend.integrations.credentials_store import webshare_proxy_credentials
+
+    cost, _ = block_usage_cost(
+        TranscribeYoutubeVideoBlock(),
+        {
+            "credentials": {
+                "id": webshare_proxy_credentials.id,
+                "provider": webshare_proxy_credentials.provider,
+                "type": webshare_proxy_credentials.type,
+            }
+        },
+    )
+    assert cost == 1
