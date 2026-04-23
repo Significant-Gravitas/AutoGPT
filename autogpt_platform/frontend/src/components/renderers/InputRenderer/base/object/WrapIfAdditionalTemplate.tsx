@@ -54,7 +54,10 @@ export default function WrapIfAdditionalTemplate(
 
   const keyId = `${id}-key`;
   const generateObjectPropertyTitleId = (id: string, label: string) => {
-    return id.replace(`_${label}`, `_#_${label}`);
+    // Use a regex anchored to the end to avoid corrupting IDs when one key
+    // is a prefix of another (e.g. 'PR-Title' vs 'PR-Title-test') (#9884)
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return id.replace(new RegExp(`_${escaped}$`), `_#_${label}`);
   };
   const title_id = generateObjectPropertyTitleId(id, label);
 
