@@ -10,7 +10,7 @@ import pytest
 
 from backend.util.exceptions import LinkAlreadyExistsError
 
-from ...platform_api import LinkTokenResult
+from ...bot_backend import LinkTokenResult
 from .commands import _handle_help, _handle_setup, _handle_unlink
 
 

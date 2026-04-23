@@ -30,7 +30,7 @@ bot/
 ├── app.py              # CoPilotChatBridge(AppService), adapter factory, outbound @expose RPC
 ├── config.py           # Shared (platform-agnostic) config
 ├── handler.py          # Core logic: routing, linking, batched streaming
-├── platform_api.py     # Thin facade over PlatformLinkingManagerClient + stream_registry
+├── bot_backend.py     # Thin facade over PlatformLinkingManagerClient + stream_registry
 ├── text.py             # Text splitting + batch formatting
 ├── threads.py          # Redis-backed thread subscription tracking
 └── adapters/
@@ -51,7 +51,7 @@ that decides which adapters to instantiate based on which tokens are set.
 2. Adapter's `on_message` handler fires, constructs a `MessageContext`, passes
    it to the shared `MessageHandler`
 3. Handler:
-   - Checks if the user/server is linked (via `platform_api`)
+   - Checks if the user/server is linked (via `bot_backend`)
    - If not linked → sends a "Link Account" button prompt
    - If linked → creates a thread (for channels) or uses the existing thread/DM
    - Marks the thread as subscribed in Redis (7-day TTL)

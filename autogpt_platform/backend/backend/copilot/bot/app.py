@@ -20,8 +20,8 @@ from backend.util.settings import Settings
 from .adapters.base import PlatformAdapter
 from .adapters.discord import config as discord_config
 from .adapters.discord.adapter import DiscordAdapter
+from .bot_backend import BotBackend
 from .handler import MessageHandler
-from .platform_api import PlatformAPI
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class CoPilotChatBridge(AppService):
         super().run_service()
 
     async def _run_adapters(self) -> None:
-        api = PlatformAPI()
+        api = BotBackend()
         adapters = _build_adapters(api)
 
         if not adapters:
@@ -142,7 +142,7 @@ class CoPilotChatBridgeClient(AppServiceClient):
     send_dm = endpoint_to_async(CoPilotChatBridge.send_dm)
 
 
-def _build_adapters(api: PlatformAPI) -> list[PlatformAdapter]:
+def _build_adapters(api: BotBackend) -> list[PlatformAdapter]:
     """Instantiate adapters based on which platform tokens are configured."""
     adapters: list[PlatformAdapter] = []
     if discord_config.get_bot_token():

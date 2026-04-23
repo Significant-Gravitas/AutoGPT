@@ -18,8 +18,8 @@ from backend.util.exceptions import (
 
 from . import threads
 from .adapters.base import MessageContext, PlatformAdapter
+from .bot_backend import BotBackend
 from .config import SESSION_TTL
-from .platform_api import PlatformAPI
 from .text import format_batch, split_at_boundary
 
 logger = logging.getLogger(__name__)
@@ -40,7 +40,7 @@ class TargetState:
 
 
 class MessageHandler:
-    def __init__(self, api: PlatformAPI):
+    def __init__(self, api: BotBackend):
         self._api = api
         self._targets: dict[str, TargetState] = {}
 

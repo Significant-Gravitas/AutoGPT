@@ -11,7 +11,7 @@ from typing import Optional
 import discord
 from discord import app_commands
 
-from backend.copilot.bot.platform_api import PlatformAPI
+from backend.copilot.bot.bot_backend import BotBackend
 
 from ..base import ChannelType, MessageCallback, MessageContext, PlatformAdapter
 from . import commands, config
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class DiscordAdapter(PlatformAdapter):
-    def __init__(self, api: PlatformAPI):
+    def __init__(self, api: BotBackend):
         intents = discord.Intents.default()
         intents.message_content = True
         # AutoPilot output is untrusted w.r.t. mentions — suppress @everyone,
@@ -79,7 +79,9 @@ class DiscordAdapter(PlatformAdapter):
     async def send_message(self, channel_id: str, text: str) -> None:
         channel = await self._resolve_channel(channel_id)
         if channel and isinstance(channel, discord.abc.Messageable):
-            await channel.send(text)
+            # tts=False is the default but we pin it explicitly — AutoPilot
+            # output is untrusted and should never blast through voice.
+            await channel.send(text, tts=False)
 
     async def send_link(
         self, channel_id: str, text: str, link_label: str, link_url: str
@@ -95,7 +97,7 @@ class DiscordAdapter(PlatformAdapter):
                 url=link_url,
             )
         )
-        await channel.send(text, view=view)
+        await channel.send(text, view=view, tts=False)
 
     async def send_reply(
         self, channel_id: str, text: str, reply_to_message_id: str
@@ -105,9 +107,9 @@ class DiscordAdapter(PlatformAdapter):
             return
         try:
             msg = await channel.fetch_message(int(reply_to_message_id))
-            await msg.reply(text)
+            await msg.reply(text, tts=False)
         except discord.NotFound:
-            await channel.send(text)
+            await channel.send(text, tts=False)
 
     async def send_ephemeral(self, channel_id: str, user_id: str, text: str) -> None:
         # Ephemeral messages are only possible via interaction responses.

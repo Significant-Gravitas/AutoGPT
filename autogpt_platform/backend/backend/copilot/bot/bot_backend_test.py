@@ -18,13 +18,13 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 
-from .platform_api import PlatformAPI
+from .bot_backend import BotBackend
 
 
 @pytest.fixture
-def api() -> PlatformAPI:
-    with patch("backend.copilot.bot.platform_api.get_platform_linking_manager_client"):
-        instance = PlatformAPI()
+def api() -> BotBackend:
+    with patch("backend.copilot.bot.bot_backend.get_platform_linking_manager_client"):
+        instance = BotBackend()
     # Swap in a MagicMock whose RPC methods are AsyncMocks — simpler than
     # patching each call site.
     instance._client = MagicMock()
@@ -33,7 +33,7 @@ def api() -> PlatformAPI:
 
 class TestResolve:
     @pytest.mark.asyncio
-    async def test_resolve_server(self, api: PlatformAPI):
+    async def test_resolve_server(self, api: BotBackend):
         api._client.resolve_server_link = AsyncMock(
             return_value=ResolveResponse(linked=True)
         )
@@ -42,7 +42,7 @@ class TestResolve:
         api._client.resolve_server_link.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_resolve_user(self, api: PlatformAPI):
+    async def test_resolve_user(self, api: BotBackend):
         api._client.resolve_user_link = AsyncMock(
             return_value=ResolveResponse(linked=False)
         )
@@ -52,7 +52,7 @@ class TestResolve:
 
 class TestCreateLinkTokens:
     @pytest.mark.asyncio
-    async def test_create_server_link_token(self, api: PlatformAPI):
+    async def test_create_server_link_token(self, api: BotBackend):
         api._client.create_server_link_token = AsyncMock(
             return_value=LinkTokenResponse(
                 token="abc",
@@ -72,7 +72,7 @@ class TestCreateLinkTokens:
 
     @pytest.mark.asyncio
     async def test_create_server_link_token_propagates_already_exists(
-        self, api: PlatformAPI
+        self, api: BotBackend
     ):
         api._client.create_server_link_token = AsyncMock(
             side_effect=LinkAlreadyExistsError("already linked")
@@ -87,7 +87,7 @@ class TestCreateLinkTokens:
             )
 
     @pytest.mark.asyncio
-    async def test_create_user_link_token(self, api: PlatformAPI):
+    async def test_create_user_link_token(self, api: BotBackend):
         api._client.create_user_link_token = AsyncMock(
             return_value=LinkTokenResponse(
                 token="xyz",
@@ -103,7 +103,7 @@ class TestCreateLinkTokens:
 
 class TestStreamChat:
     @pytest.mark.asyncio
-    async def test_yields_text_deltas_and_terminates_on_finish(self, api: PlatformAPI):
+    async def test_yields_text_deltas_and_terminates_on_finish(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
@@ -119,11 +119,11 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.platform_api.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
-                "backend.copilot.bot.platform_api.stream_registry.unsubscribe_from_session",
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
         ):
@@ -140,7 +140,7 @@ class TestStreamChat:
         assert captured_session_ids == ["sess"]
 
     @pytest.mark.asyncio
-    async def test_surfaces_stream_error(self, api: PlatformAPI):
+    async def test_surfaces_stream_error(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
@@ -149,11 +149,11 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.platform_api.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
-                "backend.copilot.bot.platform_api.stream_registry.unsubscribe_from_session",
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
         ):
@@ -166,7 +166,7 @@ class TestStreamChat:
         assert any("executor crashed" in c for c in chunks)
 
     @pytest.mark.asyncio
-    async def test_duplicate_message_propagates(self, api: PlatformAPI):
+    async def test_duplicate_message_propagates(self, api: BotBackend):
         api._client.start_chat_turn = AsyncMock(
             side_effect=DuplicateChatMessageError("in flight")
         )
@@ -178,7 +178,7 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_session_not_found_propagates(self, api: PlatformAPI):
+    async def test_session_not_found_propagates(self, api: BotBackend):
         api._client.start_chat_turn = AsyncMock(
             side_effect=NotFoundError("session gone")
         )
@@ -193,17 +193,17 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_yields_error(self, api: PlatformAPI):
+    async def test_subscribe_returns_none_yields_error(self, api: BotBackend):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         with (
             patch(
-                "backend.copilot.bot.platform_api.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "backend.copilot.bot.platform_api.stream_registry.unsubscribe_from_session",
+                "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",
                 new=AsyncMock(),
             ),
         ):

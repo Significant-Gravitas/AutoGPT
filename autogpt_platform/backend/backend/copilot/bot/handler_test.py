@@ -6,14 +6,14 @@ import pytest
 
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .adapters.base import MessageContext
+from .adapters.base import ChannelType, MessageContext
+from .bot_backend import LinkTokenResult, ResolveResult
 from .handler import MessageHandler, TargetState
-from .platform_api import LinkTokenResult, ResolveResult
 
 
 def _ctx(
     *,
-    channel_type: str = "channel",
+    channel_type: ChannelType = "channel",
     server_id: str | None = "guild-1",
     channel_id: str = "chan-1",
     message_id: str = "msg-1",
@@ -23,7 +23,7 @@ def _ctx(
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
-        channel_type=channel_type,  # type: ignore[arg-type]
+        channel_type=channel_type,
         server_id=server_id,
         channel_id=channel_id,
         message_id=message_id,

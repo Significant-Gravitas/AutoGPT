@@ -10,14 +10,14 @@ import logging
 import discord
 from discord import app_commands
 
-from backend.copilot.bot.platform_api import PlatformAPI
+from backend.copilot.bot.bot_backend import BotBackend
 from backend.util.exceptions import LinkAlreadyExistsError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 
-def register(tree: app_commands.CommandTree, api: PlatformAPI) -> None:
+def register(tree: app_commands.CommandTree, api: BotBackend) -> None:
     """Register all slash commands on the given CommandTree."""
 
     @tree.command(
@@ -39,7 +39,7 @@ def register(tree: app_commands.CommandTree, api: PlatformAPI) -> None:
         await _handle_unlink(interaction)
 
 
-async def _handle_setup(interaction: discord.Interaction, api: PlatformAPI) -> None:
+async def _handle_setup(interaction: discord.Interaction, api: BotBackend) -> None:
     if interaction.guild is None:
         await interaction.response.send_message(
             "This command can only be used in a server. "

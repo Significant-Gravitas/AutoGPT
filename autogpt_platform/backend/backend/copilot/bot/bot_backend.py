@@ -1,4 +1,10 @@
-"""Bot-side facade over `PlatformLinkingManagerClient` + `stream_registry`."""
+"""Bot-side facade over `PlatformLinkingManagerClient` + `stream_registry`.
+
+The `BotBackend` class is the bot's single entry point into the AutoGPT
+backend — it wraps the linking RPC client and the copilot stream registry
+behind plain string-typed methods. Adapters import this directly so the
+discord/telegram/slack code never touches Pyro / Redis Streams plumbing.
+"""
 
 import asyncio
 import logging
@@ -28,11 +34,11 @@ STREAM_CHUNK_TIMEOUT_SECONDS = 120
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "BotBackend",
     "DuplicateChatMessageError",
     "LinkAlreadyExistsError",
     "LinkTokenResult",
     "NotFoundError",
-    "PlatformAPI",
     "ResolveResult",
 ]
 
@@ -49,7 +55,7 @@ class LinkTokenResult:
     expires_at: str
 
 
-class PlatformAPI:
+class BotBackend:
     """Bot-side linking + chat operations, routed over cluster-internal RPC."""
 
     def __init__(self):
