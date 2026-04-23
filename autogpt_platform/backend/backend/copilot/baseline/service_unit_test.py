@@ -10,9 +10,11 @@ import pytest
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.baseline.service import (
+    _BUDGET_EXHAUSTED_FALLBACK_TEXT,
     _baseline_conversation_updater,
     _baseline_llm_caller,
     _BaselineStreamState,
+    _budget_exhausted_notice_text,
     _build_cached_system_message,
     _compress_session_messages,
     _extract_cache_creation_tokens,
@@ -2078,3 +2080,28 @@ class TestSupportsPromptCacheMarkers:
         """Regression guard: OpenAI/Grok/Gemini still 400 on
         ``cache_control``, so the widened gate must keep them out."""
         assert _supports_prompt_cache_markers(model) is False
+
+
+class TestBudgetExhaustedNoticeText:
+    """Tests for the fallback-notice decision used when the tool-round
+    budget is exhausted without a natural finish."""
+
+    def test_empty_text_returns_fallback(self):
+        assert _budget_exhausted_notice_text("") == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+    def test_whitespace_only_returns_fallback(self):
+        """A string of only whitespace is still "no visible response"."""
+        assert (
+            _budget_exhausted_notice_text("   \n\t  ")
+            == _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        )
+
+    def test_non_empty_text_returns_none(self):
+        """When the model already summarised, stay quiet — no extra notice."""
+        assert _budget_exhausted_notice_text("Here is what I did...") is None
+
+    def test_fallback_text_is_user_facing(self):
+        """Guard against accidentally shipping an empty / internal string."""
+        assert _BUDGET_EXHAUSTED_FALLBACK_TEXT.strip()
+        assert "tool-call budget" in _BUDGET_EXHAUSTED_FALLBACK_TEXT
+        assert "follow-up" in _BUDGET_EXHAUSTED_FALLBACK_TEXT

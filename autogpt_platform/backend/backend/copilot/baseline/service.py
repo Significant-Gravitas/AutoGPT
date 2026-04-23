@@ -131,6 +131,26 @@ _LAST_ITERATION_HINT = (
     "what remains, and how the user can continue the work in the next turn."
 )
 
+# Fallback surfaced when the tool-round budget is exhausted *and* the forced-
+# text last round left the user with zero visible response.
+_BUDGET_EXHAUSTED_FALLBACK_TEXT = (
+    "Reached the tool-call budget for this turn. "
+    "Send a follow-up message to continue from here."
+)
+
+
+def _budget_exhausted_notice_text(assistant_text: str) -> str | None:
+    """Return the fallback notice when a budget-exhausted turn produced no
+    visible text, or ``None`` when the model already summarised itself.
+
+    Factored out so callers can unit-test the decision without the
+    surrounding async streaming machinery.
+    """
+    if assistant_text.strip():
+        return None
+    return _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
 # Max seconds to wait for transcript upload in the finally block before
 # letting it continue as a background task (tracked in _background_tasks).
 _TRANSCRIPT_UPLOAD_TIMEOUT_S = 5
@@ -1914,14 +1934,8 @@ async def stream_chat_completion_baseline(
                 "ending turn gracefully",
                 loop_result.iterations,
             )
-            # Fallback notice only when the forced-text last round left the
-            # user with zero visible response — otherwise the model's own
-            # summary is the explanation and a canned note is just noise.
-            if not state.assistant_text.strip():
-                terminal_text = (
-                    "Reached the tool-call budget for this turn. "
-                    "Send a follow-up message to continue from here."
-                )
+            terminal_text = _budget_exhausted_notice_text(state.assistant_text)
+            if terminal_text is not None:
                 block_id = str(uuid.uuid4())
                 yield StreamTextStart(id=block_id)
                 yield StreamTextDelta(id=block_id, delta=terminal_text)
