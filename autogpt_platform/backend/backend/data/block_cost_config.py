@@ -785,9 +785,17 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
+    # Apollo Search blocks: bill per returned record. Blocks already emit
+    # provider_cost=float(len(people/organizations)) with
+    # provider_cost_type="items" via merge_stats, so ITEMS multiplies the
+    # count by cost_amount post-flight. Pre-flight returns 0 (unknown
+    # result count). enrich_info=True doubles the provider-side unit cost
+    # (email enrichment), so we bill 2cr/person vs 1cr/person.
     SearchOrganizationsBlock: [
         BlockCost(
-            cost_amount=2,
+            cost_amount=1,
+            cost_type=BlockCostType.ITEMS,
+            cost_divisor=2,
             cost_filter={
                 "credentials": {
                     "id": apollo_credentials.id,
@@ -799,9 +807,10 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     ],
     SearchPeopleBlock: [
         BlockCost(
-            cost_amount=10,
+            cost_amount=2,
+            cost_type=BlockCostType.ITEMS,
             cost_filter={
-                "enrich_info": False,
+                "enrich_info": True,
                 "credentials": {
                     "id": apollo_credentials.id,
                     "provider": apollo_credentials.provider,
@@ -810,9 +819,10 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=20,
+            cost_amount=1,
+            cost_type=BlockCostType.ITEMS,
             cost_filter={
-                "enrich_info": True,
+                "enrich_info": False,
                 "credentials": {
                     "id": apollo_credentials.id,
                     "provider": apollo_credentials.provider,
