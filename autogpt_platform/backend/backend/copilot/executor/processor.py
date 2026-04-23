@@ -35,10 +35,10 @@ SHUTDOWN_ERROR_MESSAGE = (
     "Copilot executor shut down before this turn finished. Please retry."
 )
 
-# Max time execute() blocks after calling future.cancel() / when draining a
-# soon-to-be-cancelled future. Gives _execute_async's own finally a chance to
-# publish the accurate terminal state over the Redis CAS; long enough to let
-# an in-flight Redis call settle, short enough that shutdown doesn't stall.
+# How long to wait before logging again that a cancelled turn is still draining.
+# The worker must not return while the async turn is still alive; returning early
+# would let the manager ACK/NACK the message and release the session lock while
+# the cancelled coroutine can still write to the stream.
 _CANCEL_GRACE_SECONDS = 5.0
 
 # Max time the sync safety net itself spends on a single Redis CAS. Without
@@ -336,8 +336,7 @@ class CoPilotProcessor:
 
         Thin wrapper around :meth:`_execute`. The ``try/finally`` here
         guarantees :func:`sync_fail_close_session` runs on every exit
-        path — normal completion, exception, or a wedged event loop
-        that escapes via :data:`_CANCEL_GRACE_SECONDS` timeout.
+        path — normal completion or exception.
         ``mark_session_completed`` is an atomic CAS on
         ``status == "running"``, so when the async path already wrote a
         terminal state the sync call is a cheap no-op.
@@ -370,40 +369,69 @@ class CoPilotProcessor:
         that lives in :func:`sync_fail_close_session` which the outer
         :meth:`execute` always invokes on exit.
         """
+        task_ready: concurrent.futures.Future[asyncio.Task] = (
+            concurrent.futures.Future()
+        )
+
+        async def run_async_turn():
+            task = asyncio.current_task()
+            if task is not None and not task_ready.done():
+                task_ready.set_result(task)
+            return await self._execute_async(entry, cancel, cluster_lock, log)
+
         future = asyncio.run_coroutine_threadsafe(
-            self._execute_async(entry, cancel, cluster_lock, log),
+            run_async_turn(),
             self.execution_loop,
         )
 
-        # Wait for completion, checking cancel periodically
-        while not future.done():
+        cancel_requested = False
+        cancel_started_at: float | None = None
+        last_cancel_log_at: float | None = None
+
+        def request_cancel() -> None:
+            nonlocal cancel_requested, cancel_started_at, last_cancel_log_at
+            log.info("Cancellation requested")
+            try:
+                task = task_ready.result(timeout=0)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+            else:
+                self.execution_loop.call_soon_threadsafe(task.cancel)
+            cancel_requested = True
+            cancel_started_at = time.monotonic()
+            last_cancel_log_at = cancel_started_at
+
+        def log_cancel_wait() -> None:
+            nonlocal last_cancel_log_at
+            if cancel_started_at is None or last_cancel_log_at is None:
+                return
+            now = time.monotonic()
+            if now - last_cancel_log_at < _CANCEL_GRACE_SECONDS:
+                return
+            elapsed = now - cancel_started_at
+            log.warning(
+                "Waiting for cancelled turn to drain " f"({elapsed:.1f}s elapsed)"
+            )
+            last_cancel_log_at = now
+
+        # Wait for completion, checking cancel periodically. A cancellation
+        # request must not make this worker return until the async task has
+        # actually stopped; otherwise the manager would release the per-session
+        # lock while the coroutine can still publish late stream events.
+        while True:
             try:
                 future.result(timeout=1.0)
-            except asyncio.TimeoutError:
-                if cancel.is_set():
-                    log.info("Cancellation requested")
-                    future.cancel()
-                    # Give _execute_async's own finally a short window to
-                    # publish its accurate terminal state before the outer
-                    # sync safety net fires.
-                    try:
-                        future.result(timeout=_CANCEL_GRACE_SECONDS)
-                    except BaseException:
-                        pass
+                return
+            except concurrent.futures.CancelledError:
+                if cancel_requested or cancel.is_set():
                     return
-                cluster_lock.refresh()
-
-        if not future.cancelled():
-            # Bounded timeout so a wedged event loop can't trap us here —
-            # on timeout we escape to execute()'s finally and the sync
-            # safety net fires.
-            try:
-                future.result(timeout=_CANCEL_GRACE_SECONDS)
+                raise
             except concurrent.futures.TimeoutError:
-                log.warning(
-                    "Future did not complete within grace window; "
-                    "falling through to sync fail-close"
-                )
+                if cancel.is_set() and not cancel_requested:
+                    request_cancel()
+                elif cancel_requested and cancel_started_at is not None:
+                    log_cancel_wait()
+                cluster_lock.refresh()
 
     async def _execute_async(
         self,

@@ -1,9 +1,9 @@
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
 import { ReasoningCollapse } from "../ReasoningCollapse";
 
 vi.mock("@phosphor-icons/react", () => ({
-  ChatCircleDotsIcon: ({ className }: { className?: string }) => (
+  LightbulbIcon: ({ className }: { className?: string }) => (
     <span data-testid="reasoning-icon" className={className} />
   ),
 }));
@@ -13,26 +13,28 @@ describe("ReasoningCollapse", () => {
     cleanup();
   });
 
-  it("renders the 'Reasoning:' label with its children inline", () => {
+  it("renders a collapsed 'Reasoning' trigger with a bulb icon", () => {
     render(
       <ReasoningCollapse>
         <span data-testid="reasoning-body">secret thoughts</span>
       </ReasoningCollapse>,
     );
 
-    expect(screen.getByText("Reasoning:")).toBeDefined();
-    // No longer collapsible — children are always in the DOM.
-    expect(screen.getByTestId("reasoning-body")).toBeDefined();
+    expect(screen.getByRole("button", { name: /reasoning/i })).toBeDefined();
     expect(screen.getByTestId("reasoning-icon")).toBeDefined();
+    // Collapsed by default: content should not be visible.
+    expect(screen.queryByTestId("reasoning-body")).toBeNull();
   });
 
-  it("has no toggle button (component is always inline)", () => {
+  it("reveals the reasoning body when the trigger is clicked", async () => {
     render(
       <ReasoningCollapse>
-        <span>body</span>
+        <span data-testid="reasoning-body">secret thoughts</span>
       </ReasoningCollapse>,
     );
 
-    expect(screen.queryByRole("button")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /reasoning/i }));
+
+    expect(await screen.findByTestId("reasoning-body")).toBeDefined();
   });
 });
