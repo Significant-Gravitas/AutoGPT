@@ -10,6 +10,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageUpdateInput,
     ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
@@ -637,12 +638,12 @@ async def set_turn_duration(
         order={"sequence": "desc"},
     )
     if last_msg:
-        data: dict[str, int] = {"durationMs": duration_ms}
+        data: ChatMessageUpdateInput = {"durationMs": duration_ms}
         if reasoning_duration_ms is not None:
             data["reasoningDurationMs"] = reasoning_duration_ms
         await PrismaChatMessage.prisma().update(
             where={"id": last_msg.id},
-            data=data,  # type: ignore[arg-type]
+            data=data,
         )
         # Update cache in-place rather than invalidating to avoid a
         # race window where the empty cache gets re-populated with

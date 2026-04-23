@@ -72,14 +72,9 @@ export function TurnStatsBar({
             timeLabel
           ))}
         {!hasTime && localTime && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="cursor-default text-[11px] tabular-nums text-neutral-500">
-                {localTime}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top">{localTime}</TooltipContent>
-          </Tooltip>
+          <span className="text-[11px] tabular-nums text-neutral-500">
+            {localTime}
+          </span>
         )}
         {counters.map(function renderCounter(counter, index) {
           const needsDot = index > 0 || hasTime || !!localTime;
