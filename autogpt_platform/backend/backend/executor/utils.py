@@ -184,6 +184,26 @@ def block_usage_cost(
     return 0, {}
 
 
+def matched_block_cost_type(
+    block: Block, input_data: BlockInput
+) -> BlockCostType | None:
+    """Return the BlockCostType of the first ``BLOCK_COSTS`` entry matching input.
+
+    Post-flight billing paths (``handle_post_execution_billing``) must know
+    whether a block is billed dynamically from stats — for dynamic types
+    (``TOKENS``/``COST_USD``/``ITEMS``) the reconciliation step settles all
+    LLM calls via aggregated stats, so per-iteration ``charge_extra_runtime_cost``
+    would double-charge.
+    """
+    block_costs = BLOCK_COSTS.get(type(block))
+    if not block_costs:
+        return None
+    for block_cost in block_costs:
+        if _is_cost_filter_match(block_cost.cost_filter, input_data):
+            return block_cost.cost_type
+    return None
+
+
 def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:
     if run_time > 0:
         return run_time

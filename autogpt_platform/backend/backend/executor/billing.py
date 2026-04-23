@@ -3,7 +3,7 @@ import logging
 from typing import TYPE_CHECKING, Any, cast
 
 from backend.blocks import get_block
-from backend.blocks._base import Block
+from backend.blocks._base import Block, BlockCostType
 from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
@@ -31,7 +31,20 @@ from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel
 from backend.util.settings import Settings
 
-from .utils import LogMetadata, block_usage_cost, execution_usage_cost
+from .utils import (
+    LogMetadata,
+    block_usage_cost,
+    execution_usage_cost,
+    matched_block_cost_type,
+)
+
+# BlockCostType values whose real cost is derived post-flight from
+# ``NodeExecutionStats`` (aggregated across all LLM calls). Per-iteration
+# charging via ``charge_extra_runtime_cost`` would double-bill these because
+# reconciliation already covers every iteration.
+_DYNAMIC_COST_TYPES = frozenset(
+    {BlockCostType.TOKENS, BlockCostType.COST_USD, BlockCostType.ITEMS}
+)
 
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerClient
@@ -394,6 +407,13 @@ async def handle_post_execution_billing(
         else 0
     )
     if extra_iterations <= 0:
+        return
+
+    # Dynamic-cost blocks (TOKENS/COST_USD/ITEMS) settle every iteration via
+    # aggregate stats in charge_reconciled_usage, so per-iteration billing here
+    # would double-charge. Skip the flat extra-runtime fee for those.
+    cost_type = matched_block_cost_type(cast(Block, node.block), node_exec.inputs)
+    if cost_type in _DYNAMIC_COST_TYPES:
         return
 
     try:
