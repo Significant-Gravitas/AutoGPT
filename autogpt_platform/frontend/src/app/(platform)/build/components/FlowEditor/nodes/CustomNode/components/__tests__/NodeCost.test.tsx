@@ -67,9 +67,7 @@ describe("NodeCost", () => {
   it("renders /item for ITEMS with divisor<=1", () => {
     render(
       <NodeCost
-        blockCosts={[
-          cost({ cost_type: BlockCostType.items, cost_amount: 10 }),
-        ]}
+        blockCosts={[cost({ cost_type: BlockCostType.items, cost_amount: 10 })]}
         nodeId="n1"
       />,
     );
@@ -128,6 +126,32 @@ describe("NodeCost", () => {
     );
     expect(screen.getByText(/~\$1\.50/)).toBeTruthy();
     expect(screen.getByText(/\/run/)).toBeTruthy();
+  });
+
+  it("renders /byte suffix for BYTE cost type", () => {
+    render(
+      <NodeCost
+        blockCosts={[cost({ cost_type: BlockCostType.byte, cost_amount: 1 })]}
+        nodeId="n1"
+      />,
+    );
+    expect(screen.getByText(/\/byte/)).toBeTruthy();
+  });
+
+  it("falls back to /<raw> suffix for unknown cost type", () => {
+    render(
+      <NodeCost
+        blockCosts={[
+          cost({
+            // Simulate a future enum value not handled by the switch.
+            cost_type: "experimental" as unknown as BlockCostType,
+            cost_amount: 99,
+          }),
+        ]}
+        nodeId="n1"
+      />,
+    );
+    expect(screen.getByText(/\/experimental/)).toBeTruthy();
   });
 
   it("returns null when no matching blockCost found", () => {
