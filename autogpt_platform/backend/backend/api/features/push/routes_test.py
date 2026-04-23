@@ -132,6 +132,30 @@ def test_subscribe_push_missing_endpoint():
     assert response.status_code == 422
 
 
+def test_subscribe_push_rejects_empty_crypto_keys():
+    response = client.post(
+        "/subscribe",
+        json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/abc123",
+            "keys": {"p256dh": "", "auth": ""},
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_subscribe_push_rejects_oversized_endpoint():
+    response = client.post(
+        "/subscribe",
+        json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/" + "x" * 3000,
+            "keys": {"p256dh": "k", "auth": "a"},
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_unsubscribe_push(mocker, test_user_id):
     mock_delete = mocker.patch(
         "backend.api.features.push.routes.delete_push_subscription",

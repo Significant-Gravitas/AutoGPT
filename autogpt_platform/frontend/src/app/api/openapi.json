@@ -14485,10 +14485,18 @@
       },
       "PushSubscribeRequest": {
         "properties": {
-          "endpoint": { "type": "string", "title": "Endpoint" },
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint"
+          },
           "keys": { "$ref": "#/components/schemas/PushSubscriptionKeys" },
           "user_agent": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "anyOf": [
+              { "type": "string", "maxLength": 512 },
+              { "type": "null" }
+            ],
             "title": "User Agent"
           }
         },
@@ -14498,15 +14506,32 @@
       },
       "PushSubscriptionKeys": {
         "properties": {
-          "p256dh": { "type": "string", "title": "P256Dh" },
-          "auth": { "type": "string", "title": "Auth" }
+          "p256dh": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "P256Dh"
+          },
+          "auth": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Auth"
+          }
         },
         "type": "object",
         "required": ["p256dh", "auth"],
         "title": "PushSubscriptionKeys"
       },
       "PushUnsubscribeRequest": {
-        "properties": { "endpoint": { "type": "string", "title": "Endpoint" } },
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint"
+          }
+        },
         "type": "object",
         "required": ["endpoint"],
         "title": "PushUnsubscribeRequest"

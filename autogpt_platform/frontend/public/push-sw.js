@@ -154,6 +154,7 @@ self.addEventListener("pushsubscriptionchange", function (event) {
         if (!newSub) return;
         return fetch("/api/proxy/api/push/subscribe", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             endpoint: newSub.endpoint,
