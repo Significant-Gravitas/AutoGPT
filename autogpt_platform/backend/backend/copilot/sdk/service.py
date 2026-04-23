@@ -3104,6 +3104,12 @@ async def stream_chat_completion_sdk(
 
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
+    # Parent Langfuse span for the turn — created so that the
+    # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
+    # attach to even though it fires after the SDK-emitted spans end.
+    # ``propagate_attributes`` alone doesn't create a span, so without this
+    # wrapper ``get_current_trace_id()`` returns None at the finally block.
+    _lf_span: Any = None
     skip_transcript_upload = False
     has_history = len(session.messages) > 1
     transcript_content: str = ""
@@ -3408,6 +3414,16 @@ async def stream_chat_completion_sdk(
         }
         if _user_tier:
             _otel_metadata["subscription_tier"] = _user_tier.value
+
+        # Open a Langfuse parent span so the trace_id is observable from
+        # the finally block — ``propagate_attributes`` only annotates an
+        # existing span, it does not create one.
+        try:
+            _lf_span = get_client().start_as_current_span(name="copilot-sdk-turn")
+            _lf_span.__enter__()
+        except Exception:
+            logger.debug("Failed to open Langfuse parent span", exc_info=True)
+            _lf_span = None
 
         _otel_ctx = propagate_attributes(
             user_id=user_id,
@@ -4089,6 +4105,10 @@ async def stream_chat_completion_sdk(
             except Exception:
                 logger.debug("Failed to set OTEL cost attributes", exc_info=True)
             try:
+                # Capture from our Langfuse parent span — the SDK-emitted
+                # spans have already ended by the finally block, so
+                # ``get_current_trace_id()`` would return None without a
+                # parent span we control.
                 langfuse_trace_id = get_client().get_current_trace_id()
             except Exception:
                 logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
@@ -4096,6 +4116,11 @@ async def stream_chat_completion_sdk(
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
+        if _lf_span is not None:
+            try:
+                _lf_span.__exit__(*sys.exc_info())
+            except Exception:
+                logger.warning("Langfuse parent span teardown failed", exc_info=True)
 
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
