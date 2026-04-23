@@ -50,6 +50,7 @@ from backend.integrations.creds_manager import (
 from backend.integrations.managed_credentials import (
     ensure_managed_credential,
     ensure_managed_credentials,
+    get_managed_provider,
 )
 from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
 from backend.integrations.managed_providers.ayrshare import (
@@ -264,6 +265,17 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
+    # Providers with auto_provision=False opt out of the startup sweep, so a
+    # provider-scoped lookup is the signal to provision their managed cred.
+    # Without this, opening a block that uses the provider shows an empty
+    # dropdown until the user manually triggers provisioning.
+    managed_provider = get_managed_provider(provider)
+    if (
+        managed_provider is not None
+        and not managed_provider.auto_provision
+        and await managed_provider.is_available()
+    ):
+        await ensure_managed_credential(user_id, creds_manager.store, managed_provider)
     asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
