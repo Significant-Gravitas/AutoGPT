@@ -121,11 +121,10 @@ logger = logging.getLogger(__name__)
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-# Maximum number of tool-call rounds before forcing a text response.
-_MAX_TOOL_ROUNDS = 100
-
 # Hint appended on the last tool round so the model wraps up with a summary
-# instead of issuing another tool call that gets cut off cold.
+# instead of issuing another tool call that gets cut off cold. The shared
+# ``tool_call_loop`` drops ``tools`` on the last iteration (see util/tool_call_loop.py),
+# so the model is forced to produce text and always finishes naturally.
 _LAST_ITERATION_HINT = (
     "You have reached the tool-call budget for this turn. Do not call any "
     "more tools — produce a final text response summarizing what you did, "
@@ -1752,13 +1751,14 @@ async def stream_chat_completion_baseline(
         # but the holder is typed non-optional after the preflight guard
         # above.
         try:
+            max_tool_rounds = config.claude_agent_max_turns
             async for loop_result in tool_call_loop(
                 messages=openai_messages,
                 tools=tools,
                 llm_call=_bound_llm_caller,
                 execute_tool=_bound_tool_executor,
                 update_conversation=_bound_conversation_updater,
-                max_iterations=_MAX_TOOL_ROUNDS,
+                max_iterations=max_tool_rounds,
                 last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
@@ -1780,7 +1780,7 @@ async def stream_chat_completion_baseline(
                 # get picked up at the start of the next turn.
                 is_final_yield = (
                     loop_result.finished_naturally
-                    or loop_result.iterations >= _MAX_TOOL_ROUNDS
+                    or loop_result.iterations >= max_tool_rounds
                 )
                 if is_final_yield:
                     continue
@@ -1903,14 +1903,16 @@ async def stream_chat_completion_baseline(
         await loop_task
         loop_result = loop_result_holder[0]
         if loop_result and not loop_result.finished_naturally:
-            limit_msg = (
-                f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
-                "without a final response."
-            )
-            logger.error("[Baseline] %s", limit_msg)
-            yield StreamError(
-                errorText=limit_msg,
-                code="baseline_tool_round_limit",
+            # Budget reached without a natural finish.  ``tool_call_loop``
+            # drops ``tools`` on the last iteration so the model is forced
+            # to produce text, but a non-compliant model (or one whose final
+            # text-only response still got truncated) can still land here.
+            # End the turn gracefully — the user already saw streamed output
+            # and a red error would just prompt them to retry the same work.
+            logger.warning(
+                "[Baseline] Hit %d-round tool budget without natural finish; "
+                "ending turn gracefully",
+                loop_result.iterations,
             )
     except Exception as e:
         _stream_error = True
