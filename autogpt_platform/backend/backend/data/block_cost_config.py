@@ -1,3 +1,4 @@
+import math
 from typing import TYPE_CHECKING, Type
 
 from pydantic import BaseModel
@@ -341,8 +342,6 @@ def compute_token_credits(
     model has no TOKEN_COST entry or stats haven't been populated yet
     (pre-flight). Callers in block_usage_cost handle the TOKENS branch.
     """
-    import math
-
     if stats is None:
         # Pre-flight — use the flat MODEL_COST entry as an estimate.
         raw_model = input_data.get("model")
