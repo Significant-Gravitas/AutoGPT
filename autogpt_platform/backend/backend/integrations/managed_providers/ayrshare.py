@@ -48,6 +48,12 @@ logger = logging.getLogger(__name__)
 class AyrshareManagedProvider(ManagedCredentialProvider):
     provider_name = "ayrshare"
 
+    # Opt out of the startup sweep — each Ayrshare profile counts against
+    # our subscription quota, so we only provision when the user actually
+    # opens a block that needs it (triggered by the builder's per-provider
+    # ``GET /{provider}/credentials`` call).
+    auto_provision = False
+
     async def is_available(self) -> bool:
         """Both Ayrshare org-level secrets must be configured."""
         return settings_available()

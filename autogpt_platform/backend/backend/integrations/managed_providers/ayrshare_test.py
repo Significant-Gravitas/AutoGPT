@@ -44,10 +44,11 @@ class TestIsAvailable:
             mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
             assert await AyrshareManagedProvider().is_available() is False
 
-    def test_auto_provision_defaults_on(self):
-        """Ayrshare rides the standard ensure_managed_credentials sweep so the
-        managed credential appears in the block UI without a manual trigger."""
-        assert AyrshareManagedProvider.auto_provision is True
+    def test_auto_provision_opt_out(self):
+        """Ayrshare opts out of the startup sweep — per-user Ayrshare profiles
+        count against our subscription quota, so we only provision when the
+        user explicitly clicks the builder's SSO flow."""
+        assert AyrshareManagedProvider.auto_provision is False
 
 
 class TestSettingsAvailable:
