@@ -639,6 +639,27 @@ class ExecutionProcessor:
             node, node_exec, execution_stats, status, log_metadata
         )
 
+        # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
+        # are aggregated and persisted — otherwise the reconciled delta never
+        # lands in `graph_stats.cost` or the persisted node stats. RUN-only
+        # blocks produce a zero delta; dynamic types (SECOND/ITEMS/COST_USD/
+        # TOKENS) settle their post-flight charge or refund here. Dry runs
+        # skip reconciliation so simulation never touches the user's wallet.
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+                db_client=db_client,
+            )
+            if not node_exec.execution_context.dry_run:
+                reconciled_delta, _ = await billing.charge_reconciled_usage(
+                    node_exec=node_exec,
+                    stats=execution_stats,
+                )
+                if reconciled_delta != 0:
+                    execution_stats.extra_cost += reconciled_delta
+
         graph_stats, graph_stats_lock = graph_stats_pair
         with graph_stats_lock:
             graph_stats.node_count += 1 + execution_stats.extra_steps
@@ -664,24 +685,6 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
-
-        # Log platform cost if system credentials were used (only on success)
-        if status == ExecutionStatus.COMPLETED:
-            await log_system_credential_cost(
-                node_exec=node_exec,
-                block=node.block,
-                stats=execution_stats,
-                db_client=db_client,
-            )
-            # Charge the dynamic portion (walltime, items, USD, tokens) for
-            # blocks whose BLOCK_COSTS entry uses a dynamic cost type. RUN-only
-            # blocks produce a zero delta here and incur no extra work. Skipped
-            # for dry runs so simulation never touches the user's wallet.
-            if not node_exec.execution_context.dry_run:
-                await billing.charge_reconciled_usage(
-                    node_exec=node_exec,
-                    stats=execution_stats,
-                )
 
         # If the node failed because a nested tool charge raised IBE,
         # send the user notification so they understand why the run stopped.
