@@ -35,8 +35,8 @@ function resolveDisplaySeconds(
 }
 
 /**
- * Swap label between "Thought for X" and the formatted date on hover or click.
- * Hover = transient preview (desktop). Click = sticky toggle (touch).
+ * Swap "Thought for X" → the formatted date while the cursor is over the
+ * label; revert on mouse leave.  Pure hover, no click toggle.
  */
 function TimeLabel({
   displaySeconds,
@@ -46,7 +46,6 @@ function TimeLabel({
   localDate: string | null;
 }) {
   const [hovered, setHovered] = useState(false);
-  const [clicked, setClicked] = useState(false);
   const labelText = `Thought for ${formatElapsed(displaySeconds)}`;
 
   if (!localDate) {
@@ -57,22 +56,19 @@ function TimeLabel({
     );
   }
 
-  const showDate = hovered || clicked;
   return (
-    <button
-      type="button"
-      onClick={() => setClicked((c) => !c)}
+    <span
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="cursor-pointer text-[11px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-700"
+      className="cursor-default text-[11px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-700"
     >
       <span
-        key={showDate ? "date" : "label"}
+        key={hovered ? "date" : "label"}
         className="inline-block duration-200 animate-in fade-in"
       >
-        {showDate ? localDate : labelText}
+        {hovered ? localDate : labelText}
       </span>
-    </button>
+    </span>
   );
 }
 
