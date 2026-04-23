@@ -3321,7 +3321,7 @@ async def stream_chat_completion_sdk(
             "fallback_model": _resolve_fallback_model(),
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
-            "max_turns": config.claude_agent_max_turns,
+            "max_turns": config.agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
         }

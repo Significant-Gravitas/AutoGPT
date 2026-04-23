@@ -1751,7 +1751,7 @@ async def stream_chat_completion_baseline(
         # but the holder is typed non-optional after the preflight guard
         # above.
         try:
-            max_tool_rounds = config.claude_agent_max_turns
+            max_tool_rounds = config.agent_max_turns
             async for loop_result in tool_call_loop(
                 messages=openai_messages,
                 tools=tools,
