@@ -294,8 +294,9 @@ model ChatMessage {
   functionCall Json? // Deprecated but kept for compatibility
 
   // Ordering within session
-  sequence   Int
-  durationMs Int? // Wall-clock milliseconds for this assistant turn
+  sequence            Int
+  durationMs          Int? // Wall-clock milliseconds for this assistant turn
+  reasoningDurationMs Int? // Milliseconds the model spent inside reasoning blocks
 
   @@unique([sessionId, sequence])
 }

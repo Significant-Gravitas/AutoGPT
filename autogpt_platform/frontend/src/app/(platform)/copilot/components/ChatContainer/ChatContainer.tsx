@@ -40,6 +40,10 @@ export interface ChatContainerProps {
   onDroppedFilesConsumed?: () => void;
   /** Duration in ms for historical turns, keyed by message ID. */
   historicalDurations?: Map<string, number>;
+  /** Pure reasoning-time in ms for historical turns, keyed by message ID. */
+  historicalReasoningDurations?: Map<string, number>;
+  /** Server-issued message timestamps (ISO 8601), keyed by message ID. */
+  messageTimestamps?: Map<string, string>;
 }
 export const ChatContainer = ({
   messages,
@@ -63,6 +67,8 @@ export const ChatContainer = ({
   droppedFiles,
   onDroppedFilesConsumed,
   historicalDurations,
+  historicalReasoningDurations,
+  messageTimestamps,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
@@ -117,6 +123,8 @@ export const ChatContainer = ({
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
                 historicalDurations={historicalDurations}
+                historicalReasoningDurations={historicalReasoningDurations}
+                messageTimestamps={messageTimestamps}
                 queuedMessages={queuedMessages}
               />
               <motion.div

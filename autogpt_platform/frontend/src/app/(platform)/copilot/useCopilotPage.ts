@@ -56,6 +56,8 @@ export function useCopilotPage() {
     hydratedMessages,
     rawSessionMessages,
     historicalDurations,
+    historicalReasoningDurations,
+    messageTimestamps,
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,
@@ -88,13 +90,38 @@ export function useCopilotPage() {
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
-  const { pagedMessages, hasMore, isLoadingMore, loadMore } =
-    useLoadMoreMessages({
-      sessionId,
-      initialOldestSequence: oldestSequence,
-      initialHasMore: hasMoreMessages,
-      initialPageRawMessages: rawSessionMessages,
-    });
+  const {
+    pagedMessages,
+    pagedDurations,
+    pagedReasoningDurations,
+    pagedTimestamps,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+  } = useLoadMoreMessages({
+    sessionId,
+    initialOldestSequence: oldestSequence,
+    initialHasMore: hasMoreMessages,
+    initialPageRawMessages: rawSessionMessages,
+  });
+
+  const combinedDurations = useMemo(() => {
+    const merged = new Map<string, number>(pagedDurations);
+    historicalDurations?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedDurations, historicalDurations]);
+
+  const combinedReasoningDurations = useMemo(() => {
+    const merged = new Map<string, number>(pagedReasoningDurations);
+    historicalReasoningDurations?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedReasoningDurations, historicalReasoningDurations]);
+
+  const combinedTimestamps = useMemo(() => {
+    const merged = new Map<string, string>(pagedTimestamps);
+    messageTimestamps?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedTimestamps, messageTimestamps]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated synchronously on every render so it always reflects the latest
@@ -492,7 +519,9 @@ export function useCopilotPage() {
     handleConfirmDelete,
     handleCancelDelete,
     // Historical durations for persisted timer stats
-    historicalDurations,
+    historicalDurations: combinedDurations,
+    historicalReasoningDurations: combinedReasoningDurations,
+    messageTimestamps: combinedTimestamps,
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,

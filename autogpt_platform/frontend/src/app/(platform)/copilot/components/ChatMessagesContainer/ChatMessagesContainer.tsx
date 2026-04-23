@@ -46,6 +46,8 @@ interface Props {
   onLoadMore?: () => void;
   onRetry?: () => void;
   historicalDurations?: Map<string, number>;
+  historicalReasoningDurations?: Map<string, number>;
+  messageTimestamps?: Map<string, string>;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
 }
@@ -257,6 +259,8 @@ export function ChatMessagesContainer({
   onLoadMore,
   onRetry,
   historicalDurations,
+  historicalReasoningDurations,
+  messageTimestamps,
   queuedMessages,
 }: Props) {
   // Hide the container for one frame when messages first load so
@@ -442,6 +446,10 @@ export function ChatMessagesContainer({
                         : undefined
                     }
                     durationMs={historicalDurations?.get(message.id)}
+                    reasoningDurationMs={historicalReasoningDurations?.get(
+                      message.id,
+                    )}
+                    timestamp={messageTimestamps?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (

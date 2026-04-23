@@ -8,6 +8,8 @@ interface SessionChatMessage {
   tool_calls: unknown[] | null;
   sequence: number | null;
   duration_ms: number | null;
+  reasoning_duration_ms: number | null;
+  created_at: string | null;
 }
 
 function coerceSessionChatMessages(
@@ -39,6 +41,11 @@ function coerceSessionChatMessages(
         sequence: typeof msg.sequence === "number" ? msg.sequence : null,
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
+        reasoning_duration_ms:
+          typeof msg.reasoning_duration_ms === "number"
+            ? msg.reasoning_duration_ms
+            : null,
+        created_at: typeof msg.created_at === "string" ? msg.created_at : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -167,6 +174,8 @@ export function convertChatSessionMessagesToUiMessages(
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   durations: Map<string, number>;
+  reasoningDurations: Map<string, number>;
+  timestamps: Map<string, string>;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -188,6 +197,8 @@ export function convertChatSessionMessagesToUiMessages(
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
   const durations = new Map<string, number>();
+  const reasoningDurations = new Map<string, number>();
+  const timestamps = new Map<string, string>();
 
   messages.forEach((msg, idx) => {
     if (msg.role === "tool") return;
@@ -287,6 +298,9 @@ export function convertChatSessionMessagesToUiMessages(
       if (msg.duration_ms != null) {
         durations.set(prevUI.id, msg.duration_ms);
       }
+      if (msg.reasoning_duration_ms != null) {
+        reasoningDurations.set(prevUI.id, msg.reasoning_duration_ms);
+      }
       return;
     }
 
@@ -302,10 +316,16 @@ export function convertChatSessionMessagesToUiMessages(
       parts,
     });
 
+    if (msg.created_at) {
+      timestamps.set(msgId, msg.created_at);
+    }
     if (uiRole === "assistant" && msg.duration_ms != null) {
       durations.set(msgId, msg.duration_ms);
     }
+    if (uiRole === "assistant" && msg.reasoning_duration_ms != null) {
+      reasoningDurations.set(msgId, msg.reasoning_duration_ms);
+    }
   });
 
-  return { messages: uiMessages, durations };
+  return { messages: uiMessages, durations, reasoningDurations, timestamps };
 }

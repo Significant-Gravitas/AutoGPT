@@ -112,6 +112,8 @@ export function CopilotPage() {
     handleCancelDelete,
     // Historical durations for persisted timer stats
     historicalDurations,
+    historicalReasoningDurations,
+    messageTimestamps,
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,
@@ -224,6 +226,8 @@ export function CopilotPage() {
               droppedFiles={droppedFiles}
               onDroppedFilesConsumed={handleDroppedFilesConsumed}
               historicalDurations={historicalDurations}
+              historicalReasoningDurations={historicalReasoningDurations}
+              messageTimestamps={messageTimestamps}
             />
           </div>
         </div>

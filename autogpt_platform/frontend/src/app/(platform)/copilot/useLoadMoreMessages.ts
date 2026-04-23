@@ -82,19 +82,33 @@ export function useLoadMoreMessages({
   // are matched across inter-page boundaries.
   // Include initial page tool outputs so older paged pages can match
   // tool calls whose outputs landed in the initial page.
-  const pagedMessages: UIMessage<unknown, UIDataTypes, UITools>[] =
-    useMemo(() => {
-      if (!sessionId || pagedRawMessages.length === 0) return [];
-      const extraToolOutputs =
-        initialPageRawMessages.length > 0
-          ? extractToolOutputsFromRaw(initialPageRawMessages)
-          : undefined;
-      return convertChatSessionMessagesToUiMessages(
-        sessionId,
-        pagedRawMessages,
-        { isComplete: true, extraToolOutputs },
-      ).messages;
-    }, [sessionId, pagedRawMessages, initialPageRawMessages]);
+  const {
+    messages: pagedMessages,
+    durations: pagedDurations,
+    reasoningDurations: pagedReasoningDurations,
+    timestamps: pagedTimestamps,
+  } = useMemo((): {
+    messages: UIMessage<unknown, UIDataTypes, UITools>[];
+    durations: Map<string, number>;
+    reasoningDurations: Map<string, number>;
+    timestamps: Map<string, string>;
+  } => {
+    if (!sessionId || pagedRawMessages.length === 0)
+      return {
+        messages: [],
+        durations: new Map(),
+        reasoningDurations: new Map(),
+        timestamps: new Map(),
+      };
+    const extraToolOutputs =
+      initialPageRawMessages.length > 0
+        ? extractToolOutputsFromRaw(initialPageRawMessages)
+        : undefined;
+    return convertChatSessionMessagesToUiMessages(sessionId, pagedRawMessages, {
+      isComplete: true,
+      extraToolOutputs,
+    });
+  }, [sessionId, pagedRawMessages, initialPageRawMessages]);
 
   async function loadMore() {
     if (!sessionId || !hasMore || isLoadingMoreRef.current) return;
@@ -159,5 +173,13 @@ export function useLoadMoreMessages({
     }
   }
 
-  return { pagedMessages, hasMore, isLoadingMore, loadMore };
+  return {
+    pagedMessages,
+    pagedDurations,
+    pagedReasoningDurations,
+    pagedTimestamps,
+    hasMore,
+    isLoadingMore,
+    loadMore,
+  };
 }

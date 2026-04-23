@@ -26,7 +26,9 @@ vi.mock("nuqs", () => ({
 vi.mock("../helpers/convertChatSessionToUiMessages", () => ({
   convertChatSessionMessagesToUiMessages: vi.fn(() => ({
     messages: [],
-    historicalDurations: new Map(),
+    durations: new Map(),
+    reasoningDurations: new Map(),
+    timestamps: new Map(),
   })),
 }));
 
