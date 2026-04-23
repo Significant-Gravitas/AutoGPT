@@ -450,3 +450,25 @@ class TestAutocompactPctOverrideConfigurable:
             result = build_sdk_env(model="moonshotai/kimi-k2.6")
 
         assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+    def test_pct_override_rejects_out_of_range(self):
+        """Pydantic bounds (ge=0, le=100) prevent invalid percentages so the
+        env var never receives garbage."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_autocompact_pct_override=101)
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_autocompact_pct_override=-1)
+
+    def test_override_set_when_model_is_none(self):
+        """When build_sdk_env is called without a resolved model (e.g. very
+        early init paths), default to setting the env var — Anthropic-default
+        behaviour is the safe choice since most non-Moonshot routes benefit."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=None)
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"

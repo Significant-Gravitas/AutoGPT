@@ -1060,6 +1060,35 @@ class TestCompactionTargetTokens:
             mock_cfg.claude_agent_autocompact_pct_override = 1
             assert _compaction_target_tokens("anthropic/foo") == 10_000
 
+    def test_resolve_env_model_prefers_moonshot_fallback(self) -> None:
+        """When the primary is Anthropic and the fallback is Moonshot, the
+        env-gate model resolves to the fallback so a 529-triggered swap to
+        Kimi still suppresses ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``."""
+        from backend.copilot.sdk.service import _resolve_env_model
+
+        assert (
+            _resolve_env_model("anthropic/claude-sonnet-4-6", "moonshotai/kimi-k2.6")
+            == "moonshotai/kimi-k2.6"
+        )
+
+    def test_resolve_env_model_keeps_primary_when_fallback_anthropic(self) -> None:
+        from backend.copilot.sdk.service import _resolve_env_model
+
+        assert (
+            _resolve_env_model(
+                "anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-3-5"
+            )
+            == "anthropic/claude-sonnet-4-6"
+        )
+
+    def test_resolve_env_model_keeps_primary_when_no_fallback(self) -> None:
+        from backend.copilot.sdk.service import _resolve_env_model
+
+        assert (
+            _resolve_env_model("anthropic/claude-sonnet-4-6", None)
+            == "anthropic/claude-sonnet-4-6"
+        )
+
     @pytest.mark.asyncio
     async def test_reduce_context_uses_runtime_model_for_target(self) -> None:
         """Compactor LLM is fixed (Sonnet) but target must be sized for the
