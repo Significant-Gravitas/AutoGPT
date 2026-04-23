@@ -210,7 +210,7 @@ class TestConfigDefaults:
 
     def test_max_turns_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_turns == 50
+        assert cfg.claude_agent_max_turns == 100
 
     def test_max_budget_usd_default(self):
         cfg = _make_config()
