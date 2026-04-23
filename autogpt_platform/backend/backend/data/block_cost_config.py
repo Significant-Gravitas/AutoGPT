@@ -34,6 +34,7 @@ from backend.blocks.enrichlayer.linkedin import (
 from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
+from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.fact_checker import FactCheckerBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -66,6 +67,7 @@ from backend.blocks.smartlead.campaign import (
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
+from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.blocks.zerobounce.validate_emails import ValidateEmailsBlock
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
@@ -90,6 +92,7 @@ from backend.integrations.credentials_store import (
     smartlead_credentials,
     unreal_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
     zerobounce_credentials,
 )
 
@@ -234,28 +237,98 @@ class TokenRate(BaseModel):
 # current credit-to-USD conversion (1 credit ≈ $0.01), with a 1.5x margin
 # over the published provider price.
 TOKEN_COST: dict[LlmModel, TokenRate] = {
-    # Anthropic Claude 4.6 Opus: $15/1M input, $75/1M output, $1.50/1M cache
-    # read, $18.75/1M cache write (docs.anthropic.com/en/docs/about-claude/pricing).
-    LlmModel.CLAUDE_4_6_OPUS: TokenRate(
-        input=2250, output=11250, cache_read=225, cache_creation=2810
+    # Anthropic Opus ($15/$75/$1.50/$18.75 per 1M).
+    LlmModel.CLAUDE_4_1_OPUS: TokenRate(
+        input=2250, output=11250, cache_read=225, cache_creation=2812
     ),
-    # Claude 4.6 Sonnet: $3/$15/$0.30/$3.75.
+    LlmModel.CLAUDE_4_OPUS: TokenRate(
+        input=2250, output=11250, cache_read=225, cache_creation=2812
+    ),
+    LlmModel.CLAUDE_4_6_OPUS: TokenRate(
+        input=2250, output=11250, cache_read=225, cache_creation=2812
+    ),
+    LlmModel.CLAUDE_4_5_OPUS: TokenRate(
+        input=2250, output=11250, cache_read=225, cache_creation=2812
+    ),
+    # Anthropic Sonnet ($3/$15/$0.30/$3.75).
+    LlmModel.CLAUDE_4_SONNET: TokenRate(
+        input=450, output=2250, cache_read=45, cache_creation=562
+    ),
     LlmModel.CLAUDE_4_6_SONNET: TokenRate(
         input=450, output=2250, cache_read=45, cache_creation=562
     ),
-    # Claude 4.5 Haiku: $0.80/$4/$0.08/$1.
+    LlmModel.CLAUDE_4_5_SONNET: TokenRate(
+        input=450, output=2250, cache_read=45, cache_creation=562
+    ),
+    # Anthropic Haiku ($0.80/$4/$0.08/$1).
     LlmModel.CLAUDE_4_5_HAIKU: TokenRate(
         input=120, output=600, cache_read=12, cache_creation=150
     ),
-    # GPT-5: $2.50/1M input, $10/1M output (openai.com/api/pricing).
+    LlmModel.CLAUDE_3_HAIKU: TokenRate(input=37, output=187),
+    # OpenAI
+    LlmModel.GPT5_2: TokenRate(input=600, output=2400),
+    LlmModel.GPT5_1: TokenRate(input=450, output=1800),
     LlmModel.GPT5: TokenRate(input=375, output=1500),
     LlmModel.GPT5_MINI: TokenRate(input=22, output=90),
     LlmModel.GPT5_NANO: TokenRate(input=7, output=30),
+    LlmModel.GPT5_CHAT: TokenRate(input=375, output=1500),
     LlmModel.GPT4O: TokenRate(input=375, output=1500),
     LlmModel.GPT4O_MINI: TokenRate(input=22, output=90),
-    # Gemini 2.5 Pro: $1.25/$5 input/output (cloud.google.com/vertex-ai/pricing).
+    LlmModel.GPT41: TokenRate(input=300, output=1200),
+    LlmModel.GPT41_MINI: TokenRate(input=60, output=240),
+    LlmModel.GPT4_TURBO: TokenRate(input=1500, output=4500),
+    LlmModel.O3: TokenRate(input=1500, output=6000),
+    LlmModel.O3_MINI: TokenRate(input=165, output=660),
+    LlmModel.O1: TokenRate(input=2250, output=9000),
+    LlmModel.O1_MINI: TokenRate(input=165, output=660),
+    # Google Gemini
     LlmModel.GEMINI_2_5_PRO: TokenRate(input=187, output=750),
+    LlmModel.GEMINI_2_5_PRO_PREVIEW: TokenRate(input=187, output=750),
     LlmModel.GEMINI_2_5_FLASH: TokenRate(input=11, output=45),
+    LlmModel.GEMINI_2_5_FLASH_LITE_PREVIEW: TokenRate(input=5, output=22),
+    LlmModel.GEMINI_2_0_FLASH: TokenRate(input=11, output=45),
+    LlmModel.GEMINI_2_0_FLASH_LITE: TokenRate(input=5, output=22),
+    LlmModel.GEMINI_3_1_PRO_PREVIEW: TokenRate(input=750, output=3000),
+    LlmModel.GEMINI_3_FLASH_PREVIEW: TokenRate(input=15, output=60),
+    LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: TokenRate(input=5, output=22),
+    # xAI Grok
+    LlmModel.GROK_3: TokenRate(input=450, output=2250),
+    LlmModel.GROK_4: TokenRate(input=2250, output=11250),
+    LlmModel.GROK_4_FAST: TokenRate(input=37, output=150),
+    LlmModel.GROK_4_1_FAST: TokenRate(input=37, output=150),
+    LlmModel.GROK_4_20: TokenRate(input=750, output=3000),
+    LlmModel.GROK_CODE_FAST_1: TokenRate(input=37, output=150),
+    # DeepSeek
+    LlmModel.DEEPSEEK_CHAT: TokenRate(input=40, output=165),
+    LlmModel.DEEPSEEK_R1_0528: TokenRate(input=82, output=328),
+    # Mistral
+    LlmModel.MISTRAL_LARGE_3: TokenRate(input=300, output=900),
+    LlmModel.MISTRAL_MEDIUM_3_1: TokenRate(input=405, output=1215),
+    LlmModel.MISTRAL_SMALL_3_2: TokenRate(input=15, output=45),
+    LlmModel.MISTRAL_NEMO: TokenRate(input=15, output=45),
+    LlmModel.CODESTRAL: TokenRate(input=22, output=67),
+    # Cohere
+    LlmModel.COHERE_COMMAND_R_08_2024: TokenRate(input=22, output=90),
+    LlmModel.COHERE_COMMAND_R_PLUS_08_2024: TokenRate(input=375, output=1500),
+    LlmModel.COHERE_COMMAND_A_03_2025: TokenRate(input=187, output=750),
+    # Moonshot Kimi
+    LlmModel.KIMI_K2: TokenRate(input=90, output=375),
+    LlmModel.KIMI_K2_0905: TokenRate(input=90, output=375),
+    LlmModel.KIMI_K2_5: TokenRate(input=90, output=375),
+    LlmModel.KIMI_K2_6: TokenRate(input=225, output=900),
+    LlmModel.KIMI_K2_THINKING: TokenRate(input=225, output=900),
+    # Perplexity Sonar
+    LlmModel.PERPLEXITY_SONAR: TokenRate(input=30, output=30),
+    LlmModel.PERPLEXITY_SONAR_PRO: TokenRate(input=150, output=150),
+    LlmModel.PERPLEXITY_SONAR_REASONING_PRO: TokenRate(input=150, output=750),
+    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: TokenRate(input=750, output=3750),
+    # Groq (LLama + OpenAI OSS)
+    LlmModel.LLAMA3_3_70B: TokenRate(input=88, output=118),
+    LlmModel.LLAMA3_1_8B: TokenRate(input=7, output=12),
+    LlmModel.META_LLAMA_4_SCOUT: TokenRate(input=22, output=75),
+    LlmModel.META_LLAMA_4_MAVERICK: TokenRate(input=45, output=97),
+    LlmModel.OPENAI_GPT_OSS_120B: TokenRate(input=22, output=67),
+    LlmModel.OPENAI_GPT_OSS_20B: TokenRate(input=15, output=45),
 }
 
 
@@ -309,7 +382,7 @@ LLM_COST = (
     # Anthropic Models
     [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {
@@ -326,7 +399,7 @@ LLM_COST = (
     # OpenAI Models
     + [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {
@@ -343,7 +416,7 @@ LLM_COST = (
     # Groq Models
     + [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {"id": groq_credentials.id},
@@ -356,7 +429,7 @@ LLM_COST = (
     # Open Router Models
     + [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {
@@ -373,7 +446,7 @@ LLM_COST = (
     # Llama API Models
     + [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {
@@ -390,7 +463,7 @@ LLM_COST = (
     # v0 by Vercel Models
     + [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {
@@ -407,7 +480,7 @@ LLM_COST = (
     # AI/ML Api Models
     + [
         BlockCost(
-            cost_type=BlockCostType.RUN,
+            cost_type=BlockCostType.TOKENS,
             cost_filter={
                 "model": model,
                 "credentials": {
@@ -1125,12 +1198,24 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # ClaudeCodeBlock runs an E2B sandbox (~$0.00003/sec compute) AND
-    # executes Claude Sonnet inside it. Real session cost is dominated by
-    # the LLM and varies $0.50–$2 per typical run. Flat 100 credits ($1.00)
-    # is a conservative-but-fair estimate; revisit once we expose the
-    # x-total-cost header from the in-sandbox Claude calls back to
-    # NodeExecutionStats.provider_cost.
+    # Webshare is a flat monthly proxy subscription — the per-call cost to us
+    # is effectively zero, but the transcription step itself consumes compute
+    # time we haven't otherwise charged for. 1 credit is a tooling-tax floor.
+    TranscribeYoutubeVideoBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": webshare_proxy_credentials.id,
+                    "provider": webshare_proxy_credentials.provider,
+                    "type": webshare_proxy_credentials.type,
+                }
+            },
+        )
+    ],
+    # ClaudeCodeBlock runs an E2B sandbox AND executes Claude Sonnet inside it.
+    # Real cost $0.50-$2/run; flat 100 credits is conservative until we pipe
+    # x-total-cost from the in-sandbox Claude calls into provider_cost.
     ClaudeCodeBlock: [
         BlockCost(
             cost_amount=100,
@@ -1139,6 +1224,24 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": e2b_credentials.id,
                     "provider": e2b_credentials.provider,
                     "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # Ayrshare post blocks use the @cost(...) decorator directly on each block
+    # class (see backend/blocks/ayrshare/_cost.py). They can't be listed here
+    # because post_to_*.py imports from backend.sdk, which imports from this
+    # module — registering via decorator avoids the circular import.
+    # Jina chunking: $0.02/1M tokens. Flat 1 credit floor so the block is not
+    # wallet-free; embedding/search already have their own entries.
+    JinaChunkingBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
                 }
             },
         )

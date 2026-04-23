@@ -6,8 +6,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import (
     BaseAyrshareInput,
     PinterestCarouselOption,
@@ -16,6 +18,7 @@ from ._util import (
 )
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToPinterestBlock(Block):
     """Block for posting to Pinterest with Pinterest-specific options."""
 
@@ -141,7 +144,7 @@ class PostToPinterestBlock(Block):
         # Validate alt text length
         for i, alt in enumerate(input_data.alt_text):
             if len(alt) > 500:
-                yield "error", f"Pinterest alt text {i+1} exceeds 500 character limit ({len(alt)} characters)"
+                yield "error", f"Pinterest alt text {i + 1} exceeds 500 character limit ({len(alt)} characters)"
                 return
 
         # Convert datetime to ISO format if provided

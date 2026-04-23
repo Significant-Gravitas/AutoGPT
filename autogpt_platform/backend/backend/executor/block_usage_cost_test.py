@@ -1,12 +1,24 @@
 """Tests for the dynamic-pricing branches of block_usage_cost."""
 
+import math
+
 import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
 from backend.blocks.jina.search import SearchTheWebBlock
-from backend.data.block_cost_config import BLOCK_COSTS, TOKEN_COST, TokenRate
+from backend.blocks.llm import AITextGeneratorBlock, LlmModel
+from backend.data.block_cost_config import (
+    BLOCK_COSTS,
+    MODEL_COST,
+    TOKEN_COST,
+    TokenRate,
+)
 from backend.data.model import NodeExecutionStats
 from backend.executor.utils import block_usage_cost
+from backend.integrations.credentials_store import (
+    anthropic_credentials,
+    openai_credentials,
+)
 
 
 @pytest.fixture
@@ -207,6 +219,48 @@ def test_exa_blocks_bill_cost_usd_via_sdk_config():
     # Pre-flight: unknown cost → 0.
     cost, _ = block_usage_cost(block, creds)
     assert cost == 0
+
+
+def test_llm_block_charges_per_token_post_flight():
+    """AITextGeneratorBlock with Claude 4.6 Sonnet bills by real token counts."""
+    block = AITextGeneratorBlock()
+    input_data = {
+        "model": LlmModel.CLAUDE_4_6_SONNET,
+        "credentials": {
+            "id": anthropic_credentials.id,
+            "provider": anthropic_credentials.provider,
+            "type": anthropic_credentials.type,
+        },
+    }
+    rate = TOKEN_COST[LlmModel.CLAUDE_4_6_SONNET]
+    stats = NodeExecutionStats(
+        input_token_count=200_000,
+        output_token_count=50_000,
+        cache_read_token_count=100_000,
+    )
+    expected = math.ceil(
+        (200_000 * rate.input + 50_000 * rate.output + 100_000 * rate.cache_read)
+        / 1_000_000
+    )
+    cost, _ = block_usage_cost(block, input_data, stats=stats)
+    assert cost == expected
+
+
+def test_llm_block_pre_flight_falls_back_to_model_cost():
+    """Pre-flight charge of an LLM block uses the flat MODEL_COST floor."""
+    block = AITextGeneratorBlock()
+    cost, _ = block_usage_cost(
+        block,
+        {
+            "model": LlmModel.GPT5,
+            "credentials": {
+                "id": openai_credentials.id,
+                "provider": openai_credentials.provider,
+                "type": openai_credentials.type,
+            },
+        },
+    )
+    assert cost == MODEL_COST[LlmModel.GPT5]
 
 
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):
