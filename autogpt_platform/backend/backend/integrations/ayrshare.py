@@ -25,6 +25,13 @@ class AyrshareAPIException(Exception):
 def _extract_error_message(response: Any) -> str:
     """Safely pull an error message out of an Ayrshare response.
 
+    Ayrshare surfaces errors in several shapes depending on the endpoint:
+
+    - flat:        ``{"status": "error", "message": "..."}``
+    - post errors: ``{"posts": [{"errors": [{"message": "..."}]}]}``
+      (e.g. a failed ``POST /post`` when a platform isn't linked surfaces
+      the real reason here, not at the root)
+
     Tolerates bodies that aren't a dict (list, string, malformed JSON) —
     otherwise a ``.get()`` on a list raises AttributeError and the caller
     gets a confusing generic error instead of the upstream detail.
@@ -33,9 +40,30 @@ def _extract_error_message(response: Any) -> str:
         data = response.json()
     except (json.JSONDecodeError, ValueError):
         return response.text() or "Unknown error"
-    if isinstance(data, dict):
-        return str(data.get("message") or "Unknown error")
-    return response.text() or "Unknown error"
+    if not isinstance(data, dict):
+        return response.text() or "Unknown error"
+
+    # Prefer the nested per-post error since that's where the actionable
+    # reason lives for create_post failures (e.g. "Twitter is not linked").
+    posts = data.get("posts")
+    if isinstance(posts, list):
+        for post in posts:
+            if not isinstance(post, dict):
+                continue
+            errors = post.get("errors")
+            if isinstance(errors, list):
+                messages = [
+                    str(e.get("message"))
+                    for e in errors
+                    if isinstance(e, dict) and e.get("message")
+                ]
+                if messages:
+                    return "; ".join(messages)
+
+    top = data.get("message")
+    if top:
+        return str(top)
+    return "Unknown error"
 
 
 class SocialPlatform(str, Enum):
