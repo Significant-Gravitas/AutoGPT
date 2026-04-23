@@ -45,7 +45,7 @@ def _make_settings(
 
 def _make_subscription(
     user_id: str = "user-1",
-    endpoint: str = "https://push.example.com/sub/1",
+    endpoint: str = "https://fcm.googleapis.com/fcm/send/sub/1",
     p256dh: str = "test-p256dh",
     auth: str = "test-auth",
 ) -> PushSubscriptionDTO:
@@ -191,8 +191,8 @@ class TestSendPushForUser:
         self, mocker, mock_db_client
     ):
         mocker.patch.object(push_sender, "_settings", _make_settings())
-        sub1 = _make_subscription(endpoint="https://push.example.com/sub/1")
-        sub2 = _make_subscription(endpoint="https://push.example.com/sub/2")
+        sub1 = _make_subscription(endpoint="https://fcm.googleapis.com/fcm/send/sub/1")
+        sub2 = _make_subscription(endpoint="https://fcm.googleapis.com/fcm/send/sub/2")
         mock_db_client.get_user_push_subscriptions.return_value = [sub1, sub2]
         mock_webpush = mocker.patch("backend.data.push_sender.webpush")
 
@@ -202,8 +202,8 @@ class TestSendPushForUser:
 
         calls = mock_webpush.call_args_list
         endpoints_called = [c.kwargs["subscription_info"]["endpoint"] for c in calls]
-        assert "https://push.example.com/sub/1" in endpoints_called
-        assert "https://push.example.com/sub/2" in endpoints_called
+        assert "https://fcm.googleapis.com/fcm/send/sub/1" in endpoints_called
+        assert "https://fcm.googleapis.com/fcm/send/sub/2" in endpoints_called
 
     @pytest.mark.asyncio
     async def test_webpush_called_with_correct_args(
@@ -212,7 +212,7 @@ class TestSendPushForUser:
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             p256dh="key-p256dh",
             auth="key-auth",
         )
@@ -224,7 +224,7 @@ class TestSendPushForUser:
         mock_webpush.assert_called_once()
         call_kwargs = mock_webpush.call_args.kwargs
         assert call_kwargs["subscription_info"] == {
-            "endpoint": "https://push.example.com/sub/1",
+            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
             "keys": {"p256dh": "key-p256dh", "auth": "key-auth"},
         }
         assert call_kwargs["vapid_private_key"] == "vapid-private"

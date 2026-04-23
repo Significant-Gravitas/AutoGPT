@@ -9,7 +9,7 @@ import uuid
 from pywebpush import WebPushException, webpush
 
 from backend.api.model import NotificationPayload
-from backend.data.push_subscription import PushSubscriptionDTO
+from backend.data.push_subscription import PushSubscriptionDTO, validate_push_endpoint
 from backend.util.clients import get_database_manager_async_client
 from backend.util.settings import Settings
 
@@ -74,6 +74,11 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
 
     async def _send_one(sub: PushSubscriptionDTO) -> None:
         try:
+            # Defense-in-depth: reject endpoints that somehow bypassed the
+            # subscribe-time check (rows written before the validator existed,
+            # direct DB writes, or DNS changes that shifted a trusted host to
+            # a blocked IP).
+            await validate_push_endpoint(sub.endpoint)
             await asyncio.to_thread(
                 webpush,
                 subscription_info={
@@ -84,6 +89,16 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
                 vapid_private_key=vapid_private,
                 vapid_claims=vapid_claims,
             )
+        except ValueError as e:
+            logger.warning(
+                "Refusing push to untrusted endpoint %s: %s",
+                sub.endpoint[:60],
+                e,
+            )
+            await db_client.delete_push_subscription_by_endpoint(
+                sub.user_id, sub.endpoint
+            )
+            return
         except WebPushException as e:
             status = getattr(e.response, "status_code", None) if e.response else None
             if status in (410, 404):

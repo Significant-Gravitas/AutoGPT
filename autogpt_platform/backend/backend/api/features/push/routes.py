@@ -1,8 +1,8 @@
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, requires_user
-from fastapi import APIRouter, Security
-from starlette.status import HTTP_204_NO_CONTENT
+from fastapi import APIRouter, HTTPException, Security
+from starlette.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST
 
 from backend.api.features.push.model import (
     PushSubscribeRequest,
@@ -12,6 +12,7 @@ from backend.api.features.push.model import (
 from backend.data.push_subscription import (
     delete_push_subscription,
     upsert_push_subscription,
+    validate_push_endpoint,
 )
 from backend.util.settings import Settings
 
@@ -37,6 +38,10 @@ async def subscribe_push(
     user_id: Annotated[str, Security(get_user_id)],
     body: PushSubscribeRequest,
 ) -> None:
+    try:
+        await validate_push_endpoint(body.endpoint)
+    except ValueError as e:
+        raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e))
     await upsert_push_subscription(
         user_id=user_id,
         endpoint=body.endpoint,

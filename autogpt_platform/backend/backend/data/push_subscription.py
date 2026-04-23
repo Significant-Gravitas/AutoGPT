@@ -6,7 +6,40 @@ from datetime import datetime, timezone
 from prisma.models import PushSubscription
 from pydantic import BaseModel
 
+from backend.util.request import validate_url_host
+
 logger = logging.getLogger(__name__)
+
+
+# Hostnames of legitimate Web Push services.  Endpoints submitted by
+# clients must match one of these; everything else is rejected to prevent
+# the backend (which POSTs to the stored URL via pywebpush) from being
+# used as an SSRF primitive against internal infrastructure.  Covers Chrome/
+# Edge/Brave (FCM), Firefox (Autopush), and Safari/macOS (Apple Web Push).
+_PUSH_SERVICE_HOSTNAMES: list[str] = [
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "web.push.apple.com",
+]
+
+
+async def validate_push_endpoint(endpoint: str) -> None:
+    """Ensure a push-subscription endpoint is an HTTPS URL hosted on a known
+    Web Push provider.  Raises ``ValueError`` otherwise.
+
+    Called at subscribe time and again before dispatch (defense-in-depth against
+    rows written before this check existed or via future codepaths).
+    """
+    parsed, is_trusted, _ = await validate_url_host(
+        endpoint, trusted_hostnames=_PUSH_SERVICE_HOSTNAMES
+    )
+    if parsed.scheme != "https":
+        raise ValueError("Push endpoint must use https://")
+    if not is_trusted:
+        raise ValueError(
+            f"Push endpoint host '{parsed.hostname}' is not a recognised "
+            "Web Push service"
+        )
 
 
 class PushSubscriptionDTO(BaseModel):

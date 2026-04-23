@@ -30,7 +30,7 @@ class TestUpsertPushSubscription:
 
         await push_subscription.upsert_push_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             p256dh="test-p256dh",
             auth="test-auth",
             user_agent="Mozilla/5.0",
@@ -41,12 +41,12 @@ class TestUpsertPushSubscription:
         assert call_kwargs["where"] == {
             "userId_endpoint": {
                 "userId": "user-1",
-                "endpoint": "https://push.example.com/sub/1",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
             }
         }
         assert call_kwargs["data"]["create"] == {
             "userId": "user-1",
-            "endpoint": "https://push.example.com/sub/1",
+            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
             "p256dh": "test-p256dh",
             "auth": "test-auth",
             "userAgent": "Mozilla/5.0",
@@ -65,7 +65,7 @@ class TestUpsertPushSubscription:
 
         await push_subscription.upsert_push_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             p256dh="test-p256dh",
             auth="test-auth",
         )
@@ -81,7 +81,7 @@ class TestUpsertPushSubscription:
 
         result = await push_subscription.upsert_push_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             p256dh="test-p256dh",
             auth="test-auth",
         )
@@ -94,7 +94,7 @@ class TestUpsertPushSubscription:
 
         await push_subscription.upsert_push_subscription(
             user_id="user-1",
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             p256dh="test-p256dh",
             auth="test-auth",
         )
@@ -109,13 +109,13 @@ class TestGetUserPushSubscriptions:
     async def test_returns_list_of_subscription_dtos(self, mock_prisma):
         sub1 = MagicMock(
             userId="user-1",
-            endpoint="https://push.example.com/sub/1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
             p256dh="key1",
             auth="auth1",
         )
         sub2 = MagicMock(
             userId="user-1",
-            endpoint="https://push.example.com/sub/2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/2",
             p256dh="key2",
             auth="auth2",
         )
@@ -124,8 +124,8 @@ class TestGetUserPushSubscriptions:
         result = await push_subscription.get_user_push_subscriptions("user-1")
 
         assert [r.endpoint for r in result] == [
-            "https://push.example.com/sub/1",
-            "https://push.example.com/sub/2",
+            "https://fcm.googleapis.com/fcm/send/sub/1",
+            "https://fcm.googleapis.com/fcm/send/sub/2",
         ]
         assert all(r.user_id == "user-1" for r in result)
         mock_prisma.find_many.assert_awaited_once_with(where={"userId": "user-1"})
@@ -144,13 +144,13 @@ class TestDeletePushSubscription:
     async def test_deletes_by_user_id_and_endpoint(self, mock_prisma):
         await push_subscription.delete_push_subscription(
             "user-1",
-            "https://push.example.com/sub/1",
+            "https://fcm.googleapis.com/fcm/send/sub/1",
         )
 
         mock_prisma.delete_many.assert_awaited_once_with(
             where={
                 "userId": "user-1",
-                "endpoint": "https://push.example.com/sub/1",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
             }
         )
 
@@ -160,13 +160,13 @@ class TestDeletePushSubscriptionByEndpoint:
     async def test_includes_user_id_in_where(self, mock_prisma):
         await push_subscription.delete_push_subscription_by_endpoint(
             "user-1",
-            "https://push.example.com/sub/1",
+            "https://fcm.googleapis.com/fcm/send/sub/1",
         )
 
         mock_prisma.delete_many.assert_awaited_once_with(
             where={
                 "userId": "user-1",
-                "endpoint": "https://push.example.com/sub/1",
+                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
             }
         )
 
@@ -176,21 +176,21 @@ class TestIncrementFailCount:
     async def test_includes_user_id_in_where(self, mock_prisma):
         await push_subscription.increment_fail_count(
             "user-1",
-            "https://push.example.com/sub/1",
+            "https://fcm.googleapis.com/fcm/send/sub/1",
         )
 
         mock_prisma.update_many.assert_awaited_once()
         call_kwargs = mock_prisma.update_many.call_args.kwargs
         assert call_kwargs["where"] == {
             "userId": "user-1",
-            "endpoint": "https://push.example.com/sub/1",
+            "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
         }
 
     @pytest.mark.asyncio
     async def test_increments_fail_count_by_one(self, mock_prisma):
         await push_subscription.increment_fail_count(
             "user-1",
-            "https://push.example.com/sub/1",
+            "https://fcm.googleapis.com/fcm/send/sub/1",
         )
 
         call_kwargs = mock_prisma.update_many.call_args.kwargs
@@ -200,7 +200,7 @@ class TestIncrementFailCount:
     async def test_sets_last_failed_at_to_utc_now(self, mock_prisma):
         await push_subscription.increment_fail_count(
             "user-1",
-            "https://push.example.com/sub/1",
+            "https://fcm.googleapis.com/fcm/send/sub/1",
         )
 
         call_kwargs = mock_prisma.update_many.call_args.kwargs
@@ -247,6 +247,52 @@ class TestCleanupFailedSubscriptions:
         result = await push_subscription.cleanup_failed_subscriptions()
 
         assert result == 0
+
+
+class TestValidatePushEndpoint:
+    """Endpoints from clients must land on a known Web Push service — otherwise
+    the backend can be coerced into POSTing to internal hosts (SSRF)."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://fcm.googleapis.com/fcm/send/abc",
+            "https://updates.push.services.mozilla.com/wpush/v2/xyz",
+            "https://web.push.apple.com/some-token",
+        ],
+    )
+    async def test_allows_known_push_services(self, endpoint):
+        await push_subscription.validate_push_endpoint(endpoint)
+
+    @pytest.mark.asyncio
+    async def test_rejects_http_scheme(self):
+        with pytest.raises(ValueError):
+            await push_subscription.validate_push_endpoint(
+                "http://fcm.googleapis.com/fcm/send/abc"
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "endpoint",
+        [
+            "https://localhost/evil",
+            "https://127.0.0.1/evil",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://internal-service.local/api",
+            "https://attacker.example.com/push",
+        ],
+    )
+    async def test_rejects_untrusted_hosts(self, endpoint):
+        with pytest.raises(ValueError):
+            await push_subscription.validate_push_endpoint(endpoint)
+
+    @pytest.mark.asyncio
+    async def test_rejects_non_http_scheme(self):
+        with pytest.raises(ValueError):
+            await push_subscription.validate_push_endpoint(
+                "file:///etc/passwd"
+            )
 
     @pytest.mark.asyncio
     async def test_custom_max_failures_threshold(self, mock_prisma):
