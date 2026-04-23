@@ -7,11 +7,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToXBlock(Block):
     """Block for posting to X / Twitter with Twitter-specific options."""
 

@@ -10,8 +10,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
@@ -21,6 +23,7 @@ class YouTubeVisibility(str, Enum):
     UNLISTED = "unlisted"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToYouTubeBlock(Block):
     """Block for posting to YouTube with YouTube-specific options."""
 

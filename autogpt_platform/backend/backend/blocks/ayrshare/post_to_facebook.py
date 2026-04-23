@@ -7,11 +7,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, CarouselItem, create_ayrshare_client
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToFacebookBlock(Block):
     """Block for posting to Facebook with Facebook-specific options."""
 

@@ -7,15 +7,11 @@ credentials list.  This lets every Ayrshare block declare a normal
 any other provider — no bespoke ``managed_credentials.ayrshare_profile_key``
 side channel required.
 
-**Opt-out of auto-provisioning.**  Unlike AgentMail, :meth:`is_available`
-returns ``False`` so the ``ensure_managed_credentials`` sweep *never*
-provisions Ayrshare automatically on credential-list loads — Ayrshare
-profiles count against the org subscription quota and must not be created
-for users who never touch a social-media block.  Callers who genuinely
-need to provision (currently only ``/api/integrations/ayrshare/sso_url``)
-invoke :func:`~backend.integrations.managed_credentials.ensure_managed_credential`
-with an instance of this provider, which re-uses the same distributed
-Redis lock + upsert path as AgentMail.
+Auto-provisioned by the credential-list sweep the same way AgentMail is,
+so every Ayrshare block just declares a standard ``credentials`` field
+and the managed entry appears in the builder dropdown automatically.
+Profile creation counts against the org Ayrshare subscription quota, so
+that cost is accepted at the plan level rather than gated per-user.
 
 Legacy compatibility: on first provision we migrate
 ``UserIntegrations.managed_credentials.ayrshare_profile_key`` (pre-migration
@@ -52,21 +48,8 @@ logger = logging.getLogger(__name__)
 class AyrshareManagedProvider(ManagedCredentialProvider):
     provider_name = "ayrshare"
 
-    # Opt out of the `ensure_managed_credentials` startup sweep — profile
-    # creation has real per-user quota cost.  We only provision when the
-    # user explicitly triggers the SSO flow via the `/api/integrations/
-    # ayrshare/sso_url` endpoint, which calls `ensure_managed_credential`
-    # directly and bypasses the sweep.  We stay registered in `_PROVIDERS`
-    # so `cleanup_managed_credentials` can find the provider at account-
-    # deletion time.
-    auto_provision = False
-
     async def is_available(self) -> bool:
-        """Truthful availability: both Ayrshare org secrets must be set.
-
-        The sweep skips opt-out providers via :attr:`auto_provision`, so
-        returning ``True`` here does not cause auto-provisioning.
-        """
+        """Both Ayrshare org-level secrets must be configured."""
         return settings_available()
 
     async def provision(
