@@ -68,10 +68,11 @@ export function buildUrlWithQuery(
 ): string {
   if (!query) return url;
 
-  // Filter out undefined values to prevent them from being included as "undefined" strings
+  // Filter out undefined and null values to prevent them from being included
+  // as "undefined" / "null" strings in query parameters (fixes #11237)
   const filteredQuery = Object.entries(query).reduce(
     (acc, [key, value]) => {
-      if (value !== undefined) {
+      if (value !== undefined && value !== null) {
         acc[key] = value;
       }
       return acc;

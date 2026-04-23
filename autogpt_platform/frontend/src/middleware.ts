@@ -1,7 +1,15 @@
 import { updateSession } from "@/lib/supabase/middleware";
-import { type NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // Redirect www to non-www to prevent cookie/auth domain mismatch (#9188)
+  const host = request.headers.get("host") || "";
+  if (host.startsWith("www.")) {
+    const url = request.nextUrl.clone();
+    url.host = host.replace(/^www\./, "");
+    return NextResponse.redirect(url, 301);
+  }
+
   return await updateSession(request);
 }
 
