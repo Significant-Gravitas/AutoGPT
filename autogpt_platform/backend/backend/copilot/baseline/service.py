@@ -1914,6 +1914,19 @@ async def stream_chat_completion_baseline(
                 "ending turn gracefully",
                 loop_result.iterations,
             )
+            # Fallback notice only when the forced-text last round left the
+            # user with zero visible response — otherwise the model's own
+            # summary is the explanation and a canned note is just noise.
+            if not state.assistant_text.strip():
+                terminal_text = (
+                    "Reached the tool-call budget for this turn. "
+                    "Send a follow-up message to continue from here."
+                )
+                block_id = str(uuid.uuid4())
+                yield StreamTextStart(id=block_id)
+                yield StreamTextDelta(id=block_id, delta=terminal_text)
+                yield StreamTextEnd(id=block_id)
+                state.assistant_text += terminal_text
     except Exception as e:
         _stream_error = True
         error_msg = str(e) or type(e).__name__
