@@ -32,7 +32,6 @@ vi.mock("@tanstack/react-query", () => ({
 const mockHasActiveBackendStream = vi.fn(
   (_result: { data?: unknown }) => false,
 );
-const mockDisconnectSessionStream = vi.fn((_sid: string) => {});
 vi.mock("../helpers", () => ({
   getCopilotAuthHeaders: vi.fn(async () => ({ Authorization: "Bearer test" })),
   deduplicateMessages: (msgs: UIMessage[]) => msgs,
@@ -42,6 +41,21 @@ vi.mock("../helpers", () => ({
       : String(arg ?? ""),
   hasActiveBackendStream: (result: { data?: unknown }) =>
     mockHasActiveBackendStream(result),
+  getLatestAssistantStatusMessage: (messages: UIMessage[]) => {
+    const last = messages[messages.length - 1];
+    if (last?.role !== "assistant") return null;
+    for (let i = last.parts.length - 1; i >= 0; i--) {
+      const part = last.parts[i] as UIMessage["parts"][number] & {
+        data?: { message?: unknown };
+      };
+      if (part.type === "data-cursor") continue;
+      if (part.type === "data-status") {
+        return typeof part.data?.message === "string" ? part.data.message : null;
+      }
+      return null;
+    }
+    return null;
+  },
   hasVisibleAssistantContent: (messages: UIMessage[]) => {
     const last = messages[messages.length - 1];
     if (last?.role !== "assistant") return false;
@@ -66,7 +80,6 @@ vi.mock("../helpers", () => ({
   resolveInProgressTools: (msgs: UIMessage[]) => msgs,
   resolveInterruptedMessage: (msgs: UIMessage[]) => msgs,
   getSendSuppressionReason: () => null,
-  disconnectSessionStream: (sid: string) => mockDisconnectSessionStream(sid),
 }));
 
 // --- ai SDK mock (DefaultChatTransport must be constructible) ---
@@ -110,6 +123,7 @@ vi.mock("@ai-sdk/react", () => ({
 
 // Import after mocks
 import { useCopilotStreamStore } from "../copilotStreamStore";
+import { RESTORE_STALL_TIMEOUT_MS } from "../restoreConstants";
 import { useCopilotStream } from "../useCopilotStream";
 
 type Args = Parameters<typeof useCopilotStream>[0];
@@ -138,7 +152,6 @@ beforeEach(() => {
   mockSetMessages.mockClear();
   mockToast.mockClear();
   mockHasActiveBackendStream.mockReturnValue(false);
-  mockDisconnectSessionStream.mockClear();
   mockInvalidateQueries.mockClear();
   // Zustand stores are module singletons — wipe per-session coord state so
   // tests don't leak into each other.
@@ -204,9 +217,6 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
 
     expect(result.current.isRestoringActiveSession).toBe(true);
 
-    // Status flipping to "streaming" is NOT enough: the latch waits for
-    // actual content so the "Retrieving latest messages" spinner stays up
-    // through the pre-content window of a GET-resume.
     mockStatus = "streaming";
     rerender(
       makeArgs({
@@ -216,7 +226,6 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
     );
     expect(result.current.isRestoringActiveSession).toBe(true);
 
-    // Once the stream produces real content, the restore indicator flips off.
     mockMessages = [
       {
         id: "a1",
@@ -230,7 +239,116 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
         hydratedMessages: [],
       }),
     );
+
     expect(result.current.isRestoringActiveSession).toBe(false);
+  });
+
+  it("treats a replay status update as enough to leave restore mode", () => {
+    const { result, rerender } = renderHook(
+      (args: Args) => useCopilotStream(args),
+      {
+        initialProps: makeArgs({
+          hasActiveStream: true,
+          hydratedMessages: [],
+        }),
+      },
+    );
+
+    expect(result.current.isRestoringActiveSession).toBe(true);
+
+    mockStatus = "streaming";
+    mockMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          {
+            type: "data-status",
+            data: { message: "Analyzing result..." },
+          },
+        ],
+      } as unknown as UIMessage,
+    ];
+    rerender(
+      makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [],
+      }),
+    );
+
+    expect(result.current.isRestoringActiveSession).toBe(false);
+  });
+
+  it("kicks the reconnect cascade when restore stays stuck for 6 seconds", async () => {
+    mockHasActiveBackendStream.mockReturnValue(true);
+    const refetchSession = vi.fn(async () => ({
+      data: { status: 200, data: { active_stream: { started_at: "now" } } },
+    }));
+
+    const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [],
+        refetchSession,
+      }),
+    });
+
+    expect(mockResumeStream).toHaveBeenCalledTimes(1);
+
+    mockStatus = "streaming";
+    rerender(
+      makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [],
+        refetchSession,
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RESTORE_STALL_TIMEOUT_MS + 1_000);
+    });
+
+    expect(refetchSession).toHaveBeenCalled();
+    expect(mockResumeStream).toHaveBeenCalledTimes(2);
+  });
+
+  it("stores the latest per-session snapshot without wiping it on an empty remount", () => {
+    const userMessage: UIMessage = {
+      id: "u1",
+      role: "user",
+      parts: [{ type: "text", text: "hello", state: "done" }],
+    };
+    const assistantMessage: UIMessage = {
+      id: "a1",
+      role: "assistant",
+      parts: [{ type: "text", text: "partial", state: "streaming" }],
+    };
+    mockMessages = [userMessage, assistantMessage];
+
+    const first = renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [userMessage, assistantMessage],
+      }),
+    });
+
+    expect(
+      useCopilotStreamStore.getState().getMessageSnapshot("sess-1"),
+    ).toEqual([userMessage, assistantMessage]);
+
+    first.unmount();
+    mockMessages = [];
+
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [userMessage, assistantMessage],
+      }),
+    });
+
+    expect(
+      useCopilotStreamStore.getState().getMessageSnapshot("sess-1"),
+    ).toEqual([userMessage, assistantMessage]);
   });
 
   it("does not double-resume when hydration arrives after an already-queued resume", () => {
@@ -335,7 +453,7 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
 });
 
 describe("useCopilotStream — unmount cleanup", () => {
-  it("stops the in-flight fetch and disconnects backend listeners on unmount", () => {
+  it("stops the in-flight fetch on unmount", () => {
     const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
       initialProps: makeArgs({ sessionId: "sess-A" }),
     });
@@ -346,10 +464,9 @@ describe("useCopilotStream — unmount cleanup", () => {
 
     unmount();
 
-    // Both cleanup actions must fire: abort the fetch + tell the backend
-    // to release its XREAD listeners without waiting for the timeout.
+    // Abort the fetch so the backend SSE generator sees a normal client
+    // disconnect and unsubscribes its listener queue in ``finally``.
     expect(mockSdkStop).toHaveBeenCalled();
-    expect(mockDisconnectSessionStream).toHaveBeenCalledWith("sess-A");
   });
 
   it("reconnect timer does not fire resumeStream after unmount", async () => {

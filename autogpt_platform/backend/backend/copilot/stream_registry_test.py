@@ -338,32 +338,17 @@ async def test_mark_session_completed_survives_lock_release_redis_error():
 
 
 # ---------------------------------------------------------------------------
-# Cursor emission: StreamCursor must follow every replayed chunk so the
-# frontend can track the last-delivered Redis XADD id and pass it back as
-# `last_chunk_id` on reconnect, enabling incremental resume instead of the
-# full 0-0 replay that the old strip/snapshot dance papered over.
+# Replays must contain protocol chunks only. Redis cursor data parts are not
+# emitted because AI SDK resume needs the complete stream envelope from 0-0.
 # ---------------------------------------------------------------------------
 
 
-def test_stream_cursor_to_sse_shape():
-    """`data-cursor` is surfaced as an AI-SDK v5 data part with `{chunkId}`."""
-    from backend.copilot.response_model import StreamCursor
-
-    sse = StreamCursor(chunkId="1700000000000-0").to_sse()
-    assert (
-        sse
-        == 'data: {"type": "data-cursor", "data": {"chunkId": "1700000000000-0"}}\n\n'
-    )
-
-
 @pytest.mark.asyncio
-async def test_subscribe_to_session_emits_cursor_after_every_replayed_chunk():
-    """During replay, the subscriber queue must contain `[chunk, cursor]`
-    pairs so the client can record the Redis id it has just processed."""
+async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
+    """During replay, the subscriber queue contains chunks plus terminal finish."""
     import orjson
 
     from backend.copilot.response_model import (
-        StreamCursor,
         StreamTextDelta,
         StreamTextEnd,
         StreamTextStart,
@@ -415,14 +400,8 @@ async def test_subscribe_to_session_emits_cursor_after_every_replayed_chunk():
     while not queue.empty():
         delivered.append(queue.get_nowait())
 
-    # Three chunks × (chunk + cursor) = 6, plus a terminal StreamFinish.
-    assert len(delivered) == 7
+    assert len(delivered) == 4
     assert isinstance(delivered[0], StreamTextStart)
-    assert isinstance(delivered[1], StreamCursor)
-    assert delivered[1].chunkId == "9999-0"
-    assert isinstance(delivered[2], StreamTextDelta)
-    assert isinstance(delivered[3], StreamCursor)
-    assert delivered[3].chunkId == "9999-1"
-    assert isinstance(delivered[4], StreamTextEnd)
-    assert isinstance(delivered[5], StreamCursor)
-    assert delivered[5].chunkId == "9999-2"
+    assert isinstance(delivered[1], StreamTextDelta)
+    assert isinstance(delivered[2], StreamTextEnd)
+    assert isinstance(delivered[3], stream_registry.StreamFinish)

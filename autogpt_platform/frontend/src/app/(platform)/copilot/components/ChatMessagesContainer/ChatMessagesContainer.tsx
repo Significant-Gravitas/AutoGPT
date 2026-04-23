@@ -27,6 +27,7 @@ import {
   parseSpecialMarkers,
   splitReasoningAndResponse,
 } from "./helpers";
+import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
@@ -41,6 +42,7 @@ interface Props {
   error: Error | undefined;
   isLoading: boolean;
   isRestoringActiveSession?: boolean;
+  restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn. Seeds the elapsed-time
    *  counter so restored turns show honest age instead of counting from
    *  zero on every fresh mount. */
@@ -261,6 +263,7 @@ export function ChatMessagesContainer({
   error,
   isLoading,
   isRestoringActiveSession,
+  restoreStatusMessage,
   activeStreamStartedAt,
   sessionID,
   hasMoreMessages,
@@ -368,6 +371,21 @@ export function ChatMessagesContainer({
     />
   );
   const showIndicator = showThinking;
+  const [showRestoreFallback, setShowRestoreFallback] = useState(false);
+  useEffect(() => {
+    if (!isRestoringActiveSession) {
+      setShowRestoreFallback(false);
+      return;
+    }
+    const timer = setTimeout(
+      () => setShowRestoreFallback(true),
+      RESTORE_STALL_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [isRestoringActiveSession]);
+  const { elapsedSeconds: restoreElapsedSeconds } = useElapsedTimer(
+    showRestoreFallback,
+  );
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.
@@ -552,10 +570,25 @@ export function ChatMessagesContainer({
         {isRestoringActiveSession && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
-              <div className="flex items-center gap-2 text-sm text-slate-500">
-                <LoadingSpinner className="h-4 w-4 text-neutral-500" />
-                <span>Retrieving latest messages</span>
-              </div>
+              {showRestoreFallback ? (
+                <div className="flex flex-col gap-1 text-sm text-slate-500">
+                  <ThinkingIndicator
+                    active
+                    elapsedSeconds={restoreElapsedSeconds}
+                    statusMessage={
+                      restoreStatusMessage ?? "Reconnecting to live stream..."
+                    }
+                  />
+                  <span className="pl-6 text-xs text-slate-400">
+                    Still syncing the latest progress.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                  <span>Retrieving latest messages</span>
+                </div>
+              )}
             </MessageContent>
           </Message>
         )}

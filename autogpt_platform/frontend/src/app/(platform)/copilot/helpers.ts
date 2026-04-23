@@ -110,6 +110,28 @@ export function hasVisibleAssistantContent(messages: UIMessage[]): boolean {
   });
 }
 
+/**
+ * Surface the latest backend-emitted status message for the trailing assistant
+ * message, if that status has not already been invalidated by newer visible
+ * parts. Used to show progress during restore/replay before answer text lands.
+ */
+export function getLatestAssistantStatusMessage(
+  messages: UIMessage[],
+): string | null {
+  const last = messages[messages.length - 1];
+  if (last?.role !== "assistant") return null;
+  for (let i = last.parts.length - 1; i >= 0; i--) {
+    const part = last.parts[i];
+    if (part.type === "data-cursor") continue;
+    if (part.type === "data-status") {
+      const data = (part as { data?: { message?: unknown } }).data;
+      return typeof data?.message === "string" ? data.message : null;
+    }
+    return null;
+  }
+  return null;
+}
+
 /** Mark any in-progress tool parts as completed/errored so spinners stop. */
 export function resolveInProgressTools(
   messages: UIMessage[],

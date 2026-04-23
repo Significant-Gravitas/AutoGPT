@@ -12,12 +12,15 @@ type UseChatStatus = "submitted" | "streaming" | "ready" | "error";
 
 interface UseCopilotReconnectArgs {
   sessionId: string | null;
+  hasActiveStream: boolean;
   /**
    * Current `useChat` status — used to clear the forced-idle timer the moment
    * the stream is back live, and to reset the reconnect counters once a turn
    * completes cleanly.
    */
   status: UseChatStatus;
+  /** True once this mount has received meaningful replay/live content. */
+  hasConnectedThisMountRef: React.MutableRefObject<boolean>;
   /**
    * Ref holding `useChat`'s latest `resumeStream`. Kept in a ref so the
    * timer callback always invokes the current value without stale closures.
@@ -46,7 +49,9 @@ interface UseCopilotReconnectArgs {
  */
 export function useCopilotReconnect({
   sessionId,
+  hasActiveStream,
   status,
+  hasConnectedThisMountRef,
   resumeStreamRef,
   hasResumedRef,
 }: UseCopilotReconnectArgs) {
@@ -126,13 +131,20 @@ export function useCopilotReconnect({
     if (!sessionId) return;
     const isNowActive = status === "streaming" || status === "submitted";
 
-    if (isNowActive && reconnectStartedAtRef.current !== null) {
+    if (
+      isNowActive &&
+      reconnectStartedAtRef.current !== null &&
+      hasConnectedThisMountRef.current
+    ) {
       reconnectStartedAtRef.current = null;
       clearTimeout(reconnectTimeoutTimerRef.current);
       reconnectTimeoutTimerRef.current = undefined;
     }
 
     if (status === "ready" && !reconnectScheduledRef.current) {
+      const stillRestoringWithoutConnection =
+        hasActiveStream && !hasConnectedThisMountRef.current;
+      if (stillRestoringWithoutConnection) return;
       reconnectAttemptsRef.current = 0;
       hasShownDisconnectToastRef.current = false;
       reconnectStartedAtRef.current = null;
@@ -140,7 +152,7 @@ export function useCopilotReconnect({
       reconnectTimeoutTimerRef.current = undefined;
       setReconnectExhausted(false);
     }
-  }, [status, sessionId]);
+  }, [status, sessionId, hasActiveStream, hasConnectedThisMountRef]);
 
   // Clear armed timers on unmount so they can't toast into the void after
   // the host is gone.

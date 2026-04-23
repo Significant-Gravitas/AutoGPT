@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from autogpt_libs import auth
 from fastapi import APIRouter, HTTPException, Query, Response, Security
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
@@ -154,6 +154,14 @@ class StreamChatRequest(BaseModel):
     )
 
 
+class QueuePendingMessageRequest(BaseModel):
+    """Request model for queueing a follow-up while a turn is running."""
+
+    message: str = Field(max_length=64_000)
+    context: dict[str, str] | None = None
+    file_ids: list[str] | None = Field(default=None, max_length=20)
+
+
 class PeekPendingMessagesResponse(BaseModel):
     """Response for the pending-message peek (GET) endpoint.
 
@@ -209,6 +217,11 @@ class ActiveStreamInfo(BaseModel):
 
     turn_id: str
     last_message_id: str  # Redis Stream message ID for resumption
+    # ISO-8601 timestamp (UTC) marking when the backend registered the turn
+    # as running. Lets the frontend seed its elapsed-time counter so restored
+    # turns show honest "time since turn started" instead of the misleading
+    # "time since this mount resumed the SSE".
+    started_at: str | None = None
 
 
 class SessionDetailResponse(BaseModel):
@@ -529,6 +542,7 @@ async def get_session(
             active_stream_info = ActiveStreamInfo(
                 turn_id=active_session.turn_id,
                 last_message_id=last_message_id,
+                started_at=active_session.created_at.isoformat(),
             )
 
     # Skip session metadata on "load more" — frontend only needs messages
@@ -816,17 +830,30 @@ async def cancel_session_task(
     return CancelSessionResponse(cancelled=True)
 
 
+def _ui_message_stream_headers() -> dict[str, str]:
+    return {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+        "x-vercel-ai-ui-message-stream": "v1",
+    }
+
+
+def _empty_ui_message_stream_response() -> StreamingResponse:
+    async def event_generator() -> AsyncGenerator[str, None]:
+        yield StreamFinish().to_sse()
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers=_ui_message_stream_headers(),
+    )
+
+
 @router.post(
     "/sessions/{session_id}/stream",
     responses={
-        202: {
-            "model": QueuePendingMessageResponse,
-            "description": (
-                "Session has a turn in flight — message queued into the pending "
-                "buffer and will be picked up between tool-call rounds by the "
-                "executor currently processing the turn."
-            ),
-        },
         404: {"description": "Session not found or access denied"},
         429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
     },
@@ -836,19 +863,18 @@ async def stream_chat_post(
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
 ):
-    """Start a new turn OR queue a follow-up — decided server-side.
+    """Start a new turn and return an AI SDK UI message stream.
 
-    - **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)
-      with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).
-      The generation runs in a background task that survives client disconnects;
-      reconnect via ``GET /sessions/{session_id}/stream`` to resume.
+    Returns an SSE stream (``text/event-stream``) with Vercel AI SDK chunks
+    (text fragments, tool-call UI, tool results). The generation runs in a
+    background task that survives client disconnects; reconnect via
+    ``GET /sessions/{session_id}/stream`` to resume.
 
-    - **Session has a turn in flight**: pushes the message into the per-session
-      pending buffer and returns ``202 application/json`` with
-      ``QueuePendingMessageResponse``.  The executor running the current turn
-      drains the buffer between tool-call rounds (baseline) or at the start of
-      the next turn (SDK).  Clients should detect the 202 and surface the
-      message as a queued-chip in the UI.
+    Follow-up messages typed while a turn is already running should use
+    ``POST /sessions/{session_id}/messages/pending``. If an older client still
+    posts that follow-up here, we queue it defensively but still return a valid
+    empty UI-message stream so AI SDK transports never receive a JSON body from
+    the stream endpoint.
 
     Args:
         session_id: The chat session identifier.
@@ -874,24 +900,23 @@ async def stream_chat_post(
     session = await _validate_and_get_session(session_id, user_id)
     builder_permissions = resolve_session_permissions(session)
 
-    # Self-defensive queue-fallback: if a turn is already running, don't race
-    # it on the cluster lock — drop the message into the pending buffer and
-    # return 202 so the caller can render a chip.  Both UI chips and autopilot
-    # block follow-ups route through this path; keeping the decision on the
-    # server means every caller gets uniform behaviour.
     if (
         request.is_user_message
         and request.message
         and await is_turn_in_flight(session_id)
     ):
-        response = await queue_pending_for_http(
-            session_id=session_id,
-            user_id=user_id,
-            message=request.message,
-            context=request.context,
-            file_ids=request.file_ids,
-        )
-        return JSONResponse(status_code=202, content=response.model_dump())
+        try:
+            await queue_pending_for_http(
+                session_id=session_id,
+                user_id=user_id,
+                message=request.message,
+                context=request.context,
+                file_ids=request.file_ids,
+            )
+            return _empty_ui_message_stream_response()
+        except HTTPException as exc:
+            if exc.status_code != 409:
+                raise
 
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
@@ -1130,12 +1155,37 @@ async def stream_chat_post(
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "x-vercel-ai-ui-message-stream": "v1",  # AI SDK protocol header
-        },
+        headers=_ui_message_stream_headers(),
+    )
+
+
+@router.post(
+    "/sessions/{session_id}/messages/pending",
+    response_model=QueuePendingMessageResponse,
+    responses={
+        404: {"description": "Session not found or access denied"},
+        409: {"description": "Session has no active turn to receive pending messages"},
+        429: {"description": "Call-frequency cap exceeded"},
+    },
+)
+async def queue_pending_message(
+    session_id: str,
+    request: QueuePendingMessageRequest,
+    user_id: str = Security(auth.get_user_id),
+):
+    """Queue a follow-up message while the session has an active turn."""
+    await _validate_and_get_session(session_id, user_id)
+    if not await is_turn_in_flight(session_id):
+        raise HTTPException(
+            status_code=409,
+            detail="Session has no active turn. Start a new turn with POST /stream.",
+        )
+    return await queue_pending_for_http(
+        session_id=session_id,
+        user_id=user_id,
+        message=request.message,
+        context=request.context,
+        file_ids=request.file_ids,
     )
 
 
@@ -1169,7 +1219,7 @@ async def get_pending_messages(
 )
 async def resume_session_stream(
     session_id: str,
-    last_chunk_id: str | None = None,
+    last_chunk_id: str | None = Query(default=None, include_in_schema=False),
     user_id: str = Security(auth.get_user_id),
 ):
     """
@@ -1179,10 +1229,10 @@ async def resume_session_stream(
     Checks for an active (in-progress) task on the session and either replays
     the full SSE stream or returns 204 No Content if nothing is running.
 
-    When the frontend passes ``last_chunk_id`` (the ``chunkId`` it saw on the
-    most recent ``data-cursor`` part before disconnecting), XREAD resumes at
-    the exclusive successor and only unseen chunks are re-delivered. Without
-    the cursor we fall back to a full replay from ``0-0``.
+    Always replays the active turn from ``0-0``. The AI SDK UI-message parser
+    keeps text/reasoning part state inside a single parser instance; resuming
+    from a Redis cursor can skip the ``*-start`` events required by later
+    ``*-delta`` chunks.
     """
     import asyncio
 
@@ -1193,10 +1243,16 @@ async def resume_session_stream(
     if not active_session:
         return Response(status_code=204)
 
+    if last_chunk_id:
+        logger.info(
+            "Ignoring deprecated last_chunk_id on stream resume",
+            extra={"session_id": session_id, "last_chunk_id": last_chunk_id},
+        )
+
     subscriber_queue = await stream_registry.subscribe_to_session(
         session_id=session_id,
         user_id=user_id,
-        last_message_id=last_chunk_id or "0-0",
+        last_message_id="0-0",
     )
 
     if subscriber_queue is None:
@@ -1253,12 +1309,7 @@ async def resume_session_stream(
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "x-vercel-ai-ui-message-stream": "v1",
-        },
+        headers=_ui_message_stream_headers(),
     )
 
 

@@ -1,5 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { UIMessage } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotPage } from "../useCopilotPage";
 
 const mockUseChatSession = vi.fn();
@@ -46,6 +48,21 @@ vi.mock("../helpers/convertChatSessionToUiMessages", () => ({
 }));
 vi.mock("../helpers", () => ({
   deduplicateMessages: (msgs: unknown[]) => msgs,
+  getLatestAssistantStatusMessage: (messages: Array<{ role?: string; parts?: unknown[] }>) => {
+    const last = messages[messages.length - 1] as
+      | { role?: string; parts?: Array<{ type?: string; data?: { message?: unknown } }> }
+      | undefined;
+    if (last?.role !== "assistant") return null;
+    for (let i = (last.parts?.length ?? 0) - 1; i >= 0; i--) {
+      const part = last.parts?.[i];
+      if (part?.type === "data-cursor") continue;
+      if (part?.type === "data-status") {
+        return typeof part.data?.message === "string" ? part.data.message : null;
+      }
+      return null;
+    }
+    return null;
+  },
 }));
 vi.mock("../helpers/queueFollowUpMessage", () => ({
   queueFollowUpMessage: (...args: unknown[]) =>
@@ -93,7 +110,9 @@ function makeBaseCopilotStream(overrides: Record<string, unknown> = {}) {
     error: undefined,
     isReconnecting: false,
     isRestoringActiveSession: false,
+    restoreStatusMessage: null,
     isSyncing: false,
+    isUserStopping: false,
     isUserStoppingRef: { current: false },
     rateLimitMessage: null,
     dismissRateLimit: vi.fn(),
@@ -114,6 +133,7 @@ function makeBaseLoadMore(overrides: Record<string, unknown> = {}) {
 describe("useCopilotPage — backward pagination message ordering", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCopilotStreamStore.getState().resetAll();
   });
 
   it("prepends pagedMessages before currentMessages", () => {
@@ -138,6 +158,7 @@ describe("useCopilotPage — backward pagination message ordering", () => {
 describe("useCopilotPage — active session restore visibility", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCopilotStreamStore.getState().resetAll();
   });
 
   it("hides the trailing assistant tail until an active session is resumed", () => {
@@ -166,11 +187,74 @@ describe("useCopilotPage — active session restore visibility", () => {
     expect(result.current.messages).toEqual([userMessage]);
     expect(result.current.isRestoringActiveSession).toBe(true);
   });
+
+  it("preserves the hidden replay status message while restore trims the assistant tail", () => {
+    const userMessage = {
+      id: "user-1",
+      role: "user",
+      parts: [{ type: "text", text: "Tell me more" }],
+    };
+    const assistantMessage = {
+      id: "assistant-1",
+      role: "assistant",
+      parts: [
+        {
+          type: "data-status",
+          data: { message: "Contacting the model..." },
+        },
+      ],
+    };
+
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({
+        messages: [userMessage, assistantMessage],
+        isRestoringActiveSession: true,
+      }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    expect(result.current.messages).toEqual([userMessage]);
+    expect(result.current.restoreStatusMessage).toBe("Contacting the model...");
+  });
+
+  it("prefers the cached live snapshot while restore is still reconnecting", () => {
+    const userMessage: UIMessage = {
+      id: "user-1",
+      role: "user",
+      parts: [{ type: "text", text: "Tell me more" }],
+    };
+    const cachedAssistantMessage: UIMessage = {
+      id: "assistant-1",
+      role: "assistant",
+      parts: [{ type: "reasoning", text: "Working on it" }],
+    };
+
+    useCopilotStreamStore
+      .getState()
+      .setMessageSnapshot("sess-1", [userMessage, cachedAssistantMessage]);
+
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({
+        messages: [userMessage],
+        isRestoringActiveSession: true,
+      }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    expect(result.current.messages).toEqual([userMessage, cachedAssistantMessage]);
+  });
 });
 
 describe("useCopilotPage — onEnqueue and queuedMessages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCopilotStreamStore.getState().resetAll();
   });
 
   it("exposes onEnqueue (delegating to onSend) and queuedMessages", () => {
@@ -188,6 +272,7 @@ describe("useCopilotPage — onEnqueue and queuedMessages", () => {
 describe("useCopilotPage — onSend queue-in-flight path", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useCopilotStreamStore.getState().resetAll();
   });
 
   it("rejects attaching files while a turn is in flight", async () => {
@@ -263,6 +348,26 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
     expect(mockToast).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: "Could not queue message" }),
     );
+  });
+
+  it("treats a user-stopped turn as no longer in flight for new sends", async () => {
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({
+        status: "streaming",
+        isUserStopping: true,
+      }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    await act(async () => {
+      await result.current.onSend("follow-up");
+    });
+
+    expect(mockQueueFollowUpMessage).not.toHaveBeenCalled();
+    expect(mockSendNewMessage).toHaveBeenCalledWith("follow-up", undefined);
   });
 
   it("surfaces a toast and rethrows when the queue POST fails", async () => {

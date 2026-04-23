@@ -1,4 +1,4 @@
-import type { FileUIPart } from "ai";
+import type { FileUIPart, UIMessage } from "ai";
 import { create } from "zustand";
 
 /**
@@ -52,11 +52,14 @@ export interface PendingFirstSend {
 
 interface CopilotStreamStore {
   sessions: Record<string, SessionCoord>;
+  messageSnapshots: Record<string, UIMessage[]>;
   pendingFirstSend: PendingFirstSend | null;
   pendingFileParts: FileUIPart[];
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
+  getMessageSnapshot: (sessionId: string) => UIMessage[];
+  setMessageSnapshot: (sessionId: string, messages: UIMessage[]) => void;
 
   setPendingFirstSend: (send: PendingFirstSend | null) => void;
   setPendingFileParts: (parts: FileUIPart[]) => void;
@@ -72,6 +75,7 @@ interface CopilotStreamStore {
 
 export const useCopilotStreamStore = create<CopilotStreamStore>((set, get) => ({
   sessions: {},
+  messageSnapshots: {},
   pendingFirstSend: null,
   pendingFileParts: [],
 
@@ -89,6 +93,17 @@ export const useCopilotStreamStore = create<CopilotStreamStore>((set, get) => ({
       },
     }));
   },
+  getMessageSnapshot(sessionId) {
+    return get().messageSnapshots[sessionId] ?? [];
+  },
+  setMessageSnapshot(sessionId, messages) {
+    set((state) => ({
+      messageSnapshots: {
+        ...state.messageSnapshots,
+        [sessionId]: messages,
+      },
+    }));
+  },
 
   setPendingFirstSend(send) {
     set({ pendingFirstSend: send });
@@ -103,7 +118,12 @@ export const useCopilotStreamStore = create<CopilotStreamStore>((set, get) => ({
   },
 
   resetAll() {
-    set({ sessions: {}, pendingFirstSend: null, pendingFileParts: [] });
+    set({
+      sessions: {},
+      messageSnapshots: {},
+      pendingFirstSend: null,
+      pendingFileParts: [],
+    });
   },
 }));
 

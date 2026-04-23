@@ -310,14 +310,11 @@ class StreamHeartbeat(StreamBaseResponse):
 
 
 class StreamCursor(StreamBaseResponse):
-    """Redis-stream cursor delivered to the client after every chunk.
+    """Deprecated Redis-stream cursor data part.
 
-    The AI SDK v5 surfaces ``type="data-<name>"`` frames as data parts on
-    the corresponding message. The frontend reads the most recent
-    ``chunkId`` out of ``message.parts`` and passes it back as
-    ``?last_chunk_id=...`` when the SDK reconnects the SSE stream, so the
-    backend can resume XREAD from where the client actually stopped
-    instead of always replaying the full turn from ``0-0``.
+    Kept so older stored chunks or tests can still be reconstructed, but new
+    stream subscriptions no longer emit it. AI SDK resume needs a full replay
+    from ``0-0`` so every ``*-delta`` has its matching ``*-start`` event.
     """
 
     type: ResponseType = ResponseType.CURSOR

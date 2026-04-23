@@ -32,9 +32,14 @@ export interface ChatContainerProps {
   isReconnecting?: boolean;
   /** True while reopening an already-running session before stream replay is live. */
   isRestoringActiveSession?: boolean;
+  /** Latest backend-emitted status for a replaying assistant while restore is active. */
+  restoreStatusMessage?: string | null;
   /** ISO start time of the active backend turn (if any). Seeds the elapsed
    * counter for restored sessions so the UI shows honest turn age. */
   activeStreamStartedAt?: string | null;
+  /** True the moment the user clicks Stop — overrides isStreaming so the UI
+   * flips immediately regardless of AI SDK's status timing. */
+  isUserStopping?: boolean;
   /** True while re-syncing session state after device wake. */
   isSyncing?: boolean;
   onCreateSession: () => void | Promise<string>;
@@ -65,7 +70,9 @@ export const ChatContainer = ({
   isCreatingSession,
   isReconnecting,
   isRestoringActiveSession,
+  restoreStatusMessage,
   activeStreamStartedAt,
+  isUserStopping,
   isSyncing,
   onCreateSession,
   onSend,
@@ -89,8 +96,11 @@ export const ChatContainer = ({
   useAutoOpenArtifacts({ sessionId });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
-  // can type and queue their next message.
-  const isStreaming = status === "streaming" || status === "submitted";
+  // can type and queue their next message. ``isUserStopping`` force-flips
+  // this to ``false`` the instant the user clicks Stop, so the button flips
+  // to Send regardless of whether AI SDK's status transition has landed yet.
+  const isStreaming =
+    !isUserStopping && (status === "streaming" || status === "submitted");
   // The input is only truly disabled when the session isn't ready at all
   // (reconnecting, syncing, loading, or errored) — NOT during normal streaming.
   const isSessionUnavailable =
@@ -152,6 +162,7 @@ export const ChatContainer = ({
                 error={error}
                 isLoading={isLoadingSession}
                 isRestoringActiveSession={isRestoringActiveSession}
+                restoreStatusMessage={restoreStatusMessage}
                 activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
                 hasMoreMessages={hasMoreMessages}

@@ -39,7 +39,6 @@ from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_k
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
-    StreamCursor,
     StreamError,
     StreamFinish,
     StreamFinishStep,
@@ -93,6 +92,11 @@ class ActiveSession:
 def _get_session_meta_key(session_id: str) -> str:
     """Get Redis key for session metadata (keyed by session_id)."""
     return f"{config.session_meta_prefix}{session_id}"
+
+
+def get_session_meta_key(session_id: str) -> str:
+    """Get Redis key for session metadata (keyed by session_id)."""
+    return _get_session_meta_key(session_id)
 
 
 def _get_turn_stream_key(turn_id: str) -> str:
@@ -517,9 +521,6 @@ async def subscribe_to_session(
                         chunk = _reconstruct_chunk(chunk_data)
                         if chunk:
                             await subscriber_queue.put(chunk)
-                            await subscriber_queue.put(
-                                StreamCursor(chunkId=replay_last_id)
-                            )
                             replayed_count += 1
                     except Exception as e:
                         logger.warning(f"Failed to replay message: {e}")
@@ -694,17 +695,6 @@ async def _stream_listener(
                             try:
                                 await asyncio.wait_for(
                                     subscriber_queue.put(chunk),
-                                    timeout=QUEUE_PUT_TIMEOUT,
-                                )
-                                # Emit cursor AFTER the chunk so the frontend
-                                # records the Redis ID it has actually
-                                # processed. On reconnect it passes this back
-                                # as last_chunk_id and XREAD resumes at the
-                                # exclusive successor, avoiding duplicates.
-                                await asyncio.wait_for(
-                                    subscriber_queue.put(
-                                        StreamCursor(chunkId=current_id)
-                                    ),
                                     timeout=QUEUE_PUT_TIMEOUT,
                                 )
                                 # Update last delivered ID on successful delivery

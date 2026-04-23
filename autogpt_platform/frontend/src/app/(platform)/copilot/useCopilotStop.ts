@@ -20,6 +20,10 @@ interface UseCopilotStopArgs {
   /** Flipped to `true` so the stream's onError/onFinish callbacks don't
    *  misinterpret the resulting AbortError as a disconnect + reconnect. */
   isUserStoppingRef: React.MutableRefObject<boolean>;
+  /** State setter mirroring ``isUserStoppingRef`` — drives the UI so the
+   *  stop-button UX flips immediately instead of waiting for AI SDK's
+   *  ``status`` to transition away from "streaming" on abort. */
+  setIsUserStopping: (value: boolean) => void;
 }
 
 /**
@@ -38,10 +42,17 @@ export function useCopilotStop({
   sdkStop,
   setMessages,
   isUserStoppingRef,
+  setIsUserStopping,
 }: UseCopilotStopArgs) {
   async function stop() {
     isUserStoppingRef.current = true;
-    sdkStop();
+    setIsUserStopping(true);
+    try {
+      sdkStop();
+    } catch {
+      // sdkStop throws if no fetch is in flight — the user-stop flag
+      // already flipped, so the UI reflects the intent either way.
+    }
     setMessages((prev) => {
       const resolved = resolveInProgressTools(prev, "cancelled");
       const last = resolved[resolved.length - 1];

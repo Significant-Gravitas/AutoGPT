@@ -13,8 +13,8 @@ import { useCopilotStreamStore } from "./copilotStreamStore";
 import { createCopilotTransport } from "./copilotStreamTransport";
 import {
   deduplicateMessages,
-  disconnectSessionStream,
   extractSendMessageText,
+  getLatestAssistantStatusMessage,
   getSendSuppressionReason,
   hasActiveBackendStream,
   hasInProgressAssistantParts,
@@ -24,6 +24,7 @@ import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
 import { useCopilotStop } from "./useCopilotStop";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
+import { RESTORE_STALL_TIMEOUT_MS } from "./restoreConstants";
 import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
 import { useWakeResync } from "./useWakeResync";
 
@@ -100,6 +101,12 @@ export function useCopilotStream({
   // mount (= this session), so a boolean is enough; cross-session scoping
   // is no longer needed because the parent remounts on session switch.
   const isUserStoppingRef = useRef(false);
+  // State mirror of ``isUserStoppingRef`` — the ref is read synchronously
+  // inside SDK callbacks, the state drives UI so a click on the stop button
+  // immediately overrides ``isStreaming`` regardless of whether AI SDK has
+  // flipped ``status`` back to ``ready`` yet (which can lag by many seconds
+  // when aborting a GET-based resume fetch).
+  const [isUserStopping, setIsUserStopping] = useState(false);
   // Flipped to `false` during mount cleanup so async callbacks that were
   // already in flight (e.g. the post-stream settle in `onFinish`) bail out
   // instead of arming new timers / HTTP requests against a torn-down mount.
@@ -183,12 +190,13 @@ export function useCopilotStream({
   //     actual content — instead of just the ``submitted`` / ``streaming``
   //     status — keeps the restore indicator up while a GET-resume is in
   //     flight with no bytes yet, which is the exact window the user would
-  //     otherwise see a misleading "Processing your request…• 41s" in.
+  //     otherwise see a misleading "Processing your request…" in.
   const hasConnectedThisMountRef = useRef(false);
   if (!hasConnectedThisMountRef.current) {
     if (
       hasSentThisMountRef.current ||
-      hasVisibleAssistantContent(rawMessages)
+      hasVisibleAssistantContent(rawMessages) ||
+      getLatestAssistantStatusMessage(rawMessages) !== null
     ) {
       hasConnectedThisMountRef.current = true;
     }
@@ -217,7 +225,9 @@ export function useCopilotStream({
     handleReconnect,
   } = useCopilotReconnect({
     sessionId,
+    hasActiveStream,
     status,
+    hasConnectedThisMountRef,
     resumeStreamRef,
     hasResumedRef,
   });
@@ -259,11 +269,23 @@ export function useCopilotStream({
         .updateCoord(sid, { lastSubmittedMessageText: text });
     }
     hasSentThisMountRef.current = true;
+    if (isUserStoppingRef.current) {
+      isUserStoppingRef.current = false;
+    }
+    if (isUserStopping) {
+      setIsUserStopping(false);
+    }
     return sdkSendMessage(...args);
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
   const messages = deduplicateMessages(rawMessages);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    if (messages.length === 0) return;
+    useCopilotStreamStore.getState().setMessageSnapshot(sessionId, messages);
+  }, [sessionId, messages]);
 
   // Cheap signal that changes on any stream activity — drives the stall
   // watchdog. Counts messages, the last message's parts, and the total
@@ -287,6 +309,7 @@ export function useCopilotStream({
     sdkStop,
     setMessages,
     isUserStoppingRef,
+    setIsUserStopping,
   });
 
   // Silent-stall watchdog: triggers the reconnect cascade if the stream
@@ -309,8 +332,13 @@ export function useCopilotStream({
   //    would otherwise show whatever stale messages were left in the cache.
   //    Starting empty lets hydration + resume rebuild cleanly from server
   //    state, matching the behaviour of a full page reload.
-  //  - On unmount: abort the in-flight fetch and tell the backend to release
-  //    its XREAD listeners immediately rather than waiting for the timeout.
+  //  - On unmount: abort the in-flight fetch. The backend's SSE generators
+  //    already unsubscribe their listener queues in ``finally`` on client
+  //    disconnect, so issuing an extra session-scoped DELETE here is only an
+  //    optimisation — and it races badly with rapid session switch-back,
+  //    where a stale cleanup request can cancel the fresh resume listener for
+  //    the same session and leave the UI stuck on "Retrieving latest
+  //    messages". Rely on the normal SSE disconnect path instead.
   // Effect body reads through refs only so its dep array is genuinely empty.
   // ---------------------------------------------------------------------------
   const setMessagesRef = useRef(setMessages);
@@ -321,14 +349,10 @@ export function useCopilotStream({
       isMountedRef.current = false;
       // Reconnect/forced-timeout timers are cleared by `useCopilotReconnect`
       // via its own mount cleanup — no need to touch them here.
-      const sid = sessionIdRef.current;
       try {
         sdkStopRef.current();
       } catch {
         // Best-effort — aborting a non-running fetch is a no-op.
-      }
-      if (sid) {
-        disconnectSessionStream(sid);
       }
     };
   });
@@ -442,6 +466,51 @@ export function useCopilotStream({
     if (!sessionId) setMessages([]);
   }, [sessionId, setMessages]);
 
+  // Restore watchdog: if we reopened a session with an active backend stream
+  // but still have not connected after 6 s of zero replay activity, verify
+  // the backend still reports that stream as active and then kick the
+  // reconnect cascade. This covers both "status stayed ready / no replay
+  // chunks ever appeared" and "resume fetch is alive but only heartbeats are
+  // flowing" — the latter never trips the normal stream-activity watchdog
+  // because heartbeats do not mutate `messages`.
+  useEffect(() => {
+    if (!sessionId) return;
+    if (!hasActiveStream) return;
+    if (hasConnectedThisMountRef.current) return;
+    if (isReconnectScheduled || reconnectExhausted) return;
+    if (isUserStoppingRef.current) return;
+
+    let cancelled = false;
+    const timeout = setTimeout(async () => {
+      if (cancelled) return;
+      if (!isMountedRef.current) return;
+      if (sessionIdRef.current !== sessionId) return;
+      if (hasConnectedThisMountRef.current) return;
+      if (isUserStoppingRef.current) return;
+
+      const result = await refetchSession();
+      if (!isMountedRef.current) return;
+      if (sessionIdRef.current !== sessionId) return;
+      if (hasConnectedThisMountRef.current) return;
+      if (isUserStoppingRef.current) return;
+      if (!hasActiveBackendStream(result)) return;
+
+      handleReconnectRef.current();
+    }, RESTORE_STALL_TIMEOUT_MS);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [
+    sessionId,
+    hasActiveStream,
+    streamActivityToken,
+    isReconnectScheduled,
+    reconnectExhausted,
+    refetchSession,
+  ]);
+
   // Reset the user-stop flag once the backend confirms the stream is no
   // longer active — this prevents the flag from staying stale forever.
   useEffect(() => {
@@ -449,7 +518,10 @@ export function useCopilotStream({
     if (isUserStoppingRef.current) {
       isUserStoppingRef.current = false;
     }
-  }, [hasActiveStream]);
+    if (isUserStopping) {
+      setIsUserStopping(false);
+    }
+  }, [hasActiveStream, isUserStopping]);
 
   // True while reconnecting or backend has active stream but we haven't connected yet.
   // Suppressed when the user explicitly stopped or when all reconnect attempts
@@ -478,6 +550,7 @@ export function useCopilotStream({
     isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,
+    isUserStopping,
     rateLimitMessage,
     dismissRateLimit,
   };

@@ -4,8 +4,10 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import type { UIMessage } from "ai";
 import { useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
+import { getLatestAssistantStatusMessage } from "./helpers";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
+import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
 import { useCopilotUIStore } from "./store";
 import { useChatSession } from "./useChatSession";
@@ -24,6 +26,13 @@ function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
     return messages;
   }
   return messages.slice(0, lastUserIndex + 1);
+}
+
+function hasAssistantTail(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex(
+    (message) => message.role === "user",
+  );
+  return lastUserIndex !== -1 && lastUserIndex < messages.length - 1;
 }
 
 export function useCopilotPage() {
@@ -60,6 +69,7 @@ export function useCopilotPage() {
     isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,
+    isUserStopping,
     rateLimitMessage,
     dismissRateLimit,
   } = useCopilotStream({
@@ -87,24 +97,46 @@ export function useCopilotPage() {
   // double-presses from both routing to /stream before React can re-render
   // with status="submitted".
   const isInflightRef = useRef(false);
-  isInflightRef.current = status === "streaming" || status === "submitted";
+  isInflightRef.current =
+    !isUserStopping && (status === "streaming" || status === "submitted");
 
   // Combine paginated messages with current page messages, merging consecutive
   // assistant UIMessages at the page boundary so reasoning + response parts
   // stay in a single bubble. Paged messages are older history prepended before
   // the current page.
   const rawMessages = concatWithAssistantMerge(pagedMessages, currentMessages);
+  const cachedSessionMessages = useMemo(
+    () =>
+      sessionId
+        ? useCopilotStreamStore.getState().getMessageSnapshot(sessionId)
+        : [],
+    [sessionId],
+  );
+  const cachedRawMessages = concatWithAssistantMerge(
+    pagedMessages,
+    cachedSessionMessages,
+  );
 
   // Drop / trim assistant messages whose leading text is a replay of an
   // earlier assistant (Claude Agent SDK's `--resume` behaviour). See
   // helpers/stripReplayPrefix.ts for the three cases.
   const messages = useMemo(() => stripReplayPrefix(rawMessages), [rawMessages]);
-  const displayMessages = useMemo(
+  const cachedMessages = useMemo(
+    () => stripReplayPrefix(cachedRawMessages),
+    [cachedRawMessages],
+  );
+  const restoreStatusMessage = useMemo(
     () =>
-      isRestoringActiveSession
-        ? trimVisibleMessagesForActiveRestore(messages)
-        : messages,
+      isRestoringActiveSession ? getLatestAssistantStatusMessage(messages) : null,
     [isRestoringActiveSession, messages],
+  );
+  const displayMessages = useMemo(
+    () => {
+      if (!isRestoringActiveSession) return messages;
+      if (hasAssistantTail(cachedMessages)) return cachedMessages;
+      return trimVisibleMessagesForActiveRestore(messages);
+    },
+    [isRestoringActiveSession, messages, cachedMessages],
   );
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
@@ -189,7 +221,9 @@ export function useCopilotPage() {
     stop,
     isReconnecting,
     isRestoringActiveSession,
+    restoreStatusMessage,
     activeStreamStartedAt,
+    isUserStopping,
     isSyncing,
     isLoadingSession,
     isSessionError,

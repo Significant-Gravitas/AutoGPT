@@ -82,7 +82,6 @@ describe("useStreamActivityWatchdog", () => {
       vi.advanceTimersByTime(50_000);
     });
 
-    // Activity tick — timer resets, so we need another full 60 s.
     rerender({
       status: "streaming",
       activityToken: "1",
