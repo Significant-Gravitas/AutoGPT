@@ -1026,8 +1026,8 @@ async def get_active_session(
 
     # Check if session is stale (running beyond tool timeout + buffer).
     # Auto-complete it to prevent infinite polling loops.
-    # Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour),
-    # so we add a 5-minute buffer to avoid false positives during legitimate operations.
+    # A turn can legitimately run up to COPILOT_CONSUMER_TIMEOUT_SECONDS, so we
+    # add a 5-minute buffer to avoid false positives during legitimate operations.
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:
