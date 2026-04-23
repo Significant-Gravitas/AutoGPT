@@ -175,6 +175,32 @@ class TestReadOrCreateProfileKey:
         # a profile against the subscription's quota.
         client_instance.create_profile.assert_not_awaited()
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_list_profiles_tolerates_entries_without_profileKey(self):
+        """``GET /profiles`` returns entries without ``profileKey`` for
+        incomplete / freshly-created profiles.  The model must accept that
+        shape (Optional field), and a title-match on such an entry must be
+        treated as "no usable profile" so we fall through to ``create_profile``
+        instead of returning ``None`` as a key."""
+        store, _ = self._mock_store(legacy_key=None)
+
+        title = f"User {_USER_ID}"
+        incomplete = ProfileSummary(title=title, refId="ref-incomplete")
+        fake_created = MagicMock(profileKey="fresh-key")
+
+        client_instance = MagicMock()
+        client_instance.list_profiles = AsyncMock(return_value=[incomplete])
+        client_instance.create_profile = AsyncMock(return_value=fake_created)
+
+        with patch(
+            "backend.integrations.managed_providers.ayrshare.AyrshareClient",
+            return_value=client_instance,
+        ):
+            result = await _read_or_create_profile_key(_USER_ID, store)
+
+        assert result == "fresh-key"
+        client_instance.create_profile.assert_awaited_once()
+
 
 class TestPostProvisionClearsLegacy:
     """post_provision runs only after the managed credential is durable.

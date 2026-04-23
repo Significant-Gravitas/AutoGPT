@@ -66,13 +66,15 @@ class ProfileResponse(BaseModel):
 class ProfileSummary(BaseModel):
     """Per-profile entry returned by ``GET /profiles``.
 
-    The list endpoint omits the ``status`` envelope that ``create_profile``
-    includes, so a slimmer model avoids ValidationError during recovery.
+    ``profileKey`` is only populated once a profile is fully activated;
+    freshly-created or otherwise-incomplete entries omit it, so the field
+    has to be optional.  The list endpoint also omits the ``status``
+    envelope that ``create_profile`` includes.
     """
 
     title: str
     refId: str
-    profileKey: str
+    profileKey: Optional[str] = None
     messagingActive: Optional[bool] = None
 
 

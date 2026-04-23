@@ -156,7 +156,7 @@ async def _read_or_create_profile_key(
     # zero risk of duplicate profiles burning the subscription's quota.
     existing = await client.list_profiles()
     for profile in existing:
-        if profile.title == title:
+        if profile.title == title and profile.profileKey:
             logger.info(
                 "[ayrshare] Reusing upstream profile for user %s (refId=%s)",
                 user_id,
