@@ -776,6 +776,17 @@ def _resolve_fallback_model() -> str | None:
     return _normalize_model_name(raw)
 
 
+def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str | None:
+    """Pick the model that drives ``build_sdk_env``'s model-aware gates.
+
+    Use the fallback when it's Moonshot so a 529-triggered swap to Kimi
+    still suppresses ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``.
+    """
+    if fallback_model and _is_moonshot_model(fallback_model):
+        return fallback_model
+    return sdk_model
+
+
 async def _resolve_sdk_model_for_request(
     model: "CopilotLlmModel | None",
     session_id: str,
@@ -3254,6 +3265,7 @@ async def stream_chat_completion_sdk(
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
         sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
+        fallback_model = _resolve_fallback_model()
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
@@ -3261,7 +3273,7 @@ async def stream_chat_completion_sdk(
             session_id=session_id,
             user_id=user_id,
             sdk_cwd=sdk_cwd,
-            model=sdk_model,
+            model=_resolve_env_model(sdk_model, fallback_model),
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -3330,7 +3342,7 @@ async def stream_chat_completion_sdk(
             # --- P0 guardrails ---
             # fallback_model: SDK auto-retries with this cheaper model on
             # 529 (overloaded) errors, avoiding user-visible failures.
-            "fallback_model": _resolve_fallback_model(),
+            "fallback_model": fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
             "max_turns": config.claude_agent_max_turns,
@@ -4105,18 +4117,17 @@ async def stream_chat_completion_sdk(
             except Exception:
                 logger.debug("Failed to set OTEL cost attributes", exc_info=True)
             try:
-                # Capture from our Langfuse parent span — the SDK-emitted
-                # spans have already ended by the finally block, so
-                # ``get_current_trace_id()`` would return None without a
-                # parent span we control.
-                langfuse_trace_id = get_client().get_current_trace_id()
-            except Exception:
-                logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
-            try:
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
         if _lf_span is not None:
+            # Capture from our Langfuse parent span before tearing it down;
+            # tracks the lifetime of ``_lf_span`` so the trace id is still
+            # available if ``_otel_ctx`` was never entered.
+            try:
+                langfuse_trace_id = get_client().get_current_trace_id()
+            except Exception:
+                logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
             try:
                 _lf_span.__exit__(*sys.exc_info())
             except Exception:

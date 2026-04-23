@@ -600,6 +600,10 @@ class TestLangfuseTraceBackfill:
             ),
             patch("httpx.AsyncClient.get", new=_get),
             patch(
+                "backend.copilot.sdk.openrouter_cost.asyncio.sleep",
+                new_callable=AsyncMock,
+            ),
+            patch(
                 "backend.copilot.sdk.openrouter_cost.get_client",
                 return_value=mock_lf,
             ),
