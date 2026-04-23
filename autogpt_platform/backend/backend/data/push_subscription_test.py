@@ -290,9 +290,7 @@ class TestValidatePushEndpoint:
     @pytest.mark.asyncio
     async def test_rejects_non_http_scheme(self):
         with pytest.raises(ValueError):
-            await push_subscription.validate_push_endpoint(
-                "file:///etc/passwd"
-            )
+            await push_subscription.validate_push_endpoint("file:///etc/passwd")
 
     @pytest.mark.asyncio
     async def test_custom_max_failures_threshold(self, mock_prisma):

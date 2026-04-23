@@ -347,7 +347,9 @@ class DatabaseManager(AppService):
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
     delete_push_subscription_by_endpoint = _(delete_push_subscription_by_endpoint)
-    increment_push_fail_count = _(increment_fail_count, name="increment_push_fail_count")
+    increment_push_fail_count = _(
+        increment_fail_count, name="increment_push_fail_count"
+    )
 
     # ============ Platform Linking ============ #
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)

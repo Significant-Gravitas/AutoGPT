@@ -127,21 +127,15 @@ class TestBuildPushPayload:
 
 class TestSendPushForUser:
     @pytest.mark.asyncio
-    async def test_skips_when_vapid_private_key_missing(
-        self, mocker, mock_db_client
-    ):
-        mocker.patch.object(
-            push_sender, "_settings", _make_settings(private="")
-        )
+    async def test_skips_when_vapid_private_key_missing(self, mocker, mock_db_client):
+        mocker.patch.object(push_sender, "_settings", _make_settings(private=""))
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
         mock_db_client.get_user_push_subscriptions.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_skips_when_vapid_public_key_missing(
-        self, mocker, mock_db_client
-    ):
+    async def test_skips_when_vapid_public_key_missing(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings(public=""))
 
         await push_sender.send_push_for_user("user-1", _make_payload())
@@ -176,9 +170,7 @@ class TestSendPushForUser:
         assert mock_db_client.get_user_push_subscriptions.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_returns_early_when_no_subscriptions(
-        self, mocker, mock_db_client
-    ):
+    async def test_returns_early_when_no_subscriptions(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         mock_webpush = mocker.patch("backend.data.push_sender.webpush")
 
@@ -187,9 +179,7 @@ class TestSendPushForUser:
         mock_webpush.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_calls_webpush_for_each_subscription(
-        self, mocker, mock_db_client
-    ):
+    async def test_calls_webpush_for_each_subscription(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub1 = _make_subscription(endpoint="https://fcm.googleapis.com/fcm/send/sub/1")
         sub2 = _make_subscription(endpoint="https://fcm.googleapis.com/fcm/send/sub/2")
@@ -206,9 +196,7 @@ class TestSendPushForUser:
         assert "https://fcm.googleapis.com/fcm/send/sub/2" in endpoints_called
 
     @pytest.mark.asyncio
-    async def test_webpush_called_with_correct_args(
-        self, mocker, mock_db_client
-    ):
+    async def test_webpush_called_with_correct_args(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
         sub = _make_subscription(
             user_id="user-1",
@@ -232,9 +220,7 @@ class TestSendPushForUser:
         assert isinstance(call_kwargs["data"], str)
 
     @pytest.mark.asyncio
-    async def test_removes_subscription_on_410_gone(
-        self, mocker, mock_db_client
-    ):
+    async def test_removes_subscription_on_410_gone(self, mocker, mock_db_client):
         from pywebpush import WebPushException
 
         mocker.patch.object(push_sender, "_settings", _make_settings())
@@ -326,9 +312,7 @@ class TestSendPushForUser:
         await push_sender.send_push_for_user("user-1", _make_payload())
 
     @pytest.mark.asyncio
-    async def test_debounce_expires_after_threshold(
-        self, mocker, mock_db_client
-    ):
+    async def test_debounce_expires_after_threshold(self, mocker, mock_db_client):
         mocker.patch.object(push_sender, "_settings", _make_settings())
 
         await push_sender.send_push_for_user("user-1", _make_payload())
