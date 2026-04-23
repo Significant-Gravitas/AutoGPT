@@ -9716,7 +9716,12 @@
             "type": "object",
             "title": "Cost Filter"
           },
-          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" },
+          "cost_divisor": {
+            "type": "integer",
+            "title": "Cost Divisor",
+            "default": 1
+          }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
@@ -9724,7 +9729,7 @@
       },
       "BlockCostType": {
         "type": "string",
-        "enum": ["run", "byte", "second"],
+        "enum": ["run", "byte", "second", "items", "cost_usd", "tokens"],
         "title": "BlockCostType"
       },
       "BlockDetails": {
