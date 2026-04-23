@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -96,6 +97,7 @@ from backend.data.user import (
     update_user_notification_preference,
     update_user_timezone,
 )
+from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -1703,6 +1705,10 @@ async def enable_execution_sharing(
     # Generate a unique share token
     share_token = str(uuid.uuid4())
 
+    # Remove stale allowlist records before updating the token — prevents a
+    # window where old records + new token could coexist.
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Update the execution with share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1710,6 +1716,14 @@ async def enable_execution_sharing(
         is_shared=True,
         share_token=share_token,
         shared_at=datetime.now(timezone.utc),
+    )
+
+    # Create allowlist of workspace files referenced in outputs
+    await execution_db.create_shared_execution_files(
+        execution_id=graph_exec_id,
+        share_token=share_token,
+        user_id=user_id,
+        outputs=execution.outputs,
     )
 
     # Return the share URL
@@ -1737,6 +1751,9 @@ async def disable_execution_sharing(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
+    # Remove shared file allowlist records
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Remove share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1760,6 +1777,43 @@ async def get_shared_execution(
         raise HTTPException(status_code=404, detail="Shared execution not found")
 
     return execution
+
+
+@v1_router.get(
+    "/public/shared/{share_token}/files/{file_id}/download",
+    summary="Download a file from a shared execution",
+    operation_id="download_shared_file",
+    tags=["graphs"],
+)
+async def download_shared_file(
+    share_token: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+    file_id: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+) -> Response:
+    """Download a workspace file from a shared execution (no auth required).
+
+    Validates that the file was explicitly exposed when sharing was enabled.
+    Returns a uniform 404 for all failure modes to prevent enumeration attacks.
+    """
+    # Single-query validation against the allowlist
+    execution_id = await execution_db.get_shared_execution_file(
+        share_token=share_token, file_id=file_id
+    )
+    if not execution_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Look up the actual file (no workspace scoping needed — the allowlist
+    # already validated that this file belongs to the shared execution)
+    file = await get_workspace_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return await create_file_download_response(file, inline=True)
 
 
 ########################################################

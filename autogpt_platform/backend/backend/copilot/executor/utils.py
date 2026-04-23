@@ -82,12 +82,23 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
 )
 COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue"
 
-# CoPilot operations can include extended thinking and agent generation
-# which may take 30+ minutes to complete
-COPILOT_CONSUMER_TIMEOUT_SECONDS = 60 * 60  # 1 hour
 
-# Graceful shutdown timeout - allow in-flight operations to complete
-GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+def get_session_lock_key(session_id: str) -> str:
+    """Redis key for the per-session cluster lock held by the executing pod."""
+    return f"copilot:session:{session_id}:lock"
+
+
+# CoPilot operations can include extended thinking and agent generation
+# which may take several hours to complete. Matches the pod's
+# terminationGracePeriodSeconds in the helm chart so a rolling deploy can let
+# the longest legitimate turn finish. Also bounds the stale-session auto-
+# complete watchdog in stream_registry (consumer_timeout + 5min buffer).
+COPILOT_CONSUMER_TIMEOUT_SECONDS = 6 * 60 * 60  # 6 hours
+
+# Graceful shutdown timeout - must match COPILOT_CONSUMER_TIMEOUT_SECONDS so
+# cleanup can let the longest legitimate turn complete before the pod is
+# SIGKILL'd by kubelet.
+GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS = COPILOT_CONSUMER_TIMEOUT_SECONDS
 
 
 def create_copilot_queue_config() -> RabbitMQConfig:
@@ -107,9 +118,27 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # Extended consumer timeout for long-running LLM operations
-            # Default 30-minute timeout is insufficient for extended thinking
-            # and agent generation which can take 30+ minutes
+            # Consumer timeout matches the pod graceful-shutdown window so a
+            # rolling deploy never forces redelivery of a turn that the pod
+            # is still legitimately finishing.
+            #
+            # Deploy note: RabbitMQ (verified on 4.1.4) does NOT strictly
+            # compare ``x-consumer-timeout`` on queue redeclaration, so this
+            # value can change between deploys without triggering
+            # PRECONDITION_FAILED. To update the *effective* timeout on an
+            # already-running queue before the new code deploys (so pods
+            # mid-shutdown don't have their consumer cancelled at the old
+            # limit), apply a policy:
+            #
+            #     rabbitmqctl set_policy copilot-consumer-timeout \
+            #       "^copilot_execution_queue$" \
+            #       '{"consumer-timeout": 21600000}' \
+            #       --apply-to queues
+            #
+            # The policy takes effect immediately. Once the policy is set
+            # to match the code's value the policy is redundant for new
+            # pods and can be removed after a stable deploy if desired —
+            # but it's harmless to leave in place.
             "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS
             * 1000,
         },

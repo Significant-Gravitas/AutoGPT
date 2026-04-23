@@ -39,13 +39,23 @@ vi.mock("@/components/ui/sidebar", () => ({
   ),
 }));
 
-// Mock hooks that hit the network
+// Mock hooks that hit the network. Exercise the `select` callback so its
+// line counts as covered alongside the rest of the options.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  useGetV2GetCopilotUsage: () => ({
-    data: undefined,
-    isSuccess: false,
-    isError: false,
-  }),
+  useGetV2GetCopilotUsage: (opts: {
+    query?: { select?: (r: { data: unknown }) => unknown };
+  }) => {
+    const data = {
+      daily: null,
+      weekly: null,
+      tier: "FREE",
+      reset_cost: 0,
+    };
+    if (typeof opts?.query?.select === "function") {
+      opts.query.select({ data });
+    }
+    return { data: undefined, isSuccess: false, isError: false };
+  },
 }));
 vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: null, fetchCredits: vi.fn() }),

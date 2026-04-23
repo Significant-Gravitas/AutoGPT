@@ -5,6 +5,7 @@ Covers:
   - Input/output block passthrough
   - prepare_dry_run routing
   - simulate_block output-pin filling
+  - Default simulator model + OpenRouter cost tracking
 """
 
 from __future__ import annotations
@@ -13,8 +14,14 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from openai.types import CompletionUsage
+from openai.types.chat import ChatCompletion
+from openai.types.chat.chat_completion import Choice
+from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 from backend.executor.simulator import (
+    _DEFAULT_SIMULATOR_MODEL,
+    _extract_cost_usd,
     _truncate_input_values,
     _truncate_value,
     build_simulation_prompt,
@@ -156,7 +163,8 @@ class TestPrepareDryRun:
                 {"agent_mode_max_iterations": 10, "model": "gpt-4o", "other": "val"},
             )
         assert result is not None
-        assert result["agent_mode_max_iterations"] == 1
+        # Capped to min(original, 10) — user's 10 passes through unchanged.
+        assert result["agent_mode_max_iterations"] == 10
         assert result["other"] == "val"
         assert result["model"] != "gpt-4o"  # overridden to simulation model
         # credentials left as-is so block schema validation passes —
@@ -510,3 +518,217 @@ class TestSimulateBlockPassthrough:
             assert len(outputs) == 1
             assert outputs[0][0] == "error"
             assert "No client" in outputs[0][1]
+
+
+# ---------------------------------------------------------------------------
+# Default model + OpenRouter cost tracking
+# ---------------------------------------------------------------------------
+
+
+def _sim_usage(
+    *,
+    prompt_tokens: int = 1200,
+    completion_tokens: int = 300,
+    cost: object = 0.000157,
+) -> CompletionUsage:
+    """Typed ``CompletionUsage`` carrying OpenRouter's ``cost`` extension
+    via ``model_extra`` — same pattern as
+    ``copilot/tools/web_search_test.py::_usage``.  ``model_construct``
+    preserves unknown fields; ``model_validate`` would drop them."""
+    payload: dict[str, Any] = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    if cost is not None:
+        payload["cost"] = cost
+    return CompletionUsage.model_construct(None, **payload)
+
+
+def _sim_completion(*, content: str, usage: CompletionUsage) -> ChatCompletion:
+    """Typed ``ChatCompletion`` shaped like an OpenRouter simulator
+    response so the production code runs under real SDK types."""
+    message = ChatCompletionMessage.model_construct(
+        None, role="assistant", content=content
+    )
+    choice = Choice.model_construct(
+        None, index=0, finish_reason="stop", message=message
+    )
+    return ChatCompletion.model_construct(
+        None,
+        id="cmpl-sim",
+        object="chat.completion",
+        created=0,
+        model=_DEFAULT_SIMULATOR_MODEL,
+        choices=[choice],
+        usage=usage,
+    )
+
+
+class TestDefaultSimulatorModel:
+    """Pin the default model — anyone flipping this without a cost review
+    trips the test."""
+
+    def test_default_is_flash_lite(self) -> None:
+        assert _DEFAULT_SIMULATOR_MODEL == "google/gemini-2.5-flash-lite"
+
+
+class TestExtractCostUsd:
+    """Provider-reported USD cost via typed ``model_extra`` — mirrors
+    ``copilot.tools.web_search._extract_cost_usd`` and
+    ``copilot.baseline.service._extract_usage_cost``."""
+
+    def test_returns_cost_value(self) -> None:
+        assert _extract_cost_usd(_sim_usage(cost=0.000157)) == pytest.approx(0.000157)
+
+    def test_returns_none_when_usage_missing(self) -> None:
+        assert _extract_cost_usd(None) is None
+
+    def test_returns_none_when_cost_field_missing(self) -> None:
+        assert _extract_cost_usd(_sim_usage(cost=None)) is None
+
+    def test_returns_none_when_cost_is_explicit_null(self) -> None:
+        usage = CompletionUsage.model_construct(
+            None, prompt_tokens=0, completion_tokens=0, total_tokens=0, cost=None
+        )
+        assert _extract_cost_usd(usage) is None
+
+    def test_returns_none_when_cost_is_negative(self) -> None:
+        usage = CompletionUsage.model_construct(
+            None, prompt_tokens=0, completion_tokens=0, total_tokens=0, cost=-0.5
+        )
+        assert _extract_cost_usd(usage) is None
+
+    def test_accepts_numeric_string(self) -> None:
+        usage = CompletionUsage.model_construct(
+            None, prompt_tokens=0, completion_tokens=0, total_tokens=0, cost="0.017"
+        )
+        assert _extract_cost_usd(usage) == pytest.approx(0.017)
+
+
+class TestSimulatorCostTracking:
+    """Integration: mock the OpenAI client, confirm the simulator sends
+    the flash-lite default + extra_body, then plumbs through to
+    ``persist_and_record_usage`` with ``provider='open_router'`` and the
+    real ``usage.cost`` pulled off ``model_extra``."""
+
+    def _mock_client(self, fake_resp: ChatCompletion) -> tuple[Any, AsyncMock]:
+        """Build a fake ``AsyncOpenAI`` client.  Same nested-type pattern as
+        ``copilot/tools/web_search_test.py::_mock_client`` — avoids
+        MagicMock's auto-child-attr behaviour so the exact ``create`` call
+        surface is what gets invoked."""
+        create_mock = AsyncMock(return_value=fake_resp)
+        client = type(
+            "MC",
+            (),
+            {
+                "chat": type(
+                    "C",
+                    (),
+                    {"completions": type("CC", (), {"create": create_mock})()},
+                )()
+            },
+        )()
+        return client, create_mock
+
+    @pytest.mark.asyncio
+    async def test_passes_default_model_and_tracks_cost(self) -> None:
+        block = _make_block()
+        fake_resp = _sim_completion(
+            content='{"result": "simulated"}',
+            usage=_sim_usage(prompt_tokens=1100, completion_tokens=220, cost=0.000189),
+        )
+        client, create_mock = self._mock_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=1320),
+            ) as mock_track,
+        ):
+            outputs = []
+            async for name, data in simulate_block(
+                block, {"query": "hello"}, user_id="user-42"
+            ):
+                outputs.append((name, data))
+
+        assert ("result", "simulated") in outputs
+
+        create_kwargs = create_mock.await_args.kwargs
+        assert create_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
+        assert create_kwargs["extra_body"] == {"usage": {"include": True}}
+
+        track_kwargs = mock_track.await_args.kwargs
+        assert track_kwargs["provider"] == "open_router"
+        assert track_kwargs["model"] == _DEFAULT_SIMULATOR_MODEL
+        assert track_kwargs["user_id"] == "user-42"
+        assert track_kwargs["prompt_tokens"] == 1100
+        assert track_kwargs["completion_tokens"] == 220
+        assert track_kwargs["cost_usd"] == pytest.approx(0.000189)
+        assert track_kwargs["session"] is None
+        assert track_kwargs["log_prefix"] == "[simulator]"
+
+    @pytest.mark.asyncio
+    async def test_tracks_even_when_cost_absent(self) -> None:
+        """Provider may omit ``cost`` (e.g. non-OpenRouter proxies).  We
+        still record token counts — ``persist_and_record_usage`` logs the
+        turn and skips the rate-limit ledger when cost is ``None``."""
+        block = _make_block()
+        fake_resp = _sim_completion(
+            content='{"result": "ok"}',
+            usage=_sim_usage(prompt_tokens=100, completion_tokens=20, cost=None),
+        )
+        client, _ = self._mock_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(return_value=120),
+            ) as mock_track,
+        ):
+            async for _name, _data in simulate_block(
+                block, {"query": "x"}, user_id="user-7"
+            ):
+                pass
+
+        track_kwargs = mock_track.await_args.kwargs
+        assert track_kwargs["cost_usd"] is None
+        assert track_kwargs["user_id"] == "user-7"
+        assert track_kwargs["provider"] == "open_router"
+
+    @pytest.mark.asyncio
+    async def test_tracking_failure_does_not_break_simulation(self) -> None:
+        """Cost-tracking failures are warnings, not simulation failures —
+        the block output must still flow to the caller."""
+        block = _make_block()
+        fake_resp = _sim_completion(
+            content='{"result": "simulated"}',
+            usage=_sim_usage(),
+        )
+        client, _ = self._mock_client(fake_resp)
+
+        with (
+            patch(
+                "backend.executor.simulator.get_openai_client",
+                return_value=client,
+            ),
+            patch(
+                "backend.executor.simulator.persist_and_record_usage",
+                new=AsyncMock(side_effect=RuntimeError("redis down")),
+            ),
+        ):
+            outputs = []
+            async for name, data in simulate_block(
+                block, {"query": "hello"}, user_id="user-42"
+            ):
+                outputs.append((name, data))
+
+        assert ("result", "simulated") in outputs

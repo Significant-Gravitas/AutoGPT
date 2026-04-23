@@ -5,6 +5,7 @@ import {
   isWorkspaceURI,
   buildWorkspaceURI,
 } from "@/lib/workspace-uri";
+import { workspaceFileRenderer } from "./WorkspaceFileRenderer";
 
 describe("parseWorkspaceURI", () => {
   it("parses a full workspace URI with mime type", () => {
@@ -111,5 +112,28 @@ describe("buildWorkspaceURI", () => {
     const uri = buildWorkspaceURI("file-abc", "text/plain");
     const parsed = parseWorkspaceURI(uri);
     expect(parsed).toEqual({ fileID: "file-abc", mimeType: "text/plain" });
+  });
+});
+
+describe("workspaceFileRenderer.getDownloadContent", () => {
+  it("returns auth-proxied URL without share token", () => {
+    const result = workspaceFileRenderer.getDownloadContent(
+      "workspace://file-123#image/png",
+    );
+    expect(result).not.toBeNull();
+    expect(result!.data).toBe(
+      "/api/proxy/api/workspace/files/file-123/download",
+    );
+  });
+
+  it("returns public share URL when share token is in metadata", () => {
+    const result = workspaceFileRenderer.getDownloadContent(
+      "workspace://file-123#image/png",
+      { shareToken: "abc-token-123" },
+    );
+    expect(result).not.toBeNull();
+    expect(result!.data).toBe(
+      "/api/proxy/api/public/shared/abc-token-123/files/file-123/download",
+    );
   });
 });

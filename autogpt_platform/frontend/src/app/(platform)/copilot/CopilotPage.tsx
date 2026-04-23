@@ -1,6 +1,6 @@
 "use client";
 
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";
@@ -125,7 +125,7 @@ export function CopilotPage() {
     isError: usageError,
   } = useGetV2GetCopilotUsage({
     query: {
-      select: (res) => res.data as CoPilotUsageStatus,
+      select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
       staleTime: 10000,
     },
@@ -258,9 +258,7 @@ export function CopilotPage() {
         resetCost={resetCost ?? 0}
         resetMessage={rateLimitMessage ?? ""}
         isWeeklyExhausted={
-          hasUsage &&
-          usage.weekly.limit > 0 &&
-          usage.weekly.used >= usage.weekly.limit
+          hasUsage && !!usage.weekly && usage.weekly.percent_used >= 100
         }
         hasInsufficientCredits={hasInsufficientCredits}
         isBillingEnabled={isBillingEnabled}

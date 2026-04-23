@@ -1036,6 +1036,8 @@ def _make_sdk_patches(
                 claude_agent_max_transient_retries=1,
                 claude_agent_max_turns=1000,
                 claude_agent_max_budget_usd=100.0,
+                claude_agent_max_thinking_tokens=0,
+                claude_agent_thinking_effort=None,
                 claude_agent_fallback_model=None,
             ),
         ),

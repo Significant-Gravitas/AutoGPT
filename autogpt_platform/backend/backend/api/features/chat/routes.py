@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.copilot import service as chat_service
 from backend.copilot import stream_registry
+from backend.copilot.builder_context import resolve_session_permissions
 from backend.copilot.config import ChatConfig, CopilotLlmModel, CopilotMode
 from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.executor.utils import enqueue_cancel_task, enqueue_copilot_turn
@@ -24,6 +25,7 @@ from backend.copilot.model import (
     create_chat_session,
     delete_chat_session,
     get_chat_session,
+    get_or_create_builder_session,
     get_user_sessions,
     update_session_title,
 )
@@ -34,7 +36,7 @@ from backend.copilot.pending_message_helpers import (
 )
 from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
-    CoPilotUsageStatus,
+    CoPilotUsagePublic,
     RateLimitExceeded,
     acquire_reset_lock,
     check_rate_limit,
@@ -73,6 +75,7 @@ from backend.copilot.tools.models import (
     NoResultsResponse,
     SetupRequirementsResponse,
     SuggestedGoalResponse,
+    TodoWriteResponse,
     UnderstandingUpdatedResponse,
 )
 from backend.copilot.tracking import track_user_message
@@ -133,7 +136,7 @@ def _strip_injected_context(message: dict) -> dict:
 class StreamChatRequest(BaseModel):
     """Request model for streaming chat with optional context."""
 
-    message: str
+    message: str = Field(max_length=64_000)
     is_user_message: bool = True
     context: dict[str, str] | None = None  # {url: str, content: str}
     file_ids: list[str] | None = Field(
@@ -165,15 +168,31 @@ class PeekPendingMessagesResponse(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    """Request model for creating a new chat session.
+    """Request model for creating (or get-or-creating) a chat session.
 
-    ``dry_run`` is a **top-level** field — do not nest it inside ``metadata``.
+    Two modes, selected by the body:
+
+    - Default: create a fresh session. ``dry_run`` is a **top-level**
+      field — do not nest it inside ``metadata``.
+    - Builder-bound: when ``builder_graph_id`` is set, the endpoint
+      switches to **get-or-create** keyed on
+      ``(user_id, builder_graph_id)``.  The builder panel calls this on
+      mount so the chat persists across refreshes.  Graph ownership is
+      validated inside :func:`get_or_create_builder_session`. Write-side
+      scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject
+      any ``agent_id`` other than the bound graph) and a small blacklist
+      hides tools that conflict with the panel's scope
+      (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``
+      — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups
+      (``find_block``, ``find_agent``, ``search_docs``, …) stay open.
+
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     dry_run: bool = False
+    builder_graph_id: str | None = Field(default=None, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -318,29 +337,43 @@ async def create_session(
     user_id: Annotated[str, Security(auth.get_user_id)],
     request: CreateSessionRequest | None = None,
 ) -> CreateSessionResponse:
-    """
-    Create a new chat session.
+    """Create (or get-or-create) a chat session.
 
-    Initiates a new chat session for the authenticated user.
+    Two modes, selected by the request body:
+
+    - Default: create a fresh session for the user. ``dry_run=True`` forces
+      run_block and run_agent calls to use dry-run simulation.
+    - Builder-bound: when ``builder_graph_id`` is set, get-or-create keyed
+      on ``(user_id, builder_graph_id)``. Returns the existing session for
+      that graph or creates one locked to it.  Graph ownership is validated
+      inside :func:`get_or_create_builder_session`; raises 404 on
+      unauthorized access.  Write-side scope is enforced per-tool
+      (``edit_agent`` / ``run_agent`` reject any ``agent_id`` other than
+      the bound graph) and a small blacklist hides tools that conflict
+      with the panel's scope (see :data:`BUILDER_BLOCKED_TOOLS`).
 
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
-        request: Optional request body. When provided, ``dry_run=True``
-            forces run_block and run_agent calls to use dry-run simulation.
+        request: Optional request body with ``dry_run`` and/or
+            ``builder_graph_id``.
 
     Returns:
-        CreateSessionResponse: Details of the created session.
-
+        CreateSessionResponse: Details of the resulting session.
     """
     dry_run = request.dry_run if request else False
+    builder_graph_id = request.builder_graph_id if request else None
 
     logger.info(
         f"Creating session with user_id: "
         f"...{user_id[-8:] if len(user_id) > 8 else '<redacted>'}"
         f"{', dry_run=True' if dry_run else ''}"
+        f"{f', builder_graph_id={builder_graph_id}' if builder_graph_id else ''}"
     )
 
-    session = await create_chat_session(user_id, dry_run=dry_run)
+    if builder_graph_id:
+        session = await get_or_create_builder_session(user_id, builder_graph_id)
+    else:
+        session = await create_chat_session(user_id, dry_run=dry_run)
 
     return CreateSessionResponse(
         id=session.session_id,
@@ -536,23 +569,27 @@ async def get_session(
 )
 async def get_copilot_usage(
     user_id: Annotated[str, Security(auth.get_user_id)],
-) -> CoPilotUsageStatus:
+) -> CoPilotUsagePublic:
     """Get CoPilot usage status for the authenticated user.
 
-    Returns current token usage vs limits for daily and weekly windows.
-    Global defaults sourced from LaunchDarkly (falling back to config).
-    Includes the user's rate-limit tier.
+    Returns the percentage of the daily/weekly allowance used — not the
+    raw spend or cap — so clients cannot derive per-turn cost or platform
+    margins. Global defaults sourced from LaunchDarkly (falling back to
+    config). Includes the user's rate-limit tier.
     """
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
-    return await get_usage_status(
+    status = await get_usage_status(
         user_id=user_id,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
+    return CoPilotUsagePublic.from_status(status)
 
 
 class RateLimitResetResponse(BaseModel):
@@ -561,7 +598,9 @@ class RateLimitResetResponse(BaseModel):
     success: bool
     credits_charged: int = Field(description="Credits charged (in cents)")
     remaining_balance: int = Field(description="Credit balance after charge (in cents)")
-    usage: CoPilotUsageStatus = Field(description="Updated usage status after reset")
+    usage: CoPilotUsagePublic = Field(
+        description="Updated usage status after reset (percentages only)"
+    )
 
 
 @router.post(
@@ -585,7 +624,7 @@ async def reset_copilot_usage(
 ) -> RateLimitResetResponse:
     """Reset the daily CoPilot rate limit by spending credits.
 
-    Allows users who have hit their daily token limit to spend credits
+    Allows users who have hit their daily cost limit to spend credits
     to reset their daily usage counter and continue working.
     Returns 400 if the feature is disabled or the user is not over the limit.
     Returns 402 if the user has insufficient credits.
@@ -604,7 +643,9 @@ async def reset_copilot_usage(
         )
 
     daily_limit, weekly_limit, tier = await get_global_rate_limits(
-        user_id, config.daily_token_limit, config.weekly_token_limit
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
     )
 
     if daily_limit <= 0:
@@ -641,8 +682,8 @@ async def reset_copilot_usage(
         # used for limit checks, not returned to the client.)
         usage_status = await get_usage_status(
             user_id=user_id,
-            daily_token_limit=daily_limit,
-            weekly_token_limit=weekly_limit,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
             tier=tier,
         )
         if daily_limit > 0 and usage_status.daily.used < daily_limit:
@@ -677,7 +718,7 @@ async def reset_copilot_usage(
 
         # Reset daily usage in Redis.  If this fails, refund the credits
         # so the user is not charged for a service they did not receive.
-        if not await reset_daily_usage(user_id, daily_token_limit=daily_limit):
+        if not await reset_daily_usage(user_id, daily_cost_limit=daily_limit):
             # Compensate: refund the charged credits.
             refunded = False
             try:
@@ -713,11 +754,11 @@ async def reset_copilot_usage(
     finally:
         await release_reset_lock(user_id)
 
-    # Return updated usage status.
+    # Return updated usage status (public schema — percentages only).
     updated_usage = await get_usage_status(
         user_id=user_id,
-        daily_token_limit=daily_limit,
-        weekly_token_limit=weekly_limit,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
         rate_limit_reset_cost=config.rate_limit_reset_cost,
         tier=tier,
     )
@@ -726,7 +767,7 @@ async def reset_copilot_usage(
         success=True,
         credits_charged=cost,
         remaining_balance=remaining,
-        usage=updated_usage,
+        usage=CoPilotUsagePublic.from_status(updated_usage),
     )
 
 
@@ -787,7 +828,7 @@ async def cancel_session_task(
             ),
         },
         404: {"description": "Session not found or access denied"},
-        429: {"description": "Token rate-limit or call-frequency cap exceeded"},
+        429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
     },
 )
 async def stream_chat_post(
@@ -830,7 +871,8 @@ async def stream_chat_post(
         f"user={user_id}, message_len={len(request.message)}",
         extra={"json_fields": log_meta},
     )
-    await _validate_and_get_session(session_id, user_id)
+    session = await _validate_and_get_session(session_id, user_id)
+    builder_permissions = resolve_session_permissions(session)
 
     # Self-defensive queue-fallback: if a turn is already running, don't race
     # it on the cluster lock — drop the message into the pending buffer and
@@ -861,18 +903,20 @@ async def stream_chat_post(
         },
     )
 
-    # Pre-turn rate limit check (token-based).
+    # Pre-turn rate limit check (cost-based, microdollars).
     # check_rate_limit short-circuits internally when both limits are 0.
     # Global defaults sourced from LaunchDarkly, falling back to config.
     if user_id:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(
-                user_id, config.daily_token_limit, config.weekly_token_limit
+                user_id,
+                config.daily_cost_limit_microdollars,
+                config.weekly_cost_limit_microdollars,
             )
             await check_rate_limit(
                 user_id=user_id,
-                daily_token_limit=daily_limit,
-                weekly_token_limit=weekly_limit,
+                daily_cost_limit=daily_limit,
+                weekly_cost_limit=weekly_limit,
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
@@ -943,6 +987,7 @@ async def stream_chat_post(
             file_ids=sanitized_file_ids,
             mode=request.mode,
             model=request.model,
+            permissions=builder_permissions,
             request_arrival_at=request_arrival_at,
         )
     else:
@@ -1375,6 +1420,7 @@ ToolResponseUnion = (
     | MemorySearchResponse
     | MemoryForgetCandidatesResponse
     | MemoryForgetConfirmResponse
+    | TodoWriteResponse
 )
 
 

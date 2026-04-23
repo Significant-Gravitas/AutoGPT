@@ -13,6 +13,7 @@ from backend.blocks._base import (
     BlockSchemaInput,
     BlockSchemaOutput,
 )
+from backend.blocks.llm import extract_openrouter_cost
 from backend.data.block import BlockInput
 from backend.data.model import (
     APIKeyCredentials,
@@ -98,14 +99,23 @@ class PerplexityBlock(Block):
             return _sanitize_perplexity_model(v)
 
         @classmethod
-        def validate_data(cls, data: BlockInput) -> str | None:
+        def validate_data(
+            cls,
+            data: BlockInput,
+            exclude_fields: set[str] | None = None,
+        ) -> str | None:
             """Sanitize the model field before JSON schema validation so that
             invalid values are replaced with the default instead of raising a
-            BlockInputError."""
+            BlockInputError.
+
+            Signature matches ``BlockSchema.validate_data`` (including the
+            optional ``exclude_fields`` kwarg added for dry-run credential
+            bypass) so Pyright doesn't flag this as an incompatible override.
+            """
             model_value = data.get("model")
             if model_value is not None:
                 data["model"] = _sanitize_perplexity_model(model_value).value
-            return super().validate_data(data)
+            return super().validate_data(data, exclude_fields=exclude_fields)
 
         system_prompt: str = SchemaField(
             title="System Prompt",
@@ -230,12 +240,24 @@ class PerplexityBlock(Block):
                         if "message" in choice and "annotations" in choice["message"]:
                             annotations = choice["message"]["annotations"]
 
-            # Update execution stats
+            # Update execution stats. ``execution_stats`` is instance state,
+            # so always reset token counters — a response without ``usage``
+            # must not leak a previous run's tokens into ``PlatformCostLog``.
+            self.execution_stats.input_token_count = 0
+            self.execution_stats.output_token_count = 0
             if response.usage:
                 self.execution_stats.input_token_count = response.usage.prompt_tokens
                 self.execution_stats.output_token_count = (
                     response.usage.completion_tokens
                 )
+            # OpenRouter's ``x-total-cost`` response header carries the real
+            # per-request USD cost. Piping it into ``provider_cost`` lets the
+            # direct-run ``PlatformCostLog`` flow
+            # (``executor.cost_tracking::log_system_credential_cost``) record
+            # the actual operator-side spend instead of inferring from tokens.
+            # Always overwrite — ``execution_stats`` is instance state, so a
+            # response without the header must not reuse a previous run's cost.
+            self.execution_stats.provider_cost = extract_openrouter_cost(response)
 
             return {"response": response_content, "annotations": annotations or []}
 

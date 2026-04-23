@@ -7,6 +7,7 @@ import {
   formatNotificationTitle,
   getSendSuppressionReason,
   parseSessionIDs,
+  shouldDebounceReconnect,
   shouldSuppressDuplicateSend,
 } from "./helpers";
 
@@ -464,5 +465,90 @@ describe("deduplicateMessages", () => {
     ];
     const result = deduplicateMessages(msgs);
     expect(result).toHaveLength(2); // duplicate step-start messages are deduped
+  });
+});
+
+describe("shouldDebounceReconnect", () => {
+  const WINDOW_MS = 1_500;
+
+  it("returns null for the first reconnect (lastResumeAt === 0)", () => {
+    expect(shouldDebounceReconnect(0, 10_000, WINDOW_MS)).toBeNull();
+  });
+
+  it("returns null for a negative lastResumeAt sentinel", () => {
+    // Defensive: a negative value is still treated as "no reconnect yet".
+    expect(shouldDebounceReconnect(-1, 10_000, WINDOW_MS)).toBeNull();
+  });
+
+  it("returns the remaining delay when now is inside the window", () => {
+    // 500ms since the last resume — the caller must wait another 1000ms
+    // before the storm cap reopens.
+    const remaining = shouldDebounceReconnect(1_000, 1_500, WINDOW_MS);
+    expect(remaining).toBe(1_000);
+  });
+
+  it("coalesces a reconnect that arrives immediately after the previous resume", () => {
+    // now === lastResumeAt → sinceLastResume === 0, so the full window remains.
+    const remaining = shouldDebounceReconnect(5_000, 5_000, WINDOW_MS);
+    expect(remaining).toBe(WINDOW_MS);
+  });
+
+  it("returns null when exactly on the window boundary", () => {
+    // sinceLastResume === windowMs is NOT inside the window — the next
+    // reconnect should fire immediately.
+    expect(shouldDebounceReconnect(1_000, 2_500, WINDOW_MS)).toBeNull();
+  });
+
+  it("returns null when the window has elapsed", () => {
+    expect(shouldDebounceReconnect(1_000, 5_000, WINDOW_MS)).toBeNull();
+  });
+
+  it("returns a small remaining delay at the far edge of the window", () => {
+    // 1ms before the window closes → 1ms left.
+    const remaining = shouldDebounceReconnect(1_000, 2_499, WINDOW_MS);
+    expect(remaining).toBe(1);
+  });
+
+  it("collapses a burst of reconnects into one debounced scheduling", () => {
+    // Simulates the browser tab-throttle storm: three reconnect calls fire
+    // within a single second after the last resume. Only the first slot
+    // would actually run; subsequent calls must always be coalesced.
+    const lastResumeAt = 10_000;
+    const firstCallRemaining = shouldDebounceReconnect(
+      lastResumeAt,
+      10_100,
+      WINDOW_MS,
+    );
+    const secondCallRemaining = shouldDebounceReconnect(
+      lastResumeAt,
+      10_200,
+      WINDOW_MS,
+    );
+    const thirdCallRemaining = shouldDebounceReconnect(
+      lastResumeAt,
+      10_300,
+      WINDOW_MS,
+    );
+    expect(firstCallRemaining).toBe(1_400);
+    expect(secondCallRemaining).toBe(1_300);
+    expect(thirdCallRemaining).toBe(1_200);
+  });
+
+  it("allows a reconnect to fire immediately once the window has passed", () => {
+    // After the window expires, a retry that came in earlier can now fire
+    // rather than stalling the loop. Guards against the regression that
+    // motivated the coalesce-instead-of-drop fix.
+    const lastResumeAt = 10_000;
+    expect(
+      shouldDebounceReconnect(lastResumeAt, 10_500, WINDOW_MS),
+    ).not.toBeNull();
+    expect(shouldDebounceReconnect(lastResumeAt, 11_500, WINDOW_MS)).toBeNull();
+  });
+
+  it("honours a custom windowMs value", () => {
+    // Shouldn't hard-code 1500 anywhere: the helper is generic over the
+    // window.
+    expect(shouldDebounceReconnect(1_000, 1_500, 2_000)).toBe(1_500);
+    expect(shouldDebounceReconnect(1_000, 3_500, 2_000)).toBeNull();
   });
 });

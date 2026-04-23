@@ -35,7 +35,7 @@ from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
-from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
+from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
@@ -485,9 +485,11 @@ async def subscribe_to_session(
     subscriber_queue: asyncio.Queue[StreamBaseResponse] = asyncio.Queue()
     stream_key = _get_turn_stream_key(session.turn_id)
 
-    # Step 1: Replay messages from Redis Stream
+    # Replay batch capped by ``stream_replay_count``.
     xread_start = time.perf_counter()
-    messages = await redis.xread({stream_key: last_message_id}, block=None, count=1000)
+    messages = await redis.xread(
+        {stream_key: last_message_id}, block=None, count=config.stream_replay_count
+    )
     xread_time = (time.perf_counter() - xread_start) * 1000
     logger.info(
         f"[TIMING] Redis xread (replay) took {xread_time:.1f}ms, status={session_status}",
@@ -851,6 +853,15 @@ async def mark_session_completed(
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
 
+    # Force-release the executor's cluster lock so the next enqueued turn can
+    # acquire it immediately. The lock holder's on_run_done will also release
+    # (idempotent delete); doing it here unblocks cases where the task hangs
+    # past the cancel timeout or a pod crash leaves the lock orphaned.
+    try:
+        await redis.delete(get_session_lock_key(session_id))
+    except RedisError as e:
+        logger.warning(f"Failed to release cluster lock for session {session_id}: {e}")
+
     if error_message and not skip_error_publish:
         try:
             await publish_chunk(turn_id, StreamError(errorText=error_message))
@@ -1015,8 +1026,8 @@ async def get_active_session(
 
     # Check if session is stale (running beyond tool timeout + buffer).
     # Auto-complete it to prevent infinite polling loops.
-    # Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour),
-    # so we add a 5-minute buffer to avoid false positives during legitimate operations.
+    # A turn can legitimately run up to COPILOT_CONSUMER_TIMEOUT_SECONDS, so we
+    # add a 5-minute buffer to avoid false positives during legitimate operations.
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:
