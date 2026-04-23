@@ -1,6 +1,12 @@
-from typing import Type
+from typing import TYPE_CHECKING, Type
+
+from pydantic import BaseModel
 
 from backend.blocks._base import Block, BlockCost, BlockCostType
+from backend.data.block import BlockInput
+
+if TYPE_CHECKING:
+    from backend.data.model import NodeExecutionStats
 from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
@@ -198,6 +204,98 @@ MODEL_COST: dict[LlmModel, int] = {
 for model in LlmModel:
     if model not in MODEL_COST:
         raise ValueError(f"Missing MODEL_COST for model: {model}")
+
+
+class TokenRate(BaseModel):
+    """Per-token credit rates for a specific model.
+
+    Each field is credits per 1,000,000 tokens of the corresponding kind.
+    Cache-read and cache-write are 0 by default for providers that don't
+    surface them (most non-Anthropic). Amounts use float so small rates
+    (e.g. 0.2 credits / 1M Gemini Flash input) don't round away.
+    """
+
+    input: float
+    output: float
+    cache_read: float = 0.0
+    cache_creation: float = 0.0
+
+
+# TOKEN_COST populates gradually as we migrate LLM blocks to the TOKENS
+# cost type. Entries not yet listed fall back to the flat MODEL_COST tier
+# via the RUN-based LLM_COST list. Rates below are credits/1M tokens at the
+# current credit-to-USD conversion (1 credit ≈ $0.01), with a 1.5x margin
+# over the published provider price.
+TOKEN_COST: dict[LlmModel, TokenRate] = {
+    # Anthropic Claude 4.6 Opus: $15/1M input, $75/1M output, $1.50/1M cache
+    # read, $18.75/1M cache write (docs.anthropic.com/en/docs/about-claude/pricing).
+    LlmModel.CLAUDE_4_6_OPUS: TokenRate(
+        input=2250, output=11250, cache_read=225, cache_creation=2810
+    ),
+    # Claude 4.6 Sonnet: $3/$15/$0.30/$3.75.
+    LlmModel.CLAUDE_4_6_SONNET: TokenRate(
+        input=450, output=2250, cache_read=45, cache_creation=562
+    ),
+    # Claude 4.5 Haiku: $0.80/$4/$0.08/$1.
+    LlmModel.CLAUDE_4_5_HAIKU: TokenRate(
+        input=120, output=600, cache_read=12, cache_creation=150
+    ),
+    # GPT-5: $2.50/1M input, $10/1M output (openai.com/api/pricing).
+    LlmModel.GPT5: TokenRate(input=375, output=1500),
+    LlmModel.GPT5_MINI: TokenRate(input=22, output=90),
+    LlmModel.GPT5_NANO: TokenRate(input=7, output=30),
+    LlmModel.GPT4O: TokenRate(input=375, output=1500),
+    LlmModel.GPT4O_MINI: TokenRate(input=22, output=90),
+    # Gemini 2.5 Pro: $1.25/$5 input/output (cloud.google.com/vertex-ai/pricing).
+    LlmModel.GEMINI_2_5_PRO: TokenRate(input=187, output=750),
+    LlmModel.GEMINI_2_5_FLASH: TokenRate(input=11, output=45),
+}
+
+
+def compute_token_credits(
+    input_data: BlockInput, stats: "NodeExecutionStats | None"
+) -> int:
+    """Compute the credit charge for a TOKENS-billed LLM call from stats.
+
+    Falls back to MODEL_COST[model] (the per-model flat tier) when the
+    model has no TOKEN_COST entry or stats haven't been populated yet
+    (pre-flight). Callers in block_usage_cost handle the TOKENS branch.
+    """
+    import math
+
+    if stats is None:
+        # Pre-flight — use the flat MODEL_COST entry as an estimate.
+        raw_model = input_data.get("model")
+        model = _lookup_llm_model(raw_model)
+        return MODEL_COST.get(model, 0) if model else 0
+
+    raw_model = input_data.get("model")
+    model = _lookup_llm_model(raw_model)
+    rate = TOKEN_COST.get(model) if model else None
+    if rate is None:
+        # Unmapped model — charge the per-call flat tier so we don't under-bill.
+        return MODEL_COST.get(model, 0) if model else 0
+
+    total = (
+        stats.input_token_count * rate.input
+        + stats.output_token_count * rate.output
+        + stats.cache_read_token_count * rate.cache_read
+        + stats.cache_creation_token_count * rate.cache_creation
+    )
+    return max(0, math.ceil(total / 1_000_000))
+
+
+def _lookup_llm_model(raw: "str | LlmModel | dict | None") -> "LlmModel | None":
+    if raw is None:
+        return None
+    if isinstance(raw, LlmModel):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return LlmModel(raw)
+        except ValueError:
+            return None
+    return None
 
 
 LLM_COST = (

@@ -96,27 +96,39 @@ class BlockCategory(Enum):
 
 
 class BlockCostType(str, Enum):
-    RUN = "run"  # cost X credits per run
-    BYTE = "byte"  # cost X credits per byte
-    SECOND = "second"  # cost X credits per second
+    RUN = "run"  # cost_amount credits per run
+    BYTE = "byte"  # cost_amount credits per byte of input data
+    SECOND = "second"  # cost_amount credits per cost_divisor seconds of walltime
+    ITEMS = (
+        "items"  # cost_amount credits per cost_divisor items (from stats.provider_cost)
+    )
+    COST_USD = "cost_usd"  # cost_amount credits per USD of stats.provider_cost
+    TOKENS = "tokens"  # rate table lookup on (model, provider); see TOKEN_COST
 
 
 class BlockCost(BaseModel):
     cost_amount: int
     cost_filter: BlockInput
     cost_type: BlockCostType
+    # cost_divisor: interpret cost_amount as "credits per cost_divisor units".
+    # Only meaningful for SECOND / ITEMS / TOKENS. Defaults to 1 so existing
+    # RUN/BYTE entries stay point-wise. Example: cost_amount=1, cost_divisor=10
+    # under SECOND means "1 credit per 10 seconds of walltime".
+    cost_divisor: int = 1
 
     def __init__(
         self,
         cost_amount: int,
         cost_type: BlockCostType = BlockCostType.RUN,
         cost_filter: Optional[BlockInput] = None,
+        cost_divisor: int = 1,
         **data: Any,
     ) -> None:
         super().__init__(
             cost_amount=cost_amount,
             cost_filter=cost_filter or {},
             cost_type=cost_type,
+            cost_divisor=max(1, cost_divisor),
             **data,
         )
 
