@@ -1,6 +1,5 @@
 import { renderHook, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import React from "react";
 
 vi.mock("@/hooks/useCredentials", () => ({ default: vi.fn() }));
 vi.mock("@/components/molecules/Toast/use-toast", () => ({

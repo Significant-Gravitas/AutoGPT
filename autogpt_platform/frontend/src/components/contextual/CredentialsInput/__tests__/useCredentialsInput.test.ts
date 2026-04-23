@@ -1,6 +1,5 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import React from "react";
 import type {
   BlockIOCredentialsSubSchema,
   CredentialsMetaResponse,
@@ -122,7 +121,7 @@ describe("useCredentialsInput – upgradeableCredentials", () => {
 
     // System credentials should be filtered out
     expect(result.current.userUpgradeableCredentials).toHaveLength(1);
-    expect(result.current.userUpgradeableCredentials[0].id).toBe("narrow");
+    expect(result.current.userUpgradeableCredentials![0].id).toBe("narrow");
   });
 });
 
@@ -162,7 +161,7 @@ describe("useCredentialsInput – handleScopeUpgrade", () => {
     if (result.current.isLoading) return;
 
     await act(async () => {
-      await result.current.handleScopeUpgrade("existing-cred-id");
+      await result.current.handleScopeUpgrade!("existing-cred-id");
     });
 
     expect(oAuthLoginMock).toHaveBeenCalledWith(
@@ -207,7 +206,7 @@ describe("useCredentialsInput – handleScopeUpgrade", () => {
     if (result.current.isLoading) return;
 
     await act(async () => {
-      await result.current.handleOAuthLogin();
+      await result.current.handleOAuthLogin!();
     });
 
     // credentialID should be undefined (not passed)
