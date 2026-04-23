@@ -146,51 +146,22 @@ class TestReadOrCreateProfileKey:
         client_instance.create_profile.assert_awaited_once()
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_reuses_upstream_profile_after_failed_persist_retry(self):
-        """Idempotency: if a prior attempt created the Ayrshare profile but
-        failed to persist our credential, the retry must reuse the upstream
-        profile instead of creating another one.  This is the ``list_profiles``
-        recovery path — no leaked profile, no duplicate quota burn."""
-        store, _ = self._mock_store(legacy_key=None)
-
-        # Upstream already has a profile titled exactly `_profile_title`.
-        # Using the real ProfileSummary model proves the /profiles list shape
-        # (which omits the `status` envelope) parses without ValidationError.
-        existing_profile = ProfileSummary(
-            title=f"User {_USER_ID}",
-            profileKey="recovered-key",
-            refId="ref-123",
-        )
-        client_instance = MagicMock()
-        client_instance.list_profiles = AsyncMock(return_value=[existing_profile])
-        client_instance.create_profile = AsyncMock()
-
-        with patch(
-            "backend.integrations.managed_providers.ayrshare.AyrshareClient",
-            return_value=client_instance,
-        ):
-            result = await _read_or_create_profile_key(_USER_ID, store)
-
-        assert result == "recovered-key"
-        # Critical assertion: create_profile MUST NOT run — that would leak
-        # a profile against the subscription's quota.
-        client_instance.create_profile.assert_not_awaited()
-
-    @pytest.mark.asyncio(loop_scope="session")
-    async def test_list_profiles_tolerates_entries_without_profileKey(self):
-        """``GET /profiles`` returns entries without ``profileKey`` for
-        incomplete / freshly-created profiles.  The model must accept that
-        shape (Optional field), and a title-match on such an entry must be
-        treated as "no usable profile" so we fall through to ``create_profile``
-        instead of returning ``None`` as a key."""
+    async def test_orphaned_upstream_profile_is_deleted_and_recreated(self):
+        """Ayrshare's GET /profiles never returns ``profileKey``.  If a
+        profile with our title exists upstream we have no way to retrieve
+        its key, so we must delete + recreate to get a usable one.  This
+        is the path that unblocks users whose provisioning state got out
+        of sync between our DB and Ayrshare (e.g. the managed cred was
+        dropped while the upstream profile persisted)."""
         store, _ = self._mock_store(legacy_key=None)
 
         title = f"User {_USER_ID}"
-        incomplete = ProfileSummary(title=title, refId="ref-incomplete")
+        orphan = ProfileSummary(title=title, refId="ref-orphan")
         fake_created = MagicMock(profileKey="fresh-key")
 
         client_instance = MagicMock()
-        client_instance.list_profiles = AsyncMock(return_value=[incomplete])
+        client_instance.list_profiles = AsyncMock(return_value=[orphan])
+        client_instance.delete_profile = AsyncMock()
         client_instance.create_profile = AsyncMock(return_value=fake_created)
 
         with patch(
@@ -200,6 +171,7 @@ class TestReadOrCreateProfileKey:
             result = await _read_or_create_profile_key(_USER_ID, store)
 
         assert result == "fresh-key"
+        client_instance.delete_profile.assert_awaited_once_with(title=title)
         client_instance.create_profile.assert_awaited_once()
 
 

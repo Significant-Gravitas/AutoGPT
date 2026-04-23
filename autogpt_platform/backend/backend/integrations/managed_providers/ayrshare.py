@@ -157,18 +157,25 @@ async def _read_or_create_profile_key(
         raise RuntimeError("Ayrshare integration is not configured") from exc
 
     title = _profile_title(user_id)
-    # Idempotency: re-use an upstream profile we created on a prior
-    # (failed) attempt.  One extra API call per fresh-user provisioning,
-    # zero risk of duplicate profiles burning the subscription's quota.
+    # Ayrshare's GET /profiles never returns ``profileKey`` — there's no
+    # supported endpoint to recover an existing profile's key.  If a
+    # profile with our title exists upstream it's orphaned (we lost our
+    # side of the secret), so delete it and create fresh.  This is
+    # destructive — any social accounts linked to the orphan are lost —
+    # but the orphan is already unusable without the key, so the only
+    # alternatives would be a stuck user or a shadow profile forever.
     existing = await client.list_profiles()
-    for profile in existing:
-        if profile.title == title and profile.profileKey:
-            logger.info(
-                "[ayrshare] Reusing upstream profile for user %s (refId=%s)",
-                user_id,
-                profile.refId,
-            )
-            return profile.profileKey
+    orphan = next((p for p in existing if p.title == title), None)
+    if orphan is not None:
+        logger.warning(
+            "[ayrshare] Orphaned upstream profile detected for user %s "
+            "(refId=%s); deleting so we can create a fresh one with a "
+            "retrievable profileKey.  Any previously-linked social "
+            "accounts on the orphan will be lost.",
+            user_id,
+            orphan.refId,
+        )
+        await client.delete_profile(title=title)
 
     logger.debug("[ayrshare] Creating profile for user %s", user_id)
     profile = await client.create_profile(title=title, messaging_active=True)

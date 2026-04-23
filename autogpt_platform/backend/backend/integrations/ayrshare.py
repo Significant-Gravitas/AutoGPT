@@ -321,13 +321,34 @@ class AyrshareClient:
 
         return ProfileResponse(**response_data)
 
+    async def delete_profile(self, *, title: str) -> None:
+        """Delete a User Profile by title.
+
+        Used as the last-resort recovery when a profile with our title
+        exists upstream but we lost its ``profileKey`` (the list endpoint
+        never returns profileKey).  Destructive — any linked social
+        accounts on the deleted profile are lost.
+
+        Docs: https://www.ayrshare.com/docs/apis/profiles/delete-profile
+        """
+        response = await self._requests.delete(
+            self.PROFILES_ENDPOINT, json={"title": title}
+        )
+        if not response.ok:
+            raise AyrshareAPIException(
+                f"Ayrshare profile delete failed ({response.status}): "
+                f"{_extract_error_message(response)}",
+                response.status,
+            )
+
     async def list_profiles(self) -> list[ProfileSummary]:
         """List every User Profile under the primary account.
 
-        Lets callers recover from partial failures (e.g. ``create_profile``
-        succeeded upstream but storing the key failed locally): a retry can
-        look up the existing profile by title instead of creating a new one
-        and leaking quota.
+        Note: Ayrshare does NOT return ``profileKey`` on any profile in
+        this response — ``ProfileSummary.profileKey`` is always ``None``.
+        Callers use this purely to detect orphaned-title collisions, then
+        pair with :meth:`delete_profile` + :meth:`create_profile` to
+        recover a usable key.
 
         Docs: https://www.ayrshare.com/docs/apis/profiles/get-profiles
         """
