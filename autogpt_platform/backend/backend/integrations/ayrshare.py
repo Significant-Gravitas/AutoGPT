@@ -144,9 +144,14 @@ class AyrshareClient:
         if custom_requests:
             self._requests = custom_requests
         else:
+            # raise_for_status=False — every method inspects response.ok +
+            # the "status" envelope itself and raises AyrshareAPIException
+            # with Ayrshare's own error message, which is more actionable
+            # than the generic HTTPError that would fire otherwise.
             self._requests = Requests(
                 extra_headers=headers,
                 trusted_origins=["https://api.ayrshare.com"],
+                raise_for_status=False,
             )
 
     async def generate_jwt(
