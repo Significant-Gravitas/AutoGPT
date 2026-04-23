@@ -15,6 +15,7 @@ type Credential = {
   username?: string;
   type: string;
   provider: string;
+  is_managed?: boolean;
 };
 
 type Props = {
@@ -102,7 +103,7 @@ export function CredentialsFlatView({
                   displayName={displayName}
                   onSelect={() => onSelectCredential(credential.id)}
                   onDelete={
-                    onDeleteCredential
+                    onDeleteCredential && !credential.is_managed
                       ? () =>
                           onDeleteCredential({
                             id: credential.id,
