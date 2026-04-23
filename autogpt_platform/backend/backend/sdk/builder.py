@@ -140,10 +140,24 @@ class ProviderBuilder:
         return self
 
     def with_base_cost(
-        self, amount: int, cost_type: BlockCostType
+        self,
+        amount: int,
+        cost_type: BlockCostType,
+        cost_divisor: int = 1,
     ) -> "ProviderBuilder":
-        """Set base cost for all blocks using this provider."""
-        self._base_costs.append(BlockCost(cost_amount=amount, cost_type=cost_type))
+        """Set base cost for all blocks using this provider.
+
+        ``cost_divisor`` only applies to SECOND / ITEMS / TOKENS cost types.
+        Example: ``with_base_cost(1, BlockCostType.SECOND, cost_divisor=10)``
+        bills 1 credit per 10 walltime seconds.
+        """
+        self._base_costs.append(
+            BlockCost(
+                cost_amount=amount,
+                cost_type=cost_type,
+                cost_divisor=cost_divisor,
+            )
+        )
         return self
 
     def with_api_client(self, factory: Callable) -> "ProviderBuilder":

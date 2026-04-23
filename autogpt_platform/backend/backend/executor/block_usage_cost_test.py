@@ -175,6 +175,28 @@ def test_fal_video_block_bills_three_credits_per_second():
     assert cost == 0
 
 
+def test_exa_blocks_bill_cost_usd_via_sdk_config():
+    """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
+    from backend.blocks.exa.search import ExaSearchBlock
+    from backend.integrations.credentials_store import exa_credentials
+
+    block = ExaSearchBlock()
+    creds = {
+        "credentials": {
+            "id": exa_credentials.id,
+            "provider": exa_credentials.provider,
+            "type": exa_credentials.type,
+        }
+    }
+    # $0.05 provider spend * 100 credits/USD = 5 credits.
+    stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
+    cost, _ = block_usage_cost(block, creds, stats=stats)
+    assert cost == 5
+    # Pre-flight: unknown cost → 0.
+    cost, _ = block_usage_cost(block, creds)
+    assert cost == 0
+
+
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):
     tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
     block = SearchTheWebBlock()
