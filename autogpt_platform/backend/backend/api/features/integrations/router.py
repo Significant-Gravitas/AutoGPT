@@ -243,14 +243,38 @@ async def callback(
     return to_meta_response(credentials)
 
 
+# Bound the first-time sweep so a slow upstream (e.g. Ayrshare) can't hang
+# the credential-list endpoint.  On timeout we still kick off a fire-and-
+# forget sweep so provisioning eventually completes; the user just won't
+# see the managed cred until the next refresh.
+_MANAGED_PROVISION_TIMEOUT_S = 10.0
+
+
+async def _ensure_managed_credentials_bounded(user_id: str) -> None:
+    try:
+        await asyncio.wait_for(
+            ensure_managed_credentials(user_id, creds_manager.store),
+            timeout=_MANAGED_PROVISION_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Managed credential sweep exceeded %.1fs for user=%s; "
+            "continuing without it — provisioning will complete in background",
+            _MANAGED_PROVISION_TIMEOUT_S,
+            user_id,
+        )
+        asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
+
+
 @router.get("/credentials", summary="List Credentials")
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
     # Block on provisioning so managed credentials appear on the first load
-    # instead of after a refresh.  `ensure_managed_credentials` runs providers
-    # concurrently and short-circuits via `_provisioned_users` on repeat calls.
-    await ensure_managed_credentials(user_id, creds_manager.store)
+    # instead of after a refresh, but with a timeout so a slow upstream
+    # can't hang the endpoint.  `_provisioned_users` short-circuits on
+    # repeat calls.
+    await _ensure_managed_credentials_bounded(user_id)
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -265,7 +289,7 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    await ensure_managed_credentials(user_id, creds_manager.store)
+    await _ensure_managed_credentials_bounded(user_id)
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
