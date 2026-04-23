@@ -35,21 +35,15 @@ class _NoOpBlock(Block):
 
 
 class TestExtraRuntimeCost:
-    """OrchestratorBlock opts into per-LLM-call billing via extra_runtime_cost."""
+    """OrchestratorBlock now bills via TOKENS reconciliation; the flat
+    per-iteration hook is dead for it. Verify no override remains and
+    the inherited default is a no-op.
+    """
 
-    def test_orchestrator_returns_nonzero_for_multiple_calls(self):
+    @pytest.mark.parametrize("llm_call_count", [0, 1, 3, 10])
+    def test_orchestrator_inherits_noop_extra_runtime_cost(self, llm_call_count):
         block = OrchestratorBlock()
-        stats = NodeExecutionStats(llm_call_count=3)
-        assert block.extra_runtime_cost(stats) == 2
-
-    def test_orchestrator_returns_zero_for_single_call(self):
-        block = OrchestratorBlock()
-        stats = NodeExecutionStats(llm_call_count=1)
-        assert block.extra_runtime_cost(stats) == 0
-
-    def test_orchestrator_returns_zero_for_zero_calls(self):
-        block = OrchestratorBlock()
-        stats = NodeExecutionStats(llm_call_count=0)
+        stats = NodeExecutionStats(llm_call_count=llm_call_count)
         assert block.extra_runtime_cost(stats) == 0
 
     def test_default_block_returns_zero(self):

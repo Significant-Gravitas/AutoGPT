@@ -105,6 +105,28 @@ class BlockCostType(str, Enum):
     COST_USD = "cost_usd"  # cost_amount credits per USD of stats.provider_cost
     TOKENS = "tokens"  # rate table lookup on (model, provider); see TOKEN_COST
 
+    @property
+    def is_dynamic(self) -> bool:
+        """Whether the real charge is computed post-flight from stats.
+
+        Dynamic types (SECOND/ITEMS/COST_USD/TOKENS) return 0 pre-flight
+        and bill the actual amount via charge_reconciled_usage once the
+        block finishes running. Per-iteration flat fees via
+        charge_extra_runtime_cost must skip dynamic blocks to avoid
+        double-charging against the aggregate reconciliation.
+        """
+        return self in _DYNAMIC_COST_TYPES
+
+
+_DYNAMIC_COST_TYPES: frozenset[BlockCostType] = frozenset(
+    {
+        BlockCostType.SECOND,
+        BlockCostType.ITEMS,
+        BlockCostType.COST_USD,
+        BlockCostType.TOKENS,
+    }
+)
+
 
 class BlockCost(BaseModel):
     cost_amount: int

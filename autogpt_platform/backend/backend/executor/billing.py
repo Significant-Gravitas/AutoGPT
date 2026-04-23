@@ -38,14 +38,6 @@ from .utils import (
     matched_block_cost_type,
 )
 
-# BlockCostType values whose real cost is derived post-flight from
-# ``NodeExecutionStats`` (aggregated across all LLM calls). Per-iteration
-# charging via ``charge_extra_runtime_cost`` would double-bill these because
-# reconciliation already covers every iteration.
-_DYNAMIC_COST_TYPES = frozenset(
-    {BlockCostType.TOKENS, BlockCostType.COST_USD, BlockCostType.ITEMS}
-)
-
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerClient
 
@@ -409,11 +401,11 @@ async def handle_post_execution_billing(
     if extra_iterations <= 0:
         return
 
-    # Dynamic-cost blocks (TOKENS/COST_USD/ITEMS) settle every iteration via
-    # aggregate stats in charge_reconciled_usage, so per-iteration billing here
-    # would double-charge. Skip the flat extra-runtime fee for those.
+    # Dynamic-cost blocks (SECOND/ITEMS/COST_USD/TOKENS) settle every iteration
+    # via aggregate stats in charge_reconciled_usage, so per-iteration billing
+    # here would double-charge. Skip the flat extra-runtime fee for those.
     cost_type = matched_block_cost_type(cast(Block, node.block), node_exec.inputs)
-    if cost_type in _DYNAMIC_COST_TYPES:
+    if cost_type is not None and cost_type.is_dynamic:
         return
 
     try:

@@ -376,20 +376,12 @@ class OrchestratorBlock(Block):
     re-raise carve-out for this reason.
     """
 
-    def extra_runtime_cost(self, execution_stats: NodeExecutionStats) -> int:
-        """Charge one extra runtime cost per LLM call beyond the first.
-
-        In agent mode each iteration makes one LLM call. The first is already
-        covered by charge_usage(); this returns the number of additional
-        credits so the executor can bill the remaining calls post-completion.
-
-        SDK-mode exemption: when the block runs via _execute_tools_sdk_mode,
-        the SDK manages its own conversation loop and only exposes aggregate
-        usage. We hardcode llm_call_count=1 there (the SDK does not report a
-        per-turn call count), so this method always returns 0 for SDK-mode
-        executions. Per-iteration billing does not apply to SDK mode.
-        """
-        return max(0, execution_stats.llm_call_count - 1)
+    # OrchestratorBlock bills via BlockCostType.TOKENS + compute_token_credits,
+    # which aggregates input_token_count / output_token_count / cache_read /
+    # cache_creation across every LLM iteration into one post-flight charge.
+    # The per-iteration flat-fee path (Block.extra_runtime_cost →
+    # charge_extra_runtime_cost) would double-bill the same tokens, so
+    # OrchestratorBlock deliberately inherits the base-class no-op default.
 
     # MCP server name used by the Claude Code SDK execution mode.  Keep in sync
     # with _create_graph_mcp_server and the MCP_PREFIX derivation in _execute_tools_sdk_mode.
