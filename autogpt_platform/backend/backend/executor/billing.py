@@ -1,18 +1,13 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from backend.blocks import get_block
-from backend.blocks._base import Block, BlockCostType
+from backend.blocks._base import Block
 from backend.blocks.io import AgentOutputBlock
 from backend.data import redis_client as redis
 from backend.data.credit import UsageTransactionMetadata
-from backend.data.execution import (
-    ExecutionStatus,
-    GraphExecutionEntry,
-    NodeExecutionEntry,
-)
-from backend.data.graph import Node
+from backend.data.execution import GraphExecutionEntry, NodeExecutionEntry
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
@@ -31,11 +26,7 @@ from backend.util.logging import TruncatedLogger
 from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.settings import Settings
 
-from .utils import (
-    LogMetadata,
-    block_usage_cost,
-    execution_usage_cost,
-)
+from .utils import LogMetadata, block_usage_cost, execution_usage_cost
 
 if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerClient
