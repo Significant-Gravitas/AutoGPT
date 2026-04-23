@@ -1,6 +1,7 @@
 """Tests for disconnect_all_listeners in stream_registry."""
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -8,6 +9,7 @@ from redis.exceptions import RedisError
 
 from backend.copilot import stream_registry
 from backend.copilot.executor.utils import get_session_lock_key
+from backend.copilot.response_model import StreamReasoningEnd, StreamReasoningStart
 
 
 @pytest.fixture(autouse=True)
@@ -249,6 +251,14 @@ class _FakeRedis:
     async def hgetall(self, _key: str):
         return dict(self._meta)
 
+    async def hdel(self, _key: str, *fields: str) -> int:
+        removed = 0
+        for f in fields:
+            if f in self._meta:
+                del self._meta[f]
+                removed += 1
+        return removed
+
 
 @pytest.mark.asyncio
 async def test_mark_session_completed_releases_cluster_lock_on_success():
@@ -305,6 +315,52 @@ async def test_mark_session_completed_skips_lock_release_when_already_completed(
 
 
 @pytest.mark.asyncio
+async def test_mark_session_completed_clears_reasoning_counters():
+    """Per-turn reset: after we snapshot `reasoning_ms_total` into the DB, we
+    must wipe it (and `reasoning_started_at`) from the session meta hash, or
+    the next turn in the same session will inherit this turn's thinking time."""
+    fake_redis = _FakeRedis(
+        {
+            "status": "running",
+            "turn_id": "turn-1",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "reasoning_ms_total": "500",
+            "reasoning_started_at": "2026-01-01T00:00:00+00:00",
+        }
+    )
+    captured: dict[str, int | None] = {}
+
+    async def _fake_set_turn_duration(
+        session_id, duration_ms, *, reasoning_duration_ms=None
+    ):  # noqa: ARG001
+        captured["reasoning_duration_ms"] = reasoning_duration_ms
+
+    with (
+        patch.object(
+            stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=AsyncMock()),
+        patch.object(
+            stream_registry.chat_db(),
+            "set_turn_duration",
+            new=AsyncMock(side_effect=_fake_set_turn_duration),
+            create=True,
+        ),
+    ):
+        result = await stream_registry.mark_session_completed("sess-1")
+
+    assert result is True
+    # Reasoning total captured into the DB write before being wiped.
+    assert captured["reasoning_duration_ms"] == 500
+    # Both tracking fields must be gone from the meta hash.
+    assert "reasoning_ms_total" not in fake_redis._meta
+    assert "reasoning_started_at" not in fake_redis._meta
+
+
+@pytest.mark.asyncio
 async def test_mark_session_completed_survives_lock_release_redis_error():
     """A Redis hiccup during lock DELETE must not prevent the StreamFinish
     publish — the client's SSE stream would otherwise hang on the stale meta
@@ -335,3 +391,154 @@ async def test_mark_session_completed_survives_lock_release_redis_error():
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
     ), "StreamFinish must still be published even if lock DELETE raises"
+
+
+# ---------------------------------------------------------------------------
+# _record_reasoning_event: accumulates per-reasoning-block thinking time on
+# the session meta hash. Start stamps a timestamp, End consumes it into a
+# running total and clears the stamp.
+# ---------------------------------------------------------------------------
+
+
+class _FakeRedisHash:
+    """Async-Redis fake covering just the hash ops _record_reasoning_event uses."""
+
+    def __init__(
+        self,
+        initial: dict[str, str] | None = None,
+        *,
+        seeded_key: str | None = None,
+    ):
+        self._hash: dict[str, dict[str, str]] = {}
+        if initial is not None and seeded_key is not None:
+            self._hash[seeded_key] = dict(initial)
+
+    async def hset(self, key: str, field: str, value: str) -> int:
+        bucket = self._hash.setdefault(key, {})
+        is_new = field not in bucket
+        bucket[field] = value
+        return 1 if is_new else 0
+
+    async def hget(self, key: str, field: str):
+        return self._hash.get(key, {}).get(field)
+
+    async def hincrby(self, key: str, field: str, amount: int) -> int:
+        bucket = self._hash.setdefault(key, {})
+        current = int(bucket.get(field, "0"))
+        current += amount
+        bucket[field] = str(current)
+        return current
+
+    async def hdel(self, key: str, *fields: str) -> int:
+        bucket = self._hash.get(key, {})
+        removed = 0
+        for f in fields:
+            if f in bucket:
+                del bucket[f]
+                removed += 1
+        return removed
+
+    def snapshot(self, key: str) -> dict[str, str]:
+        return dict(self._hash.get(key, {}))
+
+
+@pytest.mark.asyncio
+async def test_record_reasoning_event_start_then_end_accumulates():
+    """Happy path: a start/end pair deposits the elapsed ms into the counter
+    and wipes the started_at stamp so the next pair starts fresh."""
+    fake = _FakeRedisHash()
+    meta_key = stream_registry._get_session_meta_key("sess-1")
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake)
+    ):
+        await stream_registry._record_reasoning_event(
+            "sess-1", StreamReasoningStart(id="r1")
+        )
+        snapshot_after_start = fake.snapshot(meta_key)
+        assert "reasoning_started_at" in snapshot_after_start
+        assert "reasoning_ms_total" not in snapshot_after_start
+
+        # Rewind the stored timestamp to simulate elapsed thinking time.
+        fake._hash[meta_key]["reasoning_started_at"] = (
+            datetime.now(timezone.utc) - timedelta(milliseconds=750)
+        ).isoformat()
+
+        await stream_registry._record_reasoning_event(
+            "sess-1", StreamReasoningEnd(id="r1")
+        )
+
+    final = fake.snapshot(meta_key)
+    assert "reasoning_started_at" not in final
+    total = int(final["reasoning_ms_total"])
+    assert 700 <= total <= 2000  # slack for scheduler jitter
+
+
+@pytest.mark.asyncio
+async def test_record_reasoning_event_end_without_start_is_noop():
+    """End events that arrive without a paired start must not mutate state —
+    otherwise a lost start (crash / dropped chunk) would poison the counter."""
+    fake = _FakeRedisHash()
+    meta_key = stream_registry._get_session_meta_key("sess-1")
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake)
+    ):
+        await stream_registry._record_reasoning_event(
+            "sess-1", StreamReasoningEnd(id="r1")
+        )
+
+    assert fake.snapshot(meta_key) == {}
+
+
+@pytest.mark.asyncio
+async def test_record_reasoning_event_malformed_started_at_is_noop():
+    """A garbage `reasoning_started_at` must be treated as 'no pair in flight'
+    so a parse error doesn't take down chunk publishing."""
+    meta_key = stream_registry._get_session_meta_key("sess-1")
+    fake = _FakeRedisHash(
+        {"reasoning_started_at": "not-a-timestamp"}, seeded_key=meta_key
+    )
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake)
+    ):
+        await stream_registry._record_reasoning_event(
+            "sess-1", StreamReasoningEnd(id="r1")
+        )
+
+    final = fake.snapshot(meta_key)
+    # No accumulation, and the malformed stamp stays put — we don't claim to
+    # have handled this block, so the counter remains untouched.
+    assert "reasoning_ms_total" not in final
+    assert final.get("reasoning_started_at") == "not-a-timestamp"
+
+
+@pytest.mark.asyncio
+async def test_record_reasoning_event_second_start_overwrites_first():
+    """Reasoning blocks don't overlap, so a second start should replace the
+    first stamp rather than stack. Only the end-delimited block is measured."""
+    fake = _FakeRedisHash()
+    meta_key = stream_registry._get_session_meta_key("sess-1")
+
+    first_start = datetime.now(timezone.utc) - timedelta(seconds=30)
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake)
+    ):
+        await stream_registry._record_reasoning_event(
+            "sess-1", StreamReasoningStart(id="r1")
+        )
+        # Force the stored stamp into the distant past, then issue a second
+        # start — it must clobber the first, not keep it around.
+        fake._hash[meta_key]["reasoning_started_at"] = first_start.isoformat()
+
+        await stream_registry._record_reasoning_event(
+            "sess-1", StreamReasoningStart(id="r2")
+        )
+        second_stamp_raw = fake._hash[meta_key]["reasoning_started_at"]
+
+    second_stamp = datetime.fromisoformat(second_stamp_raw)
+    assert second_stamp > first_start
+    # No end seen yet, so no total recorded.
+    assert "reasoning_ms_total" not in fake.snapshot(meta_key)

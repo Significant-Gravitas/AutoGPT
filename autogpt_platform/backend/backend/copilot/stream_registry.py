@@ -947,6 +947,16 @@ async def mark_session_completed(
                     reasoning_raw,
                 )
 
+    # Reset per-turn reasoning tracking so the next turn in this session
+    # starts from zero. Both fields live on the session-scoped meta hash,
+    # so without this they accumulate across turns.
+    try:
+        await redis.hdel(meta_key, "reasoning_ms_total", "reasoning_started_at")  # type: ignore[misc]
+    except RedisError as e:
+        logger.warning(
+            f"Failed to reset reasoning counters for session {session_id}: {e}"
+        )
+
     # Persist duration on the last assistant message
     if duration_ms is not None:
         try:
