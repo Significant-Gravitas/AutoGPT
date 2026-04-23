@@ -1,7 +1,7 @@
 from typing import Type
 
 from backend.blocks._base import Block, BlockCost, BlockCostType
-from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, GeminiImageModel
+from backend.blocks.ai_image_customizer import AIImageCustomizerBlock, ImageCustomizerModel
 from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock, ImageGenModel
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import (
@@ -20,7 +20,7 @@ from backend.blocks.enrichlayer.linkedin import (
     LinkedinPersonLookupBlock,
     LinkedinRoleLookupBlock,
 )
-from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
+from backend.blocks.flux_kontext import AIImageEditorBlock, ImageEditorModel
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.fact_checker import FactCheckerBlock
@@ -477,7 +477,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=10,
             cost_filter={
-                "model": FluxKontextModelName.FLUX_KONTEXT_PRO,
+                "model": ImageEditorModel.FLUX_KONTEXT_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -488,7 +488,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=20,
             cost_filter={
-                "model": FluxKontextModelName.FLUX_KONTEXT_MAX,
+                "model": ImageEditorModel.FLUX_KONTEXT_MAX,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -499,7 +499,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=14,  # Nano Banana Pro
             cost_filter={
-                "model": FluxKontextModelName.NANO_BANANA_PRO,
+                "model": ImageEditorModel.NANO_BANANA_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -510,11 +510,55 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=14,  # Nano Banana 2
             cost_filter={
-                "model": FluxKontextModelName.NANO_BANANA_2,
+                "model": ImageEditorModel.NANO_BANANA_2,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
                     "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=15,  # gpt-image-1
+            cost_filter={
+                "model": ImageEditorModel.GPT_IMAGE_1,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=18,  # gpt-image-1-5
+            cost_filter={
+                "model": ImageEditorModel.GPT_IMAGE_1_5,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=20,  # gpt-image-2
+            cost_filter={
+                "model": ImageEditorModel.GPT_IMAGE_2,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=8,  # gpt-image-1-mini
+            cost_filter={
+                "model": ImageEditorModel.GPT_IMAGE_1_MINI,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
                 },
             },
         ),
@@ -718,12 +762,56 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 },
             },
         ),
+        BlockCost(
+            cost_amount=15,  # gpt-image-1
+            cost_filter={
+                "model": ImageGenModel.GPT_IMAGE_1,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=18,  # gpt-image-1-5
+            cost_filter={
+                "model": ImageGenModel.GPT_IMAGE_1_5,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=20,  # gpt-image-2
+            cost_filter={
+                "model": ImageGenModel.GPT_IMAGE_2,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=8,  # gpt-image-1-mini
+            cost_filter={
+                "model": ImageGenModel.GPT_IMAGE_1_MINI,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
     ],
     AIImageCustomizerBlock: [
         BlockCost(
             cost_amount=10,  # Nano Banana (original)
             cost_filter={
-                "model": GeminiImageModel.NANO_BANANA,
+                "model": ImageCustomizerModel.NANO_BANANA,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -734,7 +822,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=14,  # Nano Banana Pro: $0.14 per image at 2K
             cost_filter={
-                "model": GeminiImageModel.NANO_BANANA_PRO,
+                "model": ImageCustomizerModel.NANO_BANANA_PRO,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
@@ -745,11 +833,55 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         BlockCost(
             cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
             cost_filter={
-                "model": GeminiImageModel.NANO_BANANA_2,
+                "model": ImageCustomizerModel.NANO_BANANA_2,
                 "credentials": {
                     "id": replicate_credentials.id,
                     "provider": replicate_credentials.provider,
                     "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=15,  # gpt-image-1
+            cost_filter={
+                "model": ImageCustomizerModel.GPT_IMAGE_1,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=18,  # gpt-image-1-5
+            cost_filter={
+                "model": ImageCustomizerModel.GPT_IMAGE_1_5,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=20,  # gpt-image-2
+            cost_filter={
+                "model": ImageCustomizerModel.GPT_IMAGE_2,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=8,  # gpt-image-1-mini
+            cost_filter={
+                "model": ImageCustomizerModel.GPT_IMAGE_1_MINI,
+                "credentials": {
+                    "id": openai_credentials.id,
+                    "provider": openai_credentials.provider,
+                    "type": openai_credentials.type,
                 },
             },
         ),

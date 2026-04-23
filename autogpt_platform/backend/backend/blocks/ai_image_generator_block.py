@@ -1,6 +1,7 @@
 from enum import Enum
-from typing import Literal
+from typing import Literal, cast
 
+import openai
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
@@ -76,6 +77,14 @@ SIZE_TO_NANO_BANANA_RATIO = {
     ImageSize.TALL: "9:16",
 }
 
+SIZE_TO_OPENAI = {
+    ImageSize.SQUARE: "1024x1024",
+    ImageSize.LANDSCAPE: "1536x1024",
+    ImageSize.PORTRAIT: "1024x1536",
+    ImageSize.WIDE: "1536x1024",
+    ImageSize.TALL: "1024x1536",
+}
+
 
 class ImageStyle(str, Enum):
     """
@@ -107,7 +116,7 @@ class ImageStyle(str, Enum):
 
 class ImageGenModel(str, Enum):
     """
-    Available model providers
+    Available model providers including OpenAI GPT-image family
     """
 
     FLUX = "Flux 1.1 Pro"
@@ -116,14 +125,19 @@ class ImageGenModel(str, Enum):
     SD3_5 = "Stable Diffusion 3.5 Medium"
     NANO_BANANA_PRO = "Nano Banana Pro"
     NANO_BANANA_2 = "Nano Banana 2"
+    GPT_IMAGE_1 = "gpt-image-1"
+    GPT_IMAGE_1_5 = "gpt-image-1.5"
+    GPT_IMAGE_2 = "gpt-image-2"
+    GPT_IMAGE_1_MINI = "gpt-image-1-mini"
 
 
 class AIImageGeneratorBlock(Block):
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.REPLICATE], Literal["api_key"]
+            Literal[ProviderName.REPLICATE, ProviderName.OPENAI],
+            Literal["api_key"],
         ] = CredentialsField(
-            description="Enter your Replicate API key to access the image generation API. You can obtain an API key from https://replicate.com/account/api-tokens.",
+            description="Enter your Replicate or OpenAI API key to access the image generation API.",
         )
         prompt: str = SchemaField(
             description="Text prompt for image generation",
@@ -174,15 +188,16 @@ class AIImageGeneratorBlock(Block):
             test_output=[
                 (
                     "image_url",
-                    # Test output is a data URI since we now store images
                     lambda x: x.startswith("data:image/"),
                 ),
             ],
             test_mock={
-                # Return a data URI directly so store_media_file doesn't need to download
                 "_run_client": lambda *args, **kwargs: (
                     "data:image/webp;base64,UklGRiQAAABXRUJQVlA4IBgAAAAwAQCdASoBAAEAAQAcJYgCdAEO"
-                )
+                ),
+                "_generate_with_openai": lambda *args, **kwargs: (
+                    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+                ),
             },
         )
 
@@ -190,13 +205,9 @@ class AIImageGeneratorBlock(Block):
         self, credentials: APIKeyCredentials, model_name: str, input_params: dict
     ):
         try:
-            # Initialize Replicate client
             client = ReplicateClient(api_token=credentials.api_key.get_secret_value())
-
-            # Run the model with input parameters
             output = await client.async_run(model_name, input=input_params, wait=False)
 
-            # Process output
             if isinstance(output, list) and len(output) > 0:
                 if isinstance(output[0], FileOutput):
                     result_url = output[0].url
@@ -216,16 +227,38 @@ class AIImageGeneratorBlock(Block):
         except Exception as e:
             raise RuntimeError(f"Unexpected error during model execution: {e}")
 
+    async def _generate_with_openai(
+        self, input_data: Input, credentials: APIKeyCredentials
+    ) -> str:
+        client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
+
+        size = SIZE_TO_OPENAI.get(input_data.size, "1024x1024")
+        size_literal = cast(
+            Literal["1024x1024", "1536x1024", "1024x1536"], size
+        )
+
+        response = await client.images.generate(
+            model=input_data.model.value,
+            prompt=input_data.prompt,
+            n=1,
+            size=size_literal,
+            quality="auto",
+        )
+        if not response.data or not response.data[0].b64_json:
+            raise RuntimeError("OpenAI image generation returned empty result")
+        return f"data:image/png;base64,{response.data[0].b64_json}"
+
     async def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
         try:
-            # Handle style-based prompt modification for models without native style support
+            if input_data.model.value.startswith("gpt-image"):
+                return await self._generate_with_openai(input_data, credentials)
+
             modified_prompt = input_data.prompt
             if input_data.model not in [ImageGenModel.RECRAFT]:
                 style_prefix = self._style_to_prompt_prefix(input_data.style)
                 modified_prompt = f"{style_prefix} {modified_prompt}".strip()
 
             if input_data.model == ImageGenModel.SD3_5:
-                # Use Stable Diffusion 3.5 with aspect ratio
                 input_params = {
                     "prompt": modified_prompt,
                     "aspect_ratio": SIZE_TO_SD_RATIO[input_data.size],
@@ -242,14 +275,13 @@ class AIImageGeneratorBlock(Block):
                 return output
 
             elif input_data.model == ImageGenModel.FLUX:
-                # Use Flux-specific dimensions with 'jpg' format to avoid ReplicateError
                 width, height = SIZE_TO_FLUX_DIMENSIONS[input_data.size]
                 input_params = {
                     "prompt": modified_prompt,
                     "width": width,
                     "height": height,
                     "aspect_ratio": SIZE_TO_FLUX_RATIO[input_data.size],
-                    "output_format": "jpg",  # Set to jpg for Flux models
+                    "output_format": "jpg",
                     "output_quality": 90,
                 }
                 output = await self._run_client(
@@ -287,7 +319,6 @@ class AIImageGeneratorBlock(Block):
                 ImageGenModel.NANO_BANANA_PRO,
                 ImageGenModel.NANO_BANANA_2,
             ):
-                # Use Nano Banana models (Google Gemini image variants)
                 model_map = {
                     ImageGenModel.NANO_BANANA_PRO: "google/nano-banana-pro",
                     ImageGenModel.NANO_BANANA_2: "google/nano-banana-2",
@@ -308,9 +339,6 @@ class AIImageGeneratorBlock(Block):
             raise RuntimeError(f"Failed to generate image: {str(e)}")
 
     def _style_to_prompt_prefix(self, style: ImageStyle) -> str:
-        """
-        Convert a style enum to a prompt prefix for models without native style support.
-        """
         if style == ImageStyle.ANY:
             return ""
 
@@ -349,7 +377,6 @@ class AIImageGeneratorBlock(Block):
         try:
             url = await self.generate_image(input_data, credentials)
             if url:
-                # Store the generated image to the user's workspace/execution folder
                 stored_url = await store_media_file(
                     file=MediaFileType(url),
                     execution_context=execution_context,
@@ -359,11 +386,9 @@ class AIImageGeneratorBlock(Block):
             else:
                 yield "error", "Image generation returned an empty result."
         except Exception as e:
-            # Capture and return only the message of the exception, avoiding serialization of non-serializable objects
             yield "error", str(e)
 
 
-# Test credentials stay the same
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="replicate",

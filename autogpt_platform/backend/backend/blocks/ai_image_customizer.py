@@ -1,7 +1,10 @@
 import asyncio
 from enum import Enum
-from typing import Literal
+from io import BytesIO
+import base64
+from typing import Literal, cast
 
+import openai
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
@@ -24,10 +27,19 @@ from backend.integrations.providers import ProviderName
 from backend.util.file import MediaFileType, store_media_file
 
 
-class GeminiImageModel(str, Enum):
+class ImageCustomizerModel(str, Enum):
+    """Models for the AI Image Customizer block, supporting both Replicate and OpenAI."""
+
     NANO_BANANA = "google/nano-banana"
     NANO_BANANA_PRO = "google/nano-banana-pro"
     NANO_BANANA_2 = "google/nano-banana-2"
+    GPT_IMAGE_1 = "gpt-image-1"
+    GPT_IMAGE_1_5 = "gpt-image-1.5"
+    GPT_IMAGE_2 = "gpt-image-2"
+    GPT_IMAGE_1_MINI = "gpt-image-1-mini"
+
+
+GeminiImageModel = ImageCustomizerModel
 
 
 class AspectRatio(str, Enum):
@@ -49,6 +61,21 @@ class OutputFormat(str, Enum):
     PNG = "png"
 
 
+ASPECT_TO_OPENAI_SIZE = {
+    AspectRatio.MATCH_INPUT_IMAGE: "auto",
+    AspectRatio.ASPECT_1_1: "1024x1024",
+    AspectRatio.ASPECT_2_3: "1024x1536",
+    AspectRatio.ASPECT_3_2: "1536x1024",
+    AspectRatio.ASPECT_3_4: "1024x1536",
+    AspectRatio.ASPECT_4_3: "1536x1024",
+    AspectRatio.ASPECT_4_5: "1024x1536",
+    AspectRatio.ASPECT_5_4: "1536x1024",
+    AspectRatio.ASPECT_9_16: "1024x1536",
+    AspectRatio.ASPECT_16_9: "1536x1024",
+    AspectRatio.ASPECT_21_9: "1536x1024",
+}
+
+
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="replicate",
@@ -68,17 +95,18 @@ TEST_CREDENTIALS_INPUT = {
 class AIImageCustomizerBlock(Block):
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput[
-            Literal[ProviderName.REPLICATE], Literal["api_key"]
+            Literal[ProviderName.REPLICATE, ProviderName.OPENAI],
+            Literal["api_key"],
         ] = CredentialsField(
-            description="Replicate API key with permissions for Google Gemini image models",
+            description="Replicate or OpenAI API key with permissions for image generation and editing models",
         )
         prompt: str = SchemaField(
             description="A text description of the image you want to generate",
             title="Prompt",
         )
-        model: GeminiImageModel = SchemaField(
+        model: ImageCustomizerModel = SchemaField(
             description="The AI model to use for image generation and editing",
-            default=GeminiImageModel.NANO_BANANA_2,
+            default=ImageCustomizerModel.NANO_BANANA_2,
             title="Model",
         )
         images: list[MediaFileType] = SchemaField(
@@ -104,26 +132,25 @@ class AIImageCustomizerBlock(Block):
         super().__init__(
             id="d76bbe4c-930e-4894-8469-b66775511f71",
             description=(
-                "Generate and edit custom images using Google's Nano-Banana models from Gemini. "
-                "Provide a prompt and optional reference images to create or modify images."
+                "Generate and edit custom images using Google's Nano-Banana models from Gemini "
+                "or OpenAI GPT-image models. Provide a prompt and optional reference images to "
+                "create or modify images."
             ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
             input_schema=AIImageCustomizerBlock.Input,
             output_schema=AIImageCustomizerBlock.Output,
             test_input={
                 "prompt": "Make the scene more vibrant and colorful",
-                "model": GeminiImageModel.NANO_BANANA_2,
+                "model": ImageCustomizerModel.NANO_BANANA_2,
                 "images": [],
                 "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "output_format": OutputFormat.JPG,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                # Output will be a workspace ref or data URI depending on context
                 ("image_url", lambda x: x.startswith(("workspace://", "data:"))),
             ],
             test_mock={
-                # Use data URI to avoid HTTP requests during tests
                 "run_model": lambda *args, **kwargs: MediaFileType(
                     "data:image/jpeg;base64,/9j/4AAQSkZJRgABAgAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD3+iiigD//2Q=="
                 ),
@@ -140,13 +167,12 @@ class AIImageCustomizerBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            # Convert local file paths to Data URIs (base64) so Replicate can access them
             processed_images = await asyncio.gather(
                 *(
                     store_media_file(
                         file=img,
                         execution_context=execution_context,
-                        return_format="for_external_api",  # Get content for Replicate API
+                        return_format="for_external_api",
                     )
                     for img in input_data.images
                 )
@@ -161,7 +187,6 @@ class AIImageCustomizerBlock(Block):
                 output_format=input_data.output_format.value,
             )
 
-            # Store the generated image to the user's workspace for persistence
             stored_url = await store_media_file(
                 file=result,
                 execution_context=execution_context,
@@ -170,6 +195,53 @@ class AIImageCustomizerBlock(Block):
             yield "image_url", stored_url
         except Exception as e:
             yield "error", str(e)
+
+    async def _customize_with_openai(
+        self,
+        api_key: SecretStr,
+        model_name: str,
+        prompt: str,
+        images: list[MediaFileType],
+        aspect_ratio: str,
+        output_format: str,
+    ) -> MediaFileType:
+        client = openai.AsyncOpenAI(api_key=api_key.get_secret_value())
+
+        size = ASPECT_TO_OPENAI_SIZE.get(aspect_ratio, "auto")
+        size_literal = cast(
+            Literal["1024x1024", "1536x1024", "1024x1536", "auto"], size
+        )
+
+        if images:
+            if len(images) > 1:
+                raise ValueError(
+                    "OpenAI image models support only a single reference image. "
+                    "Please provide one image or use a Replicate model."
+                )
+            data_uri = str(images[0])
+            if "," not in data_uri:
+                raise ValueError("Expected a data-URI for the reference image.")
+            _, encoded = data_uri.split(",", 1)
+            image_bytes = BytesIO(base64.b64decode(encoded))
+            response = await client.images.edit(
+                model=model_name,
+                image=image_bytes,
+                prompt=prompt,
+                n=1,
+                size=size_literal,
+            )
+        else:
+            response = await client.images.generate(
+                model=model_name,
+                prompt=prompt,
+                n=1,
+                size=size_literal,
+                quality="auto",
+            )
+
+        if not response.data or not response.data[0].b64_json:
+            raise ValueError("OpenAI image customization returned empty result")
+        return MediaFileType(f"data:image/png;base64,{response.data[0].b64_json}")
 
     async def run_model(
         self,
@@ -180,6 +252,11 @@ class AIImageCustomizerBlock(Block):
         aspect_ratio: str,
         output_format: str,
     ) -> MediaFileType:
+        if model_name.startswith("gpt-image"):
+            return await self._customize_with_openai(
+                api_key, model_name, prompt, images, aspect_ratio, output_format
+            )
+
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
         input_params: dict = {
@@ -188,7 +265,6 @@ class AIImageCustomizerBlock(Block):
             "output_format": output_format,
         }
 
-        # Add images to input if provided (API expects "image_input" parameter)
         if images:
             input_params["image_input"] = [str(img) for img in images]
 
