@@ -547,9 +547,14 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
+    # Jina Reader Search: $0.01/query on the paid tier. Block emits
+    # merge_stats(provider_cost=0.01, cost_usd) so the COST_USD resolver
+    # bills 1 platform credit per call AND the platform cost telemetry
+    # captures real USD spend (RUN wouldn't populate costMicrodollars).
     SearchTheWebBlock: [
         BlockCost(
-            cost_amount=1,
+            cost_amount=100,
+            cost_type=BlockCostType.COST_USD,
             cost_filter={
                 "credentials": {
                     "id": jina_credentials.id,
@@ -1132,9 +1137,13 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     # ZeroBounce: $16 / 2K validations = $0.008 per email. One email per call.
+    # Block emits merge_stats(provider_cost=0.008, cost_usd) so the platform
+    # cost telemetry records real USD; resolver bills 2 credits per call
+    # (ceil(0.008 * 250)).
     ValidateEmailsBlock: [
         BlockCost(
-            cost_amount=2,
+            cost_amount=250,
+            cost_type=BlockCostType.COST_USD,
             cost_filter={
                 "credentials": {
                     "id": zerobounce_credentials.id,
