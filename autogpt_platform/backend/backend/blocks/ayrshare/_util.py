@@ -4,16 +4,11 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from backend.blocks._base import BlockSchemaInput
-from backend.data.model import APIKeyCredentials, CredentialsMetaInput, SchemaField
+from backend.data.model import CredentialsMetaInput, SchemaField
 from backend.integrations.ayrshare import AyrshareClient
 from backend.util.exceptions import MissingConfigError
 
 from ._config import ayrshare
-
-
-def get_profile_key(credentials: APIKeyCredentials) -> str:
-    """Extract the Ayrshare profile key from the resolved managed credential."""
-    return credentials.api_key.get_secret_value()
 
 
 class BaseAyrshareInput(BlockSchemaInput):

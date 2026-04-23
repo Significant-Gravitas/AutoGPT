@@ -16,19 +16,36 @@ _USER_ID = "user-ayrshare-test"
 
 
 class TestIsAvailable:
-    """Ayrshare opts out of the automatic managed-credentials sweep."""
+    """`is_available` is truthful; opt-out lives on `auto_provision`."""
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_is_available_always_false(self):
-        """is_available returns False regardless of org-level config.
+    async def test_is_available_true_when_secrets_set(self):
+        """Truthful: returns True when org-level secrets are configured.
 
-        Profile quota is a real per-user subscription cost, so provisioning
-        must only happen when the user explicitly opens the social-connect
-        flow via /api/integrations/ayrshare/sso_url.  Callers who actually
-        want to provision use ensure_managed_credential() directly, which
-        bypasses this gate.
+        The sweep skip is driven by `auto_provision = False`, not by
+        lying about availability.  Callers like `ensure_managed_credential`
+        do not gate on `is_available`, so this remains truthful without
+        triggering auto-provisioning.
         """
-        assert await AyrshareManagedProvider().is_available() is False
+        with patch(
+            "backend.integrations.managed_providers.ayrshare.Settings"
+        ) as mock_settings:
+            mock_settings.return_value.secrets.ayrshare_api_key = "api-key"
+            mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
+            assert await AyrshareManagedProvider().is_available() is True
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_is_available_false_when_secrets_missing(self):
+        with patch(
+            "backend.integrations.managed_providers.ayrshare.Settings"
+        ) as mock_settings:
+            mock_settings.return_value.secrets.ayrshare_api_key = ""
+            mock_settings.return_value.secrets.ayrshare_jwt_key = "jwt-key"
+            assert await AyrshareManagedProvider().is_available() is False
+
+    def test_auto_provision_opt_out(self):
+        """`auto_provision=False` keeps the startup sweep from firing."""
+        assert AyrshareManagedProvider.auto_provision is False
 
 
 class TestSettingsAvailable:
@@ -106,13 +123,13 @@ class TestReadOrCreateProfileKey:
         assert ui.managed_credentials.ayrshare_profile_key is legacy
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_creates_new_profile_when_no_legacy_key(self):
-        """Fresh users get a new Ayrshare profile created; the managed
-        credential wraps the returned profile key."""
+    async def test_creates_new_profile_when_no_legacy_and_no_upstream(self):
+        """Fresh users with no upstream profile get one created."""
         store, _ = self._mock_store(legacy_key=None)
 
         fake_profile = MagicMock(profileKey="fresh-profile-key")
         client_instance = MagicMock()
+        client_instance.list_profiles = AsyncMock(return_value=[])
         client_instance.create_profile = AsyncMock(return_value=fake_profile)
 
         with patch(
@@ -122,7 +139,37 @@ class TestReadOrCreateProfileKey:
             result = await _read_or_create_profile_key(_USER_ID, store)
 
         assert result == "fresh-profile-key"
+        client_instance.list_profiles.assert_awaited_once()
         client_instance.create_profile.assert_awaited_once()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_reuses_upstream_profile_after_failed_persist_retry(self):
+        """Idempotency: if a prior attempt created the Ayrshare profile but
+        failed to persist our credential, the retry must reuse the upstream
+        profile instead of creating another one.  This is the ``list_profiles``
+        recovery path — no leaked profile, no duplicate quota burn."""
+        store, _ = self._mock_store(legacy_key=None)
+
+        # Upstream already has a profile titled exactly `_profile_title`.
+        existing_profile = MagicMock(
+            title=f"User {_USER_ID}",
+            profileKey="recovered-key",
+            refId="ref-123",
+        )
+        client_instance = MagicMock()
+        client_instance.list_profiles = AsyncMock(return_value=[existing_profile])
+        client_instance.create_profile = AsyncMock()
+
+        with patch(
+            "backend.integrations.managed_providers.ayrshare.AyrshareClient",
+            return_value=client_instance,
+        ):
+            result = await _read_or_create_profile_key(_USER_ID, store)
+
+        assert result == "recovered-key"
+        # Critical assertion: create_profile MUST NOT run — that would leak
+        # a profile against the subscription's quota.
+        client_instance.create_profile.assert_not_awaited()
 
 
 class TestPostProvisionClearsLegacy:

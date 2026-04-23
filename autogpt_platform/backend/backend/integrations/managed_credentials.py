@@ -39,9 +39,27 @@ class ManagedCredentialProvider(ABC):
     provider_name: str
     """Must match the ``provider`` field on the resulting credential."""
 
+    auto_provision: bool = True
+    """Whether :func:`ensure_managed_credentials` should provision this on
+    credential-list load.
+
+    Default ``True`` matches the AgentMail contract: cheap provisioning that
+    is safe to run for every user on first visit.  Set to ``False`` when
+    provisioning has per-user upstream cost (e.g. Ayrshare's profile quota);
+    such providers still register here so account-deletion cleanup works,
+    but only run via an explicit :func:`ensure_managed_credential` call
+    from a user-triggered endpoint.
+    """
+
     @abstractmethod
     async def is_available(self) -> bool:
-        """Return ``True`` when the org-level configuration is present."""
+        """Return ``True`` when the org-level configuration is present.
+
+        Used by :func:`ensure_managed_credentials` to skip providers whose
+        config is missing (e.g. missing env vars).  Independent of
+        :attr:`auto_provision` — a provider can be available yet opt out
+        of the startup sweep.
+        """
 
     @abstractmethod
     async def provision(
@@ -129,6 +147,10 @@ async def _ensure_one(
     cache the user as fully provisioned.
     """
     try:
+        if not provider.auto_provision:
+            # Registered for cleanup lookup, but opts out of the sweep.
+            # Callers use `ensure_managed_credential(...)` directly.
+            return True
         if not await provider.is_available():
             return True
         return await _provision_under_lock(user_id, store, name, provider)

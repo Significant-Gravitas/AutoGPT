@@ -12,7 +12,7 @@ from backend.sdk import (
     SchemaField,
 )
 
-from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
 class YouTubeVisibility(str, Enum):
@@ -297,7 +297,7 @@ class PostToYouTubeBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             youtube_options=youtube_options,
-            profile_key=get_profile_key(credentials),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

@@ -52,15 +52,22 @@ logger = logging.getLogger(__name__)
 class AyrshareManagedProvider(ManagedCredentialProvider):
     provider_name = "ayrshare"
 
+    # Opt out of the `ensure_managed_credentials` startup sweep — profile
+    # creation has real per-user quota cost.  We only provision when the
+    # user explicitly triggers the SSO flow via the `/api/integrations/
+    # ayrshare/sso_url` endpoint, which calls `ensure_managed_credential`
+    # directly and bypasses the sweep.  We stay registered in `_PROVIDERS`
+    # so `cleanup_managed_credentials` can find the provider at account-
+    # deletion time.
+    auto_provision = False
+
     async def is_available(self) -> bool:
-        # Opt out of the `ensure_managed_credentials` startup sweep.  Profile
-        # creation has real per-user quota cost — we only want to create one
-        # when the user explicitly requests a social-media connection via
-        # `/api/integrations/ayrshare/sso_url`.  Callers that *do* want to
-        # provision on demand go through
-        # `ensure_managed_credential(user_id, store, AyrshareManagedProvider())`
-        # which bypasses this gate.
-        return False
+        """Truthful availability: both Ayrshare org secrets must be set.
+
+        The sweep skips opt-out providers via :attr:`auto_provision`, so
+        returning ``True`` here does not cause auto-provisioning.
+        """
+        return settings_available()
 
     async def provision(
         self, user_id: str, store: IntegrationCredentialsStore
@@ -105,20 +112,45 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
                 user_integrations.managed_credentials.ayrshare_profile_key = None
 
 
+def _profile_title(user_id: str) -> str:
+    """The deterministic Ayrshare profile title for a user.
+
+    Used both to create the profile and to find it again on retry — a
+    collision-free lookup key so we never double-create for the same user.
+    """
+    return f"User {user_id}"
+
+
 async def _read_or_create_profile_key(
     user_id: str, store: IntegrationCredentialsStore
 ) -> str:
     """Return the Ayrshare profile key for *user_id*, creating one if needed.
 
-    **Read-only for the legacy field.**  When
-    ``managed_credentials.ayrshare_profile_key`` is populated (pre-migration
-    data), it is reused verbatim so existing linked socials keep working.
-    The legacy field is *not* cleared here — that happens in
-    :meth:`AyrshareManagedProvider.post_provision`, which runs only after
-    the managed credential is durably stored.  If this function cleared
-    eagerly and the subsequent ``add_managed_credential`` failed, a retry
-    would see an empty legacy field and create a *fresh* Ayrshare profile,
-    orphaning the user's linked social accounts.
+    **Resolution order — idempotent, retry-safe:**
+
+    1. **Legacy side channel.** If
+       ``UserIntegrations.managed_credentials.ayrshare_profile_key`` is set
+       (pre-migration data), reuse it verbatim so existing linked socials
+       keep working.  Read-only here — clearing moves to
+       :meth:`AyrshareManagedProvider.post_provision` (runs after the
+       managed credential is durably stored; if persistence fails, legacy
+       stays intact so a retry reuses it).
+
+    2. **Existing Ayrshare profile by title.** Before calling
+       ``create_profile``, list Ayrshare's profiles under our account and
+       check for one titled :func:`_profile_title`.  This covers the
+       "previous attempt created the profile upstream but failed to persist
+       our managed credential" path — without it, every such retry would
+       leak another profile against the subscription's quota.
+
+    3. **Create a fresh profile.**  Only reached when the user has never
+       had a profile upstream.  The deterministic title keeps ``(2)`` a
+       reliable recovery for any future retry.
+
+    The outer :func:`~backend.integrations.managed_credentials._provision_under_lock`
+    holds a distributed Redis lock on ``(user, provider)`` across this whole
+    function *and* the subsequent ``add_managed_credential`` call, so
+    concurrent workers cannot race through steps 2/3 and create duplicates.
     """
     user_integrations = await store.get_user_integrations(user_id)
     legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
@@ -135,10 +167,22 @@ async def _read_or_create_profile_key(
     except MissingConfigError as exc:
         raise RuntimeError("Ayrshare integration is not configured") from exc
 
+    title = _profile_title(user_id)
+    # Idempotency: re-use an upstream profile we created on a prior
+    # (failed) attempt.  One extra API call per fresh-user provisioning,
+    # zero risk of duplicate profiles burning the subscription's quota.
+    existing = await client.list_profiles()
+    for profile in existing:
+        if profile.title == title:
+            logger.info(
+                "[ayrshare] Reusing upstream profile for user %s (refId=%s)",
+                user_id,
+                profile.refId,
+            )
+            return profile.profileKey
+
     logger.debug("[ayrshare] Creating profile for user %s", user_id)
-    profile = await client.create_profile(
-        title=f"User {user_id}", messaging_active=True
-    )
+    profile = await client.create_profile(title=title, messaging_active=True)
     return profile.profileKey
 
 

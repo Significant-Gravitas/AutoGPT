@@ -1151,7 +1151,13 @@ async def get_ayrshare_sso_url(
         jwt_response = await client.generate_jwt(
             private_key=private_key,
             profile_key=profile_key_str,
-            # NOTE: Enabled platforms are rolled out one at a time.
+            # `allowed_social` is the set of networks the Ayrshare-hosted
+            # social-linking page will *offer* the user to connect.  Blocks
+            # exist for more platforms than are listed here; the list is
+            # deliberately narrower so the rollout can verify each network
+            # end-to-end before widening the user-visible surface.  Keep
+            # in sync with tested platforms — extend as each is verified
+            # against the block + Ayrshare's network-specific quirks.
             allowed_social=[
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,

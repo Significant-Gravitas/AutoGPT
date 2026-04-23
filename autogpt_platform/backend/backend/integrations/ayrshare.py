@@ -295,6 +295,42 @@ class AyrshareClient:
 
         return ProfileResponse(**response_data)
 
+    async def list_profiles(self) -> list[ProfileResponse]:
+        """List every User Profile under the primary account.
+
+        Lets callers recover from partial failures (e.g. ``create_profile``
+        succeeded upstream but storing the key failed locally): a retry can
+        look up the existing profile by title instead of creating a new one
+        and leaking quota.
+
+        Docs: https://www.ayrshare.com/docs/apis/profiles/get-profiles
+        """
+        response = await self._requests.get(self.PROFILES_ENDPOINT)
+        if not response.ok:
+            try:
+                error_message = response.json().get("message", "Unknown error")
+            except json.JSONDecodeError:
+                error_message = response.text()
+            raise AyrshareAPIException(
+                f"Ayrshare API request failed ({response.status}): {error_message}",
+                response.status,
+            )
+
+        # The endpoint returns either a bare list or a dict with a "profiles"
+        # key depending on the account tier; handle both shapes.
+        payload = response.json()
+        raw_profiles = (
+            payload.get("profiles", payload) if isinstance(payload, dict) else payload
+        )
+        if not isinstance(raw_profiles, list):
+            raise AyrshareAPIException(
+                f"Unexpected Ayrshare profiles response shape: {type(raw_profiles).__name__}",
+                response.status,
+            )
+        # Some profile entries may lack optional fields — let Pydantic reject
+        # malformed rows so we notice schema drift upstream.
+        return [ProfileResponse(**raw) for raw in raw_profiles]
+
     async def create_post(
         self,
         post: str,
