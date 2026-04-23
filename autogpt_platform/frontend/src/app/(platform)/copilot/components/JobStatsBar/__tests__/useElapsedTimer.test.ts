@@ -61,7 +61,7 @@ describe("useElapsedTimer", () => {
     // correct the elapsed reading rather than being ignored.
     const { result, rerender } = renderHook(
       ({ anchor }: { anchor: string | null }) => useElapsedTimer(true, anchor),
-      { initialProps: { anchor: null } },
+      { initialProps: { anchor: null as string | null } },
     );
     act(() => vi.advanceTimersByTime(2000));
     expect(result.current.elapsedSeconds).toBe(2);
