@@ -19,6 +19,11 @@ from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.claude_code import ClaudeCodeBlock
+from backend.blocks.code_executor import (
+    ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
+)
 from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
@@ -26,6 +31,7 @@ from backend.blocks.enrichlayer.linkedin import (
     LinkedinPersonLookupBlock,
     LinkedinRoleLookupBlock,
 )
+from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -69,6 +75,7 @@ from backend.integrations.credentials_store import (
     e2b_credentials,
     elevenlabs_credentials,
     enrichlayer_credentials,
+    fal_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
@@ -1050,6 +1057,70 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": zerobounce_credentials.id,
                     "provider": zerobounce_credentials.provider,
                     "type": zerobounce_credentials.type,
+                }
+            },
+        )
+    ],
+    # E2B code-execution blocks: Hobby tier ~$0.000014/vCPU-s × 2 vCPU ≈
+    # $0.000028/s. Charge 1 credit per 10 seconds of walltime (~$0.0003)
+    # — recovers infra cost with margin and scales with session length.
+    # Pre-flight returns 0 (walltime unknown); reconciliation charges the
+    # true walltime after the block finishes (manager.py calls
+    # billing.charge_reconciled_usage on completion).
+    ExecuteCodeBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_type=BlockCostType.SECOND,
+            cost_divisor=10,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    InstantiateCodeSandboxBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_type=BlockCostType.SECOND,
+            cost_divisor=10,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    ExecuteCodeStepBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_type=BlockCostType.SECOND,
+            cost_divisor=10,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # FAL video generation: $0.001–$0.02 per output second. Charge 3 credits
+    # per walltime second (~$0.03) — covers the median tier with margin and
+    # scales fairly across short clips vs long renders.
+    AIVideoGeneratorBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_type=BlockCostType.SECOND,
+            cost_filter={
+                "credentials": {
+                    "id": fal_credentials.id,
+                    "provider": fal_credentials.provider,
+                    "type": fal_credentials.type,
                 }
             },
         )

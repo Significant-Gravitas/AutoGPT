@@ -125,6 +125,56 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
     assert cost == expected
 
 
+def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
+    """End-to-end: E2B blocks use the real SECOND/divisor=10 BlockCost entry."""
+    from backend.blocks.code_executor import (
+        ExecuteCodeBlock,
+        ExecuteCodeStepBlock,
+        InstantiateCodeSandboxBlock,
+    )
+    from backend.integrations.credentials_store import e2b_credentials
+
+    creds = {
+        "credentials": {
+            "id": e2b_credentials.id,
+            "provider": e2b_credentials.provider,
+            "type": e2b_credentials.type,
+        }
+    }
+    for block_cls in (
+        ExecuteCodeBlock,
+        InstantiateCodeSandboxBlock,
+        ExecuteCodeStepBlock,
+    ):
+        # 45s walltime → 4 credits (integer div 45 // 10 = 4).
+        stats = NodeExecutionStats(walltime=45.0)
+        cost, _ = block_usage_cost(block_cls(), creds, stats=stats)
+        assert cost == 4, f"{block_cls.__name__} expected 4 credits, got {cost}"
+        # Pre-flight (no stats) → 0.
+        cost, _ = block_usage_cost(block_cls(), creds)
+        assert cost == 0
+
+
+def test_fal_video_block_bills_three_credits_per_second():
+    from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
+    from backend.integrations.credentials_store import fal_credentials
+
+    block = AIVideoGeneratorBlock()
+    creds = {
+        "credentials": {
+            "id": fal_credentials.id,
+            "provider": fal_credentials.provider,
+            "type": fal_credentials.type,
+        }
+    }
+    # 8s clip → 3 * 8 = 24 credits.
+    cost, _ = block_usage_cost(block, creds, stats=NodeExecutionStats(walltime=8.0))
+    assert cost == 24
+    # Pre-flight → 0.
+    cost, _ = block_usage_cost(block, creds)
+    assert cost == 0
+
+
 def test_run_cost_type_remains_unchanged(tmp_block_costs_override):
     tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
     block = SearchTheWebBlock()
