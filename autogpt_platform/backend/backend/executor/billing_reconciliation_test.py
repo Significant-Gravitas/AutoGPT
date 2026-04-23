@@ -60,7 +60,10 @@ def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
 
     db_client = MagicMock()
     db_client.spend_credits.return_value = 42  # remaining balance
-    with patch("backend.executor.billing.get_db_client", return_value=db_client):
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+    ):
         delta, remaining = _charge_reconciled_usage_sync(exec_entry, stats)
 
     # Pre-flight COST_USD returns 0 (no stats). Post-flight: ceil(0.05 * 100) = 5.
@@ -69,6 +72,9 @@ def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
     db_client.spend_credits.assert_called_once()
     call_kwargs = db_client.spend_credits.call_args.kwargs
     assert call_kwargs["cost"] == 5
+    # Positive delta should also fire the low-balance notification so users
+    # get alerted when reconciliation crosses the threshold.
+    handle_lb.assert_called_once_with(db_client, exec_entry.user_id, 42, 5)
 
 
 def test_missing_block_returns_zero(tmp_block_costs_override):
@@ -103,7 +109,10 @@ def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override
 
     db_client = MagicMock()
     db_client.spend_credits.return_value = 999
-    with patch("backend.executor.billing.get_db_client", return_value=db_client):
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.handle_low_balance") as handle_lb,
+    ):
         delta, remaining = _charge_reconciled_usage_sync(exec_entry, stats)
 
     assert delta < 0
@@ -111,3 +120,6 @@ def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override
     db_client.spend_credits.assert_called_once()
     call_kwargs = db_client.spend_credits.call_args.kwargs
     assert call_kwargs["cost"] == delta  # negative cost ⇒ credit back
+    # Refunds can't push the user below the low-balance threshold, so
+    # handle_low_balance must not fire here.
+    handle_lb.assert_not_called()

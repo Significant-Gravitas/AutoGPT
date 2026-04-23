@@ -274,6 +274,12 @@ def _charge_reconciled_usage_sync(
             ),
         ),
     )
+    # For TOKENS / COST_USD the reconciliation charge can be the bulk of the
+    # block's bill, so fire the low-balance alert here too — mirroring
+    # charge_node_usage / charge_extra_runtime_cost. Refunds (delta < 0) only
+    # raise the balance and never cross the threshold downward.
+    if delta > 0:
+        handle_low_balance(db_client, node_exec.user_id, remaining_balance, delta)
     return delta, remaining_balance
 
 
