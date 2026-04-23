@@ -61,13 +61,12 @@ describe("TurnStatsBar", () => {
     expect(labels.length).toBeGreaterThan(0);
   });
 
-  it("returns null when timestamp is malformed and there is nothing else to show", () => {
+  it("renders malformed timestamp as its raw string (formatLocalTimestamp passthrough)", () => {
     const { container } = render(
       <TurnStatsBar turnMessages={EMPTY} timestamp="not-a-date" />,
     );
-    // Malformed timestamp formats as raw string — but since we have no time
-    // and no counters, the bar still renders the raw string as localTime.
     expect(container.firstChild).not.toBeNull();
+    expect(container.textContent).toContain("not-a-date");
   });
 
   it("renders the tooltip trigger when both duration and timestamp are present", () => {

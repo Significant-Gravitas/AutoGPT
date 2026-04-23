@@ -332,7 +332,9 @@ async def test_mark_session_completed_clears_reasoning_counters():
 
     async def _fake_set_turn_duration(
         session_id, duration_ms, *, reasoning_duration_ms=None
-    ):  # noqa: ARG001
+    ):
+        captured["session_id"] = session_id
+        captured["duration_ms"] = duration_ms
         captured["reasoning_duration_ms"] = reasoning_duration_ms
 
     with (

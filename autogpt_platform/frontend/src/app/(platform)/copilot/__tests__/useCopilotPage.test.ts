@@ -158,9 +158,13 @@ describe("useCopilotPage — duration + timestamp maps merge across pages", () =
       ["older", 1000],
       ["shared", 2000],
     ]);
-    const pagedReasoningDurations = new Map<string, number>([["older", 500]]);
+    const pagedReasoningDurations = new Map<string, number>([
+      ["older", 500],
+      ["shared", 600],
+    ]);
     const pagedTimestamps = new Map<string, string>([
       ["older", "2026-04-20T10:00:00Z"],
+      ["shared", "2026-04-20T10:00:00Z"],
     ]);
 
     const historicalDurations = new Map<string, number>([
@@ -169,9 +173,11 @@ describe("useCopilotPage — duration + timestamp maps merge across pages", () =
     ]);
     const historicalReasoningDurations = new Map<string, number>([
       ["current", 1500],
+      ["shared", 1700], // should win over pagedReasoningDurations["shared"]
     ]);
     const messageTimestamps = new Map<string, string>([
       ["current", "2026-04-23T08:32:09Z"],
+      ["shared", "2026-04-23T08:32:09Z"], // should win over pagedTimestamps["shared"]
     ]);
 
     mockUseChatSession.mockReturnValue(
@@ -201,11 +207,17 @@ describe("useCopilotPage — duration + timestamp maps merge across pages", () =
     expect(result.current.historicalReasoningDurations.get("current")).toBe(
       1500,
     );
+    expect(result.current.historicalReasoningDurations.get("shared")).toBe(
+      1700,
+    );
 
     expect(result.current.messageTimestamps.get("older")).toBe(
       "2026-04-20T10:00:00Z",
     );
     expect(result.current.messageTimestamps.get("current")).toBe(
+      "2026-04-23T08:32:09Z",
+    );
+    expect(result.current.messageTimestamps.get("shared")).toBe(
       "2026-04-23T08:32:09Z",
     );
   });
