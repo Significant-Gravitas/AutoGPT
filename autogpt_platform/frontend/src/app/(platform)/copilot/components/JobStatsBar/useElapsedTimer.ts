@@ -17,15 +17,14 @@ export function useElapsedTimer(isRunning: boolean, anchorIso?: string | null) {
 
   useEffect(() => {
     if (isRunning) {
-      if (startTimeRef.current === null) {
-        const anchorMs = anchorIso ? Date.parse(anchorIso) : NaN;
-        startTimeRef.current = Number.isFinite(anchorMs)
-          ? anchorMs
-          : Date.now();
-        setElapsedSeconds(
-          Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)),
-        );
-      }
+      // Re-sync on every re-run so a late-arriving anchorIso (e.g. session
+      // data loads after the timer started on page refresh) updates the
+      // start time instead of being ignored.
+      const anchorMs = anchorIso ? Date.parse(anchorIso) : NaN;
+      startTimeRef.current = Number.isFinite(anchorMs) ? anchorMs : Date.now();
+      setElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)),
+      );
 
       intervalRef.current = setInterval(() => {
         if (startTimeRef.current !== null) {

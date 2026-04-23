@@ -31,6 +31,13 @@ describe("TurnStatsBar", () => {
     expect(screen.getByText(/Thought for 42s/)).toBeDefined();
   });
 
+  it("renders nothing for sub-second durations (would round to 0s)", () => {
+    const { container } = render(
+      <TurnStatsBar turnMessages={EMPTY} stats={{ durationMs: 400 }} />,
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
   it("renders nothing when only a timestamp is present (date is hover-only)", () => {
     const { container } = render(
       <TurnStatsBar

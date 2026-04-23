@@ -77,15 +77,17 @@ export function TurnStatsBar({ turnMessages, elapsedSeconds, stats }: Props) {
   const displaySeconds = resolveDisplaySeconds(elapsedSeconds, stats);
   const localDate = stats?.createdAt ? formatLocalDate(stats.createdAt) : null;
 
-  if (counters.length === 0 && displaySeconds === undefined) return null;
+  const showTimeLabel =
+    displaySeconds !== undefined && displaySeconds > 0 ? displaySeconds : null;
+  if (counters.length === 0 && showTimeLabel === null) return null;
 
   return (
     <div className="mt-2 flex items-center gap-1.5">
-      {displaySeconds !== undefined && (
-        <TimeLabel displaySeconds={displaySeconds} localDate={localDate} />
+      {showTimeLabel !== null && (
+        <TimeLabel displaySeconds={showTimeLabel} localDate={localDate} />
       )}
       {counters.map(function renderCounter(counter, index) {
-        const needsDot = index > 0 || displaySeconds !== undefined;
+        const needsDot = index > 0 || showTimeLabel !== null;
         return (
           <span key={counter.category} className="flex items-center gap-1">
             {needsDot && (
