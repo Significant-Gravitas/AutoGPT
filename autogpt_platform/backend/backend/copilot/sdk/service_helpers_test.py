@@ -17,6 +17,7 @@ from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
     ReducedContext,
+    _compaction_target_tokens,
     _is_prompt_too_long,
     _is_tool_only_message,
     _iter_sdk_messages,
@@ -1000,3 +1001,61 @@ class TestRestoreCliSessionModeCheck:
         gap_asst = result.context_messages[3]
         assert gap_user.content == "GAP_USER_2"
         assert gap_asst.content == "GAP_ASSISTANT_3"
+
+
+# ---------------------------------------------------------------------------
+# _compaction_target_tokens — keeps our retry compaction below the CLI's
+# autocompact threshold so a compacted retry doesn't immediately re-trigger
+# the CLI's own autocompact on the next call.
+# ---------------------------------------------------------------------------
+
+
+class TestCompactionTargetTokens:
+    @pytest.mark.parametrize(
+        ("model", "window", "pct", "expected"),
+        [
+            # Sonnet 200K window with PCT=50 → CLI threshold 100K → target 80K
+            ("anthropic/claude-sonnet-4-6", 200_000, 50, 80_000),
+            # Sonnet 200K with PCT=0 → CLI uses ~93% (window-13K=187K) → 167K target
+            ("anthropic/claude-sonnet-4-6", 200_000, 0, 167_000),
+            # Aggressive PCT=30 on 200K window → CLI threshold 60K → target 40K
+            ("anthropic/claude-sonnet-4-6", 200_000, 30, 40_000),
+        ],
+    )
+    def test_anthropic_target_below_cli_threshold(
+        self, model, window, pct, expected
+    ) -> None:
+        with (
+            patch("backend.util.prompt.get_context_window", return_value=window),
+            patch("backend.copilot.sdk.service.config") as mock_cfg,
+        ):
+            mock_cfg.claude_agent_autocompact_pct_override = pct
+            assert _compaction_target_tokens(model) == expected
+
+    def test_moonshot_uses_cli_default_threshold(self) -> None:
+        # Moonshot routes ignore PCT override (config.gate skips the env var
+        # entirely), so our target should mirror the CLI's ~93% default
+        # regardless of the configured pct value.
+        with (
+            patch("backend.util.prompt.get_context_window", return_value=262_144),
+            patch("backend.copilot.sdk.service.config") as mock_cfg,
+        ):
+            mock_cfg.claude_agent_autocompact_pct_override = 50  # ignored
+            # 262144 - 13000 = 249144 (CLI default), minus 20K headroom = 229144
+            assert _compaction_target_tokens("moonshotai/kimi-k2.6") == 229_144
+
+    def test_unknown_model_falls_back_to_default_threshold(self) -> None:
+        from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD
+
+        with patch("backend.util.prompt.get_context_window", return_value=None):
+            assert _compaction_target_tokens("unknown/model") == DEFAULT_TOKEN_THRESHOLD
+
+    def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
+        # PCT=1 on a 50K window → CLI threshold = 500 → target would be
+        # negative without the floor.
+        with (
+            patch("backend.util.prompt.get_context_window", return_value=50_000),
+            patch("backend.copilot.sdk.service.config") as mock_cfg,
+        ):
+            mock_cfg.claude_agent_autocompact_pct_override = 1
+            assert _compaction_target_tokens("anthropic/foo") == 10_000

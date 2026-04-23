@@ -437,6 +437,35 @@ _BARE_MESSAGE_TOKEN_FLOOR: int = 5_000
 # seeded JSONL upload stays compact and future gap injections are small.
 _SEED_TARGET_TOKENS: int = 30_000
 
+# Headroom subtracted from the CLI's autocompact threshold when sizing our
+# own retry-path compaction target.  Without this gap the post-compact
+# context would land just under the CLI's threshold and the next assistant
+# message would tip it back over → CLI immediately re-compacts → cascade.
+_COMPACTION_HEADROOM_TOKENS: int = 20_000
+
+
+def _compaction_target_tokens(model: str) -> int:
+    """Compaction target consistent with the CLI's autocompact threshold.
+
+    Mirrors the bundled CLI's ``i6_()`` formula for autocompact:
+    ``min(window * pct/100, window - 13K)``, then subtracts a 20K headroom
+    so post-compaction context sits comfortably below the CLI's trigger and
+    a follow-up assistant message doesn't immediately re-trigger.
+    Floors at 10K to preserve at least some history budget.
+    """
+    from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
+
+    window = get_context_window(model)
+    if window is None:
+        return DEFAULT_TOKEN_THRESHOLD
+    pct = config.claude_agent_autocompact_pct_override
+    cli_buffer = 13_000  # E88 in the bundled CLI
+    if pct > 0 and not _is_moonshot_model(model):
+        cli_threshold = min(window * pct // 100, window - cli_buffer)
+    else:
+        cli_threshold = window - cli_buffer
+    return max(10_000, cli_threshold - _COMPACTION_HEADROOM_TOKENS)
+
 
 async def _reduce_context(
     transcript_content: str,
@@ -475,6 +504,7 @@ async def _reduce_context(
             transcript_content,
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
+            target_tokens=_compaction_target_tokens(config.thinking_standard_model),
         )
         if (
             compacted
