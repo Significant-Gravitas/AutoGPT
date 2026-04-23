@@ -1,4 +1,4 @@
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { Button } from "@/components/atoms/Button/Button";
 import Link from "next/link";
 import { formatCents, formatResetTime } from "../usageHelpers";
@@ -8,22 +8,17 @@ export { formatResetTime };
 
 function UsageBar({
   label,
-  used,
-  limit,
+  percentUsed,
   resetsAt,
 }: {
   label: string;
-  used: number;
-  limit: number;
+  percentUsed: number;
   resetsAt: Date | string;
 }) {
-  if (limit <= 0) return null;
-
-  const rawPercent = (used / limit) * 100;
-  const percent = Math.min(100, Math.round(rawPercent));
+  const percent = Math.min(100, Math.max(0, Math.round(percentUsed)));
   const isHigh = percent >= 80;
   const percentLabel =
-    used > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
+    percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-1">
@@ -38,10 +33,15 @@ function UsageBar({
       </div>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
         <div
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
           className={`h-full rounded-full transition-[width] duration-300 ease-out ${
             isHigh ? "bg-orange-500" : "bg-blue-500"
           }`}
-          style={{ width: `${Math.max(used > 0 ? 1 : 0, percent)}%` }}
+          style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
     </div>
@@ -79,21 +79,19 @@ export function UsagePanelContent({
   isBillingEnabled = false,
   onCreditChange,
 }: {
-  usage: CoPilotUsageStatus;
+  usage: CoPilotUsagePublic;
   showBillingLink?: boolean;
   hasInsufficientCredits?: boolean;
   isBillingEnabled?: boolean;
   onCreditChange?: () => void;
 }) {
-  const hasDailyLimit = usage.daily.limit > 0;
-  const hasWeeklyLimit = usage.weekly.limit > 0;
-  const isDailyExhausted =
-    hasDailyLimit && usage.daily.used >= usage.daily.limit;
-  const isWeeklyExhausted =
-    hasWeeklyLimit && usage.weekly.used >= usage.weekly.limit;
+  const daily = usage.daily;
+  const weekly = usage.weekly;
+  const isDailyExhausted = !!daily && daily.percent_used >= 100;
+  const isWeeklyExhausted = !!weekly && weekly.percent_used >= 100;
   const resetCost = usage.reset_cost ?? 0;
 
-  if (!hasDailyLimit && !hasWeeklyLimit) {
+  if (!daily && !weekly) {
     return (
       <div className="text-xs text-neutral-500">No usage limits configured</div>
     );
@@ -113,20 +111,18 @@ export function UsagePanelContent({
           <span className="text-[11px] text-neutral-500">{tierLabel} plan</span>
         )}
       </div>
-      {hasDailyLimit && (
+      {daily && (
         <UsageBar
           label="Today"
-          used={usage.daily.used}
-          limit={usage.daily.limit}
-          resetsAt={usage.daily.resets_at}
+          percentUsed={daily.percent_used}
+          resetsAt={daily.resets_at}
         />
       )}
-      {hasWeeklyLimit && (
+      {weekly && (
         <UsageBar
           label="This week"
-          used={usage.weekly.used}
-          limit={usage.weekly.limit}
-          resetsAt={usage.weekly.resets_at}
+          percentUsed={weekly.percent_used}
+          resetsAt={weekly.resets_at}
         />
       )}
       {isDailyExhausted &&

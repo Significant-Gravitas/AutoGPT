@@ -21,29 +21,42 @@ vi.mock("use-stick-to-bottom", () => ({
 
 vi.mock("@/components/ai-elements/conversation", () => ({
   Conversation: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
+    <div data-testid="conversation">{children}</div>
   ),
   ConversationContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
+    <div data-testid="conversation-content">{children}</div>
   ),
   ConversationScrollButton: () => null,
 }));
 
 vi.mock("@/components/ai-elements/message", () => ({
-  Message: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
-  ),
-  MessageContent: ({ children }: { children: React.ReactNode }) => (
-    <div>{children}</div>
+  Message: ({
+    children,
+    from,
+  }: {
+    children: React.ReactNode;
+    from?: string;
+  }) => (
+    <div data-testid={`message-${from ?? "unknown"}`} data-from={from}>
+      {children}
+    </div>
   ),
   MessageActions: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
+  MessageContent: ({
+    children,
+    className,
+  }: {
+    children: React.ReactNode;
+    className?: string;
+  }) => <div className={className}>{children}</div>,
 }));
 
 vi.mock("../components/AssistantMessageActions", () => ({
   AssistantMessageActions: () => null,
 }));
+
 vi.mock("../components/CopyButton", () => ({ CopyButton: () => null }));
 vi.mock("../components/CollapsedToolGroup", () => ({
   CollapsedToolGroup: () => null,
@@ -79,6 +92,18 @@ vi.mock("../helpers", () => ({
   }),
 }));
 
+vi.mock("@/components/atoms/LoadingSpinner/LoadingSpinner", () => ({
+  LoadingSpinner: () => <div data-testid="loading-spinner" />,
+}));
+
+vi.mock("@phosphor-icons/react", () => ({
+  Clock: () => <span data-testid="clock-icon" />,
+  ArrowDown: () => null,
+  ArrowUp: () => null,
+}));
+
+// ── helpers ───────────────────────────────────────────────────────────────
+
 type ObserverCallback = (entries: { isIntersecting: boolean }[]) => void;
 class MockIntersectionObserver {
   static lastCallback: ObserverCallback | null = null;
@@ -98,17 +123,111 @@ class MockIntersectionObserver {
   thresholds = [];
 }
 
-const BASE_PROPS = {
-  messages: [],
+const baseProps = {
+  messages: [] as any[],
   status: "ready" as const,
   error: undefined,
   isLoading: false,
-  sessionID: "sess-1",
+  sessionID: "sess-123",
+  queuedMessages: [] as string[],
   hasMoreMessages: true,
   isLoadingMore: false,
   onLoadMore: vi.fn(),
   onRetry: vi.fn(),
 };
+
+// ── queued-messages rendering ─────────────────────────────────────────────
+
+describe("ChatMessagesContainer — queuedMessages", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders nothing extra when queuedMessages is empty", () => {
+    render(<ChatMessagesContainer {...baseProps} queuedMessages={[]} />);
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+
+  it("renders a single queued message with Queued label", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={["What about section 3?"]}
+      />,
+    );
+    expect(screen.getByText("What about section 3?")).toBeDefined();
+    expect(screen.getByText("Queued")).toBeDefined();
+  });
+
+  it("renders multiple queued messages as separate bubbles", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={["First follow-up", "Second follow-up"]}
+      />,
+    );
+    expect(screen.getByText("First follow-up")).toBeDefined();
+    expect(screen.getByText("Second follow-up")).toBeDefined();
+    const queuedLabels = screen.getAllByText("Queued");
+    expect(queuedLabels.length).toBe(2);
+  });
+
+  it("renders queued messages even when status is streaming", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="streaming"
+        queuedMessages={["queued during stream"]}
+      />,
+    );
+    expect(screen.getByText("queued during stream")).toBeDefined();
+    expect(screen.getByText("Queued")).toBeDefined();
+  });
+
+  it("renders no queued messages when prop is undefined", () => {
+    const { queuedMessages: _, ...propsWithoutQueued } = baseProps;
+    render(<ChatMessagesContainer {...propsWithoutQueued} />);
+    expect(screen.queryByText("Queued")).toBeNull();
+  });
+});
+
+// ── loading state ─────────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — loading", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("shows loading spinner when isLoading is true", () => {
+    render(<ChatMessagesContainer {...baseProps} isLoading />);
+    expect(screen.getByTestId("loading-spinner")).toBeDefined();
+  });
+
+  it("does not show spinner when not loading", () => {
+    render(<ChatMessagesContainer {...baseProps} isLoading={false} />);
+    expect(screen.queryByTestId("loading-spinner")).toBeNull();
+  });
+});
+
+// ── pagination sentinel ───────────────────────────────────────────────────
 
 describe("ChatMessagesContainer", () => {
   beforeEach(() => {
@@ -124,50 +243,93 @@ describe("ChatMessagesContainer", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders top sentinel when forwardPaginated is false (backward pagination)", () => {
-    render(<ChatMessagesContainer {...BASE_PROPS} forwardPaginated={false} />);
+  it("renders top sentinel for backward pagination", () => {
+    render(<ChatMessagesContainer {...baseProps} />);
     expect(
       screen.getByRole("button", { name: /load older messages/i }),
-    ).toBeDefined();
-  });
-
-  it("renders top sentinel when forwardPaginated is undefined (default, backward)", () => {
-    render(<ChatMessagesContainer {...BASE_PROPS} />);
-    expect(
-      screen.getByRole("button", { name: /load older messages/i }),
-    ).toBeDefined();
-  });
-
-  it("renders bottom sentinel when forwardPaginated is true (forward pagination)", () => {
-    render(<ChatMessagesContainer {...BASE_PROPS} forwardPaginated={true} />);
-    expect(
-      screen.getByRole("button", { name: /load newer messages/i }),
     ).toBeDefined();
   });
 
   it("hides sentinel when hasMoreMessages is false", () => {
-    render(
-      <ChatMessagesContainer
-        {...BASE_PROPS}
-        hasMoreMessages={false}
-        forwardPaginated={true}
-      />,
-    );
+    render(<ChatMessagesContainer {...baseProps} hasMoreMessages={false} />);
     expect(
       screen.queryByRole("button", { name: /load older messages/i }),
     ).toBeNull();
   });
 
   it("hides sentinel when onLoadMore is not provided", () => {
-    render(
-      <ChatMessagesContainer
-        {...BASE_PROPS}
-        onLoadMore={undefined}
-        forwardPaginated={true}
-      />,
-    );
+    render(<ChatMessagesContainer {...baseProps} onLoadMore={undefined} />);
     expect(
       screen.queryByRole("button", { name: /load older messages/i }),
     ).toBeNull();
+  });
+});
+
+// ── turnStats plumbing ────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — turnStats", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the local timestamp on a user message (hover reveal)", () => {
+    const userId = "user-1";
+    const turnStats = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+      />,
+    );
+    // The timestamp is rendered in the MessageActions area alongside CopyButton;
+    // we just assert that SOMETHING containing the year is in the DOM.
+    const labels = screen.getAllByText(
+      (_, el) =>
+        !!el?.className.includes("tabular-nums") &&
+        /2026/.test(el?.textContent ?? ""),
+    );
+    expect(labels.length).toBeGreaterThan(0);
+  });
+
+  it("skips the user timestamp when turnStats has no entry for that message id", () => {
+    const messages = [
+      {
+        id: "user-unknown",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={new Map() as any}
+      />,
+    );
+    const labels = screen.queryAllByText((_, el) =>
+      /2026/.test(el?.textContent ?? ""),
+    );
+    expect(labels.length).toBe(0);
   });
 });

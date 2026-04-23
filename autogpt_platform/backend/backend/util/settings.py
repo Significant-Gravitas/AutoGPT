@@ -252,6 +252,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for notification service daemon to run on",
     )
 
+    platform_linking_service_port: int = Field(
+        default=8009,
+        description="The port for the platform_linking manager daemon to run on",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -267,6 +272,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="",
         description="Can be used to explicitly set the base URL for the frontend. "
         "This value is then used to generate redirect URLs for OAuth flows.",
+    )
+
+    platform_link_base_url: str = Field(
+        default="https://platform.agpt.co/link",
+        description="Base URL the bot service prepends to one-time linking "
+        "tokens when it posts them to users ({base}/{token}?platform=...). "
+        "Should point at the frontend /link page.",
     )
 
     media_gcs_bucket_name: str = Field(

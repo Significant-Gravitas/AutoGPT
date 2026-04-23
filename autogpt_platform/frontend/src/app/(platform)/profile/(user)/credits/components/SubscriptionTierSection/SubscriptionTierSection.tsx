@@ -4,42 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { useSubscriptionTierSection } from "./useSubscriptionTierSection";
-
-type TierInfo = {
-  key: string;
-  label: string;
-  multiplier: string;
-  description: string;
-};
-
-const TIERS: TierInfo[] = [
-  {
-    key: "FREE",
-    label: "Free",
-    multiplier: "1x",
-    description: "Base AutoPilot capacity with standard rate limits",
-  },
-  {
-    key: "PRO",
-    label: "Pro",
-    multiplier: "5x",
-    description: "5x AutoPilot capacity — run 5× more tasks per day/week",
-  },
-  {
-    key: "BUSINESS",
-    label: "Business",
-    multiplier: "20x",
-    description: "20x AutoPilot capacity — ideal for teams and heavy workloads",
-  },
-];
-
-const TIER_ORDER = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"];
-
-function formatCost(cents: number, tierKey: string): string {
-  if (tierKey === "FREE") return "Free";
-  if (cents === 0) return "Pricing available soon";
-  return `$${(cents / 100).toFixed(2)}/mo`;
-}
+import { PendingChangeBanner } from "./components/PendingChangeBanner/PendingChangeBanner";
+import {
+  TIERS,
+  TIER_ORDER,
+  formatCost,
+  formatPendingDate,
+  getTierLabel,
+} from "./helpers";
 
 export function SubscriptionTierSection() {
   const {
@@ -55,10 +27,14 @@ export function SubscriptionTierSection() {
     isPaymentEnabled,
     changeTier,
     handleTierChange,
+    cancelPendingChange,
   } = useSubscriptionTierSection();
   const [confirmDowngradeTo, setConfirmDowngradeTo] = useState<string | null>(
     null,
   );
+  const [confirmReplacePendingTo, setConfirmReplacePendingTo] = useState<
+    string | null
+  >(null);
 
   if (isLoading) {
     return (
@@ -115,6 +91,34 @@ export function SubscriptionTierSection() {
     await changeTier(tier);
   }
 
+  async function confirmReplacePending() {
+    if (!confirmReplacePendingTo) return;
+    const tier = confirmReplacePendingTo;
+    setConfirmReplacePendingTo(null);
+    handleTierChange(tier, currentTier, setConfirmDowngradeTo);
+  }
+
+  const pendingTierFromSubscription = subscription.pending_tier ?? null;
+  const hasPendingChange =
+    pendingTierFromSubscription !== null &&
+    pendingTierFromSubscription !== currentTier;
+
+  function onTierButtonClick(targetTierKey: string) {
+    // If a pending change is queued and the user clicks a DIFFERENT non-current,
+    // non-pending tier, surface a confirmation so they don't silently overwrite
+    // their own scheduled change. The on-card button for the pending tier itself
+    // is already disabled; the primary cancel path is the banner.
+    if (
+      hasPendingChange &&
+      targetTierKey !== pendingTierFromSubscription &&
+      targetTierKey !== currentTier
+    ) {
+      setConfirmReplacePendingTo(targetTierKey);
+      return;
+    }
+    handleTierChange(targetTierKey, currentTier, setConfirmDowngradeTo);
+  }
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">Subscription Plan</h3>
@@ -128,6 +132,16 @@ export function SubscriptionTierSection() {
         </p>
       )}
 
+      {hasPendingChange && pendingTierFromSubscription ? (
+        <PendingChangeBanner
+          currentTier={currentTier}
+          pendingTier={pendingTierFromSubscription}
+          pendingEffectiveAt={subscription.pending_tier_effective_at}
+          onKeepCurrent={() => void cancelPendingChange()}
+          isBusy={isPending}
+        />
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {TIERS.map((tier) => {
           const isCurrent = currentTier === tier.key;
@@ -137,6 +151,8 @@ export function SubscriptionTierSection() {
           const isUpgrade = targetIdx > currentIdx;
           const isDowngrade = targetIdx < currentIdx;
           const isThisPending = pendingTier === tier.key;
+          const isScheduledTier =
+            hasPendingChange && pendingTierFromSubscription === tier.key;
 
           return (
             <div
@@ -171,22 +187,18 @@ export function SubscriptionTierSection() {
                 <Button
                   className="w-full"
                   variant={isUpgrade ? "default" : "outline"}
-                  disabled={isPending}
-                  onClick={() =>
-                    handleTierChange(
-                      tier.key,
-                      currentTier,
-                      setConfirmDowngradeTo,
-                    )
-                  }
+                  disabled={isPending || isScheduledTier}
+                  onClick={() => onTierButtonClick(tier.key)}
                 >
                   {isThisPending
                     ? "Updating..."
-                    : isUpgrade
-                      ? `Upgrade to ${tier.label}`
-                      : isDowngrade
-                        ? `Downgrade to ${tier.label}`
-                        : `Switch to ${tier.label}`}
+                    : isScheduledTier
+                      ? "Scheduled"
+                      : isUpgrade
+                        ? `Upgrade to ${tier.label}`
+                        : isDowngrade
+                          ? `Downgrade to ${tier.label}`
+                          : `Switch to ${tier.label}`}
                 </Button>
               )}
             </div>
@@ -196,9 +208,9 @@ export function SubscriptionTierSection() {
 
       {currentTier !== "FREE" && isPaymentEnabled && (
         <p className="text-sm text-neutral-500">
-          Your subscription is managed through Stripe. Upgrades and paid-tier
-          changes take effect immediately; downgrades to Free are scheduled for
-          the end of the current billing period.
+          Your subscription is managed through Stripe. Upgrades take effect
+          immediately. Downgrades take effect at the end of your current billing
+          period.
         </p>
       )}
 
@@ -215,7 +227,7 @@ export function SubscriptionTierSection() {
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
             {confirmDowngradeTo === "FREE"
               ? "Downgrading to Free will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
-              : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect immediately.`}{" "}
+              : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect at the end of your current billing period. You keep your current plan until then.`}{" "}
             Are you sure?
           </p>
           <Dialog.Footer>
@@ -230,6 +242,42 @@ export function SubscriptionTierSection() {
               onClick={() => void confirmDowngrade()}
             >
               Confirm Downgrade
+            </Button>
+          </Dialog.Footer>
+        </Dialog.Content>
+      </Dialog>
+
+      <Dialog
+        title="Replace pending change?"
+        controlled={{
+          isOpen: !!confirmReplacePendingTo,
+          set: (open) => {
+            if (!open) setConfirmReplacePendingTo(null);
+          },
+        }}
+      >
+        <Dialog.Content>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            You have a pending change to{" "}
+            {getTierLabel(pendingTierFromSubscription ?? "")}
+            {subscription.pending_tier_effective_at
+              ? ` scheduled for ${formatPendingDate(subscription.pending_tier_effective_at)}`
+              : ""}
+            . Switching to {getTierLabel(confirmReplacePendingTo ?? "")} will
+            replace it. Continue?
+          </p>
+          <Dialog.Footer>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmReplacePendingTo(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void confirmReplacePending()}
+            >
+              Replace pending change
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

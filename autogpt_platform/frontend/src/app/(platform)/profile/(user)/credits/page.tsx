@@ -13,7 +13,7 @@ import { RefundModal } from "./RefundModal";
 import { SubscriptionTierSection } from "./components/SubscriptionTierSection/SubscriptionTierSection";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 import { UsagePanelContent } from "@/app/(platform)/copilot/components/UsageLimits/UsageLimits";
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 
 import {
@@ -27,16 +27,16 @@ import {
 
 function CoPilotUsageSection() {
   const router = useRouter();
-  const { data: usage, isLoading } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
-      select: (res) => res.data as CoPilotUsageStatus,
+      select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
       staleTime: 10000,
     },
   });
 
-  if (isLoading || !usage?.daily || !usage?.weekly) return null;
-  if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
+  if (!isSuccess || !usage) return null;
+  if (!usage.daily && !usage.weekly) return null;
 
   return (
     <div className="my-6 space-y-4">

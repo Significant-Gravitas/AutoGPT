@@ -29,7 +29,9 @@ class BaseAyrshareInput(BlockSchemaInput):
         advanced=False,
     )
     is_video: bool = SchemaField(
-        description="Whether the media is a video", default=False, advanced=True
+        description="Whether the media is a video. Set to True when uploading a video so billing applies the video tier.",
+        default=False,
+        advanced=True,
     )
     schedule_date: Optional[datetime] = SchemaField(
         description="UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ)",

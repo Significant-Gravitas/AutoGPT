@@ -6,11 +6,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToSnapchatBlock(Block):
     """Block for posting to Snapchat with Snapchat-specific options."""
 
@@ -29,6 +32,14 @@ class PostToSnapchatBlock(Block):
             description="Required video URL for Snapchat posts. Snapchat only supports video content.",
             default_factory=list,
             advanced=False,
+        )
+
+        # Snapchat is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for Snapchat)",
+            default=True,
+            advanced=True,
         )
 
         # Snapchat-specific options

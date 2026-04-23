@@ -8,8 +8,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
@@ -19,6 +21,7 @@ class TikTokVisibility(str, Enum):
     FOLLOWERS = "followers"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToTikTokBlock(Block):
     """Block for posting to TikTok with TikTok-specific options."""
 

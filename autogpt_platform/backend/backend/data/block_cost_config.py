@@ -12,6 +12,12 @@ from backend.blocks.ai_shortform_video_block import (
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
+from backend.blocks.claude_code import ClaudeCodeBlock
+from backend.blocks.code_executor import (
+    ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
+)
 from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
@@ -19,9 +25,12 @@ from backend.blocks.enrichlayer.linkedin import (
     LinkedinPersonLookupBlock,
     LinkedinRoleLookupBlock,
 )
+from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
+from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
+from backend.blocks.jina.fact_checker import FactCheckerBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import (
     MODEL_METADATA,
@@ -32,29 +41,53 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.mem0 import (
+    AddMemoryBlock,
+    GetAllMemoriesBlock,
+    GetLatestMemoryBlock,
+    SearchMemoryBlock,
+)
+from backend.blocks.nvidia.deepfake import NvidiaDeepfakeDetectBlock
 from backend.blocks.orchestrator import OrchestratorBlock
+from backend.blocks.perplexity import PerplexityBlock, PerplexityModel
 from backend.blocks.replicate.flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.replicate.replicate_block import ReplicateModelBlock
+from backend.blocks.screenshotone import ScreenshotWebPageBlock
+from backend.blocks.smartlead.campaign import (
+    AddLeadToCampaignBlock,
+    CreateCampaignBlock,
+    SaveCampaignSequencesBlock,
+)
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
+from backend.blocks.youtube import TranscribeYoutubeVideoBlock
+from backend.blocks.zerobounce.validate_emails import ValidateEmailsBlock
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
     anthropic_credentials,
     apollo_credentials,
     did_credentials,
+    e2b_credentials,
     elevenlabs_credentials,
     enrichlayer_credentials,
+    fal_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
     llama_api_credentials,
+    mem0_credentials,
+    nvidia_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
     revid_credentials,
+    screenshotone_credentials,
+    smartlead_credentials,
     unreal_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
+    zerobounce_credentials,
 )
 
 # =============== Configure the cost for each LLM Model call =============== #
@@ -148,6 +181,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GROK_4_20_MULTI_AGENT: 5,
     LlmModel.GROK_CODE_FAST_1: 1,
     LlmModel.KIMI_K2: 1,
+    LlmModel.KIMI_K2_0905: 1,
+    LlmModel.KIMI_K2_5: 1,
+    LlmModel.KIMI_K2_6: 2,
+    LlmModel.KIMI_K2_THINKING: 2,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
     # Z.ai (Zhipu) models
@@ -293,6 +330,23 @@ LLM_COST = (
 )
 
 # =============== This is the exhaustive list of cost for each Block =============== #
+#
+# BLOCK_COSTS drives the **credit wallet** — the user-facing balance that funds
+# block executions regardless of where they run (builder, graph execution,
+# copilot ``run_block`` tool). A missing entry here makes the block run for
+# free from the wallet's perspective, even when the upstream provider charges
+# real USD. See ``backend.executor.utils::block_usage_cost`` for the lookup
+# and ``backend.copilot.tools.helpers::execute_block`` for the copilot-side
+# charge path.
+#
+# Credits are **not** the same as copilot microdollar rate-limit counters
+# (``backend.copilot.rate_limit``). Microdollars track AutoGPT's infra cost
+# (OpenRouter / Anthropic inference spend) and gate the chat loop; credits
+# track the user's prepaid balance. A block running inside copilot ``run_block``
+# decrements only the credit wallet via this table — microdollars stay scoped
+# to copilot LLM turns and are not double-charged from block execution.
+# See the module docstring on ``backend.copilot.rate_limit`` for the full
+# boundary.
 
 BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     AIConversationBlock: LLM_COST,
@@ -715,6 +769,62 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
     ],
+    PerplexityBlock: [
+        # Sonar Deep Research: up to $5/1K searches + $8/1M reasoning tokens.
+        # Flat-charge 10 credits mirrors the LLM table's SONAR_DEEP_RESEARCH
+        # entry. Block execution decrements only the user credit wallet via
+        # spend_credits(); the microdollar rate-limit counter is not touched
+        # for run_block invocations. The actual per-run provider spend is
+        # recorded separately as provider_cost on PlatformCostLog when
+        # OpenRouter reports usage.
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "model": PerplexityModel.SONAR_DEEP_RESEARCH,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+        ),
+        # Sonar Pro: $1/1M input + $1/1M output + $0.005/search.
+        BlockCost(
+            cost_amount=5,
+            cost_filter={
+                "model": PerplexityModel.SONAR_PRO,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+        ),
+        # Sonar (default): $0.2/1M input + $0.2/1M output + $0.005/search.
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "model": PerplexityModel.SONAR,
+                "credentials": {
+                    "id": open_router_credentials.id,
+                    "provider": open_router_credentials.provider,
+                    "type": open_router_credentials.type,
+                },
+            },
+        ),
+    ],
+    FactCheckerBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
+                }
+            },
+        )
+    ],
     OrchestratorBlock: LLM_COST,
     VideoNarrationBlock: [
         BlockCost(
@@ -724,6 +834,238 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": elevenlabs_credentials.id,
                     "provider": elevenlabs_credentials.provider,
                     "type": elevenlabs_credentials.type,
+                }
+            },
+        )
+    ],
+    # Mem0: Starter $19/mo for 50K adds + 5K retrievals → $0.0004/add,
+    # $0.004/retrieval. Floor at 1 credit covers raw cost with margin.
+    AddMemoryBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": mem0_credentials.id,
+                    "provider": mem0_credentials.provider,
+                    "type": mem0_credentials.type,
+                }
+            },
+        )
+    ],
+    SearchMemoryBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": mem0_credentials.id,
+                    "provider": mem0_credentials.provider,
+                    "type": mem0_credentials.type,
+                }
+            },
+        )
+    ],
+    GetAllMemoriesBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": mem0_credentials.id,
+                    "provider": mem0_credentials.provider,
+                    "type": mem0_credentials.type,
+                }
+            },
+        )
+    ],
+    GetLatestMemoryBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": mem0_credentials.id,
+                    "provider": mem0_credentials.provider,
+                    "type": mem0_credentials.type,
+                }
+            },
+        )
+    ],
+    # ScreenshotOne: $17 / 2K screenshots = $0.0085/call (Basic tier).
+    ScreenshotWebPageBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": screenshotone_credentials.id,
+                    "provider": screenshotone_credentials.provider,
+                    "type": screenshotone_credentials.type,
+                }
+            },
+        )
+    ],
+    # NVIDIA NIM hosted endpoints: no public per-call SKU; estimate based on
+    # peer deepfake APIs (Hive/Sightengine ~$0.005-0.01/call).
+    NvidiaDeepfakeDetectBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": nvidia_credentials.id,
+                    "provider": nvidia_credentials.provider,
+                    "type": nvidia_credentials.type,
+                }
+            },
+        )
+    ],
+    # Smartlead: $39/mo Basic = $0.0065 per email-equivalent. Campaign
+    # creation touches multiple records → 2 credits; per-lead and config
+    # writes are lighter → 1 credit.
+    CreateCampaignBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": smartlead_credentials.id,
+                    "provider": smartlead_credentials.provider,
+                    "type": smartlead_credentials.type,
+                }
+            },
+        )
+    ],
+    AddLeadToCampaignBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": smartlead_credentials.id,
+                    "provider": smartlead_credentials.provider,
+                    "type": smartlead_credentials.type,
+                }
+            },
+        )
+    ],
+    SaveCampaignSequencesBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": smartlead_credentials.id,
+                    "provider": smartlead_credentials.provider,
+                    "type": smartlead_credentials.type,
+                }
+            },
+        )
+    ],
+    # ZeroBounce: $16 / 2K validations = $0.008 per email. One email per call.
+    ValidateEmailsBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": zerobounce_credentials.id,
+                    "provider": zerobounce_credentials.provider,
+                    "type": zerobounce_credentials.type,
+                }
+            },
+        )
+    ],
+    # ClaudeCodeBlock runs an E2B sandbox AND executes Claude Sonnet inside it.
+    # Real cost $0.50-$2/run; flat 100 credits is conservative until we pipe
+    # x-total-cost from the in-sandbox Claude calls into provider_cost.
+    ClaudeCodeBlock: [
+        BlockCost(
+            cost_amount=100,
+            cost_filter={
+                "e2b_credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # Ayrshare post blocks use the @cost(...) decorator directly on each block
+    # class (see backend/blocks/ayrshare/_cost.py). They can't be listed here
+    # because post_to_*.py imports from backend.sdk, which imports from this
+    # module — registering via decorator avoids the circular import.
+    # E2B code-execution blocks: Hobby tier ~$0.000014/vCPU-s. A typical 30s
+    # sandbox with 2 vCPU is ~$0.00084. Flat 2 credits covers the floor with
+    # margin; accurate per-second billing happens via walltime-based resolver
+    # in the dynamic-pricing follow-up.
+    ExecuteCodeBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    InstantiateCodeSandboxBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    ExecuteCodeStepBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # FAL video generation: $0.001-$0.02 per output second. A 5s clip costs
+    # us ~$0.05-$0.10 in practice. 10 credits is a safe floor until walltime
+    # billing lands.
+    AIVideoGeneratorBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "credentials": {
+                    "id": fal_credentials.id,
+                    "provider": fal_credentials.provider,
+                    "type": fal_credentials.type,
+                }
+            },
+        )
+    ],
+    # Webshare is a flat monthly proxy subscription — the per-call cost to us
+    # is effectively zero, but the transcription step itself consumes compute
+    # time we haven't otherwise charged for. 1 credit is a tooling-tax floor.
+    TranscribeYoutubeVideoBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": webshare_proxy_credentials.id,
+                    "provider": webshare_proxy_credentials.provider,
+                    "type": webshare_proxy_credentials.type,
+                }
+            },
+        )
+    ],
+    # Jina chunking: $0.02/1M tokens. Flat 1 credit floor so the block is not
+    # wallet-free; embedding/search already have their own entries.
+    JinaChunkingBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
                 }
             },
         )

@@ -94,21 +94,23 @@ def test_agent_options_accepts_required_fields():
 def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_sections():
     """Verify ClaudeAgentOptions accepts the exact preset dict _build_system_prompt_value produces.
 
-    The production code always includes ``exclude_dynamic_sections=True`` in the preset
-    dict.  This compat test mirrors that exact shape so any SDK version that starts
-    rejecting unknown keys will be caught here rather than at runtime.
+    The Turn 1 (non-resume) code path includes ``exclude_dynamic_sections=True`` in
+    the preset dict for cross-user caching.  This compat test mirrors that exact
+    shape so any SDK version that starts rejecting unknown keys will be caught
+    here rather than at runtime.
     """
     from claude_agent_sdk import ClaudeAgentOptions
     from claude_agent_sdk.types import SystemPromptPreset
 
     from .service import _build_system_prompt_value
 
-    # Call the production helper directly so this test is tied to the real
-    # dict shape rather than a hand-rolled copy.
     preset = _build_system_prompt_value("custom system prompt", cross_user_cache=True)
     assert isinstance(
         preset, dict
     ), "_build_system_prompt_value must return a dict when caching is on"
+    assert preset.get("exclude_dynamic_sections") is True, (
+        "Turn 1 must strip dynamic sections to keep the prefix cacheable " "cross-user"
+    )
 
     sdk_preset = cast(SystemPromptPreset, preset)
     opts = ClaudeAgentOptions(system_prompt=sdk_preset)
@@ -116,8 +118,9 @@ def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_section
 
 
 def test_build_system_prompt_value_returns_plain_string_when_cross_user_cache_off():
-    """When cross_user_cache=False (e.g. on --resume turns), the helper must return
-    a plain string so the preset+resume crash is avoided."""
+    """When cross_user_cache=False (feature flag disabled globally), the
+    helper returns a plain string; the CLI will receive --system-prompt
+    (replace-mode) and skip the preset entirely."""
     from .service import _build_system_prompt_value
 
     result = _build_system_prompt_value("my prompt", cross_user_cache=False)
@@ -262,6 +265,12 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         "2.1.97",  # claude-agent-sdk 0.1.58 -- OpenRouter-safe only with
         #          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (injected by
         #          build_sdk_env() in env.py).
+        "2.1.116",  # claude-agent-sdk 0.1.64 -- first bundled version that
+        #           fixes the --resume + excludeDynamicSections=True crash
+        #           (introduced in 2.1.98), unlocking cross-user prompt
+        #           cache reads on every resumed SDK turn.  Still requires
+        #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.  Verified
+        #           OpenRouter-safe via cli_openrouter_compat_test.py.
     }
 )
 

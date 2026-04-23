@@ -1,5 +1,6 @@
 "use client";
 
+import { OverflowText } from "@/components/atoms/OverflowText/OverflowText";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   WarningCircleIcon,
@@ -117,9 +118,11 @@ export function SitrepItem({ item }: Props) {
           <Text variant="body-medium" className="leading-tight text-zinc-900">
             {item.agentName}
           </Text>
-          <Text variant="small" className="leading-tight text-zinc-500">
-            {item.message}
-          </Text>
+          <OverflowText
+            value={item.message}
+            variant="small"
+            className="leading-tight text-zinc-500"
+          />
         </div>
       </div>
 

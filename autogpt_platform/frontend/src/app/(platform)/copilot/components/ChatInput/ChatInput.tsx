@@ -1,5 +1,6 @@
 import {
   PromptInputBody,
+  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -9,6 +10,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { Tray } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
@@ -27,6 +29,8 @@ interface Props {
   isStreaming?: boolean;
   isUploadingFiles?: boolean;
   onStop?: () => void;
+  /** Called to enqueue a message when copilot is streaming and user has typed text. */
+  onEnqueue?: (message: string) => void | Promise<void>;
   placeholder?: string;
   className?: string;
   inputId?: string;
@@ -44,6 +48,7 @@ export function ChatInput({
   isStreaming = false,
   isUploadingFiles = false,
   onStop,
+  onEnqueue,
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
@@ -114,7 +119,12 @@ export function ChatInput({
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasFiles = files.length > 0;
+  // isBusy disables non-essential interactions (attachment menu, voice recording)
+  // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
+  // The textarea is only truly disabled when the session is unavailable, not
+  // during normal streaming (users can type and queue the next message).
+  const isTextareaDisabled = disabled || isUploadingFiles;
 
   const {
     value,
@@ -127,10 +137,12 @@ export function ChatInput({
       // Only clear files after successful send (onSend throws on failure)
       setFiles([]);
     },
-    disabled: isBusy,
+    disabled: isTextareaDisabled,
     canSendEmpty: hasFiles,
     inputId,
   });
+
+  const [isEnqueueing, setIsEnqueueing] = useState(false);
 
   const {
     isRecording,
@@ -143,10 +155,10 @@ export function ChatInput({
     audioStream,
   } = useVoiceRecording({
     setValue,
-    disabled: isBusy,
-    isStreaming,
+    disabled: isTextareaDisabled,
     value,
     inputId,
+    isStreaming,
   });
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -254,6 +266,29 @@ export function ChatInput({
                 disabled={disabled || isTranscribing || isStreaming}
                 onClick={toggleRecording}
               />
+            )}
+            {isStreaming && canSend && onEnqueue && (
+              <PromptInputButton
+                aria-label="Queue message"
+                tooltip="Queue message"
+                disabled={isEnqueueing}
+                onClick={async () => {
+                  if (isEnqueueing) return;
+                  const trimmed = value.trim();
+                  if (trimmed) {
+                    setIsEnqueueing(true);
+                    try {
+                      await onEnqueue(trimmed);
+                      setValue("");
+                    } finally {
+                      setIsEnqueueing(false);
+                    }
+                  }
+                }}
+                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900"
+              >
+                <Tray className="size-4" weight="bold" />
+              </PromptInputButton>
             )}
             {isStreaming ? (
               <PromptInputSubmit status="streaming" onStop={onStop} />

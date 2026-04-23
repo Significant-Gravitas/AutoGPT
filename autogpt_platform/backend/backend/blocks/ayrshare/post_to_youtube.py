@@ -9,8 +9,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
@@ -20,6 +22,7 @@ class YouTubeVisibility(str, Enum):
     UNLISTED = "unlisted"
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToYouTubeBlock(Block):
     """Block for posting to YouTube with YouTube-specific options."""
 
@@ -37,6 +40,14 @@ class PostToYouTubeBlock(Block):
             description="Required video URL. YouTube only supports 1 video per post.",
             default_factory=list,
             advanced=False,
+        )
+
+        # YouTube is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for YouTube)",
+            default=True,
+            advanced=True,
         )
 
         # YouTube-specific required options

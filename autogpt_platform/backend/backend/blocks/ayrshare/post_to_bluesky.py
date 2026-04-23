@@ -6,11 +6,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToBlueskyBlock(Block):
     """Block for posting to Bluesky with Bluesky-specific options."""
 

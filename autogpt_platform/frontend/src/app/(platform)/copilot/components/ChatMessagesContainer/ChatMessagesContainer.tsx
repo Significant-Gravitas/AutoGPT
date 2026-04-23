@@ -11,6 +11,7 @@ import {
 } from "@/components/ai-elements/message";
 import { Button } from "@/components/atoms/Button/Button";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
+import { Clock } from "@phosphor-icons/react";
 import { FileUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useStickToBottomContext } from "use-stick-to-bottom";
@@ -18,6 +19,7 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -31,7 +33,7 @@ import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
-import { ReasoningCollapse } from "./components/ReasoningCollapse";
+import { StepsCollapse } from "./components/StepsCollapse";
 import { ThinkingIndicator } from "./components/ThinkingIndicator";
 
 interface Props {
@@ -43,12 +45,10 @@ interface Props {
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
-  /** When true the load-more sentinel is placed at the bottom (forward
-   *  pagination for completed sessions). When false it is at the top
-   *  (backward pagination for active sessions). */
-  forwardPaginated?: boolean;
   onRetry?: () => void;
-  historicalDurations?: Map<string, number>;
+  turnStats?: TurnStatsMap;
+  /** Pending queued messages waiting to be injected, shown at the end of chat. */
+  queuedMessages?: string[];
 }
 
 function renderSegments(
@@ -140,25 +140,11 @@ export function LoadMoreSentinel({
   isLoading,
   messageCount,
   onLoadMore,
-  rootMargin = "200px 0px 0px 0px",
-  adjustScroll = true,
-  forwardPaginated = false,
 }: {
   hasMore: boolean;
   isLoading: boolean;
   messageCount: number;
   onLoadMore: () => void;
-  /** IntersectionObserver rootMargin. Top sentinel uses "200px 0px 0px 0px"
-   *  (pre-trigger when approaching from above); bottom sentinel should use
-   *  "0px 0px 200px 0px" (pre-trigger when approaching from below). */
-  rootMargin?: string;
-  /** Whether to adjust scrollTop after load to preserve visual position.
-   *  True for backward pagination (prepend above); false for forward
-   *  pagination (append below) where no adjustment is needed. */
-  adjustScroll?: boolean;
-  /** When true the button reads "Load newer messages" (forward pagination).
-   *  When false (default) it reads "Load older messages". */
-  forwardPaginated?: boolean;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const onLoadMoreRef = useRef(onLoadMore);
@@ -203,11 +189,11 @@ export function LoadMoreSentinel({
         if (autoFillRoundsRef.current >= MAX_AUTO_FILL_ROUNDS) return;
         captureAndLoad(true);
       },
-      { rootMargin },
+      { rootMargin: "200px 0px 0px 0px" },
     );
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [hasMore, isLoading, rootMargin, scrollRef]);
+  }, [hasMore, isLoading, scrollRef]);
 
   // After React commits new DOM nodes (prepended messages), adjust
   // scrollTop so the user stays at the same visual position.
@@ -220,9 +206,7 @@ export function LoadMoreSentinel({
       scrollSnapshotRef.current;
     if (!el || prevHeight === 0) return;
     const delta = el.scrollHeight - prevHeight;
-    // Only restore scroll position for backward pagination (content prepended
-    // above). Forward pagination appends below — no adjustment needed.
-    if (adjustScroll && delta > 0) {
+    if (delta > 0) {
       el.scrollTop = prevTop + delta;
     }
     // Reset the auto-fill backoff whenever the container becomes
@@ -236,7 +220,7 @@ export function LoadMoreSentinel({
     }
     scrollSnapshotRef.current = { scrollHeight: 0, scrollTop: 0 };
     autoTriggeredRef.current = false;
-  }, [adjustScroll, messageCount, scrollRef]);
+  }, [messageCount, scrollRef]);
 
   return (
     <div
@@ -255,7 +239,7 @@ export function LoadMoreSentinel({
             size="small"
             onClick={() => captureAndLoad(false)}
           >
-            {forwardPaginated ? "Load newer messages" : "Load older messages"}
+            Load older messages
           </Button>
         )
       )}
@@ -272,9 +256,9 @@ export function ChatMessagesContainer({
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
-  forwardPaginated,
   onRetry,
-  historicalDurations,
+  turnStats,
+  queuedMessages,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -321,7 +305,27 @@ export function ChatMessagesContainer({
     status === "submitted" || (status === "streaming" && !hasInflight);
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Anchor the live "Thinking Xs" counter to the latest server timestamp
+  // within the current turn.  Messages arrive in chronological order, so
+  // the first createdAt we hit walking backwards IS the latest one. Stop
+  // at the user-message boundary so a fresh send (where the user's just-
+  // optimistic message isn't in turnStats yet) doesn't fall back to the
+  // previous turn's assistant 30s+ in the past.
+  const liveAnchorIso = useMemo(() => {
+    if (!turnStats) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const iso = turnStats.get(messages[i].id)?.createdAt;
+      if (iso) return iso;
+      if (messages[i].role === "user") return null;
+    }
+    return null;
+  }, [messages, turnStats]);
+
+  const { elapsedSeconds } = useElapsedTimer(
+    isActivelyStreaming,
+    liveAnchorIso,
+  );
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.
@@ -351,7 +355,7 @@ export function ChatMessagesContainer({
       }
     >
       <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
-        {hasMoreMessages && onLoadMore && !forwardPaginated && (
+        {hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
             isLoading={!!isLoadingMore}
@@ -431,9 +435,9 @@ export function ChatMessagesContainer({
                 }
               >
                 {hasReasoning && reasoningSegments && (
-                  <ReasoningCollapse>
+                  <StepsCollapse>
                     {renderSegments(reasoningSegments, message.id)}
-                  </ReasoningCollapse>
+                  </StepsCollapse>
                 )}
                 {responseSegments
                   ? renderSegments(
@@ -458,7 +462,7 @@ export function ChatMessagesContainer({
                         ? frozenElapsedRef.current
                         : undefined
                     }
-                    durationMs={historicalDurations?.get(message.id)}
+                    stats={turnStats?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (
@@ -469,7 +473,21 @@ export function ChatMessagesContainer({
                 )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  {(() => {
+                    const createdAt = turnStats?.get(message.id)?.createdAt;
+                    if (!createdAt) return null;
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return null;
+                    return (
+                      <span className="text-[11px] tabular-nums text-neutral-500">
+                        {date.toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    );
+                  })()}
                   <CopyButton text={textParts.map((p) => p.text).join("\n")} />
                 </MessageActions>
               )}
@@ -499,6 +517,17 @@ export function ChatMessagesContainer({
           </Message>
         )}
         {graphExecId && <CopilotPendingReviews graphExecId={graphExecId} />}
+        {queuedMessages?.map((msg, idx) => (
+          <Message key={idx} from="user">
+            <MessageContent className="flex flex-col gap-1 rounded-xl border border-dashed border-purple-400 bg-purple-100 px-3 py-2.5 text-[1rem] leading-relaxed text-slate-900 opacity-60 [border-bottom-right-radius:0]">
+              <span>{msg}</span>
+              <span className="flex items-center gap-1 text-xs text-slate-500">
+                <Clock className="size-3" weight="bold" />
+                Queued
+              </span>
+            </MessageContent>
+          </Message>
+        ))}
         {error && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
@@ -509,17 +538,6 @@ export function ChatMessagesContainer({
               {error instanceof Error ? error.message : String(error)}
             </pre>
           </details>
-        )}
-        {hasMoreMessages && onLoadMore && forwardPaginated && (
-          <LoadMoreSentinel
-            hasMore={hasMoreMessages}
-            isLoading={!!isLoadingMore}
-            messageCount={messages.length}
-            onLoadMore={onLoadMore}
-            rootMargin="0px 0px 200px 0px"
-            adjustScroll={false}
-            forwardPaginated
-          />
         )}
       </ConversationContent>
       <ConversationScrollButton />

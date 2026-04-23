@@ -2,10 +2,19 @@ import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { UsageLimits } from "../UsageLimits";
 
-// Mock the generated Orval hook
+// Mock the generated Orval hook, exercising the `select` callback so its
+// line counts as covered alongside the rest of the options.
 const mockUseGetV2GetCopilotUsage = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  useGetV2GetCopilotUsage: (opts: unknown) => mockUseGetV2GetCopilotUsage(opts),
+  useGetV2GetCopilotUsage: (opts: {
+    query?: { select?: (r: { data: unknown }) => unknown };
+  }) => {
+    const ret = mockUseGetV2GetCopilotUsage(opts) as { data?: unknown };
+    if (ret?.data !== undefined && typeof opts?.query?.select === "function") {
+      opts.query.select({ data: ret.data });
+    }
+    return ret;
+  },
 }));
 
 // Mock Popover to render children directly (Radix portals don't work in happy-dom)
@@ -27,22 +36,24 @@ afterEach(() => {
 });
 
 function makeUsage({
-  dailyUsed = 500,
-  dailyLimit = 10000,
-  weeklyUsed = 2000,
-  weeklyLimit = 50000,
+  dailyPercent = 5,
+  weeklyPercent = 4,
   tier = "FREE",
 }: {
-  dailyUsed?: number;
-  dailyLimit?: number;
-  weeklyUsed?: number;
-  weeklyLimit?: number;
+  dailyPercent?: number | null;
+  weeklyPercent?: number | null;
   tier?: string;
 } = {}) {
-  const future = new Date(Date.now() + 3600 * 1000); // 1h from now
+  const future = new Date(Date.now() + 3600 * 1000).toISOString();
   return {
-    daily: { used: dailyUsed, limit: dailyLimit, resets_at: future },
-    weekly: { used: weeklyUsed, limit: weeklyLimit, resets_at: future },
+    daily:
+      dailyPercent === null
+        ? null
+        : { percent_used: dailyPercent, resets_at: future },
+    weekly:
+      weeklyPercent === null
+        ? null
+        : { percent_used: weeklyPercent, resets_at: future },
     tier,
   };
 }
@@ -51,7 +62,7 @@ describe("UsageLimits", () => {
   it("renders nothing while loading", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: undefined,
-      isLoading: true,
+      isSuccess: false,
     });
     const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
@@ -59,8 +70,8 @@ describe("UsageLimits", () => {
 
   it("renders nothing when no limits are configured", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyLimit: 0, weeklyLimit: 0 }),
-      isLoading: false,
+      data: makeUsage({ dailyPercent: null, weeklyPercent: null }),
+      isSuccess: true,
     });
     const { container } = render(<UsageLimits />);
     expect(container.innerHTML).toBe("");
@@ -69,16 +80,16 @@ describe("UsageLimits", () => {
   it("renders the usage button when limits exist", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
     expect(screen.getByRole("button", { name: /usage limits/i })).toBeDefined();
   });
 
-  it("displays daily and weekly usage percentages", () => {
+  it("displays daily and weekly percentage", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyUsed: 5000, dailyLimit: 10000 }),
-      isLoading: false,
+      data: makeUsage({ dailyPercent: 50, weeklyPercent: 4 }),
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -88,14 +99,10 @@ describe("UsageLimits", () => {
     expect(screen.getByText("Usage limits")).toBeDefined();
   });
 
-  it("shows only weekly bar when daily limit is 0", () => {
+  it("shows only weekly bar when daily is null", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({
-        dailyLimit: 0,
-        weeklyUsed: 25000,
-        weeklyLimit: 50000,
-      }),
-      isLoading: false,
+      data: makeUsage({ dailyPercent: null, weeklyPercent: 50 }),
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -103,20 +110,22 @@ describe("UsageLimits", () => {
     expect(screen.queryByText("Today")).toBeNull();
   });
 
-  it("caps percentage at 100% when over limit", () => {
+  it("caps bar width at 100% when over limit", () => {
+    // 150% exercises the clamp — 100% exactly is merely exhausted, not over.
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: makeUsage({ dailyUsed: 15000, dailyLimit: 10000 }),
-      isLoading: false,
+      data: makeUsage({ dailyPercent: 150 }),
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
-    expect(screen.getByText("100% used")).toBeDefined();
+    const dailyBar = screen.getByRole("progressbar", { name: /today usage/i });
+    expect(dailyBar.getAttribute("aria-valuenow")).toBe("100");
   });
 
   it("displays the user tier label", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ tier: "PRO" }),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 
@@ -126,7 +135,7 @@ describe("UsageLimits", () => {
   it("shows learn more link to credits page", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
-      isLoading: false,
+      isSuccess: true,
     });
     render(<UsageLimits />);
 

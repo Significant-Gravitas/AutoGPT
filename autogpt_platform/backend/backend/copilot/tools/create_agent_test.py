@@ -127,7 +127,8 @@ async def test_local_mode_validation_failure(tool, session):
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "validation_failed"
-    assert "Block 'bad-block' not found" in result.message
+    assert result.details is not None
+    assert "Block 'bad-block' not found" in result.details["errors"]
 
 
 @pytest.mark.asyncio
