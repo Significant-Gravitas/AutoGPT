@@ -85,6 +85,81 @@ def test_missing_block_returns_zero(tmp_block_costs_override):
     assert delta == 0
 
 
+def test_items_cost_scales_linearly_with_result_count(tmp_block_costs_override):
+    """ITEMS with cost_divisor=2 bills 1 credit per 2 returned items.
+
+    Apollo SearchOrganizationsBlock uses this exact config. Verifies the
+    divisor path in the resolver + post-flight charge.
+    """
+    tmp_block_costs_override(
+        [
+            BlockCost(
+                cost_amount=1,
+                cost_type=BlockCostType.ITEMS,
+                cost_divisor=2,
+            )
+        ]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    # Simulate 20 returned organizations.
+    stats = NodeExecutionStats(provider_cost=20, provider_cost_type="items")
+
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 500
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+
+    # 20 items / cost_divisor=2 * cost_amount=1 = 10 credits.
+    assert delta == 10
+    call_kwargs = db_client.spend_credits.call_args.kwargs
+    assert call_kwargs["cost"] == 10
+    meta_input = call_kwargs["metadata"].input
+    assert meta_input.get("reconciled_delta") == 10
+
+
+def test_items_cost_bills_zero_when_no_items_returned(tmp_block_costs_override):
+    """An ITEMS block that returns 0 results should bill 0, not the floor."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.ITEMS, cost_divisor=2)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    stats = NodeExecutionStats(provider_cost=0, provider_cost_type="items")
+
+    db_client = MagicMock()
+    with patch("backend.executor.billing.get_db_client", return_value=db_client):
+        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+
+    assert delta == 0
+    db_client.spend_credits.assert_not_called()
+
+
+def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_override):
+    """Exa deep-research: $0.20 provider spend × 100 credits/USD = 20 credits.
+
+    Verifies ceil-semantics on fractional USD amounts and that the full
+    post-flight charge lands (no refund / no clamping).
+    """
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    # $0.207 spend: ceil(0.207 * 100) = 21
+    stats = NodeExecutionStats(provider_cost=0.207, provider_cost_type="cost_usd")
+
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 100
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.handle_low_balance"),
+    ):
+        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+
+    assert delta == 21
+
+
 def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override):
     """TOKENS pre-flight uses MODEL_COST floor; if real token usage is cheaper,
     the user is refunded the overcharge via a negative-delta spend_credits."""
