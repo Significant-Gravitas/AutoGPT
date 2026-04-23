@@ -1208,10 +1208,13 @@ class OrchestratorBlock(Block):
                     )
                     tool_cost = 0
                 if tool_cost > 0:
-                    # run_block tool debits the sub-block's wallet cost
-                    # directly via charge_node_usage; we mirror it here only
-                    # for the graph-total rollup in graph_stats.cost.
-                    self.merge_stats(NodeExecutionStats(child_block_cost=tool_cost))
+                    # Sub-block's wallet cost is already debited via
+                    # charge_node_usage above; roll it up into this node's
+                    # reconciled_cost_delta so graph_stats.cost reflects the
+                    # full tool-invocation spend without a double-charge.
+                    self.merge_stats(
+                        NodeExecutionStats(reconciled_cost_delta=tool_cost)
+                    )
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(

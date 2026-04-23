@@ -635,10 +635,6 @@ class ExecutionProcessor:
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
-        await billing.handle_post_execution_billing(
-            node, node_exec, execution_stats, status, log_metadata
-        )
-
         # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
         # are aggregated and persisted — otherwise the reconciled delta never
         # lands in `graph_stats.cost` or the persisted node stats. RUN-only
@@ -665,7 +661,9 @@ class ExecutionProcessor:
             graph_stats.node_count += 1 + execution_stats.extra_steps
             graph_stats.nodes_cputime += execution_stats.cputime
             graph_stats.nodes_walltime += execution_stats.walltime
-            graph_stats.cost += execution_stats.cost + execution_stats.extra_cost_total
+            graph_stats.cost += (
+                execution_stats.cost + execution_stats.reconciled_cost_delta
+            )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
 
@@ -931,13 +929,6 @@ class ExecutionProcessor:
         node_exec: NodeExecutionEntry,
     ) -> tuple[int, int]:
         return await billing.charge_node_usage(node_exec)
-
-    async def charge_extra_runtime_cost(
-        self,
-        node_exec: NodeExecutionEntry,
-        extra_count: int,
-    ) -> tuple[int, int]:
-        return await billing.charge_extra_runtime_cost(node_exec, extra_count)
 
     @time_measured
     def _on_graph_execution(

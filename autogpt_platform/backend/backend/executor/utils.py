@@ -184,26 +184,6 @@ def block_usage_cost(
     return 0, {}
 
 
-def matched_block_cost_type(
-    block: Block, input_data: BlockInput
-) -> BlockCostType | None:
-    """Return the BlockCostType of the first ``BLOCK_COSTS`` entry matching input.
-
-    Post-flight billing paths (``handle_post_execution_billing``) must know
-    whether a block is billed dynamically from stats — for dynamic types
-    (``TOKENS``/``COST_USD``/``ITEMS``) the reconciliation step settles all
-    LLM calls via aggregated stats, so per-iteration ``charge_extra_runtime_cost``
-    would double-charge.
-    """
-    block_costs = BLOCK_COSTS.get(type(block))
-    if not block_costs:
-        return None
-    for block_cost in block_costs:
-        if _is_cost_filter_match(block_cost.cost_filter, input_data):
-            return block_cost.cost_type
-    return None
-
-
 def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:
     if run_time > 0:
         return run_time
@@ -454,9 +434,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_INVALID_PREFIX} {e}"
+                )
                 continue
 
             try:
@@ -467,15 +447,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                )
                 continue
 
             if not credentials:
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                )
                 continue
 
             if (
@@ -818,8 +798,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            * 1000,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
     cancel_queue = Queue(

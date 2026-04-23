@@ -852,34 +852,15 @@ class NodeExecutionStats(BaseModel):
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
     cost: int = 0
-    # Reconciliation delta from post-flight charge_reconciled_usage. Positive
-    # means the user was debited more than the pre-flight estimate (typical
-    # TOKENS overage); negative means a refund (TOKENS floor > real token
-    # spend). Zero for RUN-only blocks.
+    # Post-flight adjustment to the pre-flight ``cost`` estimate. Three writers:
+    # 1. charge_reconciled_usage — dynamic cost delta (TOKENS/SECOND/ITEMS/
+    #    COST_USD); can be negative when a TOKENS floor over-estimated.
+    # 2. OrchestratorBlock — sub-block cost roll-up for run_block tool calls
+    #    (debit already happened on the child; this is reporting-only).
+    # 3. AgentExecutorBlock — sub-graph total roll-up.
+    # Readers aggregating into graph_stats.cost should add this to cost.
     reconciled_cost_delta: int = 0
-    # Sum of sub-block credit costs that this block itself drove — e.g.
-    # OrchestratorBlock paying for run_block tool executions, or
-    # AgentExecutorBlock rolling up a sub-graph's total. Tracked separately
-    # from reconciled_cost_delta because these are already-charged sibling
-    # debits; this field is purely for reporting into graph_stats.cost.
-    child_block_cost: int = 0
-    # Legacy alias kept for backward-compat with serialized node stats in the
-    # DB and for ``NodeExecutionStats += ...`` math in already-persisted
-    # records. New code MUST prefer reconciled_cost_delta / child_block_cost.
-    # ``extra_cost_total`` (property) is the authoritative sum for
-    # graph_stats.cost aggregation.
-    extra_cost: int = 0
     extra_steps: int = 0
-
-    @property
-    def extra_cost_total(self) -> int:
-        """Authoritative post-flight cost on top of the pre-flight ``cost``.
-
-        Readers aggregating into ``graph_stats.cost`` should use this
-        instead of touching ``extra_cost`` directly so the reconciliation
-        delta and sub-block roll-up are both captured.
-        """
-        return self.extra_cost + self.reconciled_cost_delta + self.child_block_cost
 
     provider_cost: float | None = None
     # Type of the provider-reported cost/usage captured above. When set

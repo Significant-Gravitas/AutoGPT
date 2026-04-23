@@ -37,6 +37,63 @@ def _node_exec(block_id: str):
     )
 
 
+def test_dynamic_cost_block_with_zero_balance_raises_ibe_preflight(
+    tmp_block_costs_override,
+):
+    """Sentry-flagged bug: dynamic-cost blocks (SECOND/ITEMS/COST_USD) have
+    pre-flight cost 0, so without a guard a zero-balance user could run the
+    block and leak the post-flight provider spend as an uncollectable
+    debit. Verify charge_usage raises InsufficientBalanceError when the
+    user has no balance and the block has a dynamic cost entry.
+    """
+    from backend.executor.billing import charge_usage
+    from backend.util.exceptions import InsufficientBalanceError
+
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 0  # empty wallet
+
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=SearchTheWebBlock()),
+    ):
+        with pytest.raises(InsufficientBalanceError):
+            charge_usage(exec_entry, execution_count=0)
+
+    db_client.get_credits.assert_called_once_with(user_id=exec_entry.user_id)
+    db_client.spend_credits.assert_not_called()
+
+
+def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_override):
+    """The guard must only fire when balance is non-positive. A user with any
+    positive balance may start a dynamic-cost block; reconciliation settles
+    the actual charge afterward.
+    """
+    from backend.executor.billing import charge_usage
+
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+
+    db_client = MagicMock()
+    db_client.get_credits.return_value = 50  # has balance
+
+    with (
+        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch("backend.executor.billing.get_block", return_value=SearchTheWebBlock()),
+    ):
+        total_cost, remaining = charge_usage(exec_entry, execution_count=0)
+
+    assert total_cost == 0
+    assert remaining == 50
+    db_client.spend_credits.assert_not_called()
+
+
 def test_run_cost_produces_zero_delta_noop(tmp_block_costs_override):
     tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
     exec_entry = _node_exec(SearchTheWebBlock().id)
