@@ -42,6 +42,14 @@ class PostToYouTubeBlock(Block):
             advanced=False,
         )
 
+        # YouTube is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for YouTube)",
+            default=True,
+            advanced=True,
+        )
+
         # YouTube-specific required options
         title: str = SchemaField(
             description="Video title (max 100 chars, required). Cannot contain < or > characters.",

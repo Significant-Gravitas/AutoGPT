@@ -34,6 +34,14 @@ class PostToSnapchatBlock(Block):
             advanced=False,
         )
 
+        # Snapchat is video-only; override the base default so the @cost filter
+        # selects the 5-credit video tier instead of the 2-credit image tier.
+        is_video: bool = SchemaField(
+            description="Whether the media is a video (always True for Snapchat)",
+            default=True,
+            advanced=True,
+        )
+
         # Snapchat-specific options
         story_type: str = SchemaField(
             description="Type of Snapchat content: 'story' (24-hour Stories), 'saved_story' (Saved Stories), or 'spotlight' (Spotlight posts)",

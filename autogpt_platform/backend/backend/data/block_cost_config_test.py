@@ -1,21 +1,46 @@
 import pytest
 
+from backend.blocks.ayrshare.post_to_bluesky import PostToBlueskyBlock
+from backend.blocks.ayrshare.post_to_facebook import PostToFacebookBlock
+from backend.blocks.ayrshare.post_to_gmb import PostToGMBBlock
+from backend.blocks.ayrshare.post_to_instagram import PostToInstagramBlock
+from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
+from backend.blocks.ayrshare.post_to_pinterest import PostToPinterestBlock
+from backend.blocks.ayrshare.post_to_reddit import PostToRedditBlock
+from backend.blocks.ayrshare.post_to_snapchat import PostToSnapchatBlock
+from backend.blocks.ayrshare.post_to_telegram import PostToTelegramBlock
+from backend.blocks.ayrshare.post_to_threads import PostToThreadsBlock
+from backend.blocks.ayrshare.post_to_tiktok import PostToTikTokBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
+from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
 from backend.blocks.bannerbear.text_overlay import BannerbearTextOverlayBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.executor.utils import block_usage_cost
+from backend.integrations.credentials_store import jina_credentials
+
+ALL_AYRSHARE_BLOCKS = [
+    PostToBlueskyBlock,
+    PostToFacebookBlock,
+    PostToGMBBlock,
+    PostToInstagramBlock,
+    PostToLinkedInBlock,
+    PostToPinterestBlock,
+    PostToRedditBlock,
+    PostToSnapchatBlock,
+    PostToTelegramBlock,
+    PostToThreadsBlock,
+    PostToTikTokBlock,
+    PostToXBlock,
+    PostToYouTubeBlock,
+]
+
+# YouTube and Snapchat are video-only platforms, so their Input overrides
+# is_video default to True; the @cost filter should pick the 5-credit tier.
+AYRSHARE_VIDEO_ONLY_BLOCKS = [PostToYouTubeBlock, PostToSnapchatBlock]
 
 
-@pytest.mark.parametrize(
-    "block_class",
-    [
-        # Spot-check one block per credential source to keep the suite fast; the
-        # per-block tier tuple is built from a shared dict comprehension so
-        # covering every social platform here would be redundant.
-        PostToXBlock,
-    ],
-)
+@pytest.mark.parametrize("block_class", ALL_AYRSHARE_BLOCKS)
 def test_ayrshare_block_has_video_and_default_tier(block_class):
     costs = BLOCK_COSTS.get(block_class)
     assert costs is not None and len(costs) == 2
@@ -41,9 +66,18 @@ def test_ayrshare_default_is_video_false_still_matches_default_tier():
     assert cost == 2
 
 
-def test_jina_chunking_has_flat_cost_floor():
-    from backend.integrations.credentials_store import jina_credentials
+@pytest.mark.parametrize("block_class", AYRSHARE_VIDEO_ONLY_BLOCKS)
+def test_ayrshare_video_only_block_defaults_to_video_tier(block_class):
+    # Video-only platforms override is_video default to True so billing matches
+    # the is_video=True passed into client.create_post.
+    block = block_class()
+    default_is_video = block.input_schema.model_fields["is_video"].default
+    assert default_is_video is True
+    cost, _ = block_usage_cost(block, {"is_video": default_is_video})
+    assert cost == 5
 
+
+def test_jina_chunking_has_flat_cost_floor():
     block = JinaChunkingBlock()
     cost, _ = block_usage_cost(
         block,
