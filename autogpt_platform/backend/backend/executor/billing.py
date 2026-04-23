@@ -228,6 +228,77 @@ async def charge_extra_runtime_cost(
     return await asyncio.to_thread(_charge_extra_runtime_cost_sync, node_exec, capped)
 
 
+def _charge_reconciled_usage_sync(
+    node_exec: NodeExecutionEntry,
+    stats: NodeExecutionStats,
+) -> tuple[int, int]:
+    """Synchronous body of ``charge_reconciled_usage`` — runs in a worker.
+
+    Computes post-flight cost from the execution stats and charges only the
+    positive delta against the pre-flight estimate. RUN-type blocks produce a
+    zero delta (cost is fixed); dynamic types (SECOND/ITEMS/COST_USD/TOKENS)
+    return 0 pre-flight and the real charge post-flight.
+    """
+    db_client = get_db_client()
+    block = get_block(node_exec.block_id)
+    if not block:
+        return 0, 0
+
+    pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+    post_flight, matching_filter = block_usage_cost(
+        block=block, input_data=node_exec.inputs, stats=stats
+    )
+    delta = post_flight - pre_flight
+    if delta <= 0:
+        return 0, 0
+
+    remaining_balance = db_client.spend_credits(
+        user_id=node_exec.user_id,
+        cost=delta,
+        metadata=UsageTransactionMetadata(
+            graph_exec_id=node_exec.graph_exec_id,
+            graph_id=node_exec.graph_id,
+            node_exec_id=node_exec.node_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            block=block.name,
+            input={**matching_filter, "reconciled_delta": delta},
+            reason=(
+                f"Post-flight reconciliation for {block.name}: "
+                f"actual={post_flight} credits, pre-flight={pre_flight}"
+            ),
+        ),
+    )
+    return delta, remaining_balance
+
+
+async def charge_reconciled_usage(
+    node_exec: NodeExecutionEntry,
+    stats: NodeExecutionStats,
+) -> tuple[int, int]:
+    """Charge the dynamic portion of a block's cost from its execution stats.
+
+    Called once per node execution AFTER the block has finished running and
+    stats (walltime, tokens, provider_cost) are populated. Swallows its own
+    InsufficientBalanceError because reconciliation must never poison the
+    success path — log and move on; the shortfall is captured in telemetry.
+    """
+    try:
+        return await asyncio.to_thread(_charge_reconciled_usage_sync, node_exec, stats)
+    except InsufficientBalanceError:
+        logger.warning(
+            f"Post-flight reconciliation for {node_exec.block_id} exceeded user "
+            f"balance; skipping charge. Consider tightening pre-flight estimate."
+        )
+        return 0, 0
+    except Exception:
+        logger.exception(
+            f"charge_reconciled_usage failed unexpectedly for block "
+            f"{node_exec.block_id}"
+        )
+        return 0, 0
+
+
 async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     """Charge a single node execution to the user.
 

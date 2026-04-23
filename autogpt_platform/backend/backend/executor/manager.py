@@ -673,6 +673,13 @@ class ExecutionProcessor:
                 stats=execution_stats,
                 db_client=db_client,
             )
+            # Charge the dynamic portion (walltime, items, USD, tokens) for
+            # blocks whose BLOCK_COSTS entry uses a dynamic cost type. RUN-only
+            # blocks produce a zero delta here and incur no extra work.
+            await billing.charge_reconciled_usage(
+                node_exec=node_exec,
+                stats=execution_stats,
+            )
 
         # If the node failed because a nested tool charge raised IBE,
         # send the user notification so they understand why the run stopped.
