@@ -21,7 +21,7 @@ The block connects to Pinterest's API through Ayrshare, allowing you to specify 
 |-------|-------------|------|----------|
 | post | Pin description (max 500 chars, links not clickable - use link field instead) | str | No |
 | media_urls | Required image/video URLs. Pinterest requires at least one image. Videos need thumbnail. Up to 5 images for carousel. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |
