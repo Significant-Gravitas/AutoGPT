@@ -364,17 +364,15 @@ def compute_token_credits(
     return max(0, math.ceil(total / 1_000_000))
 
 
-def _lookup_llm_model(raw: "str | LlmModel | dict | None") -> "LlmModel | None":
+def _lookup_llm_model(raw: "str | LlmModel | None") -> "LlmModel | None":
     if raw is None:
         return None
     if isinstance(raw, LlmModel):
         return raw
-    if isinstance(raw, str):
-        try:
-            return LlmModel(raw)
-        except ValueError:
-            return None
-    return None
+    try:
+        return LlmModel(raw)
+    except ValueError:
+        return None
 
 
 LLM_COST = (

@@ -5,6 +5,13 @@ import math
 import pytest
 
 from backend.blocks._base import BlockCost, BlockCostType
+from backend.blocks.code_executor import (
+    ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
+)
+from backend.blocks.exa.search import ExaSearchBlock
+from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.search import SearchTheWebBlock
 from backend.blocks.llm import AITextGeneratorBlock, LlmModel
 from backend.data.block_cost_config import (
@@ -17,19 +24,17 @@ from backend.data.model import NodeExecutionStats
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import (
     anthropic_credentials,
+    e2b_credentials,
+    exa_credentials,
+    fal_credentials,
     openai_credentials,
 )
 
 
 @pytest.fixture
-def tmp_block_costs_override():
+def tmp_block_costs_override(monkeypatch):
     """Swap out BLOCK_COSTS[SearchTheWebBlock] for the duration of a test."""
-    original = BLOCK_COSTS.get(SearchTheWebBlock)
-    yield lambda costs: BLOCK_COSTS.__setitem__(SearchTheWebBlock, costs)
-    if original is None:
-        BLOCK_COSTS.pop(SearchTheWebBlock, None)
-    else:
-        BLOCK_COSTS[SearchTheWebBlock] = original
+    return lambda costs: monkeypatch.setitem(BLOCK_COSTS, SearchTheWebBlock, costs)
 
 
 def test_second_cost_type_uses_stats_walltime_with_divisor(tmp_block_costs_override):
@@ -106,8 +111,6 @@ def test_cost_usd_ignores_non_usd_provider_cost(tmp_block_costs_override):
 
 
 def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkeypatch):
-    from backend.blocks.llm import LlmModel
-
     tmp_block_costs_override([BlockCost(cost_amount=0, cost_type=BlockCostType.TOKENS)])
     # Override TOKEN_COST for a predictable rate: 1000 credits/1M input,
     # 2000 credits/1M output.
@@ -133,9 +136,6 @@ def test_tokens_cost_type_uses_token_rate_table(tmp_block_costs_override, monkey
 def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
     tmp_block_costs_override,
 ):
-    from backend.blocks.llm import LlmModel
-    from backend.data.block_cost_config import MODEL_COST
-
     tmp_block_costs_override([BlockCost(cost_amount=0, cost_type=BlockCostType.TOKENS)])
     block = SearchTheWebBlock()
     # Ollama models aren't in TOKEN_COST but are in MODEL_COST.
@@ -151,13 +151,6 @@ def test_tokens_falls_back_to_flat_model_cost_when_rate_missing(
 
 def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
     """End-to-end: E2B blocks use the real SECOND/divisor=10 BlockCost entry."""
-    from backend.blocks.code_executor import (
-        ExecuteCodeBlock,
-        ExecuteCodeStepBlock,
-        InstantiateCodeSandboxBlock,
-    )
-    from backend.integrations.credentials_store import e2b_credentials
-
     creds = {
         "credentials": {
             "id": e2b_credentials.id,
@@ -180,9 +173,6 @@ def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
 
 
 def test_fal_video_block_bills_three_credits_per_second():
-    from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
-    from backend.integrations.credentials_store import fal_credentials
-
     block = AIVideoGeneratorBlock()
     creds = {
         "credentials": {
@@ -201,9 +191,6 @@ def test_fal_video_block_bills_three_credits_per_second():
 
 def test_exa_blocks_bill_cost_usd_via_sdk_config():
     """End-to-end: Exa's ProviderBuilder.with_base_cost(100, COST_USD) is live."""
-    from backend.blocks.exa.search import ExaSearchBlock
-    from backend.integrations.credentials_store import exa_credentials
-
     block = ExaSearchBlock()
     creds = {
         "credentials": {
