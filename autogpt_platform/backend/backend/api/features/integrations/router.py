@@ -87,14 +87,23 @@ async def login(
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
+    credential_id: Annotated[
+        str | None,
+        Query(title="ID of existing credential to upgrade scopes for"),
+    ] = None,
 ) -> LoginResponse:
     handler = _get_provider_oauth_handler(request, provider)
 
     requested_scopes = scopes.split(",") if scopes else []
 
+    if credential_id:
+        requested_scopes = await _prepare_scope_upgrade(
+            user_id, provider, credential_id, requested_scopes
+        )
+
     # Generate and store a secure random state token along with the scopes
     state_token, code_challenge = await creds_manager.store.store_state_token(
-        user_id, provider, requested_scopes
+        user_id, provider, requested_scopes, credential_id=credential_id
     )
     login_url = handler.get_login_url(
         requested_scopes, state_token, code_challenge=code_challenge
@@ -216,7 +225,9 @@ async def callback(
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
-    await creds_manager.create(user_id, credentials)
+    credentials = await _merge_or_create_credential(
+        user_id, provider, credentials, valid_state.credential_id
+    )
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} "
@@ -279,6 +290,115 @@ async def get_credential(
             status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
         )
     return to_meta_response(credential)
+
+
+class PickerTokenResponse(BaseModel):
+    """Short-lived OAuth access token shipped to the browser for rendering a
+    provider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:
+    only the fields the client needs to initialize the picker widget. Issued
+    from the user's own stored credential so ownership and scope gating are
+    enforced by the credential lookup."""
+
+    access_token: str = Field(
+        description="OAuth access token suitable for the picker SDK call."
+    )
+    access_token_expires_at: int | None = Field(
+        default=None,
+        description="Unix timestamp at which the access token expires, if known.",
+    )
+
+
+# Allowlist of (provider, scopes) tuples that may mint picker tokens. Only
+# Drive-picker-capable scopes qualify so a caller can't use this endpoint to
+# extract a GitHub / other-provider OAuth token for unrelated purposes. If a
+# future provider integrates a hosted picker that needs a raw access token,
+# add its specific picker-relevant scopes here.
+_PICKER_TOKEN_ALLOWED_SCOPES: dict[ProviderName, frozenset[str]] = {
+    ProviderName.GOOGLE: frozenset(
+        [
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive.readonly",
+            "https://www.googleapis.com/auth/drive",
+        ]
+    ),
+}
+
+
+@router.post(
+    "/{provider}/credentials/{cred_id}/picker-token",
+    summary="Issue a short-lived access token for a provider-hosted picker",
+    operation_id="postV1GetPickerToken",
+)
+async def get_picker_token(
+    provider: Annotated[
+        ProviderName, Path(title="The provider that owns the credentials")
+    ],
+    cred_id: Annotated[
+        str, Path(title="The ID of the OAuth2 credentials to mint a token from")
+    ],
+    user_id: Annotated[str, Security(get_user_id)],
+) -> PickerTokenResponse:
+    """Return the raw access token for an OAuth2 credential so the frontend
+    can initialize a provider-hosted picker (e.g. Google Drive Picker).
+
+    `GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see
+    `CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in
+    `router_test.py`). That hardening broke the Drive picker, which needs the
+    raw access token to call `google.picker.Builder.setOAuthToken(...)`. This
+    endpoint carves a narrow, explicit hole: the caller must own the
+    credential, it must be OAuth2, and the endpoint returns only the access
+    token + its expiry — nothing else about the credential. SDK-default
+    credentials are excluded for the same reason as `get_credential`.
+    """
+    if is_sdk_default(cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+
+    credential = await creds_manager.get(user_id, cred_id)
+    if not credential:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if not provider_matches(credential.provider, provider):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
+    if not isinstance(credential, OAuth2Credentials):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Picker tokens are only available for OAuth2 credentials",
+        )
+    if not credential.access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential has no access token; reconnect the account",
+        )
+
+    # Gate on provider+scope: only credentials that actually grant access to
+    # a provider-hosted picker flow may mint a token through this endpoint.
+    # Prevents using this path to extract bearer tokens for unrelated OAuth
+    # integrations (e.g. GitHub) that happen to be stored under the same user.
+    allowed_scopes = _PICKER_TOKEN_ALLOWED_SCOPES.get(provider)
+    if not allowed_scopes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(f"Picker tokens are not available for provider '{provider.value}'"),
+        )
+    cred_scopes = set(credential.scopes or [])
+    if cred_scopes.isdisjoint(allowed_scopes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Credential does not grant any scope eligible for the picker. "
+                "Reconnect with the appropriate scope."
+            ),
+        )
+
+    return PickerTokenResponse(
+        access_token=credential.access_token.get_secret_value(),
+        access_token_expires_at=credential.access_token_expires_at,
+    )
 
 
 @router.post("/{provider}/credentials", status_code=201, summary="Create Credentials")
@@ -572,6 +692,186 @@ async def _execute_webhook_preset_trigger(
             f"Failed to execute preset #{preset.id} via webhook #{webhook_id}"
         )
         # Continue processing - webhook should be resilient to individual failures
+
+
+# -------------------- INCREMENTAL AUTH HELPERS -------------------- #
+
+
+async def _prepare_scope_upgrade(
+    user_id: str,
+    provider: ProviderName,
+    credential_id: str,
+    requested_scopes: list[str],
+) -> list[str]:
+    """Validate an existing credential for scope upgrade and compute scopes.
+
+    For providers without native incremental auth (e.g. GitHub), returns the
+    union of existing + requested scopes.  For providers that handle merging
+    server-side (e.g. Google with ``include_granted_scopes``), returns the
+    requested scopes unchanged.
+
+    Raises HTTPException on validation failure.
+    """
+    # Platform-owned system credentials must never be upgraded — scope
+    # changes here would leak across every user that shares them.
+    if is_system_credential(credential_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="System credentials cannot be upgraded",
+        )
+
+    existing = await creds_manager.store.get_creds_by_id(user_id, credential_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credential to upgrade not found",
+        )
+    if not isinstance(existing, OAuth2Credentials):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only OAuth2 credentials can be upgraded",
+        )
+    if not provider_matches(existing.provider, provider.value):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential provider does not match the requested provider",
+        )
+    if existing.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Managed credentials cannot be upgraded",
+        )
+
+    # Google handles scope merging via include_granted_scopes; others need
+    # the union of existing + new scopes in the login URL.
+    if provider != ProviderName.GOOGLE:
+        requested_scopes = list(set(requested_scopes) | set(existing.scopes))
+
+    return requested_scopes
+
+
+async def _merge_or_create_credential(
+    user_id: str,
+    provider: ProviderName,
+    credentials: OAuth2Credentials,
+    credential_id: str | None,
+) -> OAuth2Credentials:
+    """Either upgrade an existing credential or create a new one.
+
+    When *credential_id* is set (explicit upgrade), merges scopes and updates
+    the existing credential.  Otherwise, checks for an implicit merge (same
+    provider + username) before falling back to creating a new credential.
+    """
+    if credential_id:
+        return await _upgrade_existing_credential(user_id, credential_id, credentials)
+
+    # Implicit merge: check for existing credential with same provider+username.
+    # Skip managed/system credentials and require a non-None username on both
+    # sides so we never accidentally merge unrelated credentials.
+    if credentials.username is None:
+        await creds_manager.create(user_id, credentials)
+        return credentials
+
+    existing_creds = await creds_manager.store.get_creds_by_provider(user_id, provider)
+    matching = next(
+        (
+            c
+            for c in existing_creds
+            if isinstance(c, OAuth2Credentials)
+            and not c.is_managed
+            and not is_system_credential(c.id)
+            and c.username is not None
+            and c.username == credentials.username
+        ),
+        None,
+    )
+    if matching:
+        # Only merge into the existing credential when the new token
+        # already covers every scope we're about to advertise on it.
+        # Without this guard we'd overwrite ``matching.access_token`` with
+        # a narrower token while storing a wider ``scopes`` list — the
+        # record would claim authorizations the token does not grant, and
+        # blocks using the lost scopes would fail with opaque 401/403s
+        # until the user hits re-auth.  On a narrowing login, keep the
+        # two credentials separate instead.
+        if set(credentials.scopes).issuperset(set(matching.scopes)):
+            return await _upgrade_existing_credential(user_id, matching.id, credentials)
+
+    await creds_manager.create(user_id, credentials)
+    return credentials
+
+
+async def _upgrade_existing_credential(
+    user_id: str,
+    existing_cred_id: str,
+    new_credentials: OAuth2Credentials,
+) -> OAuth2Credentials:
+    """Merge scopes from *new_credentials* into an existing credential."""
+    # Defense-in-depth: re-check system and provider invariants right before
+    # the write.  The login-time check in `_prepare_scope_upgrade` can go stale
+    # by the time the callback runs, and the implicit-merge path bypasses
+    # login-time validation entirely, so every write-path must enforce these
+    # on its own.
+    if is_system_credential(existing_cred_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="System credentials cannot be upgraded",
+        )
+    existing = await creds_manager.store.get_creds_by_id(user_id, existing_cred_id)
+    if not existing or not isinstance(existing, OAuth2Credentials):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential to upgrade not found",
+        )
+    if existing.is_managed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Managed credentials cannot be upgraded",
+        )
+    if not provider_matches(existing.provider, new_credentials.provider):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Credential provider does not match the requested provider",
+        )
+
+    if (
+        existing.username
+        and new_credentials.username
+        and existing.username != new_credentials.username
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username mismatch: authenticated as a different user",
+        )
+
+    # Operate on a copy so the caller's ``new_credentials`` object is not
+    # mutated out from under them.  Every caller today immediately discards
+    # or replaces its reference, but the implicit-merge path in
+    # ``_merge_or_create_credential`` reads ``credentials.scopes`` before
+    # calling into us — a future reader after the call would otherwise
+    # silently see the overwritten values.
+    merged = new_credentials.model_copy(deep=True)
+    merged.id = existing.id
+    merged.title = existing.title
+    merged.scopes = list(set(existing.scopes) | set(new_credentials.scopes))
+    merged.metadata = {
+        **(existing.metadata or {}),
+        **(new_credentials.metadata or {}),
+    }
+    # Preserve the existing refresh_token and username if the incremental
+    # response doesn't carry them.  Providers like Google only return a
+    # refresh_token on first authorization — dropping it here would orphan
+    # the credential on the next access-token expiry, forcing the user to
+    # re-auth from scratch. Username is similarly sticky: if we've already
+    # resolved it for this credential, keep it rather than silently
+    # blanking it on an incremental upgrade.
+    if not merged.refresh_token and existing.refresh_token:
+        merged.refresh_token = existing.refresh_token
+        merged.refresh_token_expires_at = existing.refresh_token_expires_at
+    if not merged.username and existing.username:
+        merged.username = existing.username
+    await creds_manager.update(user_id, merged)
+    return merged
 
 
 # --------------------------- UTILITIES ---------------------------- #

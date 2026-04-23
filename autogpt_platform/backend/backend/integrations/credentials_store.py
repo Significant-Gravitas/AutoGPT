@@ -551,6 +551,7 @@ class IntegrationCredentialsStore:
         callback_url: Optional[str] = None,
         state_metadata: Optional[dict] = None,
         initiated_by_api_key_id: Optional[str] = None,
+        credential_id: Optional[str] = None,
     ) -> tuple[str, str]:
         token = secrets.token_urlsafe(32)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
@@ -563,6 +564,7 @@ class IntegrationCredentialsStore:
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
+            credential_id=credential_id,
             # External API OAuth flow fields
             callback_url=callback_url,
             state_metadata=state_metadata or {},

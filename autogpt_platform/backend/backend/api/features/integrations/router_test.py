@@ -568,3 +568,181 @@ class TestCleanupManagedCredentials:
             _PROVIDERS.update(saved)
 
         # No exception raised — cleanup failure is swallowed.
+
+
+class TestGetPickerToken:
+    """POST /{provider}/credentials/{cred_id}/picker-token must:
+    1. Return the access token for OAuth2 creds the caller owns.
+    2. 404 for non-owned, non-existent, or wrong-provider creds.
+    3. 400 for non-OAuth2 creds (API key, host-scoped, user/password).
+    4. 404 for SDK default creds (same hardening as get_credential).
+    5. Preserve the `TestGetCredentialReturnsMetaOnly` contract — the
+       existing meta-only endpoint must still strip secrets even after
+       this picker-token endpoint exists."""
+
+    def test_oauth2_owner_gets_access_token(self):
+        # Use a Google cred with a drive.file scope — only picker-eligible
+        # (provider, scope) pairs can mint a token. GitHub-style creds are
+        # explicitly rejected; see `test_non_picker_provider_rejected_as_400`.
+        cred = _make_oauth2_cred(
+            cred_id="cred-gdrive",
+            provider="google",
+        )
+        cred.scopes = ["https://www.googleapis.com/auth/drive.file"]
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/google/credentials/cred-gdrive/picker-token")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # The whole point of this endpoint: the access token IS returned here.
+        assert data["access_token"] == "ghp_secret_token"
+        # Only the two declared fields come back — nothing else leaks.
+        assert set(data.keys()) <= {"access_token", "access_token_expires_at"}
+
+    def test_non_picker_provider_rejected_as_400(self):
+        """Provider allowlist: even with a valid OAuth2 credential, a
+        non-picker provider (GitHub, etc.) cannot mint a picker token.
+        Stops this endpoint from being used as a generic bearer-token
+        extraction path for any stored OAuth cred under the same user."""
+        cred = _make_oauth2_cred(provider="github")
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/github/credentials/cred-456/picker-token")
+
+        assert resp.status_code == 400
+        assert "not available for provider" in resp.json()["detail"]
+        assert "ghp_secret_token" not in str(resp.json())
+
+    def test_google_oauth_without_drive_scope_rejected(self):
+        """Scope allowlist: a Google OAuth2 cred that only carries non-picker
+        scopes (e.g. gmail.readonly, calendar) cannot mint a picker token.
+        Forces the frontend to reconnect with a Drive scope before the
+        picker is available."""
+        cred = _make_oauth2_cred(provider="google")
+        cred.scopes = [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/calendar",
+        ]
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/google/credentials/cred-456/picker-token")
+
+        assert resp.status_code == 400
+        assert "picker" in resp.json()["detail"].lower()
+
+    def test_api_key_credential_rejected_as_400(self):
+        cred = _make_api_key_cred()
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/openai/credentials/cred-123/picker-token")
+
+        assert resp.status_code == 400
+        # API keys must not silently fall through to a 200 response of some
+        # other shape — the client should see a clear shape rejection.
+        body = str(resp.json())
+        assert "sk-secret-key-value" not in body
+
+    def test_user_password_credential_rejected_as_400(self):
+        cred = _make_user_password_cred()
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/openai/credentials/cred-789/picker-token")
+
+        assert resp.status_code == 400
+        body = str(resp.json())
+        assert "s3cret-pass" not in body
+        assert "admin" not in body
+
+    def test_host_scoped_credential_rejected_as_400(self):
+        cred = _make_host_scoped_cred()
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/openai/credentials/cred-host/picker-token")
+
+        assert resp.status_code == 400
+        assert "top-secret" not in str(resp.json())
+
+    def test_missing_credential_returns_404(self):
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=None)
+            resp = client.post("/github/credentials/nonexistent/picker-token")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Credentials not found"
+
+    def test_wrong_provider_returns_404(self):
+        """Symmetric with get_credential: provider mismatch is a generic
+        404, not a 400, so we don't leak existence of a credential the
+        caller doesn't own on that provider."""
+        cred = _make_oauth2_cred(provider="github")
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/google/credentials/cred-456/picker-token")
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "Credentials not found"
+
+    def test_sdk_default_returns_404(self):
+        """SDK defaults are invisible to the user-facing API — picker-token
+        must not mint a token for them either."""
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock()
+            resp = client.post("/openai/credentials/openai-default/picker-token")
+
+        assert resp.status_code == 404
+        mock_mgr.get.assert_not_called()
+
+    def test_oauth2_without_access_token_returns_400(self):
+        """A stored OAuth2 cred whose access_token is missing can't satisfy
+        a picker init. Surface a clear reconnect instruction rather than
+        returning an empty string."""
+        cred = _make_oauth2_cred()
+        # Simulate a cred that lost its access token
+        object.__setattr__(cred, "access_token", None)
+
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.post("/github/credentials/cred-456/picker-token")
+
+        assert resp.status_code == 400
+        assert "reconnect" in resp.json()["detail"].lower()
+
+    def test_meta_only_endpoint_still_strips_access_token(self):
+        """Regression guard for the coexistence contract: the new
+        picker-token endpoint must NOT accidentally leak the token through
+        the meta-only GET endpoint. TestGetCredentialReturnsMetaOnly
+        covers this more broadly; this is a fast sanity check co-located
+        with the new endpoint's tests."""
+        cred = _make_oauth2_cred()
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.get = AsyncMock(return_value=cred)
+            resp = client.get("/github/credentials/cred-456")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "access_token" not in body
+        assert "refresh_token" not in body
+        assert "ghp_secret_token" not in str(body)
