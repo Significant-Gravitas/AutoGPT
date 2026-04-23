@@ -106,9 +106,7 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
                     status,
                     sub.endpoint[:60],
                 )
-                await db_client.delete_push_subscription(
-                    sub.user_id, sub.endpoint
-                )
+                await db_client.delete_push_subscription(sub.user_id, sub.endpoint)
             else:
                 logger.warning("Push failed for %s: %s", sub.endpoint[:60], e)
                 await db_client.increment_push_fail_count(sub.user_id, sub.endpoint)
