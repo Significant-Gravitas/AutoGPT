@@ -111,10 +111,11 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
     # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
-    # Lowering it via env keeps context smaller and cache creation costs down on
-    # Anthropic.  Skipped for Moonshot routes (no cache_create benefit) and when
-    # the operator sets the config to 0 (to avoid cascade-compaction when the
-    # post-compact floor sits too close to the trigger).
+    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
+    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
+    # writes happen, so there's no cost to cap) and an aggressive trigger
+    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # Operators can also set the config to 0 to disable globally.
     if (
         not is_moonshot_model(model)
         and config.claude_agent_autocompact_pct_override > 0
