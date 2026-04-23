@@ -1955,20 +1955,26 @@ async def stream_chat_completion_baseline(
         # Sentinel received — surface any exception the inner task hit.
         await loop_task
         loop_result = loop_result_holder[0]
-        if loop_result and not loop_result.finished_naturally:
-            # Budget reached without a natural finish.  ``tool_call_loop``
-            # drops ``tools`` on the last iteration so the model is forced
-            # to produce text, but a non-compliant model (or one whose final
-            # text-only response still got truncated) can still land here.
-            # End the turn gracefully — the user already saw streamed output
-            # and a red error would just prompt them to retry the same work.
-            logger.warning(
-                "[Baseline] Hit %d-round tool budget without natural finish; "
-                "ending turn gracefully",
-                loop_result.iterations,
-            )
-            # Check only the *terminal* round's text — earlier rounds may
-            # have produced chatter that doesn't explain the budget hit.
+        # Budget was reached when iterations hit the configured cap. This
+        # covers both exit paths out of ``tool_call_loop``:
+        #   - ``finished_naturally=True``: the last iteration ran with
+        #     ``tools=[]`` and the model returned text (may be empty)
+        #   - ``finished_naturally=False``: a non-compliant model still
+        #     emitted tool calls despite the empty tool list, so the loop
+        #     fell through the ``while`` guard
+        # Either way, we check the terminal round's text contribution — an
+        # empty one means the user got no explanation and we need to emit
+        # the fallback notice.
+        budget_reached = bool(
+            loop_result and loop_result.iterations >= config.agent_max_turns
+        )
+        if budget_reached:
+            if loop_result and not loop_result.finished_naturally:
+                logger.warning(
+                    "[Baseline] Hit %d-round tool budget without natural finish; "
+                    "ending turn gracefully",
+                    loop_result.iterations,
+                )
             terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
             fallback_events, fallback_text = _build_budget_exhausted_fallback_events(
                 terminal_round_text
