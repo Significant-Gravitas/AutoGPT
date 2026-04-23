@@ -28,7 +28,7 @@ from backend.util.clients import (
 )
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.logging import TruncatedLogger
-from backend.util.metrics import DiscordChannel
+from backend.util.metrics import DiscordChannel, discord_send_alert
 from backend.util.settings import Settings
 
 from .utils import (
@@ -303,8 +303,8 @@ async def charge_reconciled_usage(
         return await asyncio.to_thread(_charge_reconciled_usage_sync, node_exec, stats)
     except InsufficientBalanceError as e:
         # Billing leak: work is already done, but the user cannot pay. Emit a
-        # structured ERROR so alerting can pick it up (same shape as
-        # charge_extra_runtime_cost's leak log).
+        # structured ERROR so alerting can pick it up and ping the platform
+        # channel so the leak is visible in real time.
         logger.error(
             "billing_leak: insufficient balance after post-flight reconciliation",
             extra={
@@ -319,6 +319,19 @@ async def charge_reconciled_usage(
                 "error": str(e),
             },
         )
+        try:
+            await discord_send_alert(
+                f"⚠️ billing_leak (post-flight reconciliation)\n"
+                f"user={node_exec.user_id} graph={node_exec.graph_id} "
+                f"exec={node_exec.graph_exec_id}\n"
+                f"block={node_exec.block_id} needed={abs(e.amount)} "
+                f"balance={e.balance}",
+                DiscordChannel.PLATFORM,
+            )
+        except Exception:
+            # Discord dispatch is best-effort; never let alert failure poison
+            # the success path of a completed block.
+            logger.exception("billing_leak discord alert dispatch failed")
         return 0, 0
     except Exception:
         logger.exception(

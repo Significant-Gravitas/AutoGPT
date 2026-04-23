@@ -658,14 +658,14 @@ class ExecutionProcessor:
                     stats=execution_stats,
                 )
                 if reconciled_delta != 0:
-                    execution_stats.extra_cost += reconciled_delta
+                    execution_stats.reconciled_cost_delta += reconciled_delta
 
         graph_stats, graph_stats_lock = graph_stats_pair
         with graph_stats_lock:
             graph_stats.node_count += 1 + execution_stats.extra_steps
             graph_stats.nodes_cputime += execution_stats.cputime
             graph_stats.nodes_walltime += execution_stats.walltime
-            graph_stats.cost += execution_stats.cost + execution_stats.extra_cost
+            graph_stats.cost += execution_stats.cost + execution_stats.extra_cost_total
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
 
