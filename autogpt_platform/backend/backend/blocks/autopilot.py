@@ -18,8 +18,8 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.copilot.permissions import (
-    CopilotPermissions,
     DISABLED_LEGACY_TOOL_NAMES,
+    CopilotPermissions,
     ToolName,
     all_known_tool_names,
     validate_block_identifiers,

@@ -92,9 +92,11 @@ def sync_fail_close_session(
             timeout=_FAIL_CLOSE_REDIS_TIMEOUT,
         )
 
+    coro = _bounded()
     try:
-        future = asyncio.run_coroutine_threadsafe(_bounded(), execution_loop)
+        future = asyncio.run_coroutine_threadsafe(coro, execution_loop)
     except RuntimeError as e:
+        coro.close()
         # execution_loop is closed — happens if cleanup() already ran the
         # per-worker teardown. Nothing we can do; let the stale-session
         # watchdog reap it.
@@ -409,9 +411,7 @@ class CoPilotProcessor:
             if now - last_cancel_log_at < _CANCEL_GRACE_SECONDS:
                 return
             elapsed = now - cancel_started_at
-            log.warning(
-                "Waiting for cancelled turn to drain " f"({elapsed:.1f}s elapsed)"
-            )
+            log.warning(f"Waiting for cancelled turn to drain ({elapsed:.1f}s elapsed)")
             last_cancel_log_at = now
 
         # Wait for completion, checking cancel periodically. A cancellation
