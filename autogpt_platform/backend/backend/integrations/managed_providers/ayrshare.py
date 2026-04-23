@@ -101,13 +101,20 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
                 user_integrations.managed_credentials.ayrshare_profile_key = None
 
 
-def _profile_title(user_id: str) -> str:
-    """The deterministic Ayrshare profile title for a user.
+import secrets
 
-    Used both to create the profile and to find it again on retry — a
-    collision-free lookup key so we never double-create for the same user.
+
+def _profile_title(user_id: str) -> str:
+    """A unique Ayrshare profile title for this provision attempt.
+
+    Appends a short random suffix so we never collide with an orphan
+    upstream profile (same user, lost managed credential from a prior
+    session).  Ayrshare's ``DELETE /profiles`` requires the ``profileKey``
+    we no longer have, so avoiding the collision in the first place is
+    the only reliable recovery path.  The suffix is cosmetic — Ayrshare
+    profiles are keyed by ``profileKey``, not title.
     """
-    return f"User {user_id}"
+    return f"User {user_id}-{secrets.token_hex(3)}"
 
 
 async def _read_or_create_profile_key(
@@ -125,21 +132,17 @@ async def _read_or_create_profile_key(
        managed credential is durably stored; if persistence fails, legacy
        stays intact so a retry reuses it).
 
-    2. **Existing Ayrshare profile by title.** Before calling
-       ``create_profile``, list Ayrshare's profiles under our account and
-       check for one titled :func:`_profile_title`.  This covers the
-       "previous attempt created the profile upstream but failed to persist
-       our managed credential" path — without it, every such retry would
-       leak another profile against the subscription's quota.
-
-    3. **Create a fresh profile.**  Only reached when the user has never
-       had a profile upstream.  The deterministic title keeps ``(2)`` a
-       reliable recovery for any future retry.
+    2. **Create a fresh profile with a unique title.** The title carries
+       a random suffix so we never collide with orphaned upstream profiles
+       (Ayrshare doesn't expose an API to retrieve an existing profile's
+       ``profileKey``, so collision-avoidance is the only reliable recovery
+       path).  Orphans stick around in Ayrshare's dashboard until cleaned
+       up manually — acceptable cost for unblocking the user.
 
     The outer :func:`~backend.integrations.managed_credentials._provision_under_lock`
     holds a distributed Redis lock on ``(user, provider)`` across this whole
     function *and* the subsequent ``add_managed_credential`` call, so
-    concurrent workers cannot race through steps 2/3 and create duplicates.
+    concurrent workers cannot race and create duplicates.
     """
     user_integrations = await store.get_user_integrations(user_id)
     legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
@@ -157,27 +160,7 @@ async def _read_or_create_profile_key(
         raise RuntimeError("Ayrshare integration is not configured") from exc
 
     title = _profile_title(user_id)
-    # Ayrshare's GET /profiles never returns ``profileKey`` — there's no
-    # supported endpoint to recover an existing profile's key.  If a
-    # profile with our title exists upstream it's orphaned (we lost our
-    # side of the secret), so delete it and create fresh.  This is
-    # destructive — any social accounts linked to the orphan are lost —
-    # but the orphan is already unusable without the key, so the only
-    # alternatives would be a stuck user or a shadow profile forever.
-    existing = await client.list_profiles()
-    orphan = next((p for p in existing if p.title == title), None)
-    if orphan is not None:
-        logger.warning(
-            "[ayrshare] Orphaned upstream profile detected for user %s "
-            "(refId=%s); deleting so we can create a fresh one with a "
-            "retrievable profileKey.  Any previously-linked social "
-            "accounts on the orphan will be lost.",
-            user_id,
-            orphan.refId,
-        )
-        await client.delete_profile(title=title)
-
-    logger.debug("[ayrshare] Creating profile for user %s", user_id)
+    logger.debug("[ayrshare] Creating profile for user %s (title=%s)", user_id, title)
     profile = await client.create_profile(title=title, messaging_active=True)
     return profile.profileKey
 

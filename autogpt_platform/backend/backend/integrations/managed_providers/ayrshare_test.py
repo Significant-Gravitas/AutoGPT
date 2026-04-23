@@ -6,7 +6,6 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials
-from backend.integrations.ayrshare import ProfileSummary
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareManagedProvider,
     _read_or_create_profile_key,
@@ -126,13 +125,12 @@ class TestReadOrCreateProfileKey:
         assert ui.managed_credentials.ayrshare_profile_key is legacy
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_creates_new_profile_when_no_legacy_and_no_upstream(self):
-        """Fresh users with no upstream profile get one created."""
+    async def test_creates_new_profile_when_no_legacy(self):
+        """Without a legacy key, we create a fresh profile with a unique title."""
         store, _ = self._mock_store(legacy_key=None)
 
         fake_profile = MagicMock(profileKey="fresh-profile-key")
         client_instance = MagicMock()
-        client_instance.list_profiles = AsyncMock(return_value=[])
         client_instance.create_profile = AsyncMock(return_value=fake_profile)
 
         with patch(
@@ -142,37 +140,26 @@ class TestReadOrCreateProfileKey:
             result = await _read_or_create_profile_key(_USER_ID, store)
 
         assert result == "fresh-profile-key"
-        client_instance.list_profiles.assert_awaited_once()
         client_instance.create_profile.assert_awaited_once()
+        # The title must include the user_id AND a suffix — unique-per-call
+        # avoids collisions with orphaned upstream profiles (Ayrshare has
+        # no API to retrieve an existing profile's key).
+        call_kwargs = client_instance.create_profile.call_args.kwargs
+        assert call_kwargs["title"].startswith(f"User {_USER_ID}-")
+        assert call_kwargs["title"] != f"User {_USER_ID}"
 
     @pytest.mark.asyncio(loop_scope="session")
-    async def test_orphaned_upstream_profile_is_deleted_and_recreated(self):
-        """Ayrshare's GET /profiles never returns ``profileKey``.  If a
-        profile with our title exists upstream we have no way to retrieve
-        its key, so we must delete + recreate to get a usable one.  This
-        is the path that unblocks users whose provisioning state got out
-        of sync between our DB and Ayrshare (e.g. the managed cred was
-        dropped while the upstream profile persisted)."""
-        store, _ = self._mock_store(legacy_key=None)
+    async def test_profile_title_suffix_is_unique_across_calls(self):
+        """Two separate provision attempts produce different titles so an
+        orphaned profile from a prior attempt never causes a duplicate-
+        title collision on create."""
+        from backend.integrations.managed_providers.ayrshare import _profile_title
 
-        title = f"User {_USER_ID}"
-        orphan = ProfileSummary(title=title, refId="ref-orphan")
-        fake_created = MagicMock(profileKey="fresh-key")
-
-        client_instance = MagicMock()
-        client_instance.list_profiles = AsyncMock(return_value=[orphan])
-        client_instance.delete_profile = AsyncMock()
-        client_instance.create_profile = AsyncMock(return_value=fake_created)
-
-        with patch(
-            "backend.integrations.managed_providers.ayrshare.AyrshareClient",
-            return_value=client_instance,
-        ):
-            result = await _read_or_create_profile_key(_USER_ID, store)
-
-        assert result == "fresh-key"
-        client_instance.delete_profile.assert_awaited_once_with(title=title)
-        client_instance.create_profile.assert_awaited_once()
+        t1 = _profile_title(_USER_ID)
+        t2 = _profile_title(_USER_ID)
+        assert t1 != t2
+        assert t1.startswith(f"User {_USER_ID}-")
+        assert t2.startswith(f"User {_USER_ID}-")
 
 
 class TestPostProvisionClearsLegacy:

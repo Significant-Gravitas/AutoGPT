@@ -79,21 +79,6 @@ class ProfileResponse(BaseModel):
     messagingActive: Optional[bool] = None
 
 
-class ProfileSummary(BaseModel):
-    """Per-profile entry returned by ``GET /profiles``.
-
-    ``profileKey`` is only populated once a profile is fully activated;
-    freshly-created or otherwise-incomplete entries omit it, so the field
-    has to be optional.  The list endpoint also omits the ``status``
-    envelope that ``create_profile`` includes.
-    """
-
-    title: str
-    refId: str
-    profileKey: Optional[str] = None
-    messagingActive: Optional[bool] = None
-
-
 class PostResponse(BaseModel):
     status: str
     id: str
@@ -320,63 +305,6 @@ class AyrshareClient:
             )
 
         return ProfileResponse(**response_data)
-
-    async def delete_profile(self, *, title: str) -> None:
-        """Delete a User Profile by title.
-
-        Used as the last-resort recovery when a profile with our title
-        exists upstream but we lost its ``profileKey`` (the list endpoint
-        never returns profileKey).  Destructive — any linked social
-        accounts on the deleted profile are lost.
-
-        Docs: https://www.ayrshare.com/docs/apis/profiles/delete-profile
-        """
-        response = await self._requests.delete(
-            self.PROFILES_ENDPOINT, json={"title": title}
-        )
-        if not response.ok:
-            raise AyrshareAPIException(
-                f"Ayrshare profile delete failed ({response.status}): "
-                f"{_extract_error_message(response)}",
-                response.status,
-            )
-
-    async def list_profiles(self) -> list[ProfileSummary]:
-        """List every User Profile under the primary account.
-
-        Note: Ayrshare does NOT return ``profileKey`` on any profile in
-        this response — ``ProfileSummary.profileKey`` is always ``None``.
-        Callers use this purely to detect orphaned-title collisions, then
-        pair with :meth:`delete_profile` + :meth:`create_profile` to
-        recover a usable key.
-
-        Docs: https://www.ayrshare.com/docs/apis/profiles/get-profiles
-        """
-        response = await self._requests.get(self.PROFILES_ENDPOINT)
-        if not response.ok:
-            raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status}): "
-                f"{_extract_error_message(response)}",
-                response.status,
-            )
-
-        # The endpoint returns either a bare list or a dict with a "profiles"
-        # key depending on the account tier; handle both shapes.
-        payload = response.json()
-        if isinstance(payload, dict) and payload.get("status") == "error":
-            raise AyrshareAPIException(
-                f"Ayrshare API returned error: {payload.get('message', 'Unknown error')}",
-                response.status,
-            )
-        raw_profiles = (
-            payload.get("profiles", payload) if isinstance(payload, dict) else payload
-        )
-        if not isinstance(raw_profiles, list):
-            raise AyrshareAPIException(
-                f"Unexpected Ayrshare profiles response shape: {type(raw_profiles).__name__}",
-                response.status,
-            )
-        return [ProfileSummary(**raw) for raw in raw_profiles]
 
     async def create_post(
         self,
