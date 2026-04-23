@@ -4156,7 +4156,7 @@ async def stream_chat_completion_sdk(
             # Brief window (~0.5-2s) where the rate-limit counter is
             # unaware of this turn — back-to-back turns in that window
             # see a stale counter.
-            asyncio.create_task(
+            cost_reconcile_task = asyncio.create_task(
                 record_turn_cost_from_openrouter(
                     session=session,
                     user_id=user_id,
@@ -4175,6 +4175,8 @@ async def stream_chat_completion_sdk(
                     langfuse_trace_id=langfuse_trace_id,
                 )
             )
+            _background_tasks.add(cost_reconcile_task)
+            cost_reconcile_task.add_done_callback(_background_tasks.discard)
         else:
             # Reconcile disabled, OpenRouter inactive, or subscription
             # path (no gen-IDs).  Record the SDK CLI's

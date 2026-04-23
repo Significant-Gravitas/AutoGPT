@@ -337,8 +337,10 @@ async def record_turn_cost_from_openrouter(
         results = []
 
     fetched = [r for r in results if isinstance(r, (int, float))]
+    cost_source = "fallback"
     if fetched and len(fetched) == len(generation_ids):
         real_cost: float | None = sum(fetched)
+        cost_source = "openrouter"
         # Log real (OpenRouter billed) vs CLI rate-card estimate so an
         # operator can spot divergence without querying OpenRouter by
         # hand.  Under-count typically means a gen-ID source we don't
@@ -415,11 +417,13 @@ async def record_turn_cost_from_openrouter(
                 name="openrouter-cost-reconcile",
                 metadata={
                     "cost_usd": real_cost,
+                    "cost_source": cost_source,
                     "fallback_cost_usd": fallback_cost_usd,
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "cache_read_tokens": cache_read_tokens,
                     "cache_creation_tokens": cache_creation_tokens,
+                    "resolved_generation_id_count": len(fetched),
                     "generation_id_count": len(generation_ids),
                     "model": model,
                     "provider": "open_router",

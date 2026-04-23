@@ -565,11 +565,63 @@ class TestLangfuseTraceBackfill:
         assert kwargs["name"] == "openrouter-cost-reconcile"
         meta = kwargs["metadata"]
         assert meta["cost_usd"] == pytest.approx(real_cost, rel=1e-9)
+        assert meta["cost_source"] == "openrouter"
         assert meta["fallback_cost_usd"] == pytest.approx(0.018, rel=1e-9)
+        assert meta["resolved_generation_id_count"] == 1
+        assert meta["generation_id_count"] == 1
         assert meta["prompt_tokens"] == 29669
         assert meta["completion_tokens"] == 280
         assert meta["model"] == "moonshotai/kimi-k2.6"
         assert meta["provider"] == "open_router"
+
+    @pytest.mark.asyncio
+    async def test_event_marks_fallback_when_lookup_partial(self):
+        """When some gen-ID lookups fail, real_cost falls back to the
+        rate-card estimate.  The Langfuse event must mark cost_source as
+        ``"fallback"`` so operators don't mistake it for an authoritative
+        OpenRouter reconciliation.
+        """
+        mock_lf = MagicMock()
+        call_count = {"n": 0}
+
+        async def _get(self, url, **kwargs):  # noqa: ARG001
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return httpx.Response(200, json=_mock_generation_response(0.012))
+            return httpx.Response(404, json={"error": "not found"})
+
+        with (
+            patch(
+                "backend.copilot.sdk.openrouter_cost.persist_and_record_usage",
+                new_callable=AsyncMock,
+            ),
+            patch("httpx.AsyncClient.get", new=_get),
+            patch("langfuse.get_client", return_value=mock_lf),
+        ):
+            await record_turn_cost_from_openrouter(
+                session=_session(),
+                user_id="u1",
+                model="moonshotai/kimi-k2.6",
+                prompt_tokens=100,
+                completion_tokens=10,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+                generation_ids=["gen-1", "gen-2"],
+                cli_project_dir=None,
+                cli_session_id=None,
+                turn_start_ts=None,
+                fallback_cost_usd=0.018,
+                api_key="sk-or-test",
+                log_prefix="[test]",
+                langfuse_trace_id="trace-partial",
+            )
+
+        mock_lf.create_event.assert_called_once()
+        meta = mock_lf.create_event.call_args.kwargs["metadata"]
+        assert meta["cost_source"] == "fallback"
+        assert meta["cost_usd"] == pytest.approx(0.018, rel=1e-9)
+        assert meta["resolved_generation_id_count"] == 1
+        assert meta["generation_id_count"] == 2
 
     @pytest.mark.asyncio
     async def test_no_event_when_trace_id_missing(self):
