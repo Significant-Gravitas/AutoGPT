@@ -19,6 +19,7 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -45,9 +46,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  historicalDurations?: Map<string, number>;
-  historicalReasoningDurations?: Map<string, number>;
-  messageTimestamps?: Map<string, string>;
+  turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
 }
@@ -258,9 +257,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
-  historicalDurations,
-  historicalReasoningDurations,
-  messageTimestamps,
+  turnStats,
   queuedMessages,
 }: Props) {
   // Hide the container for one frame when messages first load so
@@ -445,11 +442,7 @@ export function ChatMessagesContainer({
                         ? frozenElapsedRef.current
                         : undefined
                     }
-                    durationMs={historicalDurations?.get(message.id)}
-                    reasoningDurationMs={historicalReasoningDurations?.get(
-                      message.id,
-                    )}
-                    timestamp={messageTimestamps?.get(message.id)}
+                    stats={turnStats?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (

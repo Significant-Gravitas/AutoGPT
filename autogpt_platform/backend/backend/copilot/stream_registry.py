@@ -236,26 +236,18 @@ async def _record_reasoning_event(
     """
     redis = await get_redis_async()
     meta_key = _get_session_meta_key(session_id)
-    now_iso = datetime.now(timezone.utc).isoformat()
     if isinstance(chunk, StreamReasoningStart):
-        await redis.hset(meta_key, "reasoning_started_at", now_iso)  # type: ignore[misc]
+        await redis.hset(meta_key, "reasoning_started_at", str(time.time()))  # type: ignore[misc]
         return
 
     started_at_raw = await redis.hget(meta_key, "reasoning_started_at")  # type: ignore[misc]
-    if started_at_raw is None:
+    if not started_at_raw:
         return
-    started_at_str = (
-        started_at_raw.decode() if isinstance(started_at_raw, bytes) else started_at_raw
-    )
     try:
-        started_at = datetime.fromisoformat(started_at_str)
+        started_at = float(started_at_raw)
     except (ValueError, TypeError):
         return
-    if started_at.tzinfo is None:
-        started_at = started_at.replace(tzinfo=timezone.utc)
-    elapsed_ms = max(
-        0, int((datetime.now(timezone.utc) - started_at).total_seconds() * 1000)
-    )
+    elapsed_ms = max(0, int((time.time() - started_at) * 1000))
     await redis.hincrby(meta_key, "reasoning_ms_total", elapsed_ms)  # type: ignore[misc]
     await redis.hdel(meta_key, "reasoning_started_at")  # type: ignore[misc]
 
@@ -914,10 +906,11 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # Compute wall-clock duration from session created_at.
-    # Only persist when (a) the session completed successfully and
-    # (b) created_at was actually present in Redis meta (not a fallback).
+    # Compute wall-clock duration from session created_at and snapshot the
+    # accumulated reasoning time.  Only persist when the session completed
+    # successfully and created_at was actually present in Redis meta.
     duration_ms: int | None = None
+    reasoning_duration_ms: int | None = None
     if meta and not error_message:
         created_at_raw = meta.get("created_at")
         if created_at_raw:
@@ -933,9 +926,6 @@ async def mark_session_completed(
                     session_id,
                     created_at_raw,
                 )
-
-    reasoning_duration_ms: int | None = None
-    if meta and not error_message:
         reasoning_raw = meta.get("reasoning_ms_total")
         if reasoning_raw:
             try:

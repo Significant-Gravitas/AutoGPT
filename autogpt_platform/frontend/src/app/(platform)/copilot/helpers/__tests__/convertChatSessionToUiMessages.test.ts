@@ -149,7 +149,7 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     const mergedId = result.messages[0].id;
-    expect(result.durations.get(mergedId)).toBe(750);
+    expect(result.stats.get(mergedId)?.durationMs).toBe(750);
   });
 
   it("falls back to idx-based ids when sequence is null so sequence-less rows don't collide", () => {
@@ -212,7 +212,7 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(2);
     const assistantId = result.messages[1].id;
-    expect(result.durations.get(assistantId)).toBe(123);
+    expect(result.stats.get(assistantId)?.durationMs).toBe(123);
   });
 
   it("captures created_at when supplied as an ISO string", () => {
@@ -224,7 +224,7 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     );
 
     const userId = result.messages[0].id;
-    expect(result.timestamps.get(userId)).toBe(iso);
+    expect(result.stats.get(userId)?.createdAt).toBe(iso);
   });
 
   it("captures created_at when the API mutator has already converted the field to a Date object", () => {
@@ -241,6 +241,6 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     );
 
     const userId = result.messages[0].id;
-    expect(result.timestamps.get(userId)).toBe(date.toISOString());
+    expect(result.stats.get(userId)?.createdAt).toBe(date.toISOString());
   });
 });

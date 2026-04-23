@@ -79,9 +79,7 @@ function makeBaseChatSession(overrides: Record<string, unknown> = {}) {
     setSessionId: vi.fn(),
     hydratedMessages: [],
     rawSessionMessages: [],
-    historicalDurations: new Map(),
-    historicalReasoningDurations: new Map(),
-    messageTimestamps: new Map(),
+    historicalTurnStats: new Map(),
     hasActiveStream: false,
     hasMoreMessages: false,
     oldestSequence: null,
@@ -114,9 +112,7 @@ function makeBaseCopilotStream(overrides: Record<string, unknown> = {}) {
 function makeBaseLoadMore(overrides: Record<string, unknown> = {}) {
   return {
     pagedMessages: [],
-    pagedDurations: new Map(),
-    pagedReasoningDurations: new Map(),
-    pagedTimestamps: new Map(),
+    pagedTurnStats: new Map(),
     hasMore: false,
     isLoadingMore: false,
     loadMore: vi.fn(),
@@ -148,78 +144,76 @@ describe("useCopilotPage — backward pagination message ordering", () => {
   });
 });
 
-describe("useCopilotPage — duration + timestamp maps merge across pages", () => {
+describe("useCopilotPage — turnStats map merge across pages", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("merges historical (current-page) over paged (older) maps with current-page winning on overlap", () => {
-    const pagedDurations = new Map<string, number>([
-      ["older", 1000],
-      ["shared", 2000],
+  it("merges historical (current-page) over paged (older) stats; current-page wins on overlap", () => {
+    const pagedTurnStats = new Map([
+      [
+        "older",
+        {
+          durationMs: 1000,
+          reasoningDurationMs: 500,
+          createdAt: "2026-04-20T10:00:00Z",
+        },
+      ],
+      [
+        "shared",
+        {
+          durationMs: 2000,
+          reasoningDurationMs: 600,
+          createdAt: "2026-04-20T10:00:00Z",
+        },
+      ],
     ]);
-    const pagedReasoningDurations = new Map<string, number>([
-      ["older", 500],
-      ["shared", 600],
-    ]);
-    const pagedTimestamps = new Map<string, string>([
-      ["older", "2026-04-20T10:00:00Z"],
-      ["shared", "2026-04-20T10:00:00Z"],
-    ]);
-
-    const historicalDurations = new Map<string, number>([
-      ["current", 3000],
-      ["shared", 4000], // should win over pagedDurations["shared"]
-    ]);
-    const historicalReasoningDurations = new Map<string, number>([
-      ["current", 1500],
-      ["shared", 1700], // should win over pagedReasoningDurations["shared"]
-    ]);
-    const messageTimestamps = new Map<string, string>([
-      ["current", "2026-04-23T08:32:09Z"],
-      ["shared", "2026-04-23T08:32:09Z"], // should win over pagedTimestamps["shared"]
+    const historicalTurnStats = new Map([
+      [
+        "current",
+        {
+          durationMs: 3000,
+          reasoningDurationMs: 1500,
+          createdAt: "2026-04-23T08:32:09Z",
+        },
+      ],
+      [
+        "shared",
+        {
+          durationMs: 4000,
+          reasoningDurationMs: 1700,
+          createdAt: "2026-04-23T08:32:09Z",
+        },
+      ],
     ]);
 
     mockUseChatSession.mockReturnValue(
-      makeBaseChatSession({
-        historicalDurations,
-        historicalReasoningDurations,
-        messageTimestamps,
-      }),
+      makeBaseChatSession({ historicalTurnStats }),
     );
     mockUseCopilotStream.mockReturnValue(makeBaseCopilotStream());
     mockUseLoadMoreMessages.mockReturnValue(
-      makeBaseLoadMore({
-        pagedDurations,
-        pagedReasoningDurations,
-        pagedTimestamps,
-      }),
+      makeBaseLoadMore({ pagedTurnStats }),
     );
 
     const { result } = renderHook(() => useCopilotPage());
+    const stats = result.current.turnStats;
 
-    expect(result.current.historicalDurations.get("older")).toBe(1000);
-    expect(result.current.historicalDurations.get("current")).toBe(3000);
-    // Current-page wins on shared keys.
-    expect(result.current.historicalDurations.get("shared")).toBe(4000);
-
-    expect(result.current.historicalReasoningDurations.get("older")).toBe(500);
-    expect(result.current.historicalReasoningDurations.get("current")).toBe(
-      1500,
-    );
-    expect(result.current.historicalReasoningDurations.get("shared")).toBe(
-      1700,
-    );
-
-    expect(result.current.messageTimestamps.get("older")).toBe(
-      "2026-04-20T10:00:00Z",
-    );
-    expect(result.current.messageTimestamps.get("current")).toBe(
-      "2026-04-23T08:32:09Z",
-    );
-    expect(result.current.messageTimestamps.get("shared")).toBe(
-      "2026-04-23T08:32:09Z",
-    );
+    expect(stats.get("older")).toEqual({
+      durationMs: 1000,
+      reasoningDurationMs: 500,
+      createdAt: "2026-04-20T10:00:00Z",
+    });
+    expect(stats.get("current")).toEqual({
+      durationMs: 3000,
+      reasoningDurationMs: 1500,
+      createdAt: "2026-04-23T08:32:09Z",
+    });
+    // Current-page wins on shared keys across all fields.
+    expect(stats.get("shared")).toEqual({
+      durationMs: 4000,
+      reasoningDurationMs: 1700,
+      createdAt: "2026-04-23T08:32:09Z",
+    });
   });
 });
 

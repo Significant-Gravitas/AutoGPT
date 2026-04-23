@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   convertChatSessionMessagesToUiMessages,
   extractToolOutputsFromRaw,
+  type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 
 interface UseLoadMoreMessagesArgs {
@@ -82,24 +83,12 @@ export function useLoadMoreMessages({
   // are matched across inter-page boundaries.
   // Include initial page tool outputs so older paged pages can match
   // tool calls whose outputs landed in the initial page.
-  const {
-    messages: pagedMessages,
-    durations: pagedDurations,
-    reasoningDurations: pagedReasoningDurations,
-    timestamps: pagedTimestamps,
-  } = useMemo((): {
+  const { messages: pagedMessages, stats: pagedTurnStats } = useMemo((): {
     messages: UIMessage<unknown, UIDataTypes, UITools>[];
-    durations: Map<string, number>;
-    reasoningDurations: Map<string, number>;
-    timestamps: Map<string, string>;
+    stats: TurnStatsMap;
   } => {
     if (!sessionId || pagedRawMessages.length === 0)
-      return {
-        messages: [],
-        durations: new Map(),
-        reasoningDurations: new Map(),
-        timestamps: new Map(),
-      };
+      return { messages: [], stats: new Map() };
     const extraToolOutputs =
       initialPageRawMessages.length > 0
         ? extractToolOutputsFromRaw(initialPageRawMessages)
@@ -175,9 +164,7 @@ export function useLoadMoreMessages({
 
   return {
     pagedMessages,
-    pagedDurations,
-    pagedReasoningDurations,
-    pagedTimestamps,
+    pagedTurnStats,
     hasMore,
     isLoadingMore,
     loadMore,

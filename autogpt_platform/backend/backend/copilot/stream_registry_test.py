@@ -1,7 +1,8 @@
 """Tests for disconnect_all_listeners in stream_registry."""
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -462,9 +463,7 @@ async def test_record_reasoning_event_start_then_end_accumulates():
         assert "reasoning_ms_total" not in snapshot_after_start
 
         # Rewind the stored timestamp to simulate elapsed thinking time.
-        fake._hash[meta_key]["reasoning_started_at"] = (
-            datetime.now(timezone.utc) - timedelta(milliseconds=750)
-        ).isoformat()
+        fake._hash[meta_key]["reasoning_started_at"] = str(time.time() - 0.75)
 
         await stream_registry._record_reasoning_event(
             "sess-1", StreamReasoningEnd(id="r1")
@@ -523,7 +522,7 @@ async def test_record_reasoning_event_second_start_overwrites_first():
     fake = _FakeRedisHash()
     meta_key = stream_registry._get_session_meta_key("sess-1")
 
-    first_start = datetime.now(timezone.utc) - timedelta(seconds=30)
+    first_start = time.time() - 30  # 30 s in the past
 
     with patch.object(
         stream_registry, "get_redis_async", new=AsyncMock(return_value=fake)
@@ -533,14 +532,13 @@ async def test_record_reasoning_event_second_start_overwrites_first():
         )
         # Force the stored stamp into the distant past, then issue a second
         # start — it must clobber the first, not keep it around.
-        fake._hash[meta_key]["reasoning_started_at"] = first_start.isoformat()
+        fake._hash[meta_key]["reasoning_started_at"] = str(first_start)
 
         await stream_registry._record_reasoning_event(
             "sess-1", StreamReasoningStart(id="r2")
         )
         second_stamp_raw = fake._hash[meta_key]["reasoning_started_at"]
 
-    second_stamp = datetime.fromisoformat(second_stamp_raw)
-    assert second_stamp > first_start
+    assert float(second_stamp_raw) > first_start
     # No end seen yet, so no total recorded.
     assert "reasoning_ms_total" not in fake.snapshot(meta_key)

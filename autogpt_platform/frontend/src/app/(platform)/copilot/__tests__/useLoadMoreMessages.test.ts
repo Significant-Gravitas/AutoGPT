@@ -11,9 +11,7 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
 vi.mock("../helpers/convertChatSessionToUiMessages", () => ({
   convertChatSessionMessagesToUiMessages: vi.fn(() => ({
     messages: [],
-    durations: new Map(),
-    reasoningDurations: new Map(),
-    timestamps: new Map(),
+    stats: new Map(),
   })),
   extractToolOutputsFromRaw: vi.fn(() => []),
 }));

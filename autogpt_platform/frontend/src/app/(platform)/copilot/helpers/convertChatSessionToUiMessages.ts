@@ -1,6 +1,14 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
+export interface TurnStats {
+  durationMs?: number;
+  reasoningDurationMs?: number;
+  createdAt?: string;
+}
+
+export type TurnStatsMap = Map<string, TurnStats>;
+
 interface SessionChatMessage {
   role: string;
   content: string | null;
@@ -180,9 +188,7 @@ export function convertChatSessionMessagesToUiMessages(
   },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
-  durations: Map<string, number>;
-  reasoningDurations: Map<string, number>;
-  timestamps: Map<string, string>;
+  stats: TurnStatsMap;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -203,9 +209,12 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
-  const durations = new Map<string, number>();
-  const reasoningDurations = new Map<string, number>();
-  const timestamps = new Map<string, string>();
+  const stats: TurnStatsMap = new Map();
+
+  function patchStats(id: string, patch: Partial<TurnStats>) {
+    const existing = stats.get(id) ?? {};
+    stats.set(id, { ...existing, ...patch });
+  }
 
   messages.forEach((msg, idx) => {
     if (msg.role === "tool") return;
@@ -303,10 +312,12 @@ export function convertChatSessionMessagesToUiMessages(
       prevUI.parts.push(...parts);
       // Capture duration on merged message (last assistant msg wins)
       if (msg.duration_ms != null) {
-        durations.set(prevUI.id, msg.duration_ms);
+        patchStats(prevUI.id, { durationMs: msg.duration_ms });
       }
       if (msg.reasoning_duration_ms != null) {
-        reasoningDurations.set(prevUI.id, msg.reasoning_duration_ms);
+        patchStats(prevUI.id, {
+          reasoningDurationMs: msg.reasoning_duration_ms,
+        });
       }
       return;
     }
@@ -323,16 +334,16 @@ export function convertChatSessionMessagesToUiMessages(
       parts,
     });
 
-    if (msg.created_at) {
-      timestamps.set(msgId, msg.created_at);
-    }
+    const patch: Partial<TurnStats> = {};
+    if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
-      durations.set(msgId, msg.duration_ms);
+      patch.durationMs = msg.duration_ms;
     }
     if (uiRole === "assistant" && msg.reasoning_duration_ms != null) {
-      reasoningDurations.set(msgId, msg.reasoning_duration_ms);
+      patch.reasoningDurationMs = msg.reasoning_duration_ms;
     }
+    if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });
 
-  return { messages: uiMessages, durations, reasoningDurations, timestamps };
+  return { messages: uiMessages, stats };
 }

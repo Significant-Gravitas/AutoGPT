@@ -9,7 +9,10 @@ import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef } from "react";
-import { convertChatSessionMessagesToUiMessages } from "./helpers/convertChatSessionToUiMessages";
+import {
+  convertChatSessionMessagesToUiMessages,
+  type TurnStatsMap,
+} from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
 
 interface UseChatSessionOptions {
@@ -90,18 +93,11 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
   // array reference every render. Re-derives only when query data changes.
   // When the session is complete (no active stream), mark dangling tool
   // calls as completed so stale spinners don't persist after refresh.
-  const {
-    hydratedMessages,
-    historicalDurations,
-    historicalReasoningDurations,
-    messageTimestamps,
-  } = useMemo(() => {
+  const { hydratedMessages, historicalTurnStats } = useMemo(() => {
     if (sessionQuery.data?.status !== 200 || !sessionId)
       return {
         hydratedMessages: undefined,
-        historicalDurations: new Map<string, number>(),
-        historicalReasoningDurations: new Map<string, number>(),
-        messageTimestamps: new Map<string, string>(),
+        historicalTurnStats: new Map() as TurnStatsMap,
       };
     const result = convertChatSessionMessagesToUiMessages(
       sessionId,
@@ -110,9 +106,7 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     );
     return {
       hydratedMessages: result.messages,
-      historicalDurations: result.durations,
-      historicalReasoningDurations: result.reasoningDurations,
-      messageTimestamps: result.timestamps,
+      historicalTurnStats: result.stats,
     };
   }, [sessionQuery.data, sessionId, hasActiveStream]);
 
@@ -190,9 +184,7 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     setSessionId,
     hydratedMessages,
     rawSessionMessages,
-    historicalDurations,
-    historicalReasoningDurations,
-    messageTimestamps,
+    historicalTurnStats,
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,
