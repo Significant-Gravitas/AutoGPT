@@ -80,6 +80,8 @@ function makeBaseChatSession(overrides: Record<string, unknown> = {}) {
     hydratedMessages: [],
     rawSessionMessages: [],
     historicalDurations: new Map(),
+    historicalReasoningDurations: new Map(),
+    messageTimestamps: new Map(),
     hasActiveStream: false,
     hasMoreMessages: false,
     oldestSequence: null,
@@ -112,6 +114,9 @@ function makeBaseCopilotStream(overrides: Record<string, unknown> = {}) {
 function makeBaseLoadMore(overrides: Record<string, unknown> = {}) {
   return {
     pagedMessages: [],
+    pagedDurations: new Map(),
+    pagedReasoningDurations: new Map(),
+    pagedTimestamps: new Map(),
     hasMore: false,
     isLoadingMore: false,
     loadMore: vi.fn(),
@@ -140,6 +145,69 @@ describe("useCopilotPage — backward pagination message ordering", () => {
     // Backward: pagedMessages (older) come first
     expect(result.current.messages[0]).toEqual(pagedMsg);
     expect(result.current.messages[1]).toEqual(currentMsg);
+  });
+});
+
+describe("useCopilotPage — duration + timestamp maps merge across pages", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("merges historical (current-page) over paged (older) maps with current-page winning on overlap", () => {
+    const pagedDurations = new Map<string, number>([
+      ["older", 1000],
+      ["shared", 2000],
+    ]);
+    const pagedReasoningDurations = new Map<string, number>([["older", 500]]);
+    const pagedTimestamps = new Map<string, string>([
+      ["older", "2026-04-20T10:00:00Z"],
+    ]);
+
+    const historicalDurations = new Map<string, number>([
+      ["current", 3000],
+      ["shared", 4000], // should win over pagedDurations["shared"]
+    ]);
+    const historicalReasoningDurations = new Map<string, number>([
+      ["current", 1500],
+    ]);
+    const messageTimestamps = new Map<string, string>([
+      ["current", "2026-04-23T08:32:09Z"],
+    ]);
+
+    mockUseChatSession.mockReturnValue(
+      makeBaseChatSession({
+        historicalDurations,
+        historicalReasoningDurations,
+        messageTimestamps,
+      }),
+    );
+    mockUseCopilotStream.mockReturnValue(makeBaseCopilotStream());
+    mockUseLoadMoreMessages.mockReturnValue(
+      makeBaseLoadMore({
+        pagedDurations,
+        pagedReasoningDurations,
+        pagedTimestamps,
+      }),
+    );
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    expect(result.current.historicalDurations.get("older")).toBe(1000);
+    expect(result.current.historicalDurations.get("current")).toBe(3000);
+    // Current-page wins on shared keys.
+    expect(result.current.historicalDurations.get("shared")).toBe(4000);
+
+    expect(result.current.historicalReasoningDurations.get("older")).toBe(500);
+    expect(result.current.historicalReasoningDurations.get("current")).toBe(
+      1500,
+    );
+
+    expect(result.current.messageTimestamps.get("older")).toBe(
+      "2026-04-20T10:00:00Z",
+    );
+    expect(result.current.messageTimestamps.get("current")).toBe(
+      "2026-04-23T08:32:09Z",
+    );
   });
 });
 
