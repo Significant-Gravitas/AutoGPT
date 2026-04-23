@@ -675,11 +675,13 @@ class ExecutionProcessor:
             )
             # Charge the dynamic portion (walltime, items, USD, tokens) for
             # blocks whose BLOCK_COSTS entry uses a dynamic cost type. RUN-only
-            # blocks produce a zero delta here and incur no extra work.
-            await billing.charge_reconciled_usage(
-                node_exec=node_exec,
-                stats=execution_stats,
-            )
+            # blocks produce a zero delta here and incur no extra work. Skipped
+            # for dry runs so simulation never touches the user's wallet.
+            if not node_exec.execution_context.dry_run:
+                await billing.charge_reconciled_usage(
+                    node_exec=node_exec,
+                    stats=execution_stats,
+                )
 
         # If the node failed because a nested tool charge raised IBE,
         # send the user notification so they understand why the run stopped.

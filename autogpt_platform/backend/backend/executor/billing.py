@@ -234,10 +234,11 @@ def _charge_reconciled_usage_sync(
 ) -> tuple[int, int]:
     """Synchronous body of ``charge_reconciled_usage`` — runs in a worker.
 
-    Computes post-flight cost from the execution stats and charges only the
-    positive delta against the pre-flight estimate. RUN-type blocks produce a
-    zero delta (cost is fixed); dynamic types (SECOND/ITEMS/COST_USD/TOKENS)
-    return 0 pre-flight and the real charge post-flight.
+    Computes post-flight cost from the execution stats and settles the delta
+    against the pre-flight estimate. Positive delta → charge the user; negative
+    delta → refund the overcharge (happens when a TOKENS block's flat
+    MODEL_COST floor exceeds the real token-metered cost). Zero delta is a
+    no-op — common for RUN-only blocks and any balanced estimate.
     """
     db_client = get_db_client()
     block = get_block(node_exec.block_id)
@@ -249,9 +250,13 @@ def _charge_reconciled_usage_sync(
         block=block, input_data=node_exec.inputs, stats=stats
     )
     delta = post_flight - pre_flight
-    if delta <= 0:
+    if delta == 0:
         return 0, 0
 
+    # spend_credits with a negative cost posts a USAGE transaction whose
+    # amount is positive (i.e. credits back to the wallet). We intentionally
+    # reuse the USAGE type so the refund is attributable to the same graph
+    # execution in credit history.
     remaining_balance = db_client.spend_credits(
         user_id=node_exec.user_id,
         cost=delta,

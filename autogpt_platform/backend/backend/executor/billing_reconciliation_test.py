@@ -77,3 +77,37 @@ def test_missing_block_returns_zero(tmp_block_costs_override):
     with patch("backend.executor.billing.get_block", return_value=None):
         delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
     assert delta == 0
+
+
+def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override):
+    """TOKENS pre-flight uses MODEL_COST floor; if real token usage is cheaper,
+    the user is refunded the overcharge via a negative-delta spend_credits."""
+    from backend.blocks.llm import LlmModel
+
+    tmp_block_costs_override(
+        [
+            BlockCost(
+                cost_amount=1,
+                cost_type=BlockCostType.TOKENS,
+                cost_filter={"model": LlmModel.GPT5},
+            )
+        ]
+    )
+    exec_entry = _node_exec(SearchTheWebBlock().id)
+    exec_entry = exec_entry.model_copy(update={"inputs": {"model": LlmModel.GPT5}})
+    # Minimal real usage → post-flight < pre-flight MODEL_COST floor.
+    stats = NodeExecutionStats(
+        input_token_count=1,
+        output_token_count=1,
+    )
+
+    db_client = MagicMock()
+    db_client.spend_credits.return_value = 999
+    with patch("backend.executor.billing.get_db_client", return_value=db_client):
+        delta, remaining = _charge_reconciled_usage_sync(exec_entry, stats)
+
+    assert delta < 0
+    assert remaining == 999
+    db_client.spend_credits.assert_called_once()
+    call_kwargs = db_client.spend_credits.call_args.kwargs
+    assert call_kwargs["cost"] == delta  # negative cost ⇒ credit back
