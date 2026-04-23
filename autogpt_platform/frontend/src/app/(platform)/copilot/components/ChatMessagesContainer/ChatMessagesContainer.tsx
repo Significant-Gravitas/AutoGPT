@@ -305,7 +305,25 @@ export function ChatMessagesContainer({
     status === "submitted" || (status === "streaming" && !hasInflight);
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Anchor the live "Considering Xs" counter to the latest server-issued
+  // timestamp in the current turn (last user message / tool result /
+  // whatever message has a `createdAt`).  Without this anchor the counter
+  // restarts from zero on every page refresh mid-turn, since it would
+  // otherwise measure from mount time.
+  const liveAnchorIso = useMemo(() => {
+    if (!turnStats) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const iso = turnStats.get(messages[i].id)?.createdAt;
+      if (iso) return iso;
+    }
+    return null;
+  }, [messages, turnStats]);
+
+  const { elapsedSeconds } = useElapsedTimer(
+    isActivelyStreaming,
+    liveAnchorIso,
+  );
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.

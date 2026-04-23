@@ -31,25 +31,15 @@ describe("TurnStatsBar", () => {
     expect(screen.getByText(/Thought for 42s/)).toBeDefined();
   });
 
-  it("renders a local timestamp when there is no duration at all", () => {
-    render(
+  it("renders nothing when only a timestamp is present (date is hover-only)", () => {
+    const { container } = render(
       <TurnStatsBar
         turnMessages={EMPTY}
         stats={{ createdAt: "2026-04-23T08:32:09.000Z" }}
       />,
     );
-    const labels = screen.getAllByText(
-      (_, el) => !!el?.className.includes("tabular-nums"),
-    );
-    expect(labels.length).toBeGreaterThan(0);
-  });
-
-  it("renders malformed timestamp as its raw string (formatLocalTimestamp passthrough)", () => {
-    const { container } = render(
-      <TurnStatsBar turnMessages={EMPTY} stats={{ createdAt: "not-a-date" }} />,
-    );
-    expect(container.firstChild).not.toBeNull();
-    expect(container.textContent).toContain("not-a-date");
+    // Without a duration there's no label to hover over — render nothing.
+    expect(container.firstChild).toBeNull();
   });
 
   it("renders a button (hover/click target) when both duration and timestamp are present", () => {
