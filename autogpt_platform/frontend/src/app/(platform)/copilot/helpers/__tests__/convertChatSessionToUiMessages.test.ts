@@ -243,4 +243,35 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     const userId = result.messages[0].id;
     expect(result.stats.get(userId)?.createdAt).toBe(date.toISOString());
   });
+
+  it("advances createdAt to the latest row when merging consecutive assistant rows", () => {
+    // Reasoning row persisted early + assistant row persisted later should
+    // leave the merged bubble's stats.createdAt pointing at the LATER row,
+    // so the live "Thinking Xs" counter anchors to the most recent step.
+    const early = "2026-04-23T10:00:00.000Z";
+    const later = "2026-04-23T10:00:30.000Z";
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "hi", sequence: 0, created_at: early },
+        {
+          role: "reasoning",
+          content: "ponder",
+          sequence: 1,
+          created_at: early,
+        },
+        {
+          role: "assistant",
+          content: "reply",
+          sequence: 2,
+          created_at: later,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const mergedId = result.messages[1].id;
+    expect(result.stats.get(mergedId)?.createdAt).toBe(later);
+  });
 });
