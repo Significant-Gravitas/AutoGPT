@@ -11,30 +11,41 @@ vi.mock("@/lib/supabase/hooks/useSupabase", () => ({
 const mockIsPushSupported = vi.fn(() => true);
 const mockRegisterServiceWorker = vi.fn();
 const mockSubscribeToPush = vi.fn();
+const mockUnsubscribeFromPush = vi.fn();
 
 vi.mock("./registration", () => ({
   isPushSupported: () => mockIsPushSupported(),
   registerServiceWorker: () => mockRegisterServiceWorker(),
   subscribeToPush: (...args: [unknown, unknown]) =>
     mockSubscribeToPush(...args),
+  unsubscribeFromPush: (reg: unknown) => mockUnsubscribeFromPush(reg),
 }));
 
 const mockFetchVapidPublicKey = vi.fn();
 const mockSendSubscriptionToServer = vi.fn();
+const mockRemoveSubscriptionFromServer = vi.fn();
 
 vi.mock("./api", () => ({
   fetchVapidPublicKey: () => mockFetchVapidPublicKey(),
   sendSubscriptionToServer: (sub: unknown) => mockSendSubscriptionToServer(sub),
+  removeSubscriptionFromServer: (endpoint: string) =>
+    mockRemoveSubscriptionFromServer(endpoint),
 }));
 
 describe("usePushNotifications", () => {
   const mockRegistration = {
-    pushManager: { getSubscription: vi.fn() },
+    pushManager: {
+      getSubscription: vi.fn(),
+    },
   };
   const mockSubscription = { endpoint: "https://push.example.com/sub/1" };
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+    vi.mocked(useSupabase).mockReturnValue({
+      user: mockUser,
+    } as ReturnType<typeof useSupabase>);
     Object.defineProperty(globalThis, "Notification", {
       value: { permission: "granted" },
       configurable: true,
@@ -43,17 +54,23 @@ describe("usePushNotifications", () => {
     Object.defineProperty(navigator, "serviceWorker", {
       value: {
         register: vi.fn(),
+        getRegistration: vi.fn().mockResolvedValue(mockRegistration),
         ready: Promise.resolve(mockRegistration),
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
       },
       configurable: true,
     });
+    mockRegistration.pushManager.getSubscription = vi
+      .fn()
+      .mockResolvedValue(mockSubscription);
     mockIsPushSupported.mockReturnValue(true);
     mockRegisterServiceWorker.mockResolvedValue(mockRegistration);
     mockSubscribeToPush.mockResolvedValue(mockSubscription);
     mockFetchVapidPublicKey.mockResolvedValue("vapid-key-123");
     mockSendSubscriptionToServer.mockResolvedValue(true);
+    mockRemoveSubscriptionFromServer.mockResolvedValue(true);
+    mockUnsubscribeFromPush.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -145,5 +162,39 @@ describe("usePushNotifications", () => {
       "message",
       expect.any(Function),
     );
+  });
+
+  it("unsubscribes on logout after having been authenticated", async () => {
+    const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+    const { rerender } = renderHook(() => usePushNotifications());
+
+    await waitFor(() => {
+      expect(mockSendSubscriptionToServer).toHaveBeenCalled();
+    });
+
+    vi.mocked(useSupabase).mockReturnValue({
+      user: null,
+    } as ReturnType<typeof useSupabase>);
+    rerender();
+
+    await waitFor(() => {
+      expect(mockRemoveSubscriptionFromServer).toHaveBeenCalledWith(
+        mockSubscription.endpoint,
+      );
+    });
+    expect(mockUnsubscribeFromPush).toHaveBeenCalledWith(mockRegistration);
+  });
+
+  it("does not call teardown when user is null from the start", async () => {
+    const { useSupabase } = await import("@/lib/supabase/hooks/useSupabase");
+    vi.mocked(useSupabase).mockReturnValue({
+      user: null,
+    } as ReturnType<typeof useSupabase>);
+
+    renderHook(() => usePushNotifications());
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(mockRemoveSubscriptionFromServer).not.toHaveBeenCalled();
+    expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
   });
 });

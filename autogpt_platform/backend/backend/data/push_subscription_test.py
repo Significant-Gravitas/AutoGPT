@@ -13,7 +13,7 @@ def mock_prisma(mocker):
     """Mock PushSubscription.prisma() and return the mock client."""
     mock_client = MagicMock()
     mock_client.upsert = AsyncMock()
-    mock_client.find_many = AsyncMock()
+    mock_client.find_many = AsyncMock(return_value=[])
     mock_client.delete_many = AsyncMock()
     mock_client.update_many = AsyncMock()
     mocker.patch(
@@ -103,6 +103,42 @@ class TestUpsertPushSubscription:
         assert call_kwargs["data"]["update"]["failCount"] == 0
         assert call_kwargs["data"]["update"]["lastFailedAt"] is None
 
+    @pytest.mark.asyncio
+    async def test_rejects_new_endpoint_past_cap(self, mock_prisma):
+        existing = [
+            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+        mock_prisma.find_many.return_value = existing
+
+        with pytest.raises(ValueError, match="Subscription limit"):
+            await push_subscription.upsert_push_subscription(
+                user_id="user-1",
+                endpoint="https://fcm.googleapis.com/fcm/send/sub/NEW",
+                p256dh="test-p256dh",
+                auth="test-auth",
+            )
+
+        mock_prisma.upsert.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_allows_update_of_existing_endpoint_at_cap(self, mock_prisma):
+        existing = [
+            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+        mock_prisma.find_many.return_value = existing
+        mock_prisma.upsert.return_value = MagicMock()
+
+        await push_subscription.upsert_push_subscription(
+            user_id="user-1",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/0",
+            p256dh="rotated-p256dh",
+            auth="rotated-auth",
+        )
+
+        mock_prisma.upsert.assert_awaited_once()
+
 
 class TestGetUserPushSubscriptions:
     @pytest.mark.asyncio
@@ -143,22 +179,6 @@ class TestDeletePushSubscription:
     @pytest.mark.asyncio
     async def test_deletes_by_user_id_and_endpoint(self, mock_prisma):
         await push_subscription.delete_push_subscription(
-            "user-1",
-            "https://fcm.googleapis.com/fcm/send/sub/1",
-        )
-
-        mock_prisma.delete_many.assert_awaited_once_with(
-            where={
-                "userId": "user-1",
-                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
-            }
-        )
-
-
-class TestDeletePushSubscriptionByEndpoint:
-    @pytest.mark.asyncio
-    async def test_includes_user_id_in_where(self, mock_prisma):
-        await push_subscription.delete_push_subscription_by_endpoint(
             "user-1",
             "https://fcm.googleapis.com/fcm/send/sub/1",
         )

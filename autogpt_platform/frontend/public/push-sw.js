@@ -51,7 +51,17 @@ function isClientViewingTarget(client, targetUrl) {
   try {
     var clientUrl = new URL(client.url);
     var target = new URL(targetUrl, self.location.origin);
-    return clientUrl.pathname === target.pathname;
+    if (clientUrl.pathname !== target.pathname) return false;
+    // Compare every query param the target cares about — otherwise a
+    // notification for /copilot?sessionId=B gets suppressed while the user
+    // is viewing /copilot?sessionId=A, and they'd miss session B finishing.
+    var keys = Array.from(target.searchParams.keys());
+    for (var i = 0; i < keys.length; i++) {
+      if (clientUrl.searchParams.get(keys[i]) !== target.searchParams.get(keys[i])) {
+        return false;
+      }
+    }
+    return true;
   } catch (_) {
     return false;
   }
@@ -151,7 +161,6 @@ self.addEventListener("pushsubscriptionchange", function (event) {
               p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(newSub.getKey("p256dh")))),
               auth: btoa(String.fromCharCode.apply(null, new Uint8Array(newSub.getKey("auth")))),
             },
-            user_agent: navigator.userAgent || "",
           }),
         });
       })

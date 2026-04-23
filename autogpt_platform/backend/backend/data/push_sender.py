@@ -6,6 +6,7 @@ import logging
 import time
 import uuid
 
+from cachetools import TTLCache
 from pywebpush import WebPushException, webpush
 
 from backend.api.model import NotificationPayload
@@ -17,9 +18,11 @@ logger = logging.getLogger(__name__)
 
 _settings = Settings()
 
-# In-memory per-user debounce to collapse rapid-fire notifications
-_user_last_push: dict[str, float] = {}
 DEBOUNCE_SECONDS = 5.0
+# Per-user debounce timestamps, bounded + auto-evicted so the process doesn't
+# accumulate one entry per user forever. Process-local — ineffective across
+# multiple WS replicas; acceptable since debounce is a best-effort UX nicety.
+_user_last_push: TTLCache[str, float] = TTLCache(maxsize=10_000, ttl=DEBOUNCE_SECONDS)
 
 # Fields to forward from the notification payload to the push message
 _FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")
@@ -57,12 +60,10 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
         logger.debug("VAPID keys not fully configured, skipping push")
         return
 
-    now = time.monotonic()
-    last = _user_last_push.get(user_id, 0.0)
-    if now - last < DEBOUNCE_SECONDS:
+    if user_id in _user_last_push:
         logger.debug("Debouncing push for user %s", user_id)
         return
-    _user_last_push[user_id] = now
+    _user_last_push[user_id] = time.monotonic()
 
     db_client = get_database_manager_async_client()
     subscriptions = await db_client.get_user_push_subscriptions(user_id)
@@ -95,9 +96,7 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
                 sub.endpoint[:60],
                 e,
             )
-            await db_client.delete_push_subscription_by_endpoint(
-                sub.user_id, sub.endpoint
-            )
+            await db_client.delete_push_subscription(sub.user_id, sub.endpoint)
             return
         except WebPushException as e:
             status = getattr(e.response, "status_code", None) if e.response else None
@@ -107,7 +106,7 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
                     status,
                     sub.endpoint[:60],
                 )
-                await db_client.delete_push_subscription_by_endpoint(
+                await db_client.delete_push_subscription(
                     sub.user_id, sub.endpoint
                 )
             else:

@@ -22,7 +22,7 @@ def mock_db_client(mocker):
     """Provides a mocked DatabaseManagerAsyncClient with stub async methods."""
     client = MagicMock()
     client.get_user_push_subscriptions = AsyncMock(return_value=[])
-    client.delete_push_subscription_by_endpoint = AsyncMock()
+    client.delete_push_subscription = AsyncMock()
     client.increment_push_fail_count = AsyncMock()
     mocker.patch(
         "backend.data.push_sender.get_database_manager_async_client",
@@ -234,7 +234,7 @@ class TestSendPushForUser:
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_db_client.delete_push_subscription_by_endpoint.assert_awaited_once_with(
+        mock_db_client.delete_push_subscription.assert_awaited_once_with(
             sub.user_id, sub.endpoint
         )
 
@@ -253,7 +253,7 @@ class TestSendPushForUser:
 
         await push_sender.send_push_for_user("user-1", _make_payload())
 
-        mock_db_client.delete_push_subscription_by_endpoint.assert_awaited_once_with(
+        mock_db_client.delete_push_subscription.assert_awaited_once_with(
             sub.user_id, sub.endpoint
         )
 
@@ -318,7 +318,8 @@ class TestSendPushForUser:
         await push_sender.send_push_for_user("user-1", _make_payload())
         assert mock_db_client.get_user_push_subscriptions.await_count == 1
 
-        push_sender._user_last_push["user-1"] -= push_sender.DEBOUNCE_SECONDS + 1
+        # Simulate TTL expiry (cachetools evicts on access after TTL elapses).
+        push_sender._user_last_push.pop("user-1", None)
 
         await push_sender.send_push_for_user("user-1", _make_payload())
         assert mock_db_client.get_user_push_subscriptions.await_count == 2

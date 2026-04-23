@@ -40,15 +40,15 @@ async def subscribe_push(
 ) -> None:
     try:
         await validate_push_endpoint(body.endpoint)
+        await upsert_push_subscription(
+            user_id=user_id,
+            endpoint=body.endpoint,
+            p256dh=body.keys.p256dh,
+            auth=body.keys.auth,
+            user_agent=body.user_agent,
+        )
     except ValueError as e:
         raise HTTPException(status_code=HTTP_400_BAD_REQUEST, detail=str(e))
-    await upsert_push_subscription(
-        user_id=user_id,
-        endpoint=body.endpoint,
-        p256dh=body.keys.p256dh,
-        auth=body.keys.auth,
-        user_agent=body.user_agent,
-    )
 
 
 @router.post(

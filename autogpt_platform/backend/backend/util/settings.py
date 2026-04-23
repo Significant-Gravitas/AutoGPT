@@ -398,6 +398,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between OAuth token cleanup runs (1-24 hours)",
     )
 
+    push_subscription_cleanup_interval_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours between failed push subscription cleanup runs (1-168 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,

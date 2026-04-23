@@ -99,7 +99,8 @@ from backend.data.notifications import (
 from backend.data.onboarding import increment_onboarding_runs
 from backend.data.platform_cost import log_platform_cost
 from backend.data.push_subscription import (
-    delete_push_subscription_by_endpoint,
+    cleanup_failed_subscriptions,
+    delete_push_subscription,
     get_user_push_subscriptions,
     increment_fail_count,
 )
@@ -346,9 +347,12 @@ class DatabaseManager(AppService):
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = _(get_user_push_subscriptions)
-    delete_push_subscription_by_endpoint = _(delete_push_subscription_by_endpoint)
+    delete_push_subscription = _(delete_push_subscription)
     increment_push_fail_count = _(
         increment_fail_count, name="increment_push_fail_count"
+    )
+    cleanup_failed_push_subscriptions = _(
+        cleanup_failed_subscriptions, name="cleanup_failed_push_subscriptions"
     )
 
     # ============ Platform Linking ============ #
@@ -571,8 +575,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Push Notifications ============ #
     get_user_push_subscriptions = d.get_user_push_subscriptions
-    delete_push_subscription_by_endpoint = d.delete_push_subscription_by_endpoint
+    delete_push_subscription = d.delete_push_subscription
     increment_push_fail_count = d.increment_push_fail_count
+    cleanup_failed_push_subscriptions = d.cleanup_failed_push_subscriptions
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner

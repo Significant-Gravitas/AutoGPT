@@ -28,7 +28,7 @@ export async function sendSubscriptionToServer(
         user_agent: navigator.userAgent,
       }),
     });
-    return response.ok || response.status === 204;
+    return response.ok;
   } catch {
     return false;
   }
@@ -43,7 +43,7 @@ export async function removeSubscriptionFromServer(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ endpoint }),
     });
-    return response.ok || response.status === 204;
+    return response.ok;
   } catch {
     return false;
   }

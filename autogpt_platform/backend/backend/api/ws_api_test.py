@@ -7,8 +7,15 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
 from backend.api.conn_manager import ConnectionManager
+from backend.api.model import NotificationPayload
 from backend.api.test_helpers import override_config
-from backend.api.ws_api import AppEnvironment, WebsocketServer, WSMessage, WSMethod
+from backend.api.ws_api import (
+    AppEnvironment,
+    WebsocketServer,
+    WSMessage,
+    WSMethod,
+    _safe_send_push,
+)
 from backend.api.ws_api import app as websocket_app
 from backend.api.ws_api import (
     handle_subscribe,
@@ -294,3 +301,30 @@ async def test_handle_unsubscribe_missing_data(
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_safe_send_push_swallows_exceptions(mocker) -> None:
+    mocker.patch(
+        "backend.api.ws_api.send_push_for_user",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("push backend down"),
+    )
+
+    # Must not raise — the WS notification worker can't tolerate errors here.
+    await _safe_send_push(
+        "user-1", NotificationPayload(type="agent_run", event="completed")
+    )
+
+
+@pytest.mark.asyncio
+async def test_safe_send_push_delegates_to_send_push_for_user(mocker) -> None:
+    mock_send = mocker.patch(
+        "backend.api.ws_api.send_push_for_user",
+        new_callable=AsyncMock,
+    )
+    payload = NotificationPayload(type="agent_run", event="completed")
+
+    await _safe_send_push("user-1", payload)
+
+    mock_send.assert_awaited_once_with("user-1", payload)

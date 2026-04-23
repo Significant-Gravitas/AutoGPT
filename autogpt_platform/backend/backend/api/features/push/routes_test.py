@@ -159,3 +159,58 @@ def test_unsubscribe_push_missing_endpoint():
     )
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "untrusted_endpoint",
+    [
+        "https://localhost/evil",
+        "https://127.0.0.1/evil",
+        "https://169.254.169.254/latest/meta-data/",
+        "https://internal-service.local/api",
+        "https://attacker.example.com/push",
+        "http://fcm.googleapis.com/fcm/send/abc",
+        "file:///etc/passwd",
+    ],
+)
+def test_subscribe_push_rejects_untrusted_endpoints(mocker, untrusted_endpoint):
+    mock_upsert = mocker.patch(
+        "backend.api.features.push.routes.upsert_push_subscription",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/subscribe",
+        json={
+            "endpoint": untrusted_endpoint,
+            "keys": {
+                "p256dh": "test-p256dh-key",
+                "auth": "test-auth-key",
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    mock_upsert.assert_not_awaited()
+
+
+def test_subscribe_push_surfaces_cap_as_400(mocker):
+    mocker.patch(
+        "backend.api.features.push.routes.upsert_push_subscription",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Subscription limit of 20 per user reached"),
+    )
+
+    response = client.post(
+        "/subscribe",
+        json={
+            "endpoint": "https://fcm.googleapis.com/fcm/send/abc123",
+            "keys": {
+                "p256dh": "test-p256dh-key",
+                "auth": "test-auth-key",
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Subscription limit" in response.json()["detail"]

@@ -102,7 +102,7 @@ describe("sendSubscriptionToServer", () => {
 
   it("returns true on 204 response", async () => {
     vi.mocked(fetch).mockResolvedValue({
-      ok: false,
+      ok: true,
       status: 204,
     } as Response);
 
@@ -182,7 +182,7 @@ describe("removeSubscriptionFromServer", () => {
 
   it("returns true on 204 response", async () => {
     vi.mocked(fetch).mockResolvedValue({
-      ok: false,
+      ok: true,
       status: 204,
     } as Response);
 

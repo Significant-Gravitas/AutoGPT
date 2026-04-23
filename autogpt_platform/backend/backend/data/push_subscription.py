@@ -22,6 +22,17 @@ _PUSH_SERVICE_HOSTNAMES: list[str] = [
     "web.push.apple.com",
 ]
 
+# Cap on concurrent push subscriptions per user — one entry per device/browser
+# is typical, so this comfortably covers real usage while preventing an
+# authenticated user from registering unbounded endpoints to amplify outbound
+# traffic from the backend.
+MAX_SUBSCRIPTIONS_PER_USER = 20
+
+# Delete subscriptions with this many failed push attempts during periodic
+# cleanup. Web Push sends occasionally fail transiently; beyond this threshold
+# the endpoint is effectively dead and should be removed.
+MAX_PUSH_FAILURES = 5
+
 
 async def validate_push_endpoint(endpoint: str) -> None:
     """Ensure a push-subscription endpoint is an HTTPS URL hosted on a known
@@ -67,6 +78,16 @@ async def upsert_push_subscription(
     auth: str,
     user_agent: str | None = None,
 ) -> PushSubscription:
+    existing = await PushSubscription.prisma().find_many(
+        where={"userId": user_id},
+    )
+    # Allow updates to an existing endpoint; only block when adding a *new* one
+    # past the cap.
+    has_this_endpoint = any(row.endpoint == endpoint for row in existing)
+    if len(existing) >= MAX_SUBSCRIPTIONS_PER_USER and not has_this_endpoint:
+        raise ValueError(
+            f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
+        )
     return await PushSubscription.prisma().upsert(
         where={"userId_endpoint": {"userId": user_id, "endpoint": endpoint}},
         data={
@@ -99,13 +120,6 @@ async def delete_push_subscription(user_id: str, endpoint: str) -> None:
     )
 
 
-async def delete_push_subscription_by_endpoint(user_id: str, endpoint: str) -> None:
-    """Remove a stale subscription (e.g. 410 Gone from push service)."""
-    await PushSubscription.prisma().delete_many(
-        where={"userId": user_id, "endpoint": endpoint}
-    )
-
-
 async def increment_fail_count(user_id: str, endpoint: str) -> None:
     await PushSubscription.prisma().update_many(
         where={"userId": user_id, "endpoint": endpoint},
@@ -116,7 +130,9 @@ async def increment_fail_count(user_id: str, endpoint: str) -> None:
     )
 
 
-async def cleanup_failed_subscriptions(max_failures: int = 5) -> int:
+async def cleanup_failed_subscriptions(
+    max_failures: int = MAX_PUSH_FAILURES,
+) -> int:
     """Delete subscriptions that have exceeded the failure threshold."""
     result = await PushSubscription.prisma().delete_many(
         where={"failCount": {"gte": max_failures}}
