@@ -14,10 +14,22 @@ from backend.blocks.ayrshare.post_to_tiktok import PostToTikTokBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.blocks.ayrshare.post_to_youtube import PostToYouTubeBlock
 from backend.blocks.bannerbear.text_overlay import BannerbearTextOverlayBlock
+from backend.blocks.code_executor import (
+    ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
+)
+from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.jina.chunking import JinaChunkingBlock
+from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.executor.utils import block_usage_cost
-from backend.integrations.credentials_store import jina_credentials
+from backend.integrations.credentials_store import (
+    e2b_credentials,
+    fal_credentials,
+    jina_credentials,
+    webshare_proxy_credentials,
+)
 
 ALL_AYRSHARE_BLOCKS = [
     PostToBlueskyBlock,
@@ -100,13 +112,6 @@ def test_bannerbear_base_cost_is_three_credits():
 
 
 def test_e2b_sandbox_blocks_have_two_credit_floor():
-    from backend.blocks.code_executor import (
-        ExecuteCodeBlock,
-        ExecuteCodeStepBlock,
-        InstantiateCodeSandboxBlock,
-    )
-    from backend.integrations.credentials_store import e2b_credentials
-
     creds = {
         "credentials": {
             "id": e2b_credentials.id,
@@ -124,9 +129,6 @@ def test_e2b_sandbox_blocks_have_two_credit_floor():
 
 
 def test_fal_video_generator_has_ten_credit_floor():
-    from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
-    from backend.integrations.credentials_store import fal_credentials
-
     cost, _ = block_usage_cost(
         AIVideoGeneratorBlock(),
         {
@@ -141,9 +143,6 @@ def test_fal_video_generator_has_ten_credit_floor():
 
 
 def test_transcribe_youtube_has_one_credit_tooling_floor():
-    from backend.blocks.youtube import TranscribeYoutubeVideoBlock
-    from backend.integrations.credentials_store import webshare_proxy_credentials
-
     cost, _ = block_usage_cost(
         TranscribeYoutubeVideoBlock(),
         {
