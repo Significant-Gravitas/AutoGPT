@@ -1,6 +1,7 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import type { UIMessage } from "ai";
 import { useMemo, useRef } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
@@ -15,6 +16,16 @@ import { useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
 
+function trimVisibleMessagesForActiveRestore(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex(
+    (message) => message.role === "user",
+  );
+  if (lastUserIndex === -1 || lastUserIndex === messages.length - 1) {
+    return messages;
+  }
+  return messages.slice(0, lastUserIndex + 1);
+}
+
 export function useCopilotPage() {
   const { isUserLoading, isLoggedIn } = useSupabase();
   const isModeToggleEnabled = useGetFlag(Flag.CHAT_MODE_OPTION);
@@ -27,6 +38,7 @@ export function useCopilotPage() {
     rawSessionMessages,
     historicalDurations,
     hasActiveStream,
+    activeStreamStartedAt,
     hasMoreMessages,
     oldestSequence,
     isLoadingSession,
@@ -45,6 +57,7 @@ export function useCopilotPage() {
     status,
     error,
     isReconnecting,
+    isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,
     rateLimitMessage,
@@ -86,6 +99,13 @@ export function useCopilotPage() {
   // earlier assistant (Claude Agent SDK's `--resume` behaviour). See
   // helpers/stripReplayPrefix.ts for the three cases.
   const messages = useMemo(() => stripReplayPrefix(rawMessages), [rawMessages]);
+  const displayMessages = useMemo(
+    () =>
+      isRestoringActiveSession
+        ? trimVisibleMessagesForActiveRestore(messages)
+        : messages,
+    [isRestoringActiveSession, messages],
+  );
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.
@@ -110,8 +130,8 @@ export function useCopilotPage() {
   });
 
   // Wrap sendNewMessage with queue-in-flight routing: if a session is active
-  // and a turn is already running, POST the follow-up text to `/stream` so
-  // the backend buffers it; otherwise fall through to the normal send path.
+  // and a turn is already running, POST the follow-up text to the pending
+  // endpoint so the backend buffers it; otherwise fall through to normal send.
   async function onSend(message: string, files?: File[]) {
     const trimmed = message.trim();
     if (!trimmed && (!files || files.length === 0)) return;
@@ -128,13 +148,16 @@ export function useCopilotPage() {
       }
 
       try {
-        const result = await queueFollowUpMessage(sessionId, trimmed);
-        if (result.kind === "queued") {
-          appendChip(trimmed);
-        }
-        // kind === "raced_started_turn": the server already kicked off a new
-        // turn; useHydrateOnStreamEnd will surface its output when complete.
+        await queueFollowUpMessage(sessionId, trimmed);
+        appendChip(trimmed);
       } catch (err) {
+        if (
+          err instanceof Error &&
+          err.name === "QueueFollowUpNotActiveError"
+        ) {
+          await sendNewMessage(message, files);
+          return;
+        }
         toast({
           title: "Could not queue message",
           description: "Please wait for the current response to finish.",
@@ -160,11 +183,13 @@ export function useCopilotPage() {
 
   return {
     sessionId,
-    messages,
+    messages: displayMessages,
     status,
     error,
     stop,
     isReconnecting,
+    isRestoringActiveSession,
+    activeStreamStartedAt,
     isSyncing,
     isLoadingSession,
     isSessionError,

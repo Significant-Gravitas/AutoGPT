@@ -1,7 +1,12 @@
+import { toast } from "@/components/molecules/Toast/use-toast";
 import type { UIMessage } from "ai";
 import { useEffect, useRef } from "react";
 
-import { deduplicateMessages } from "./helpers";
+import {
+  deduplicateMessages,
+  hasInProgressAssistantParts,
+  resolveInterruptedMessage,
+} from "./helpers";
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
@@ -9,6 +14,14 @@ interface Args {
   status: ChatStatus;
   hydratedMessages: UIMessage[] | undefined;
   isReconnectScheduled: boolean;
+  /**
+   * Whether the backend currently has an active SSE stream for this
+   * session. Used to gate zombie-part recovery — if the backend is still
+   * streaming we leave in-progress parts alone (resume will fill them
+   * in); if it isn't, we finalise them so spinners stop and the user can
+   * resend.
+   */
+  hasActiveStream: boolean;
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
@@ -29,16 +42,26 @@ interface Args {
  * that was current at that moment, and refuse to force-hydrate until React
  * Query swaps in a new reference. Once we see a fresh reference, replace
  * and clear the flag.
+ *
+ * **Zombie-part recovery**: if the DB's view of the last assistant message
+ * has parts still in ``streaming`` / ``input-streaming`` /
+ * ``input-available`` AND the backend confirms no active stream, resolve
+ * them via ``resolveInterruptedMessage`` and surface a passive toast.
+ * This covers the case where the user switched away mid-stream, the
+ * backend crashed before finalising, and the user returned to a session
+ * the UI would otherwise render with permanent spinners.
  */
 export function useHydrateOnStreamEnd({
   status,
   hydratedMessages,
   isReconnectScheduled,
+  hasActiveStream,
   setMessages,
 }: Args) {
   const prevStatusRef = useRef(status);
   const needsForceHydrateRef = useRef(false);
   const staleRefAtStreamEnd = useRef<typeof hydratedMessages | null>(null);
+  const hasShownInterruptedToastRef = useRef(false);
 
   // Arm the force-hydrate flag the moment the stream transitions to idle.
   useEffect(() => {
@@ -59,22 +82,41 @@ export function useHydrateOnStreamEnd({
     if (status === "streaming" || status === "submitted") return;
     if (isReconnectScheduled) return;
 
+    const deduped = deduplicateMessages(hydratedMessages);
+    const needsZombieRecovery =
+      !hasActiveStream &&
+      hasInProgressAssistantParts(deduped[deduped.length - 1]);
+    const finalized = needsZombieRecovery
+      ? resolveInterruptedMessage(deduped)
+      : deduped;
+
+    if (needsZombieRecovery && !hasShownInterruptedToastRef.current) {
+      hasShownInterruptedToastRef.current = true;
+      toast({
+        title: "Previous response was interrupted",
+        description:
+          "The chat disconnected before the last response finished. Resend to try again.",
+      });
+    }
+
     if (needsForceHydrateRef.current) {
       if (hydratedMessages === staleRefAtStreamEnd.current) {
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
-      setMessages(deduplicateMessages(hydratedMessages));
+      setMessages(finalized);
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
       return;
     }
 
     // Regular length-gated top-up (e.g. pagination brought in older messages).
-    setMessages((prev) =>
-      prev.length >= hydratedMessages.length
-        ? prev
-        : deduplicateMessages(hydratedMessages),
-    );
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
+    setMessages((prev) => (prev.length >= finalized.length ? prev : finalized));
+  }, [
+    hydratedMessages,
+    setMessages,
+    status,
+    isReconnectScheduled,
+    hasActiveStream,
+  ]);
 }

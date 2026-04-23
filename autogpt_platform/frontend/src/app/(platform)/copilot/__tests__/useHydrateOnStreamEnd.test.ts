@@ -2,6 +2,11 @@ import { renderHook } from "@testing-library/react";
 import type { UIMessage } from "ai";
 import { describe, expect, it, vi } from "vitest";
 
+const mockToast = vi.fn();
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast: (...args: unknown[]) => mockToast(...args),
+}));
+
 import { useHydrateOnStreamEnd } from "../useHydrateOnStreamEnd";
 
 /** Use distinct default text per id so the assistant dedup doesn't collapse them. */
@@ -27,6 +32,7 @@ describe("useHydrateOnStreamEnd", () => {
         status: "streaming",
         hydratedMessages: [msg("a")],
         isReconnectScheduled: false,
+        hasActiveStream: false,
         setMessages,
       }),
     );
@@ -40,6 +46,7 @@ describe("useHydrateOnStreamEnd", () => {
         status: "ready",
         hydratedMessages: [msg("a")],
         isReconnectScheduled: true,
+        hasActiveStream: false,
         setMessages,
       }),
     );
@@ -56,6 +63,7 @@ describe("useHydrateOnStreamEnd", () => {
         status: "ready",
         hydratedMessages: fresh,
         isReconnectScheduled: false,
+        hasActiveStream: false,
         setMessages,
       }),
     );
@@ -85,6 +93,7 @@ describe("useHydrateOnStreamEnd", () => {
           status,
           hydratedMessages,
           isReconnectScheduled: false,
+          hasActiveStream: false,
           setMessages,
         }),
       {
@@ -124,9 +133,83 @@ describe("useHydrateOnStreamEnd", () => {
         status: "ready",
         hydratedMessages: undefined,
         isReconnectScheduled: false,
+        hasActiveStream: false,
         setMessages,
       }),
     );
     expect(setMessages).not.toHaveBeenCalled();
+  });
+
+  it("resolves in-progress parts + toasts when hydrated state is zombied and no active stream", () => {
+    mockToast.mockClear();
+    const setMessages = vi.fn();
+    const zombie: UIMessage = {
+      id: "a",
+      role: "assistant",
+      parts: [
+        {
+          type: "text" as const,
+          text: "half-written reply",
+          state: "streaming" as const,
+        },
+      ],
+    };
+
+    renderHook(() =>
+      useHydrateOnStreamEnd({
+        status: "ready",
+        hydratedMessages: [zombie],
+        isReconnectScheduled: false,
+        hasActiveStream: false,
+        setMessages,
+      }),
+    );
+
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(mockToast.mock.calls[0][0]).toMatchObject({
+      title: "Previous response was interrupted",
+    });
+    // setMessages is invoked once with a length-gated updater — pass a short
+    // prev and expect the replaced (finalised) messages back.
+    expect(setMessages).toHaveBeenCalledTimes(1);
+    const updater = setMessages.mock.calls[0][0] as (
+      prev: UIMessage[],
+    ) => UIMessage[];
+    const finalised = updater([]);
+    const last = finalised[finalised.length - 1];
+    const lastPart = last.parts[last.parts.length - 1];
+    expect(lastPart.type).toBe("text");
+    // Last appended part is the interrupted marker.
+    expect((lastPart as { text: string }).text.includes("interrupted")).toBe(
+      true,
+    );
+  });
+
+  it("leaves zombie parts alone when backend still has active stream", () => {
+    mockToast.mockClear();
+    const setMessages = vi.fn();
+    const partial: UIMessage = {
+      id: "a",
+      role: "assistant",
+      parts: [
+        {
+          type: "text" as const,
+          text: "still writing",
+          state: "streaming" as const,
+        },
+      ],
+    };
+
+    renderHook(() =>
+      useHydrateOnStreamEnd({
+        status: "ready",
+        hydratedMessages: [partial],
+        isReconnectScheduled: false,
+        hasActiveStream: true,
+        setMessages,
+      }),
+    );
+
+    expect(mockToast).not.toHaveBeenCalled();
   });
 });

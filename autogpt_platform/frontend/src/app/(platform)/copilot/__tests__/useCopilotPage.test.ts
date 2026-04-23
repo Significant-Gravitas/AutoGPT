@@ -6,6 +6,7 @@ const mockUseChatSession = vi.fn();
 const mockUseCopilotStream = vi.fn();
 const mockUseLoadMoreMessages = vi.fn();
 const mockQueueFollowUpMessage = vi.fn();
+const mockSendNewMessage = vi.fn();
 const mockToast = vi.fn();
 
 vi.mock("../useChatSession", () => ({
@@ -25,7 +26,7 @@ vi.mock("../useWorkflowImportAutoSubmit", () => ({
 }));
 vi.mock("../useSendMessage", () => ({
   useSendMessage: () => ({
-    onSend: vi.fn(),
+    onSend: (...args: unknown[]) => mockSendNewMessage(...args),
     isUploadingFiles: false,
     setPendingFileParts: vi.fn(),
   }),
@@ -69,6 +70,7 @@ function makeBaseChatSession(overrides: Record<string, unknown> = {}) {
     rawSessionMessages: [],
     historicalDurations: new Map(),
     hasActiveStream: false,
+    activeStreamStartedAt: null,
     hasMoreMessages: false,
     oldestSequence: null,
     isLoadingSession: false,
@@ -90,6 +92,7 @@ function makeBaseCopilotStream(overrides: Record<string, unknown> = {}) {
     status: "ready",
     error: undefined,
     isReconnecting: false,
+    isRestoringActiveSession: false,
     isSyncing: false,
     isUserStoppingRef: { current: false },
     rateLimitMessage: null,
@@ -129,6 +132,39 @@ describe("useCopilotPage — backward pagination message ordering", () => {
     // Backward: pagedMessages (older) come first
     expect(result.current.messages[0]).toEqual(pagedMsg);
     expect(result.current.messages[1]).toEqual(currentMsg);
+  });
+});
+
+describe("useCopilotPage — active session restore visibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("hides the trailing assistant tail until an active session is resumed", () => {
+    const userMessage = {
+      id: "user-1",
+      role: "user",
+      parts: [{ type: "text", text: "Tell me more" }],
+    };
+    const assistantMessage = {
+      id: "assistant-1",
+      role: "assistant",
+      parts: [{ type: "reasoning", text: "Working on it" }],
+    };
+
+    mockUseChatSession.mockReturnValue(makeBaseChatSession());
+    mockUseCopilotStream.mockReturnValue(
+      makeBaseCopilotStream({
+        messages: [userMessage, assistantMessage],
+        isRestoringActiveSession: true,
+      }),
+    );
+    mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
+
+    const { result } = renderHook(() => useCopilotPage());
+
+    expect(result.current.messages).toEqual([userMessage]);
+    expect(result.current.isRestoringActiveSession).toBe(true);
   });
 });
 
@@ -181,7 +217,6 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
     );
     mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
     mockQueueFollowUpMessage.mockResolvedValue({
-      kind: "queued",
       buffer_length: 1,
       max_buffer_length: 10,
       turn_in_flight: true,
@@ -203,16 +238,15 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
     });
   });
 
-  it("does not append a chip or toast when the server raced and started a new turn", async () => {
+  it("falls back to a normal send when the active turn has already ended", async () => {
     mockUseChatSession.mockReturnValue(makeBaseChatSession());
     mockUseCopilotStream.mockReturnValue(
       makeBaseCopilotStream({ status: "streaming" }),
     );
     mockUseLoadMoreMessages.mockReturnValue(makeBaseLoadMore());
-    mockQueueFollowUpMessage.mockResolvedValue({
-      kind: "raced_started_turn",
-      status: 200,
-    });
+    const notActiveError = new Error("no active turn");
+    notActiveError.name = "QueueFollowUpNotActiveError";
+    mockQueueFollowUpMessage.mockRejectedValue(notActiveError);
 
     const { result } = renderHook(() => useCopilotPage());
 
@@ -224,10 +258,8 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
       "sess-1",
       "follow-up",
     );
-    // No chip should appear — the server already started a new turn,
-    // useHydrateOnStreamEnd will surface the response.
+    expect(mockSendNewMessage).toHaveBeenCalledWith("follow-up", undefined);
     expect(result.current.queuedMessages).not.toContain("follow-up");
-    // No misleading error toast either.
     expect(mockToast).not.toHaveBeenCalledWith(
       expect.objectContaining({ title: "Could not queue message" }),
     );

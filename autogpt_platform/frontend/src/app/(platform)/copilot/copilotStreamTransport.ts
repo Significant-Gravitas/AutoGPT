@@ -2,7 +2,6 @@ import { environment } from "@/services/environment";
 import { DefaultChatTransport } from "ai";
 import type { FileUIPart } from "ai";
 
-import { useCopilotStreamStore } from "./copilotStreamStore";
 import { getCopilotAuthHeaders } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
@@ -27,9 +26,9 @@ interface CreateTransportArgs {
  * Two closures are attached:
  *  - `prepareSendMessagesRequest` — POST new user turns (includes file_ids,
  *    mode, model).
- *  - `prepareReconnectToStreamRequest` — GET-resume existing turns, appending
- *    `?last_chunk_id=…` from the per-session coord so the backend's XREAD can
- *    start at the exclusive successor instead of replaying from zero.
+ *  - `prepareReconnectToStreamRequest` — GET-resume existing turns from the
+ *    beginning of the active Redis turn so AI SDK sees a complete stream
+ *    envelope.
  */
 export function createCopilotTransport({
   sessionId,
@@ -66,12 +65,17 @@ export function createCopilotTransport({
       };
     },
     prepareReconnectToStreamRequest: async () => {
-      const coord = useCopilotStreamStore.getState().getCoord(sessionId);
-      const cursor = coord.lastChunkId;
+      // Always replay from "0-0" (no ?last_chunk_id). AI SDK v5's
+      // UIMessageStream parser throws UIMessageStreamError on any *-delta /
+      // *-end whose matching *-start is missing from its *parser-local*
+      // activeTextParts / activeReasoningParts state — and each
+      // resumeStream() spawns a fresh parser, so a cursor-based resume
+      // (which skips the envelope + *-start chunks that came before the
+      // cursor) crashes on the first orphan delta. Replay overlap with the
+      // in-memory `messages` is handled by `deduplicateMessages` on the
+      // consumer side.
       return {
-        api: cursor
-          ? `${baseUrl}?last_chunk_id=${encodeURIComponent(cursor)}`
-          : baseUrl,
+        api: baseUrl,
         headers: await getCopilotAuthHeaders(),
       };
     },

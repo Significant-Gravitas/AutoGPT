@@ -52,21 +52,21 @@ vi.mock("../helpers", () => ({
       return false;
     });
   },
+  hasInProgressAssistantParts: (message: UIMessage | undefined) => {
+    if (message?.role !== "assistant") return false;
+    return message.parts.some((part: UIMessage["parts"][number]) => {
+      if (!("state" in part) || typeof part.state !== "string") return false;
+      return (
+        part.state === "streaming" ||
+        part.state === "input-streaming" ||
+        part.state === "input-available"
+      );
+    });
+  },
   resolveInProgressTools: (msgs: UIMessage[]) => msgs,
+  resolveInterruptedMessage: (msgs: UIMessage[]) => msgs,
   getSendSuppressionReason: () => null,
   disconnectSessionStream: (sid: string) => mockDisconnectSessionStream(sid),
-  findLatestCursorChunkId: (messages: UIMessage[]): string | null => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const parts = messages[i].parts;
-      for (let j = parts.length - 1; j >= 0; j--) {
-        const part = parts[j] as { type?: unknown; data?: unknown };
-        if (part?.type !== "data-cursor") continue;
-        const data = part.data as { chunkId?: unknown } | undefined;
-        if (data && typeof data.chunkId === "string") return data.chunkId;
-      }
-    }
-    return null;
-  },
 }));
 
 // --- ai SDK mock (DefaultChatTransport must be constructible) ---
@@ -79,10 +79,12 @@ vi.mock("ai", () => ({
 // --- @ai-sdk/react useChat mock with callback capture ---
 type OnFinishArgs = { isDisconnect?: boolean; isAbort?: boolean };
 type UseChatOptions = {
+  id?: string;
   onFinish?: (args: OnFinishArgs) => void | Promise<void>;
   onError?: (e: Error) => void;
 };
 let capturedUseChatOptions: UseChatOptions | null = null;
+const capturedUseChatIds: string[] = [];
 const mockResumeStream = vi.fn();
 const mockSdkStop = vi.fn();
 const mockSdkSendMessage = vi.fn();
@@ -93,6 +95,7 @@ let mockStatus: "ready" | "streaming" | "submitted" | "error" = "ready";
 vi.mock("@ai-sdk/react", () => ({
   useChat: (opts: UseChatOptions) => {
     capturedUseChatOptions = opts;
+    capturedUseChatIds.push(opts.id ?? "");
     return {
       messages: mockMessages,
       sendMessage: mockSdkSendMessage,
@@ -128,6 +131,7 @@ beforeEach(() => {
   mockMessages = [];
   mockStatus = "ready";
   capturedUseChatOptions = null;
+  capturedUseChatIds.length = 0;
   mockResumeStream.mockClear();
   mockSdkStop.mockClear();
   mockSdkSendMessage.mockClear();
@@ -147,6 +151,22 @@ afterEach(() => {
 });
 
 describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
+  it("uses a fresh AI SDK chat instance id on each mount of the same session", () => {
+    const first = renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-1" }),
+    });
+    first.unmount();
+
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-1" }),
+    });
+
+    expect(capturedUseChatIds).toHaveLength(2);
+    expect(capturedUseChatIds[0]).toMatch(/^sess-1:/);
+    expect(capturedUseChatIds[1]).toMatch(/^sess-1:/);
+    expect(capturedUseChatIds[0]).not.toBe(capturedUseChatIds[1]);
+  });
+
   it("defers resume until hydration completes when hydratedMessages arrives late", () => {
     // Arrange: active backend stream, hydration NOT yet complete.
     const { rerender } = renderHook((args: Args) => useCopilotStream(args), {
@@ -169,6 +189,48 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
 
     // pendingResumeRef should have been flushed exactly once.
     expect(mockResumeStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports active-session restore until visible content arrives", () => {
+    const { result, rerender } = renderHook(
+      (args: Args) => useCopilotStream(args),
+      {
+        initialProps: makeArgs({
+          hasActiveStream: true,
+          hydratedMessages: [],
+        }),
+      },
+    );
+
+    expect(result.current.isRestoringActiveSession).toBe(true);
+
+    // Status flipping to "streaming" is NOT enough: the latch waits for
+    // actual content so the "Retrieving latest messages" spinner stays up
+    // through the pre-content window of a GET-resume.
+    mockStatus = "streaming";
+    rerender(
+      makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [],
+      }),
+    );
+    expect(result.current.isRestoringActiveSession).toBe(true);
+
+    // Once the stream produces real content, the restore indicator flips off.
+    mockMessages = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Hello" }],
+      } as unknown as UIMessage,
+    ];
+    rerender(
+      makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [],
+      }),
+    );
+    expect(result.current.isRestoringActiveSession).toBe(false);
   });
 
   it("does not double-resume when hydration arrives after an already-queued resume", () => {
@@ -201,6 +263,73 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
 
     rerender(makeArgs({ hasActiveStream: true, hydratedMessages: [] }));
 
+    expect(mockResumeStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("drops a trailing assistant snapshot before full replay resume", () => {
+    const userMessage: UIMessage = {
+      id: "u1",
+      role: "user",
+      parts: [{ type: "text", text: "hello", state: "done" }],
+    };
+    const assistantMessage: UIMessage = {
+      id: "a1",
+      role: "assistant",
+      parts: [{ type: "text", text: "partial", state: "streaming" }],
+    };
+    mockMessages = [userMessage, assistantMessage];
+
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [userMessage, assistantMessage],
+      }),
+    });
+
+    const messageUpdaters = mockSetMessages.mock.calls
+      .map(([arg]) => arg)
+      .filter((arg) => typeof arg === "function") as Array<
+      (messages: UIMessage[]) => UIMessage[]
+    >;
+    const resumeUpdater = messageUpdaters[messageUpdaters.length - 1];
+
+    expect(resumeUpdater?.([userMessage, assistantMessage])).toEqual([
+      userMessage,
+    ]);
+    expect(mockResumeStream).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a completed trailing assistant before full replay resume", () => {
+    const userMessage: UIMessage = {
+      id: "u1",
+      role: "user",
+      parts: [{ type: "text", text: "hello", state: "done" }],
+    };
+    const assistantMessage: UIMessage = {
+      id: "a1",
+      role: "assistant",
+      parts: [{ type: "text", text: "final", state: "done" }],
+    };
+    mockMessages = [userMessage, assistantMessage];
+
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [userMessage, assistantMessage],
+      }),
+    });
+
+    const messageUpdaters = mockSetMessages.mock.calls
+      .map(([arg]) => arg)
+      .filter((arg) => typeof arg === "function") as Array<
+      (messages: UIMessage[]) => UIMessage[]
+    >;
+    const resumeUpdater = messageUpdaters[messageUpdaters.length - 1];
+
+    expect(resumeUpdater?.([userMessage, assistantMessage])).toEqual([
+      userMessage,
+      assistantMessage,
+    ]);
     expect(mockResumeStream).toHaveBeenCalledTimes(1);
   });
 });
@@ -299,62 +428,10 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
   });
 });
 
-describe("useCopilotStream — cursor tracking for incremental resume", () => {
-  it("records the latest data-cursor chunkId on the per-session coord", () => {
-    const assistantWithCursor: UIMessage = {
-      id: "assistant-1",
-      role: "assistant",
-      parts: [
-        { type: "text", text: "hi", state: "done" },
-        {
-          type: "data-cursor",
-          data: { chunkId: "1700000000000-0" },
-        } as unknown as UIMessage["parts"][number],
-        { type: "text", text: "there", state: "done" },
-        {
-          type: "data-cursor",
-          data: { chunkId: "1700000000001-0" },
-        } as unknown as UIMessage["parts"][number],
-      ],
-    };
-    mockMessages = [assistantWithCursor];
-
-    renderHook((args: Args) => useCopilotStream(args), {
-      initialProps: makeArgs({ hasActiveStream: false }),
-    });
-
-    expect(
-      useCopilotStreamStore.getState().getCoord("sess-1").lastChunkId,
-    ).toBe("1700000000001-0");
-  });
-
-  it("preserves cursor across a simulated remount (persists per session)", () => {
-    // First mount populates the cursor.
-    const assistantWithCursor: UIMessage = {
-      id: "assistant-1",
-      role: "assistant",
-      parts: [
-        {
-          type: "data-cursor",
-          data: { chunkId: "1700000000005-0" },
-        } as unknown as UIMessage["parts"][number],
-      ],
-    };
-    mockMessages = [assistantWithCursor];
-
-    const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
-      initialProps: makeArgs({ sessionId: "sess-A", hasActiveStream: false }),
-    });
-
-    unmount();
-
-    // Remount for the same session — cursor must still be there so the
-    // transport's prepareReconnectToStreamRequest can pass it on resume.
-    expect(
-      useCopilotStreamStore.getState().getCoord("sess-A").lastChunkId,
-    ).toBe("1700000000005-0");
-  });
-});
+// Cursor tracking for incremental resume was removed — resume always replays
+// from "0-0" because AI SDK v5's UIMessageStream parser throws on orphan
+// `*-delta` / `*-end` chunks, and a cursor-based XREAD skips the envelope +
+// `*-start` chunks that precede the cursor. See copilotStreamTransport.ts.
 
 describe("useCopilotStream — mount starts with clean useChat state", () => {
   it("calls setMessages([]) on mount to avoid stale Chat-instance bleed-through", () => {

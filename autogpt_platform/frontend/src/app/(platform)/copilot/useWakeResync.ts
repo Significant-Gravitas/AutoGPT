@@ -51,8 +51,6 @@ export function useWakeResync({
 
         if (hasActiveBackendStream(result)) {
           // Stream is still running — resume SSE to pick up live chunks.
-          // Backend picks up where we left off via the cursor stored on
-          // the per-session coord (see prepareReconnectToStreamRequest).
           resumeStreamRef.current();
         }
       } catch (err) {

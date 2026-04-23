@@ -225,6 +225,26 @@ describe("ChatMessagesContainer — loading", () => {
     render(<ChatMessagesContainer {...baseProps} isLoading={false} />);
     expect(screen.queryByTestId("loading-spinner")).toBeNull();
   });
+
+  it("shows the restore message instead of stale tail content during active-session resume", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("message-user")).toBeDefined();
+    expect(screen.getByText("Retrieving latest messages")).toBeDefined();
+  });
 });
 
 // ── pagination sentinel ───────────────────────────────────────────────────

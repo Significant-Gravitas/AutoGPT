@@ -26,6 +26,8 @@ export function CopilotChatHost({
     error,
     stop,
     isReconnecting,
+    isRestoringActiveSession,
+    activeStreamStartedAt,
     isSyncing,
     createSession,
     onSend,
@@ -65,6 +67,8 @@ export function CopilotChatHost({
           isSessionError={isSessionError}
           isCreatingSession={isCreatingSession}
           isReconnecting={isReconnecting}
+          isRestoringActiveSession={isRestoringActiveSession}
+          activeStreamStartedAt={activeStreamStartedAt}
           isSyncing={isSyncing}
           onCreateSession={createSession}
           onSend={onSend}

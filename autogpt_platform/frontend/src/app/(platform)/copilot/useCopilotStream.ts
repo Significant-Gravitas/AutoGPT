@@ -15,14 +15,16 @@ import {
   deduplicateMessages,
   disconnectSessionStream,
   extractSendMessageText,
-  findLatestCursorChunkId,
   getSendSuppressionReason,
   hasActiveBackendStream,
+  hasInProgressAssistantParts,
+  hasVisibleAssistantContent,
 } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useCopilotReconnect } from "./useCopilotReconnect";
 import { useCopilotStop } from "./useCopilotStop";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
+import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
 import { useWakeResync } from "./useWakeResync";
 
 /**
@@ -52,6 +54,11 @@ export function useCopilotStream({
   copilotMode,
   copilotModel,
 }: UseCopilotStreamArgs) {
+  const chatInstanceIdRef = useRef<string | null>(null);
+  if (sessionId && chatInstanceIdRef.current === null) {
+    chatInstanceIdRef.current = `${sessionId}:${crypto.randomUUID()}`;
+  }
+
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
@@ -115,7 +122,13 @@ export function useCopilotStream({
     setMessages,
     resumeStream,
   } = useChat({
-    id: sessionId ?? undefined,
+    // AI SDK caches Chat instances by `id` at module scope. Reusing the bare
+    // sessionId when revisiting a chat can resurrect stale status/message
+    // state from the earlier mount, which leaves switched-away long-running
+    // sessions looking "active" but frozen on return. Keep the backend
+    // sessionId stable in the transport URL, but give each React mount its own
+    // client-side chat instance key.
+    id: chatInstanceIdRef.current ?? undefined,
     transport: transport ?? undefined,
     onFinish: async ({ isDisconnect, isAbort }) => {
       if (isAbort || !sessionId) return;
@@ -149,12 +162,51 @@ export function useCopilotStream({
     },
   });
 
+  // Flipped to ``true`` the first time the user actually hits Send on this
+  // mount. Lets the ``hasConnectedThisMountRef`` latch below distinguish
+  // "resuming a turn that was already running" from "user sent a brand new
+  // turn" — in the latter case the ThinkingIndicator is the right surface
+  // from the first render, no "Retrieving latest messages" spinner needed.
+  const hasSentThisMountRef = useRef(false);
+
+  // Latch flips from ``false`` → ``true`` the first time the stream is
+  // considered "live" on this mount. Observed by ``isRestoringActiveSession``
+  // so the "Retrieving latest messages" spinner only shows while we haven't
+  // yet connected.
+  //
+  // Flip conditions (either is sufficient):
+  //  1. The user sent a fresh message this mount — we own the turn, so no
+  //     restore UI is appropriate even though status is briefly "submitted"
+  //     before the first byte lands.
+  //  2. The stream has produced at least one visible assistant content part
+  //     (text / reasoning with non-empty text, or any tool part). Checking
+  //     actual content — instead of just the ``submitted`` / ``streaming``
+  //     status — keeps the restore indicator up while a GET-resume is in
+  //     flight with no bytes yet, which is the exact window the user would
+  //     otherwise see a misleading "Processing your request…• 41s" in.
+  const hasConnectedThisMountRef = useRef(false);
+  if (!hasConnectedThisMountRef.current) {
+    if (
+      hasSentThisMountRef.current ||
+      hasVisibleAssistantContent(rawMessages)
+    ) {
+      hasConnectedThisMountRef.current = true;
+    }
+  }
+
   // Keep stable refs to sdkStop and resumeStream so async callbacks
   // (wake re-sync, reconnect timer, unmount cleanup) always invoke the
   // latest version without stale-closure bugs.
   const sdkStopRef = useRef(sdkStop);
   sdkStopRef.current = sdkStop;
-  resumeStreamRef.current = resumeStream;
+  function resumeStreamFromStart() {
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
+    });
+    resumeStream();
+  }
+  resumeStreamRef.current = resumeStreamFromStart;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
 
@@ -206,17 +258,48 @@ export function useCopilotStream({
         .getState()
         .updateCoord(sid, { lastSubmittedMessageText: text });
     }
+    hasSentThisMountRef.current = true;
     return sdkSendMessage(...args);
   }
 
   // Deduplicate messages continuously to prevent duplicates when resuming streams.
   const messages = deduplicateMessages(rawMessages);
 
+  // Cheap signal that changes on any stream activity — drives the stall
+  // watchdog. Counts messages, the last message's parts, and the total
+  // text length on the last message so in-place part updates (token
+  // streaming) also tick the signal.
+  const streamActivityToken = useMemo(() => {
+    const last = rawMessages[rawMessages.length - 1];
+    let textLen = 0;
+    if (last) {
+      for (const part of last.parts) {
+        if ("text" in part && typeof part.text === "string") {
+          textLen += part.text.length;
+        }
+      }
+    }
+    return `${rawMessages.length}:${last?.parts.length ?? 0}:${textLen}`;
+  }, [rawMessages]);
+
   const stop = useCopilotStop({
     sessionId,
     sdkStop,
     setMessages,
     isUserStoppingRef,
+  });
+
+  // Silent-stall watchdog: triggers the reconnect cascade if the stream
+  // sits in "submitted" / "streaming" with no activity for 60 s. Handles
+  // the case where AI SDK's onFinish / onError never fire (backend hung,
+  // Redis zombie, etc.) and the UI would otherwise stay stuck forever.
+  useStreamActivityWatchdog({
+    sessionId,
+    status,
+    activityToken: streamActivityToken,
+    isReconnectScheduled,
+    isUserStoppingRef,
+    handleReconnectRef,
   });
 
   // ---------------------------------------------------------------------------
@@ -261,11 +344,14 @@ export function useCopilotStream({
 
   // After-stream hydration — force-replace AI-SDK state with the DB's view
   // once React Query has actually refetched, then keep length-gated top-ups
-  // working for pagination. See useHydrateOnStreamEnd for the timing dance.
+  // working for pagination. Also repairs zombie in-progress parts when the
+  // backend confirms no active stream. See useHydrateOnStreamEnd for the
+  // timing dance.
   useHydrateOnStreamEnd({
     status,
     hydratedMessages,
     isReconnectScheduled,
+    hasActiveStream,
     setMessages,
   });
 
@@ -312,23 +398,6 @@ export function useCopilotStream({
       });
     }
   }, [status, sessionId, queryClient, isReconnectScheduled]);
-
-  // Track the most recent `data-cursor` Redis stream ID emitted by the
-  // backend (one is sent after every chunk — see StreamCursor). Stored on
-  // the per-session coord in Zustand so it SURVIVES a session switch and
-  // `prepareReconnectToStreamRequest` can append `?last_chunk_id=…` on the
-  // next resume, making XREAD resume at the exclusive successor instead of
-  // replaying the full turn.
-  useEffect(() => {
-    if (!sessionId) return;
-    const latest = findLatestCursorChunkId(rawMessages);
-    if (!latest) return;
-    const coord = useCopilotStreamStore.getState().getCoord(sessionId);
-    if (coord.lastChunkId === latest) return;
-    useCopilotStreamStore
-      .getState()
-      .updateCoord(sessionId, { lastChunkId: latest });
-  }, [rawMessages, sessionId]);
 
   // Resume an active stream AFTER hydration completes.
   // Only runs when this mount opens on a session with an already-active
@@ -392,6 +461,12 @@ export function useCopilotStream({
     (isReconnectScheduled ||
       (hasActiveStream && status !== "streaming" && status !== "submitted"));
 
+  const isRestoringActiveSession =
+    !isUserStoppingRef.current &&
+    !reconnectExhausted &&
+    hasActiveStream &&
+    !hasConnectedThisMountRef.current;
+
   return {
     messages,
     setMessages,
@@ -400,6 +475,7 @@ export function useCopilotStream({
     status,
     error: isReconnecting || isUserStoppingRef.current ? undefined : error,
     isReconnecting,
+    isRestoringActiveSession,
     isSyncing,
     isUserStoppingRef,
     rateLimitMessage,

@@ -47,7 +47,7 @@ export function UsageLimitReachedCard() {
   return (
     <div
       role="alert"
-      className="mx-auto mb-8 flex w-full max-w-[30rem] flex-col gap-3 rounded-2xl border border-orange-100 bg-[#fff3e614] p-4"
+      className="mx-auto flex w-full max-w-[30rem] flex-col gap-3 rounded-2xl border border-orange-100 bg-white/70 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-md"
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">

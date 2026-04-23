@@ -40,6 +40,11 @@ interface Props {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  isRestoringActiveSession?: boolean;
+  /** ISO start time of the active backend turn. Seeds the elapsed-time
+   *  counter so restored turns show honest age instead of counting from
+   *  zero on every fresh mount. */
+  activeStreamStartedAt?: string | null;
   sessionID?: string | null;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
@@ -48,6 +53,10 @@ interface Props {
   historicalDurations?: Map<string, number>;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** Extra bottom padding (px) applied to the scrollable message list so
+   *  overlays pinned above the input area (e.g. the usage-limit card) can
+   *  sit over the last message without permanently obscuring it. */
+  bottomContentPadding?: number;
 }
 
 function renderSegments(
@@ -251,6 +260,8 @@ export function ChatMessagesContainer({
   status,
   error,
   isLoading,
+  isRestoringActiveSession,
+  activeStreamStartedAt,
   sessionID,
   hasMoreMessages,
   isLoadingMore,
@@ -258,6 +269,7 @@ export function ChatMessagesContainer({
   onRetry,
   historicalDurations,
   queuedMessages,
+  bottomContentPadding,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -281,7 +293,7 @@ export function ChatMessagesContainer({
 
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    // Ignore bookkeeping parts — data-cursor fires after every chunk and
+    // Ignore bookkeeping parts. data-cursor is legacy resume metadata and
     // data-status is transient copy for the Thinking indicator; neither
     // counts as "real" content that hides the indicator.
     const parts = lastMessage.parts.filter(
@@ -336,10 +348,18 @@ export function ChatMessagesContainer({
     return null;
   })();
 
+  // Suppressed during active-session restore so the ThinkingIndicator and
+  // the "Retrieving latest messages" spinner can't both render — the
+  // restore spinner wins until real content arrives (see the
+  // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
   const showThinking =
-    status === "submitted" || (status === "streaming" && !hasInflight);
+    !isRestoringActiveSession &&
+    (status === "submitted" || (status === "streaming" && !hasInflight));
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+  const { elapsedSeconds } = useElapsedTimer(
+    isActivelyStreaming,
+    activeStreamStartedAt,
+  );
   const indicator = (
     <ThinkingIndicator
       active={showThinking}
@@ -376,7 +396,14 @@ export function ChatMessagesContainer({
           : "opacity-100 transition-opacity duration-100 ease-out")
       }
     >
-      <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
+      <ConversationContent
+        className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6"
+        style={
+          bottomContentPadding
+            ? { paddingBottom: bottomContentPadding + 24 }
+            : undefined
+        }
+      >
         {hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
@@ -385,7 +412,7 @@ export function ChatMessagesContainer({
             onLoadMore={onLoadMore}
           />
         )}
-        {isLoading && messages.length === 0 && (
+        {isLoading && messages.length === 0 && !isRestoringActiveSession && (
           <div className="flex flex-1 items-center justify-center">
             <LoadingSpinner className="text-neutral-600" />
           </div>
@@ -408,8 +435,7 @@ export function ChatMessagesContainer({
             (!nextMessage || nextMessage.role === "user");
           // data-cursor / data-status parts are internal bookkeeping —
           // strip them before any render/split logic so they never reach
-          // the user UI. (data-status surfaces via ThinkingIndicator;
-          // data-cursor drives resume-cursor tracking.)
+          // the user UI. data-status surfaces via ThinkingIndicator.
           const renderableParts = message.parts.filter(
             (p) => p.type !== "data-cursor" && p.type !== "data-status",
           );
@@ -520,6 +546,16 @@ export function ChatMessagesContainer({
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
               {indicator}
+            </MessageContent>
+          </Message>
+        )}
+        {isRestoringActiveSession && (
+          <Message from="assistant">
+            <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+              <div className="flex items-center gap-2 text-sm text-slate-500">
+                <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                <span>Retrieving latest messages</span>
+              </div>
             </MessageContent>
           </Message>
         )}

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "../../store";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
@@ -30,6 +30,11 @@ export interface ChatContainerProps {
   isCreatingSession: boolean;
   /** True when backend has an active stream but we haven't reconnected yet. */
   isReconnecting?: boolean;
+  /** True while reopening an already-running session before stream replay is live. */
+  isRestoringActiveSession?: boolean;
+  /** ISO start time of the active backend turn (if any). Seeds the elapsed
+   * counter for restored sessions so the UI shows honest turn age. */
+  activeStreamStartedAt?: string | null;
   /** True while re-syncing session state after device wake. */
   isSyncing?: boolean;
   onCreateSession: () => void | Promise<string>;
@@ -59,6 +64,8 @@ export const ChatContainer = ({
   isSessionError,
   isCreatingSession,
   isReconnecting,
+  isRestoringActiveSession,
+  activeStreamStartedAt,
   isSyncing,
   onCreateSession,
   onSend,
@@ -92,6 +99,28 @@ export const ChatContainer = ({
   const isInputDisabled = isSessionUnavailable || isLimitReached;
   const inputLayoutId = "copilot-2-chat-input";
 
+  // Measure the usage-limit overlay so the messages scroll area can pad its
+  // bottom — otherwise the last message would sit permanently behind the
+  // translucent card. Height varies with the card's own content (tier badge,
+  // insufficient-credits state, usage-bar layout) so a fixed value would
+  // either waste space or clip.
+  const usageCardRef = useRef<HTMLDivElement>(null);
+  const [usageCardHeight, setUsageCardHeight] = useState(0);
+  useEffect(() => {
+    if (!isLimitReached) {
+      setUsageCardHeight(0);
+      return;
+    }
+    const el = usageCardRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height ?? 0;
+      setUsageCardHeight(height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isLimitReached]);
+
   // Retry: re-send the last user message (used by ErrorCard on transient errors)
   const handleRetry = useCallback(() => {
     const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
@@ -122,6 +151,8 @@ export const ChatContainer = ({
                 status={status}
                 error={error}
                 isLoading={isLoadingSession}
+                isRestoringActiveSession={isRestoringActiveSession}
+                activeStreamStartedAt={activeStreamStartedAt}
                 sessionID={sessionId}
                 hasMoreMessages={hasMoreMessages}
                 isLoadingMore={isLoadingMore}
@@ -129,6 +160,7 @@ export const ChatContainer = ({
                 onRetry={handleRetry}
                 historicalDurations={historicalDurations}
                 queuedMessages={queuedMessages}
+                bottomContentPadding={usageCardHeight}
               />
               <motion.div
                 initial={{ opacity: 0 }}
@@ -137,7 +169,14 @@ export const ChatContainer = ({
                 className="relative px-3 pb-2 pt-2"
               >
                 <div className="pointer-events-none absolute left-0 right-0 top-[-18px] z-10 h-6 bg-gradient-to-b from-transparent to-[#f8f8f9]" />
-                {isLimitReached && <UsageLimitReachedCard />}
+                {isLimitReached && (
+                  <div
+                    ref={usageCardRef}
+                    className="absolute bottom-full left-0 right-0 z-10 px-3 pb-2"
+                  >
+                    <UsageLimitReachedCard />
+                  </div>
+                )}
                 <Tooltip open={isLimitReached ? undefined : false}>
                   <TooltipTrigger asChild>
                     <div>

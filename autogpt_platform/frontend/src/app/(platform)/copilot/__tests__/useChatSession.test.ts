@@ -26,7 +26,7 @@ vi.mock("nuqs", () => ({
 vi.mock("../helpers/convertChatSessionToUiMessages", () => ({
   convertChatSessionMessagesToUiMessages: vi.fn(() => ({
     messages: [],
-    historicalDurations: new Map(),
+    durations: new Map(),
   })),
 }));
 
@@ -38,13 +38,17 @@ vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
 }));
 
-function makeQueryResult(data: object | null) {
+function makeQueryResult(
+  data: object | null,
+  overrides: Record<string, unknown> = {},
+) {
   return {
     data: data ? { status: 200, data } : undefined,
     isLoading: false,
     isError: false,
     isFetching: false,
     refetch: vi.fn(),
+    ...overrides,
   };
 }
 
@@ -83,5 +87,28 @@ describe("useChatSession — pagination metadata", () => {
     );
     const { result } = renderHook(() => useChatSession());
     expect(result.current.hasMoreMessages).toBe(true);
+  });
+
+  it("does not expose cached session data while a refetch is in progress", () => {
+    mockUseGetV2GetSession.mockReturnValue(
+      makeQueryResult(
+        {
+          messages: [{ role: "user", content: "stale" }],
+          has_more_messages: true,
+          oldest_sequence: 50,
+          active_stream: true,
+        },
+        { isFetching: true },
+      ),
+    );
+
+    const { result } = renderHook(() => useChatSession());
+
+    expect(result.current.hydratedMessages).toBeUndefined();
+    expect(result.current.rawSessionMessages).toEqual([]);
+    expect(result.current.hasActiveStream).toBe(false);
+    expect(result.current.hasMoreMessages).toBe(false);
+    expect(result.current.oldestSequence).toBeNull();
+    expect(result.current.isLoadingSession).toBe(true);
   });
 });

@@ -2,24 +2,31 @@ import type { FileUIPart } from "ai";
 import { create } from "zustand";
 
 /**
- * Per-session state that must survive session-switches (hence Zustand, not
- * React refs). Everything transient per mount — resume flags, reconnect
- * counters, hydration gates — lives inside `useCopilotStream` as React
- * refs/state and resets naturally when the chat subtree remounts with
+ * Per-session state. Zustand (not React refs) so it can survive events we
+ * actually want to carry across visits — currently just `lastSubmittedMessageText`
+ * for duplicate-POST protection. Everything transient per mount — resume flags,
+ * reconnect counters, hydration gates — lives inside `useCopilotStream` as
+ * React refs/state and resets naturally when the chat subtree remounts with
  * `key={sessionId}`.
  *
- * Fields below reflect server-side truth that's meaningful across visits:
- * - lastChunkId: cursor for incremental resume (XREAD exclusive successor)
- * - lastSubmittedMessageText: blocks duplicate POSTs on resume
+ * - lastSubmittedMessageText: blocks duplicate POSTs on resume. Meaningful
+ *   across visits.
+ *
+ * (Previously also tracked `lastChunkId` as a cursor for incremental resume
+ * via `?last_chunk_id=…`. That optimisation is unsafe with AI SDK v5's
+ * `UIMessageStream` parser — it throws `UIMessageStreamError` on any
+ * `*-delta` / `*-end` whose `*-start` predecessor is missing from its
+ * parser-local `activeTextParts` / `activeReasoningParts` state, and a
+ * cursor-based XREAD skips the envelope + `*-start` chunks at the top of the
+ * turn. Every resume now replays from `0-0`; overlap is handled by
+ * `deduplicateMessages` on the consumer side.)
  */
 export interface SessionCoord {
   lastSubmittedMessageText: string | null;
-  lastChunkId: string | null;
 }
 
 const defaultCoord: SessionCoord = {
   lastSubmittedMessageText: null,
-  lastChunkId: null,
 };
 
 /**
