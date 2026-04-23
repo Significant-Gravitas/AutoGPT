@@ -25,12 +25,16 @@ class AyrshareAPIException(Exception):
 def _extract_error_message(response: Any) -> str:
     """Safely pull an error message out of an Ayrshare response.
 
-    Ayrshare surfaces errors in several shapes depending on the endpoint:
+    Ayrshare surfaces errors in several shapes depending on how far the
+    request got:
 
-    - flat:        ``{"status": "error", "message": "..."}``
-    - post errors: ``{"posts": [{"errors": [{"message": "..."}]}]}``
-      (e.g. a failed ``POST /post`` when a platform isn't linked surfaces
-      the real reason here, not at the root)
+    - flat:              ``{"status": "error", "message": "..."}``
+    - post-level reject: ``{"posts": [{"message": "Missing post parameter", ...}]}``
+      (the request itself was rejected — e.g. validation fails before
+      trying any platform)
+    - per-platform fail: ``{"posts": [{"errors": [{"message": "Twitter is not linked"}]}]}``
+      (a platform-specific failure after the request reached Ayrshare's
+      post-dispatch path)
 
     Tolerates bodies that aren't a dict (list, string, malformed JSON) —
     otherwise a ``.get()`` on a list raises AttributeError and the caller
@@ -44,21 +48,25 @@ def _extract_error_message(response: Any) -> str:
         return response.text() or "Unknown error"
 
     # Prefer the nested per-post error since that's where the actionable
-    # reason lives for create_post failures (e.g. "Twitter is not linked").
+    # reason lives for create_post failures.
     posts = data.get("posts")
     if isinstance(posts, list):
+        messages: list[str] = []
         for post in posts:
             if not isinstance(post, dict):
                 continue
+            # Shape: posts[].errors[].message (per-platform failure)
             errors = post.get("errors")
             if isinstance(errors, list):
-                messages = [
-                    str(e.get("message"))
-                    for e in errors
-                    if isinstance(e, dict) and e.get("message")
-                ]
-                if messages:
-                    return "; ".join(messages)
+                for e in errors:
+                    if isinstance(e, dict) and e.get("message"):
+                        messages.append(str(e["message"]))
+            # Shape: posts[].message (request-level reject)
+            post_msg = post.get("message")
+            if post_msg:
+                messages.append(str(post_msg))
+        if messages:
+            return "; ".join(messages)
 
     top = data.get("message")
     if top:
