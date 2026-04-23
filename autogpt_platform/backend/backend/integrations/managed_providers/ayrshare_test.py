@@ -6,6 +6,7 @@ import pytest
 from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials
+from backend.integrations.ayrshare import ProfileSummary
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareManagedProvider,
     _read_or_create_profile_key,
@@ -151,7 +152,9 @@ class TestReadOrCreateProfileKey:
         store, _ = self._mock_store(legacy_key=None)
 
         # Upstream already has a profile titled exactly `_profile_title`.
-        existing_profile = MagicMock(
+        # Using the real ProfileSummary model proves the /profiles list shape
+        # (which omits the `status` envelope) parses without ValidationError.
+        existing_profile = ProfileSummary(
             title=f"User {_USER_ID}",
             profileKey="recovered-key",
             refId="ref-123",

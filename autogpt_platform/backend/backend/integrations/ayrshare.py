@@ -63,6 +63,19 @@ class ProfileResponse(BaseModel):
     messagingActive: Optional[bool] = None
 
 
+class ProfileSummary(BaseModel):
+    """Per-profile entry returned by ``GET /profiles``.
+
+    The list endpoint omits the ``status`` envelope that ``create_profile``
+    includes, so a slimmer model avoids ValidationError during recovery.
+    """
+
+    title: str
+    refId: str
+    profileKey: str
+    messagingActive: Optional[bool] = None
+
+
 class PostResponse(BaseModel):
     status: str
     id: str
@@ -295,7 +308,7 @@ class AyrshareClient:
 
         return ProfileResponse(**response_data)
 
-    async def list_profiles(self) -> list[ProfileResponse]:
+    async def list_profiles(self) -> list[ProfileSummary]:
         """List every User Profile under the primary account.
 
         Lets callers recover from partial failures (e.g. ``create_profile``
@@ -332,9 +345,7 @@ class AyrshareClient:
                 f"Unexpected Ayrshare profiles response shape: {type(raw_profiles).__name__}",
                 response.status,
             )
-        # Some profile entries may lack optional fields — let Pydantic reject
-        # malformed rows so we notice schema drift upstream.
-        return [ProfileResponse(**raw) for raw in raw_profiles]
+        return [ProfileSummary(**raw) for raw in raw_profiles]
 
     async def create_post(
         self,
