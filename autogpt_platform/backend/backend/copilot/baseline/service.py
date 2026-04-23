@@ -1763,6 +1763,12 @@ async def stream_chat_completion_baseline(
     # UI for the whole window before flushing the backlog in one burst.
     loop_result_holder: list[Any] = [None]
     loop_task: asyncio.Task[None] | None = None
+    # Length of ``state.assistant_text`` at the end of the last non-final
+    # yield — used as an anchor by the budget-exhausted fallback to check
+    # whether the *terminal* round produced any visible text, not the whole
+    # turn. Without this, earlier-round chatter would suppress a fallback
+    # that should fire.
+    text_len_before_final_round: list[int] = [0]
 
     async def _run_tool_call_loop() -> None:
         # Read/write the current session via ``_session_holder`` so this
@@ -1804,6 +1810,11 @@ async def stream_chat_completion_baseline(
                 )
                 if is_final_yield:
                     continue
+                # Non-final yield: the next round may be the last one, so
+                # record where ``assistant_text`` ends now.  If that next
+                # round hits the budget without adding any text, the outer
+                # fallback uses this anchor to detect a silent finish.
+                text_len_before_final_round[0] = len(state.assistant_text)
                 try:
                     pending = await drain_pending_messages(session_id)
                 except Exception:
@@ -1934,7 +1945,10 @@ async def stream_chat_completion_baseline(
                 "ending turn gracefully",
                 loop_result.iterations,
             )
-            terminal_text = _budget_exhausted_notice_text(state.assistant_text)
+            # Check only the *terminal* round's text — earlier rounds may
+            # have produced chatter that doesn't explain the budget hit.
+            terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
+            terminal_text = _budget_exhausted_notice_text(terminal_round_text)
             if terminal_text is not None:
                 block_id = str(uuid.uuid4())
                 yield StreamTextStart(id=block_id)
