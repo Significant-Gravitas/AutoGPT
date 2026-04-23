@@ -45,7 +45,14 @@ function coerceSessionChatMessages(
           typeof msg.reasoning_duration_ms === "number"
             ? msg.reasoning_duration_ms
             : null,
-        created_at: typeof msg.created_at === "string" ? msg.created_at : null,
+        // The API mutator transforms ISO strings to Date objects before
+        // the data reaches here, so accept both string and Date.
+        created_at:
+          typeof msg.created_at === "string"
+            ? msg.created_at
+            : msg.created_at instanceof Date
+              ? msg.created_at.toISOString()
+              : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);

@@ -214,4 +214,33 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     const assistantId = result.messages[1].id;
     expect(result.durations.get(assistantId)).toBe(123);
   });
+
+  it("captures created_at when supplied as an ISO string", () => {
+    const iso = "2026-04-23T01:32:09.871Z";
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "hi", sequence: 0, created_at: iso }],
+      { isComplete: true },
+    );
+
+    const userId = result.messages[0].id;
+    expect(result.timestamps.get(userId)).toBe(iso);
+  });
+
+  it("captures created_at when the API mutator has already converted the field to a Date object", () => {
+    // The generated `customMutator` runs `transformDates()` on every response,
+    // which turns ISO date strings into Date objects before they reach the
+    // UI-shape converter.  A literal `typeof === "string"` check would reject
+    // the Date and silently drop the timestamp — breaking the "Thought for X"
+    // tooltip.  Assert we still recover the ISO value.
+    const date = new Date("2026-04-23T01:32:09.871Z");
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "hi", sequence: 0, created_at: date }],
+      { isComplete: true },
+    );
+
+    const userId = result.messages[0].id;
+    expect(result.timestamps.get(userId)).toBe(date.toISOString());
+  });
 });
