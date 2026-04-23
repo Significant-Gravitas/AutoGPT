@@ -225,6 +225,20 @@ class ChatConfig(BaseSettings):
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
     )
+    claude_agent_autocompact_pct_override: int = Field(
+        default=50,
+        ge=0,
+        le=100,
+        description="Auto-compaction trigger threshold as a percentage of the "
+        "CLI's perceived window (sets ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` on the "
+        "SDK subprocess). The CLI caps at its default (~93% of window); values "
+        "above that have no effect. 50 (= 100K of a 200K window) keeps Anthropic "
+        "context creation costs down. Set to 0 to omit the env var entirely "
+        "and let the CLI use its default ~93% threshold — useful when the "
+        "post-compaction floor (system prompt + tool defs ≈ 65-110K) is close "
+        "to the trigger and a more aggressive value causes back-to-back "
+        "compaction cascades. Skipped unconditionally for Moonshot routes.",
+    )
     claude_agent_max_thinking_tokens: int = Field(
         default=8192,
         ge=0,

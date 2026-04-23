@@ -402,3 +402,51 @@ class TestAutocompactPctOverrideMoonshotGate:
             result = build_sdk_env(model=model)
 
         assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+
+class TestAutocompactPctOverrideConfigurable:
+    """The override percentage is read from
+    ``claude_agent_autocompact_pct_override`` so operators can tune it per
+    deployment.  Setting to 0 omits the env var entirely (CLI uses its
+    ~93% default), useful when the post-compact floor (system prompt +
+    tool defs ≈ 65-110K) sits close to an aggressive trigger and
+    cascading recompactions show up.
+    """
+
+    @pytest.mark.parametrize("pct", [25, 50, 70, 93])
+    def test_config_value_propagates_to_env(self, pct):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=pct
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-4-6")
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == str(pct)
+
+    def test_zero_omits_env_var(self):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=0
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-4-6")
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+    def test_moonshot_still_skipped_regardless_of_config(self):
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model="moonshotai/kimi-k2.6",
+            claude_agent_autocompact_pct_override=70,
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="moonshotai/kimi-k2.6")
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result

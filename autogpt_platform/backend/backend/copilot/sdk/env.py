@@ -110,18 +110,18 @@ def build_sdk_env(
     # this flag harmlessly (those betas are not enabled there either by default).
     env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
 
-    # Trigger context compaction earlier — default is 70% of 200K = 140K.
-    # Set to 50% = 100K to keep context smaller and reduce cache creation costs.
-    # Context >200K accounts for 54% of total cost despite being only 3% of calls.
-    #
-    # Skipped for Moonshot (Kimi) routes: prompt cache creation is a no-op on
-    # Moonshot's OpenRouter endpoint (cache_create returns 0), so the
-    # cache-cost rationale doesn't apply.  Forcing 50% threshold made the CLI
-    # auto-compact 3+ times per turn against Kimi's larger effective context,
-    # each compaction adding a slow LLM round-trip.  Letting the CLI use its
-    # default (~93% of perceived window) cuts compaction passes to 0-1.
-    if not is_moonshot_model(model):
-        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "50"
+    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
+    # Lowering it via env keeps context smaller and cache creation costs down on
+    # Anthropic.  Skipped for Moonshot routes (no cache_create benefit) and when
+    # the operator sets the config to 0 (to avoid cascade-compaction when the
+    # post-compact floor sits too close to the trigger).
+    if (
+        not is_moonshot_model(model)
+        and config.claude_agent_autocompact_pct_override > 0
+    ):
+        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
+            config.claude_agent_autocompact_pct_override
+        )
 
     # Disable gzip on API responses to prevent ZlibError decompression
     # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
