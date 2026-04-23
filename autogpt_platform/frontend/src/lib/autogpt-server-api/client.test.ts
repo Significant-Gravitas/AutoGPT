@@ -1,5 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { buildOAuthLoginQuery } from "./client";
+import { describe, expect, it, vi } from "vitest";
+import BackendAPI, { buildOAuthLoginQuery } from "./client";
+
+describe("BackendAPI.oAuthLogin", () => {
+  it("passes credentialID through to buildOAuthLoginQuery", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    const spy = vi.spyOn(api as any, "_get").mockResolvedValue({
+      login_url: "https://accounts.google.com/o/oauth2/auth",
+      state_token: "state-abc",
+    });
+
+    const result = await api.oAuthLogin("google", ["drive.file"], "cred-1");
+
+    expect(spy).toHaveBeenCalledWith("/integrations/google/login", {
+      scopes: "drive.file",
+      credential_id: "cred-1",
+    });
+    expect(result).toEqual({
+      login_url: "https://accounts.google.com/o/oauth2/auth",
+      state_token: "state-abc",
+    });
+  });
+
+  it("omits query when no scopes or credentialID", async () => {
+    const api = new BackendAPI("http://test", "ws://test");
+    const spy = vi
+      .spyOn(api as any, "_get")
+      .mockResolvedValue({ login_url: "url", state_token: "tok" });
+
+    await api.oAuthLogin("github");
+
+    expect(spy).toHaveBeenCalledWith(
+      "/integrations/github/login",
+      undefined,
+    );
+  });
+});
 
 describe("buildOAuthLoginQuery", () => {
   it("returns undefined when called with no args", () => {

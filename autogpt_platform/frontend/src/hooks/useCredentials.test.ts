@@ -1,9 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import React from "react";
 import { classifyCredentials } from "./useCredentials";
+import useCredentials from "./useCredentials";
 import type {
   BlockIOCredentialsSubSchema,
   CredentialsMetaResponse,
 } from "@/lib/autogpt-server-api";
+import {
+  CredentialsProvidersContext,
+  type CredentialsProvidersContextType,
+} from "@/providers/agent-credentials/credentials-provider";
 
 function makeSchema(
   partial: Partial<BlockIOCredentialsSubSchema> = {},
@@ -162,5 +169,92 @@ describe("classifyCredentials", () => {
 
     expect(savedCredentials.map((c) => c.id).sort()).toEqual(["k", "p"]);
     expect(upgradeableCredentials).toEqual([]);
+  });
+});
+
+function makeProviderMap(
+  saved: CredentialsMetaResponse[],
+): CredentialsProvidersContextType {
+  return {
+    google: {
+      provider: "google",
+      providerName: "Google",
+      savedCredentials: saved,
+      isSystemProvider: false,
+      oAuthCallback: async () => makeCred({}),
+      mcpOAuthCallback: async () => makeCred({}),
+      createAPIKeyCredentials: async () => makeCred({}),
+      createUserPasswordCredentials: async () => makeCred({}),
+      createHostScopedCredentials: async () => makeCred({}),
+      deleteCredentials: async () => ({ deleted: true, revoked: true }),
+    },
+  };
+}
+
+describe("useCredentials (hook)", () => {
+  it("returns upgradeableCredentials for OAuth2 creds missing scopes", () => {
+    const schema = makeSchema({
+      credentials_provider: ["google"],
+      credentials_types: ["oauth2"],
+      credentials_scopes: ["drive.file", "drive.metadata"],
+    });
+
+    const full = makeCred({
+      id: "full",
+      scopes: ["drive.file", "drive.metadata"],
+    });
+    const narrow = makeCred({ id: "narrow", scopes: ["drive.file"] });
+    const providers = makeProviderMap([full, narrow]);
+
+    function Wrapper({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        CredentialsProvidersContext.Provider,
+        { value: providers },
+        children,
+      );
+    }
+
+    const { result } = renderHook(() => useCredentials(schema), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current).not.toBeNull();
+    const data = result.current!;
+    expect(data.isLoading).toBe(false);
+    if (data.isLoading) return;
+
+    expect(data.savedCredentials.map((c) => c.id)).toEqual(["full"]);
+    expect(data.upgradeableCredentials.map((c) => c.id)).toEqual(["narrow"]);
+  });
+
+  it("returns empty upgradeableCredentials when all scopes match", () => {
+    const schema = makeSchema({
+      credentials_provider: ["google"],
+      credentials_types: ["oauth2"],
+      credentials_scopes: ["drive.file"],
+    });
+
+    const cred = makeCred({ id: "ok", scopes: ["drive.file", "drive.meta"] });
+    const providers = makeProviderMap([cred]);
+
+    function Wrapper({ children }: { children: React.ReactNode }) {
+      return React.createElement(
+        CredentialsProvidersContext.Provider,
+        { value: providers },
+        children,
+      );
+    }
+
+    const { result } = renderHook(() => useCredentials(schema), {
+      wrapper: Wrapper,
+    });
+
+    expect(result.current).not.toBeNull();
+    const data = result.current!;
+    expect(data.isLoading).toBe(false);
+    if (data.isLoading) return;
+
+    expect(data.savedCredentials.map((c) => c.id)).toEqual(["ok"]);
+    expect(data.upgradeableCredentials).toEqual([]);
   });
 });
