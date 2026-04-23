@@ -96,24 +96,25 @@ class BlockCategory(Enum):
 
 
 class BlockCostType(str, Enum):
-    RUN = "run"  # cost_amount credits per run
-    BYTE = "byte"  # cost_amount credits per byte of input data
-    SECOND = "second"  # cost_amount credits per cost_divisor seconds of walltime
-    ITEMS = (
-        "items"  # cost_amount credits per cost_divisor items (from stats.provider_cost)
-    )
-    COST_USD = "cost_usd"  # cost_amount credits per USD of stats.provider_cost
-    TOKENS = "tokens"  # rate table lookup on (model, provider); see TOKEN_COST
+    # RUN       : cost_amount credits per run.
+    # BYTE      : cost_amount credits per byte of input data.
+    # SECOND    : cost_amount credits per cost_divisor walltime seconds.
+    # ITEMS     : cost_amount credits per cost_divisor items (from stats).
+    # COST_USD  : cost_amount credits per USD of stats.provider_cost.
+    # TOKENS    : per-(model, provider) rate table lookup; see TOKEN_COST.
+    RUN = "run"
+    BYTE = "byte"
+    SECOND = "second"
+    ITEMS = "items"
+    COST_USD = "cost_usd"
+    TOKENS = "tokens"
 
     @property
     def is_dynamic(self) -> bool:
-        """Whether the real charge is computed post-flight from stats.
+        """Real charge is computed post-flight from stats.
 
-        Dynamic types (SECOND/ITEMS/COST_USD/TOKENS) return 0 pre-flight
-        and bill the actual amount via charge_reconciled_usage once the
-        block finishes running. Per-iteration flat fees via
-        charge_extra_runtime_cost must skip dynamic blocks to avoid
-        double-charging against the aggregate reconciliation.
+        Dynamic types (SECOND/ITEMS/COST_USD/TOKENS) return 0 pre-flight and
+        settle against stats via charge_reconciled_usage once the block runs.
         """
         return self in _DYNAMIC_COST_TYPES
 

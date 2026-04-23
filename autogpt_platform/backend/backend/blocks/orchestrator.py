@@ -1207,14 +1207,13 @@ class OrchestratorBlock(Block):
                         sink_node_id,
                     )
                     tool_cost = 0
-                if tool_cost > 0:
-                    # Sub-block's wallet cost is already debited via
-                    # charge_node_usage above; roll it up into this node's
-                    # reconciled_cost_delta so graph_stats.cost reflects the
-                    # full tool-invocation spend without a double-charge.
-                    self.merge_stats(
-                        NodeExecutionStats(reconciled_cost_delta=tool_cost)
-                    )
+                # Do NOT merge tool_cost into reconciled_cost_delta:
+                # on_node_execution above ran the sub-block against this
+                # graph's own graph_stats_pair (manager.py:659-668), so its
+                # cost already lands in graph_stats.cost on the sub-block's
+                # completion. Adding it again would double-count in
+                # telemetry / UI / audit while the wallet stays correctly
+                # debited once.
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(
