@@ -29,10 +29,7 @@ describe("BackendAPI.oAuthLogin", () => {
 
     await api.oAuthLogin("github");
 
-    expect(spy).toHaveBeenCalledWith(
-      "/integrations/github/login",
-      undefined,
-    );
+    expect(spy).toHaveBeenCalledWith("/integrations/github/login", undefined);
   });
 });
 

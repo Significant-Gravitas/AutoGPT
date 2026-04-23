@@ -8,13 +8,10 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 vi.mock("@/services/scripts/scripts", () => ({
   loadScript: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock(
-  "@/app/api/__generated__/endpoints/integrations/integrations",
-  () => ({
-    getGetV1GetSpecificCredentialByIdQueryOptions: vi.fn(),
-    postV1GetPickerToken: vi.fn(),
-  }),
-);
+vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
+  getGetV1GetSpecificCredentialByIdQueryOptions: vi.fn(),
+  postV1GetPickerToken: vi.fn(),
+}));
 vi.mock("@/app/api/helpers", () => ({
   okData: vi.fn((resp: any) => (resp?.status === 200 ? resp.data : undefined)),
 }));
@@ -28,7 +25,9 @@ import {
 import { useGoogleDrivePicker } from "../useGoogleDrivePicker";
 import type { CredentialsMetaResponse } from "@/lib/autogpt-server-api";
 
-const mockUseCredentials = useCredentials as unknown as ReturnType<typeof vi.fn>;
+const mockUseCredentials = useCredentials as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockUseToast = useToast as unknown as ReturnType<typeof vi.fn>;
 const mockPostPickerToken = postV1GetPickerToken as unknown as ReturnType<
   typeof vi.fn

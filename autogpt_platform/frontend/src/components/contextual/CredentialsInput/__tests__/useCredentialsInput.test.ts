@@ -18,21 +18,22 @@ vi.mock("@/lib/oauth-popup", () => ({
   OAUTH_ERROR_FLOW_CANCELED: "OAuth flow was canceled",
   OAUTH_ERROR_FLOW_TIMED_OUT: "OAuth flow timed out",
 }));
-vi.mock(
-  "@/app/api/__generated__/endpoints/mcp/mcp",
-  () => ({
-    postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
-  }),
-);
+vi.mock("@/app/api/__generated__/endpoints/mcp/mcp", () => ({
+  postV2InitiateOauthLoginForAnMcpServer: vi.fn(),
+}));
 
 import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { openOAuthPopup } from "@/lib/oauth-popup";
 import { useCredentialsInput } from "../useCredentialsInput";
 
-const mockUseCredentials = useCredentials as unknown as ReturnType<typeof vi.fn>;
+const mockUseCredentials = useCredentials as unknown as ReturnType<
+  typeof vi.fn
+>;
 const mockUseBackendAPI = useBackendAPI as unknown as ReturnType<typeof vi.fn>;
-const mockOpenOAuthPopup = openOAuthPopup as unknown as ReturnType<typeof vi.fn>;
+const mockOpenOAuthPopup = openOAuthPopup as unknown as ReturnType<
+  typeof vi.fn
+>;
 
 function makeCred(
   partial: Partial<CredentialsMetaResponse>,
