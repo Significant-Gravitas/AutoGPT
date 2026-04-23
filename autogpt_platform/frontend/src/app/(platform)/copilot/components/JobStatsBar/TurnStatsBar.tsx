@@ -64,9 +64,14 @@ function TimeLabel({
       onClick={() => setClicked((c) => !c)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className="cursor-pointer text-[11px] tabular-nums text-neutral-500"
+      className="cursor-pointer text-[11px] tabular-nums text-neutral-500 transition-colors hover:text-neutral-700"
     >
-      {showDate ? localDate : labelText}
+      <span
+        key={showDate ? "date" : "label"}
+        className="inline-block duration-200 animate-in fade-in"
+      >
+        {showDate ? localDate : labelText}
+      </span>
     </button>
   );
 }

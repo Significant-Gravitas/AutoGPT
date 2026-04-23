@@ -308,6 +308,16 @@ export function convertChatSessionMessagesToUiMessages(
       if (msg.duration_ms != null) {
         patchStats(prevUI.id, { durationMs: msg.duration_ms });
       }
+      // Advance createdAt to the latest row in the merge so the live
+      // "Thinking Xs" counter anchors to the most recent sub-step rather
+      // than the turn's first assistant row.
+      const existingCreatedAt = stats.get(prevUI.id)?.createdAt;
+      if (
+        msg.created_at &&
+        (!existingCreatedAt || msg.created_at > existingCreatedAt)
+      ) {
+        patchStats(prevUI.id, { createdAt: msg.created_at });
+      }
       return;
     }
 

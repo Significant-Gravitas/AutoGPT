@@ -306,21 +306,20 @@ export function ChatMessagesContainer({
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
 
-  // Anchor the live "Considering Xs" counter to the current turn's user
-  // message `createdAt` so it survives a page refresh mid-turn (the counter
-  // would otherwise restart from zero at remount).
-  //
-  // During streaming the shape is [..., user, assistant-being-streamed].
-  // Only anchor when messages[-2] is a user message AND has a server
-  // timestamp in turnStats. On a fresh send that message hasn't been
-  // rehydrated yet — fall back to `null` so the timer uses Date.now() and
-  // correctly shows "0s, 1s, 2s…". Walking further back would pick up the
-  // previous turn's assistant and anchor 30s+ in the past.
+  // Anchor the live "Thinking Xs" counter to the latest server timestamp
+  // within the current turn.  Messages arrive in chronological order, so
+  // the first createdAt we hit walking backwards IS the latest one. Stop
+  // at the user-message boundary so a fresh send (where the user's just-
+  // optimistic message isn't in turnStats yet) doesn't fall back to the
+  // previous turn's assistant 30s+ in the past.
   const liveAnchorIso = useMemo(() => {
-    if (!turnStats || messages.length < 2) return null;
-    const prev = messages[messages.length - 2];
-    if (prev.role !== "user") return null;
-    return turnStats.get(prev.id)?.createdAt ?? null;
+    if (!turnStats) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const iso = turnStats.get(messages[i].id)?.createdAt;
+      if (iso) return iso;
+      if (messages[i].role === "user") return null;
+    }
+    return null;
   }, [messages, turnStats]);
 
   const { elapsedSeconds } = useElapsedTimer(
