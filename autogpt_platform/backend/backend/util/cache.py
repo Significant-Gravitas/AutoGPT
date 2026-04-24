@@ -47,23 +47,14 @@ _HMAC_SIG_LEN = 32
 @cache
 @conn_retry("Redis", "Acquiring cache connection")
 def _get_redis() -> RedisCluster:
-    """
-    Get the lazily-initialized Redis client for shared cache operations.
-    Uses @cache for thread-safe singleton behavior so services that only use
-    in-memory caching don't pay a connection until first shared-cache access.
-
-    All cache operations are single-key (GET/SETEX/DELETE/SCAN) so they are
-    cluster-safe; the pipeline in ``cache_clear`` is a per-command router
-    under ``RedisCluster``, so multi-key deletes across slots route
-    individually rather than as a cross-slot MULTI/EXEC.
-    """
-    host = settings.config.redis_host
-    # Reuse the same remap as ``backend.data.redis_client`` so compose's
-    # ``REDIS_USE_ANNOUNCED_ADDRESS`` flag takes effect here too.
+    """Lazily-initialized shared-cache Redis Cluster client (singleton)."""
+    # Local import breaks the redis_client <-> cache module cycle.
     from backend.data.redis_client import _address_remap
 
     c = RedisCluster(
-        startup_nodes=[ClusterNode(host, settings.config.redis_port)],
+        startup_nodes=[
+            ClusterNode(settings.config.redis_host, settings.config.redis_port)
+        ],
         password=settings.config.redis_password or None,
         decode_responses=False,  # Binary mode for pickle
         max_connections=50,
@@ -72,7 +63,7 @@ def _get_redis() -> RedisCluster:
         retry_on_timeout=True,
         address_remap=_address_remap,
     )
-    c.ping()  # Verify connection
+    c.ping()
     return c
 
 
