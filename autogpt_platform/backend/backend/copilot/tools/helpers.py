@@ -535,6 +535,7 @@ async def prepare_block_for_execution(
     session: ChatSession,
     session_id: str,
     dry_run: bool,
+    validate_only: bool = False,
 ) -> "BlockPreparation | ToolResponseBase":
     """Validate and prepare a block for execution.
 
@@ -640,7 +641,12 @@ async def prepare_block_for_execution(
         )
     ]
 
-    if (missing_credentials or picker_fields_missing) and not dry_run:
+    # validate_only suppresses the setup-card early-return — the caller is
+    # doing static introspection, rendering a picker would violate the
+    # documented no-side-effects contract of that mode.
+    if (missing_credentials or picker_fields_missing) and not (
+        dry_run or validate_only
+    ):
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())

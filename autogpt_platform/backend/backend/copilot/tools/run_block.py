@@ -128,6 +128,7 @@ class RunBlockTool(BaseTool):
             session=session,
             session_id=session_id,
             dry_run=dry_run,
+            validate_only=validate_only,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
