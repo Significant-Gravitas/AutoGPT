@@ -34,7 +34,7 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 from claude_agent_sdk.types import SystemPromptPreset
-from langfuse import propagate_attributes
+from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
@@ -437,6 +437,35 @@ _BARE_MESSAGE_TOKEN_FLOOR: int = 5_000
 # seeded JSONL upload stays compact and future gap injections are small.
 _SEED_TARGET_TOKENS: int = 30_000
 
+# Headroom subtracted from the CLI's autocompact threshold when sizing our
+# own retry-path compaction target.  Without this gap the post-compact
+# context would land just under the CLI's threshold and the next assistant
+# message would tip it back over → CLI immediately re-compacts → cascade.
+_COMPACTION_HEADROOM_TOKENS: int = 20_000
+
+
+def _compaction_target_tokens(model: str) -> int:
+    """Compaction target consistent with the CLI's autocompact threshold.
+
+    Mirrors the bundled CLI's ``i6_()`` formula for autocompact:
+    ``min(window * pct/100, window - 13K)``, then subtracts a 20K headroom
+    so post-compaction context sits comfortably below the CLI's trigger and
+    a follow-up assistant message doesn't immediately re-trigger.
+    Floors at 10K to preserve at least some history budget.
+    """
+    from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD, get_context_window
+
+    window = get_context_window(model)
+    if window is None:
+        return DEFAULT_TOKEN_THRESHOLD
+    pct = config.claude_agent_autocompact_pct_override
+    cli_buffer = 13_000  # E88 in the bundled CLI
+    if pct > 0 and not _is_moonshot_model(model):
+        cli_threshold = min(window * pct // 100, window - cli_buffer)
+    else:
+        cli_threshold = window - cli_buffer
+    return max(10_000, cli_threshold - _COMPACTION_HEADROOM_TOKENS)
+
 
 async def _reduce_context(
     transcript_content: str,
@@ -445,6 +474,7 @@ async def _reduce_context(
     sdk_cwd: str,
     log_prefix: str,
     attempt: int = 1,
+    runtime_model: str | None = None,
 ) -> ReducedContext:
     """Prepare reduced context for a retry attempt.
 
@@ -471,10 +501,15 @@ async def _reduce_context(
     # retry runs without --resume.  The compacted builder state is still
     # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
+        # The compactor LLM is fixed (config.thinking_standard_model); the
+        # token target is sized against the RUNTIME model since that's the
+        # one whose CLI autocompact threshold we're trying to land below.
+        target_model = runtime_model or config.thinking_standard_model
         compacted = await compact_transcript(
             transcript_content,
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
+            target_tokens=_compaction_target_tokens(target_model),
         )
         if (
             compacted
@@ -774,6 +809,17 @@ def _resolve_fallback_model() -> str | None:
     if not raw:
         return None
     return _normalize_model_name(raw)
+
+
+def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str | None:
+    """Pick the model that drives ``build_sdk_env``'s model-aware gates.
+
+    Use the fallback when it's Moonshot so a 529-triggered swap to Kimi
+    still suppresses ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``.
+    """
+    if fallback_model and _is_moonshot_model(fallback_model):
+        return fallback_model
+    return sdk_model
 
 
 async def _resolve_sdk_model_for_request(
@@ -3104,6 +3150,12 @@ async def stream_chat_completion_sdk(
 
     # OTEL context manager — initialized inside the try and cleaned up in finally.
     _otel_ctx: Any = None
+    # Parent Langfuse span for the turn — created so that the
+    # ``openrouter-cost-reconcile`` backfill event has a stable trace_id to
+    # attach to even though it fires after the SDK-emitted spans end.
+    # ``propagate_attributes`` alone doesn't create a span, so without this
+    # wrapper ``get_current_trace_id()`` returns None at the finally block.
+    _lf_span: Any = None
     skip_transcript_upload = False
     has_history = len(session.messages) > 1
     transcript_content: str = ""
@@ -3234,11 +3286,6 @@ async def stream_chat_completion_sdk(
             permissions=permissions,
         )
 
-        # Fail fast when no API credentials are available at all.
-        # sdk_cwd routes the CLI's temp dir into the per-session workspace
-        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
-        sdk_env = build_sdk_env(session_id=session_id, user_id=user_id, sdk_cwd=sdk_cwd)
-
         if not config.api_key and not config.use_claude_code_subscription:
             raise RuntimeError(
                 "No API key configured. Set OPEN_ROUTER_API_KEY, "
@@ -3250,7 +3297,19 @@ async def stream_chat_completion_sdk(
         mcp_server = create_copilot_mcp_server(use_e2b=use_e2b)
 
         # Resolve model (request tier → LD per-user override → config default).
+        # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
+        # Moonshot autocompact gate) can branch on the resolved slug.
         sdk_model = await _resolve_sdk_model_for_request(model, session_id, user_id)
+        fallback_model = _resolve_fallback_model()
+
+        # sdk_cwd routes the CLI's temp dir into the per-session workspace
+        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
+        sdk_env = build_sdk_env(
+            session_id=session_id,
+            user_id=user_id,
+            sdk_cwd=sdk_cwd,
+            model=_resolve_env_model(sdk_model, fallback_model),
+        )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -3318,10 +3377,10 @@ async def stream_chat_completion_sdk(
             # --- P0 guardrails ---
             # fallback_model: SDK auto-retries with this cheaper model on
             # 529 (overloaded) errors, avoiding user-visible failures.
-            "fallback_model": _resolve_fallback_model(),
+            "fallback_model": fallback_model,
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
-            "max_turns": config.claude_agent_max_turns,
+            "max_turns": config.agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             "max_budget_usd": config.claude_agent_max_budget_usd,
         }
@@ -3402,6 +3461,16 @@ async def stream_chat_completion_sdk(
         }
         if _user_tier:
             _otel_metadata["subscription_tier"] = _user_tier.value
+
+        # Open a Langfuse parent span so the trace_id is observable from
+        # the finally block — ``propagate_attributes`` only annotates an
+        # existing span, it does not create one.
+        try:
+            _lf_span = get_client().start_as_current_span(name="copilot-sdk-turn")
+            _lf_span.__enter__()
+        except Exception:
+            logger.debug("Failed to open Langfuse parent span", exc_info=True)
+            _lf_span = None
 
         _otel_ctx = propagate_attributes(
             user_id=user_id,
@@ -3662,6 +3731,7 @@ async def stream_chat_completion_sdk(
                     sdk_cwd,
                     log_prefix,
                     attempt=attempt,
+                    runtime_model=sdk_model,
                 )
                 state.transcript_builder = ctx.builder
                 state.use_resume = ctx.use_resume
@@ -4058,6 +4128,11 @@ async def stream_chat_completion_sdk(
         # point belongs to the next turn.
 
         # --- Close OTEL context (with cost attributes) ---
+        # Captured before __exit__ so the reconcile task (launched below,
+        # after the span closes) can attach a backfill event to this turn's
+        # Langfuse trace.  Without it, Langfuse shows the rate-card estimate
+        # only — for non-Anthropic OpenRouter routes that's wildly wrong.
+        langfuse_trace_id: str | None = None
         if _otel_ctx is not None:
             try:
                 span = otel_trace.get_current_span()
@@ -4081,6 +4156,18 @@ async def stream_chat_completion_sdk(
                 _otel_ctx.__exit__(*sys.exc_info())
             except Exception:
                 logger.warning("OTEL context teardown failed", exc_info=True)
+        if _lf_span is not None:
+            # Capture from our Langfuse parent span before tearing it down;
+            # tracks the lifetime of ``_lf_span`` so the trace id is still
+            # available if ``_otel_ctx`` was never entered.
+            try:
+                langfuse_trace_id = get_client().get_current_trace_id()
+            except Exception:
+                logger.debug("Failed to capture Langfuse trace_id", exc_info=True)
+            try:
+                _lf_span.__exit__(*sys.exc_info())
+            except Exception:
+                logger.warning("Langfuse parent span teardown failed", exc_info=True)
 
         # --- Persist token usage to session + rate-limit counters ---
         # Both must live in finally so they stay consistent even when an
@@ -4139,7 +4226,7 @@ async def stream_chat_completion_sdk(
             # Brief window (~0.5-2s) where the rate-limit counter is
             # unaware of this turn — back-to-back turns in that window
             # see a stale counter.
-            asyncio.create_task(
+            cost_reconcile_task = asyncio.create_task(
                 record_turn_cost_from_openrouter(
                     session=session,
                     user_id=user_id,
@@ -4155,8 +4242,11 @@ async def stream_chat_completion_sdk(
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,
+                    langfuse_trace_id=langfuse_trace_id,
                 )
             )
+            _background_tasks.add(cost_reconcile_task)
+            cost_reconcile_task.add_done_callback(_background_tasks.discard)
         else:
             # Reconcile disabled, OpenRouter inactive, or subscription
             # path (no gen-IDs).  Record the SDK CLI's

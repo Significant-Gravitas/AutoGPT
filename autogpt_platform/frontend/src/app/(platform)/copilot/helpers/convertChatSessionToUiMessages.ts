@@ -1,6 +1,13 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
+export interface TurnStats {
+  durationMs?: number;
+  createdAt?: string;
+}
+
+export type TurnStatsMap = Map<string, TurnStats>;
+
 interface SessionChatMessage {
   role: string;
   content: string | null;
@@ -8,6 +15,7 @@ interface SessionChatMessage {
   tool_calls: unknown[] | null;
   sequence: number | null;
   duration_ms: number | null;
+  created_at: string | null;
 }
 
 function coerceSessionChatMessages(
@@ -39,6 +47,14 @@ function coerceSessionChatMessages(
         sequence: typeof msg.sequence === "number" ? msg.sequence : null,
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
+        // The API mutator transforms ISO strings to Date objects before
+        // the data reaches here, so accept both string and Date.
+        created_at:
+          typeof msg.created_at === "string"
+            ? msg.created_at
+            : msg.created_at instanceof Date
+              ? msg.created_at.toISOString()
+              : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -166,7 +182,7 @@ export function convertChatSessionMessagesToUiMessages(
   },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
-  durations: Map<string, number>;
+  stats: TurnStatsMap;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -187,7 +203,12 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
-  const durations = new Map<string, number>();
+  const stats: TurnStatsMap = new Map();
+
+  function patchStats(id: string, patch: Partial<TurnStats>) {
+    const existing = stats.get(id) ?? {};
+    stats.set(id, { ...existing, ...patch });
+  }
 
   messages.forEach((msg, idx) => {
     if (msg.role === "tool") return;
@@ -285,7 +306,17 @@ export function convertChatSessionMessagesToUiMessages(
       prevUI.parts.push(...parts);
       // Capture duration on merged message (last assistant msg wins)
       if (msg.duration_ms != null) {
-        durations.set(prevUI.id, msg.duration_ms);
+        patchStats(prevUI.id, { durationMs: msg.duration_ms });
+      }
+      // Advance createdAt to the latest row in the merge so the live
+      // "Thinking Xs" counter anchors to the most recent sub-step rather
+      // than the turn's first assistant row.
+      const existingCreatedAt = stats.get(prevUI.id)?.createdAt;
+      if (
+        msg.created_at &&
+        (!existingCreatedAt || msg.created_at > existingCreatedAt)
+      ) {
+        patchStats(prevUI.id, { createdAt: msg.created_at });
       }
       return;
     }
@@ -302,10 +333,13 @@ export function convertChatSessionMessagesToUiMessages(
       parts,
     });
 
+    const patch: Partial<TurnStats> = {};
+    if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
-      durations.set(msgId, msg.duration_ms);
+      patch.durationMs = msg.duration_ms;
     }
+    if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });
 
-  return { messages: uiMessages, durations };
+  return { messages: uiMessages, stats };
 }

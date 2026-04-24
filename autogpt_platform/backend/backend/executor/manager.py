@@ -138,6 +138,123 @@ def execute_graph(
 T = TypeVar("T")
 
 
+async def _acquire_auto_credentials(
+    input_model: type[BlockSchema],
+    input_data: dict[str, Any],
+    creds_manager: "IntegrationCredentialsManager",
+    user_id: str,
+) -> tuple[dict[str, Any], list[AsyncRedisLock]]:
+    """
+    Resolve auto_credentials from GoogleDriveFileField-style inputs.
+
+    Returns:
+        (extra_exec_kwargs, locks): kwargs to inject into block execution, and
+        credential locks to release after execution completes.
+    """
+    extra_exec_kwargs: dict[str, Any] = {}
+    locks: list[AsyncRedisLock] = []
+
+    try:
+        for kwarg_name, info in input_model.get_auto_credentials_fields().items():
+            field_name = info["field_name"]
+            field_data = input_data.get(field_name)
+
+            if field_data and isinstance(field_data, dict):
+                # Check if _credentials_id key exists in the field data
+                if "_credentials_id" in field_data:
+                    cred_id = field_data["_credentials_id"]
+                    if cred_id is None:
+                        # Explicitly None means the value is being chained in
+                        # at execution time from an upstream block — skip.
+                        continue
+                    if not isinstance(cred_id, str) or not cred_id.strip():
+                        # Non-string or empty string is corrupted state.
+                        # Fail loudly so the user re-authenticates rather
+                        # than silently running with no creds.
+                        provider = info.get("config", {}).get(
+                            "provider", "external service"
+                        )
+                        file_name = field_data.get("name", "selected file")
+                        raise ValueError(
+                            f"{provider.capitalize()} credential id for "
+                            f"'{file_name}' in field '{field_name}' is empty "
+                            f"or invalid. Please open the agent in the "
+                            f"builder and re-select the file."
+                        )
+                    # Credential ID provided - acquire credentials
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
+                    file_name = field_data.get("name", "selected file")
+                    try:
+                        credentials, lock = await creds_manager.acquire(
+                            user_id, cred_id
+                        )
+                        locks.append(lock)
+                        extra_exec_kwargs[kwarg_name] = credentials
+                    except ValueError:
+                        raise ValueError(
+                            f"{provider.capitalize()} credentials for "
+                            f"'{file_name}' in field '{field_name}' are not "
+                            f"available in your account. "
+                            f"This can happen if the agent was created by another "
+                            f"user or the credentials were deleted. "
+                            f"Please open the agent in the builder and re-select "
+                            f"the file to authenticate with your own account."
+                        )
+                else:
+                    # _credentials_id key missing entirely - this is an error
+                    provider = info.get("config", {}).get(
+                        "provider", "external service"
+                    )
+                    file_name = field_data.get("name", "selected file")
+                    raise ValueError(
+                        f"Authentication missing for '{file_name}' in field "
+                        f"'{field_name}'. Please re-select the file to authenticate "
+                        f"with {provider.capitalize()}."
+                    )
+            elif field_data is None and field_name not in input_data:
+                # Field not in input_data at all = connected from upstream block, skip
+                pass
+            elif field_data is None or field_data == "":
+                # field_data is None/empty but key IS in input_data = user didn't select
+                provider = info.get("config", {}).get("provider", "external service")
+                raise ValueError(
+                    f"No file selected for '{field_name}'. "
+                    f"Please select a file to provide "
+                    f"{provider.capitalize()} authentication."
+                )
+            else:
+                # field_data is truthy but NOT a dict (e.g. bare Drive ID
+                # string, int, list). The graph validator catches this at
+                # save time, but API callers / legacy graphs can still
+                # reach here — surface what the value actually is instead
+                # of the misleading "No file selected" message.
+                provider = info.get("config", {}).get("provider", "external service")
+                raise ValueError(
+                    f"Invalid {type(field_data).__name__} value for "
+                    f"'{field_name}': this field expects a picker-populated "
+                    f"object carrying the user's credentials, not a bare "
+                    f"value. Please re-select the file via the picker to "
+                    f"provide {provider.capitalize()} authentication."
+                )
+    except BaseException:
+        # Release any locks already acquired so failures on later fields
+        # don't strand earlier credentials until Redis TTL expires them.
+        for lock in locks:
+            try:
+                await lock.release()
+            except Exception as release_exc:
+                _logger.warning(
+                    "Failed to release auto-credential lock after acquisition "
+                    "error: %s",
+                    release_exc,
+                )
+        raise
+
+    return extra_exec_kwargs, locks
+
+
 async def execute_node(
     node: Node,
     data: NodeExecutionEntry,
@@ -310,41 +427,14 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
-        field_name = info["field_name"]
-        field_data = input_data.get(field_name)
-        if field_data and isinstance(field_data, dict):
-            # Check if _credentials_id key exists in the field data
-            if "_credentials_id" in field_data:
-                cred_id = field_data["_credentials_id"]
-                if cred_id:
-                    # Credential ID provided - acquire credentials
-                    provider = info.get("config", {}).get(
-                        "provider", "external service"
-                    )
-                    file_name = field_data.get("name", "selected file")
-                    try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        creds_locks.append(lock)
-                        extra_exec_kwargs[kwarg_name] = credentials
-                    except ValueError:
-                        # Credential was deleted or doesn't exist
-                        raise ValueError(
-                            f"Authentication expired for '{file_name}' in field '{field_name}'. "
-                            f"The saved {provider.capitalize()} credentials no longer exist. "
-                            f"Please re-select the file to re-authenticate."
-                        )
-                # else: _credentials_id is explicitly None, skip credentials (for chained data)
-            else:
-                # _credentials_id key missing entirely - this is an error
-                provider = info.get("config", {}).get("provider", "external service")
-                file_name = field_data.get("name", "selected file")
-                raise ValueError(
-                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
-                    f"Please re-select the file to authenticate with {provider.capitalize()}."
-                )
+    auto_extra_kwargs, auto_locks = await _acquire_auto_credentials(
+        input_model=input_model,
+        input_data=input_data,
+        creds_manager=creds_manager,
+        user_id=user_id,
+    )
+    extra_exec_kwargs.update(auto_extra_kwargs)
+    creds_locks.extend(auto_locks)
 
     output_size = 0
 
@@ -635,16 +725,35 @@ class ExecutionProcessor:
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
-        await billing.handle_post_execution_billing(
-            node, node_exec, execution_stats, status, log_metadata
-        )
+        # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
+        # are aggregated and persisted — otherwise the reconciled delta never
+        # lands in `graph_stats.cost` or the persisted node stats. RUN-only
+        # blocks produce a zero delta; dynamic types (SECOND/ITEMS/COST_USD/
+        # TOKENS) settle their post-flight charge or refund here. Dry runs
+        # skip reconciliation so simulation never touches the user's wallet.
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+                db_client=db_client,
+            )
+            if not node_exec.execution_context.dry_run:
+                reconciled_delta, _ = await billing.charge_reconciled_usage(
+                    node_exec=node_exec,
+                    stats=execution_stats,
+                )
+                if reconciled_delta != 0:
+                    execution_stats.reconciled_cost_delta += reconciled_delta
 
         graph_stats, graph_stats_lock = graph_stats_pair
         with graph_stats_lock:
             graph_stats.node_count += 1 + execution_stats.extra_steps
             graph_stats.nodes_cputime += execution_stats.cputime
             graph_stats.nodes_walltime += execution_stats.walltime
-            graph_stats.cost += execution_stats.cost + execution_stats.extra_cost
+            graph_stats.cost += (
+                execution_stats.cost + execution_stats.reconciled_cost_delta
+            )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
 
@@ -664,15 +773,6 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
-
-        # Log platform cost if system credentials were used (only on success)
-        if status == ExecutionStatus.COMPLETED:
-            await log_system_credential_cost(
-                node_exec=node_exec,
-                block=node.block,
-                stats=execution_stats,
-                db_client=db_client,
-            )
 
         # If the node failed because a nested tool charge raised IBE,
         # send the user notification so they understand why the run stopped.
@@ -919,13 +1019,6 @@ class ExecutionProcessor:
         node_exec: NodeExecutionEntry,
     ) -> tuple[int, int]:
         return await billing.charge_node_usage(node_exec)
-
-    async def charge_extra_runtime_cost(
-        self,
-        node_exec: NodeExecutionEntry,
-        extra_count: int,
-    ) -> tuple[int, int]:
-        return await billing.charge_extra_runtime_cost(node_exec, extra_count)
 
     @time_measured
     def _on_graph_execution(

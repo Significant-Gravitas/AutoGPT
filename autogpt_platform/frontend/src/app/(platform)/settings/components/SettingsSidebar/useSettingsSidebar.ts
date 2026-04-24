@@ -6,7 +6,9 @@ export function useSettingsSidebar() {
 
   const items = settingsNavItems.map((item) => ({
     ...item,
-    isActive: pathname === item.href || pathname.startsWith(`${item.href}/`),
+    isActive:
+      pathname === item.href ||
+      (item.href !== "/settings" && pathname.startsWith(`${item.href}/`)),
   }));
 
   return { items };

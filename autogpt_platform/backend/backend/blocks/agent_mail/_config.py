@@ -4,11 +4,16 @@ Shared configuration for all AgentMail blocks.
 
 from agentmail import AsyncAgentMail
 
-from backend.sdk import APIKeyCredentials, ProviderBuilder, SecretStr
+from backend.sdk import APIKeyCredentials, BlockCostType, ProviderBuilder, SecretStr
 
+# AgentMail is in beta with no published paid tier yet, but ~37 blocks
+# without any BLOCK_COSTS entry means they currently execute wallet-free.
+# 1 cr/call is a conservative interim floor so no AgentMail work leaks
+# past billing. Revisit once AgentMail publishes usage-based pricing.
 agent_mail = (
     ProviderBuilder("agent_mail")
     .with_api_key("AGENTMAIL_API_KEY", "AgentMail API Key")
+    .with_base_cost(1, BlockCostType.RUN)
     .build()
 )
 

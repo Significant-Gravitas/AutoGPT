@@ -12,6 +12,11 @@ dataforseo = (
         password_env_var="DATAFORSEO_PASSWORD",
         title="DataForSEO Credentials",
     )
-    .with_base_cost(1, BlockCostType.RUN)
+    # DataForSEO reports USD cost per task (e.g. $0.001/keyword returned).
+    # DataForSeoClient stashes it on last_cost_usd; each block emits it via
+    # merge_stats so the COST_USD resolver bills against real spend.
+    # 1000 platform credits per USD → 1 credit per $0.001 (≈ 1 credit/
+    # returned keyword on the standard tier).
+    .with_base_cost(1000, BlockCostType.COST_USD)
     .build()
 )

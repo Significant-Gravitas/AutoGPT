@@ -39,20 +39,69 @@ class ManagedCredentialProvider(ABC):
     provider_name: str
     """Must match the ``provider`` field on the resulting credential."""
 
+    auto_provision: bool = True
+    """Whether :func:`ensure_managed_credentials` should provision this on
+    credential-list load.
+
+    Default ``True`` matches the AgentMail contract: cheap provisioning that
+    is safe to run for every user on first visit.  Set to ``False`` when
+    provisioning has per-user upstream cost (e.g. Ayrshare's profile quota);
+    such providers still register here so account-deletion cleanup works,
+    but only run via an explicit :func:`ensure_managed_credential` call
+    from a user-triggered endpoint.
+    """
+
     @abstractmethod
     async def is_available(self) -> bool:
-        """Return ``True`` when the org-level configuration is present."""
+        """Return ``True`` when the org-level configuration is present.
+
+        Used by :func:`ensure_managed_credentials` to skip providers whose
+        config is missing (e.g. missing env vars).  Independent of
+        :attr:`auto_provision` — a provider can be available yet opt out
+        of the startup sweep.
+        """
 
     @abstractmethod
-    async def provision(self, user_id: str) -> Credentials:
+    async def provision(
+        self, user_id: str, store: IntegrationCredentialsStore
+    ) -> Credentials:
         """Create external resources and return a credential.
 
-        The returned credential **must** have ``is_managed=True``.
+        The returned credential **must** have ``is_managed=True``.  The
+        caller-supplied *store* is the same instance the framework will use
+        for :meth:`post_provision` and the credential upsert; subclasses
+        should thread it through when they need to read per-user state
+        (e.g. Ayrshare's legacy migration read).
         """
 
     @abstractmethod
     async def deprovision(self, user_id: str, credential: Credentials) -> None:
         """Revoke external resources during account deletion."""
+
+    async def post_provision(
+        self,
+        user_id: str,
+        store: IntegrationCredentialsStore,
+        credential: Credentials,
+    ) -> None:
+        """Optional cleanup hook run *after* the credential is durably stored.
+
+        Runs inside the provision lock, immediately after
+        ``add_managed_credential`` returns.  Subclasses can safely mutate
+        other per-user state (e.g. clear a legacy migration field) knowing
+        the new managed credential is already durable.
+
+        **Must be idempotent and retry-safe.** The framework swallows any
+        exception raised here and only logs a warning — the managed
+        credential is already persisted, so subsequent provision calls
+        short-circuit on ``has_managed_credential`` and this hook never
+        runs again for that credential.  If a subclass needs the hook to
+        retry on failure, it must drive that retry explicitly (e.g. a
+        scheduled job), not rely on the provision path.
+
+        Default: no-op.
+        """
+        _ = user_id, store, credential
 
 
 # ---------------------------------------------------------------------------
@@ -98,29 +147,93 @@ async def _ensure_one(
     cache the user as fully provisioned.
     """
     try:
+        if not provider.auto_provision:
+            # Registered for cleanup lookup, but opts out of the sweep.
+            # Callers use `ensure_managed_credential(...)` directly.
+            return True
         if not await provider.is_available():
             return True
-        # Use a distributed Redis lock so the check-then-provision operation
-        # is atomic across all workers, preventing duplicate external
-        # resource provisioning (e.g. AgentMail API keys).
-        locks = await store.locks()
-        key = (f"user:{user_id}", f"managed-provision:{name}")
-        async with locks.locked(key):
-            # Re-check under lock to avoid duplicate provisioning.
-            if await store.has_managed_credential(user_id, name):
-                return True
-            credential = await provider.provision(user_id)
-            await store.add_managed_credential(user_id, credential)
-            logger.info(
-                "Provisioned managed credential for provider=%s user=%s",
-                name,
-                user_id,
-            )
-            return True
+        return await _provision_under_lock(user_id, store, name, provider)
     except Exception:
         logger.warning(
             "Failed to provision managed credential for provider=%s user=%s",
             name,
+            user_id,
+            exc_info=True,
+        )
+        return False
+
+
+async def _provision_under_lock(
+    user_id: str,
+    store: IntegrationCredentialsStore,
+    name: str,
+    provider: ManagedCredentialProvider,
+) -> bool:
+    """Provision a credential under a distributed Redis lock (double-check).
+
+    Separated from :func:`_ensure_one` so on-demand callers can invoke it
+    via :func:`ensure_managed_credential` without re-entering the
+    ``is_available`` gate — that gate is what the ``ensure_managed_credentials``
+    sweep uses to skip opt-out providers.
+    """
+    # Use a distributed Redis lock so the check-then-provision operation
+    # is atomic across all workers, preventing duplicate external
+    # resource provisioning (e.g. AgentMail API keys).
+    locks = await store.locks()
+    key = (f"user:{user_id}", f"managed-provision:{name}")
+    async with locks.locked(key):
+        # Re-check under lock to avoid duplicate provisioning.
+        if await store.has_managed_credential(user_id, name):
+            return True
+        credential = await provider.provision(user_id, store)
+        await store.add_managed_credential(user_id, credential)
+        # Run the post-provision cleanup hook only after the managed
+        # credential is durably stored.  If it raises, the managed
+        # credential is still in place and future provision calls
+        # short-circuit on has_managed_credential — no duplicate
+        # upstream resource, no data loss on migration paths.
+        try:
+            await provider.post_provision(user_id, store, credential)
+        except Exception:
+            logger.warning(
+                "post_provision hook failed for provider=%s user=%s; "
+                "managed credential is persisted so retry is safe",
+                name,
+                user_id,
+                exc_info=True,
+            )
+        logger.info(
+            "Provisioned managed credential for provider=%s user=%s",
+            name,
+            user_id,
+        )
+        return True
+
+
+async def ensure_managed_credential(
+    user_id: str,
+    store: IntegrationCredentialsStore,
+    provider: ManagedCredentialProvider,
+) -> bool:
+    """Provision *provider*'s managed credential for *user_id* on demand.
+
+    Bypasses the provider's ``is_available()`` gate — callers are expected to
+    have validated org-level config themselves (e.g. the Ayrshare SSO-URL
+    endpoint checks its secrets before invoking this).  Use for providers
+    that opt out of the ``ensure_managed_credentials`` startup sweep because
+    provisioning has per-user cost or quota implications.
+
+    Returns ``True`` on success, ``False`` on transient failure.
+    """
+    try:
+        return await _provision_under_lock(
+            user_id, store, provider.provider_name, provider
+        )
+    except Exception:
+        logger.warning(
+            "Failed to provision managed credential for provider=%s user=%s",
+            provider.provider_name,
             user_id,
             exc_info=True,
         )

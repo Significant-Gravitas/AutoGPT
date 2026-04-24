@@ -24,7 +24,7 @@ export function SettingsMobileNav() {
           <button
             type="button"
             className="flex w-fit items-center gap-2 rounded-full border border-[#DADADC] bg-white px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-[#3E3E43]"
-            aria-label="Open settings navigation"
+            aria-label={`Settings navigation, current: ${current.label}`}
           >
             <span className="flex items-center gap-2">
               <current.Icon size={16} weight="regular" className="text-black" />
@@ -56,6 +56,7 @@ export function SettingsMobileNav() {
               <Link
                 key={href}
                 href={href}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex h-[38px] items-center gap-2 rounded-[8px] px-3",

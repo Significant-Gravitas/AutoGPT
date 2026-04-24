@@ -71,6 +71,7 @@ export function SettingsNavItem({ item, isActive }: Props) {
     <motion.div variants={variants} className="w-[217px]">
       <Link
         href={item.href}
+        aria-current={isActive ? "page" : undefined}
         className={cn(
           "flex h-[38px] w-[217px] items-center gap-2 rounded-[8px] px-3 text-[#505057] transition-colors",
           isActive ? "bg-[#EFEFF0]" : "hover:bg-[#F5F5F6]",
