@@ -12,40 +12,25 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
-      <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
-        <SettingsSidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <SettingsMobileNav />
-          <main className="flex-1 overflow-hidden bg-[#F9F9FA]">
-            <ScrollArea
-              showScrollToTop
-              className="h-full md:h-[calc(100vh-60px)]"
-            >
-              <motion.div
-                key={pathname}
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
-                className="mx-auto max-w-[1100px] px-4 pb-8 pt-2 md:pt-[39px]"
-              >
-                {children}
-              </motion.div>
-            </ScrollArea>
-          </main>
-        </div>
     <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
       <SettingsSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <SettingsMobileNav />
-        <main className="flex-1 overflow-y-auto bg-[#F9F9FA] px-4 pt-2 md:px-[111px] md:pt-[39px]">
-          <motion.div
-            key={pathname}
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
+        <main className="flex-1 overflow-hidden bg-[#F9F9FA]">
+          <ScrollArea
+            showScrollToTop
+            className="h-full md:h-[calc(100vh-60px)]"
           >
-            {children}
-          </motion.div>
+            <motion.div
+              key={pathname}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
+              className="mx-auto max-w-[1100px] px-4 pb-8 pt-2 md:pt-[39px]"
+            >
+              {children}
+            </motion.div>
+          </ScrollArea>
         </main>
       </div>
     </div>
