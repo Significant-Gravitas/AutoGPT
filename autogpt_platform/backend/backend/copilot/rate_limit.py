@@ -53,9 +53,8 @@ from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
-# Redis key prefixes. Bumped from "copilot:usage" (token-based) to
-# "copilot:cost" on the token→cost migration so stale counters do not
-# get misinterpreted as microdollars (which would dramatically under-count).
+# "copilot:cost" (not the legacy "copilot:usage") so stale token-based
+# counters are not misread as microdollars.
 _USAGE_KEY_PREFIX = "copilot:cost"
 
 
@@ -475,27 +474,18 @@ async def _decr_counter_floor_zero(
 class _UserNotFoundError(Exception):
     """Raised when a user record is missing or has no subscription tier.
 
-    Used internally by ``_fetch_user_tier`` to signal a cache-miss condition:
-    by raising instead of returning ``DEFAULT_TIER``, we prevent the ``@cached``
-    decorator from storing the fallback value.  This avoids a race condition
-    where a non-existent user's DEFAULT_TIER is cached, then the user is
-    created with a higher tier but receives the stale cached FREE tier for
-    up to 5 minutes.
+    Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
+    from persisting the fallback, which would otherwise keep serving FREE
+    for up to the TTL after the user's real tier is set.
     """
 
 
 @cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Fetch the user's rate-limit tier from the database (cached via Redis).
+    """Fetch the user's rate-limit tier, cached across pods.
 
-    Uses ``shared_cache=True`` so that tier changes propagate across all pods
-    immediately when the cache entry is invalidated (via ``cache_delete``).
-
-    Only successful DB lookups of existing users with a valid tier are cached.
-    Raises ``_UserNotFoundError`` when the user is missing or has no tier, so
-    the ``@cached`` decorator does **not** store a fallback value.  This
-    prevents a race condition where a non-existent user's ``DEFAULT_TIER`` is
-    cached and then persists after the user is created with a higher tier.
+    Only successful lookups are cached. Missing users raise
+    ``_UserNotFoundError`` so ``@cached`` never stores the fallback.
     """
     try:
         user = await user_db().get_user_by_id(user_id)
@@ -537,20 +527,10 @@ get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-
 async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
-    Invalidates every cache that keys off the user's subscription tier so the
-    change is visible immediately: this function's own ``get_user_tier``, the
-    shared ``get_user_by_id`` (which exposes ``user.subscription_tier``), and
-    ``get_pending_subscription_change`` (since an admin override can invalidate
-    a cached ``cancel_at_period_end`` or schedule-based pending state).
-
-    If the user has an active Stripe subscription whose current price does not
-    match ``tier``, Stripe will keep billing the old price and the next
-    ``customer.subscription.updated`` webhook will overwrite the DB tier back
-    to whatever Stripe has. Proper reconciliation (cancelling or modifying the
-    Stripe subscription when an admin overrides the tier) is out of scope for
-    this PR — it changes the admin contract and needs its own test coverage.
-    For now we emit a ``WARNING`` so drift surfaces via Sentry until that
-    follow-up lands.
+    Invalidates the caches that expose ``subscription_tier`` so the change
+    takes effect immediately. If the user has an active Stripe subscription
+    on a mismatched price, emits a WARNING; Stripe remains the billing
+    source of truth and the next webhook will reconcile the DB tier.
 
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
@@ -560,21 +540,13 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         data={"subscriptionTier": tier.value},
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local import required: backend.data.credit imports backend.copilot.rate_limit
-    # (via get_user_tier in credit.py's _invalidate_user_tier_caches), so a
-    # top-level ``from backend.data.credit import ...`` here would create a
-    # circular import at module-load time.
+    # Local import: backend.data.credit imports from this module.
     from backend.data.credit import get_pending_subscription_change
 
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
     get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
 
-    # The DB write above is already committed; the drift check is best-effort
-    # diagnostic logging. Fire-and-forget so admin bulk ops don't wait on a
-    # Stripe roundtrip. The inner helper wraps its body in a timeout + broad
-    # except so background task errors still surface via logs rather than as
-    # "task exception never retrieved" warnings. Cancellation on request
-    # shutdown is acceptable — the drift warning is non-load-bearing.
+    # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
 
 
@@ -597,8 +569,6 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
             tier.value,
         )
     except asyncio.CancelledError:
-        # Request may have completed and the event loop is cancelling tasks —
-        # the drift log is non-critical, so accept cancellation silently.
         raise
     except Exception:
         logger.exception(
@@ -612,19 +582,9 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
 async def _warn_if_stripe_subscription_drifts(
     user_id: str, new_tier: SubscriptionTier
 ) -> None:
-    """Emit a WARNING when an admin tier override leaves an active Stripe sub on a
-    mismatched price.
-
-    The warning is diagnostic only: Stripe remains the billing source of truth,
-    so the next ``customer.subscription.updated`` webhook will reset the DB
-    tier. Surfacing the drift here lets ops catch admin overrides that bypass
-    the intended Checkout / Portal cancel flows before users notice surprise
-    charges.
-    """
-    # Local imports: see note in ``set_user_tier`` about the credit <-> rate_limit
-    # circular. These helpers (``_get_active_subscription``,
-    # ``get_subscription_price_id``) live in credit.py alongside the rest of
-    # the Stripe billing code.
+    """Emit a WARNING when an admin tier override leaves an active Stripe
+    subscription on a mismatched price."""
+    # Local import: breaks a credit <-> rate_limit circular at module load.
     from backend.data.credit import _get_active_subscription, get_subscription_price_id
 
     try:
@@ -639,10 +599,8 @@ async def _warn_if_stripe_subscription_drifts(
             return
         price = items[0].price
         current_price_id = price if isinstance(price, str) else price.id
-        # The LaunchDarkly-backed price lookup must live inside this try/except:
-        # an LD SDK failure (network, token revoked) here would otherwise
-        # propagate past set_user_tier's already-committed DB write and turn a
-        # best-effort diagnostic into a 500 on admin tier writes.
+        # Inside the try/except: an LD SDK failure here must not turn a
+        # best-effort diagnostic into a 500 after the DB write committed.
         expected_price_id = await get_subscription_price_id(new_tier)
     except Exception:
         logger.debug(
