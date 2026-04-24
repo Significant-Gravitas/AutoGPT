@@ -1857,20 +1857,23 @@ async def get_pending_subscription_change(
         # FREE-only users): skip the Stripe API calls entirely.
         return None
 
-    pro_price, biz_price = await asyncio.gather(
+    free_price, pro_price, max_price = await asyncio.gather(
+        get_subscription_price_id(SubscriptionTier.FREE),
         get_subscription_price_id(SubscriptionTier.PRO),
         get_subscription_price_id(SubscriptionTier.BUSINESS),
     )
     price_to_tier: dict[str, SubscriptionTier] = {}
+    if free_price:
+        price_to_tier[free_price] = SubscriptionTier.FREE
     if pro_price:
         price_to_tier[pro_price] = SubscriptionTier.PRO
-    if biz_price:
-        price_to_tier[biz_price] = SubscriptionTier.BUSINESS
+    if max_price:
+        price_to_tier[max_price] = SubscriptionTier.BUSINESS
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
-            " PRO/BUSINESS (LaunchDarkly fetch failed?); raising to bypass the"
-            " None cache so the next request retries fresh"
+            " FREE/PRO/BUSINESS (LaunchDarkly fetch failed?); raising to bypass"
+            " the None cache so the next request retries fresh"
         )
         raise PendingChangeUnknown(
             "Stripe price lookup failed; pending-change state cannot be determined"
@@ -1943,12 +1946,13 @@ async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
 
     ``cache_none=False`` prevents a transient LD failure from caching ``None``
     and blocking subscription upgrades for the full 60-second TTL window.
-    A tier with no configured flag (FREE, ENTERPRISE) returns ``None`` from an
-    O(1) dict lookup before hitting LD, so the extra LD call is never made.
+    ENTERPRISE has no LD flag and returns None from an O(1) dict lookup before
+    hitting LD, so the extra LD call is never made.
     """
     flag_map = {
+        SubscriptionTier.FREE: Flag.STRIPE_PRICE_BASIC,
         SubscriptionTier.PRO: Flag.STRIPE_PRICE_PRO,
-        SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_BUSINESS,
+        SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_MAX,
     }
     flag = flag_map.get(tier)
     if flag is None:
@@ -2078,13 +2082,16 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
             price_id = items[0].get("price", {}).get("id", "")
-        pro_price, biz_price = await asyncio.gather(
+        free_price, pro_price, max_price = await asyncio.gather(
+            get_subscription_price_id(SubscriptionTier.FREE),
             get_subscription_price_id(SubscriptionTier.PRO),
             get_subscription_price_id(SubscriptionTier.BUSINESS),
         )
-        if price_id and pro_price and price_id == pro_price:
+        if price_id and free_price and price_id == free_price:
+            tier = SubscriptionTier.FREE
+        elif price_id and pro_price and price_id == pro_price:
             tier = SubscriptionTier.PRO
-        elif price_id and biz_price and price_id == biz_price:
+        elif price_id and max_price and price_id == max_price:
             tier = SubscriptionTier.BUSINESS
         else:
             # Unknown or unconfigured price ID — preserve the user's current tier

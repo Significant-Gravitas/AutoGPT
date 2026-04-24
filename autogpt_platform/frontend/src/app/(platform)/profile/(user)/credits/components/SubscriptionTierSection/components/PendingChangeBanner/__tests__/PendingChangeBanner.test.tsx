@@ -44,7 +44,7 @@ describe("PendingChangeBanner", () => {
     expect(screen.getByText(/downgrade to/i)).toBeDefined();
     expect(screen.getByText("Pro")).toBeDefined();
     expect(
-      screen.getByRole("button", { name: /keep business/i }),
+      screen.getByRole("button", { name: /keep max/i }),
     ).toBeDefined();
   });
 

@@ -9,9 +9,12 @@ import {
 } from "./helpers";
 
 describe("formatCost", () => {
-  it("returns 'Free' for the FREE tier regardless of cents", () => {
+  it("returns 'Free' only when FREE actually costs $0", () => {
     expect(formatCost(0, "FREE")).toBe("Free");
-    expect(formatCost(999, "FREE")).toBe("Free");
+  });
+
+  it("formats FREE to a dollars-per-month string when LD sets a non-zero price", () => {
+    expect(formatCost(999, "FREE")).toBe("$9.99/mo");
   });
 
   it("returns a placeholder when paid tier has no price yet", () => {
@@ -27,9 +30,9 @@ describe("formatCost", () => {
 
 describe("getTierLabel", () => {
   it("returns the canonical label for known tiers", () => {
-    expect(getTierLabel("FREE")).toBe("Free");
+    expect(getTierLabel("FREE")).toBe("Basic");
     expect(getTierLabel("PRO")).toBe("Pro");
-    expect(getTierLabel("BUSINESS")).toBe("Business");
+    expect(getTierLabel("BUSINESS")).toBe("Max");
   });
 
   it("title-cases unknown tier keys as a fallback", () => {

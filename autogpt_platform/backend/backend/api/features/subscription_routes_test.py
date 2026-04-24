@@ -60,6 +60,13 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
     )
 
 
+_DEFAULT_TIER_PRICES: dict[SubscriptionTier, str | None] = {
+    SubscriptionTier.FREE: None,  # Legacy: stripe-price-id-basic unset by default.
+    SubscriptionTier.PRO: "price_pro",
+    SubscriptionTier.BUSINESS: "price_max",
+}
+
+
 @pytest.fixture(autouse=True)
 def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     """Stub Stripe price + proration lookups used by get_subscription_status.
@@ -69,10 +76,13 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     modify, checkout creation), so every POST test implicitly hits these
     helpers.  Individual tests can override via their own mocker.patch call.
     """
+
+    async def default_price_id(tier: SubscriptionTier) -> str | None:
+        return _DEFAULT_TIER_PRICES.get(tier)
+
     mocker.patch(
         "backend.api.features.v1.get_subscription_price_id",
-        new_callable=AsyncMock,
-        return_value=None,
+        side_effect=default_price_id,
     )
     mocker.patch(
         "backend.api.features.v1.get_proration_credit_cents",
@@ -122,15 +132,22 @@ def test_get_subscription_status_pro(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """GET /credits/subscription returns PRO tier with Stripe price for a PRO user."""
+    """GET /credits/subscription returns PRO tier with Stripe prices for all priced tiers."""
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
+    prices = {
+        SubscriptionTier.FREE: "price_basic",
+        SubscriptionTier.PRO: "price_pro",
+        SubscriptionTier.BUSINESS: "price_max",
+    }
+    amounts = {"price_basic": 0, "price_pro": 1999, "price_max": 4999}
+
     async def mock_price_id(tier: SubscriptionTier) -> str | None:
-        return "price_pro" if tier == SubscriptionTier.PRO else None
+        return prices.get(tier)
 
     async def mock_stripe_price_amount(price_id: str) -> int:
-        return 1999 if price_id == "price_pro" else 0
+        return amounts.get(price_id, 0)
 
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
@@ -158,8 +175,9 @@ def test_get_subscription_status_pro(
     assert data["tier"] == "PRO"
     assert data["monthly_cost"] == 1999
     assert data["tier_costs"]["PRO"] == 1999
-    assert data["tier_costs"]["BUSINESS"] == 0
+    assert data["tier_costs"]["BUSINESS"] == 4999
     assert data["tier_costs"]["FREE"] == 0
+    assert "ENTERPRISE" not in data["tier_costs"]
     assert data["proration_credit_cents"] == 500
 
 
@@ -167,7 +185,11 @@ def test_get_subscription_status_defaults_to_free(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """GET /credits/subscription when subscription_tier is None defaults to FREE."""
+    """When all LD price IDs are unset, tier_costs still includes the current tier.
+
+    Safety net: we always include the current tier (if not ENTERPRISE) so the UI
+    has something to render even when LaunchDarkly is unconfigured.
+    """
     mock_user = Mock()
     mock_user.subscription_tier = None
 
@@ -193,12 +215,7 @@ def test_get_subscription_status_defaults_to_free(
     data = response.json()
     assert data["tier"] == SubscriptionTier.FREE.value
     assert data["monthly_cost"] == 0
-    assert data["tier_costs"] == {
-        "FREE": 0,
-        "PRO": 0,
-        "BUSINESS": 0,
-        "ENTERPRISE": 0,
-    }
+    assert data["tier_costs"] == {"FREE": 0}
     assert data["proration_credit_cents"] == 0
 
 
@@ -844,6 +861,72 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
     # DB tier updated directly — no Stripe Checkout Session created
     set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
     checkout_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_priced_free_no_sub_falls_through_to_checkout(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Once stripe-price-id-basic is configured, a FREE user without an active sub
+    must hit Stripe Checkout rather than being silently set_subscription_tier'd."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.FREE
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        return {
+            SubscriptionTier.FREE: "price_basic",
+            SubscriptionTier.PRO: "price_pro",
+            SubscriptionTier.BUSINESS: "price_max",
+        }.get(tier)
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=mock_price_id,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    set_tier_mock = mocker.patch(
+        "backend.api.features.v1.set_subscription_tier",
+        new_callable=AsyncMock,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_priced_free",
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_priced_free"
+    )
+    # Priced-FREE user without an active sub: must NOT silently flip DB tier —
+    # they need to set up payment via Checkout.
+    set_tier_mock.assert_not_awaited()
+    checkout_mock.assert_awaited_once()
+    # modify is still called first; returning False just means "no active sub".
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
 
 
 def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
