@@ -43,6 +43,6 @@ export function useAPIKeysList() {
     isFetchingNextPage: false,
     fetchNextPage,
     refetch: query.refetch,
-    isEmpty: !query.isLoading && allKeys.length === 0,
+    isEmpty: !query.isLoading && !query.isError && allKeys.length === 0,
   };
 }

@@ -98,12 +98,13 @@ describe("SettingsApiKeysPage - list rendering", () => {
     expect(screen.queryByText("Revoked Key")).toBeNull();
   });
 
-  test("falls back to the empty state when the API returns 401", async () => {
+  test("renders an error card (not the empty state) when the API fails", async () => {
     server.use(getGetV1ListUserApiKeysMockHandler401());
 
     render(<SettingsApiKeysPage />);
 
-    expect(await screen.findByText(/no api key found/i)).toBeDefined();
+    expect(await screen.findByText(/something went wrong/i)).toBeDefined();
+    expect(screen.queryByText(/no api key found/i)).toBeNull();
   });
 
   test("renders multiple keys in order", async () => {

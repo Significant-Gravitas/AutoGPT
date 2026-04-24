@@ -12,8 +12,8 @@ export function useRevokeAPIKey() {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
 
-  async function revoke(keyIds: string[]) {
-    if (keyIds.length === 0) return;
+  async function revoke(keyIds: string[]): Promise<boolean> {
+    if (keyIds.length === 0) return true;
 
     setIsPending(true);
     try {
@@ -41,6 +41,8 @@ export function useRevokeAPIKey() {
       await queryClient.invalidateQueries({
         queryKey: API_KEYS_PAGINATED_QUERY_KEY,
       });
+
+      return failures.length === 0;
     } finally {
       setIsPending(false);
     }

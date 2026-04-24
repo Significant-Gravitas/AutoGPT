@@ -26,6 +26,9 @@ export function useAPIKeyListView() {
   return {
     keys: list.keys,
     isLoading: list.isLoading,
+    isError: list.isError,
+    error: list.error,
+    refetch: list.refetch,
     isEmpty: list.isEmpty,
     hasNextPage: list.hasNextPage,
     isFetchingNextPage: list.isFetchingNextPage,

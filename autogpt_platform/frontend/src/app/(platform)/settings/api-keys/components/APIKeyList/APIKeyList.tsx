@@ -3,6 +3,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { APIKeyListEmpty } from "../APIKeyListEmpty/APIKeyListEmpty";
 import { APIKeyListSkeleton } from "../APIKeyListSkeleton/APIKeyListSkeleton";
@@ -15,6 +16,9 @@ export function APIKeyList() {
   const {
     keys,
     isLoading,
+    isError,
+    error,
+    refetch,
     isEmpty,
     hasNextPage,
     isFetchingNextPage,
@@ -28,6 +32,18 @@ export function APIKeyList() {
   const reduceMotion = useReducedMotion();
 
   if (isLoading) return <APIKeyListSkeleton />;
+  if (isError) {
+    const message = error instanceof Error ? error.message : undefined;
+    return (
+      <ErrorCard
+        context="API keys"
+        responseError={message ? { message } : undefined}
+        onRetry={() => {
+          refetch();
+        }}
+      />
+    );
+  }
   if (isEmpty) return <APIKeyListEmpty />;
 
   return (
