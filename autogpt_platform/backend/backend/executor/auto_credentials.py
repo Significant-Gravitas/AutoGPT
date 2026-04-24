@@ -89,17 +89,20 @@ async def acquire_auto_credentials(
                     file_name = field_data.get("name", "selected file")
                     raise MissingAutoCredentialsError(
                         f"Authentication missing for '{file_name}' in field "
-                        f"'{field_name}'. Please re-select the file to "
-                        f"authenticate with {provider.capitalize()}."
+                        f"'{field_name}'. The CoPilot chat will render the "
+                        f"{provider.capitalize()} picker inline — pick the "
+                        f"file there; re-invoking `run_block` with a bare "
+                        f"id/URL will not authenticate."
                     )
             elif field_data is None and field_name not in input_data:
                 # Field not in input_data at all = connected from upstream, skip
                 pass
             elif field_data is None or field_data == "":
                 raise MissingAutoCredentialsError(
-                    f"No file selected for '{field_name}'. "
-                    f"Please select a file to provide "
-                    f"{provider.capitalize()} authentication."
+                    f"No file selected for '{field_name}'. The CoPilot chat "
+                    f"will render the {provider.capitalize()} picker inline "
+                    f"— pick the file there; `run_block` will re-run "
+                    f"automatically with the populated value."
                 )
             else:
                 raise ValueError(

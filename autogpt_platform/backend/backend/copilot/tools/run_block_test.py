@@ -479,6 +479,61 @@ class TestRunBlockInputValidation:
 
         assert isinstance(response, BlockDetailsResponse)
 
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_missing_picker_field_returns_setup_requirements(self):
+        """When a missing required field is picker-backed, skip the schema
+        preview and return SetupRequirementsResponse directly so the
+        frontend renders the picker inline."""
+        from .models import SetupRequirementsResponse
+
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="sheets-read-id",
+            name="Google Sheets Read",
+            input_properties={
+                "spreadsheet": {
+                    "type": "object",
+                    "format": "google-drive-picker",
+                    "google_drive_picker_config": {
+                        "allowed_views": ["SPREADSHEETS"],
+                    },
+                    "auto_credentials": {"provider": "google"},
+                },
+                "range": {"type": "string"},
+            },
+            required_fields=["spreadsheet", "range"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+        ):
+            tool = RunBlockTool()
+
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="sheets-read-id",
+                input_data={"range": "Sheet1!A1:Z100"},
+                dry_run=False,
+            )
+
+        assert isinstance(response, SetupRequirementsResponse)
+        assert "'spreadsheet'" in response.message
+        inputs = response.setup_info.requirements["inputs"]
+        picker_field = next(
+            (i for i in inputs if i["name"] == "spreadsheet"), None
+        )
+        assert picker_field is not None
+        assert picker_field["format"] == "google-drive-picker"
+
 
 class TestRunBlockSensitiveAction:
     """Tests for sensitive action HITL review in RunBlockTool.

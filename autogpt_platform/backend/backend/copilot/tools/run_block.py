@@ -13,9 +13,18 @@ from .helpers import (
     BlockPreparation,
     check_hitl_review,
     execute_block,
+    get_inputs_from_schema,
     prepare_block_for_execution,
 )
-from .models import BlockDetails, BlockDetailsResponse, ErrorResponse, ToolResponseBase
+from .models import (
+    BlockDetails,
+    BlockDetailsResponse,
+    ErrorResponse,
+    SetupInfo,
+    SetupRequirementsResponse,
+    ToolResponseBase,
+    UserReadiness,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +168,55 @@ class RunBlockTool(BaseTool):
                 matched_credentials=prep.matched_credentials,
                 dry_run=True,
             )
+
+        # Picker-backed missing required fields surface the setup card
+        # directly (with the picker rendered inline) instead of a schema
+        # preview round trip — saves a turn when the LLM's next move would
+        # be the same setup card anyway.
+        missing_required = (
+            prep.required_non_credential_keys - prep.provided_input_keys
+        )
+        if missing_required:
+            properties = prep.input_schema.get("properties", {})
+            picker_missing = [
+                f
+                for f in missing_required
+                if isinstance(properties.get(f), dict)
+                and (
+                    properties[f].get("format") == "google-drive-picker"
+                    or "auto_credentials" in properties[f]
+                )
+            ]
+            if picker_missing:
+                return SetupRequirementsResponse(
+                    message=(
+                        f"Block '{prep.block.name}' needs "
+                        f"{', '.join(repr(f) for f in picker_missing)} "
+                        "picked before it can run. Select the file in the "
+                        "card below; the tool will re-run automatically."
+                    ),
+                    session_id=session_id,
+                    setup_info=SetupInfo(
+                        agent_id=block_id,
+                        agent_name=prep.block.name,
+                        user_readiness=UserReadiness(
+                            has_all_credentials=True,
+                            missing_credentials={},
+                            ready_to_run=False,
+                        ),
+                        requirements={
+                            "credentials": [],
+                            "inputs": get_inputs_from_schema(
+                                prep.input_schema,
+                                exclude_fields=prep.credentials_fields,
+                                input_data=prep.input_data,
+                            ),
+                            "execution_modes": ["immediate"],
+                        },
+                    ),
+                    graph_id=None,
+                    graph_version=None,
+                )
 
         # Show block details when required inputs are not yet provided.
         # This is run_block's two-step UX: first call returns the schema,
