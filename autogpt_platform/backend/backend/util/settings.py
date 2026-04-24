@@ -309,9 +309,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
-    # `RABBITMQ_CLUSTER_HOST` points at the new 3-node cluster; `RABBITMQ_HOST`
-    # is the pre-migration single-node service. Prefer the cluster var so the
-    # new image can co-exist with pods still on the old image during rollout.
+    # Prefer the cluster env var so the new image can co-exist with old-image
+    # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
         default="localhost",
         description="The host for the RabbitMQ server",
@@ -329,12 +328,9 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The vhost for the RabbitMQ server",
     )
 
-    # Mirror the RabbitMQ alias pattern so the `backend.util.cache` Redis
-    # client picks up the sharded cluster (`REDIS_CLUSTER_HOST`) instead of
-    # the pre-migration single-node master (`REDIS_HOST`). Without this,
-    # `cache.py` builds a `ClusterNode` pointing at the old standalone Redis
-    # and every `RedisCluster` init fails with "Cluster mode is not enabled
-    # on this node".
+    # Same rollover pattern as rabbitmq_host; REDIS_CLUSTER_HOST must win so
+    # cache.py's RedisCluster client reaches the sharded cluster, not the
+    # pre-migration standalone Redis.
     redis_host: str = Field(
         default="localhost",
         description="The host for the Redis server",
