@@ -134,10 +134,10 @@ def test_e2b_sandbox_blocks_bill_per_walltime_second():
         # Pre-flight: unknown walltime ⇒ 0 credits (no gating on future cost).
         cost, _ = block_usage_cost(block_cls(), creds)
         assert cost == 0, f"{block_cls.__name__} pre-flight must be 0, got {cost}"
-        # Post-flight: 25s ⇒ 25 // 10 = 2 credits.
+        # Post-flight: 25s ⇒ ceil(25/10) = 3 credits.
         stats = NodeExecutionStats(walltime=25.0)
         cost, _ = block_usage_cost(block_cls(), creds, stats=stats)
-        assert cost == 2, f"{block_cls.__name__} @ 25s must be 2 credits, got {cost}"
+        assert cost == 3, f"{block_cls.__name__} @ 25s must be 3 credits, got {cost}"
 
 
 def test_fal_video_generator_bills_per_walltime_second():

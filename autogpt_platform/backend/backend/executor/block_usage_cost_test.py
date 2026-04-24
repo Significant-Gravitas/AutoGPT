@@ -42,10 +42,22 @@ def test_second_cost_type_uses_stats_walltime_with_divisor(tmp_block_costs_overr
         [BlockCost(cost_amount=1, cost_type=BlockCostType.SECOND, cost_divisor=10)]
     )
     block = SearchTheWebBlock()
-    # 25 seconds of walltime / 10 sec-per-credit = 2 credits (integer div).
+    # 25 seconds of walltime / 10 sec-per-credit = ceil(2.5) = 3 credits.
     stats = NodeExecutionStats(walltime=25.0)
     cost, _ = block_usage_cost(block, {}, stats=stats)
-    assert cost == 2
+    assert cost == 3
+
+
+def test_second_cost_type_sub_divisor_bills_one_credit(tmp_block_costs_override):
+    """Sub-divisor walltime still bills 1cr — no 0-credit leak."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.SECOND, cost_divisor=3)]
+    )
+    block = SearchTheWebBlock()
+    # 1s walltime on a 1cr/3s block → ceil(1/3) * 1 = 1 credit.
+    stats = NodeExecutionStats(walltime=1.0)
+    cost, _ = block_usage_cost(block, {}, stats=stats)
+    assert cost == 1
 
 
 def test_second_cost_type_returns_zero_without_stats_or_runtime(
@@ -64,9 +76,22 @@ def test_items_cost_type_multiplies_provider_cost(tmp_block_costs_override):
     )
     block = SearchTheWebBlock()
     stats = NodeExecutionStats(provider_cost=45, provider_cost_type="items")
-    # 45 items / 10 = 4 credits.
+    # 45 items / 10 = ceil(4.5) = 5 credits.
     cost, _ = block_usage_cost(block, {}, stats=stats)
-    assert cost == 4
+    assert cost == 5
+
+
+def test_items_cost_type_sub_divisor_bills_one_credit(tmp_block_costs_override):
+    """A single item under cost_divisor=2 still bills 1cr — no 0-credit leak."""
+    tmp_block_costs_override(
+        [BlockCost(cost_amount=1, cost_type=BlockCostType.ITEMS, cost_divisor=2)]
+    )
+    block = SearchTheWebBlock()
+    # Apollo SearchOrganizationsBlock shape: 1 result returned on a 1cr/2-item
+    # block should bill ceil(1/2) * 1 = 1 credit (floor division would bill 0).
+    stats = NodeExecutionStats(provider_cost=1, provider_cost_type="items")
+    cost, _ = block_usage_cost(block, {}, stats=stats)
+    assert cost == 1
 
 
 def test_items_cost_type_ignores_non_items_provider_cost(tmp_block_costs_override):
@@ -163,10 +188,10 @@ def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
         InstantiateCodeSandboxBlock,
         ExecuteCodeStepBlock,
     ):
-        # 45s walltime → 4 credits (integer div 45 // 10 = 4).
+        # 45s walltime → ceil(45/10) = 5 credits.
         stats = NodeExecutionStats(walltime=45.0)
         cost, _ = block_usage_cost(block_cls(), creds, stats=stats)
-        assert cost == 4, f"{block_cls.__name__} expected 4 credits, got {cost}"
+        assert cost == 5, f"{block_cls.__name__} expected 5 credits, got {cost}"
         # Pre-flight (no stats) → 0.
         cost, _ = block_usage_cost(block_cls(), creds)
         assert cost == 0
