@@ -49,20 +49,21 @@ logger = logging.getLogger(__name__)
 class AyrshareManagedProvider(ManagedCredentialProvider):
     provider_name = "ayrshare"
 
-    # Opt out of the startup sweep — each Ayrshare profile counts against
-    # our subscription quota, so we only provision when the user actually
-    # opens a block that needs it (triggered by the builder's per-provider
-    # ``GET /{provider}/credentials`` call).
+    # Opt out of the credentials sweep — each Ayrshare profile counts
+    # against our subscription quota, so we only provision when the user
+    # explicitly triggers the SSO flow from a block.  See
+    # ``ManagedCredentialProvider.auto_provision`` for the gate semantics.
     auto_provision = False
 
     async def is_available(self) -> bool:
-        """Both Ayrshare org-level secrets must be configured."""
+        """True when both ``AYRSHARE_API_KEY`` and ``AYRSHARE_JWT_KEY`` are
+        configured.  Pure env-var check — does NOT ping Ayrshare."""
         return settings_available()
 
     async def provision(
         self, user_id: str, store: IntegrationCredentialsStore
     ) -> Credentials:
-        profile_key = await _read_or_create_profile_key(user_id, store)
+        profile_key = await _migrate_legacy_or_create_profile_key(user_id, store)
         return APIKeyCredentials(
             provider=self.provider_name,
             title="Ayrshare (managed by AutoGPT)",
@@ -115,12 +116,17 @@ def _profile_title(user_id: str) -> str:
     return f"User {user_id}-{secrets.token_hex(3)}"
 
 
-async def _read_or_create_profile_key(
+async def _migrate_legacy_or_create_profile_key(
     user_id: str, store: IntegrationCredentialsStore
 ) -> str:
-    """Return the Ayrshare profile key for *user_id*, creating one if needed.
+    """Return an Ayrshare profile key for *user_id*.
 
-    **Resolution order — idempotent, retry-safe:**
+    Only called from :meth:`AyrshareManagedProvider.provision`, which is
+    itself only reached when the outer
+    :func:`~backend.integrations.managed_credentials._provision_under_lock`
+    has already confirmed via ``has_managed_credential`` that this user has
+    no managed Ayrshare credential yet.  So this function does NOT re-check
+    the managed credential — it only has to decide between:
 
     1. **Legacy side channel.** If
        ``UserIntegrations.managed_credentials.ayrshare_profile_key`` is set
@@ -137,10 +143,9 @@ async def _read_or_create_profile_key(
        path).  Orphans stick around in Ayrshare's dashboard until cleaned
        up manually — acceptable cost for unblocking the user.
 
-    The outer :func:`~backend.integrations.managed_credentials._provision_under_lock`
-    holds a distributed Redis lock on ``(user, provider)`` across this whole
-    function *and* the subsequent ``add_managed_credential`` call, so
-    concurrent workers cannot race and create duplicates.
+    ``_provision_under_lock`` also holds the distributed Redis lock across
+    this whole function *and* the subsequent ``add_managed_credential``
+    call, so concurrent workers cannot race and create duplicates.
     """
     user_integrations = await store.get_user_integrations(user_id)
     legacy_key = user_integrations.managed_credentials.ayrshare_profile_key
