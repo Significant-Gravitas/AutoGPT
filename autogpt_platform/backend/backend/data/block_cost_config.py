@@ -277,7 +277,7 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     # OpenAI
     LlmModel.GPT5_2: TokenRate(input=263, output=2100),
     LlmModel.GPT5_1: TokenRate(input=188, output=1500),
-    LlmModel.GPT5: TokenRate(input=94, output=750),
+    LlmModel.GPT5: TokenRate(input=188, output=1500),
     LlmModel.GPT5_MINI: TokenRate(input=38, output=300),
     LlmModel.GPT5_NANO: TokenRate(input=8, output=60),
     LlmModel.GPT5_CHAT: TokenRate(input=188, output=1500),
