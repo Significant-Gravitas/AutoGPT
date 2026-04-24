@@ -10,6 +10,7 @@ import {
   TIER_ORDER,
   formatCost,
   formatPendingDate,
+  formatRelativeMultiplier,
   getTierLabel,
 } from "./helpers";
 
@@ -178,9 +179,17 @@ export function SubscriptionTierSection() {
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
-              <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                {tier.multiplier} rate limits
-              </p>
+              {(() => {
+                const label = formatRelativeMultiplier(
+                  tier.key,
+                  subscription.tier_multipliers ?? {},
+                );
+                return label ? (
+                  <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+                    {label}
+                  </p>
+                ) : null;
+              })()}
               <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {tier.description}
               </p>
