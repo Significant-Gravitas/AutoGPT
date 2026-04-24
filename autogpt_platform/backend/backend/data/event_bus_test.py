@@ -42,32 +42,26 @@ async def test_publish_event_handles_connection_failure_gracefully():
 
 @pytest.mark.asyncio
 async def test_publish_event_spublishes_via_cluster_client():
-    """publish_event routes through the cluster client's SPUBLISH."""
+    """publish_event routes SPUBLISH + classic PUBLISH through the cluster client."""
     bus = _BusUnderTest()
     event = SampleEvent(message="test message")
 
     mock_cluster = MagicMock()
     mock_cluster.execute_command = AsyncMock()
-    mock_pubsub = MagicMock()
-    mock_pubsub.publish = AsyncMock()
 
     with (
         patch(
             "backend.data.event_bus.redis.get_redis_async", return_value=mock_cluster
         ),
-        patch(
-            "backend.data.event_bus.redis.get_redis_pubsub_async",
-            return_value=mock_pubsub,
-        ),
         patch("backend.data.event_bus.DUAL_PUBLISH", True),
     ):
         await bus.publish_event(event, "test_channel")
 
-    # SPUBLISH lands on the cluster client, classic PUBLISH on the
-    # plain client — both fire while dual-publish is on.
-    mock_cluster.execute_command.assert_awaited_once()
-    assert mock_cluster.execute_command.await_args[0][0] == "SPUBLISH"
-    mock_pubsub.publish.assert_awaited_once()
+    # Both SPUBLISH and classic PUBLISH fire via the cluster client while
+    # dual-publish is on.
+    assert mock_cluster.execute_command.await_count == 2
+    commands = [call.args[0] for call in mock_cluster.execute_command.await_args_list]
+    assert commands == ["SPUBLISH", "PUBLISH"]
 
 
 @pytest.mark.asyncio
@@ -78,23 +72,17 @@ async def test_publish_event_skips_classic_when_dual_publish_off():
 
     mock_cluster = MagicMock()
     mock_cluster.execute_command = AsyncMock()
-    mock_pubsub = MagicMock()
-    mock_pubsub.publish = AsyncMock()
 
     with (
         patch(
             "backend.data.event_bus.redis.get_redis_async", return_value=mock_cluster
-        ),
-        patch(
-            "backend.data.event_bus.redis.get_redis_pubsub_async",
-            return_value=mock_pubsub,
         ),
         patch("backend.data.event_bus.DUAL_PUBLISH", False),
     ):
         await bus.publish_event(event, "test_channel")
 
     mock_cluster.execute_command.assert_awaited_once()
-    mock_pubsub.publish.assert_not_awaited()
+    assert mock_cluster.execute_command.await_args[0][0] == "SPUBLISH"
 
 
 @pytest.mark.asyncio
@@ -147,7 +135,6 @@ async def test_ssubscribe_end_to_end_async():
 
     redis_client.get_redis.cache_clear()
     redis_client._async_clients.clear()
-    redis_client._async_pubsub_clients.clear()
 
     publisher = _BusUnderTest()
     subscriber = _BusUnderTest()
@@ -198,7 +185,6 @@ async def test_execution_bus_listen_and_listen_graph_both_deliver():
 
     redis_client.get_redis.cache_clear()
     redis_client._async_clients.clear()
-    redis_client._async_pubsub_clients.clear()
 
     user_id = "user-it"
     graph_id = "graph-it"

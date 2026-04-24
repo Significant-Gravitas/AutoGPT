@@ -2,17 +2,26 @@ import asyncio
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Generator,
+    Generic,
+    Optional,
+    TypeVar,
+)
 
 from pydantic import BaseModel
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
 from backend.data import redis_client as redis
 from backend.util import json
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis as AsyncRedis
 
 logger = logging.getLogger(__name__)
 config = Settings().config
@@ -119,12 +128,6 @@ class _EventPayloadWrapper(BaseModel, Generic[M]):
 
 
 class RedisEventBus(BaseRedisEventBus[M], ABC):
-    @property
-    def pubsub_connection(self) -> Redis:
-        # Dedicated standalone client: a subscribed connection blocks on
-        # ``listen()`` and cannot share a socket with regular commands.
-        return redis.get_redis_pubsub()
-
     def publish_event(self, event: M, channel_key: str):
         """
         Publish an event to Redis. Gracefully handles connection failures
@@ -138,9 +141,11 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
             # the cluster-bus broadcast that classic PUBLISH triggers.
             cluster.execute_command("SPUBLISH", full_channel_name, message)
             if DUAL_PUBLISH:
-                # Classic PUBLISH keeps old-image (PSUBSCRIBE) pods alive
-                # during the rolling deploy window. Cleanup PR removes this.
-                self.pubsub_connection.publish(full_channel_name, message)
+                # Classic PUBLISH for the rolling-deploy compatibility window.
+                # Routed via the cluster client's execute_command — the
+                # cluster bus gossips the message to every shard so PSUBSCRIBE
+                # listeners on old-image pods still receive it.
+                cluster.execute_command("PUBLISH", full_channel_name, message)
         except Exception:
             logger.exception(
                 f"Failed to publish event to Redis channel {channel_key}. "
@@ -180,12 +185,7 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
     def __init__(self):
         self._pubsub: AsyncPubSub | None = None
-        self._pubsub_client: AsyncRedis | None = None
-
-    async def get_pubsub_connection(self) -> AsyncRedis:
-        # Kept for back-compat: the classic async client is still used by
-        # the dual-publish classic PUBLISH path during the migration window.
-        return await redis.get_redis_pubsub_async()
+        self._pubsub_client: "AsyncRedis | None" = None
 
     async def close(self) -> None:
         """Close the shard-pinned PubSub connection if one was opened."""
@@ -220,8 +220,10 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
             await cluster.execute_command("SPUBLISH", full_channel_name, message)
             if DUAL_PUBLISH:
                 # Classic PUBLISH for the rolling-deploy compatibility window.
-                connection = await self.get_pubsub_connection()
-                await connection.publish(full_channel_name, message)
+                # Routed via the cluster client's execute_command — the
+                # cluster bus gossips the message to every shard so PSUBSCRIBE
+                # listeners on old-image pods still receive it.
+                await cluster.execute_command("PUBLISH", full_channel_name, message)
         except Exception:
             logger.exception(
                 f"Failed to publish event to Redis channel {channel_key}. "
