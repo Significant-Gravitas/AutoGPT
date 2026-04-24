@@ -902,7 +902,11 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue"
+# ``_v2`` suffix marks the classic→quorum rollover: new-image pods declare
+# these fresh quorum queues while old-image consumers drain the classic
+# ``graph_execution_queue`` / ``graph_execution_cancel_queue``. Orphans are
+# cleaned up by a follow-up PR once rollout is stable.
+GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
@@ -911,7 +915,7 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=True,
 )
-GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
+GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue_v2"
 
 # Graceful shutdown timeout constants
 # Agent executions can run for up to 1 day, so we need a graceful shutdown period
@@ -932,14 +936,17 @@ def create_execution_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # x-consumer-timeout (1 week)
+            # Quorum-typed queue: classic mirrored queues are deprecated in
+            # RabbitMQ 4.x, and quorum gives us automatic leader election
+            # plus stronger replication guarantees for long-running turns.
+            "x-queue-type": "quorum",
+            # x-consumer-timeout (24h)
             # Problem: Default 30-minute consumer timeout kills long-running graph executions
             # Original error: "Consumer acknowledgement timed out after 1800000 ms (30 minutes)"
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
-            * 1000,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
         },
     )
     cancel_queue = Queue(
@@ -948,6 +955,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
         routing_key="",  # not used for FANOUT
         durable=True,
         auto_delete=False,
+        arguments={"x-queue-type": "quorum"},
     )
     return RabbitMQConfig(
         vhost="/",
