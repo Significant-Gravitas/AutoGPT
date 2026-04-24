@@ -365,8 +365,7 @@ describe("SubscriptionTierSection", () => {
     expect(screen.queryByText("Business")).toBeNull();
   });
 
-  it("always renders the current tier card as a safety net, even when tier_costs omits it", () => {
-    // MAX user but LD dropped stripe-price-id-max → Max must still render.
+  it("hides the current tier when its LD price is unset — no safety-net rendering", () => {
     setupMocks({
       subscription: makeSubscription({
         tier: "MAX",
@@ -374,9 +373,8 @@ describe("SubscriptionTierSection", () => {
       }),
     });
     render(<SubscriptionTierSection />);
-    expect(screen.getByText("Max")).toBeDefined();
     expect(screen.getByText("Pro")).toBeDefined();
-    // BASIC has no price AND isn't the current tier → hidden.
+    expect(screen.queryByText("Max")).toBeNull();
     expect(screen.queryByText("Basic")).toBeNull();
   });
 

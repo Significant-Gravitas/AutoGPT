@@ -815,9 +815,6 @@ async def get_subscription_status(
     for t, pid, cost in zip(priceable_tiers, price_ids, costs):
         if pid:
             tier_costs[t.value] = cost
-    # Always include the current tier so users can see what they're on.
-    if tier.value not in tier_costs and tier != SubscriptionTier.ENTERPRISE:
-        tier_costs[tier.value] = 0
 
     current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)

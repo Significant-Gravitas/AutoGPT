@@ -144,10 +144,7 @@ export function SubscriptionTierSection() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {TIERS.filter(
-          // Hide tiers without a configured LD price; keep current tier visible.
-          (tier) =>
-            subscription.tier_costs[tier.key] !== undefined ||
-            tier.key === currentTier,
+          (tier) => subscription.tier_costs[tier.key] !== undefined,
         ).map((tier) => {
           const isCurrent = currentTier === tier.key;
           const cost = subscription.tier_costs[tier.key] ?? 0;
