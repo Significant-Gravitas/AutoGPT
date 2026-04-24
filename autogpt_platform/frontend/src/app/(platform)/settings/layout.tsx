@@ -3,9 +3,12 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
+<<<<<<< abhimanyuyadav/secrt-2273-add-autogpt-api-key-page
 import { FeatureFlagPage } from "@/services/feature-flags/FeatureFlagPage";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import { ScrollArea } from "@/components/ui/scroll-area";
+=======
+>>>>>>> abhimanyuyadav/secrt-2272-create-basic-settings-v2-page-layout-behind-a-feature-flag
 import { SettingsSidebar } from "./components/SettingsSidebar/SettingsSidebar";
 import { SettingsMobileNav } from "./components/SettingsMobileNav/SettingsMobileNav";
 
@@ -14,6 +17,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
+<<<<<<< abhimanyuyadav/secrt-2273-add-autogpt-api-key-page
     <FeatureFlagPage flag={Flag.SETTINGS_V2} whenDisabled="/profile/settings">
       <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
         <SettingsSidebar />
@@ -36,7 +40,23 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
             </ScrollArea>
           </main>
         </div>
+=======
+    <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
+      <SettingsSidebar />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <SettingsMobileNav />
+        <main className="flex-1 overflow-y-auto bg-[#F9F9FA] px-4 pt-2 md:px-[111px] md:pt-[39px]">
+          <motion.div
+            key={pathname}
+            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: [0, 0, 0.2, 1] as const }}
+          >
+            {children}
+          </motion.div>
+        </main>
+>>>>>>> abhimanyuyadav/secrt-2272-create-basic-settings-v2-page-layout-behind-a-feature-flag
       </div>
-    </FeatureFlagPage>
+    </div>
   );
 }
