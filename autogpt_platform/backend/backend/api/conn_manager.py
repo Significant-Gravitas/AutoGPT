@@ -1,9 +1,11 @@
 import asyncio
-import json as _json
+import json
 import logging
-from typing import Dict, Set
+from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket
+from redis.asyncio import Redis as AsyncRedis
+from redis.asyncio.client import PubSub as AsyncPubSub
 
 from backend.api.model import NotificationPayload, WSMessage, WSMethod
 from backend.data import redis_client as redis
@@ -38,17 +40,20 @@ def _notification_bus_channel(user_id: str) -> str:
     return f"{_settings.config.notification_event_bus_name}/{user_id}"
 
 
+MessageHandler = Callable[[Optional[bytes | str]], Awaitable[None]]
+
+
 class _Subscription:
     """One SSUBSCRIBE lifecycle bound to a WebSocket, pinned to the owning shard."""
 
     def __init__(self, full_channel: str) -> None:
         _assert_no_wildcard(full_channel)
         self.full_channel = full_channel
-        self._client = None
-        self._pubsub = None
+        self._client: AsyncRedis | None = None
+        self._pubsub: AsyncPubSub | None = None
         self._task: asyncio.Task | None = None
 
-    async def start(self, on_message) -> None:
+    async def start(self, on_message: MessageHandler) -> None:
         self._client = await redis.connect_sharded_pubsub_async(self.full_channel)
         self._pubsub = self._client.pubsub()
         await self._pubsub.execute_command("SSUBSCRIBE", self.full_channel)
@@ -57,7 +62,7 @@ class _Subscription:
         self._pubsub.channels[self.full_channel] = None  # type: ignore[index]
         self._task = asyncio.create_task(self._pump(on_message))
 
-    async def _pump(self, on_message) -> None:
+    async def _pump(self, on_message: MessageHandler) -> None:
         pubsub = self._pubsub
         if pubsub is None:
             return
@@ -188,7 +193,7 @@ class ConnectionManager:
             return
         sub = _Subscription(full_channel)
 
-        async def on_message(data):
+        async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_exec_event(websocket, channel_key, data)
 
         await sub.start(on_message)
@@ -210,7 +215,10 @@ class ConnectionManager:
         return channel_key
 
     async def _forward_exec_event(
-        self, websocket: WebSocket, channel_key: str, raw_payload
+        self,
+        websocket: WebSocket,
+        channel_key: str,
+        raw_payload: Optional[bytes | str],
     ) -> None:
         if raw_payload is None:
             return
@@ -229,7 +237,7 @@ class ConnectionManager:
             return
 
         try:
-            parsed = _json.loads(wrapper)
+            parsed = json.loads(wrapper)
             event_data = parsed.get("payload")
             if not isinstance(event_data, dict):
                 return
@@ -253,7 +261,7 @@ class ConnectionManager:
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
-        async def on_message(data):
+        async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_notification(user_id, data)
 
         try:
@@ -265,7 +273,9 @@ class ConnectionManager:
             return
         self._ws_notifications[websocket] = sub
 
-    async def _forward_notification(self, user_id: str, raw_payload) -> None:
+    async def _forward_notification(
+        self, user_id: str, raw_payload: Optional[bytes | str]
+    ) -> None:
         if raw_payload is None:
             return
         try:
@@ -275,7 +285,7 @@ class ConnectionManager:
                 else raw_payload
             )
             # Strip ``_EventPayloadWrapper`` envelope before validating.
-            parsed = _json.loads(wrapper_json)
+            parsed = json.loads(wrapper_json)
             inner = parsed.get("payload") if isinstance(parsed, dict) else None
             if not isinstance(inner, dict):
                 return
