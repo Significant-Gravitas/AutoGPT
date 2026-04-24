@@ -71,7 +71,6 @@ if TYPE_CHECKING:
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
-    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",

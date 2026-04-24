@@ -154,6 +154,7 @@ export function useCredentialsInput({
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
+    upgradeableCredentials,
     oAuthCallback,
     mcpOAuthCallback,
     isSystemProvider,
@@ -163,8 +164,11 @@ export function useCredentialsInput({
   // Split credentials into user and system
   const userCredentials = filterSystemCredentials(savedCredentials);
   const systemCredentials = getSystemCredentials(savedCredentials);
+  const userUpgradeableCredentials = filterSystemCredentials(
+    upgradeableCredentials,
+  );
 
-  async function handleOAuthLogin() {
+  async function executeOAuthFlow(credentialID?: string) {
     setOAuthError(null);
 
     // Abort any previous OAuth flow
@@ -187,6 +191,7 @@ export function useCredentialsInput({
         ({ login_url, state_token } = await api.oAuthLogin(
           provider,
           schema.credentials_scopes,
+          credentialID,
         ));
       }
 
@@ -251,6 +256,14 @@ export function useCredentialsInput({
       setOAuth2FlowInProgress(false);
       oauthAbortRef.current = null;
     }
+  }
+
+  async function handleOAuthLogin() {
+    return executeOAuthFlow();
+  }
+
+  async function handleScopeUpgrade(credentialID: string) {
+    return executeOAuthFlow(credentialID);
   }
 
   const hasMultipleCredentialTypes =
@@ -393,6 +406,8 @@ export function useCredentialsInput({
     handleDeleteCredential,
     handleDeleteConfirm,
     handleOAuthLogin,
+    handleScopeUpgrade,
+    userUpgradeableCredentials,
     onSelectCredential,
     schema,
     siblingInputs,

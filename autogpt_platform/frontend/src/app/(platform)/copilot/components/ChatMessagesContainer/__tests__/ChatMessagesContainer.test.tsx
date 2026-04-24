@@ -264,3 +264,72 @@ describe("ChatMessagesContainer", () => {
     ).toBeNull();
   });
 });
+
+// ── turnStats plumbing ────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — turnStats", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the local timestamp on a user message (hover reveal)", () => {
+    const userId = "user-1";
+    const turnStats = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+      />,
+    );
+    // The timestamp is rendered in the MessageActions area alongside CopyButton;
+    // we just assert that SOMETHING containing the year is in the DOM.
+    const labels = screen.getAllByText(
+      (_, el) =>
+        !!el?.className.includes("tabular-nums") &&
+        /2026/.test(el?.textContent ?? ""),
+    );
+    expect(labels.length).toBeGreaterThan(0);
+  });
+
+  it("skips the user timestamp when turnStats has no entry for that message id", () => {
+    const messages = [
+      {
+        id: "user-unknown",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={new Map() as any}
+      />,
+    );
+    const labels = screen.queryAllByText((_, el) =>
+      /2026/.test(el?.textContent ?? ""),
+    );
+    expect(labels.length).toBe(0);
+  });
+});

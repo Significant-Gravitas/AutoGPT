@@ -102,7 +102,7 @@ const basePageState = {
   isDeleting: false,
   handleConfirmDelete: vi.fn(),
   handleCancelDelete: vi.fn(),
-  historicalDurations: {},
+  turnStats: new Map(),
   rateLimitMessage: null,
   dismissRateLimit: vi.fn(),
   isDryRun: false,

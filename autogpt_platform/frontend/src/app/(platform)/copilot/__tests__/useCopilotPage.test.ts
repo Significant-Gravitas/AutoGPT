@@ -79,7 +79,7 @@ function makeBaseChatSession(overrides: Record<string, unknown> = {}) {
     setSessionId: vi.fn(),
     hydratedMessages: [],
     rawSessionMessages: [],
-    historicalDurations: new Map(),
+    historicalTurnStats: new Map(),
     hasActiveStream: false,
     hasMoreMessages: false,
     oldestSequence: null,
@@ -112,6 +112,7 @@ function makeBaseCopilotStream(overrides: Record<string, unknown> = {}) {
 function makeBaseLoadMore(overrides: Record<string, unknown> = {}) {
   return {
     pagedMessages: [],
+    pagedTurnStats: new Map(),
     hasMore: false,
     isLoadingMore: false,
     loadMore: vi.fn(),
@@ -140,6 +141,48 @@ describe("useCopilotPage — backward pagination message ordering", () => {
     // Backward: pagedMessages (older) come first
     expect(result.current.messages[0]).toEqual(pagedMsg);
     expect(result.current.messages[1]).toEqual(currentMsg);
+  });
+});
+
+describe("useCopilotPage — turnStats map merge across pages", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("merges historical (current-page) over paged (older) stats; current-page wins on overlap", () => {
+    const pagedTurnStats = new Map([
+      ["older", { durationMs: 1000, createdAt: "2026-04-20T10:00:00Z" }],
+      ["shared", { durationMs: 2000, createdAt: "2026-04-20T10:00:00Z" }],
+    ]);
+    const historicalTurnStats = new Map([
+      ["current", { durationMs: 3000, createdAt: "2026-04-23T08:32:09Z" }],
+      ["shared", { durationMs: 4000, createdAt: "2026-04-23T08:32:09Z" }],
+    ]);
+
+    mockUseChatSession.mockReturnValue(
+      makeBaseChatSession({ historicalTurnStats }),
+    );
+    mockUseCopilotStream.mockReturnValue(makeBaseCopilotStream());
+    mockUseLoadMoreMessages.mockReturnValue(
+      makeBaseLoadMore({ pagedTurnStats }),
+    );
+
+    const { result } = renderHook(() => useCopilotPage());
+    const stats = result.current.turnStats;
+
+    expect(stats.get("older")).toEqual({
+      durationMs: 1000,
+      createdAt: "2026-04-20T10:00:00Z",
+    });
+    expect(stats.get("current")).toEqual({
+      durationMs: 3000,
+      createdAt: "2026-04-23T08:32:09Z",
+    });
+    // Current-page wins on shared keys.
+    expect(stats.get("shared")).toEqual({
+      durationMs: 4000,
+      createdAt: "2026-04-23T08:32:09Z",
+    });
   });
 });
 

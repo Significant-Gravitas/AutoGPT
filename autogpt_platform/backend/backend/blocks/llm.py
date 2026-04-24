@@ -206,6 +206,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
+    KIMI_K2_0905 = "moonshotai/kimi-k2-0905"
+    KIMI_K2_5 = "moonshotai/kimi-k2.5"
+    KIMI_K2_6 = "moonshotai/kimi-k2.6"
+    KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     # Z.ai (Zhipu) models
@@ -645,6 +649,24 @@ MODEL_METADATA = {
     ),
     LlmModel.KIMI_K2: ModelMetadata(
         "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_0905: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2 0905", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_5: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2.5", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_6: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2.6", "OpenRouter", "Moonshot AI", 2
+    ),
+    LlmModel.KIMI_K2_THINKING: ModelMetadata(
+        "open_router",
+        262144,
+        262144,
+        "Kimi K2 Thinking",
+        "OpenRouter",
+        "Moonshot AI",
+        2,
     ),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata(
         "open_router",

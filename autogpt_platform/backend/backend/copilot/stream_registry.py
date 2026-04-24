@@ -870,9 +870,9 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # Compute wall-clock duration from session created_at.
-    # Only persist when (a) the session completed successfully and
-    # (b) created_at was actually present in Redis meta (not a fallback).
+    # Compute wall-clock duration from session created_at.  Only persist when
+    # the session completed successfully and created_at was actually present
+    # in Redis meta (not a fallback).
     duration_ms: int | None = None
     if meta and not error_message:
         created_at_raw = meta.get("created_at")
@@ -1026,8 +1026,8 @@ async def get_active_session(
 
     # Check if session is stale (running beyond tool timeout + buffer).
     # Auto-complete it to prevent infinite polling loops.
-    # Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour),
-    # so we add a 5-minute buffer to avoid false positives during legitimate operations.
+    # A turn can legitimately run up to COPILOT_CONSUMER_TIMEOUT_SECONDS, so we
+    # add a 5-minute buffer to avoid false positives during legitimate operations.
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:

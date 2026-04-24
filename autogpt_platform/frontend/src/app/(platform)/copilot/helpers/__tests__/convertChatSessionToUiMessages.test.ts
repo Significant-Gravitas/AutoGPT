@@ -149,7 +149,7 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     const mergedId = result.messages[0].id;
-    expect(result.durations.get(mergedId)).toBe(750);
+    expect(result.stats.get(mergedId)?.durationMs).toBe(750);
   });
 
   it("falls back to idx-based ids when sequence is null so sequence-less rows don't collide", () => {
@@ -212,6 +212,66 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(2);
     const assistantId = result.messages[1].id;
-    expect(result.durations.get(assistantId)).toBe(123);
+    expect(result.stats.get(assistantId)?.durationMs).toBe(123);
+  });
+
+  it("captures created_at when supplied as an ISO string", () => {
+    const iso = "2026-04-23T01:32:09.871Z";
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "hi", sequence: 0, created_at: iso }],
+      { isComplete: true },
+    );
+
+    const userId = result.messages[0].id;
+    expect(result.stats.get(userId)?.createdAt).toBe(iso);
+  });
+
+  it("captures created_at when the API mutator has already converted the field to a Date object", () => {
+    // The generated `customMutator` runs `transformDates()` on every response,
+    // which turns ISO date strings into Date objects before they reach the
+    // UI-shape converter.  A literal `typeof === "string"` check would reject
+    // the Date and silently drop the timestamp — breaking the "Thought for X"
+    // tooltip.  Assert we still recover the ISO value.
+    const date = new Date("2026-04-23T01:32:09.871Z");
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "hi", sequence: 0, created_at: date }],
+      { isComplete: true },
+    );
+
+    const userId = result.messages[0].id;
+    expect(result.stats.get(userId)?.createdAt).toBe(date.toISOString());
+  });
+
+  it("advances createdAt to the latest row when merging consecutive assistant rows", () => {
+    // Reasoning row persisted early + assistant row persisted later should
+    // leave the merged bubble's stats.createdAt pointing at the LATER row,
+    // so the live "Thinking Xs" counter anchors to the most recent step.
+    const early = "2026-04-23T10:00:00.000Z";
+    const later = "2026-04-23T10:00:30.000Z";
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "hi", sequence: 0, created_at: early },
+        {
+          role: "reasoning",
+          content: "ponder",
+          sequence: 1,
+          created_at: early,
+        },
+        {
+          role: "assistant",
+          content: "reply",
+          sequence: 2,
+          created_at: later,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const mergedId = result.messages[1].id;
+    expect(result.stats.get(mergedId)?.createdAt).toBe(later);
   });
 });

@@ -249,6 +249,14 @@ class _FakeRedis:
     async def hgetall(self, _key: str):
         return dict(self._meta)
 
+    async def hdel(self, _key: str, *fields: str) -> int:
+        removed = 0
+        for f in fields:
+            if f in self._meta:
+                del self._meta[f]
+                removed += 1
+        return removed
+
 
 @pytest.mark.asyncio
 async def test_mark_session_completed_releases_cluster_lock_on_success():

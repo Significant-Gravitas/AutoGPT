@@ -576,7 +576,10 @@ describe("SubscriptionTierSection", () => {
       subscription: makeSubscription({
         tier: "BUSINESS",
         pendingTier: "FREE",
-        pendingTierEffectiveAt: new Date("2026-05-15T00:00:00Z"),
+        // Noon UTC so the local-formatted date lands on the same day
+        // regardless of the runner's timezone (midnight UTC drifts to
+        // the prior day in any timezone west of UTC).
+        pendingTierEffectiveAt: new Date("2026-05-15T12:00:00Z"),
       }),
     });
     render(<SubscriptionTierSection />);
