@@ -504,12 +504,12 @@ async def test_lifespan_still_disconnects_on_exception(mocker) -> None:
 
 
 def test_health_endpoint_returns_ok() -> None:
+    # TestClient triggers lifespan — stub it out so Prisma isn't hit.
+    from contextlib import asynccontextmanager
+
     from fastapi.testclient import TestClient
 
     import backend.api.ws_api as ws_api
-
-    # TestClient triggers lifespan — stub it out so Prisma isn't hit.
-    from contextlib import asynccontextmanager
 
     @asynccontextmanager
     async def _noop_lifespan(app):

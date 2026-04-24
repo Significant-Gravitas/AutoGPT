@@ -24,7 +24,6 @@ from backend.data.execution import (
     _graph_scope_tag,
 )
 
-
 # ---------- Hash-tagged channel builders ----------
 
 
@@ -280,10 +279,7 @@ def test_event_type_is_literal_on_events():
 def test_sync_publish_dispatches_on_model_type():
     """Sync ``publish()`` routes GraphExecution and NodeExecutionResult to
     their respective helpers — regression guard on the type-dispatch branch."""
-    from backend.data.execution import (
-        GraphExecution,
-        NodeExecutionResult,
-    )
+    from backend.data.execution import GraphExecution, NodeExecutionResult
 
     bus = RedisExecutionEventBus()
 
