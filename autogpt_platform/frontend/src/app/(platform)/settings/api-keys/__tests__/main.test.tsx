@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV1ListUserApiKeysMockHandler,
@@ -105,6 +105,42 @@ describe("SettingsApiKeysPage - list rendering", () => {
 
     expect(await screen.findByText(/something went wrong/i)).toBeDefined();
     expect(screen.queryByText(/no api key found/i)).toBeNull();
+  });
+
+  test("error card 'Try again' refetches and recovers when the API succeeds", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler401());
+
+    render(<SettingsApiKeysPage />);
+
+    await screen.findByText(/something went wrong/i);
+
+    server.use(
+      getGetV1ListUserApiKeysMockHandler([
+        makeKey({ id: "recovered", name: "Recovered Key" }),
+      ]),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
+
+    expect(await screen.findByText("Recovered Key")).toBeDefined();
+  });
+
+  test("clicking the row info icon opens the details dialog for that key", async () => {
+    server.use(
+      getGetV1ListUserApiKeysMockHandler([
+        makeKey({ id: "a", name: "Inspectable Key" }),
+      ]),
+    );
+
+    render(<SettingsApiKeysPage />);
+
+    const infoButton = await screen.findByRole("button", {
+      name: /view details for inspectable key/i,
+    });
+    fireEvent.click(infoButton);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("Inspectable Key");
   });
 
   test("renders multiple keys in order", async () => {

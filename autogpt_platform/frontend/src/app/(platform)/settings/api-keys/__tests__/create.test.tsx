@@ -57,6 +57,36 @@ describe("SettingsApiKeysPage - create flow", () => {
     expect(within(dialog).getByText(/permissions/i)).toBeDefined();
   });
 
+  test("toggling a permission off re-disables the submit button", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+    await screen.findByText(/no api key found/i);
+
+    openCreateDialog();
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText(/^name$/i), {
+      target: { value: "Toggle Key" },
+    });
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: /execute graph/i,
+    });
+
+    fireEvent.click(checkbox);
+    const submit = within(dialog).getByRole("button", {
+      name: /create key/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(submit.disabled).toBe(false);
+    });
+
+    fireEvent.click(checkbox);
+    await waitFor(() => {
+      expect(submit.disabled).toBe(true);
+    });
+  });
+
   test("disables submit until the form is valid", async () => {
     server.use(getGetV1ListUserApiKeysMockHandler([]));
 
@@ -121,6 +151,22 @@ describe("SettingsApiKeysPage - create flow", () => {
     expect(
       within(dialog).getAllByRole("button", { name: /^close$/i }).length,
     ).toBeGreaterThan(0);
+  });
+
+  test("dismisses the dialog via the header Close button when not submitting", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+    await screen.findByText(/no api key found/i);
+
+    openCreateDialog();
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^close$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 
   test("keeps the form open when the API returns 422", async () => {
