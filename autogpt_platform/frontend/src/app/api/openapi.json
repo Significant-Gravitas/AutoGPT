@@ -4621,7 +4621,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
-        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
         "operationId": "getV1ListProviders",
         "responses": {
           "200": {
@@ -4629,7 +4629,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "type": "string" },
+                  "items": { "$ref": "#/components/schemas/ProviderMetadata" },
                   "type": "array",
                   "title": "Response Getv1Listproviders"
                 }
@@ -14531,6 +14531,24 @@
         "required": ["provider"],
         "title": "ProviderEnumResponse",
         "description": "Response containing a provider from the enum."
+      },
+      "ProviderMetadata": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider slug (e.g. ``github``)"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "One-line human-readable summary of what the provider does. ``None`` for providers that haven't declared a description via ``ProviderBuilder.with_description(...)`` or ``STATIC_PROVIDER_DESCRIPTIONS``."
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "ProviderMetadata",
+        "description": "Display metadata for a provider, shown in the settings integrations UI."
       },
       "ProviderNamesResponse": {
         "properties": {

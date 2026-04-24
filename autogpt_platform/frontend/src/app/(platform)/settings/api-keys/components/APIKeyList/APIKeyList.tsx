@@ -72,14 +72,28 @@ export function APIKeyList() {
         fetchNextPage={fetchNextPage}
         className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
       >
-        {keys.map((key) => (
-          <APIKeyRow
+        {keys.map((key, index) => (
+          <motion.div
             key={key.id}
-            apiKey={key}
-            selected={selection.isSelected(key.id)}
-            onToggleSelected={() => selection.toggle(key.id)}
-            onDelete={() => requestDelete([key.id])}
-          />
+            initial={
+              reduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, y: 8 }
+            }
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              duration: 0.2,
+              delay: Math.min(index, 10) * 0.03,
+              ease: [0, 0, 0.2, 1],
+            }}
+          >
+            <APIKeyRow
+              apiKey={key}
+              selected={selection.isSelected(key.id)}
+              onToggleSelected={() => selection.toggle(key.id)}
+              onDelete={() => requestDelete([key.id])}
+            />
+          </motion.div>
         ))}
       </InfiniteScroll>
 

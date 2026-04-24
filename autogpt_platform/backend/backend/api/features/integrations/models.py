@@ -47,6 +47,35 @@ class ProviderNamesResponse(BaseModel):
     )
 
 
+class ProviderMetadata(BaseModel):
+    """Display metadata for a provider, shown in the settings integrations UI."""
+
+    name: str = Field(description="Provider slug (e.g. ``github``)")
+    description: str | None = Field(
+        default=None,
+        description=(
+            "One-line human-readable summary of what the provider does. "
+            "Declared via ``ProviderBuilder.with_description(...)`` in the "
+            "provider's ``_config.py``. ``None`` if not set."
+        ),
+    )
+
+
+def get_provider_description(name: str) -> str | None:
+    """Return the provider's description from :class:`AutoRegistry`.
+
+    Descriptions are declared via ``ProviderBuilder.with_description(...)`` in
+    the provider's ``_config.py`` (SDK path) or in
+    ``blocks/_static_provider_configs.py`` (for providers that don't yet have
+    their own directory). Returns ``None`` for providers with no registered
+    description.
+    """
+    provider = AutoRegistry.get_provider(name)
+    if provider is None:
+        return None
+    return getattr(provider, "description", None)
+
+
 class ProviderConstants(BaseModel):
     """
     Model that exposes all provider names as a constant in the OpenAPI schema.
