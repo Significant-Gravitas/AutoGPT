@@ -1940,7 +1940,7 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
-@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+@cached(ttl_seconds=60, maxsize=8, cache_none=False)
 async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
     """Return Stripe Price ID for a tier from LaunchDarkly, cached for 60 seconds.
 

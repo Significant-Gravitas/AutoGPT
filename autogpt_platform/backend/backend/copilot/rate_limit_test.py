@@ -634,6 +634,42 @@ class TestGetGlobalRateLimitsCostLimitsFlag:
         assert daily == 1_234_567
         assert weekly == self._CONFIG_WEEKLY
 
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "bad_value",
+        [True, False, "100", 1.9, [1, 2], None],
+        ids=["bool-true", "bool-false", "str-numeric", "float", "list", "null"],
+    )
+    async def test_non_strict_int_values_rejected(self, bad_value):
+        """Strings like '100', booleans, floats, lists — none should coerce.
+
+        Docstring promises "non-int values are skipped"; this asserts the
+        strict-check (``isinstance(x, int) and not isinstance(x, bool)``)
+        actually rejects values ``int()`` would silently coerce.
+        """
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": bad_value}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == self._CONFIG_DAILY
+        assert weekly == self._CONFIG_WEEKLY
+
 
 # ---------------------------------------------------------------------------
 # get_user_tier

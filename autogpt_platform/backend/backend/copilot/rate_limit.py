@@ -179,16 +179,18 @@ async def _fetch_cost_limits_flag() -> dict[str, int] | None:
     for key in ("daily", "weekly"):
         if key not in raw:
             continue
-        try:
-            value = int(raw[key])
-        except (TypeError, ValueError):
+        value = raw[key]
+        # Strict int check — booleans are subclasses of int in Python, and we
+        # don't want to coerce strings like "100" or floats like 1.9 silently
+        # into a rate-limit cap. Docstring says "non-int values are skipped".
+        if isinstance(value, bool) or not isinstance(value, int):
             logger.warning(
-                "Invalid LD value for copilot-cost-limits[%s]: %r", key, raw[key]
+                "Invalid LD value for copilot-cost-limits[%s]: %r", key, value
             )
             continue
         if value < 0:
             logger.warning(
-                "Negative LD value for copilot-cost-limits[%s]: %r", key, raw[key]
+                "Negative LD value for copilot-cost-limits[%s]: %r", key, value
             )
             continue
         parsed[key] = value

@@ -1049,6 +1049,38 @@ async def test_get_subscription_price_id_partial_dict():
 
 
 @pytest.mark.asyncio
+async def test_get_subscription_price_id_empty_string_value_returns_none():
+    """Empty-string price_id in the JSON resolves to None (defensive)."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": ""},
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO) is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_non_string_value_returns_none():
+    """Non-string price_id (e.g. number, null) resolves to None."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": 123, "MAX": None},
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO) is None
+        get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+        assert await get_subscription_price_id(SubscriptionTier.MAX) is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_get_subscription_price_id_non_dict_payload_returns_none(caplog):
     """A non-dict LD value logs a warning and returns None for every tier."""
     from backend.data.credit import get_subscription_price_id
