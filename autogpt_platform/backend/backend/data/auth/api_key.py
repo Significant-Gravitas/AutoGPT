@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -6,7 +7,7 @@ from typing import Literal, Optional
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission, APIKeyStatus
 from prisma.models import APIKey as PrismaAPIKey
-from prisma.types import APIKeyWhereUniqueInput
+from prisma.types import APIKeyWhereInput, APIKeyWhereUniqueInput
 from pydantic import Field
 
 from backend.data.includes import MAX_USER_API_KEYS_FETCH
@@ -188,6 +189,38 @@ async def list_user_api_keys(
     )
 
     return [APIKeyInfo.from_db(key) for key in api_keys]
+
+
+async def list_user_api_keys_paginated(
+    user_id: str,
+    page: int,
+    page_size: int,
+    status_filter: Optional[APIKeyStatus] = APIKeyStatus.ACTIVE,
+) -> tuple[list[APIKeyInfo], int]:
+    """
+    Paginated list of a user's API keys.
+
+    Returns (items, total_count). ``page`` is 1-indexed. When ``status_filter``
+    is None, every key is returned regardless of status; by default only
+    ACTIVE keys are returned so the Settings v2 page can hide revoked keys.
+    """
+    where: APIKeyWhereInput = {"userId": user_id}
+    if status_filter is not None:
+        where["status"] = status_filter
+
+    skip = (page - 1) * page_size
+
+    api_keys, total_count = await asyncio.gather(
+        PrismaAPIKey.prisma().find_many(
+            where=where,
+            order={"createdAt": "desc"},
+            skip=skip,
+            take=page_size,
+        ),
+        PrismaAPIKey.prisma().count(where=where),
+    )
+
+    return [APIKeyInfo.from_db(key) for key in api_keys], total_count
 
 
 async def suspend_api_key(key_id: str, user_id: str) -> APIKeyInfo:

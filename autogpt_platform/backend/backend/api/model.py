@@ -56,6 +56,14 @@ class CreateAPIKeyResponse(pydantic.BaseModel):
     plain_text_key: str
 
 
+class ListAPIKeysPaginatedResponse(pydantic.BaseModel):
+    items: list[APIKeyInfo]
+    total_count: int
+    page: int
+    page_size: int
+    has_more: bool
+
+
 class SetGraphActiveVersion(pydantic.BaseModel):
     active_graph_version: int
 

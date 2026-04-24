@@ -1257,6 +1257,63 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/api-keys/paginated": {
+      "get": {
+        "tags": ["v1", "api-keys"],
+        "summary": "List user API keys (paginated)",
+        "description": "List the caller's ACTIVE API keys with cursor-less pagination.\n\nPowers the Settings v2 infinite-scroll API keys page. Revoked keys are\nhidden by default so the list stays clean; the legacy ``/api-keys``\nendpoint still returns every status for backward compatibility.",
+        "operationId": "getV1List user api keys (paginated)",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 15,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAPIKeysPaginatedResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/api-keys/{key_id}": {
       "delete": {
         "tags": ["v1", "api-keys"],
@@ -12711,6 +12768,22 @@
         "type": "string",
         "enum": ["SERVER", "USER"],
         "title": "LinkType"
+      },
+      "ListAPIKeysPaginatedResponse": {
+        "properties": {
+          "items": {
+            "items": { "$ref": "#/components/schemas/APIKeyInfo" },
+            "type": "array",
+            "title": "Items"
+          },
+          "total_count": { "type": "integer", "title": "Total Count" },
+          "page": { "type": "integer", "title": "Page" },
+          "page_size": { "type": "integer", "title": "Page Size" },
+          "has_more": { "type": "boolean", "title": "Has More" }
+        },
+        "type": "object",
+        "required": ["items", "total_count", "page", "page_size", "has_more"],
+        "title": "ListAPIKeysPaginatedResponse"
       },
       "ListFilesResponse": {
         "properties": {
