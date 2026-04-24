@@ -300,7 +300,12 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.GEMINI_3_1_PRO_PREVIEW: TokenRate(input=300, output=1800),
     LlmModel.GEMINI_3_FLASH_PREVIEW: TokenRate(input=75, output=450),
     LlmModel.GEMINI_3_1_FLASH_LITE_PREVIEW: TokenRate(input=38, output=225),
-    # xAI Grok
+    # xAI Grok. docs.x.ai currently lists only Grok 4.20 and grok-4-1-fast;
+    # the rest (grok-3, grok-4-0709, grok-4-fast, grok-code-fast-1) were
+    # removed from the public pricing page but remain callable via the
+    # API. Rates below match their launch pricing (verified historically):
+    # grok-3 / grok-4 $3/$15, grok-4-fast / grok-4-1-fast $0.20/$0.50,
+    # grok-code-fast-1 $0.20/$1.50.
     LlmModel.GROK_3: TokenRate(input=450, output=2250),
     LlmModel.GROK_4: TokenRate(input=450, output=2250),
     LlmModel.GROK_4_FAST: TokenRate(input=30, output=75),
@@ -325,8 +330,10 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     # Moonshot Kimi
     LlmModel.KIMI_K2: TokenRate(input=90, output=375),
     LlmModel.KIMI_K2_0905: TokenRate(input=90, output=375),
-    LlmModel.KIMI_K2_5: TokenRate(input=90, output=450),
-    LlmModel.KIMI_K2_6: TokenRate(input=143, output=600),
+    # K2.5 / K2.6 aren't on Moonshot's direct pricing page today; OpenRouter
+    # passes through $0.44/$2.00 for K2.5 and $0.7448/$4.655 for K2.6.
+    LlmModel.KIMI_K2_5: TokenRate(input=66, output=300),
+    LlmModel.KIMI_K2_6: TokenRate(input=112, output=698),
     LlmModel.KIMI_K2_THINKING: TokenRate(input=90, output=375),
     # Perplexity Sonar
     LlmModel.PERPLEXITY_SONAR: TokenRate(input=150, output=150),
@@ -749,9 +756,14 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
+    # Unreal Speech: $16 / 1M chars = $0.000016/char. Block emits
+    # provider_cost=chars*0.000016, cost_usd; 150 cr/$ keeps the 1.5x
+    # platform-wide margin. Replaces the prior flat 5 cr RUN which
+    # under-billed long narrations by 10x+.
     UnrealTextToSpeechBlock: [
         BlockCost(
-            cost_amount=5,
+            cost_amount=150,
+            cost_type=BlockCostType.COST_USD,
             cost_filter={
                 "credentials": {
                     "id": unreal_credentials.id,
