@@ -73,7 +73,7 @@ class SubscriptionTier(str, Enum):
         from prisma.enums import SubscriptionTier
     """
 
-    FREE = "FREE"
+    BASIC = "BASIC"
     PRO = "PRO"
     MAX = "MAX"
     BUSINESS = "BUSINESS"
@@ -86,14 +86,14 @@ class SubscriptionTier(str, Enum):
 # the type and round the result in get_global_rate_limits().
 # BUSINESS matches ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier.
 TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
-    SubscriptionTier.FREE: 1,
+    SubscriptionTier.BASIC: 1,
     SubscriptionTier.PRO: 5,
     SubscriptionTier.MAX: 20,
     SubscriptionTier.BUSINESS: 60,
     SubscriptionTier.ENTERPRISE: 60,
 }
 
-DEFAULT_TIER = SubscriptionTier.FREE
+DEFAULT_TIER = SubscriptionTier.BASIC
 
 
 class UsageWindow(BaseModel):

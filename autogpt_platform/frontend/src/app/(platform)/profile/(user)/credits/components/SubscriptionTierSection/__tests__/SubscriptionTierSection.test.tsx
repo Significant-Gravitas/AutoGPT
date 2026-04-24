@@ -67,9 +67,9 @@ vi.mock("@/components/molecules/Dialog/Dialog", () => ({
 }));
 
 function makeSubscription({
-  tier = "FREE",
+  tier = "BASIC",
   monthlyCost = 0,
-  tierCosts = { FREE: 0, PRO: 1999, MAX: 32000, ENTERPRISE: 0 },
+  tierCosts = { BASIC: 0, PRO: 1999, MAX: 32000, ENTERPRISE: 0 },
   prorationCreditCents = 0,
   pendingTier = null as string | null,
   pendingTierEffectiveAt = null as Date | string | null,
@@ -153,10 +153,10 @@ describe("SubscriptionTierSection", () => {
     expect(screen.getByText(/failed to load subscription info/i)).toBeDefined();
   });
 
-  it("renders all three tier cards for FREE user", () => {
+  it("renders all three tier cards for BASIC user", () => {
     setupMocks();
     render(<SubscriptionTierSection />);
-    // FREE tier card is labelled "Basic"; cost displays "Free" for FREE@$0.
+    // BASIC tier card is labelled "Basic"; cost displays "Free" for BASIC@$0.
     expect(screen.getByText("Basic")).toBeDefined();
     expect(screen.getByText("Free")).toBeDefined();
     expect(screen.getByText("Pro")).toBeDefined();
@@ -182,14 +182,14 @@ describe("SubscriptionTierSection", () => {
   it("displays tier costs from the API", () => {
     setupMocks({
       subscription: makeSubscription({
-        tier: "FREE",
-        tierCosts: { FREE: 0, PRO: 1999, MAX: 32000, ENTERPRISE: 0 },
+        tier: "BASIC",
+        tierCosts: { BASIC: 0, PRO: 1999, MAX: 32000, ENTERPRISE: 0 },
       }),
     });
     render(<SubscriptionTierSection />);
     expect(screen.getByText("$19.99/mo")).toBeDefined();
     expect(screen.getByText("$320.00/mo")).toBeDefined();
-    // FREE tier card label is "Basic"; its $0 cost renders "Free".
+    // BASIC tier card label is "Basic"; its $0 cost renders "Free".
     expect(screen.getByText("Basic")).toBeDefined();
     expect(screen.getByText("Free")).toBeDefined();
   });
@@ -197,8 +197,8 @@ describe("SubscriptionTierSection", () => {
   it("shows 'Pricing available soon' when tier cost is 0 for a paid tier", () => {
     setupMocks({
       subscription: makeSubscription({
-        tier: "FREE",
-        tierCosts: { FREE: 0, PRO: 0, MAX: 0, ENTERPRISE: 0 },
+        tier: "BASIC",
+        tierCosts: { BASIC: 0, PRO: 0, MAX: 0, ENTERPRISE: 0 },
       }),
     });
     render(<SubscriptionTierSection />);
@@ -260,7 +260,7 @@ describe("SubscriptionTierSection", () => {
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ tier: "FREE" }),
+          data: expect.objectContaining({ tier: "BASIC" }),
         }),
       );
     });
@@ -324,7 +324,7 @@ describe("SubscriptionTierSection", () => {
 
   it("hides action buttons when payment flag is disabled", () => {
     mockPaymentEnabled = false;
-    setupMocks({ subscription: makeSubscription({ tier: "FREE" }) });
+    setupMocks({ subscription: makeSubscription({ tier: "BASIC" }) });
     render(<SubscriptionTierSection />);
     // Tier cards still visible
     expect(screen.getByText("Pro")).toBeDefined();
@@ -335,12 +335,12 @@ describe("SubscriptionTierSection", () => {
   });
 
   it("hides tiers that are missing from tier_costs (no LD price configured)", () => {
-    // LD only has stripe-price-id-basic → only FREE appears; PRO/Max/Business
+    // LD only has stripe-price-id-basic → only BASIC appears; PRO/Max/Business
     // cards must hide.
     setupMocks({
       subscription: makeSubscription({
-        tier: "FREE",
-        tierCosts: { FREE: 0 },
+        tier: "BASIC",
+        tierCosts: { BASIC: 0 },
       }),
     });
     render(<SubscriptionTierSection />);
@@ -355,8 +355,8 @@ describe("SubscriptionTierSection", () => {
     // (stripe-price-id-business unset) and must not render.
     setupMocks({
       subscription: makeSubscription({
-        tier: "FREE",
-        tierCosts: { FREE: 0, PRO: 1999, MAX: 32000 },
+        tier: "BASIC",
+        tierCosts: { BASIC: 0, PRO: 1999, MAX: 32000 },
       }),
     });
     render(<SubscriptionTierSection />);
@@ -376,7 +376,7 @@ describe("SubscriptionTierSection", () => {
     render(<SubscriptionTierSection />);
     expect(screen.getByText("Max")).toBeDefined();
     expect(screen.getByText("Pro")).toBeDefined();
-    // FREE has no price AND isn't the current tier → hidden.
+    // BASIC has no price AND isn't the current tier → hidden.
     expect(screen.queryByText("Basic")).toBeNull();
   });
 
@@ -537,7 +537,7 @@ describe("SubscriptionTierSection", () => {
   it("disables the tier button that matches the pending tier so users can't overwrite their own scheduled change by mis-click", () => {
     // User is on MAX and has a pending downgrade to PRO. The "Downgrade
     // to Pro" button must be disabled + labelled "Scheduled" so the primary
-    // cancel path stays the banner. Other tier buttons (FREE here) remain
+    // cancel path stays the banner. Other tier buttons (BASIC here) remain
     // clickable — the user can still overwrite their pending change by
     // picking a different target; backend handles that.
     setupMocks({
@@ -553,17 +553,19 @@ describe("SubscriptionTierSection", () => {
     expect(scheduledBtn).toBeDefined();
     expect((scheduledBtn as HTMLButtonElement).disabled).toBe(true);
 
-    // The non-pending tier (FREE) button is still clickable.
-    const freeBtn = screen.getByRole("button", { name: /downgrade to basic/i });
-    expect((freeBtn as HTMLButtonElement).disabled).toBe(false);
+    // The non-pending tier (BASIC) button is still clickable.
+    const basicBtn = screen.getByRole("button", {
+      name: /downgrade to basic/i,
+    });
+    expect((basicBtn as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("shows replace-pending dialog when clicking a non-pending tier while a pending change exists, and fires the mutation after confirm", async () => {
-    // User is on MAX with a pending downgrade to PRO. Clicking FREE (a
+    // User is on MAX with a pending downgrade to PRO. Clicking BASIC (a
     // tier that is neither current nor the pending target) must NOT silently
     // overwrite the pending schedule — it must open a confirmation dialog.
     // Only after the user explicitly confirms should changeTier (→ its own
-    // downgrade confirm for paid→FREE) fire.
+    // downgrade confirm for paid→BASIC) fire.
     const mutateFn = vi
       .fn()
       .mockResolvedValue({ status: 200, data: { url: "" } });
@@ -577,7 +579,7 @@ describe("SubscriptionTierSection", () => {
     });
     render(<SubscriptionTierSection />);
 
-    // Clicking FREE while PRO is pending surfaces the replace-pending dialog
+    // Clicking BASIC while PRO is pending surfaces the replace-pending dialog
     // before anything mutates.
     fireEvent.click(
       screen.getByRole("button", { name: /downgrade to basic/i }),
@@ -587,7 +589,7 @@ describe("SubscriptionTierSection", () => {
     expect(mutateFn).not.toHaveBeenCalled();
 
     // Confirm the replace: the replace-pending dialog closes and the
-    // downgrade-to-FREE dialog takes over (because FREE is a downgrade).
+    // downgrade-to-BASIC dialog takes over (because BASIC is a downgrade).
     fireEvent.click(
       screen.getByRole("button", { name: /replace pending change/i }),
     );
@@ -599,7 +601,7 @@ describe("SubscriptionTierSection", () => {
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ tier: "FREE" }),
+          data: expect.objectContaining({ tier: "BASIC" }),
         }),
       );
     });
@@ -629,11 +631,11 @@ describe("SubscriptionTierSection", () => {
     expect(mutateFn).not.toHaveBeenCalled();
   });
 
-  it("renders FREE cancellation copy in banner when pending_tier is FREE", () => {
+  it("renders BASIC cancellation copy in banner when pending_tier is BASIC", () => {
     setupMocks({
       subscription: makeSubscription({
         tier: "MAX",
-        pendingTier: "FREE",
+        pendingTier: "BASIC",
         // Noon UTC so the local-formatted date lands on the same day
         // regardless of the runner's timezone (midnight UTC drifts to
         // the prior day in any timezone west of UTC).
@@ -646,7 +648,7 @@ describe("SubscriptionTierSection", () => {
       screen.getByText(/scheduled to cancel your subscription on/i),
     ).toBeDefined();
     expect(screen.getByText(/May 15, 2026/)).toBeDefined();
-    // Must NOT render the "downgrade to" phrasing on FREE cancellation.
+    // Must NOT render the "downgrade to" phrasing on BASIC cancellation.
     expect(screen.queryByText(/scheduled to downgrade to/i)).toBeNull();
   });
 });

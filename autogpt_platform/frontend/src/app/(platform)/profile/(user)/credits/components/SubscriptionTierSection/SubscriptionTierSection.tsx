@@ -211,7 +211,7 @@ export function SubscriptionTierSection() {
         })}
       </div>
 
-      {currentTier !== "FREE" && isPaymentEnabled && (
+      {currentTier !== "BASIC" && isPaymentEnabled && (
         <p className="text-sm text-neutral-500">
           Your subscription is managed through Stripe. Upgrades take effect
           immediately. Downgrades take effect at the end of your current billing
@@ -230,8 +230,8 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {confirmDowngradeTo === "FREE"
-              ? "Downgrading to Free will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
+            {confirmDowngradeTo === "BASIC"
+              ? "Downgrading to Basic will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
               : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect at the end of your current billing period. You keep your current plan until then.`}{" "}
             Are you sure?
           </p>

@@ -7,7 +7,7 @@ export interface TierInfo {
 
 export const TIERS: TierInfo[] = [
   {
-    key: "FREE",
+    key: "BASIC",
     label: "Basic",
     multiplier: "1x",
     description: "Base AutoPilot capacity with standard rate limits",
@@ -32,11 +32,11 @@ export const TIERS: TierInfo[] = [
   },
 ];
 
-export const TIER_ORDER = ["FREE", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
+export const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function formatCost(cents: number, tierKey: string): string {
   if (cents === 0)
-    return tierKey === "FREE" ? "Free" : "Pricing available soon";
+    return tierKey === "BASIC" ? "Free" : "Pricing available soon";
   return `$${(cents / 100).toFixed(2)}/mo`;
 }
 

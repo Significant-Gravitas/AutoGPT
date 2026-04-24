@@ -38,7 +38,7 @@ afterEach(() => {
 function makeUsage({
   dailyPercent = 5,
   weeklyPercent = 4,
-  tier = "FREE",
+  tier = "BASIC",
 }: {
   dailyPercent?: number | null;
   weeklyPercent?: number | null;
