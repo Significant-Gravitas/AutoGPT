@@ -6,8 +6,6 @@ Patches the redis-py constructors + ``ping()`` so no real Redis is needed.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.cluster import RedisCluster as AsyncRedisCluster
 from redis.cluster import RedisCluster
 
@@ -18,9 +16,7 @@ import backend.data.redis_client as redis_client
 def _reset_module_caches() -> None:
     """Flush cached singletons between tests so each test sees a fresh connect."""
     redis_client.get_redis.cache_clear()
-    redis_client.get_redis_pubsub.cache_clear()
     redis_client._async_clients.clear()
-    redis_client._async_pubsub_clients.clear()
 
 
 def test_connect_builds_redis_cluster() -> None:
@@ -85,35 +81,6 @@ async def test_connect_async_builds_async_redis_cluster() -> None:
     client.ping.assert_awaited_once()
 
 
-def test_connect_pubsub_builds_plain_redis() -> None:
-    with patch.object(redis_client, "Redis", autospec=True) as mock_redis:
-        mock_redis.return_value = MagicMock(spec=Redis)
-        client = redis_client.connect_pubsub()
-
-    mock_redis.assert_called_once()
-    kwargs = mock_redis.call_args.kwargs
-    assert kwargs["host"] == redis_client.HOST
-    assert kwargs["port"] == redis_client.PORT
-    assert kwargs["decode_responses"] is True
-    client.ping.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_connect_pubsub_async_builds_plain_async_redis() -> None:
-    with patch.object(redis_client, "AsyncRedis", autospec=True) as mock_async:
-        fake = MagicMock(spec=AsyncRedis)
-        fake.ping = AsyncMock()
-        mock_async.return_value = fake
-        client = await redis_client.connect_pubsub_async()
-
-    mock_async.assert_called_once()
-    kwargs = mock_async.call_args.kwargs
-    assert kwargs["host"] == redis_client.HOST
-    assert kwargs["port"] == redis_client.PORT
-    assert kwargs["decode_responses"] is True
-    client.ping.assert_awaited_once()
-
-
 def test_get_redis_caches_connect() -> None:
     with patch.object(redis_client, "connect", autospec=True) as mock_connect:
         mock_connect.return_value = MagicMock(spec=RedisCluster)
@@ -122,16 +89,6 @@ def test_get_redis_caches_connect() -> None:
 
     assert client_a is client_b
     mock_connect.assert_called_once()
-
-
-def test_get_redis_pubsub_caches_connect() -> None:
-    with patch.object(redis_client, "connect_pubsub", autospec=True) as mock_conn:
-        mock_conn.return_value = MagicMock(spec=Redis)
-        a = redis_client.get_redis_pubsub()
-        b = redis_client.get_redis_pubsub()
-
-    assert a is b
-    mock_conn.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -146,19 +103,6 @@ async def test_get_redis_async_caches_connect() -> None:
     mock_conn.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_get_redis_pubsub_async_caches_per_loop() -> None:
-    """Repeated calls on the same loop reuse the same client."""
-    with patch.object(redis_client, "connect_pubsub_async", autospec=True) as m:
-        fake = MagicMock(spec=AsyncRedis)
-        m.return_value = fake
-        a = await redis_client.get_redis_pubsub_async()
-        b = await redis_client.get_redis_pubsub_async()
-
-    assert a is b
-    m.assert_called_once()
-
-
 def test_disconnect_closes_cached_client() -> None:
     with patch.object(redis_client, "connect", autospec=True) as mock_connect:
         fake = MagicMock(spec=RedisCluster)
@@ -167,36 +111,6 @@ def test_disconnect_closes_cached_client() -> None:
         redis_client.disconnect()
 
     fake.close.assert_called_once()
-
-
-def test_disconnect_closes_cached_pubsub() -> None:
-    with (
-        patch.object(redis_client, "connect", autospec=True) as mock_connect,
-        patch.object(redis_client, "connect_pubsub", autospec=True) as mock_pubsub,
-    ):
-        fake = MagicMock(spec=RedisCluster)
-        fake_pubsub = MagicMock(spec=Redis)
-        mock_connect.return_value = fake
-        mock_pubsub.return_value = fake_pubsub
-        redis_client.get_redis()
-        redis_client.get_redis_pubsub()
-        redis_client.disconnect()
-
-    fake.close.assert_called_once()
-    fake_pubsub.close.assert_called_once()
-
-
-def test_disconnect_skips_unused_pubsub() -> None:
-    """Disconnect must not open a pub/sub connection just to close it."""
-    with (
-        patch.object(redis_client, "connect", autospec=True) as mock_connect,
-        patch.object(redis_client, "connect_pubsub", autospec=True) as mock_pubsub,
-    ):
-        mock_connect.return_value = MagicMock(spec=RedisCluster)
-        redis_client.get_redis()
-        redis_client.disconnect()
-
-    mock_pubsub.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -213,49 +127,10 @@ async def test_disconnect_async_closes_cached_client() -> None:
 
 
 @pytest.mark.asyncio
-async def test_disconnect_async_closes_cached_pubsub_client() -> None:
-    with (
-        patch.object(redis_client, "connect_async", autospec=True) as mock_connect,
-        patch.object(
-            redis_client, "connect_pubsub_async", autospec=True
-        ) as mock_pubsub,
-    ):
-        fake_cluster = MagicMock(spec=AsyncRedisCluster)
-        fake_cluster.close = AsyncMock()
-        fake_pubsub = MagicMock(spec=AsyncRedis)
-        fake_pubsub.close = AsyncMock()
-        mock_connect.return_value = fake_cluster
-        mock_pubsub.return_value = fake_pubsub
-        await redis_client.get_redis_async()
-        await redis_client.get_redis_pubsub_async()
-        await redis_client.disconnect_async()
-
-    fake_cluster.close.assert_awaited_once()
-    fake_pubsub.close.assert_awaited_once()
-    assert redis_client._async_pubsub_clients == {}
-
-
-@pytest.mark.asyncio
 async def test_disconnect_async_no_cached_client_is_noop() -> None:
     with patch.object(redis_client, "connect_async", autospec=True) as mock_connect:
         await redis_client.disconnect_async()
     mock_connect.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_disconnect_async_closes_pubsub_without_cluster_client() -> None:
-    """A pub/sub-only caller must still have its FD released on shutdown."""
-    with patch.object(
-        redis_client, "connect_pubsub_async", autospec=True
-    ) as mock_pubsub:
-        fake_pubsub = MagicMock(spec=AsyncRedis)
-        fake_pubsub.close = AsyncMock()
-        mock_pubsub.return_value = fake_pubsub
-        await redis_client.get_redis_pubsub_async()
-        await redis_client.disconnect_async()
-
-    fake_pubsub.close.assert_awaited_once()
-    assert redis_client._async_pubsub_clients == {}
 
 
 # Sharded pub/sub end-to-end against the local 3-shard compose cluster.
