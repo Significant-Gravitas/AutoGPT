@@ -9,7 +9,6 @@ volumes:
   clamav-data:
   workspace-data:
   falkordb_data:
-  redis-0-data:
 
 x-agpt-services:
   &agpt-services

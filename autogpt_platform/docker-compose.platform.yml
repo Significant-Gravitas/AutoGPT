@@ -87,10 +87,12 @@ services:
 
   # Three-container 3-master Redis Cluster for local dev. Stock ``redis:7``
   # on each shard runs its default entrypoint; the one-shot ``redis-init``
-  # sidecar runs ``redis-cli --cluster create`` once and exits. Each shard
-  # persists its cluster state to its own volume (seed only — the two
-  # follower shards reconstruct from gossip on restart, so they don't need
-  # volumes), and announces its own compose hostname via
+  # sidecar runs ``redis-cli --cluster create`` once and exits. No volumes
+  # — local dev treats the cluster as cache-only, so every ``docker compose
+  # up`` starts fresh. (Persisting only the seed volume across restarts is
+  # a trap: the other shards come back with new IDs and the seed's
+  # ``nodes.conf`` pins stale peers that cluster gossip can't heal.) Each
+  # shard announces its own compose hostname via
   # ``--cluster-announce-hostname`` so both in-compose clients (Docker DNS)
   # and host-native clients (handled by the backend's ``address_remap``)
   # receive a consistent address on CLUSTER SLOTS. Ports 17000/17001/17002
@@ -98,11 +100,9 @@ services:
   redis-0:
     <<: *redis-node
     hostname: redis-0
-    command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-0 --cluster-announce-port 17000 --cluster-announce-bus-port 27000 --cluster-preferred-endpoint-type hostname --appendonly yes
+    command: redis-server --port 17000 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-0 --cluster-announce-port 17000 --cluster-announce-bus-port 27000 --cluster-preferred-endpoint-type hostname
     ports:
       - "17000:17000"
-    volumes:
-      - redis-0-data:/data
     healthcheck:
       test:
         [
@@ -115,15 +115,19 @@ services:
   redis-1:
     <<: *redis-node
     hostname: redis-1
-    command: redis-server --port 17001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-1 --cluster-announce-port 17001 --cluster-announce-bus-port 27001 --cluster-preferred-endpoint-type hostname --appendonly yes
+    command: redis-server --port 17001 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-1 --cluster-announce-port 17001 --cluster-announce-bus-port 27001 --cluster-preferred-endpoint-type hostname
     ports:
       - "17001:17001"
   redis-2:
     <<: *redis-node
     hostname: redis-2
-    command: redis-server --port 17002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-2 --cluster-announce-port 17002 --cluster-announce-bus-port 27002 --cluster-preferred-endpoint-type hostname --appendonly yes
+    command: redis-server --port 17002 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --cluster-require-full-coverage no --cluster-announce-hostname redis-2 --cluster-announce-port 17002 --cluster-announce-bus-port 27002 --cluster-preferred-endpoint-type hostname
     ports:
       - "17002:17002"
+  # The ``|| cluster create`` short-circuit makes this idempotent within the
+  # lifetime of a single compose project: a re-``up`` without ``down`` leaves
+  # the already-formed cluster untouched. A ``down`` + ``up`` wipes every
+  # shard (no volumes) and re-creates from scratch.
   redis-init:
     <<: *redis-node
     depends_on: [redis-0, redis-1, redis-2]
@@ -440,7 +444,6 @@ services:
 volumes:
   workspace-data:
   falkordb_data:
-  redis-0-data:
 
 networks:
   app-network:
