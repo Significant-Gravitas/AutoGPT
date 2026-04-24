@@ -307,14 +307,16 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.GROK_4_1_FAST: TokenRate(input=30, output=75),
     LlmModel.GROK_4_20: TokenRate(input=300, output=900),
     LlmModel.GROK_CODE_FAST_1: TokenRate(input=30, output=225),
-    # DeepSeek (deepseek-chat = V3.2 at $0.28/$0.42; reasoner at $0.55/$2.19).
-    LlmModel.DEEPSEEK_CHAT: TokenRate(input=42, output=63),
-    LlmModel.DEEPSEEK_R1_0528: TokenRate(input=82, output=329),
+    # DeepSeek: both `deepseek-chat` and `deepseek-reasoner` now alias to
+    # `deepseek-v4-flash` (non-thinking + thinking modes) at unified
+    # $0.14/$0.28 per 1M (Sept 2025 price unification).
+    LlmModel.DEEPSEEK_CHAT: TokenRate(input=21, output=42),
+    LlmModel.DEEPSEEK_R1_0528: TokenRate(input=21, output=42),
     # Mistral
-    LlmModel.MISTRAL_LARGE_3: TokenRate(input=300, output=900),
+    LlmModel.MISTRAL_LARGE_3: TokenRate(input=75, output=225),
     LlmModel.MISTRAL_MEDIUM_3_1: TokenRate(input=60, output=300),
     LlmModel.MISTRAL_SMALL_3_2: TokenRate(input=15, output=45),
-    LlmModel.MISTRAL_NEMO: TokenRate(input=3, output=6),
+    LlmModel.MISTRAL_NEMO: TokenRate(input=23, output=23),
     LlmModel.CODESTRAL: TokenRate(input=45, output=135),
     # Cohere
     LlmModel.COHERE_COMMAND_R_08_2024: TokenRate(input=23, output=90),
@@ -322,7 +324,7 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.COHERE_COMMAND_A_03_2025: TokenRate(input=375, output=1500),
     # Moonshot Kimi
     LlmModel.KIMI_K2: TokenRate(input=90, output=375),
-    LlmModel.KIMI_K2_0905: TokenRate(input=82, output=330),
+    LlmModel.KIMI_K2_0905: TokenRate(input=90, output=375),
     LlmModel.KIMI_K2_5: TokenRate(input=90, output=450),
     LlmModel.KIMI_K2_6: TokenRate(input=143, output=600),
     LlmModel.KIMI_K2_THINKING: TokenRate(input=90, output=375),
@@ -335,7 +337,7 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     LlmModel.LLAMA3_3_70B: TokenRate(input=89, output=119),
     LlmModel.LLAMA3_1_8B: TokenRate(input=8, output=12),
     LlmModel.META_LLAMA_4_SCOUT: TokenRate(input=17, output=51),
-    LlmModel.META_LLAMA_4_MAVERICK: TokenRate(input=30, output=90),
+    LlmModel.META_LLAMA_4_MAVERICK: TokenRate(input=75, output=116),
     LlmModel.OPENAI_GPT_OSS_120B: TokenRate(input=23, output=90),
     LlmModel.OPENAI_GPT_OSS_20B: TokenRate(input=11, output=45),
 }
