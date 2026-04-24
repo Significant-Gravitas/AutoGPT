@@ -91,13 +91,19 @@ describe("SettingsApiKeysPage - create flow", () => {
       within(dialog).getByRole("checkbox", { name: /execute graph/i }),
     );
 
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /create key/i }),
-    );
+    const submit = within(dialog).getByRole("button", {
+      name: /create key/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(submit.disabled).toBe(false);
+    });
+    fireEvent.click(submit);
 
     expect(await screen.findByText(/your new api key/i)).toBeDefined();
     expect(await screen.findByText(plain)).toBeDefined();
-    expect(screen.getByRole("button", { name: /^close$/i })).toBeDefined();
+    expect(
+      within(dialog).getAllByRole("button", { name: /^close$/i }).length,
+    ).toBeGreaterThan(0);
   });
 
   test("keeps the form open when the API returns 422", async () => {
@@ -119,9 +125,13 @@ describe("SettingsApiKeysPage - create flow", () => {
       within(dialog).getByRole("checkbox", { name: /execute graph/i }),
     );
 
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /create key/i }),
-    );
+    const submit = within(dialog).getByRole("button", {
+      name: /create key/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(submit.disabled).toBe(false);
+    });
+    fireEvent.click(submit);
 
     // No transition to the success view — form inputs remain mounted.
     await waitFor(() => {
@@ -152,12 +162,20 @@ describe("SettingsApiKeysPage - create flow", () => {
     fireEvent.click(
       within(dialog).getByRole("checkbox", { name: /execute graph/i }),
     );
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: /create key/i }),
-    );
+
+    const submit = within(dialog).getByRole("button", {
+      name: /create key/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(submit.disabled).toBe(false);
+    });
+    fireEvent.click(submit);
 
     await screen.findByText("reset-me");
-    fireEvent.click(screen.getByRole("button", { name: /^close$/i }));
+    const closeButtons = within(dialog).getAllByRole("button", {
+      name: /^close$/i,
+    });
+    fireEvent.click(closeButtons[closeButtons.length - 1]);
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
