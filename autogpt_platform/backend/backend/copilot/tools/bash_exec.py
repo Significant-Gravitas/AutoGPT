@@ -35,7 +35,7 @@ from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 logger = logging.getLogger(__name__)
 
 
-def _build_response(
+def _build_completion_response(
     stdout: str | None,
     stderr: str | None,
     exit_code: int,
@@ -197,7 +197,7 @@ class BashExecTool(BaseTool):
                 timeout=timeout,
                 envs=envs,
             )
-            return _build_response(
+            return _build_completion_response(
                 result.stdout,
                 result.stderr,
                 result.exit_code,
@@ -205,7 +205,7 @@ class BashExecTool(BaseTool):
                 session_id,
             )
         except CommandExitException as exc:
-            return _build_response(
+            return _build_completion_response(
                 exc.stdout, exc.stderr, exc.exit_code, secret_values, session_id
             )
         except TimeoutException:
