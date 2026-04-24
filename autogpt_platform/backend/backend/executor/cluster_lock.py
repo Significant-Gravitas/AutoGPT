@@ -11,11 +11,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Lua CAS release: only delete the key if the stored value still matches our
-# owner_id. Returns 1 on delete, 0 on no-op. This makes release() safe against
-# the race where an external caller (e.g. mark_session_completed's force-release)
-# deletes our key and a new owner acquires it before our release() fires — without
-# the CAS guard, release() would wipe the successor's valid lock.
+# CAS release: DEL only when the stored owner still matches — guards against
+# wiping a successor's lock after an external force-release.
 _RELEASE_LUA = (
     "if redis.call('get', KEYS[1]) == ARGV[1] then "
     "return redis.call('del', KEYS[1]) "
