@@ -317,11 +317,15 @@ TOKEN_COST: dict[LlmModel, TokenRate] = {
     # $0.14/$0.28 per 1M (Sept 2025 price unification).
     LlmModel.DEEPSEEK_CHAT: TokenRate(input=21, output=42),
     LlmModel.DEEPSEEK_R1_0528: TokenRate(input=21, output=42),
-    # Mistral
-    LlmModel.MISTRAL_LARGE_3: TokenRate(input=75, output=225),
+    # Mistral — models route through OpenRouter (ModelMetadata provider =
+    # "open_router"). TOKEN_COST here is the safety floor when OpenRouter
+    # fails to return x-total-cost; rates below match OpenRouter's current
+    # pass-through pricing (NOT Mistral's direct /v1/chat prices, which
+    # we never call).
+    LlmModel.MISTRAL_LARGE_3: TokenRate(input=300, output=900),
     LlmModel.MISTRAL_MEDIUM_3_1: TokenRate(input=60, output=300),
     LlmModel.MISTRAL_SMALL_3_2: TokenRate(input=15, output=45),
-    LlmModel.MISTRAL_NEMO: TokenRate(input=23, output=23),
+    LlmModel.MISTRAL_NEMO: TokenRate(input=5, output=5),
     LlmModel.CODESTRAL: TokenRate(input=45, output=135),
     # Cohere
     LlmModel.COHERE_COMMAND_R_08_2024: TokenRate(input=23, output=90),
@@ -674,9 +678,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
+    # ReplicateModelBlock is a generic wrapper — users pass ANY Replicate
+    # model ref. A flat 10 cr/run was:
+    #   - 20x over-billing cheap models (~$0.005 SDXL tiny runs)
+    #   - 10-500x under-billing long video/LLM runs ($1-$50+)
+    # Block now reads prediction.metrics.predict_time after completion
+    # and bills that × $0.0014/s (Nvidia L40S mid-tier) via COST_USD
+    # 150 cr/$. Heavy LLMs on A100 under-bill slightly, cheap L4 runs
+    # over-bill slightly, but the catastrophic under-bill is gone.
     ReplicateModelBlock: [
         BlockCost(
-            cost_amount=10,
+            cost_amount=150,
+            cost_type=BlockCostType.COST_USD,
             cost_filter={
                 "credentials": {
                     "id": replicate_credentials.id,
