@@ -189,9 +189,7 @@ class RunBlockTool(BaseTool):
         # preview round trip — saves a turn when the LLM's next move would
         # be the same setup card anyway. Skipped under validate_only since
         # the point there is introspection without any UI interaction.
-        missing_required = (
-            prep.required_non_credential_keys - prep.provided_input_keys
-        )
+        missing_required = prep.required_non_credential_keys - prep.provided_input_keys
         if missing_required and not validate_only:
             properties = prep.input_schema.get("properties", {})
             picker_missing = [

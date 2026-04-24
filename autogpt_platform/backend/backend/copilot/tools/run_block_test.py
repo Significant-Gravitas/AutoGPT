@@ -607,9 +607,7 @@ class TestRunBlockInputValidation:
         assert isinstance(response, SetupRequirementsResponse)
         assert "'spreadsheet'" in response.message
         inputs = response.setup_info.requirements["inputs"]
-        picker_field = next(
-            (i for i in inputs if i["name"] == "spreadsheet"), None
-        )
+        picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
         assert picker_field is not None
         assert picker_field["format"] == "google-drive-picker"
 
