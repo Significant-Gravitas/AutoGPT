@@ -1,4 +1,5 @@
 import asyncio
+import json as _json
 import logging
 from typing import Dict, Set
 
@@ -236,8 +237,6 @@ class ConnectionManager:
             )
             return
 
-        import json as _json
-
         try:
             parsed = _json.loads(wrapper)
             event_data = parsed.get("payload")
@@ -282,12 +281,19 @@ class ConnectionManager:
         if raw_payload is None:
             return
         try:
-            wrapper = (
+            wrapper_json = (
                 raw_payload.decode()
                 if isinstance(raw_payload, (bytes, bytearray))
                 else raw_payload
             )
-            event = NotificationEvent.model_validate_json(wrapper)
+            # Messages on the wire are wrapped by ``_EventPayloadWrapper``
+            # ({"payload": {...NotificationEvent...}}); strip one level
+            # before validating.
+            parsed = _json.loads(wrapper_json)
+            inner = parsed.get("payload") if isinstance(parsed, dict) else None
+            if not isinstance(inner, dict):
+                return
+            event = NotificationEvent.model_validate(inner)
         except Exception:
             logger.warning(
                 "Failed to parse notification payload for user=%s",

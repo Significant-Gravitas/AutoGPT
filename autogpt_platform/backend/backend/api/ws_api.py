@@ -16,6 +16,7 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
+from backend.data import db
 from backend.data.user import DEFAULT_USER_ID
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
@@ -30,10 +31,14 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # No global broadcaster: every connected websocket owns its own
-    # SSUBSCRIBE set via ConnectionManager, sharded pub/sub routes only
-    # to the shard that holds each channel's keyslot.
-    yield
+    # Per-connection SSUBSCRIBE needs the Prisma client to resolve
+    # graph_id from graph_exec_id; old WS server only forwarded events
+    # so it never connected. Connect on startup, disconnect on shutdown.
+    await db.connect()
+    try:
+        yield
+    finally:
+        await db.disconnect()
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
