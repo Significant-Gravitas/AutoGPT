@@ -21,8 +21,8 @@ export const TIERS: TierInfo[] = [
   {
     key: "BUSINESS",
     label: "Max",
-    multiplier: "20x",
-    description: "20x AutoPilot capacity — ideal for teams and heavy workloads",
+    multiplier: "60x",
+    description: "60x AutoPilot capacity — ideal for teams and heavy workloads",
   },
 ];
 

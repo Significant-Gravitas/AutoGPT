@@ -354,7 +354,7 @@ class TestSubscriptionTier:
     def test_tier_multipliers(self):
         assert TIER_MULTIPLIERS[SubscriptionTier.FREE] == 1
         assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5
-        assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 20
+        assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 60
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60
 
     def test_default_tier_is_free(self):
@@ -708,8 +708,8 @@ class TestGetGlobalRateLimitsWithTiers:
         assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_business_tier_20x_multiplier(self):
-        """Business tier should multiply limits by 20."""
+    async def test_business_tier_60x_multiplier(self):
+        """Business tier should multiply limits by 60 (matches Enterprise capacity)."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
@@ -725,8 +725,8 @@ class TestGetGlobalRateLimitsWithTiers:
                 _USER, 2_500_000, 12_500_000
             )
 
-        assert daily == 50_000_000
-        assert weekly == 250_000_000
+        assert daily == 150_000_000
+        assert weekly == 750_000_000
         assert tier == SubscriptionTier.BUSINESS
 
     @pytest.mark.asyncio
@@ -1224,7 +1224,7 @@ class TestTierLimitsEnforced:
                 _USER, self._BASE_DAILY, self._BASE_WEEKLY
             )
             assert tier == SubscriptionTier.BUSINESS
-            assert daily == biz_daily  # 20x
+            assert daily == biz_daily  # 60x
             # Should NOT raise — usage is within the BUSINESS tier allowance
             await check_rate_limit(_USER, daily, weekly)
 

@@ -12,7 +12,7 @@ type Tier = (typeof TIERS)[number];
 const TIER_MULTIPLIERS: Record<Tier, string> = {
   FREE: "1x base limits",
   PRO: "5x base limits",
-  BUSINESS: "20x base limits",
+  BUSINESS: "60x base limits",
   ENTERPRISE: "60x base limits",
 };
 

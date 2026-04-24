@@ -41,7 +41,7 @@ model User {
   timezone String @default("not-set")
 
   // CoPilot subscription tier — controls rate-limit multipliers.
-  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=20x, ENTERPRISE=60x.
+  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=60x, ENTERPRISE=60x.
   // NOTE: @default(PRO) is intentional for the beta period — all existing and new
   // users receive PRO-level (5x) rate limits by default. The Python-level constant
   // DEFAULT_TIER=FREE (in copilot/rate_limit.py) acts as a code-level fallback when

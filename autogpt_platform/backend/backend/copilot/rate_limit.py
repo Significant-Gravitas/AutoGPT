@@ -83,10 +83,11 @@ class SubscriptionTier(str, Enum):
 # Intentionally int (not float): keeps limits as whole microdollars and avoids
 # floating-point rounding. If fractional multipliers are ever needed, change
 # the type and round the result in get_global_rate_limits().
+# BUSINESS matches ENTERPRISE's 60x: same capacity, self-service vs admin-managed.
 TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
     SubscriptionTier.FREE: 1,
     SubscriptionTier.PRO: 5,
-    SubscriptionTier.BUSINESS: 20,
+    SubscriptionTier.BUSINESS: 60,
     SubscriptionTier.ENTERPRISE: 60,
 }
 
