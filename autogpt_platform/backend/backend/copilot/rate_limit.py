@@ -148,6 +148,53 @@ async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None
     return parsed or None
 
 
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_cost_limits_flag() -> dict[str, int] | None:
+    """Fetch the ``copilot-cost-limits`` LD flag and parse it.
+
+    Returns a sparse ``{"daily": int, "weekly": int}`` map built from whichever
+    keys are valid in the flag payload, or ``None`` when the flag is unset /
+    invalid / LD is unavailable.  Callers merge whatever survives into their
+    config defaults (see :func:`get_global_rate_limits`).
+
+    The LD value is expected to be a JSON object keyed by window name
+    (``{"daily": 625000, "weekly": 3125000}``).  Non-int / negative values
+    are skipped so a broken key degrades to the config default instead of
+    wiping out the limit.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(Flag.COPILOT_COST_LIMITS.value, "system", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-cost-limits (expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[str, int] = {}
+    for key in ("daily", "weekly"):
+        if key not in raw:
+            continue
+        try:
+            value = int(raw[key])
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid LD value for copilot-cost-limits[%s]: %r", key, raw[key]
+            )
+            continue
+        if value < 0:
+            logger.warning(
+                "Negative LD value for copilot-cost-limits[%s]: %r", key, raw[key]
+            )
+            continue
+        parsed[key] = value
+    return parsed or None
+
+
 async def get_tier_multipliers() -> dict[str, float]:
     """Return the effective ``{tier_value: multiplier}`` map.
 
@@ -752,30 +799,14 @@ async def get_global_rate_limits(
     Returns:
         (daily_cost_limit, weekly_cost_limit, tier) — limits in microdollars.
     """
-    # Lazy import to avoid circular dependency:
-    # rate_limit -> feature_flag -> settings -> ... -> rate_limit
-    from backend.util.feature_flag import Flag, get_feature_flag_value
-
-    # Fetch daily + weekly flags in parallel — each LD evaluation is an
-    # independent network round-trip, so gather cuts latency roughly in half.
-    daily_raw, weekly_raw = await asyncio.gather(
-        get_feature_flag_value(
-            Flag.COPILOT_DAILY_COST_LIMIT.value, user_id, config_daily
-        ),
-        get_feature_flag_value(
-            Flag.COPILOT_WEEKLY_COST_LIMIT.value, user_id, config_weekly
-        ),
-    )
     try:
-        daily = max(0, int(daily_raw))
-    except (TypeError, ValueError):
-        logger.warning("Invalid LD value for daily cost limit: %r", daily_raw)
-        daily = config_daily
-    try:
-        weekly = max(0, int(weekly_raw))
-    except (TypeError, ValueError):
-        logger.warning("Invalid LD value for weekly cost limit: %r", weekly_raw)
-        weekly = config_weekly
+        override = await _fetch_cost_limits_flag()
+    except Exception:
+        logger.warning("get_global_rate_limits: LD lookup failed", exc_info=True)
+        override = None
+    override = override or {}
+    daily = override.get("daily", config_daily)
+    weekly = override.get("weekly", config_weekly)
 
     # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
     # so multipliers can be tuned without a deploy. Falls back to the defaults
