@@ -205,3 +205,127 @@ async def test_sharded_spublish_end_to_end_async() -> None:
         assert isinstance(res, int)
     finally:
         await redis_client.disconnect_async()
+
+
+# ---------- Sharded pub/sub: unit tests with mocks ----------
+
+
+def test_connect_sharded_pubsub_pins_host_and_disables_socket_timeout() -> None:
+    """socket_timeout=None on the pubsub socket (from commit 23a332b7d): a
+    spurious read timeout forces a reconnect whose PING races with subscribe-
+    mode. The fix is load-bearing, regress-guard it."""
+    with (
+        patch.object(
+            redis_client,
+            "resolve_shard_for_channel",
+            return_value=("shard-host", 7001),
+        ),
+        patch.object(redis_client, "Redis", autospec=True) as mock_redis,
+    ):
+        fake_client = MagicMock()
+        mock_redis.return_value = fake_client
+        client = redis_client.connect_sharded_pubsub("chan")
+
+    mock_redis.assert_called_once()
+    kwargs = mock_redis.call_args.kwargs
+    # Pinned to the shard's remapped address.
+    assert kwargs["host"] == "shard-host"
+    assert kwargs["port"] == 7001
+    # socket_timeout MUST be None for pubsub — see docstring in redis_client.py.
+    assert kwargs["socket_timeout"] is None
+    # Idle keepalive + health-check still intact.
+    assert kwargs["socket_keepalive"] is True
+    assert kwargs["health_check_interval"] == redis_client.HEALTH_CHECK_INTERVAL
+    # connect() must PING before returning.
+    client.ping.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_connect_sharded_pubsub_async_disables_socket_timeout() -> None:
+    """Async sibling of ``test_connect_sharded_pubsub_pins_host...``. Same
+    invariant: socket_timeout=None."""
+    with (
+        patch.object(
+            redis_client,
+            "resolve_shard_for_channel",
+            return_value=("shard-host", 7001),
+        ),
+        patch.object(redis_client, "AsyncRedis", autospec=True) as mock_redis,
+    ):
+        fake_client = MagicMock()
+        fake_client.ping = AsyncMock()
+        mock_redis.return_value = fake_client
+        client = await redis_client.connect_sharded_pubsub_async("chan")
+
+    kwargs = mock_redis.call_args.kwargs
+    assert kwargs["host"] == "shard-host"
+    assert kwargs["port"] == 7001
+    assert kwargs["socket_timeout"] is None
+    assert kwargs["socket_keepalive"] is True
+    assert kwargs["health_check_interval"] == redis_client.HEALTH_CHECK_INTERVAL
+    client.ping.assert_awaited_once()
+
+
+def test_resolve_shard_for_channel_applies_address_remap() -> None:
+    """The resolver must run ``_address_remap`` on the announced address so
+    callers connect through the same address the cluster client uses."""
+    cluster = MagicMock()
+    node = MagicMock()
+    node.host = "announced-host"
+    node.port = 17001
+    cluster.get_node_from_key.return_value = node
+
+    with (
+        patch.object(redis_client, "get_redis", return_value=cluster),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False),
+    ):
+        host, port = redis_client.resolve_shard_for_channel("chan")
+
+    # Remap pins the host to the seed, keeps the announced port.
+    assert host == redis_client.HOST
+    assert port == 17001
+
+
+def test_resolve_shard_for_channel_raises_when_no_node_owns_keyslot() -> None:
+    """Missing cluster node → explicit RuntimeError, not a silent None deref."""
+    cluster = MagicMock()
+    cluster.get_node_from_key.return_value = None
+
+    with patch.object(redis_client, "get_redis", return_value=cluster):
+        with pytest.raises(RuntimeError, match="No cluster node"):
+            redis_client.resolve_shard_for_channel("chan")
+
+
+def test_resolve_shard_for_channel_passthrough_with_announced_flag() -> None:
+    """When REDIS_USE_ANNOUNCED_ADDRESS is on, resolver returns the announced
+    address verbatim — no HOST override."""
+    cluster = MagicMock()
+    node = MagicMock()
+    node.host = "redis-2"
+    node.port = 17002
+    cluster.get_node_from_key.return_value = node
+
+    with (
+        patch.object(redis_client, "get_redis", return_value=cluster),
+        patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True),
+    ):
+        host, port = redis_client.resolve_shard_for_channel("chan")
+
+    assert (host, port) == ("redis-2", 17002)
+
+
+def test_health_check_interval_is_30s_default() -> None:
+    """The idle-connection PING interval must be <=30s so half-open pubsub
+    sockets don't wait for the OS TCP keepalive (~2h) — round-2 regression."""
+    assert redis_client.HEALTH_CHECK_INTERVAL <= 30
+
+
+def test_connect_sets_health_check_interval() -> None:
+    """The cluster client must propagate health_check_interval to each node
+    pool — otherwise idle cluster sockets go stale."""
+    with patch.object(redis_client, "RedisCluster", autospec=True) as mock_cluster:
+        mock_cluster.return_value = MagicMock(spec=RedisCluster)
+        redis_client.connect()
+    kwargs = mock_cluster.call_args.kwargs
+    assert kwargs["health_check_interval"] == redis_client.HEALTH_CHECK_INTERVAL
+    assert kwargs["health_check_interval"] > 0
