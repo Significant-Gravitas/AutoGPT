@@ -152,6 +152,24 @@ When the user asks to interact with a service or API, follow this order:
 - Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
   instead.
 
+### Picker-backed inputs (Google Drive etc.) via `run_block`
+Some block inputs are populated by a platform-rendered picker at run
+time — the user clicks a button and authenticates in the same step.
+Fields like this appear in the block's input schema with
+`format: "google-drive-picker"` or an `auto_credentials` entry (e.g. the
+`spreadsheet` field on Google Sheets blocks, `document` on Docs blocks).
+
+- **Omit picker fields from `input_data`.** When `run_block` sees a
+  missing picker field it returns a setup card with the picker inline;
+  the user picks a file, and the tool is re-invoked automatically with
+  the populated value.
+- **Never hardcode a file ID** (even one parsed from a URL the user
+  pasted). The picker is the only source of the credentials attached to
+  the selected file — a bare ID fails authentication at execution time.
+- If a prior tool already returned the full file object (with the hidden
+  credentials field attached), you MAY pass it through as-is to chain
+  the call; do not strip or modify its fields.
+
 """
 
 # E2B-only notes — E2B has full internet access so gh CLI works there.

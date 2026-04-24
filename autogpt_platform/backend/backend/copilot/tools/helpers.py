@@ -23,6 +23,10 @@ from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db, review_db, workspace_db
 from backend.data.execution import ExecutionContext
 from backend.data.model import CredentialsFieldInfo, CredentialsMetaInput
+from backend.executor.auto_credentials import (
+    MissingAutoCredentialsError,
+    acquire_auto_credentials,
+)
 from backend.executor.simulator import simulate_block
 from backend.executor.utils import block_usage_cost
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -72,7 +76,12 @@ def get_inputs_from_schema(
     for name, schema in properties.items():
         if name in exclude:
             continue
+        # Pass the schema through verbatim so the frontend's generic custom
+        # field dispatch (keyed on `format` / json_schema_extra) gets every
+        # hint it needs — any block-specific whitelist here would silently
+        # downgrade new picker/widget formats to plain text inputs.
         entry: dict[str, Any] = {
+            **schema,
             "name": name,
             "title": schema.get("title", name),
             "type": schema.get("type", "string"),
@@ -261,6 +270,49 @@ async def execute_block(
                     session_id=session_id,
                 )
 
+        # Auto-credentials (picker-populated fields like GoogleDriveFileField).
+        # If the picker hasn't been filled, surface the existing setup-card so
+        # the user can pick inline via FormRenderer's google-drive-picker; the
+        # LLM re-invokes this tool once input_data carries `_credentials_id`.
+        auto_locks: list[Any] = []
+        try:
+            auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+                input_model=block.input_schema,
+                input_data=input_data,
+                creds_manager=creds_manager,
+                user_id=user_id,
+            )
+        except MissingAutoCredentialsError as e:
+            input_schema = block.input_schema.jsonschema()
+            credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+            return SetupRequirementsResponse(
+                message=str(e),
+                session_id=session_id,
+                setup_info=SetupInfo(
+                    agent_id=block_id,
+                    agent_name=block.name,
+                    user_readiness=UserReadiness(
+                        has_all_credentials=True,
+                        missing_credentials={},
+                        ready_to_run=False,
+                    ),
+                    requirements={
+                        "credentials": [],
+                        "inputs": get_inputs_from_schema(
+                            input_schema,
+                            exclude_fields=credentials_fields,
+                            input_data=input_data,
+                        ),
+                        "execution_modes": ["immediate"],
+                    },
+                ),
+                graph_id=None,
+                graph_version=None,
+            )
+        except ValueError as e:
+            return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
+        exec_kwargs.update(auto_extra_kwargs)
+
         # Coerce non-matching data types to the expected input schema.
         coerce_inputs_to_schema(input_data, block.input_schema)
 
@@ -370,6 +422,14 @@ async def execute_block(
                         synthetic_node_id=synthetic_node_id,
                     )
                 )
+            for lock in auto_locks:
+                try:
+                    await lock.release()
+                except Exception as release_exc:
+                    logger.warning(
+                        "Failed to release auto-credential lock: %s",
+                        release_exc,
+                    )
 
     except BlockError as e:
         logger.warning("Block execution failed: %s", e)

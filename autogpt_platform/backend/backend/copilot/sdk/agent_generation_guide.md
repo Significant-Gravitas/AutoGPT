@@ -107,83 +107,12 @@ Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
 
 Specialized input subclasses (`AgentDropdownInputBlock`,
-`AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, etc.) also
-count as input blocks for this requirement — you do NOT need to keep a
-throwaway base `AgentInputBlock` alongside a specialized one.
-
-### REQUIRED: AgentGoogleDriveFileInputBlock for Google Drive files
-
-When an agent reads or writes a Google Drive file (Sheets, Docs, Slides, or
-generic Drive), the consuming block's Drive-file field MUST be fed by an
-`AgentGoogleDriveFileInputBlock` at run time. **NEVER** hardcode the file ID
-(or a `{"id": "..."}` object) into the consuming block's `input_default`.
-
-**Why this matters:** Drive-consuming blocks (e.g. `GoogleSheetsReadBlock`,
-`GoogleDocsReadBlock`, `GoogleSheetsUpdateCellBlock`) expect a
-`GoogleDriveFile` object with three fields:
-- `id` — the file ID
-- `mimeType` — used by per-block validation
-- `_credentials_id` — **the critical field**; the graph executor uses it to
-  look up which of the runtime user's stored Google OAuth credentials to
-  authenticate with
-
-A hardcoded ID (or bare object) carries no `_credentials_id`, so even if it
-passes schema validation the block will fail to authenticate at execution
-time. Only the Drive picker attaches `_credentials_id`, and only the picker
-rendered by `AgentGoogleDriveFileInputBlock` does this at run time.
-
-**AgentGoogleDriveFileInputBlock** (ID: `d3b32f15-6fd7-40e3-be52-e083f51b19a2`):
-- Renders a Google Drive file picker when the user runs the agent.
-- Required `input_default` fields: `name` (str)
-- Set `allowed_views` to the scope of the consumer:
-  - `["SPREADSHEETS"]` for Sheets blocks (read/write/append/update)
-  - `["DOCS"]` for Docs blocks
-  - `["PRESENTATIONS"]` for Slides blocks
-  - Omit or leave default (`["DOCS", "SPREADSHEETS", "PRESENTATIONS"]`) for
-    generic Drive blocks
-- Optional: `title`, `description`, `allow_folder_selection` (rare)
-- Output: `result` — a fully-hydrated `GoogleDriveFile` with `id`, `name`,
-  `mimeType`, `_credentials_id`
-
-**Target shape** for any agent touching a Drive file:
-
-```text
-[AgentGoogleDriveFileInputBlock]  ──result→  [GoogleSheetsReadBlock].spreadsheet
-                                   (or)      [GoogleDocsReadBlock].document
-                                   (or)      [GoogleSheetsUpdateCellBlock].spreadsheet
-                                   (or)      [GoogleSlidesReadBlock].presentation
-```
-
-**Rules:**
-- Add exactly one `AgentGoogleDriveFileInputBlock` per distinct Drive file
-  the agent needs. Multiple consumers of the same file share the same input
-  block.
-- Do **NOT** put the Drive field name (e.g. `spreadsheet`, `document`,
-  `presentation`) in the consuming block's `input_default`. Leave the field
-  unset — the link feeds it at run time.
-- Do **NOT** substitute a generic `AgentInputBlock` for the Drive case. Only
-  `AgentGoogleDriveFileInputBlock` produces a picker that attaches
-  `_credentials_id`.
-- If the user pastes a Drive URL (e.g. `docs.google.com/spreadsheets/d/...`)
-  in chat, still use the input block. Explain to the user that they will
-  pick the file at run time; do NOT try to hardcode the ID from the URL.
-
-**How to detect a field needs this pattern** (from a block's input schema):
-- Field `format == "google-drive-picker"`, OR
-- Field schema has an `auto_credentials` entry with `provider == "google"`
-
-**Example — agent that summarizes a Google Sheet:**
-- Node 1: `AgentGoogleDriveFileInputBlock` (input_default:
-  `{"name": "sheet_input", "title": "Select Spreadsheet",
-  "allowed_views": ["SPREADSHEETS"]}`; output: `result`)
-- Node 2: `GoogleSheetsReadBlock` (input_default: do NOT set `spreadsheet`;
-  the link feeds it)
-- Node 3: `AITextGeneratorBlock` (link Sheets rows into the prompt)
-- Node 4: `AgentOutputBlock` (input_default: `{"name": "summary"}`)
-- Links:
-  - Node 1→Node 2: `source_name: "result"`, `sink_name: "spreadsheet"`
-  - Node 2→Node 3: link the relevant output into `prompt`
-  - Node 3→Node 4: `source_name: <output>`, `sink_name: "value"`
+`AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
+this requirement on their own — do NOT add a throwaway base
+`AgentInputBlock` alongside a specialized one. Each subclass carries its
+own usage guidance (when it is required, how to configure it, how to
+wire it to consumers, concrete link shape) in its block and field
+descriptions; read and follow those when `find_block` surfaces a match.
 
 ### Key Rules
 
