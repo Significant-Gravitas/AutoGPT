@@ -1,6 +1,6 @@
 """Tests for charge_reconciled_usage post-flight dynamic-cost charging."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -10,7 +10,7 @@ from backend.blocks.jina.search import SearchTheWebBlock
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.model import NodeExecutionStats
-from backend.executor.billing import _charge_reconciled_usage_sync
+from backend.executor.billing import charge_reconciled_usage
 
 
 @pytest.fixture
@@ -35,6 +35,18 @@ def _node_exec(block_id: str):
         inputs={},
         execution_context=ExecutionContext(),
     )
+
+
+def _async_db_client(spend_credits_return: int = 0) -> MagicMock:
+    """Build an AsyncMock-backed db client stand-in for the reconciliation path.
+
+    ``spend_credits`` is awaited in the production code, so it must be an
+    AsyncMock. ``get_credits`` is only read by the sync pre-flight path.
+    """
+    client = MagicMock()
+    client.spend_credits = AsyncMock(return_value=spend_credits_return)
+    client.get_credits = MagicMock(return_value=0)
+    return client
 
 
 def test_dynamic_cost_block_with_zero_balance_raises_ibe_preflight(
@@ -94,55 +106,69 @@ def test_dynamic_cost_block_with_positive_balance_starts(tmp_block_costs_overrid
     db_client.spend_credits.assert_not_called()
 
 
-def test_run_cost_produces_zero_delta_noop(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_run_cost_produces_zero_delta_noop(tmp_block_costs_override):
     tmp_block_costs_override([BlockCost(cost_amount=7, cost_type=BlockCostType.RUN)])
     exec_entry = _node_exec(SearchTheWebBlock().id)
     stats = NodeExecutionStats(walltime=25.0)
 
-    db_client = MagicMock()
-    with patch("backend.executor.billing.get_db_client", return_value=db_client):
-        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+    db_client = _async_db_client()
+    with patch(
+        "backend.executor.billing.get_database_manager_async_client",
+        return_value=db_client,
+    ):
+        delta, _ = await charge_reconciled_usage(exec_entry, stats)
 
     # RUN type: pre == post == 7, so reconciliation charges nothing.
     assert delta == 0
-    db_client.spend_credits.assert_not_called()
+    db_client.spend_credits.assert_not_awaited()
 
 
-def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_cost_usd_charges_post_flight_delta(tmp_block_costs_override):
     tmp_block_costs_override(
         [BlockCost(cost_amount=100, cost_type=BlockCostType.COST_USD)]
     )
     exec_entry = _node_exec(SearchTheWebBlock().id)
     stats = NodeExecutionStats(provider_cost=0.05, provider_cost_type="cost_usd")
 
-    db_client = MagicMock()
-    db_client.spend_credits.return_value = 42  # remaining balance
+    db_client = _async_db_client(spend_credits_return=42)
     with (
-        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
         patch("backend.executor.billing.handle_low_balance") as handle_lb,
     ):
-        delta, remaining = _charge_reconciled_usage_sync(exec_entry, stats)
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
 
     # Pre-flight COST_USD returns 0 (no stats). Post-flight: ceil(0.05 * 100) = 5.
     assert delta == 5
     assert remaining == 42
-    db_client.spend_credits.assert_called_once()
-    call_kwargs = db_client.spend_credits.call_args.kwargs
+    db_client.spend_credits.assert_awaited_once()
+    call_kwargs = db_client.spend_credits.await_args.kwargs
     assert call_kwargs["cost"] == 5
     # Positive delta should also fire the low-balance notification so users
     # get alerted when reconciliation crosses the threshold.
-    handle_lb.assert_called_once_with(db_client, exec_entry.user_id, 42, 5)
+    handle_lb.assert_called_once()
+    lb_args = handle_lb.call_args.args
+    assert lb_args[1] == exec_entry.user_id
+    assert lb_args[2] == 42
+    assert lb_args[3] == 5
 
 
-def test_missing_block_returns_zero(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_missing_block_returns_zero():
     exec_entry = _node_exec("deadbeef-0000-0000-0000-000000000000")
     stats = NodeExecutionStats(walltime=10)
     with patch("backend.executor.billing.get_block", return_value=None):
-        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+        delta, _ = await charge_reconciled_usage(exec_entry, stats)
     assert delta == 0
 
 
-def test_items_cost_scales_linearly_with_result_count(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_items_cost_scales_linearly_with_result_count(tmp_block_costs_override):
     """ITEMS with cost_divisor=2 bills 1 credit per 2 returned items.
 
     Apollo SearchOrganizationsBlock uses this exact config. Verifies the
@@ -161,23 +187,27 @@ def test_items_cost_scales_linearly_with_result_count(tmp_block_costs_override):
     # Simulate 20 returned organizations.
     stats = NodeExecutionStats(provider_cost=20, provider_cost_type="items")
 
-    db_client = MagicMock()
-    db_client.spend_credits.return_value = 500
+    db_client = _async_db_client(spend_credits_return=500)
     with (
-        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
         patch("backend.executor.billing.handle_low_balance"),
     ):
-        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+        delta, _ = await charge_reconciled_usage(exec_entry, stats)
 
     # 20 items / cost_divisor=2 * cost_amount=1 = 10 credits.
     assert delta == 10
-    call_kwargs = db_client.spend_credits.call_args.kwargs
+    call_kwargs = db_client.spend_credits.await_args.kwargs
     assert call_kwargs["cost"] == 10
     meta_input = call_kwargs["metadata"].input
     assert meta_input.get("reconciled_delta") == 10
 
 
-def test_items_cost_bills_zero_when_no_items_returned(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_items_cost_bills_zero_when_no_items_returned(tmp_block_costs_override):
     """An ITEMS block that returns 0 results should bill 0, not the floor."""
     tmp_block_costs_override(
         [BlockCost(cost_amount=1, cost_type=BlockCostType.ITEMS, cost_divisor=2)]
@@ -185,15 +215,19 @@ def test_items_cost_bills_zero_when_no_items_returned(tmp_block_costs_override):
     exec_entry = _node_exec(SearchTheWebBlock().id)
     stats = NodeExecutionStats(provider_cost=0, provider_cost_type="items")
 
-    db_client = MagicMock()
-    with patch("backend.executor.billing.get_db_client", return_value=db_client):
-        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+    db_client = _async_db_client()
+    with patch(
+        "backend.executor.billing.get_database_manager_async_client",
+        return_value=db_client,
+    ):
+        delta, _ = await charge_reconciled_usage(exec_entry, stats)
 
     assert delta == 0
-    db_client.spend_credits.assert_not_called()
+    db_client.spend_credits.assert_not_awaited()
 
 
-def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_override):
     """Exa deep-research: $0.20 provider spend × 100 credits/USD = 20 credits.
 
     Verifies ceil-semantics on fractional USD amounts and that the full
@@ -206,18 +240,22 @@ def test_cost_usd_with_larger_spend_bills_full_delta(tmp_block_costs_override):
     # $0.207 spend: ceil(0.207 * 100) = 21
     stats = NodeExecutionStats(provider_cost=0.207, provider_cost_type="cost_usd")
 
-    db_client = MagicMock()
-    db_client.spend_credits.return_value = 100
+    db_client = _async_db_client(spend_credits_return=100)
     with (
-        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
+        patch("backend.executor.billing.get_db_client", return_value=MagicMock()),
         patch("backend.executor.billing.handle_low_balance"),
     ):
-        delta, _ = _charge_reconciled_usage_sync(exec_entry, stats)
+        delta, _ = await charge_reconciled_usage(exec_entry, stats)
 
     assert delta == 21
 
 
-def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override):
+@pytest.mark.asyncio
+async def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override):
     """TOKENS pre-flight uses MODEL_COST floor; if real token usage is cheaper,
     the user is refunded the overcharge via a negative-delta spend_credits."""
     from backend.blocks.llm import LlmModel
@@ -239,18 +277,20 @@ def test_tokens_cost_refunds_when_actual_below_estimate(tmp_block_costs_override
         output_token_count=1,
     )
 
-    db_client = MagicMock()
-    db_client.spend_credits.return_value = 999
+    db_client = _async_db_client(spend_credits_return=999)
     with (
-        patch("backend.executor.billing.get_db_client", return_value=db_client),
+        patch(
+            "backend.executor.billing.get_database_manager_async_client",
+            return_value=db_client,
+        ),
         patch("backend.executor.billing.handle_low_balance") as handle_lb,
     ):
-        delta, remaining = _charge_reconciled_usage_sync(exec_entry, stats)
+        delta, remaining = await charge_reconciled_usage(exec_entry, stats)
 
     assert delta < 0
     assert remaining == 999
-    db_client.spend_credits.assert_called_once()
-    call_kwargs = db_client.spend_credits.call_args.kwargs
+    db_client.spend_credits.assert_awaited_once()
+    call_kwargs = db_client.spend_credits.await_args.kwargs
     assert call_kwargs["cost"] == delta  # negative cost ⇒ credit back
     # Refunds can't push the user below the low-balance threshold, so
     # handle_low_balance must not fire here.

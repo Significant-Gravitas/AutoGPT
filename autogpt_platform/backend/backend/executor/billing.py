@@ -18,6 +18,7 @@ from backend.data.notifications import (
 )
 from backend.notifications.notifications import queue_notification
 from backend.util.clients import (
+    get_database_manager_async_client,
     get_database_manager_client,
     get_notification_manager_client,
 )
@@ -97,7 +98,7 @@ def resolve_block_cost(
 ) -> tuple["Block | None", int, dict[str, Any]]:
     """Look up the block and compute its pre-flight usage cost for an exec.
 
-    Shared by ``charge_usage`` and ``_charge_reconciled_usage_sync`` so the
+    Shared by ``charge_usage`` and ``charge_reconciled_usage`` so the
     ``(get_block, block_usage_cost)`` lookup lives in exactly one place.
     Returns ``(block, cost, matching_filter)``. ``block`` is ``None`` if
     the block id can't be resolved — callers should treat that as
@@ -182,66 +183,17 @@ def charge_usage(
     return total_cost, remaining_balance
 
 
-def _charge_reconciled_usage_sync(
+async def charge_reconciled_usage(
     node_exec: NodeExecutionEntry,
     stats: NodeExecutionStats,
 ) -> tuple[int, int]:
-    """Synchronous body of ``charge_reconciled_usage`` — runs in a worker.
+    """Charge the dynamic portion of a block's cost from its execution stats.
 
     Computes post-flight cost from the execution stats and settles the delta
     against the pre-flight estimate. Positive delta → charge the user; negative
     delta → refund the overcharge (happens when a TOKENS block's flat
     MODEL_COST floor exceeds the real token-metered cost). Zero delta is a
     no-op — common for RUN-only blocks and any balanced estimate.
-    """
-    db_client = get_db_client()
-    block = get_block(node_exec.block_id)
-    if not block:
-        return 0, 0
-
-    pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
-    post_flight, matching_filter = block_usage_cost(
-        block=block, input_data=node_exec.inputs, stats=stats
-    )
-    delta = post_flight - pre_flight
-    if delta == 0:
-        return 0, 0
-
-    # spend_credits with a negative cost posts a USAGE transaction whose
-    # amount is positive (i.e. credits back to the wallet). We intentionally
-    # reuse the USAGE type so the refund is attributable to the same graph
-    # execution in credit history.
-    remaining_balance = db_client.spend_credits(
-        user_id=node_exec.user_id,
-        cost=delta,
-        metadata=UsageTransactionMetadata(
-            graph_exec_id=node_exec.graph_exec_id,
-            graph_id=node_exec.graph_id,
-            node_exec_id=node_exec.node_exec_id,
-            node_id=node_exec.node_id,
-            block_id=node_exec.block_id,
-            block=block.name,
-            input={**matching_filter, "reconciled_delta": delta},
-            reason=(
-                f"Post-flight reconciliation for {block.name}: "
-                f"actual={post_flight} credits, pre-flight={pre_flight}"
-            ),
-        ),
-    )
-    # For TOKENS / COST_USD the reconciliation charge can be the bulk of the
-    # block's bill, so fire the low-balance alert here too — mirroring
-    # charge_node_usage. Refunds (delta < 0) only raise the balance and never
-    # cross the threshold downward.
-    if delta > 0:
-        handle_low_balance(db_client, node_exec.user_id, remaining_balance, delta)
-    return delta, remaining_balance
-
-
-async def charge_reconciled_usage(
-    node_exec: NodeExecutionEntry,
-    stats: NodeExecutionStats,
-) -> tuple[int, int]:
-    """Charge the dynamic portion of a block's cost from its execution stats.
 
     Called once per node execution AFTER the block has finished running and
     stats (walltime, tokens, provider_cost) are populated. Swallows its own
@@ -249,7 +201,53 @@ async def charge_reconciled_usage(
     success path — log and move on; the shortfall is captured in telemetry.
     """
     try:
-        return await asyncio.to_thread(_charge_reconciled_usage_sync, node_exec, stats)
+        db_client = get_database_manager_async_client()
+        block = get_block(node_exec.block_id)
+        if not block:
+            return 0, 0
+
+        pre_flight, _ = block_usage_cost(block=block, input_data=node_exec.inputs)
+        post_flight, matching_filter = block_usage_cost(
+            block=block, input_data=node_exec.inputs, stats=stats
+        )
+        delta = post_flight - pre_flight
+        if delta == 0:
+            return 0, 0
+
+        # spend_credits with a negative cost posts a USAGE transaction whose
+        # amount is positive (i.e. credits back to the wallet). We reuse the
+        # USAGE type so the refund is attributable to the same graph
+        # execution in credit history.
+        remaining_balance = await db_client.spend_credits(
+            user_id=node_exec.user_id,
+            cost=delta,
+            metadata=UsageTransactionMetadata(
+                graph_exec_id=node_exec.graph_exec_id,
+                graph_id=node_exec.graph_id,
+                node_exec_id=node_exec.node_exec_id,
+                node_id=node_exec.node_id,
+                block_id=node_exec.block_id,
+                block=block.name,
+                input={**matching_filter, "reconciled_delta": delta},
+                reason=(
+                    f"Post-flight reconciliation for {block.name}: "
+                    f"actual={post_flight} credits, pre-flight={pre_flight}"
+                ),
+            ),
+        )
+        # Refunds can't push the balance below the threshold — skip.
+        if delta > 0:
+            # handle_low_balance is sync + does a blocking RPC; dispatch to
+            # thread so we don't block the event loop. Rare path (threshold
+            # crossings only).
+            await asyncio.to_thread(
+                handle_low_balance,
+                get_db_client(),
+                node_exec.user_id,
+                remaining_balance,
+                delta,
+            )
+        return delta, remaining_balance
     except InsufficientBalanceError as e:
         # Billing leak: work is already done, but the user cannot pay. Emit a
         # structured ERROR so alerting can pick it up and ping the platform
