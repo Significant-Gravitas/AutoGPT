@@ -189,9 +189,10 @@ export const ChatContainer = ({
                     <div
                       aria-hidden="true"
                       data-testid="usage-limit-backdrop"
-                      className="absolute inset-x-0 bottom-0 h-[110%] overflow-hidden bg-gradient-to-t from-[#f8f8f9] via-[#f8f8f9]/92 to-[#f8f8f9]/30 opacity-90 shadow-[inset_0_28px_36px_-34px_rgba(15,23,42,0.2)] backdrop-blur-xl"
+                      className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(248,248,249,0.96)_0%,rgba(248,248,249,0.9)_42%,rgba(248,248,249,0.58)_68%,rgba(248,248,249,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                     >
-                      <div className="absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-slate-500/10 via-slate-400/5 to-transparent" />
+                      <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-[#f8f8f9]/80 blur-2xl" />
+                      <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                     </div>
                     <div className="pointer-events-auto relative px-3">
                       <UsageLimitReachedCard />

@@ -158,8 +158,9 @@ describe("ChatContainer", () => {
     const backdrop = screen.getByTestId("usage-limit-backdrop");
 
     expect(screen.getByRole("alert")).toBeDefined();
-    expect(backdrop.className).toContain("absolute inset-x-0 bottom-0");
-    expect(backdrop.className).toContain("backdrop-blur-xl");
+    expect(backdrop.className).toContain("backdrop-blur-lg");
+    expect(backdrop.className).toContain("[mask-image:linear-gradient");
+    expect(backdrop.className).toContain("radial-gradient");
   });
 
   it("does not render the usage-limit backdrop while usage is still available", () => {
