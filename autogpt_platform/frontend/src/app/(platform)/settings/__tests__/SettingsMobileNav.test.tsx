@@ -53,7 +53,7 @@ describe("SettingsMobileNav", () => {
     render(<SettingsMobileNav />);
 
     const trigger = screen.getByRole("button", {
-      name: /open settings navigation/i,
+      name: /settings navigation/i,
     });
     expect(trigger.textContent).toContain("Billing");
   });
@@ -62,7 +62,7 @@ describe("SettingsMobileNav", () => {
     render(<SettingsMobileNav />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /open settings navigation/i }),
+      screen.getByRole("button", { name: /settings navigation/i }),
     );
 
     const labels = [
@@ -85,7 +85,7 @@ describe("SettingsMobileNav", () => {
     render(<SettingsMobileNav />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: /open settings navigation/i }),
+      screen.getByRole("button", { name: /settings navigation/i }),
     );
 
     const profileLink = await screen.findByRole("link", { name: /profile/i });
