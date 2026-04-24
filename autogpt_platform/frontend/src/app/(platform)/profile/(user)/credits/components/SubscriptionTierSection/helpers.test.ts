@@ -108,4 +108,26 @@ describe("formatRelativeMultiplier", () => {
       "5.0x rate limits",
     );
   });
+
+  it("returns null for every tier when all visible multipliers are equal", () => {
+    // Edge case: if LD sets every tier to the same value, none are "above"
+    // the baseline — the UI shouldn't label any of them.
+    expect(formatRelativeMultiplier("PRO", { PRO: 5, MAX: 5 })).toBeNull();
+    expect(formatRelativeMultiplier("MAX", { PRO: 5, MAX: 5 })).toBeNull();
+  });
+
+  it("returns null when the tier's own multiplier is zero or negative", () => {
+    // Defensive: a misconfigured LD value leaking through shouldn't render as
+    // "0.0x rate limits" — hide the badge entirely.
+    expect(formatRelativeMultiplier("BASIC", { BASIC: 0, PRO: 5 })).toBeNull();
+    expect(formatRelativeMultiplier("BASIC", { BASIC: -1, PRO: 5 })).toBeNull();
+  });
+
+  it("rounds 8.533... to '8.5x rate limits' (not 8.53 or 9)", () => {
+    // Price-ratio-derived multiplier from the real $320/$50 → 6.4, or from
+    // limit-ratio 26.67/3.13 → ~8.53. The display rule is one decimal place.
+    expect(formatRelativeMultiplier("MAX", { PRO: 3, MAX: 25.6 })).toBe(
+      "8.5x rate limits",
+    );
+  });
 });
