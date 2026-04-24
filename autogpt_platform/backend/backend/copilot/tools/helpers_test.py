@@ -1226,3 +1226,102 @@ class TestExecuteBlockAutoCredentials:
 
         assert isinstance(result, SetupRequirementsResponse)
         assert result.setup_info.user_readiness.ready_to_run is False
+
+    async def test_auto_cred_locks_released_when_coerce_raises(self):
+        """Regression guard for Sentry r3135420231: if coerce_inputs_to_schema
+        raises between acquire_auto_credentials and the inner wait_for try,
+        the auto-cred locks must still be released."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+        mock_creds = MagicMock(id="cred-id-123", provider="google")
+        mock_lock = AsyncMock()
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.acquire = AsyncMock(
+            return_value=(mock_creds, mock_lock)
+        )
+        creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.coerce_inputs_to_schema",
+                side_effect=RuntimeError("boom during coerce"),
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "_credentials_id": "cred-id-123",
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-5",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        # Exception propagates to the outer ErrorResponse path, but the lock
+        # must have been released on the way out (not stranded in Redis).
+        assert isinstance(result, ErrorResponse)
+        mock_lock.release.assert_awaited_once()
+
+    async def test_auto_cred_locks_released_on_insufficient_credits(self):
+        """Early-return from the credit-balance check must still release
+        auto-cred locks (same r3135420231 surface, different trigger)."""
+        block = _make_block_with_auto_creds()
+        # balance < cost → early return ErrorResponse
+        credit_patch, _ = _patch_credit_db(get_credits_return=0)
+        mock_creds = MagicMock(id="cred-id-123", provider="google")
+        mock_lock = AsyncMock()
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.acquire = AsyncMock(
+            return_value=(mock_creds, mock_lock)
+        )
+        creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "_credentials_id": "cred-id-123",
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-6",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Insufficient credits" in result.message
+        mock_lock.release.assert_awaited_once()
