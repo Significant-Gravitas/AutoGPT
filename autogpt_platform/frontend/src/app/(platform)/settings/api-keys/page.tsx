@@ -1,16 +1,23 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { useState } from "react";
+
+import { APIKeyList } from "./components/APIKeyList/APIKeyList";
+import { APIKeysHeader } from "./components/APIKeysHeader/APIKeysHeader";
+import { CreateAPIKeyDialog } from "./components/CreateAPIKeyDialog/CreateAPIKeyDialog";
 
 export default function SettingsApiKeysPage() {
+  const [createOpen, setCreateOpen] = useState(false);
+
+  function openCreate() {
+    setCreateOpen(true);
+  }
+
   return (
     <>
-      <Text variant="h4" className="text-[#1F1F20]">
-        AutoGPT API Keys
-      </Text>
-      <Text variant="large" className="mt-2 text-zinc-600">
-        Coming soon.
-      </Text>
+      <APIKeysHeader onCreate={openCreate} />
+      <APIKeyList />
+      <CreateAPIKeyDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }

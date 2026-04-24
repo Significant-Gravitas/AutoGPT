@@ -1,0 +1,96 @@
+"use client";
+
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+
+import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+
+import { APIKeyListEmpty } from "../APIKeyListEmpty/APIKeyListEmpty";
+import { APIKeyListSkeleton } from "../APIKeyListSkeleton/APIKeyListSkeleton";
+import { APIKeyRow } from "../APIKeyRow/APIKeyRow";
+import { APIKeySelectionBar } from "../APIKeySelectionBar/APIKeySelectionBar";
+import { DeleteAPIKeyDialog } from "../DeleteAPIKeyDialog/DeleteAPIKeyDialog";
+import { useAPIKeyListView } from "./useAPIKeyListView";
+
+export function APIKeyList() {
+  const {
+    keys,
+    isLoading,
+    isEmpty,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    selection,
+    deleteTarget,
+    requestDelete,
+    closeDeleteDialog,
+    handleDeleted,
+  } = useAPIKeyListView();
+  const reduceMotion = useReducedMotion();
+
+  if (isLoading) return <APIKeyListSkeleton />;
+  if (isEmpty) return <APIKeyListEmpty />;
+
+  return (
+    <div className="flex w-full flex-col gap-3">
+      <AnimatePresence initial={false}>
+        {selection.selectedCount > 0 && (
+          <motion.div
+            key="selection-bar"
+            initial={
+              reduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, height: 0, marginBottom: -12 }
+            }
+            animate={
+              reduceMotion
+                ? { opacity: 1 }
+                : { opacity: 1, height: "auto", marginBottom: 0 }
+            }
+            exit={
+              reduceMotion
+                ? { opacity: 0 }
+                : { opacity: 0, height: 0, marginBottom: -12 }
+            }
+            transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
+            className="sticky top-0 z-20 bg-[#F9F9FA]"
+            style={{ overflow: "hidden" }}
+          >
+            <APIKeySelectionBar
+              selectedCount={selection.selectedCount}
+              allSelected={selection.allSelected}
+              onSelectAll={selection.selectAll}
+              onDeselectAll={selection.clear}
+              onDeleteSelected={() => requestDelete([...selection.selectedIds])}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <InfiniteScroll
+        hasNextPage={hasNextPage}
+        isFetchingNextPage={isFetchingNextPage}
+        fetchNextPage={fetchNextPage}
+        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
+      >
+        {keys.map((key) => (
+          <APIKeyRow
+            key={key.id}
+            apiKey={key}
+            selected={selection.isSelected(key.id)}
+            onToggleSelected={() => selection.toggle(key.id)}
+            onDelete={() => requestDelete([key.id])}
+          />
+        ))}
+      </InfiniteScroll>
+
+      {deleteTarget && (
+        <DeleteAPIKeyDialog
+          open
+          keyIds={deleteTarget}
+          onOpenChange={closeDeleteDialog}
+          onDeleted={handleDeleted}
+        />
+      )}
+    </div>
+  );
+}

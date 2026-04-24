@@ -5,7 +5,6 @@ import SettingsCreatorDashboardPage from "../creator-dashboard/page";
 import SettingsBillingPage from "../billing/page";
 import SettingsIntegrationsPage from "../integrations/page";
 import SettingsPreferencesPage from "../preferences/page";
-import SettingsApiKeysPage from "../api-keys/page";
 import SettingsOAuthAppsPage from "../oauth-apps/page";
 
 const pages = [
@@ -14,7 +13,6 @@ const pages = [
   { Component: SettingsBillingPage, title: "Billing" },
   { Component: SettingsIntegrationsPage, title: "Integrations" },
   { Component: SettingsPreferencesPage, title: "Settings" },
-  { Component: SettingsApiKeysPage, title: "AutoGPT API Keys" },
   { Component: SettingsOAuthAppsPage, title: "OAuth Apps" },
 ];
 
