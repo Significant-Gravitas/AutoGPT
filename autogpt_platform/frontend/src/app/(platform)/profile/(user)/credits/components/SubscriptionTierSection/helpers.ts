@@ -63,11 +63,14 @@ export function formatRelativeMultiplier(
   tierMultipliers: Record<string, number>,
 ): string | null {
   const mine = tierMultipliers[tierKey];
-  if (mine === undefined) return null;
+  if (mine === undefined || mine <= 0) return null;
   const visible = Object.values(tierMultipliers).filter((v) => v > 0);
   if (visible.length === 0) return null;
   const min = Math.min(...visible);
-  if (mine === min) return null;
-  const ratio = mine / min;
-  return `${ratio.toFixed(1)}x rate limits`;
+  const label = (mine / min).toFixed(1);
+  // Post-rounding equality — floats that are mathematically equal but differ
+  // in the last bits (e.g. 5.0 vs 5.0000000001) still collapse to the same
+  // displayed ratio, so treat "1.0" as baseline regardless of raw values.
+  if (label === "1.0") return null;
+  return `${label}x rate limits`;
 }

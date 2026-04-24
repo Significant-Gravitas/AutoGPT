@@ -156,6 +156,10 @@ export function SubscriptionTierSection() {
           const isThisPending = pendingTier === tier.key;
           const isScheduledTier =
             hasPendingChange && pendingTierFromSubscription === tier.key;
+          const rateLimitLabel = formatRelativeMultiplier(
+            tier.key,
+            subscription.tier_multipliers ?? {},
+          );
 
           return (
             <div
@@ -179,17 +183,11 @@ export function SubscriptionTierSection() {
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
-              {(() => {
-                const label = formatRelativeMultiplier(
-                  tier.key,
-                  subscription.tier_multipliers ?? {},
-                );
-                return label ? (
-                  <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                    {label}
-                  </p>
-                ) : null;
-              })()}
+              {rateLimitLabel && (
+                <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+                  {rateLimitLabel}
+                </p>
+              )}
               <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {tier.description}
               </p>

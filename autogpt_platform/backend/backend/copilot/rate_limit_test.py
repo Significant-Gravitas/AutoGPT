@@ -405,7 +405,7 @@ class TestGetTierMultipliers:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            result = await get_tier_multipliers(_USER)
+            result = await get_tier_multipliers()
         assert result == dict(_DEFAULT_TIER_MULTIPLIERS)
 
     @pytest.mark.asyncio
@@ -416,7 +416,7 @@ class TestGetTierMultipliers:
             new_callable=AsyncMock,
             return_value={"PRO": 7.5, "BUSINESS": 25},
         ):
-            result = await get_tier_multipliers(_USER)
+            result = await get_tier_multipliers()
         assert result[SubscriptionTier.PRO] == 7.5
         assert result[SubscriptionTier.BUSINESS] == 25.0
         # Untouched tiers inherit defaults.
@@ -441,7 +441,7 @@ class TestGetTierMultipliers:
             new_callable=AsyncMock,
             return_value="broken",
         ):
-            result = await get_tier_multipliers(_USER)
+            result = await get_tier_multipliers()
         assert result == dict(_DEFAULT_TIER_MULTIPLIERS)
 
     @pytest.mark.asyncio
@@ -452,7 +452,7 @@ class TestGetTierMultipliers:
             new_callable=AsyncMock,
             return_value={"PRO": 3, "BOGUS": 99, "MAX": -1, "BUSINESS": "nope"},
         ):
-            result = await get_tier_multipliers(_USER)
+            result = await get_tier_multipliers()
         assert result[SubscriptionTier.PRO] == 3.0
         # MAX had a non-positive override → falls back to default.
         assert (
@@ -473,7 +473,7 @@ class TestGetTierMultipliers:
             new_callable=AsyncMock,
             side_effect=RuntimeError("LD SDK not initialized"),
         ):
-            result = await get_tier_multipliers(_USER)
+            result = await get_tier_multipliers()
         assert result == dict(_DEFAULT_TIER_MULTIPLIERS)
 
 

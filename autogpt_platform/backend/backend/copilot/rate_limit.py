@@ -103,7 +103,7 @@ TIER_MULTIPLIERS = _DEFAULT_TIER_MULTIPLIERS
 DEFAULT_TIER = SubscriptionTier.BASIC
 
 
-@cached(ttl_seconds=60, maxsize=8, cache_none=False)
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
 async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None:
     """Fetch the ``copilot-tier-multipliers`` LD flag and parse it.
 
@@ -148,20 +148,17 @@ async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None
     return parsed or None
 
 
-async def get_tier_multipliers(user_id: str) -> dict[SubscriptionTier, float]:
+async def get_tier_multipliers() -> dict[SubscriptionTier, float]:
     """Return the effective ``{tier: multiplier}`` map.
 
     Honours the ``copilot-tier-multipliers`` LD flag when set; missing tiers
     inherit :data:`_DEFAULT_TIER_MULTIPLIERS`.  Unparseable flag values or LD
     fetch failures fall back to the defaults without raising.
 
-    The ``user_id`` argument is accepted for symmetry with other resolvers
-    (``get_global_rate_limits``, ``get_user_tier``), but the flag is currently
-    evaluated system-wide — per-tier multipliers are a global knob.  Keeping
-    the parameter in the signature means a future move to per-cohort overrides
-    won't break callers.
+    The flag is evaluated system-wide — per-tier multipliers are a global knob.
+    If per-cohort overrides are ever needed, add a user_id parameter here and
+    thread it through ``_fetch_tier_multipliers_flag`` to LD.
     """
-    del user_id  # unused — retained for API symmetry; see docstring
     try:
         override = await _fetch_tier_multipliers_flag()
     except Exception:
@@ -781,7 +778,7 @@ async def get_global_rate_limits(
     # so multipliers can be tuned without a deploy. Falls back to the defaults
     # when LD is unavailable.
     tier = await get_user_tier(user_id)
-    multipliers = await get_tier_multipliers(user_id)
+    multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract

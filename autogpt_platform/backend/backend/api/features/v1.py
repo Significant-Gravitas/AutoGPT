@@ -831,7 +831,7 @@ async def get_subscription_status(
     # tier without hard-coding backend defaults.  Only emit entries for tiers
     # that land in ``tier_costs`` — rows hidden at the price layer must stay
     # hidden in the multiplier layer too.
-    multipliers = await get_tier_multipliers(user_id)
+    multipliers = await get_tier_multipliers()
     tier_multipliers: dict[str, float] = {
         t.value: multipliers.get(t, 1.0)
         for t in priceable_tiers
