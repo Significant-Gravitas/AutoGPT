@@ -176,9 +176,28 @@ async def get_redis_async() -> AsyncRedisClient:
     return client
 
 
-# Pub/sub uses a plain (Async)Redis connection to the seed node: async
-# RedisCluster has no ``pubsub()``, and classic pub/sub is broadcast across
-# the whole cluster so one-node connection suffices at any shard count.
+# Sharded vs classic pub/sub:
+#
+# * For **fire-and-forget publish** (no subscriber in the backend) we prefer
+#   sharded pub/sub via the cluster client's ``spublish()`` — it skips the
+#   cluster-bus broadcast and only hits the one shard that owns the channel's
+#   keyslot.  See ``backend.copilot.pending_messages``.
+#
+# * For the ``listen("*")``-style event buses (``event_bus``,
+#   ``notification_bus``) we stay on classic ``PUBLISH``/``PSUBSCRIBE``
+#   against a plain (Async)Redis connection because:
+#     1. redis-py 6.x ``AsyncRedisCluster`` has no pub/sub support at all
+#        (no ``pubsub()``, no ``spublish()``); only the sync cluster client
+#        has ``ClusterPubSub``.  The backend's pub/sub call-sites are async.
+#     2. Sharded pub/sub has no pattern subscribe (``PSSUBSCRIBE`` does not
+#        exist), and ``ws_api.event_broadcaster`` relies on ``listen("*")``
+#        fan-in to route execution/notification events to every connected
+#        websocket.  Moving that off a single broadcast subscription is a
+#        bigger rework than this PR covers.
+#   Classic pub/sub in a Redis Cluster still works: PUBLISH is broadcast
+#   across the cluster bus, so any one-node subscription receives every
+#   message. Scale cost is borne by the cluster bus; acceptable at our
+#   current traffic levels.
 
 
 @conn_retry("RedisPubSub", "Acquiring connection")

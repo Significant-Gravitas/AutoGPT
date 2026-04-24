@@ -60,6 +60,16 @@ class _FakeRedis:
         self.published.append((channel, payload))
         return 1
 
+    async def execute_command(self, *args: Any) -> Any:
+        # Minimal handler for the sharded SPUBLISH call made by
+        # push_pending_message. Routing semantics are irrelevant here —
+        # we just record the publish for assertion.
+        if args and args[0] == "SPUBLISH":
+            _, channel, payload = args
+            self.published.append((channel, payload))
+            return 1
+        raise NotImplementedError(f"fake execute_command does not handle {args[0]!r}")
+
     async def lpop(self, key: str, count: int) -> list[str | bytes] | None:
         lst = self.lists.get(key)
         if not lst:
@@ -150,11 +160,6 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
         return redis
 
     monkeypatch.setattr(pm_module, "get_redis_async", _get_redis_async)
-    # The publish-notify path uses the pub/sub-dedicated client because the
-    # async RedisCluster client has no ``publish()``.  Patch both to the same
-    # fake so the single-Redis call sites and the pub/sub call sites share
-    # state in tests.
-    monkeypatch.setattr(pm_module, "get_redis_pubsub_async", _get_redis_async)
     return redis
 
 

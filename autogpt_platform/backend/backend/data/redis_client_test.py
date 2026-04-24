@@ -264,3 +264,86 @@ async def test_disconnect_async_closes_pubsub_without_cluster_client() -> None:
 
     fake_pubsub.close.assert_awaited_once()
     assert redis_client._async_pubsub_clients == {}
+
+
+# ── Sharded pub/sub end-to-end against live Redis Cluster ──────────────────
+#
+# Exercises ``SPUBLISH``/``SSUBSCRIBE`` through the real cluster client against
+# the local 3-shard compose stack (``redis-0``/``redis-1``/``redis-2``).
+# Skipped when no cluster is reachable so CI without docker doesn't flap.
+
+
+def _has_live_cluster() -> bool:
+    try:
+        c = redis_client.connect()
+    except Exception:  # noqa: BLE001 — any connect failure → skip the test
+        return False
+    try:
+        c.close()
+    except Exception:
+        pass
+    return True
+
+
+@pytest.mark.skipif(
+    not _has_live_cluster(),
+    reason="local redis cluster not reachable; skip sharded pub/sub integration",
+)
+def test_sharded_pubsub_end_to_end_sync() -> None:
+    """SPUBLISH → SSUBSCRIBE round-trip via the sync cluster client.
+
+    Reads through the per-node pubsub mapping because redis-py 6.x's
+    ``ClusterPubSub.get_sharded_message(ignore_subscribe_messages=True)`` has
+    a logic bug that drops every message (not just subscribe confirmations).
+    Using the per-node ``get_message`` gives us a deterministic blocking
+    read on the shard that actually owns the channel's keyslot.
+    """
+    redis_client.get_redis.cache_clear()
+    cluster = redis_client.get_redis()
+    channel = "pr12900:sharded-pubsub:integration"
+    ps = cluster.pubsub()
+    try:
+        ps.ssubscribe(channel)
+        assert cluster.spublish(channel, "hello") >= 1
+
+        # Exactly one node is subscribed (the keyslot owner); read from it.
+        assert len(ps.node_pubsub_mapping) == 1
+        node_ps = next(iter(ps.node_pubsub_mapping.values()))
+        # First message is the ssubscribe confirmation, second is our payload.
+        confirm = node_ps.get_message(timeout=2.0)
+        assert confirm is not None and confirm["type"] == "ssubscribe"
+        received = node_ps.get_message(timeout=5.0)
+        assert received is not None and received["type"] == "smessage"
+        assert received["data"] == "hello"
+    finally:
+        try:
+            ps.sunsubscribe(channel)
+        except Exception:
+            pass
+        ps.close()
+        redis_client.disconnect()
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not _has_live_cluster(),
+    reason="local redis cluster not reachable; skip sharded pub/sub integration",
+)
+async def test_sharded_spublish_end_to_end_async() -> None:
+    """Async cluster client can route SPUBLISH via ``execute_command``.
+
+    redis-py 6.x async cluster has no ``spublish()`` wrapper (and no
+    ``pubsub()``); publishers still work by hashing the channel and
+    dispatching to the owning shard via the generic command path.
+    """
+    redis_client._async_clients.clear()
+    cluster = await redis_client.get_redis_async()
+    try:
+        res = await cluster.execute_command(
+            "SPUBLISH", "pr12900:sharded-pubsub:async", "ping"
+        )
+        # No subscribers — delivered count is 0, but the command must succeed
+        # (i.e. not raise MOVED/ASK or routing errors).
+        assert isinstance(res, int)
+    finally:
+        await redis_client.disconnect_async()

@@ -28,7 +28,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.data.redis_client import get_redis_async, get_redis_pubsub_async
+from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import capped_rpush
 
 logger = logging.getLogger(__name__)
@@ -146,13 +146,17 @@ async def push_pending_message(
         ttl_seconds=_PENDING_TTL_SECONDS,
     )
 
-    # Fire-and-forget notify.  Subscribers use this as a wake-up hint;
-    # the buffer itself is authoritative so a lost notify is harmless.
-    # Use the pub/sub-dedicated client because the async RedisCluster
-    # client does not expose ``publish()``.
+    # Fire-and-forget notify on a sharded pub/sub channel. No backend code
+    # subscribes to this — it exists only as a wake-up hint for future
+    # blocking-wait consumers — so we can use SPUBLISH (keyslot-routed to
+    # one shard) instead of classic PUBLISH (cluster-bus broadcast to all
+    # shards).  ``AsyncRedisCluster`` has no ``spublish()`` wrapper in
+    # redis-py 6.x, so call the raw command: ``execute_command`` hashes
+    # the channel and routes to the owning shard automatically.
     try:
-        pubsub_client = await get_redis_pubsub_async()
-        await pubsub_client.publish(_notify_channel(session_id), _NOTIFY_PAYLOAD)
+        await redis.execute_command(
+            "SPUBLISH", _notify_channel(session_id), _NOTIFY_PAYLOAD
+        )
     except Exception as e:  # pragma: no cover
         logger.warning("pending_messages: publish failed for %s: %s", session_id, e)
 
