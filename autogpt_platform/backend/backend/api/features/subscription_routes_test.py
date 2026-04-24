@@ -929,6 +929,61 @@ def test_update_subscription_tier_priced_free_no_sub_falls_through_to_checkout(
     modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
 
 
+def test_update_subscription_tier_target_without_ld_price_returns_422(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Paid target with no LD-configured Stripe price must fail fast with 422.
+
+    Matches the UI hiding: if `stripe-price-id-pro` resolves to None we can't
+    start a Checkout Session anyway, and we don't want to surface an opaque
+    Stripe error mid-flow. The handler rejects the request before touching
+    Stripe at all.
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.FREE
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        return None  # Neither FREE nor PRO have an LD price.
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=mock_price_id,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "not available" in response.json()["detail"].lower()
+    checkout_mock.assert_not_awaited()
+    modify_mock.assert_not_awaited()
+
+
 def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,

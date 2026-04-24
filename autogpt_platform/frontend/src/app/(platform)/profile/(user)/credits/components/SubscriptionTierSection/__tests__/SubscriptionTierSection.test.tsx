@@ -334,6 +334,35 @@ describe("SubscriptionTierSection", () => {
     expect(screen.queryByRole("button", { name: /downgrade/i })).toBeNull();
   });
 
+  it("hides tiers that are missing from tier_costs (no LD price configured)", () => {
+    // LD only has stripe-price-id-basic → only FREE appears; PRO/Max cards must hide.
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "FREE",
+        tierCosts: { FREE: 0 },
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.getByText("Basic")).toBeDefined();
+    expect(screen.queryByText("Pro")).toBeNull();
+    expect(screen.queryByText("Max")).toBeNull();
+  });
+
+  it("always renders the current tier card as a safety net, even when tier_costs omits it", () => {
+    // BUSINESS user but LD dropped stripe-price-id-max → Max must still render.
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BUSINESS",
+        tierCosts: { PRO: 1999 },
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.getByText("Max")).toBeDefined();
+    expect(screen.getByText("Pro")).toBeDefined();
+    // FREE has no price AND isn't the current tier → hidden.
+    expect(screen.queryByText("Basic")).toBeNull();
+  });
+
   it("shows ENTERPRISE message for ENTERPRISE tier users", () => {
     setupMocks({ subscription: makeSubscription({ tier: "ENTERPRISE" }) });
     render(<SubscriptionTierSection />);
