@@ -52,10 +52,8 @@ NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 EXCHANGES = [NOTIFICATION_EXCHANGE, DEAD_LETTER_EXCHANGE]
 
-# Queue names: ``_v2`` suffix marks the classic→quorum rollover. Old queues
-# drain via old-image consumers during the rolling deploy; orphans are cleaned
-# up by a follow-up PR. When the ``_v2`` names land in prod unmistakably,
-# a subsequent rename drops the suffix.
+# ``_v2`` suffix marks the classic→quorum rollover: old classic queues keep
+# draining via old-image consumers; orphans are cleaned up by a follow-up PR.
 IMMEDIATE_NOTIFICATIONS_QUEUE = "immediate_notifications_v2"
 ADMIN_NOTIFICATIONS_QUEUE = "admin_notifications_v2"
 SUMMARY_NOTIFICATIONS_QUEUE = "summary_notifications_v2"
@@ -65,12 +63,6 @@ FAILED_NOTIFICATIONS_QUEUE = "failed_notifications_v2"
 
 def create_notification_config() -> RabbitMQConfig:
     """Create RabbitMQ configuration for notifications"""
-
-    # Queue names are suffixed ``_v2`` as part of the classic→quorum migration:
-    # the old classic queues keep draining via old-image consumers during the
-    # rolling deploy, and new-image pods declare + bind to these fresh quorum
-    # queues. A follow-up cleanup PR deletes the orphan classic queues once
-    # all pods have rolled.
     queues = [
         # Main notification queues
         Queue(
@@ -115,8 +107,7 @@ def create_notification_config() -> RabbitMQConfig:
                 "x-dead-letter-routing-key": "failed.batch",
             },
         ),
-        # Failed notifications queue (DLQ destination; also quorum so dead
-        # letters survive a broker restart).
+        # DLQ destination — quorum so dead letters survive a broker restart.
         Queue(
             name=FAILED_NOTIFICATIONS_QUEUE,
             exchange=DEAD_LETTER_EXCHANGE,
@@ -736,14 +727,15 @@ class NotificationManager(AppService):
                     try:
                         # Try to render the email to check its size
                         template = self.email_sender._get_template(event.type)
-                        _, test_message = (
-                            await self.email_sender.formatter.format_email(
-                                base_template=template.base_template,
-                                subject_template=template.subject_template,
-                                content_template=template.body_template,
-                                data={"notifications": chunk},
-                                unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
-                            )
+                        (
+                            _,
+                            test_message,
+                        ) = await self.email_sender.formatter.format_email(
+                            base_template=template.base_template,
+                            subject_template=template.subject_template,
+                            content_template=template.body_template,
+                            data={"notifications": chunk},
+                            unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
                         )
 
                         if len(test_message) < MAX_EMAIL_SIZE:
