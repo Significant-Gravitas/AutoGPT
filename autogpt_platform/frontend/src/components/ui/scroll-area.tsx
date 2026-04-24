@@ -99,6 +99,8 @@ function useScrolledPastThreshold(
     if (!viewport) return;
 
     function update() {
+      // TS can't narrow the captured `viewport` inside a nested closure, so
+      // keep the guard — the outer early-return still covers runtime.
       if (!viewport) return;
       setVisible(viewport.scrollTop > threshold);
     }
@@ -126,7 +128,7 @@ function ScrollToTopFab({ visible, onClick }: ScrollToTopFabProps) {
           type="button"
           onClick={onClick}
           aria-label="Scroll to top"
-          className="absolute bottom-6 left-1/2 z-30 -ml-[22px] flex h-11 w-11 items-center justify-center rounded-full bg-zinc-800 text-white shadow-md transition-colors hover:bg-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 focus-visible:ring-offset-2"
+          className="absolute bottom-6 left-1/2 z-30 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-zinc-800 text-white shadow-md transition-colors hover:bg-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 focus-visible:ring-offset-2"
           initial={
             reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }
           }
