@@ -11,6 +11,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCopilotUIStore } from "../../store";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -57,8 +58,8 @@ export interface ChatContainerProps {
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
   onDroppedFilesConsumed?: () => void;
-  /** Duration in ms for historical turns, keyed by message ID. */
-  historicalDurations?: Map<string, number>;
+  /** Per-message stats (durationMs, createdAt), keyed by message ID. */
+  turnStats?: TurnStatsMap;
 }
 export const ChatContainer = ({
   messages,
@@ -85,7 +86,7 @@ export const ChatContainer = ({
   onLoadMore,
   droppedFiles,
   onDroppedFilesConsumed,
-  historicalDurations,
+  turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
@@ -169,7 +170,7 @@ export const ChatContainer = ({
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
-                historicalDurations={historicalDurations}
+                turnStats={turnStats}
                 queuedMessages={queuedMessages}
                 bottomContentPadding={usageCardHeight}
               />
@@ -188,8 +189,10 @@ export const ChatContainer = ({
                     <div
                       aria-hidden="true"
                       data-testid="usage-limit-backdrop"
-                      className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#f8f8f9] via-[#f8f8f9]/90 to-[#f8f8f9]/25 backdrop-blur-xl"
-                    />
+                      className="absolute inset-x-0 bottom-0 h-[110%] overflow-hidden bg-gradient-to-t from-[#f8f8f9] via-[#f8f8f9]/92 to-[#f8f8f9]/30 opacity-90 shadow-[inset_0_28px_36px_-34px_rgba(15,23,42,0.2)] backdrop-blur-xl"
+                    >
+                      <div className="absolute inset-x-0 top-0 h-14 bg-gradient-to-b from-slate-500/10 via-slate-400/5 to-transparent" />
+                    </div>
                     <div className="pointer-events-auto relative px-3">
                       <UsageLimitReachedCard />
                     </div>

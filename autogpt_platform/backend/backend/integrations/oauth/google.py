@@ -11,6 +11,7 @@ from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
+from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 
@@ -107,13 +108,33 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         return credentials
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
-        session = AuthorizedSession(credentials)
-        session.post(
+        # Google's revoke endpoint only needs the token in the request body;
+        # it does not need an Authorization header. Previously this used
+        # google-auth's AuthorizedSession, which calls .before_request() on
+        # the credential object — that fails with AttributeError when given
+        # our Pydantic OAuth2Credentials (which isn't a google-auth
+        # Credentials). Switching to the platform's async Requests helper
+        # matches how the other providers (reddit/github/...) do it.
+        if not credentials.access_token:
+            return False
+
+        # raise_for_status=False so a 400 (already-revoked token, malformed
+        # body, rate limit, etc.) flows back as response.ok=False instead of
+        # raising — the caller uses the bool to set the UI `revoked` flag
+        # and does not need to distinguish failure modes.
+        # retry_max_attempts bounds tenacity retries on 429/5xx — without
+        # it `Requests` retries indefinitely with exponential backoff up
+        # to 5 minutes per wait, and a transient Google failure would
+        # hang the credential deletion API call forever.
+        response = await Requests(
+            raise_for_status=False,
+            retry_max_attempts=3,
+        ).post(
             self.revoke_uri,
-            params={"token": credentials.access_token.get_secret_value()},
-            headers={"content-type": "application/x-www-form-urlencoded"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            data={"token": credentials.access_token.get_secret_value()},
         )
-        return True
+        return response.ok
 
     def _request_email(
         self, creds: Credentials | ExternalAccountCredentials

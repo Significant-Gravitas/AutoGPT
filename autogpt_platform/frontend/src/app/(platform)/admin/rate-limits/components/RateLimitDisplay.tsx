@@ -6,19 +6,21 @@ import type { UserRateLimitResponse } from "@/app/api/__generated__/models/userR
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { UsageBar } from "../../components/UsageBar";
 
-const TIERS = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"] as const;
+const TIERS = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"] as const;
 type Tier = (typeof TIERS)[number];
 
 const TIER_MULTIPLIERS: Record<Tier, string> = {
-  FREE: "1x base limits",
+  BASIC: "1x base limits",
   PRO: "5x base limits",
-  BUSINESS: "20x base limits",
+  MAX: "20x base limits",
+  BUSINESS: "60x base limits",
   ENTERPRISE: "60x base limits",
 };
 
 const TIER_COLORS: Record<Tier, string> = {
-  FREE: "bg-gray-100 text-gray-700",
+  BASIC: "bg-gray-100 text-gray-700",
   PRO: "bg-blue-100 text-blue-700",
+  MAX: "bg-indigo-100 text-indigo-700",
   BUSINESS: "bg-purple-100 text-purple-700",
   ENTERPRISE: "bg-amber-100 text-amber-700",
 };
@@ -44,7 +46,7 @@ export function RateLimitDisplay({
 
   const currentTier = TIERS.includes(data.tier as Tier)
     ? (data.tier as Tier)
-    : "FREE";
+    : "BASIC";
 
   async function handleReset() {
     const msg = resetWeekly

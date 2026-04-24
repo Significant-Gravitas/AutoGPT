@@ -346,19 +346,21 @@ class TestRecordCostUsage:
 
 class TestSubscriptionTier:
     def test_tier_values(self):
-        assert SubscriptionTier.FREE.value == "FREE"
+        assert SubscriptionTier.BASIC.value == "BASIC"
         assert SubscriptionTier.PRO.value == "PRO"
+        assert SubscriptionTier.MAX.value == "MAX"
         assert SubscriptionTier.BUSINESS.value == "BUSINESS"
         assert SubscriptionTier.ENTERPRISE.value == "ENTERPRISE"
 
     def test_tier_multipliers(self):
-        assert TIER_MULTIPLIERS[SubscriptionTier.FREE] == 1
+        assert TIER_MULTIPLIERS[SubscriptionTier.BASIC] == 1
         assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5
-        assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 20
+        assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20
+        assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 60
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60
 
-    def test_default_tier_is_free(self):
-        assert DEFAULT_TIER == SubscriptionTier.FREE
+    def test_default_tier_is_basic(self):
+        assert DEFAULT_TIER == SubscriptionTier.BASIC
 
     def test_usage_status_includes_tier(self):
         now = datetime.now(UTC)
@@ -366,7 +368,7 @@ class TestSubscriptionTier:
             daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
             weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
         )
-        assert status.tier == SubscriptionTier.FREE
+        assert status.tier == SubscriptionTier.BASIC
 
     def test_usage_status_with_custom_tier(self):
         now = datetime.now(UTC)
@@ -469,7 +471,7 @@ class TestGetUserTier:
         Regression test: when ``get_user_tier`` is called before a user record
         exists, the DEFAULT_TIER fallback must not be cached.  Otherwise, a
         newly created user with a higher tier (e.g. PRO) would receive the
-        stale cached FREE tier for up to 5 minutes.
+        stale cached BASIC tier for up to 5 minutes.
         """
         # First call: user does not exist yet
         missing_db = self._mock_user_db(raises=Exception("not found"))
@@ -670,7 +672,7 @@ class TestGetGlobalRateLimitsWithTiers:
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=SubscriptionTier.FREE,
+                return_value=SubscriptionTier.BASIC,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -683,7 +685,7 @@ class TestGetGlobalRateLimitsWithTiers:
 
         assert daily == 2_500_000
         assert weekly == 12_500_000
-        assert tier == SubscriptionTier.FREE
+        assert tier == SubscriptionTier.BASIC
 
     @pytest.mark.asyncio
     async def test_pro_tier_5x_multiplier(self):
@@ -708,8 +710,30 @@ class TestGetGlobalRateLimitsWithTiers:
         assert tier == SubscriptionTier.PRO
 
     @pytest.mark.asyncio
-    async def test_business_tier_20x_multiplier(self):
-        """Business tier should multiply limits by 20."""
+    async def test_max_tier_20x_multiplier(self):
+        """Max tier should multiply limits by 20 (self-service $320 tier)."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.MAX,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(2_500_000, 12_500_000),
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 2_500_000, 12_500_000
+            )
+
+        assert daily == 50_000_000
+        assert weekly == 250_000_000
+        assert tier == SubscriptionTier.MAX
+
+    @pytest.mark.asyncio
+    async def test_business_tier_60x_multiplier(self):
+        """Business tier should multiply limits by 60 (matches Enterprise capacity)."""
         with (
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
@@ -725,8 +749,8 @@ class TestGetGlobalRateLimitsWithTiers:
                 _USER, 2_500_000, 12_500_000
             )
 
-        assert daily == 50_000_000
-        assert weekly == 250_000_000
+        assert daily == 150_000_000
+        assert weekly == 750_000_000
         assert tier == SubscriptionTier.BUSINESS
 
     @pytest.mark.asyncio
@@ -778,9 +802,9 @@ class TestTierLimitsRespected:
         return _side_effect
 
     @pytest.mark.asyncio
-    async def test_pro_user_allowed_above_free_limit(self):
-        """A PRO user with usage above the FREE limit should be allowed."""
-        # Usage: 3M tokens (above FREE limit of 2.5M, below PRO limit of 12.5M)
+    async def test_pro_user_allowed_above_basic_limit(self):
+        """A PRO user with usage above the BASIC limit should be allowed."""
+        # Usage: 3M tokens (above BASIC limit of 2.5M, below PRO limit of 12.5M)
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["3000000", "3000000"])
 
@@ -811,9 +835,9 @@ class TestTierLimitsRespected:
             )
 
     @pytest.mark.asyncio
-    async def test_free_user_blocked_at_free_limit(self):
-        """A FREE user at or above the base limit should be blocked."""
-        # Usage: 2.5M tokens (at FREE limit of 2.5M)
+    async def test_basic_user_blocked_at_basic_limit(self):
+        """A BASIC user at or above the base limit should be blocked."""
+        # Usage: 2.5M tokens (at BASIC limit of 2.5M)
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["2500000", "2500000"])
 
@@ -821,7 +845,7 @@ class TestTierLimitsRespected:
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=SubscriptionTier.FREE,
+                return_value=SubscriptionTier.BASIC,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -835,9 +859,9 @@ class TestTierLimitsRespected:
             daily, weekly, tier = await get_global_rate_limits(
                 _USER, self._BASE_DAILY, self._BASE_WEEKLY
             )
-            # FREE: 1x multiplier
+            # BASIC: 1x multiplier
             assert daily == 2_500_000
-            assert tier == SubscriptionTier.FREE
+            assert tier == SubscriptionTier.BASIC
             # Should raise — 2.5M >= 2.5M
             with pytest.raises(RateLimitExceeded):
                 await check_rate_limit(
@@ -1126,7 +1150,7 @@ class TestTierLimitsEnforced:
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=SubscriptionTier.FREE,
+                return_value=SubscriptionTier.BASIC,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -1145,18 +1169,18 @@ class TestTierLimitsEnforced:
                 await check_rate_limit(_USER, daily, weekly)
 
     @pytest.mark.asyncio
-    async def test_free_tier_cannot_bypass_pro_limit(self):
-        """A FREE-tier user whose usage is within PRO limits but over FREE
+    async def test_basic_tier_cannot_bypass_pro_limit(self):
+        """A BASIC-tier user whose usage is within PRO limits but over BASIC
         limits must still be rejected.
 
         Negative test: ensures the tier multiplier is applied *before* the
         rate-limit check, so a lower-tier user cannot 'bypass' limits that
         would be acceptable for a higher tier.
         """
-        free_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.FREE]
+        basic_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC]
         pro_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO]
-        # Usage above FREE limit but below PRO limit
-        usage = free_daily + 500_000
+        # Usage above BASIC limit but below PRO limit
+        usage = basic_daily + 500_000
         assert usage < pro_daily, "test sanity: usage must be under PRO limit"
 
         mock_redis = AsyncMock()
@@ -1166,7 +1190,7 @@ class TestTierLimitsEnforced:
             patch(
                 "backend.copilot.rate_limit.get_user_tier",
                 new_callable=AsyncMock,
-                return_value=SubscriptionTier.FREE,
+                return_value=SubscriptionTier.BASIC,
             ),
             patch(
                 "backend.util.feature_flag.get_feature_flag_value",
@@ -1180,25 +1204,25 @@ class TestTierLimitsEnforced:
             daily, weekly, tier = await get_global_rate_limits(
                 _USER, self._BASE_DAILY, self._BASE_WEEKLY
             )
-            assert tier == SubscriptionTier.FREE
-            assert daily == free_daily  # 1x, not 5x
+            assert tier == SubscriptionTier.BASIC
+            assert daily == basic_daily  # 1x, not 5x
             with pytest.raises(RateLimitExceeded) as exc_info:
                 await check_rate_limit(_USER, daily, weekly)
             assert exc_info.value.window == "daily"
 
     @pytest.mark.asyncio
     async def test_tier_change_updates_effective_limits(self):
-        """After upgrading from FREE to BUSINESS, the effective limits must
+        """After upgrading from BASIC to BUSINESS, the effective limits must
         increase accordingly.
 
         Verifies that the tier multiplier is correctly applied after a tier
-        change, and that usage that was over the FREE limit is within the new
+        change, and that usage that was over the BASIC limit is within the new
         BUSINESS limit.
         """
-        free_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.FREE]
+        basic_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC]
         biz_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
-        # Usage above FREE limit but below BUSINESS limit
-        usage = free_daily + 500_000
+        # Usage above BASIC limit but below BUSINESS limit
+        usage = basic_daily + 500_000
         assert usage < biz_daily, "test sanity: usage must be under BUSINESS limit"
 
         mock_redis = AsyncMock()
@@ -1224,7 +1248,7 @@ class TestTierLimitsEnforced:
                 _USER, self._BASE_DAILY, self._BASE_WEEKLY
             )
             assert tier == SubscriptionTier.BUSINESS
-            assert daily == biz_daily  # 20x
+            assert daily == biz_daily  # 60x
             # Should NOT raise — usage is within the BUSINESS tier allowance
             await check_rate_limit(_USER, daily, weekly)
 

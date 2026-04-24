@@ -1,36 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 
 /**
- * Tick a second-resolution elapsed counter while ``isRunning`` is true.
+ * Ticks once per second while `isRunning` is true.
  *
- * ``startedAtIso`` lets the caller seed the start time from the backend's
- * view of the turn (see ``ActiveStreamInfo.started_at``). Without it the
- * counter would start from 0 on every fresh mount — which is misleading
- * when the user returns to a session that's been running for ``N`` seconds
- * on the backend and expects to see ``N`` seconds, not zero.
- *
- * The baseline is captured on the ``false`` → ``true`` transition of
- * ``isRunning``. Later changes to ``startedAtIso`` are ignored until the
- * timer resets (``isRunning`` goes back to ``false``), so we don't
- * re-anchor mid-turn.
+ * Pass `anchorIso` (a server-issued ISO timestamp, e.g. the active stream's
+ * `started_at` or the last user/tool message's `createdAt`) to count from
+ * that absolute wall-clock point instead of from when this hook first saw
+ * `isRunning = true`. This is what makes the "Considering Xs" counter
+ * survive a page refresh mid-turn — it reflects actual elapsed time since
+ * the turn's last recorded activity, not the moment the current browser
+ * tab mounted.
  */
-export function useElapsedTimer(
-  isRunning: boolean,
-  startedAtIso?: string | null,
-) {
+export function useElapsedTimer(isRunning: boolean, anchorIso?: string | null) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
-  const startedAtIsoRef = useRef(startedAtIso);
-  startedAtIsoRef.current = startedAtIso;
 
   useEffect(() => {
     if (isRunning) {
-      if (startTimeRef.current === null) {
-        const seed = resolveStartMs(startedAtIsoRef.current);
-        startTimeRef.current = seed;
-        setElapsedSeconds(Math.max(0, Math.floor((Date.now() - seed) / 1000)));
-      }
+      // Re-sync on every re-run so a late-arriving anchorIso (e.g. session
+      // data loads after the timer started on page refresh) updates the
+      // start time instead of being ignored.
+      const anchorMs = anchorIso ? Date.parse(anchorIso) : NaN;
+      startTimeRef.current = Number.isFinite(anchorMs) ? anchorMs : Date.now();
+      setElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - startTimeRef.current) / 1000)),
+      );
 
       intervalRef.current = setInterval(() => {
         if (startTimeRef.current !== null) {
@@ -45,13 +40,7 @@ export function useElapsedTimer(
 
     clearInterval(intervalRef.current);
     startTimeRef.current = null;
-  }, [isRunning]);
+  }, [isRunning, anchorIso]);
 
   return { elapsedSeconds };
-}
-
-function resolveStartMs(iso: string | null | undefined): number {
-  if (!iso) return Date.now();
-  const parsed = new Date(iso).getTime();
-  return Number.isFinite(parsed) ? parsed : Date.now();
 }

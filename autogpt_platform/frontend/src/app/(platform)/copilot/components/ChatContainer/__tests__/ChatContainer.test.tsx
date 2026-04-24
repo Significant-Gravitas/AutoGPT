@@ -87,16 +87,11 @@ vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
   ),
 }));
 
-vi.mock(
-  "../../CopilotChatActionsProvider/CopilotChatActionsProvider",
-  () => ({
-    CopilotChatActionsProvider: ({
-      children,
-    }: {
-      children: React.ReactNode;
-    }) => <>{children}</>,
-  }),
-);
+vi.mock("../../CopilotChatActionsProvider/CopilotChatActionsProvider", () => ({
+  CopilotChatActionsProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
 
 vi.mock("../../EmptySession/EmptySession", () => ({
   EmptySession: () => <div data-testid="empty-session" />,

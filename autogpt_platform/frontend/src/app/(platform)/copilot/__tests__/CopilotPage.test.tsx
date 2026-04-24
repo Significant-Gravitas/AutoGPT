@@ -59,7 +59,7 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     const data = {
       daily: null,
       weekly: null,
-      tier: "FREE",
+      tier: "BASIC",
       reset_cost: 0,
     };
     if (typeof opts?.query?.select === "function") {
@@ -115,8 +115,7 @@ const basePageState = {
   hasMoreMessages: false,
   isLoadingMore: false,
   loadMore: vi.fn(),
-  forwardPaginated: false,
-  historicalDurations: {},
+  turnStats: new Map(),
   rateLimitMessage: null,
   dismissRateLimit: vi.fn(),
   sessionDryRun: false,

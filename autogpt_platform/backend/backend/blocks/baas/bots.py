@@ -8,17 +8,27 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockCost,
+    BlockCostType,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
     CredentialsMetaInput,
     SchemaField,
+    cost,
 )
 
 from ._api import MeetingBaasAPI
 from ._config import baas
 
 
+# Meeting BaaS charges $0.69/hour of recording. The Join block is the
+# trigger that starts the recording session; the meeting itself runs out
+# of band (we don't get duration back from the FetchMeetingData response
+# we use). 30 cr ≈ $0.30 covers a median 30-minute meeting with margin.
+# Interim until FetchMeetingData surfaces duration for post-flight
+# reconciliation.
+@cost(BlockCost(cost_type=BlockCostType.RUN, cost_amount=30))
 class BaasBotJoinMeetingBlock(Block):
     """
     Deploy a bot immediately or at a scheduled start_time to join and record a meeting.

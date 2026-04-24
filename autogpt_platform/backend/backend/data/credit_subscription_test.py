@@ -50,11 +50,13 @@ async def test_set_subscription_tier_downgrade():
         ),
         patch("backend.data.credit.get_user_by_id"),
     ):
-        # Downgrade to FREE should not raise
-        await set_subscription_tier("user-1", SubscriptionTier.FREE)
+        # Downgrade to BASIC should not raise
+        await set_subscription_tier("user-1", SubscriptionTier.BASIC)
 
 
-def _make_user(user_id: str = "user-1", tier: SubscriptionTier = SubscriptionTier.FREE):
+def _make_user(
+    user_id: str = "user-1", tier: SubscriptionTier = SubscriptionTier.BASIC
+):
     mock_user = MagicMock(spec=User)
     mock_user.id = user_id
     mock_user.subscriptionTier = tier
@@ -172,7 +174,7 @@ async def test_sync_subscription_from_stripe_enterprise_not_overwritten():
 
 @pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_cancelled():
-    """When the only active sub is cancelled, the user is downgraded to FREE."""
+    """When the only active sub is cancelled, the user is downgraded to BASIC."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
         "id": "sub_old",
@@ -197,7 +199,7 @@ async def test_sync_subscription_from_stripe_cancelled():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.FREE)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
 
 
 @pytest.mark.asyncio
@@ -206,7 +208,7 @@ async def test_sync_subscription_from_stripe_cancelled_but_other_active_sub_exis
 
     This covers the race condition where `customer.subscription.deleted` for
     the old sub arrives after `customer.subscription.created` for the new sub
-    was already processed. Unconditionally downgrading to FREE here would
+    was already processed. Unconditionally downgrading to BASIC here would
     immediately undo the user's upgrade.
     """
     mock_user = _make_user(tier=SubscriptionTier.BUSINESS)
@@ -243,7 +245,7 @@ async def test_sync_subscription_from_stripe_cancelled_but_other_active_sub_exis
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        # Must NOT write FREE — another active sub is still present.
+        # Must NOT write BASIC — another active sub is still present.
         mock_set.assert_not_awaited()
 
 
@@ -514,7 +516,7 @@ async def test_cancel_stripe_subscription_releases_attached_schedule_first():
 
     Stripe rejects ``modify(cancel_at_period_end=True)`` with HTTP 400 when the
     subscription has an attached schedule (e.g. user queued a BUSINESS→PRO
-    downgrade and now clicks "Downgrade to FREE"). Without the pre-release,
+    downgrade and now clicks "Downgrade to BASIC"). Without the pre-release,
     the API handler would surface a 502 to the user.
     """
     mock_subscriptions = MagicMock()
@@ -579,7 +581,7 @@ async def test_get_proration_credit_cents_no_stripe_customer_returns_zero():
 
 @pytest.mark.asyncio
 async def test_get_proration_credit_cents_zero_cost_returns_zero():
-    """FREE tier users (cost=0) return 0 without calling get_user_by_id."""
+    """BASIC tier users (cost=0) return 0 without calling get_user_by_id."""
     with patch(
         "backend.data.credit.get_user_by_id", new_callable=AsyncMock
     ) as mock_get_user:
@@ -689,7 +691,7 @@ async def test_sync_subscription_from_stripe_missing_customer_key_returns_early(
 
 @pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_tier():
-    """Unknown price_id should preserve the current tier, not default to FREE (no DB write)."""
+    """Unknown price_id should preserve the current tier, not default to BASIC (no DB write)."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
         "customer": "cus_123",
@@ -720,7 +722,7 @@ async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_
 
 @pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_unconfigured_ld_price_preserves_current_tier():
-    """When LD flags are unconfigured (None price IDs), the current tier should be preserved, not defaulted to FREE."""
+    """When LD flags are unconfigured (None price IDs), the current tier should be preserved, not defaulted to BASIC."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
         "customer": "cus_123",
@@ -788,6 +790,56 @@ async def test_sync_subscription_from_stripe_business_tier():
     ):
         await sync_subscription_from_stripe(stripe_sub)
         mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
+    """BASIC price_id via LD should reconcile the user to BASIC.
+
+    Protects the new stripe-price-id-basic reconciliation path — webhooks for a
+    priced-BASIC sub must flip the DB tier back to BASIC when the active Stripe
+    item matches the configured basic price.
+    """
+    mock_user = _make_user(tier=SubscriptionTier.PRO)
+    stripe_sub = {
+        "id": "sub_new",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_basic_monthly"}}]},
+    }
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        if tier == SubscriptionTier.BASIC:
+            return "price_basic_monthly"
+        if tier == SubscriptionTier.PRO:
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.BUSINESS:
+            return "price_biz_monthly"
+        return None
+
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
 
 
 @pytest.mark.asyncio
@@ -910,11 +962,41 @@ async def test_get_subscription_price_id_pro():
 
 
 @pytest.mark.asyncio
-async def test_get_subscription_price_id_free_returns_none():
+async def test_get_subscription_price_id_basic_returns_ld_flag():
     from backend.data.credit import get_subscription_price_id
 
-    # FREE tier bypasses the LD flag lookup entirely (returns None before fetch).
-    price_id = await get_subscription_price_id(SubscriptionTier.FREE)
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value="price_basic_monthly",
+    ):
+        price_id = await get_subscription_price_id(SubscriptionTier.BASIC)
+        assert price_id == "price_basic_monthly"
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_max():
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value="price_max_monthly",
+    ):
+        price_id = await get_subscription_price_id(SubscriptionTier.MAX)
+        assert price_id == "price_max_monthly"
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_enterprise_returns_none():
+    from backend.data.credit import get_subscription_price_id
+
+    # ENTERPRISE bypasses the LD flag lookup entirely (returns None before fetch).
+    price_id = await get_subscription_price_id(SubscriptionTier.ENTERPRISE)
     assert price_id is None
 
 
@@ -991,7 +1073,7 @@ async def test_cancel_stripe_subscription_raises_on_cancel_error():
 @pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_metadata_user_id_matches():
     """metadata.user_id matching the DB user is accepted and the tier is updated normally."""
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.FREE)
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
     stripe_sub = {
         "id": "sub_new",
         "customer": "cus_123",
@@ -1035,7 +1117,7 @@ async def test_sync_subscription_from_stripe_metadata_user_id_mismatch_blocked()
     A customer↔user mapping inconsistency (e.g. a customer ID reassigned or
     a corrupted DB row) must never silently update the wrong user's tier.
     """
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.FREE)
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
     stripe_sub = {
         "id": "sub_new",
         "customer": "cus_123",
@@ -1061,7 +1143,7 @@ async def test_sync_subscription_from_stripe_metadata_user_id_mismatch_blocked()
 @pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
     """Absence of metadata.user_id (e.g. subs created outside Checkout) skips the cross-check."""
-    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.FREE)
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.BASIC)
     stripe_sub = {
         "id": "sub_new",
         "customer": "cus_123",
@@ -1201,7 +1283,7 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
 
     mock_user = MagicMock(spec=User)
     mock_user.stripe_customer_id = "cus_abc"
-    mock_user.subscription_tier = SubscriptionTier.FREE
+    mock_user.subscription_tier = SubscriptionTier.BASIC
 
     with (
         patch(
@@ -1338,7 +1420,7 @@ async def test_modify_stripe_subscription_for_tier_returns_false_when_no_sub():
 
     mock_user = MagicMock(spec=User)
     mock_user.stripe_customer_id = "cus_abc"
-    mock_user.subscription_tier = SubscriptionTier.FREE
+    mock_user.subscription_tier = SubscriptionTier.BASIC
 
     with (
         patch(
@@ -1377,11 +1459,11 @@ async def test_modify_stripe_subscription_for_tier_raises_on_missing_price_id():
 
 
 def test_tier_order_helpers():
-    assert is_tier_upgrade(SubscriptionTier.FREE, SubscriptionTier.PRO) is True
+    assert is_tier_upgrade(SubscriptionTier.BASIC, SubscriptionTier.PRO) is True
     assert is_tier_upgrade(SubscriptionTier.PRO, SubscriptionTier.BUSINESS) is True
     assert is_tier_upgrade(SubscriptionTier.BUSINESS, SubscriptionTier.PRO) is False
     assert is_tier_downgrade(SubscriptionTier.BUSINESS, SubscriptionTier.PRO) is True
-    assert is_tier_downgrade(SubscriptionTier.PRO, SubscriptionTier.FREE) is True
+    assert is_tier_downgrade(SubscriptionTier.PRO, SubscriptionTier.BASIC) is True
     assert is_tier_downgrade(SubscriptionTier.PRO, SubscriptionTier.BUSINESS) is False
 
 
@@ -1569,7 +1651,7 @@ async def test_release_pending_subscription_schedule_releases_downgrade_schedule
 
 @pytest.mark.asyncio
 async def test_release_pending_subscription_schedule_clears_cancel_at_period_end():
-    """release_pending_subscription_schedule reverts a pending paid→FREE cancel."""
+    """release_pending_subscription_schedule reverts a pending paid→BASIC cancel."""
     mock_sub = stripe.Subscription.construct_from(
         {
             "id": "sub_pro",
@@ -1662,7 +1744,7 @@ async def test_release_pending_subscription_schedule_no_stripe_customer_returns_
 
 @pytest.mark.asyncio
 async def test_get_pending_subscription_change_cancel_at_period_end():
-    """cancel_at_period_end=True maps to pending FREE at current_period_end."""
+    """cancel_at_period_end=True maps to pending BASIC at current_period_end."""
     import time as time_mod
 
     get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
@@ -1711,7 +1793,7 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
 
     assert result is not None
     pending_tier, effective_at = result
-    assert pending_tier == SubscriptionTier.FREE
+    assert pending_tier == SubscriptionTier.BASIC
     assert int(effective_at.timestamp()) == period_end
 
 
@@ -1790,6 +1872,86 @@ async def test_get_pending_subscription_change_from_schedule():
     assert result is not None
     pending_tier, effective_at = result
     assert pending_tier == SubscriptionTier.PRO
+    assert int(effective_at.timestamp()) == period_end
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_from_schedule_to_basic():
+    """A schedule whose next phase uses the BASIC price maps to pending_tier=BASIC."""
+    import time as time_mod
+
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+
+    now = int(time_mod.time())
+    period_end = now + 10 * 24 * 3600
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "current_period_end": period_end,
+            "cancel_at_period_end": False,
+            "schedule": "sub_sched_2",
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_schedule = stripe.SubscriptionSchedule.construct_from(
+        {
+            "id": "sub_sched_2",
+            "phases": [
+                {
+                    "start_date": now - 3 * 24 * 3600,
+                    "end_date": period_end,
+                    "items": [{"price": "price_pro_monthly"}],
+                },
+                {
+                    "start_date": period_end,
+                    "items": [{"price": "price_basic_monthly"}],
+                },
+            ],
+        },
+        "k",
+    )
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+        if tier == SubscriptionTier.BASIC:
+            return "price_basic_monthly"
+        if tier == SubscriptionTier.PRO:
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.BUSINESS:
+            return "price_biz_monthly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.retrieve_async",
+            new_callable=AsyncMock,
+            return_value=mock_schedule,
+        ),
+    ):
+        result = await get_pending_subscription_change("user-1")
+
+    assert result is not None
+    pending_tier, effective_at = result
+    assert pending_tier == SubscriptionTier.BASIC
     assert int(effective_at.timestamp()) == period_end
 
 

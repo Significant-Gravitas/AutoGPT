@@ -42,7 +42,7 @@ export function CopilotChatHost({
     hasMoreMessages,
     isLoadingMore,
     loadMore,
-    historicalDurations,
+    turnStats,
     rateLimitMessage,
     dismissRateLimit,
     sessionDryRun,
@@ -85,7 +85,7 @@ export function CopilotChatHost({
           onLoadMore={loadMore}
           droppedFiles={droppedFiles}
           onDroppedFilesConsumed={onDroppedFilesConsumed}
-          historicalDurations={historicalDurations}
+          turnStats={turnStats}
         />
       </div>
       <RateLimitGate

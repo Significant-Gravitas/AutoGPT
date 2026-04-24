@@ -44,7 +44,9 @@ class Flag(str, Enum):
     COPILOT_SDK = "copilot-sdk"
     COPILOT_DAILY_COST_LIMIT = "copilot-daily-cost-limit-microdollars"
     COPILOT_WEEKLY_COST_LIMIT = "copilot-weekly-cost-limit-microdollars"
+    STRIPE_PRICE_BASIC = "stripe-price-id-basic"
     STRIPE_PRICE_PRO = "stripe-price-id-pro"
+    STRIPE_PRICE_MAX = "stripe-price-id-max"
     STRIPE_PRICE_BUSINESS = "stripe-price-id-business"
     GRAPHITI_MEMORY = "graphiti-memory"
 

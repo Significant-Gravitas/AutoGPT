@@ -385,7 +385,7 @@ def _mock_usage(
     weekly_used: int = 2000,
     daily_limit: int = 10000,
     weekly_limit: int = 50000,
-    tier: "SubscriptionTier" = SubscriptionTier.FREE,
+    tier: "SubscriptionTier" = SubscriptionTier.BASIC,
 ) -> AsyncMock:
     """Mock get_usage_status and get_global_rate_limits for usage endpoint tests.
 
@@ -445,7 +445,7 @@ def test_usage_returns_daily_and_weekly(
         daily_cost_limit=10000,
         weekly_cost_limit=50000,
         rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
-        tier=SubscriptionTier.FREE,
+        tier=SubscriptionTier.BASIC,
     )
 
 
@@ -466,7 +466,7 @@ def test_usage_uses_config_limits(
         daily_cost_limit=99999,
         weekly_cost_limit=77777,
         rate_limit_reset_cost=500,
-        tier=SubscriptionTier.FREE,
+        tier=SubscriptionTier.BASIC,
     )
 
 
@@ -1040,7 +1040,7 @@ def test_stream_chat_accepts_exactly_max_length_message(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 0, SubscriptionTier.FREE),
+        return_value=(0, 0, SubscriptionTier.BASIC),
     )
 
     response = client.post(
@@ -1311,7 +1311,7 @@ def _mock_reset_internals(
     enable_credit: bool = True,
     daily_limit: int = 10_000,
     weekly_limit: int = 50_000,
-    tier: "SubscriptionTier" = SubscriptionTier.FREE,
+    tier: "SubscriptionTier" = SubscriptionTier.BASIC,
     daily_used: int = 10_001,
     weekly_used: int = 1_000,
     reset_count: int | None = 0,
@@ -1410,7 +1410,7 @@ def test_reset_usage_returns_400_when_no_daily_limit(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 50_000, SubscriptionTier.FREE),
+        return_value=(0, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1433,7 +1433,7 @@ def test_reset_usage_returns_503_when_redis_unavailable(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.FREE),
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1456,7 +1456,7 @@ def test_reset_usage_returns_429_when_max_resets_reached(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.FREE),
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1480,7 +1480,7 @@ def test_reset_usage_returns_429_when_lock_not_acquired(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.FREE),
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",

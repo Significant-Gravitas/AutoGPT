@@ -45,7 +45,7 @@ export function useCopilotPage() {
     sessionId,
     hydratedMessages,
     rawSessionMessages,
-    historicalDurations,
+    historicalTurnStats,
     hasActiveStream,
     activeStreamStartedAt,
     hasMoreMessages,
@@ -81,13 +81,21 @@ export function useCopilotPage() {
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
-  const { pagedMessages, hasMore, isLoadingMore, loadMore } =
+  const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
       initialOldestSequence: oldestSequence,
       initialHasMore: hasMoreMessages,
       initialPageRawMessages: rawSessionMessages,
     });
+
+  // Merge the older-pages and current-page stat maps; current-page (historical)
+  // wins on overlap since it was persisted more recently.
+  const turnStats = useMemo(() => {
+    const merged = new Map(pagedTurnStats);
+    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedTurnStats, historicalTurnStats]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated synchronously on every render so it always reflects the latest
@@ -239,7 +247,7 @@ export function useCopilotPage() {
     hasMoreMessages: hasMore,
     isLoadingMore,
     loadMore,
-    historicalDurations,
+    turnStats,
     rateLimitMessage,
     dismissRateLimit,
     // sessionDryRun is the CURRENT session's immutable dry_run flag from API,

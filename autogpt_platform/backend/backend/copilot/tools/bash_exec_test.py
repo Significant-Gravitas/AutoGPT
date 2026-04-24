@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from e2b import CommandExitException
 
 from ._test_data import make_session
 from .bash_exec import BashExecTool
@@ -124,6 +125,47 @@ class TestBashExecE2BTokenInjection:
         call_kwargs = sandbox.commands.run.call_args[1]
         assert "GIT_AUTHOR_NAME" not in call_kwargs["envs"]
         assert "GIT_COMMITTER_EMAIL" not in call_kwargs["envs"]
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_nonzero_exit_returned_as_bash_exec_response(self):
+        """CommandExitException (non-zero exit) must become a BashExecResponse with scrubbed output."""
+        tool = _make_tool()
+        session = make_session(user_id=_USER)
+
+        sandbox = MagicMock()
+        sandbox.commands.run = AsyncMock(
+            side_effect=CommandExitException(
+                stdout="not logged in gh-secret",
+                stderr="oops gh-secret",
+                exit_code=1,
+                error=None,
+            )
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.bash_exec.get_integration_env_vars",
+                new=AsyncMock(return_value={"GH_TOKEN": "gh-secret"}),
+            ),
+            patch(
+                "backend.copilot.tools.bash_exec.get_github_user_git_identity",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            result = await tool._execute_on_e2b(
+                sandbox=sandbox,
+                command="gh auth status 2>&1",
+                timeout=10,
+                session_id=session.session_id,
+                user_id=_USER,
+            )
+
+        assert isinstance(result, BashExecResponse)
+        assert result.exit_code == 1
+        assert result.timed_out is False
+        assert result.stdout == "not logged in [REDACTED]"
+        assert result.stderr == "oops [REDACTED]"
+        assert result.message == "Command executed with status code 1"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_no_token_injection_when_user_id_is_none(self):

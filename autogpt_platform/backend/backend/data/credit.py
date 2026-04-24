@@ -1302,7 +1302,7 @@ async def _cancel_customer_subscriptions(
     When ``at_period_end=True``, schedules cancellation at the end of the current
     billing period instead of cancelling immediately — the user keeps their tier
     until the period ends, then ``customer.subscription.deleted`` fires and the
-    webhook downgrades them to FREE.
+    webhook downgrades them to BASIC.
 
     Wraps every synchronous Stripe SDK call with run_in_threadpool so the async event
     loop is never blocked. Raises stripe.StripeError on list/cancel failure so callers
@@ -1364,7 +1364,7 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
 
     The subscription stays active until the end of the billing period so the user
     keeps their tier for the time they already paid for. The ``customer.subscription.deleted``
-    webhook fires at period end and downgrades the DB tier to FREE.
+    webhook fires at period end and downgrades the DB tier to BASIC.
 
     Returns True if at least one subscription was found and scheduled for cancellation,
     False if the customer had no active/trialing subscriptions (e.g., admin-granted tier
@@ -1403,7 +1403,7 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 
     Fetches the user's active Stripe subscription to determine how many seconds
     remain in the current billing period, then calculates the unused portion of
-    the monthly cost. Returns 0 for FREE/ENTERPRISE users or when no active sub
+    the monthly cost. Returns 0 for BASIC/ENTERPRISE users or when no active sub
     is found.
     """
     if monthly_cost_cents <= 0:
@@ -1442,8 +1442,9 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 # (move right) from downgrades (move left); ENTERPRISE is admin-managed and
 # never reached via self-service flows.
 _TIER_ORDER: tuple[SubscriptionTier, ...] = (
-    SubscriptionTier.FREE,
+    SubscriptionTier.BASIC,
     SubscriptionTier.PRO,
+    SubscriptionTier.MAX,
     SubscriptionTier.BUSINESS,
     SubscriptionTier.ENTERPRISE,
 )
@@ -1551,7 +1552,7 @@ async def _schedule_downgrade_at_period_end(
     ``SubscriptionSchedule.create`` if either (a) a schedule is already
     attached to the subscription or (b) ``cancel_at_period_end=True`` is set.
     Both conditions mean the user is overwriting a pending change they made
-    earlier (e.g. BUSINESS→FREE cancel, now switching to BUSINESS→PRO
+    earlier (e.g. BUSINESS→BASIC cancel, now switching to BUSINESS→PRO
     downgrade). We clear the conflicting state first so the new schedule can
     be created. These defensive reads serialize through Stripe's own atomic
     operations — by the time modify/release returns, the subscription is in a
@@ -1669,7 +1670,7 @@ async def modify_stripe_subscription_for_tier(
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return False
-    current_tier = user.subscription_tier or SubscriptionTier.FREE
+    current_tier = user.subscription_tier or SubscriptionTier.BASIC
 
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
@@ -1701,7 +1702,7 @@ async def modify_stripe_subscription_for_tier(
                 existing_schedule_id, "modify_stripe_subscription_for_tier"
             )
 
-        # If a paid→FREE cancel is pending (cancel_at_period_end=True), clear it
+        # If a paid→BASIC cancel is pending (cancel_at_period_end=True), clear it
         # as part of the upgrade — the user is explicitly choosing to stay on a
         # paid tier. Without this, the sub would be upgraded AND still cancelled
         # at period end, leaving a confusing dual state.
@@ -1757,7 +1758,7 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
     - **Subscription Schedule** (paid→paid downgrade): ``stripe.SubscriptionSchedule.release``
       detaches the schedule and lets the subscription continue on its current
       phase's price.
-    - **cancel_at_period_end=True** (paid→FREE cancel): clearing that flag via
+    - **cancel_at_period_end=True** (paid→BASIC cancel): clearing that flag via
       ``stripe.Subscription.modify`` keeps the subscription active indefinitely.
 
     Returns True if a pending change was found and reverted, False otherwise.
@@ -1826,7 +1827,7 @@ async def get_pending_subscription_change(
     """Return ``(pending_tier, effective_at)`` when a change is queued, else ``None``.
 
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
-    and ``cancel_at_period_end=True`` (paid→FREE cancel).
+    and ``cancel_at_period_end=True`` (paid→BASIC cancel).
 
     Cached for 30 seconds per user_id. *Why the cache exists:* this function
     runs on every dashboard/home fetch and would otherwise fire
@@ -1854,23 +1855,29 @@ async def get_pending_subscription_change(
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         # Short-circuit for users with no Stripe customer (admin-granted tiers,
-        # FREE-only users): skip the Stripe API calls entirely.
+        # BASIC-only users): skip the Stripe API calls entirely.
         return None
 
-    pro_price, biz_price = await asyncio.gather(
+    basic_price, pro_price, max_price, business_price = await asyncio.gather(
+        get_subscription_price_id(SubscriptionTier.BASIC),
         get_subscription_price_id(SubscriptionTier.PRO),
+        get_subscription_price_id(SubscriptionTier.MAX),
         get_subscription_price_id(SubscriptionTier.BUSINESS),
     )
     price_to_tier: dict[str, SubscriptionTier] = {}
+    if basic_price:
+        price_to_tier[basic_price] = SubscriptionTier.BASIC
     if pro_price:
         price_to_tier[pro_price] = SubscriptionTier.PRO
-    if biz_price:
-        price_to_tier[biz_price] = SubscriptionTier.BUSINESS
+    if max_price:
+        price_to_tier[max_price] = SubscriptionTier.MAX
+    if business_price:
+        price_to_tier[business_price] = SubscriptionTier.BUSINESS
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
-            " PRO/BUSINESS (LaunchDarkly fetch failed?); raising to bypass the"
-            " None cache so the next request retries fresh"
+            " BASIC/PRO/MAX/BUSINESS (LaunchDarkly fetch failed?); raising to bypass"
+            " the None cache so the next request retries fresh"
         )
         raise PendingChangeUnknown(
             "Stripe price lookup failed; pending-change state cannot be determined"
@@ -1884,7 +1891,7 @@ async def get_pending_subscription_change(
         return None
     effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
     if sub.cancel_at_period_end:
-        return SubscriptionTier.FREE, effective_at
+        return SubscriptionTier.BASIC, effective_at
     if not sub.schedule:
         return None
     schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
@@ -1943,11 +1950,13 @@ async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
 
     ``cache_none=False`` prevents a transient LD failure from caching ``None``
     and blocking subscription upgrades for the full 60-second TTL window.
-    A tier with no configured flag (FREE, ENTERPRISE) returns ``None`` from an
-    O(1) dict lookup before hitting LD, so the extra LD call is never made.
+    ENTERPRISE has no LD flag and returns None from an O(1) dict lookup before
+    hitting LD, so the extra LD call is never made.
     """
     flag_map = {
+        SubscriptionTier.BASIC: Flag.STRIPE_PRICE_BASIC,
         SubscriptionTier.PRO: Flag.STRIPE_PRICE_PRO,
+        SubscriptionTier.MAX: Flag.STRIPE_PRICE_MAX,
         SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_BUSINESS,
     }
     flag = flag_map.get(tier)
@@ -2061,7 +2070,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     # ENTERPRISE user to a different tier — if a user on ENTERPRISE somehow has
     # a self-service Stripe sub, it's a data-consistency issue for an operator,
     # not something the webhook should automatically "fix".
-    current_tier = user.subscriptionTier or SubscriptionTier.FREE
+    current_tier = user.subscriptionTier or SubscriptionTier.BASIC
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "sync_subscription_from_stripe: refusing to overwrite ENTERPRISE tier"
@@ -2078,17 +2087,23 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
             price_id = items[0].get("price", {}).get("id", "")
-        pro_price, biz_price = await asyncio.gather(
+        basic_price, pro_price, max_price, business_price = await asyncio.gather(
+            get_subscription_price_id(SubscriptionTier.BASIC),
             get_subscription_price_id(SubscriptionTier.PRO),
+            get_subscription_price_id(SubscriptionTier.MAX),
             get_subscription_price_id(SubscriptionTier.BUSINESS),
         )
-        if price_id and pro_price and price_id == pro_price:
+        if price_id and basic_price and price_id == basic_price:
+            tier = SubscriptionTier.BASIC
+        elif price_id and pro_price and price_id == pro_price:
             tier = SubscriptionTier.PRO
-        elif price_id and biz_price and price_id == biz_price:
+        elif price_id and max_price and price_id == max_price:
+            tier = SubscriptionTier.MAX
+        elif price_id and business_price and price_id == business_price:
             tier = SubscriptionTier.BUSINESS
         else:
             # Unknown or unconfigured price ID — preserve the user's current tier
-            # rather than defaulting to FREE. This prevents accidental downgrades
+            # rather than defaulting to BASIC. This prevents accidental downgrades
             # during a price migration or when LD flags are not yet configured.
             logger.warning(
                 "sync_subscription_from_stripe: unknown price %s for customer %s,"
@@ -2099,7 +2114,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
             return
     else:
         # A subscription was cancelled or ended. DO NOT unconditionally downgrade
-        # to FREE — Stripe does not guarantee webhook delivery order, so a
+        # to BASIC — Stripe does not guarantee webhook delivery order, so a
         # `customer.subscription.deleted` for the OLD sub can arrive after we've
         # already processed `customer.subscription.created` for a new paid sub.
         # Ask Stripe whether any OTHER active/trialing subs exist for this
@@ -2154,7 +2169,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
                 current_tier.value,
             )
             return
-        tier = SubscriptionTier.FREE
+        tier = SubscriptionTier.BASIC
     # Idempotency: Stripe retries webhooks on delivery failure, and several event
     # types map to the same final tier. Skip the DB write + cache invalidation
     # when the tier is already correct to avoid redundant writes on replay.
@@ -2175,7 +2190,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         # set_subscription_tier writes BUSINESS to the DB.  If Stripe delivers
         # the PRO `customer.subscription.deleted` event concurrently and it
         # processes after the PRO cancel but before set_subscription_tier
-        # commits, the user could momentarily appear as FREE in the DB.
+        # commits, the user could momentarily appear as BASIC in the DB.
         # This window is very short in practice (two sequential awaits),
         # but is a known limitation of the current webhook-driven approach.
         # A future improvement would be to write the new tier first, then
@@ -2235,7 +2250,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
 
     - Balance sufficient  → deduct from balance, then pay the Stripe invoice so
       Stripe stops retrying it. The sub stays intact and the user keeps their tier.
-    - Balance insufficient → cancel Stripe sub immediately, downgrade to FREE.
+    - Balance insufficient → cancel Stripe sub immediately, downgrade to BASIC.
       Cancelling here avoids further Stripe retries on an invoice we cannot cover.
     """
     customer_id = invoice.get("customer")
@@ -2253,7 +2268,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
 
-    current_tier = user.subscriptionTier or SubscriptionTier.FREE
+    current_tier = user.subscriptionTier or SubscriptionTier.BASIC
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
@@ -2318,12 +2333,12 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     except InsufficientBalanceError:
         # Balance insufficient — cancel Stripe subscription first, then downgrade DB.
         # Order matters: if we downgrade the DB first and the Stripe cancel fails, the
-        # user is permanently stuck on FREE while Stripe continues billing them.
+        # user is permanently stuck on BASIC while Stripe continues billing them.
         # Cancelling Stripe first is safe: if the DB write then fails, the webhook
         # customer.subscription.deleted will fire and correct the tier eventually.
         logger.info(
             "handle_subscription_payment_failure: insufficient balance for user %s;"
-            " cancelling Stripe sub %s then downgrading to FREE",
+            " cancelling Stripe sub %s then downgrading to BASIC",
             user.id,
             sub_id,
         )
@@ -2339,7 +2354,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 customer_id,
             )
             return
-        await set_subscription_tier(user.id, SubscriptionTier.FREE)
+        await set_subscription_tier(user.id, SubscriptionTier.BASIC)
 
 
 async def admin_get_user_history(

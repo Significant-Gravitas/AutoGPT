@@ -19,6 +19,7 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -52,7 +53,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  historicalDurations?: Map<string, number>;
+  turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
   /** Extra bottom padding (px) applied to the scrollable message list so
@@ -270,7 +271,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
-  historicalDurations,
+  turnStats,
   queuedMessages,
   bottomContentPadding,
 }: Props) {
@@ -534,13 +535,27 @@ export function ChatMessagesContainer({
                         ? frozenElapsedRef.current
                         : undefined
                     }
-                    durationMs={historicalDurations?.get(message.id)}
+                    stats={turnStats?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showIndicator && indicator}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  {(() => {
+                    const createdAt = turnStats?.get(message.id)?.createdAt;
+                    if (!createdAt) return null;
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return null;
+                    return (
+                      <span className="text-[11px] tabular-nums text-neutral-500">
+                        {date.toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    );
+                  })()}
                   <CopyButton text={textParts.map((p) => p.text).join("\n")} />
                 </MessageActions>
               )}
