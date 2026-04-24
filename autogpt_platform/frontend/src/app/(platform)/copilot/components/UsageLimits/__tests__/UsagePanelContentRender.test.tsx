@@ -29,7 +29,7 @@ function makeUsage(
   const {
     dailyPercent = 5,
     weeklyPercent = 4,
-    tier = "FREE",
+    tier = "BASIC",
     resetCost = 100,
   } = overrides;
   const future = new Date(Date.now() + 3600 * 1000).toISOString();

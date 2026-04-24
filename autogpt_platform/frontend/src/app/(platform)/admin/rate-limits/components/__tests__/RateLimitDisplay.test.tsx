@@ -34,7 +34,7 @@ function makeData(
     weekly_cost_limit_microdollars: 50_000_000,
     daily_cost_used_microdollars: 2_500_000,
     weekly_cost_used_microdollars: 10_000_000,
-    tier: "FREE",
+    tier: "BASIC",
     ...overrides,
   };
 }
@@ -71,14 +71,14 @@ describe("RateLimitDisplay", () => {
     expect(badge.className).toContain("bg-blue-100");
   });
 
-  it("defaults unknown tier to FREE", () => {
+  it("defaults unknown tier to BASIC", () => {
     render(
       <RateLimitDisplay
         data={makeData({ tier: "UNKNOWN" as UserRateLimitResponse["tier"] })}
         onReset={vi.fn()}
       />,
     );
-    const badge = screen.getByText("FREE");
+    const badge = screen.getByText("BASIC");
     expect(badge).toBeDefined();
   });
 
@@ -86,7 +86,7 @@ describe("RateLimitDisplay", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText("Subscription tier");
     expect(select).toBeDefined();
-    expect(select.querySelectorAll("option").length).toBe(4);
+    expect(select.querySelectorAll("option").length).toBe(5);
   });
 
   it("disables tier dropdown when onTierChange is not provided", () => {
@@ -195,7 +195,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,
@@ -215,14 +215,14 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,
     );
 
     fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "FREE" },
+      target: { value: "BASIC" },
     });
 
     expect(onTierChange).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,
@@ -253,7 +253,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,

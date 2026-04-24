@@ -143,7 +143,9 @@ export function SubscriptionTierSection() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {TIERS.map((tier) => {
+        {TIERS.filter(
+          (tier) => subscription.tier_costs[tier.key] !== undefined,
+        ).map((tier) => {
           const isCurrent = currentTier === tier.key;
           const cost = subscription.tier_costs[tier.key] ?? 0;
           const currentIdx = TIER_ORDER.indexOf(currentTier);
@@ -206,7 +208,7 @@ export function SubscriptionTierSection() {
         })}
       </div>
 
-      {currentTier !== "FREE" && isPaymentEnabled && (
+      {currentTier !== "BASIC" && isPaymentEnabled && (
         <p className="text-sm text-neutral-500">
           Your subscription is managed through Stripe. Upgrades take effect
           immediately. Downgrades take effect at the end of your current billing
@@ -225,8 +227,8 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {confirmDowngradeTo === "FREE"
-              ? "Downgrading to Free will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
+            {confirmDowngradeTo === "BASIC"
+              ? "Downgrading to Basic will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
               : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect at the end of your current billing period. You keep your current plan until then.`}{" "}
             Are you sure?
           </p>

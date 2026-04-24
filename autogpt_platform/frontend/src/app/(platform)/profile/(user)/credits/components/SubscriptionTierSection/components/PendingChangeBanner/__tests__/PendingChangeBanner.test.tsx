@@ -7,7 +7,7 @@ import { PendingChangeBanner } from "../PendingChangeBanner";
 describe("PendingChangeBanner", () => {
   const baseProps = {
     currentTier: "PRO",
-    pendingTier: "FREE",
+    pendingTier: "BASIC",
     // Use noon UTC so the formatted local date lands on the same day
     // regardless of the host timezone (important for CI runners).
     pendingEffectiveAt: "2026-05-01T12:00:00Z",
@@ -25,7 +25,7 @@ describe("PendingChangeBanner", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows cancellation copy when pending tier is FREE", () => {
+  it("shows cancellation copy when pending tier is BASIC", () => {
     render(<PendingChangeBanner {...baseProps} />);
     expect(screen.getByText(/cancel your subscription on/i)).toBeDefined();
     expect(screen.getByText("May 1, 2026")).toBeDefined();
@@ -37,15 +37,13 @@ describe("PendingChangeBanner", () => {
     render(
       <PendingChangeBanner
         {...baseProps}
-        currentTier="BUSINESS"
+        currentTier="MAX"
         pendingTier="PRO"
       />,
     );
     expect(screen.getByText(/downgrade to/i)).toBeDefined();
     expect(screen.getByText("Pro")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: /keep business/i }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /keep max/i })).toBeDefined();
   });
 
   it("invokes onKeepCurrent when the button is clicked", () => {
