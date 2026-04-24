@@ -420,14 +420,8 @@ class TestGetTierMultipliers:
         assert result["PRO"] == 7.5
         assert result["BUSINESS"] == 25.0
         # Untouched tiers inherit defaults.
-        assert (
-            result["BASIC"]
-            == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BASIC]
-        )
-        assert (
-            result["MAX"]
-            == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
-        )
+        assert result["BASIC"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BASIC]
+        assert result["MAX"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
         assert (
             result["ENTERPRISE"]
             == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE]
@@ -455,14 +449,10 @@ class TestGetTierMultipliers:
             result = await get_tier_multipliers()
         assert result["PRO"] == 3.0
         # MAX had a non-positive override → falls back to default.
-        assert (
-            result["MAX"]
-            == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
-        )
+        assert result["MAX"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
         # BUSINESS had an unparseable override → falls back to default.
         assert (
-            result["BUSINESS"]
-            == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
+            result["BUSINESS"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
         )
 
     @pytest.mark.asyncio
