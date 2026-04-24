@@ -156,6 +156,30 @@ def test_codex_registered_as_cost_usd_150():
     assert entry.cost_amount == 150
 
 
+@pytest.mark.parametrize(
+    "input_tokens, output_tokens, expected_usd",
+    [
+        # GPT-5.1-Codex: $1.25 / 1M input, $10 / 1M output.
+        (1_000_000, 0, 1.25),
+        (0, 1_000_000, 10.0),
+        (100_000, 10_000, 0.225),  # 0.125 + 0.100
+        (0, 0, 0.0),
+    ],
+)
+def test_codex_computes_provider_cost_usd_from_token_counts(
+    input_tokens, output_tokens, expected_usd
+):
+    """Drive CodeGenerationBlock._compute_token_usd directly. A regression
+    to the wrong rate constants (e.g. swapping the $1.25 input rate for
+    GPT-4o's $2.50) would fail this test.
+    """
+    from backend.blocks.codex import CodeGenerationBlock
+
+    assert CodeGenerationBlock._compute_token_usd(
+        input_tokens, output_tokens
+    ) == pytest.approx(expected_usd)
+
+
 # -------- ClaudeCode COST_USD registration sanity (already tested in claude_code_cost_test.py) --------
 
 
