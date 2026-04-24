@@ -10439,7 +10439,7 @@
           },
           "tier": {
             "$ref": "#/components/schemas/SubscriptionTier",
-            "default": "FREE"
+            "default": "BASIC"
           },
           "reset_cost": {
             "type": "integer",
@@ -16060,7 +16060,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
             "title": "Tier"
           },
           "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
@@ -16075,7 +16075,7 @@
           },
           "pending_tier": {
             "anyOf": [
-              { "type": "string", "enum": ["FREE", "PRO", "BUSINESS"] },
+              { "type": "string", "enum": ["BASIC", "PRO", "MAX", "BUSINESS"] },
               { "type": "null" }
             ],
             "title": "Pending Tier"
@@ -16090,7 +16090,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
             "default": ""
           }
         },
@@ -16105,7 +16105,7 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+        "enum": ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -16113,7 +16113,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS"],
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS"],
             "title": "Tier"
           },
           "success_url": {

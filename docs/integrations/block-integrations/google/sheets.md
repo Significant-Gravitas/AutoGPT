@@ -19,7 +19,7 @@ The block uses the Google Sheets API to perform the insertion, shifting existing
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | header | Header name for the new column | str | Yes |
 | position | Where to add: 'end' for last column, or column letter (e.g., 'C') to insert before | str | No |
@@ -62,7 +62,7 @@ The dropdown arrow appears in cells when enabled, providing users with a list of
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | range | Cell range to add dropdown to (e.g., 'B2:B100') | str | Yes |
 | options | List of dropdown options | List[str] | Yes |
@@ -104,7 +104,7 @@ Notes are useful for documentation, explanations, or audit trails that shouldn't
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | The spreadsheet to add note to | Spreadsheet | No |
+| spreadsheet | The spreadsheet to add note to. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | cell | Cell to add note to (e.g., A1, B2) | str | Yes |
 | note | Note text to add | str | Yes |
 | sheet_name | Name of the sheet. Defaults to first sheet. | str | No |
@@ -144,7 +144,7 @@ This is ideal for continuously adding records to a log or database-style sheet.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | row | Row values to append (e.g., ['Alice', 'alice@example.com', '25']) | List[str] | Yes |
 | sheet_name | Sheet to append to (optional, defaults to first sheet) | str | No |
 | value_input_option | How values are interpreted. USER_ENTERED: parsed like typed input (e.g., '=SUM(A1:A5)' becomes a formula, '1/2/2024' becomes a date). RAW: stored as-is without parsing. | "RAW" \| "USER_ENTERED" | No |
@@ -184,7 +184,7 @@ Operations execute in order and can include various actions like formatting, dat
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | operations | List of operations to perform | List[BatchOperation] | Yes |
 
 ### Outputs
@@ -222,7 +222,7 @@ Use A1 notation (e.g., "A1:D10" or "Sheet1!B2:C5") to specify the range to clear
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | range | The A1 notation of the range to clear | str | Yes |
 
 ### Outputs
@@ -260,7 +260,7 @@ The new sheet is added to the destination spreadsheet with a potentially modifie
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| source_spreadsheet | Select the source spreadsheet | Source Spreadsheet | No |
+| source_spreadsheet | Select the source spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Source Spreadsheet | No |
 | source_sheet_name | Sheet to copy (optional, defaults to first sheet) | str | No |
 | destination_spreadsheet_id | ID of the destination spreadsheet | str | Yes |
 
@@ -301,7 +301,7 @@ Named ranges can be used in formulas across the spreadsheet and make maintenance
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | name | Name for the range (e.g., 'SalesData', 'CustomerList') | str | Yes |
 | range | Cell range in A1 notation (e.g., 'A1:D10', 'B2:B100') | str | Yes |
@@ -382,7 +382,7 @@ All data in the column is permanently deleted and subsequent columns shift left 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | column | Column to delete (header name or column letter like 'A', 'B') | str | Yes |
 
@@ -421,7 +421,7 @@ Works seamlessly with the Filter Rows block output to delete rows matching speci
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | row_indices | 1-based row indices to delete (e.g., [2, 5, 7]) | List[int] | Yes |
 
@@ -461,7 +461,7 @@ The CSV data can be used for integration with other systems, file downloads, or 
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | The spreadsheet to export from | Spreadsheet | No |
+| spreadsheet | The spreadsheet to export from. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Name of the sheet to export. Defaults to first sheet. | str | No |
 | include_headers | Include the first row (headers) in the CSV output | bool | No |
 
@@ -501,7 +501,7 @@ Returns matching rows along with their original 1-based row indices, making it e
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | filter_column | Column to filter on (header name or column letter like 'A', 'B') | str | Yes |
 | filter_value | Value to filter by (not used for is_empty/is_not_empty operators) | str | No |
@@ -546,7 +546,7 @@ Returns the locations (sheet, row, column) of all matches or just the first one,
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | find_text | The text to find | str | Yes |
 | sheet_id | The ID of the specific sheet to search (optional, searches all sheets if not provided) | int | No |
 | match_case | Whether to match case | bool | No |
@@ -591,7 +591,7 @@ Returns the number of replacements made, enabling verification of the operation'
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | find_text | The text to find | str | Yes |
 | replace_text | The text to replace with | str | Yes |
 | sheet_id | The ID of the specific sheet to search (optional, searches all sheets if not provided) | int | No |
@@ -633,7 +633,7 @@ Formatting enhances readability and can highlight important data or create visua
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | range | A1 notation – sheet optional | str | Yes |
 | background_color | - | Dict[str, Any] | No |
 | text_color | - | Dict[str, Any] | No |
@@ -676,7 +676,7 @@ Returns values as a list for easy iteration or processing in subsequent blocks.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | column | Column to extract (header name or column letter like 'A', 'B') | str | Yes |
 | include_header | Include the header in output | bool | No |
@@ -719,7 +719,7 @@ Returns a list of notes with their cell locations, useful for extracting documen
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | The spreadsheet to get notes from | Spreadsheet | No |
+| spreadsheet | The spreadsheet to get notes from. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | range | Range to get notes from (e.g., A1:B10) | str | No |
 | sheet_name | Name of the sheet. Defaults to first sheet. | str | No |
 
@@ -759,7 +759,7 @@ The dictionary format makes it easy to access specific fields by name rather tha
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | row_index | 1-based row index to retrieve | int | Yes |
 
@@ -799,7 +799,7 @@ This information is essential for determining loop boundaries or validating data
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | include_header | Include header row in count | bool | No |
 | count_empty | Count rows with only empty cells | bool | No |
@@ -842,7 +842,7 @@ Useful for discovering data categories, building dynamic dropdown lists, or anal
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | column | Column to get unique values from (header name or column letter) | str | Yes |
 | include_count | Include count of each unique value | bool | No |
@@ -885,7 +885,7 @@ The CSV string is parsed and written to the sheet, enabling data import from ext
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | The spreadsheet to import into | Spreadsheet | No |
+| spreadsheet | The spreadsheet to import into. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | csv_data | CSV data to import | str | Yes |
 | sheet_name | Name of the sheet. Defaults to first sheet. | str | No |
 | start_cell | Cell to start importing at (e.g., A1, B2) | str | No |
@@ -927,7 +927,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | row | Row values to insert (e.g., ['Alice', 'alice@example.com', '25']) | List[str] | Yes |
 | row_index | 1-based row index where to insert (existing rows shift down) | int | Yes |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
@@ -968,7 +968,7 @@ Useful for discovering available named ranges or auditing spreadsheet configurat
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 
 ### Outputs
 
@@ -1006,7 +1006,7 @@ This is useful for database-style lookups where you need to find a record by ID,
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | lookup_column | Column to search in (header name or column letter) | str | Yes |
 | lookup_value | Value to search for | str | Yes |
@@ -1051,7 +1051,7 @@ Use this to dynamically organize spreadsheet structure as part of workflows.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | operation | Operation to perform | "create" \| "delete" \| "copy" | Yes |
 | sheet_name | Target sheet name (defaults to first sheet for delete) | str | No |
 | source_sheet_id | Source sheet ID for copy | int | No |
@@ -1092,7 +1092,7 @@ Useful for understanding spreadsheet structure before performing operations.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 
 ### Outputs
 
@@ -1129,7 +1129,7 @@ Use this to prevent accidental changes to important formulas, headers, or refere
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | range | Cell range to protect (e.g., 'A1:D10'). Leave empty to protect entire sheet. | str | No |
 | description | Description for the protected range | str | No |
@@ -1169,7 +1169,7 @@ The block connects to Google Sheets using provided credentials, then fetches dat
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | range | The A1 notation of the range to read | str | Yes |
 
 ### Outputs
@@ -1203,7 +1203,7 @@ Case sensitivity is configurable for text comparisons.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | columns | Columns to check for duplicates (header names or letters). Empty = all columns. | List[str] | No |
 | keep | Which duplicate to keep: 'first' or 'last' | str | No |
@@ -1246,7 +1246,7 @@ When made public, anyone with the link can access the spreadsheet. The share lin
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | The spreadsheet to modify access for | Spreadsheet | No |
+| spreadsheet | The spreadsheet to modify access for. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | public | True to make public, False to make private | bool | No |
 | role | Permission role for public access | "reader" \| "commenter" | No |
 
@@ -1286,7 +1286,7 @@ Leave the email blank to just generate a shareable link.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | The spreadsheet to share | Spreadsheet | No |
+| spreadsheet | The spreadsheet to share. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | email | Email address to share with. Leave empty for link sharing. | str | No |
 | role | Permission role for the user | "reader" \| "writer" \| "commenter" | No |
 | send_notification | Send notification email to the user | bool | No |
@@ -1328,7 +1328,7 @@ Sorting is performed in-place, modifying the sheet directly.
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | sort_column | Primary column to sort by (header name or column letter) | str | Yes |
 | sort_order | Sort order for primary column | "ascending" \| "descending" | No |
@@ -1371,7 +1371,7 @@ Use value_input_option to control whether values are parsed (USER_ENTERED) or st
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | cell | Cell address in A1 notation (e.g., 'A1', 'Sheet1!B2') | str | Yes |
 | value | Value to write to the cell | str | Yes |
 | value_input_option | How input data should be interpreted | "RAW" \| "USER_ENTERED" | No |
@@ -1411,7 +1411,7 @@ The dictionary format is convenient when you only need to update specific column
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | sheet_name | Sheet name (optional, defaults to first sheet) | str | No |
 | row_index | 1-based row index to update | int | Yes |
 | values | New values for the row (in column order) | List[str] | No |
@@ -1450,7 +1450,7 @@ The block authenticates with Google Sheets using provided credentials, then upda
 
 | Input | Description | Type | Required |
 |-------|-------------|------|----------|
-| spreadsheet | Select a Google Sheets spreadsheet | Spreadsheet | No |
+| spreadsheet | Select a Google Sheets spreadsheet. At runtime, feed this from an AgentGoogleDriveFileInputBlock with matching allowed_views. NEVER hardcode a file ID in input_default (including one parsed from a Drive URL the user pasted in chat) — only the picker attaches the _credentials_id needed for auth. | Spreadsheet | No |
 | range | The A1 notation of the range to write | str | Yes |
 | values | The data to write to the spreadsheet | List[List[str]] | Yes |
 

@@ -152,6 +152,60 @@ When the user asks to interact with a service or API, follow this order:
 - Do NOT invoke `AutoPilotBlock` via `run_block`; use `run_sub_session`
   instead.
 
+### Picker-backed inputs via `run_block` (READ BEFORE CALLING)
+
+Some block input fields are populated by a platform-rendered picker at
+run time — the user clicks a button, authenticates, and selects a
+resource in one step. **The picker is the ONLY source of the hidden
+credentials attached to the selected value.** A bare ID or URL will
+never authenticate. You can spot a picker field by a `format` hint or
+an `auto_credentials` entry in the schema returned by `find_block`.
+
+**The correct flow — just call `run_block` with the field set to
+`null` (or omit it for non-required fields); the platform handles the
+picker and credentials.**
+
+✅ Correct — triggers the inline picker:
+```
+run_block(block_id="...", input_data={"<picker_field>": null, ...other inputs...})
+```
+
+The tool returns a setup card with the picker in chat. The user picks
+the resource, and `run_block` is re-invoked automatically with the
+full picker payload (including the hidden credentials field) merged
+in. You do NOT need to collect URLs, IDs, or credentials from the
+user — just call the tool.
+
+❌ Do NOT:
+- Ask the user for a URL, ID, or any identifier for a picker-backed
+  resource before calling `run_block`. The picker inside the setup
+  card is the answer.
+- Hardcode an ID parsed from a URL the user happens to mention — a
+  bare ID has no attached credentials and the block fails at auth.
+- Refuse the task ("I can't access private resources") — you can, via
+  the picker. Call `run_block` first.
+
+**Chained calls**: if a prior tool already returned a full picker
+object (with its hidden credentials field attached), you MAY pass that
+object through as-is to a downstream `run_block`; do not strip or
+modify its fields.
+
+### Pre-flight with `validate_only`
+
+`run_block(id, {})` is NOT always a safe probe — for blocks with no
+required inputs, it executes immediately. When you need to inspect
+what a block does or what it needs without side effects, pass
+`validate_only: true`:
+
+```
+run_block(block_id="...", input_data={...}, validate_only=true)
+```
+
+This returns the block's input/output schema and a list of missing
+required fields — never executes, never renders picker cards, never
+charges credits. Use it when you're unsure whether a block has
+required inputs, or to plan multi-step work without committing.
+
 """
 
 # E2B-only notes — E2B has full internet access so gh CLI works there.

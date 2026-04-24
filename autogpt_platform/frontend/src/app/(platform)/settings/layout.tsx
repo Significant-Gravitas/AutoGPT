@@ -3,12 +3,7 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-<<<<<<< abhimanyuyadav/secrt-2273-add-autogpt-api-key-page
-import { FeatureFlagPage } from "@/services/feature-flags/FeatureFlagPage";
-import { Flag } from "@/services/feature-flags/use-get-flag";
 import { ScrollArea } from "@/components/ui/scroll-area";
-=======
->>>>>>> abhimanyuyadav/secrt-2272-create-basic-settings-v2-page-layout-behind-a-feature-flag
 import { SettingsSidebar } from "./components/SettingsSidebar/SettingsSidebar";
 import { SettingsMobileNav } from "./components/SettingsMobileNav/SettingsMobileNav";
 
@@ -17,8 +12,6 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
-<<<<<<< abhimanyuyadav/secrt-2273-add-autogpt-api-key-page
-    <FeatureFlagPage flag={Flag.SETTINGS_V2} whenDisabled="/profile/settings">
       <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
         <SettingsSidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
@@ -40,7 +33,6 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
             </ScrollArea>
           </main>
         </div>
-=======
     <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
       <SettingsSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -55,7 +47,6 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
             {children}
           </motion.div>
         </main>
->>>>>>> abhimanyuyadav/secrt-2272-create-basic-settings-v2-page-layout-behind-a-feature-flag
       </div>
     </div>
   );

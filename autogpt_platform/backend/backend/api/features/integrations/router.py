@@ -1139,7 +1139,7 @@ async def get_ayrshare_sso_url(
         )
 
     # On-demand provisioning: AyrshareManagedProvider opts out of the
-    # startup sweep (profile quota is per-user subscription-bound).  This
+    # credentials sweep (profile quota is per-user subscription-bound).  This
     # endpoint is the only trigger that provisions a profile — one Ayrshare
     # profile per user who actually opens the connect flow, not one per
     # every authenticated user.
