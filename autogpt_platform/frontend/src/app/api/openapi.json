@@ -199,7 +199,7 @@
       "get": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "List Invalid Executions",
-        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n\u26a0\ufe0f NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
+        "description": "Get detailed list of executions in invalid states (READ-ONLY).\n\nInvalid states indicate data corruption and require manual investigation:\n- QUEUED but has startedAt (impossible - can't start while queued)\n- RUNNING but no startedAt (impossible - can't run without starting)\n\n⚠️ NO BULK ACTIONS PROVIDED - These need case-by-case investigation.\n\nEach invalid execution likely has a different root cause (crashes, race conditions,\nDB corruption). Investigate the execution history and logs to determine appropriate\naction (manual cleanup, status fix, or leave as-is if system recovered).\n\nArgs:\n    limit: Maximum number of executions to return (default 100)\n    offset: Number of executions to skip (default 0)\n\nReturns:\n    List of invalid state executions with details",
         "operationId": "getV2List invalid executions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -337,7 +337,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Stuck Execution",
-        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
+        "description": "Requeue a stuck QUEUED execution (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains execution_id to requeue\n\nReturns:\n    Success status and message",
         "operationId": "postV2Requeue stuck execution",
         "requestBody": {
           "content": {
@@ -377,7 +377,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue ALL Stuck Queued Executions",
-        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue ALL stuck queued executions (QUEUED >1h) by publishing to RabbitMQ.\nOperates on all executions, not just paginated results.\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: This will re-execute ALL stuck executions and may cost significant credits.\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue all stuck queued executions",
         "responses": {
           "200": {
@@ -401,7 +401,7 @@
       "post": {
         "tags": ["v2", "admin", "diagnostics", "admin"],
         "summary": "Requeue Multiple Stuck Executions",
-        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n\u26a0\ufe0f WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
+        "description": "Requeue multiple stuck QUEUED executions (admin only).\n\nUses add_graph_execution with existing graph_exec_id to requeue.\n\n⚠️ WARNING: Only use for stuck executions. This will re-execute and may cost credits.\n\nArgs:\n    request: Contains list of execution_ids to requeue\n\nReturns:\n    Number of executions requeued and success message",
         "operationId": "postV2Requeue multiple stuck executions",
         "requestBody": {
           "content": {
@@ -2509,7 +2509,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Start a new turn OR queue a follow-up \u2014 decided server-side.\n\n- **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)\n  with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).\n  The generation runs in a background task that survives client disconnects;\n  reconnect via ``GET /sessions/{session_id}/stream`` to resume.\n\n- **Session has a turn in flight**: pushes the message into the per-session\n  pending buffer and returns ``202 application/json`` with\n  ``QueuePendingMessageResponse``.  The executor running the current turn\n  drains the buffer between tool-call rounds (baseline) or at the start of\n  the next turn (SDK).  Clients should detect the 202 and surface the\n  message as a queued-chip in the UI.\n\nArgs:\n    session_id: The chat session identifier.\n    request: Request body with message, is_user_message, and optional context.\n    user_id: Authenticated user ID.",
+        "description": "Start a new turn OR queue a follow-up — decided server-side.\n\n- **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)\n  with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).\n  The generation runs in a background task that survives client disconnects;\n  reconnect via ``GET /sessions/{session_id}/stream`` to resume.\n\n- **Session has a turn in flight**: pushes the message into the per-session\n  pending buffer and returns ``202 application/json`` with\n  ``QueuePendingMessageResponse``.  The executor running the current turn\n  drains the buffer between tool-call rounds (baseline) or at the start of\n  the next turn (SDK).  Clients should detect the 202 and surface the\n  message as a queued-chip in the UI.\n\nArgs:\n    session_id: The chat session identifier.\n    request: Request body with message, is_user_message, and optional context.\n    user_id: Authenticated user ID.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2534,7 +2534,7 @@
             "content": { "application/json": { "schema": {} } }
           },
           "202": {
-            "description": "Session has a turn in flight \u2014 message queued into the pending buffer and will be picked up between tool-call rounds by the executor currently processing the turn.",
+            "description": "Session has a turn in flight — message queued into the pending buffer and will be picked up between tool-call rounds by the executor currently processing the turn.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2642,7 +2642,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get Copilot Usage",
-        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns the percentage of the daily/weekly allowance used \u2014 not the\nraw spend or cap \u2014 so clients cannot derive per-turn cost or platform\nmargins. Global defaults sourced from LaunchDarkly (falling back to\nconfig). Includes the user's rate-limit tier.",
+        "description": "Get CoPilot usage status for the authenticated user.\n\nReturns the percentage of the daily/weekly allowance used — not the\nraw spend or cap — so clients cannot derive per-turn cost or platform\nmargins. Global defaults sourced from LaunchDarkly (falling back to\nconfig). Includes the user's rate-limit tier.",
         "operationId": "getV2GetCopilotUsage",
         "responses": {
           "200": {
@@ -2792,7 +2792,7 @@
       "get": {
         "tags": ["v2", "admin", "copilot", "admin"],
         "summary": "Search Users by Name or Email",
-        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly \u2014 returns results even for users\nwithout credit transaction history.",
+        "description": "Search users by partial email or name. Admin-only.\n\nQueries the User table directly — returns results even for users\nwithout credit transaction history.",
         "operationId": "getV2Search users by name or email",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4985,7 +4985,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Issue a short-lived access token for a provider-hosted picker",
-        "description": "Return the raw access token for an OAuth2 credential so the frontend\ncan initialize a provider-hosted picker (e.g. Google Drive Picker).\n\n`GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see\n`CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in\n`router_test.py`). That hardening broke the Drive picker, which needs the\nraw access token to call `google.picker.Builder.setOAuthToken(...)`. This\nendpoint carves a narrow, explicit hole: the caller must own the\ncredential, it must be OAuth2, and the endpoint returns only the access\ntoken + its expiry \u2014 nothing else about the credential. SDK-default\ncredentials are excluded for the same reason as `get_credential`.",
+        "description": "Return the raw access token for an OAuth2 credential so the frontend\ncan initialize a provider-hosted picker (e.g. Google Drive Picker).\n\n`GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see\n`CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in\n`router_test.py`). That hardening broke the Drive picker, which needs the\nraw access token to call `google.picker.Builder.setOAuthToken(...)`. This\nendpoint carves a narrow, explicit hole: the caller must own the\ncredential, it must be OAuth2, and the endpoint returns only the access\ntoken + its expiry — nothing else about the credential. SDK-default\ncredentials are excluded for the same reason as `get_credential`.",
         "operationId": "postV1GetPickerToken",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -6225,7 +6225,7 @@
       "post": {
         "tags": ["v2", "mcp", "mcp"],
         "summary": "Discover available tools on an MCP server",
-        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically \u2014 no need to pass an explicit auth token.",
+        "description": "Connect to an MCP server and return its available tools.\n\nIf the user has a stored MCP credential for this server URL, it will be\nused automatically — no need to pass an explicit auth token.",
         "operationId": "postV2Discover available tools on an mcp server",
         "requestBody": {
           "content": {
@@ -10326,7 +10326,7 @@
         },
         "type": "object",
         "title": "ChatSessionMetadata",
-        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns \u2014\nno migration required for new fields as long as a default is provided."
+        "description": "Typed metadata stored in the ``metadata`` JSON column of ChatSession.\n\nAdd new session-level flags here instead of adding DB columns —\nno migration required for new fields as long as a default is provided."
       },
       "ClarificationNeededResponse": {
         "properties": {
@@ -10393,7 +10393,7 @@
         },
         "type": "object",
         "title": "CoPilotUsagePublic",
-        "description": "Current usage status for a user \u2014 public (client-safe) shape."
+        "description": "Current usage status for a user — public (client-safe) shape."
       },
       "ConfirmLinkResponse": {
         "properties": {
@@ -10602,7 +10602,7 @@
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field \u2014 do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  \u2014 see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, \u2026) stay open.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_block``, ``find_agent``, ``search_docs``, …) stay open.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -13698,7 +13698,7 @@
         "type": "object",
         "required": ["messages", "count"],
         "title": "PeekPendingMessagesResponse",
-        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer \u2014 messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
+        "description": "Response for the pending-message peek (GET) endpoint.\n\nReturns a read-only view of the pending buffer — messages are NOT\nconsumed.  The frontend uses this to restore the queued-message\nindicator after a page refresh and to decide when to clear it once\na turn has ended."
       },
       "PendingHumanReviewModel": {
         "properties": {
@@ -14497,7 +14497,7 @@
         "type": "object",
         "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
         "title": "QueuePendingMessageResponse",
-        "description": "Response returned by ``POST /stream`` with status 202 when a message\nis queued because the session already has a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked \u2014 purely informational for UX feedback.  Always ``True``\n  for responses from ``POST /stream`` with status 202."
+        "description": "Response returned by ``POST /stream`` with status 202 when a message\nis queued because the session already has a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback.  Always ``True``\n  for responses from ``POST /stream`` with status 202."
       },
       "RateLimitResetResponse": {
         "properties": {
@@ -16017,7 +16017,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC \u2192 paid upgrade). Empty string in all other branches \u2014 the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
             "default": ""
           }
         },
@@ -16811,7 +16811,7 @@
         "type": "object",
         "required": ["message"],
         "title": "TodoWriteResponse",
-        "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless \u2014 the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
+        "description": "Ack returned by ``TodoWrite``.\n\nThe tool is effectively stateless — the authoritative task list lives in\nthe assistant's latest tool-call arguments, which are replayed from the\ntranscript on each turn. The tool output only needs to confirm that the\nupdate was accepted so the model can proceed."
       },
       "TokenIntrospectionResult": {
         "properties": {
@@ -17725,7 +17725,7 @@
         "type": "object",
         "required": ["percent_used", "resets_at"],
         "title": "UsageWindowPublic",
-        "description": "Public view of a usage window \u2014 only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
+        "description": "Public view of a usage window — only the percentage and reset time.\n\nHides the raw spend and the cap so clients cannot derive per-turn cost\nor reverse-engineer platform margins.  ``percent_used`` is capped at 100."
       },
       "UserCostSummary": {
         "properties": {
