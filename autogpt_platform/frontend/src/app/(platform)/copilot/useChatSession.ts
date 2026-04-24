@@ -197,8 +197,11 @@ export function useChatSession({ dryRun = false }: UseChatSessionOptions = {}) {
     activeStreamStartedAt,
     hasMoreMessages,
     oldestSequence,
-    isLoadingSession:
-      sessionQuery.isLoading || (!!sessionId && sessionQuery.isFetching),
+    // Only treat the session as loading during the INITIAL fetch (no cached
+    // data yet). Background refetches keep the input enabled — otherwise a
+    // fill+Enter race can trigger handleSend while ``disabled`` briefly
+    // flips back to ``true`` mid-refetch, silently dropping the message.
+    isLoadingSession: sessionQuery.isLoading,
     isSessionError: sessionQuery.isError,
     createSession,
     isCreatingSession,

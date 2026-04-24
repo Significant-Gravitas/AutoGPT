@@ -109,6 +109,18 @@ describe("useChatSession — pagination metadata", () => {
     expect(result.current.hasActiveStream).toBe(false);
     expect(result.current.hasMoreMessages).toBe(false);
     expect(result.current.oldestSequence).toBeNull();
+    // isLoadingSession is scoped to the INITIAL fetch only (isLoading) so
+    // background refetches do not disable the chat input between keystrokes.
+    expect(result.current.isLoadingSession).toBe(false);
+  });
+
+  it("treats the initial fetch as a loading session", () => {
+    mockUseGetV2GetSession.mockReturnValue(
+      makeQueryResult(null, { isLoading: true, isFetching: true }),
+    );
+
+    const { result } = renderHook(() => useChatSession());
+
     expect(result.current.isLoadingSession).toBe(true);
   });
 });
