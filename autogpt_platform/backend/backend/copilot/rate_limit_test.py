@@ -406,7 +406,7 @@ class TestGetTierMultipliers:
             return_value=None,
         ):
             result = await get_tier_multipliers()
-        assert result == dict(_DEFAULT_TIER_MULTIPLIERS)
+        assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
 
     @pytest.mark.asyncio
     async def test_ld_override(self):
@@ -417,19 +417,19 @@ class TestGetTierMultipliers:
             return_value={"PRO": 7.5, "BUSINESS": 25},
         ):
             result = await get_tier_multipliers()
-        assert result[SubscriptionTier.PRO] == 7.5
-        assert result[SubscriptionTier.BUSINESS] == 25.0
+        assert result["PRO"] == 7.5
+        assert result["BUSINESS"] == 25.0
         # Untouched tiers inherit defaults.
         assert (
-            result[SubscriptionTier.BASIC]
+            result["BASIC"]
             == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BASIC]
         )
         assert (
-            result[SubscriptionTier.MAX]
+            result["MAX"]
             == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
         )
         assert (
-            result[SubscriptionTier.ENTERPRISE]
+            result["ENTERPRISE"]
             == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE]
         )
 
@@ -442,7 +442,7 @@ class TestGetTierMultipliers:
             return_value="broken",
         ):
             result = await get_tier_multipliers()
-        assert result == dict(_DEFAULT_TIER_MULTIPLIERS)
+        assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
 
     @pytest.mark.asyncio
     async def test_unknown_tier_key_skipped(self):
@@ -453,15 +453,15 @@ class TestGetTierMultipliers:
             return_value={"PRO": 3, "BOGUS": 99, "MAX": -1, "BUSINESS": "nope"},
         ):
             result = await get_tier_multipliers()
-        assert result[SubscriptionTier.PRO] == 3.0
+        assert result["PRO"] == 3.0
         # MAX had a non-positive override → falls back to default.
         assert (
-            result[SubscriptionTier.MAX]
+            result["MAX"]
             == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
         )
         # BUSINESS had an unparseable override → falls back to default.
         assert (
-            result[SubscriptionTier.BUSINESS]
+            result["BUSINESS"]
             == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
         )
 
@@ -474,7 +474,7 @@ class TestGetTierMultipliers:
             side_effect=RuntimeError("LD SDK not initialized"),
         ):
             result = await get_tier_multipliers()
-        assert result == dict(_DEFAULT_TIER_MULTIPLIERS)
+        assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
 
 
 # ---------------------------------------------------------------------------

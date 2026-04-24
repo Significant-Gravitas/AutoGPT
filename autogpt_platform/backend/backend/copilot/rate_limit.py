@@ -148,12 +148,16 @@ async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None
     return parsed or None
 
 
-async def get_tier_multipliers() -> dict[SubscriptionTier, float]:
-    """Return the effective ``{tier: multiplier}`` map.
+async def get_tier_multipliers() -> dict[str, float]:
+    """Return the effective ``{tier_value: multiplier}`` map.
 
     Honours the ``copilot-tier-multipliers`` LD flag when set; missing tiers
     inherit :data:`_DEFAULT_TIER_MULTIPLIERS`.  Unparseable flag values or LD
     fetch failures fall back to the defaults without raising.
+
+    Keys are the tier enum string values (``"BASIC"``, ``"PRO"``, …) rather
+    than the enum itself so callers holding ``prisma.enums.SubscriptionTier``
+    don't hit a spurious mismatch against this module's local mirror.
 
     The flag is evaluated system-wide — per-tier multipliers are a global knob.
     If per-cohort overrides are ever needed, add a user_id parameter here and
@@ -165,11 +169,10 @@ async def get_tier_multipliers() -> dict[SubscriptionTier, float]:
         # LD SDK / Redis / network failures here are best-effort — fall back.
         logger.warning("get_tier_multipliers: LD lookup failed", exc_info=True)
         override = None
-    if not override:
-        return dict(_DEFAULT_TIER_MULTIPLIERS)
-    merged = dict(_DEFAULT_TIER_MULTIPLIERS)
-    merged.update(override)
-    return merged
+    merged: dict[SubscriptionTier, float] = dict(_DEFAULT_TIER_MULTIPLIERS)
+    if override:
+        merged.update(override)
+    return {tier.value: multiplier for tier, multiplier in merged.items()}
 
 
 class UsageWindow(BaseModel):
@@ -779,7 +782,7 @@ async def get_global_rate_limits(
     # when LD is unavailable.
     tier = await get_user_tier(user_id)
     multipliers = await get_tier_multipliers()
-    multiplier = multipliers.get(tier, 1.0)
+    multiplier = multipliers.get(tier.value, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract
         # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the
