@@ -339,7 +339,7 @@ class TestClusterLockErrorHandling:
 
     def test_redis_connection_failure_on_acquire(self, lock_key, owner_id):
         """Test graceful handling when Redis is unavailable during acquisition."""
-        # Use invalid Redis connection
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         bad_redis = redis.Redis(
             host="invalid_host", port=1234, socket_connect_timeout=1
         )
@@ -359,7 +359,7 @@ class TestClusterLockErrorHandling:
         # Acquire normally
         assert lock.try_acquire() == owner_id
 
-        # Replace Redis client with failing one
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         lock.redis = redis.Redis(
             host="invalid_host", port=1234, socket_connect_timeout=1
         )
@@ -514,6 +514,7 @@ class TestClusterLockRealWorldScenarios:
 
         # Simulate Redis becoming unavailable
         original_redis = lock.redis
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         lock.redis = redis.Redis(
             host="invalid_host",
             port=1234,
