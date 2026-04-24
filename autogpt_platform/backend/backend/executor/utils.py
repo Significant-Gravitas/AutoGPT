@@ -462,9 +462,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_INVALID_PREFIX} {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
                 continue
 
             try:
@@ -475,15 +475,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                 continue
 
             if not credentials:
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
                 continue
 
             if (
@@ -593,18 +593,18 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][field_name] = (
-                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][field_name] = (
-                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
