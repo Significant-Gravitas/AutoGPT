@@ -203,8 +203,10 @@ def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:
 def _coerce_items(stats: NodeExecutionStats | None) -> int:
     if not stats or stats.provider_cost is None:
         return 0
-    # provider_cost carries the raw count when provider_cost_type is 'items'.
-    if stats.provider_cost_type and stats.provider_cost_type != "items":
+    # provider_cost is a raw item count only when explicitly typed 'items';
+    # a None type likely means USD (resolve_tracking defaults), so reject it
+    # here to avoid misreading a fractional dollar amount as an item count.
+    if stats.provider_cost_type != "items":
         return 0
     return max(0, int(stats.provider_cost))
 
