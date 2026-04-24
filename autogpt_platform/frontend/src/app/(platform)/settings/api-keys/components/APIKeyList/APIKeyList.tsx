@@ -2,7 +2,6 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { APIKeyListEmpty } from "../APIKeyListEmpty/APIKeyListEmpty";
@@ -20,9 +19,6 @@ export function APIKeyList() {
     error,
     refetch,
     isEmpty,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
     selection,
     deleteTarget,
     requestDelete,
@@ -82,12 +78,7 @@ export function APIKeyList() {
         )}
       </AnimatePresence>
 
-      <InfiniteScroll
-        hasNextPage={hasNextPage}
-        isFetchingNextPage={isFetchingNextPage}
-        fetchNextPage={fetchNextPage}
-        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
-      >
+      <div className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white">
         {keys.map((key) => (
           <APIKeyRow
             key={key.id}
@@ -97,7 +88,7 @@ export function APIKeyList() {
             onDelete={() => requestDelete([key.id])}
           />
         ))}
-      </InfiniteScroll>
+      </div>
 
       {deleteTarget && (
         <DeleteAPIKeyDialog

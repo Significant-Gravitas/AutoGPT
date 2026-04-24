@@ -6,7 +6,7 @@ import { usePostV1CreateNewApiKey } from "@/app/api/__generated__/endpoints/api-
 import type { CreateAPIKeyRequest } from "@/app/api/__generated__/models/createAPIKeyRequest";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-import { API_KEYS_PAGINATED_QUERY_KEY } from "./useAPIKeysList";
+import { API_KEYS_QUERY_KEY } from "./useAPIKeysList";
 
 export function useCreateAPIKey() {
   const queryClient = useQueryClient();
@@ -16,7 +16,7 @@ export function useCreateAPIKey() {
       onSuccess: (response) => {
         if (response.status === 200) {
           queryClient.invalidateQueries({
-            queryKey: API_KEYS_PAGINATED_QUERY_KEY,
+            queryKey: API_KEYS_QUERY_KEY,
           });
           toast({ title: "API key created", variant: "success" });
         }

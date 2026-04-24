@@ -6,7 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { deleteV1RevokeApiKey } from "@/app/api/__generated__/endpoints/api-keys/api-keys";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-import { API_KEYS_PAGINATED_QUERY_KEY } from "./useAPIKeysList";
+import { API_KEYS_QUERY_KEY } from "./useAPIKeysList";
 
 export function useRevokeAPIKey() {
   const queryClient = useQueryClient();
@@ -39,7 +39,7 @@ export function useRevokeAPIKey() {
       }
 
       await queryClient.invalidateQueries({
-        queryKey: API_KEYS_PAGINATED_QUERY_KEY,
+        queryKey: API_KEYS_QUERY_KEY,
       });
 
       return failures.length === 0;
