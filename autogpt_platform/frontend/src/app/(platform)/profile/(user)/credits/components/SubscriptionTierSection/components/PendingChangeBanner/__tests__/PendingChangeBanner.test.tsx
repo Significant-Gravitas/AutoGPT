@@ -43,9 +43,7 @@ describe("PendingChangeBanner", () => {
     );
     expect(screen.getByText(/downgrade to/i)).toBeDefined();
     expect(screen.getByText("Pro")).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: /keep max/i }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /keep max/i })).toBeDefined();
   });
 
   it("invokes onKeepCurrent when the button is clicked", () => {
