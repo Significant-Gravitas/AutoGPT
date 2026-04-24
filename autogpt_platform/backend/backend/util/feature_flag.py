@@ -47,15 +47,16 @@ class Flag(str, Enum):
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
 
-    # Copilot model routing — string-valued, returns the model identifier
-    # (e.g. ``"anthropic/claude-sonnet-4-6"`` or ``"moonshotai/kimi-k2.6"``)
-    # to use for each cell of the (mode, tier) matrix.  Falls back to the
-    # ``CHAT_*_MODEL`` env/config default when the flag is unset or LD is
-    # unavailable.  Evaluated per user_id so cohorts can be targeted.
-    COPILOT_FAST_STANDARD_MODEL = "copilot-fast-standard-model"
-    COPILOT_FAST_ADVANCED_MODEL = "copilot-fast-advanced-model"
-    COPILOT_THINKING_STANDARD_MODEL = "copilot-thinking-standard-model"
-    COPILOT_THINKING_ADVANCED_MODEL = "copilot-thinking-advanced-model"
+    # Copilot model routing — JSON-valued, returns the per-(mode, tier)
+    # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or
+    # ``"moonshotai/kimi-k2.6"``).  Shape:
+    # ``{"fast": {"standard": "...", "advanced": "..."},
+    #   "thinking": {"standard": "...", "advanced": "..."}}``.
+    # Missing mode, missing tier-within-mode, non-string value, non-dict
+    # payload, or LD failure all fall back to the corresponding
+    # ``ChatConfig`` default.  Evaluated per user_id so cohorts can be
+    # targeted.
+    COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
 
 def is_configured() -> bool:
