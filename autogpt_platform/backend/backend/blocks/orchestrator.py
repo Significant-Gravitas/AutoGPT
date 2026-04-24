@@ -1181,10 +1181,14 @@ class OrchestratorBlock(Block):
                 not execution_params.execution_context.dry_run
                 and tool_node_stats.error is None
             ):
+                # Charge the sub-block for telemetry / wallet debit. The
+                # return value is intentionally discarded: on_node_execution
+                # above ran the sub-block against this graph's own
+                # graph_stats_pair (manager.py:659-668), so its cost already
+                # lands in graph_stats.cost on the sub-block's completion.
+                # Re-merging here would double-count in telemetry / UI / audit.
                 try:
-                    tool_cost, _ = await execution_processor.charge_node_usage(
-                        node_exec_entry,
-                    )
+                    await execution_processor.charge_node_usage(node_exec_entry)
                 except InsufficientBalanceError:
                     # IBE must propagate — see OrchestratorBlock class docstring.
                     # Log the billing failure here so the discarded tool result
@@ -1206,14 +1210,6 @@ class OrchestratorBlock(Block):
                         "tool execution was successful",
                         sink_node_id,
                     )
-                    tool_cost = 0
-                # Do NOT merge tool_cost into reconciled_cost_delta:
-                # on_node_execution above ran the sub-block against this
-                # graph's own graph_stats_pair (manager.py:659-668), so its
-                # cost already lands in graph_stats.cost on the sub-block's
-                # completion. Adding it again would double-count in
-                # telemetry / UI / audit while the wallet stays correctly
-                # debited once.
 
             # Get outputs from database after execution completes using database manager client
             node_outputs = await db_client.get_execution_outputs_by_node_exec_id(

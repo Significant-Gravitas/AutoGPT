@@ -155,26 +155,26 @@ def block_usage_cost(
             )
 
         if block_cost.cost_type == BlockCostType.SECOND:
+            # Ceil so partial divisor-units still bill — avoids 0-credit leaks
+            # on sub-divisor runs (e.g. 1s on a `1cr / 3s` block).
             seconds = _coerce_seconds(run_time, stats)
-            # Ceil so any partial divisor-unit still bills — avoids 0-credit
-            # leaks on sub-divisor runs (e.g. 1s on a `1cr / 3s` block).
-            return (
+            credits = (
                 math.ceil(seconds / block_cost.cost_divisor) * block_cost.cost_amount
                 if seconds > 0
-                else 0,
-                block_cost.cost_filter,
+                else 0
             )
+            return credits, block_cost.cost_filter
 
         if block_cost.cost_type == BlockCostType.ITEMS:
+            # Ceil so partial buckets still bill — avoids 0-credit leaks on
+            # single-item returns under a >1 divisor (e.g. Apollo 1cr/2-items).
             items = _coerce_items(stats)
-            # Ceil so a partial bucket still bills — avoids 0-credit leaks on
-            # single-item returns under a >1 divisor (e.g. Apollo 1cr/2 items).
-            return (
+            credits = (
                 math.ceil(items / block_cost.cost_divisor) * block_cost.cost_amount
                 if items > 0
-                else 0,
-                block_cost.cost_filter,
+                else 0
             )
+            return credits, block_cost.cost_filter
 
         if block_cost.cost_type == BlockCostType.COST_USD:
             usd = _coerce_usd(stats)
@@ -460,9 +460,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_INVALID_PREFIX} {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
                 continue
 
             try:
@@ -473,15 +473,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                 continue
 
             if not credentials:
-                credential_errors[node.id][field_name] = (
-                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
-                )
+                credential_errors[node.id][
+                    field_name
+                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
                 continue
 
             if (
@@ -591,18 +591,18 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][field_name] = (
-                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][field_name] = (
-                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
-                        )
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -936,7 +936,8 @@ def create_execution_queue_config() -> RabbitMQConfig:
             # Solution: Disable consumer timeout entirely - let graphs run indefinitely
             # Safety: Heartbeat mechanism now handles dead consumer detection instead
             # Use case: Graph executions that take hours to complete (AI model training, etc.)
-            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS * 1000,
+            "x-consumer-timeout": GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS
+            * 1000,
         },
     )
     cancel_queue = Queue(
