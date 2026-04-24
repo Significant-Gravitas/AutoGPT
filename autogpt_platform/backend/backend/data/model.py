@@ -487,7 +487,6 @@ class UserMetadataRaw(TypedDict, total=False):
 
 
 class UserIntegrations(BaseModel):
-
     class ManagedCredentials(BaseModel):
         """Integration credentials managed by us, rather than by the user"""
 
@@ -864,8 +863,16 @@ class NodeExecutionStats(BaseModel):
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
     cost: int = 0
-    extra_cost: int = 0
+    # Post-flight adjustment to the pre-flight ``cost`` estimate. Three writers:
+    # 1. charge_reconciled_usage — dynamic cost delta (TOKENS/SECOND/ITEMS/
+    #    COST_USD); can be negative when a TOKENS floor over-estimated.
+    # 2. OrchestratorBlock — sub-block cost roll-up for run_block tool calls
+    #    (debit already happened on the child; this is reporting-only).
+    # 3. AgentExecutorBlock — sub-graph total roll-up.
+    # Readers aggregating into graph_stats.cost should add this to cost.
+    reconciled_cost_delta: int = 0
     extra_steps: int = 0
+
     provider_cost: float | None = None
     # Type of the provider-reported cost/usage captured above. When set
     # by a block, resolve_tracking honors this directly instead of

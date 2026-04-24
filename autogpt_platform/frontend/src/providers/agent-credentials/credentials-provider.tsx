@@ -98,6 +98,16 @@ export function upsertProviderCredentials(
   };
 }
 
+/**
+ * Imperative actions on the credentials context.  Split out so the data
+ * context can stay read-only for consumers that only render the list —
+ * components that need to re-fetch after a side effect (e.g. Ayrshare
+ * SSO provisioning a managed cred) opt in explicitly.
+ */
+export const CredentialsActionsContext = createContext<{
+  reload: () => void;
+} | null>(null);
+
 export default function CredentialsProvider({
   children,
 }: {
@@ -355,8 +365,10 @@ export default function CredentialsProvider({
   }, [loadCredentials]);
 
   return (
-    <CredentialsProvidersContext.Provider value={providers}>
-      {children}
-    </CredentialsProvidersContext.Provider>
+    <CredentialsActionsContext.Provider value={{ reload: loadCredentials }}>
+      <CredentialsProvidersContext.Provider value={providers}>
+        {children}
+      </CredentialsProvidersContext.Provider>
+    </CredentialsActionsContext.Provider>
   );
 }

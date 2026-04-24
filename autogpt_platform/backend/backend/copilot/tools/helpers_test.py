@@ -332,11 +332,15 @@ class TestNewlyRegisteredBlockCosts:
         assert BLOCK_COSTS[SaveCampaignSequencesBlock][0].cost_amount == 1
 
     def test_zerobounce_validate_block_registered(self):
+        from backend.blocks._base import BlockCostType
         from backend.blocks.zerobounce.validate_emails import ValidateEmailsBlock
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert ValidateEmailsBlock in BLOCK_COSTS
-        assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 2
+        # COST_USD with multiplier 250 → ceil(provider_cost_usd * 250) credits.
+        # Block reports $0.008/call via merge_stats, so effective charge is 2.
+        assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_type == BlockCostType.COST_USD
+        assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 250
 
     def test_claude_code_block_registered(self):
         """ClaudeCodeBlock spawns an E2B sandbox + runs Claude inside it.

@@ -111,7 +111,14 @@ def test_bannerbear_base_cost_is_three_credits():
     assert cost == 3
 
 
-def test_e2b_sandbox_blocks_have_two_credit_floor():
+def test_e2b_sandbox_blocks_bill_per_walltime_second():
+    """E2B uses SECOND cost_type with cost_divisor=10 (1 credit per 10s).
+
+    Pre-flight (no stats) returns 0 — walltime unknown until the block runs.
+    Post-flight bills at the real walltime via charge_reconciled_usage.
+    """
+    from backend.data.model import NodeExecutionStats
+
     creds = {
         "credentials": {
             "id": e2b_credentials.id,
@@ -124,22 +131,34 @@ def test_e2b_sandbox_blocks_have_two_credit_floor():
         InstantiateCodeSandboxBlock,
         ExecuteCodeStepBlock,
     ):
+        # Pre-flight: unknown walltime ⇒ 0 credits (no gating on future cost).
         cost, _ = block_usage_cost(block_cls(), creds)
-        assert cost == 2, f"{block_cls.__name__} floor must be 2 credits, got {cost}"
+        assert cost == 0, f"{block_cls.__name__} pre-flight must be 0, got {cost}"
+        # Post-flight: 25s ⇒ ceil(25/10) = 3 credits.
+        stats = NodeExecutionStats(walltime=25.0)
+        cost, _ = block_usage_cost(block_cls(), creds, stats=stats)
+        assert cost == 3, f"{block_cls.__name__} @ 25s must be 3 credits, got {cost}"
 
 
-def test_fal_video_generator_has_ten_credit_floor():
+def test_fal_video_generator_bills_per_walltime_second():
+    """FAL AIVideoGeneratorBlock uses SECOND with cost_amount=3 (3 credits/s)."""
+    from backend.data.model import NodeExecutionStats
+
+    creds = {
+        "credentials": {
+            "id": fal_credentials.id,
+            "provider": fal_credentials.provider,
+            "type": fal_credentials.type,
+        }
+    }
+    # Pre-flight: unknown walltime ⇒ 0 credits.
+    cost, _ = block_usage_cost(AIVideoGeneratorBlock(), creds)
+    assert cost == 0
+    # Post-flight: 5s clip ⇒ 3 * 5 = 15 credits.
     cost, _ = block_usage_cost(
-        AIVideoGeneratorBlock(),
-        {
-            "credentials": {
-                "id": fal_credentials.id,
-                "provider": fal_credentials.provider,
-                "type": fal_credentials.type,
-            }
-        },
+        AIVideoGeneratorBlock(), creds, stats=NodeExecutionStats(walltime=5.0)
     )
-    assert cost == 10
+    assert cost == 15
 
 
 def test_transcribe_youtube_has_one_credit_tooling_floor():

@@ -2,6 +2,7 @@ from typing import Any
 
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -12,12 +13,7 @@ from backend.sdk import (
 )
 
 from ._cost import AYRSHARE_POST_COSTS
-from ._util import (
-    BaseAyrshareInput,
-    InstagramUserTag,
-    create_ayrshare_client,
-    get_profile_key,
-)
+from ._util import BaseAyrshareInput, InstagramUserTag, create_ayrshare_client
 
 
 @cost(*AYRSHARE_POST_COSTS)
@@ -115,15 +111,10 @@ class PostToInstagramBlock(Block):
         self,
         input_data: "PostToInstagramBlock.Input",
         *,
-        user_id: str,
+        credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Post to Instagram with Instagram-specific options."""
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
             yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
@@ -194,7 +185,7 @@ class PostToInstagramBlock(Block):
             # Validate alt text length
             for i, alt in enumerate(input_data.alt_text):
                 if len(alt) > 1000:
-                    yield "error", f"Alt text {i + 1} exceeds 1,000 character limit ({len(alt)} characters)"
+                    yield "error", f"Alt text {i+1} exceeds 1,000 character limit ({len(alt)} characters)"
                     return
             instagram_options["altText"] = input_data.alt_text
 
@@ -244,7 +235,7 @@ class PostToInstagramBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             instagram_options=instagram_options if instagram_options else None,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

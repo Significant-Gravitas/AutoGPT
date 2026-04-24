@@ -4515,7 +4515,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Ayrshare Sso Url",
-        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "description": "Generate a JWT SSO URL so the user can link their social accounts.\n\nThe per-user Ayrshare profile key is provisioned and persisted as a\nstandard ``is_managed=True`` credential by\n:class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.\nThis endpoint only signs a short-lived JWT pointing at the Ayrshare-\nhosted social-linking page; all profile lifecycle logic lives with the\nmanaged provider.",
         "operationId": "getV1GetAyrshareSsoUrl",
         "responses": {
           "200": {
@@ -9776,7 +9776,12 @@
             "type": "object",
             "title": "Cost Filter"
           },
-          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" },
+          "cost_divisor": {
+            "type": "integer",
+            "title": "Cost Divisor",
+            "default": 1
+          }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
@@ -9784,7 +9789,7 @@
       },
       "BlockCostType": {
         "type": "string",
-        "enum": ["run", "byte", "second"],
+        "enum": ["run", "byte", "second", "items", "cost_usd", "tokens"],
         "title": "BlockCostType"
       },
       "BlockDetails": {

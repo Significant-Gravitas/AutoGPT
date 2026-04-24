@@ -2174,3 +2174,28 @@ def test_auto_credentials_non_str_non_dict_value_rejected(bad_value):
     msg = errors[graph.nodes[0].id]["spreadsheet"]
     # Must point the user at the correct fix (the Drive input block).
     assert "AgentGoogleDriveFileInputBlock" in msg
+
+
+@pytest.mark.asyncio
+async def test_migrate_llm_models_uses_schema_prefix_placeholder():
+    """Regression: migrate_llm_models must use the {schema_prefix} placeholder
+    so environments where the Prisma datasource lands in `public` (no
+    ?schema=platform on DATABASE_URL) don't blow up with
+    `relation "platform.AgentNode" does not exist`."""
+    from backend.blocks.llm import LlmModel
+    from backend.data.graph import migrate_llm_models
+
+    with patch(
+        "backend.data.graph.execute_raw_with_schema",
+        new_callable=AsyncMock,
+    ) as mock_execute:
+        await migrate_llm_models(next(iter(LlmModel)))
+
+    for call in mock_execute.await_args_list:
+        query_template = call.args[0]
+        assert "{schema_prefix}" in query_template, (
+            "migrate_llm_models must pass the {schema_prefix} placeholder "
+            "to execute_raw_with_schema; hardcoding 'platform.' breaks when "
+            "DATABASE_URL has no ?schema= param."
+        )
+        assert 'platform."AgentNode"' not in query_template

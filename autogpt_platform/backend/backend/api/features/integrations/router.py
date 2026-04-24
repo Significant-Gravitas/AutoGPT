@@ -14,7 +14,7 @@ from fastapi import (
     Security,
     status,
 )
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, model_validator
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWAY
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
@@ -29,15 +29,14 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
     OAuth2Credentials,
-    UserIntegrations,
     is_sdk_default,
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
-from backend.data.user import get_user_integrations
 from backend.executor.utils import add_graph_execution
 from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.credentials_store import (
@@ -48,7 +47,14 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
-from backend.integrations.managed_credentials import ensure_managed_credentials
+from backend.integrations.managed_credentials import (
+    ensure_managed_credential,
+    ensure_managed_credentials,
+)
+from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
+from backend.integrations.managed_providers.ayrshare import (
+    settings_available as ayrshare_settings_available,
+)
 from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
@@ -237,13 +243,38 @@ async def callback(
     return to_meta_response(credentials)
 
 
+# Bound the first-time sweep so a slow upstream (e.g. Ayrshare) can't hang
+# the credential-list endpoint.  On timeout we still kick off a fire-and-
+# forget sweep so provisioning eventually completes; the user just won't
+# see the managed cred until the next refresh.
+_MANAGED_PROVISION_TIMEOUT_S = 10.0
+
+
+async def _ensure_managed_credentials_bounded(user_id: str) -> None:
+    try:
+        await asyncio.wait_for(
+            ensure_managed_credentials(user_id, creds_manager.store),
+            timeout=_MANAGED_PROVISION_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "Managed credential sweep exceeded %.1fs for user=%s; "
+            "continuing without it — provisioning will complete in background",
+            _MANAGED_PROVISION_TIMEOUT_S,
+            user_id,
+        )
+        asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
+
+
 @router.get("/credentials", summary="List Credentials")
 async def list_credentials(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    # Fire-and-forget: provision missing managed credentials in the background.
-    # The credential appears on the next page load; listing is never blocked.
-    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
+    # Block on provisioning so managed credentials appear on the first load
+    # instead of after a refresh, but with a timeout so a slow upstream
+    # can't hang the endpoint.  `_provisioned_users` short-circuits on
+    # repeat calls.
+    await _ensure_managed_credentials_bounded(user_id)
     credentials = await creds_manager.store.get_all_creds(user_id)
 
     return [
@@ -258,7 +289,7 @@ async def list_credentials_by_provider(
     ],
     user_id: Annotated[str, Security(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    asyncio.create_task(ensure_managed_credentials(user_id, creds_manager.store))
+    await _ensure_managed_credentials_bounded(user_id)
     credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
 
     return [
@@ -1084,12 +1115,21 @@ def _get_provider_oauth_handler(
 async def get_ayrshare_sso_url(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> AyrshareSSOResponse:
-    """
-    Generate an SSO URL for Ayrshare social media integration.
+    """Generate a JWT SSO URL so the user can link their social accounts.
 
-    Returns:
-        dict: Contains the SSO URL for Ayrshare integration
+    The per-user Ayrshare profile key is provisioned and persisted as a
+    standard ``is_managed=True`` credential by
+    :class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.
+    This endpoint only signs a short-lived JWT pointing at the Ayrshare-
+    hosted social-linking page; all profile lifecycle logic lives with the
+    managed provider.
     """
+    if not ayrshare_settings_available():
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ayrshare integration is not configured",
+        )
+
     try:
         client = AyrshareClient()
     except MissingConfigError:
@@ -1098,66 +1138,63 @@ async def get_ayrshare_sso_url(
             detail="Ayrshare integration is not configured",
         )
 
-    # Ayrshare profile key is stored in the credentials store
-    # It is generated when creating a new profile, if there is no profile key,
-    # we create a new profile and store the profile key in the credentials store
-
-    user_integrations: UserIntegrations = await get_user_integrations(user_id)
-    profile_key = user_integrations.managed_credentials.ayrshare_profile_key
-
-    if not profile_key:
-        logger.debug(f"Creating new Ayrshare profile for user {user_id}")
-        try:
-            profile = await client.create_profile(
-                title=f"User {user_id}", messaging_active=True
-            )
-            profile_key = profile.profileKey
-            await creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
-        except Exception as e:
-            logger.error(f"Error creating Ayrshare profile for user {user_id}: {e}")
-            raise HTTPException(
-                status_code=HTTP_502_BAD_GATEWAY,
-                detail="Failed to create Ayrshare profile",
-            )
-    else:
-        logger.debug(f"Using existing Ayrshare profile for user {user_id}")
-
-    profile_key_str = (
-        profile_key.get_secret_value()
-        if isinstance(profile_key, SecretStr)
-        else str(profile_key)
+    # On-demand provisioning: AyrshareManagedProvider opts out of the
+    # startup sweep (profile quota is per-user subscription-bound).  This
+    # endpoint is the only trigger that provisions a profile — one Ayrshare
+    # profile per user who actually opens the connect flow, not one per
+    # every authenticated user.
+    provisioned = await ensure_managed_credential(
+        user_id, creds_manager.store, AyrshareManagedProvider()
     )
+    if not provisioned:
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision Ayrshare profile",
+        )
+
+    ayrshare_creds = [
+        c
+        for c in await creds_manager.store.get_creds_by_provider(user_id, "ayrshare")
+        if c.is_managed and isinstance(c, APIKeyCredentials)
+    ]
+    if not ayrshare_creds:
+        logger.error(
+            "Ayrshare credential provisioning did not produce a credential "
+            "for user %s",
+            user_id,
+        )
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY,
+            detail="Failed to provision Ayrshare profile",
+        )
+    profile_key_str = ayrshare_creds[0].api_key.get_secret_value()
 
     private_key = settings.secrets.ayrshare_jwt_key
-    # Ayrshare JWT expiry is 2880 minutes (48 hours)
+    # Ayrshare JWT max lifetime is 2880 minutes (48 h).
     max_expiry_minutes = 2880
     try:
-        logger.debug(f"Generating Ayrshare JWT for user {user_id}")
         jwt_response = await client.generate_jwt(
             private_key=private_key,
             profile_key=profile_key_str,
+            # `allowed_social` is the set of networks the Ayrshare-hosted
+            # social-linking page will *offer* the user to connect.  Blocks
+            # exist for more platforms than are listed here; the list is
+            # deliberately narrower so the rollout can verify each network
+            # end-to-end before widening the user-visible surface.  Keep
+            # in sync with tested platforms — extend as each is verified
+            # against the block + Ayrshare's network-specific quirks.
             allowed_social=[
-                # NOTE: We are enabling platforms one at a time
-                # to speed up the development process
-                # SocialPlatform.FACEBOOK,
                 SocialPlatform.TWITTER,
                 SocialPlatform.LINKEDIN,
                 SocialPlatform.INSTAGRAM,
                 SocialPlatform.YOUTUBE,
-                # SocialPlatform.REDDIT,
-                # SocialPlatform.TELEGRAM,
-                # SocialPlatform.GOOGLE_MY_BUSINESS,
-                # SocialPlatform.PINTEREST,
                 SocialPlatform.TIKTOK,
-                # SocialPlatform.BLUESKY,
-                # SocialPlatform.SNAPCHAT,
-                # SocialPlatform.THREADS,
             ],
             expires_in=max_expiry_minutes,
             verify=True,
         )
-    except Exception as e:
-        logger.error(f"Error generating Ayrshare JWT for user {user_id}: {e}")
+    except Exception as exc:
+        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
         raise HTTPException(
             status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
         )

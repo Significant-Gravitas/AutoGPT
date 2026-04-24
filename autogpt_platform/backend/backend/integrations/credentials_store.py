@@ -525,20 +525,6 @@ class IntegrationCredentialsStore:
             ]
             user_integrations.credentials.append(credential)
 
-    async def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
-        """Set the Ayrshare profile key for a user.
-
-        The profile key is used to authenticate API requests to Ayrshare's social media posting service.
-        See https://www.ayrshare.com/docs/apis/profiles/overview for more details.
-
-        Args:
-            user_id: The ID of the user to set the profile key for
-            profile_key: The profile key to set
-        """
-        _profile_key = SecretStr(profile_key)
-        async with self.edit_user_integrations(user_id) as user_integrations:
-            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
-
     # ===================== OAUTH STATES ===================== #
 
     async def store_state_token(
@@ -638,6 +624,18 @@ class IntegrationCredentialsStore:
 
     async def _get_user_integrations(self, user_id: str) -> UserIntegrations:
         return await self.db_manager.get_user_integrations(user_id=user_id)
+
+    async def get_user_integrations(self, user_id: str) -> UserIntegrations:
+        """Public read-only accessor for the caller's ``UserIntegrations`` row.
+
+        Use for read-only access — the write back mechanism lives in
+        :meth:`edit_user_integrations`, which always persists on exit.
+        Consumers (e.g. managed-credential providers reading legacy side
+        channels) should reach for this method instead of the private
+        ``_get_user_integrations`` or the edit-as-read trick, which would
+        otherwise trigger a spurious DB write + Redis lock round-trip.
+        """
+        return await self._get_user_integrations(user_id)
 
     async def locked_user_integrations(self, user_id: str):
         key = (f"user:{user_id}", "integrations")

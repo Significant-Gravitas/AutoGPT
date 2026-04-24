@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import threading
 import time
 from collections import defaultdict
@@ -19,7 +20,7 @@ from backend.data import workspace as workspace_db
 
 # Import dynamic field utilities from centralized location
 from backend.data.block import BlockInput, BlockOutputEntry
-from backend.data.block_cost_config import BLOCK_COSTS
+from backend.data.block_cost_config import BLOCK_COSTS, compute_token_credits
 from backend.data.db import prisma
 from backend.data.dynamic_fields import merge_execution_input
 from backend.data.execution import (
@@ -31,7 +32,12 @@ from backend.data.execution import (
     NodesInputMasks,
 )
 from backend.data.graph import GraphModel, Node
-from backend.data.model import USER_TIMEZONE_NOT_SET, CredentialsMetaInput, GraphInput
+from backend.data.model import (
+    USER_TIMEZONE_NOT_SET,
+    CredentialsMetaInput,
+    GraphInput,
+    NodeExecutionStats,
+)
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util.clients import (
     get_async_execution_event_bus,
@@ -116,18 +122,20 @@ def block_usage_cost(
     input_data: BlockInput,
     data_size: float = 0,
     run_time: float = 0,
+    stats: NodeExecutionStats | None = None,
 ) -> tuple[int, BlockInput]:
-    """
-    Calculate the cost of using a block based on the input data and the block type.
+    """Calculate the credit charge for a block invocation.
 
-    Args:
-        block: Block object
-        input_data: Input data for the block
-        data_size: Size of the input data in bytes
-        run_time: Execution time of the block in seconds
+    Two calling contexts:
+      - Pre-flight (no stats): charge the fixed floor / estimate. Dynamic cost
+        types (ITEMS/COST_USD/TOKENS) return 0 here so they don't block
+        execution on a balance check when we don't yet know the true cost.
+      - Post-flight (stats populated): dynamic types consume the captured
+        stats to compute the actual charge.
 
-    Returns:
-        Tuple of cost amount and cost filter
+    For SECOND/ITEMS/TOKENS cost entries, ``cost_amount`` is interpreted as
+    "credits per ``cost_divisor`` units" — e.g. ``cost_amount=1,
+    cost_divisor=10`` under SECOND means "1 credit per 10 seconds".
     """
     block_costs = BLOCK_COSTS.get(type(block))
     if not block_costs:
@@ -140,19 +148,77 @@ def block_usage_cost(
         if block_cost.cost_type == BlockCostType.RUN:
             return block_cost.cost_amount, block_cost.cost_filter
 
-        if block_cost.cost_type == BlockCostType.SECOND:
-            return (
-                int(run_time * block_cost.cost_amount),
-                block_cost.cost_filter,
-            )
-
         if block_cost.cost_type == BlockCostType.BYTE:
             return (
                 int(data_size * block_cost.cost_amount),
                 block_cost.cost_filter,
             )
 
+        if block_cost.cost_type == BlockCostType.SECOND:
+            # Ceil so partial divisor-units still bill — avoids 0-credit leaks
+            # on sub-divisor runs (e.g. 1s on a `1cr / 3s` block).
+            seconds = _coerce_seconds(run_time, stats)
+            credits = (
+                math.ceil(seconds / block_cost.cost_divisor) * block_cost.cost_amount
+                if seconds > 0
+                else 0
+            )
+            return credits, block_cost.cost_filter
+
+        if block_cost.cost_type == BlockCostType.ITEMS:
+            # Ceil so partial buckets still bill — avoids 0-credit leaks on
+            # single-item returns under a >1 divisor (e.g. Apollo 1cr/2-items).
+            items = _coerce_items(stats)
+            credits = (
+                math.ceil(items / block_cost.cost_divisor) * block_cost.cost_amount
+                if items > 0
+                else 0
+            )
+            return credits, block_cost.cost_filter
+
+        if block_cost.cost_type == BlockCostType.COST_USD:
+            usd = _coerce_usd(stats)
+            return (
+                max(0, math.ceil(usd * block_cost.cost_amount)),
+                block_cost.cost_filter,
+            )
+
+        if block_cost.cost_type == BlockCostType.TOKENS:
+            return (
+                compute_token_credits(input_data, stats),
+                block_cost.cost_filter,
+            )
+
     return 0, {}
+
+
+def _coerce_seconds(run_time: float, stats: NodeExecutionStats | None) -> float:
+    if run_time > 0:
+        return run_time
+    if stats and stats.walltime > 0:
+        return stats.walltime
+    return 0.0
+
+
+def _coerce_items(stats: NodeExecutionStats | None) -> int:
+    if not stats or stats.provider_cost is None:
+        return 0
+    # provider_cost is a raw item count only when explicitly typed 'items';
+    # a None type likely means USD (resolve_tracking defaults), so reject it
+    # here to avoid misreading a fractional dollar amount as an item count.
+    if stats.provider_cost_type != "items":
+        return 0
+    return max(0, int(stats.provider_cost))
+
+
+def _coerce_usd(stats: NodeExecutionStats | None) -> float:
+    if not stats or stats.provider_cost is None:
+        return 0.0
+    # provider_cost is billable only when tagged as cost_usd — otherwise it
+    # encodes a non-dollar quantity (e.g. items) that would wildly over-bill.
+    if stats.provider_cost_type and stats.provider_cost_type != "cost_usd":
+        return 0.0
+    return max(0.0, float(stats.provider_cost))
 
 
 def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bool:
@@ -551,7 +617,7 @@ async def _validate_node_input_credentials(
             and node.id not in credential_errors
         ):
             logger.info(
-                f"Node #{node.id}: optional credentials not configured, " "skipping"
+                f"Node #{node.id}: optional credentials not configured, skipping"
             )
             nodes_to_skip.add(node.id)
 
@@ -615,9 +681,10 @@ async def validate_graph_with_credentials(
     )
 
     # Get credential input/availability/validation errors and nodes to skip
-    node_credential_input_errors, nodes_to_skip = (
-        await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
-    )
+    (
+        node_credential_input_errors,
+        nodes_to_skip,
+    ) = await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     # Merge credential errors with structural errors
     for node_id, field_errors in node_credential_input_errors.items():
@@ -799,14 +866,15 @@ async def validate_and_construct_node_execution_input(
         nodes_input_masks or {},
     )
 
-    starting_nodes_input, nodes_to_skip = (
-        await _construct_starting_node_execution_input(
-            graph=graph,
-            user_id=user_id,
-            graph_inputs=graph_inputs,
-            nodes_input_masks=nodes_input_masks,
-            dry_run=dry_run,
-        )
+    (
+        starting_nodes_input,
+        nodes_to_skip,
+    ) = await _construct_starting_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=graph_inputs,
+        nodes_input_masks=nodes_input_masks,
+        dry_run=dry_run,
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip
@@ -1108,17 +1176,20 @@ async def add_graph_execution(
             dry_run = True
 
         # Create new execution
-        graph, starting_nodes_input, compiled_nodes_input_masks, nodes_to_skip = (
-            await validate_and_construct_node_execution_input(
-                graph_id=graph_id,
-                user_id=user_id,
-                graph_inputs=inputs or {},
-                graph_version=graph_version,
-                graph_credentials_inputs=graph_credentials_inputs,
-                nodes_input_masks=nodes_input_masks,
-                is_sub_graph=parent_exec_id is not None,
-                dry_run=dry_run,
-            )
+        (
+            graph,
+            starting_nodes_input,
+            compiled_nodes_input_masks,
+            nodes_to_skip,
+        ) = await validate_and_construct_node_execution_input(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_inputs=inputs or {},
+            graph_version=graph_version,
+            graph_credentials_inputs=graph_credentials_inputs,
+            nodes_input_masks=nodes_input_masks,
+            is_sub_graph=parent_exec_id is not None,
+            dry_run=dry_run,
         )
 
         graph_exec = await edb.create_graph_execution(

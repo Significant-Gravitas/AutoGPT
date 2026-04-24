@@ -96,27 +96,64 @@ class BlockCategory(Enum):
 
 
 class BlockCostType(str, Enum):
-    RUN = "run"  # cost X credits per run
-    BYTE = "byte"  # cost X credits per byte
-    SECOND = "second"  # cost X credits per second
+    # RUN       : cost_amount credits per run.
+    # BYTE      : cost_amount credits per byte of input data.
+    # SECOND    : cost_amount credits per cost_divisor walltime seconds.
+    # ITEMS     : cost_amount credits per cost_divisor items (from stats).
+    # COST_USD  : cost_amount credits per USD of stats.provider_cost.
+    # TOKENS    : per-(model, provider) rate table lookup; see TOKEN_COST.
+    RUN = "run"
+    BYTE = "byte"
+    SECOND = "second"
+    ITEMS = "items"
+    COST_USD = "cost_usd"
+    TOKENS = "tokens"
+
+    @property
+    def is_dynamic(self) -> bool:
+        """Real charge is computed post-flight from stats.
+
+        Dynamic types (SECOND/ITEMS/COST_USD/TOKENS) return 0 pre-flight and
+        settle against stats via charge_reconciled_usage once the block runs.
+        """
+        return self in _DYNAMIC_COST_TYPES
+
+
+_DYNAMIC_COST_TYPES: frozenset[BlockCostType] = frozenset(
+    {
+        BlockCostType.SECOND,
+        BlockCostType.ITEMS,
+        BlockCostType.COST_USD,
+        BlockCostType.TOKENS,
+    }
+)
 
 
 class BlockCost(BaseModel):
     cost_amount: int
     cost_filter: BlockInput
     cost_type: BlockCostType
+    # cost_divisor: interpret cost_amount as "credits per cost_divisor units".
+    # Only meaningful for SECOND / ITEMS. TOKENS routes through TOKEN_COST
+    # rate tables (per-model input/output/cache pricing) and ignores
+    # cost_divisor entirely. Defaults to 1 so existing RUN/BYTE entries stay
+    # point-wise. Example: cost_amount=1, cost_divisor=10 under SECOND means
+    # "1 credit per 10 seconds of walltime".
+    cost_divisor: int = 1
 
     def __init__(
         self,
         cost_amount: int,
         cost_type: BlockCostType = BlockCostType.RUN,
         cost_filter: Optional[BlockInput] = None,
+        cost_divisor: int = 1,
         **data: Any,
     ) -> None:
         super().__init__(
             cost_amount=cost_amount,
             cost_filter=cost_filter or {},
             cost_type=cost_type,
+            cost_divisor=max(1, cost_divisor),
             **data,
         )
 
@@ -444,19 +481,6 @@ class BlockWebhookConfig(BlockManualWebhookConfig):
 
 class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
     _optimized_description: ClassVar[str | None] = None
-
-    def extra_runtime_cost(self, execution_stats: NodeExecutionStats) -> int:
-        """Return extra runtime cost to charge after this block run completes.
-
-        Called by the executor after a block finishes with COMPLETED status.
-        The return value is the number of additional base-cost credits to
-        charge beyond the single credit already collected by charge_usage
-        at the start of execution. Defaults to 0 (no extra charges).
-
-        Override in blocks (e.g. OrchestratorBlock) that make multiple LLM
-        calls within one run and should be billed per call.
-        """
-        return 0
 
     def __init__(
         self,
