@@ -135,12 +135,9 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         self._pubsub: AsyncPubSub | None = None
 
     async def get_pubsub_connection(self) -> AsyncRedis:
-        # Plain async method (not an ``@property async``): attribute access
-        # on an async property returns a coroutine, which silently works if
-        # the caller awaits it and silently misbehaves if they forget. An
-        # explicit method makes the async-ness visible at the call site.
-        # Async RedisCluster has no ``pubsub()`` method, so the dedicated
-        # standalone client is mandatory for the subscribe/publish path.
+        # Plain method (not ``@property``) to keep the async-ness visible at
+        # the call site. Standalone client is mandatory because async
+        # RedisCluster has no ``pubsub()``.
         return await redis.get_redis_pubsub_async()
 
     async def close(self) -> None:
