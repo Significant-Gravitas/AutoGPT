@@ -47,9 +47,7 @@ def test_connect_builds_redis_cluster() -> None:
 
 
 def test_address_remap_pins_host_and_preserves_port() -> None:
-    """CLUSTER SLOTS returns the announced hostname of each shard; remap
-    rewrites that to the configured seed so a single deployment works from
-    both the compose network (HOST=redis) and the laptop (HOST=localhost)."""
+    """Default remap rewrites announced shard host to the configured seed."""
     with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False):
         assert redis_client._address_remap(("any-other-host", 6380)) == (
             redis_client.HOST,
@@ -58,8 +56,7 @@ def test_address_remap_pins_host_and_preserves_port() -> None:
 
 
 def test_address_remap_passthrough_when_use_announced_address() -> None:
-    """When each shard's announced host resolves directly (compose DNS), the
-    remap leaves the address alone."""
+    """When announced addresses resolve directly, remap leaves them alone."""
     with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True):
         assert redis_client._address_remap(("redis-1", 17001)) == ("redis-1", 17001)
 
@@ -151,12 +148,7 @@ async def test_get_redis_async_caches_connect() -> None:
 
 @pytest.mark.asyncio
 async def test_get_redis_pubsub_async_caches_per_loop() -> None:
-    """Repeated calls within the same loop must reuse one client.
-
-    Caching avoids the FD leak on the publish hot-path. The cache is keyed
-    by ``id(loop)`` so sibling test loops still get fresh clients — see
-    ``_reset_module_caches`` which flushes between tests.
-    """
+    """Repeated calls on the same loop reuse the same client."""
     with patch.object(redis_client, "connect_pubsub_async", autospec=True) as m:
         fake = MagicMock(spec=AsyncRedis)
         m.return_value = fake
@@ -266,10 +258,7 @@ async def test_disconnect_async_closes_pubsub_without_cluster_client() -> None:
     assert redis_client._async_pubsub_clients == {}
 
 
-# ── Sharded pub/sub end-to-end against live Redis Cluster ──────────────────
-#
-# Exercises ``SPUBLISH``/``SSUBSCRIBE`` through the real cluster client against
-# the local 3-shard compose stack (``redis-0``/``redis-1``/``redis-2``).
+# Sharded pub/sub end-to-end against the local 3-shard compose cluster.
 # Skipped when no cluster is reachable so CI without docker doesn't flap.
 
 
@@ -292,11 +281,9 @@ def _has_live_cluster() -> bool:
 def test_sharded_pubsub_end_to_end_sync() -> None:
     """SPUBLISH → SSUBSCRIBE round-trip via the sync cluster client.
 
-    Reads through the per-node pubsub mapping because redis-py 6.x's
-    ``ClusterPubSub.get_sharded_message(ignore_subscribe_messages=True)`` has
-    a logic bug that drops every message (not just subscribe confirmations).
-    Using the per-node ``get_message`` gives us a deterministic blocking
-    read on the shard that actually owns the channel's keyslot.
+    Uses per-node ``get_message`` because redis-py 6.x's
+    ``ClusterPubSub.get_sharded_message(ignore_subscribe_messages=True)``
+    drops every message, not just the subscribe confirmation.
     """
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
@@ -330,12 +317,8 @@ def test_sharded_pubsub_end_to_end_sync() -> None:
     reason="local redis cluster not reachable; skip sharded pub/sub integration",
 )
 async def test_sharded_spublish_end_to_end_async() -> None:
-    """Async cluster client can route SPUBLISH via ``execute_command``.
-
-    redis-py 6.x async cluster has no ``spublish()`` wrapper (and no
-    ``pubsub()``); publishers still work by hashing the channel and
-    dispatching to the owning shard via the generic command path.
-    """
+    """Async cluster client routes SPUBLISH via ``execute_command``
+    because redis-py 6.x has no async ``spublish()`` wrapper."""
     redis_client._async_clients.clear()
     cluster = await redis_client.get_redis_async()
     try:
