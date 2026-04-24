@@ -480,6 +480,85 @@ class TestRunBlockInputValidation:
         assert isinstance(response, BlockDetailsResponse)
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_returns_block_details_without_executing(self):
+        """validate_only=True returns BlockDetailsResponse and never calls execute."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        # Block with zero required fields — would normally execute on {}.
+        mock_block = make_mock_block_with_schema(
+            block_id="noop-id",
+            name="Noop",
+            input_properties={"optional": {"type": "string"}},
+            required_fields=[],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="noop-id",
+                input_data={},
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        assert "all required inputs provided" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_validate_only_reports_missing_required(self):
+        """validate_only surfaces missing required fields without executing."""
+        session = make_session(user_id=_TEST_USER_ID)
+
+        mock_block = make_mock_block_with_schema(
+            block_id="needs-prompt-id",
+            name="AI Gen",
+            input_properties={"prompt": {"type": "string"}},
+            required_fields=["prompt"],
+        )
+
+        with (
+            patch(
+                "backend.copilot.tools.helpers.get_block",
+                return_value=mock_block,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.match_credentials_to_requirements",
+                return_value=({}, []),
+            ),
+            patch(
+                "backend.copilot.tools.run_block.execute_block",
+                new_callable=AsyncMock,
+            ) as mock_exec,
+        ):
+            tool = RunBlockTool()
+            response = await tool._execute(
+                user_id=_TEST_USER_ID,
+                session=session,
+                block_id="needs-prompt-id",
+                input_data={},
+                validate_only=True,
+            )
+
+        assert isinstance(response, BlockDetailsResponse)
+        assert "'prompt'" in response.message
+        mock_exec.assert_not_awaited()
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_missing_picker_field_returns_setup_requirements(self):
         """When a missing required field is picker-backed, skip the schema
         preview and return SetupRequirementsResponse directly so the
