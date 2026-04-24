@@ -189,13 +189,16 @@ class CodeGenerationBlock(Block):
         response_id = response.id or ""
 
         # Update usage stats
-        self.execution_stats.input_token_count = (
-            response.usage.input_tokens if response.usage else 0
-        )
-        self.execution_stats.output_token_count = (
-            response.usage.output_tokens if response.usage else 0
-        )
+        input_tokens = response.usage.input_tokens if response.usage else 0
+        output_tokens = response.usage.output_tokens if response.usage else 0
+        self.execution_stats.input_token_count = input_tokens
+        self.execution_stats.output_token_count = output_tokens
         self.execution_stats.llm_call_count += 1
+        # GPT-5.1-Codex: $1.25/1M input + $10/1M output. Compute USD and
+        # feed COST_USD resolver so billing scales with real token usage.
+        usd = (input_tokens * 1.25 + output_tokens * 10.0) / 1_000_000
+        self.execution_stats.provider_cost = usd
+        self.execution_stats.provider_cost_type = "cost_usd"
 
         return CodexCallResult(
             response=text_output,

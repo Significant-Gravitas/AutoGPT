@@ -265,20 +265,23 @@ class TestNewlyRegisteredBlockCosts:
     """
 
     def test_perplexity_block_registered(self):
+        from backend.blocks._base import BlockCostType
         from backend.blocks.perplexity import PerplexityBlock, PerplexityModel
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert PerplexityBlock in BLOCK_COSTS
         entries = BLOCK_COSTS[PerplexityBlock]
-        # Pin model->cost mapping so swapped prices fail the regression test.
-        costs_by_model = {
-            entry.cost_filter["model"]: entry.cost_amount for entry in entries
+        # All 3 Perplexity tiers bill via COST_USD 150 cr/$ (OpenRouter
+        # returns x-total-cost on each response). Pin cost_type + amount
+        # so a regression to per-model flat RUN tiers fails this test.
+        assert {entry.cost_filter["model"] for entry in entries} == {
+            PerplexityModel.SONAR,
+            PerplexityModel.SONAR_PRO,
+            PerplexityModel.SONAR_DEEP_RESEARCH,
         }
-        assert costs_by_model == {
-            PerplexityModel.SONAR: 1,
-            PerplexityModel.SONAR_PRO: 5,
-            PerplexityModel.SONAR_DEEP_RESEARCH: 10,
-        }
+        for entry in entries:
+            assert entry.cost_type == BlockCostType.COST_USD
+            assert entry.cost_amount == 150
 
     def test_fact_checker_block_registered(self):
         from backend.blocks.jina.fact_checker import FactCheckerBlock
@@ -345,19 +348,21 @@ class TestNewlyRegisteredBlockCosts:
     def test_claude_code_block_registered(self):
         """ClaudeCodeBlock spawns an E2B sandbox + runs Claude inside it.
 
-        Cost is dominated by the in-sandbox LLM spend ($0.50-$2/run typical),
-        not the sandbox compute itself. Flat 100 credits ($1.00) is the
-        conservative estimate until we wire the in-sandbox x-total-cost back
-        into NodeExecutionStats.provider_cost.
+        Claude Code CLI returns ``total_cost_usd`` on every response; the
+        block pipes it into execution_stats and bills via COST_USD 150 cr/$
+        (1.5× margin matching TOKEN_COST).
         """
+        from backend.blocks._base import BlockCostType
         from backend.blocks.claude_code import ClaudeCodeBlock
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert ClaudeCodeBlock in BLOCK_COSTS
-        assert BLOCK_COSTS[ClaudeCodeBlock][0].cost_amount == 100
+        entry = BLOCK_COSTS[ClaudeCodeBlock][0]
+        assert entry.cost_type == BlockCostType.COST_USD
+        assert entry.cost_amount == 150
         # Filter keys on `e2b_credentials` (not `credentials`) — verifies the
         # cost gate matches the block's actual input field name.
-        assert "e2b_credentials" in BLOCK_COSTS[ClaudeCodeBlock][0].cost_filter
+        assert "e2b_credentials" in entry.cost_filter
 
 
 # ---------------------------------------------------------------------------
