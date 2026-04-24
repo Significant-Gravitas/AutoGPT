@@ -153,10 +153,10 @@ async def get_redis_async() -> AsyncRedisClient:
 
 
 @conn_retry("RedisPubSub", "Acquiring connection")
-def connect_pubsub() -> Redis:
+def connect_pubsub(host: str = HOST, port: int = PORT) -> Redis:
     c = Redis(
-        host=HOST,
-        port=PORT,
+        host=host,
+        port=port,
         password=PASSWORD,
         decode_responses=True,
         socket_timeout=SOCKET_TIMEOUT,
@@ -169,10 +169,10 @@ def connect_pubsub() -> Redis:
 
 
 @conn_retry("AsyncRedisPubSub", "Acquiring connection")
-async def connect_pubsub_async() -> AsyncRedis:
+async def connect_pubsub_async(host: str = HOST, port: int = PORT) -> AsyncRedis:
     c = AsyncRedis(
-        host=HOST,
-        port=PORT,
+        host=host,
+        port=port,
         password=PASSWORD,
         decode_responses=True,
         socket_timeout=SOCKET_TIMEOUT,
@@ -186,7 +186,7 @@ async def connect_pubsub_async() -> AsyncRedis:
 
 @cached(ttl_seconds=3600)
 def get_redis_pubsub() -> Redis:
-    """Return a plain ``Redis`` client dedicated to pub/sub.
+    """Return a plain ``Redis`` client dedicated to classic (non-sharded) pub/sub.
 
     A subscribed connection blocks on ``listen()`` and cannot be interleaved
     with regular command traffic.
@@ -202,3 +202,35 @@ async def get_redis_pubsub_async() -> AsyncRedis:
         client = await connect_pubsub_async()
         _async_pubsub_clients[id(loop)] = client
     return client
+
+
+# Sharded pub/sub routes every channel to exactly one shard (the keyslot
+# owner). Subscribers must open a connection to that specific shard; a
+# connection to any other shard would see no messages for the channel.
+# redis-py 6.x async has no cluster pubsub wrapper, so we resolve the
+# owning node manually and open a plain AsyncRedis against it.
+
+
+def resolve_shard_for_channel(channel: str) -> tuple[str, int]:
+    """Return the ``(host, port)`` of the shard that owns the channel's keyslot.
+
+    Applies the configured ``_address_remap`` so callers connect through the
+    same address the cluster client uses.
+    """
+    cluster = get_redis()
+    node = cluster.get_node_from_key(channel)
+    if node is None:
+        raise RuntimeError(f"No cluster node owns the keyslot for channel {channel!r}")
+    return _address_remap((node.host, node.port))
+
+
+def connect_sharded_pubsub(channel: str) -> Redis:
+    """Open a plain ``Redis`` connection pinned to the channel's owning shard."""
+    host, port = resolve_shard_for_channel(channel)
+    return connect_pubsub(host=host, port=port)
+
+
+async def connect_sharded_pubsub_async(channel: str) -> AsyncRedis:
+    """Async variant of :func:`connect_sharded_pubsub`."""
+    host, port = resolve_shard_for_channel(channel)
+    return await connect_pubsub_async(host=host, port=port)
