@@ -183,9 +183,16 @@ export const ChatContainer = ({
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
-                    className="absolute bottom-full left-0 right-0 z-10 px-3 pb-2"
+                    className="pointer-events-none absolute bottom-full left-0 right-0 z-20 pb-2"
                   >
-                    <UsageLimitReachedCard />
+                    <div
+                      aria-hidden="true"
+                      data-testid="usage-limit-backdrop"
+                      className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#f8f8f9] via-[#f8f8f9]/90 to-[#f8f8f9]/25 backdrop-blur-xl"
+                    />
+                    <div className="pointer-events-auto relative px-3">
+                      <UsageLimitReachedCard />
+                    </div>
                   </div>
                 )}
                 <Tooltip open={isLimitReached ? undefined : false}>

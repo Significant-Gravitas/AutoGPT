@@ -58,6 +58,7 @@ interface CopilotStreamStore {
 
   getCoord: (sessionId: string) => SessionCoord;
   updateCoord: (sessionId: string, patch: Partial<SessionCoord>) => void;
+  clearSession: (sessionId: string) => void;
   getMessageSnapshot: (sessionId: string) => UIMessage[];
   setMessageSnapshot: (sessionId: string, messages: UIMessage[]) => void;
 
@@ -92,6 +93,20 @@ export const useCopilotStreamStore = create<CopilotStreamStore>((set, get) => ({
         },
       },
     }));
+  },
+  clearSession(sessionId) {
+    set((state) => {
+      const sessions = { ...state.sessions };
+      delete sessions[sessionId];
+
+      const messageSnapshots = { ...state.messageSnapshots };
+      delete messageSnapshots[sessionId];
+
+      return {
+        sessions,
+        messageSnapshots,
+      };
+    });
   },
   getMessageSnapshot(sessionId) {
     return get().messageSnapshots[sessionId] ?? [];

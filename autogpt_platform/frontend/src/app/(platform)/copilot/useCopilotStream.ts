@@ -8,9 +8,14 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  getOrCreateCopilotChatRuntime,
+  markCopilotChatRuntimeHealthy,
+  resetCopilotChatRuntime,
+  shouldReloadCopilotChatRuntime,
+} from "./copilotChatRegistry";
 import { handleStreamError } from "./copilotStreamErrorHandlers";
 import { useCopilotStreamStore } from "./copilotStreamStore";
-import { createCopilotTransport } from "./copilotStreamTransport";
 import {
   deduplicateMessages,
   extractSendMessageText,
@@ -55,40 +60,22 @@ export function useCopilotStream({
   copilotMode,
   copilotModel,
 }: UseCopilotStreamArgs) {
-  const chatInstanceIdRef = useRef<string | null>(null);
-  if (sessionId && chatInstanceIdRef.current === null) {
-    chatInstanceIdRef.current = `${sessionId}:${crypto.randomUUID()}`;
-  }
-
   const queryClient = useQueryClient();
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
   }
-  // Use refs for copilotMode and copilotModel so the transport closure always reads
-  // the latest value without recreating the DefaultChatTransport (which would
-  // reset useChat's internal Chat instance and break mid-session streaming).
-  const copilotModeRef = useRef(copilotMode);
-  copilotModeRef.current = copilotMode;
-  const copilotModelRef = useRef(copilotModel);
-  copilotModelRef.current = copilotModel;
-
-  // Connect directly to the Python backend for SSE, bypassing the Next.js
-  // serverless proxy. This eliminates the Vercel 800s function timeout that
-  // was the primary cause of stream disconnections on long-running tasks.
-  // This useMemo is load-bearing: `useChat` key-compares `transport` identity,
-  // so recreating it mid-session resets the internal `Chat` instance.
-  const transport = useMemo(
-    () =>
-      sessionId
-        ? createCopilotTransport({
-            sessionId,
-            copilotModeRef,
-            copilotModelRef,
-          })
-        : null,
-    [sessionId],
-  );
+  const chatRuntime = useMemo(() => {
+    if (!sessionId) return null;
+    if (shouldReloadCopilotChatRuntime(sessionId)) {
+      resetCopilotChatRuntime(sessionId);
+    }
+    return getOrCreateCopilotChatRuntime(sessionId);
+  }, [sessionId]);
+  if (chatRuntime) {
+    chatRuntime.copilotModeRef.current = copilotMode;
+    chatRuntime.copilotModelRef.current = copilotModel;
+  }
 
   // Transient per-mount flags. The parent keys this subtree by sessionId,
   // so every session-switch remounts and these refs reset naturally —
@@ -128,28 +115,32 @@ export function useCopilotStream({
     error,
     setMessages,
     resumeStream,
-  } = useChat({
-    // AI SDK caches Chat instances by `id` at module scope. Reusing the bare
-    // sessionId when revisiting a chat can resurrect stale status/message
-    // state from the earlier mount, which leaves switched-away long-running
-    // sessions looking "active" but frozen on return. Keep the backend
-    // sessionId stable in the transport URL, but give each React mount its own
-    // client-side chat instance key.
-    id: chatInstanceIdRef.current ?? undefined,
-    transport: transport ?? undefined,
-    onFinish: async ({ isDisconnect, isAbort }) => {
+  } = useChat(
+    chatRuntime
+      ? { chat: chatRuntime.chat }
+      : {
+          id: "new",
+        },
+  );
+
+  useEffect(() => {
+    if (!chatRuntime) return;
+
+    async function handleFinish({
+      isDisconnect,
+      isAbort,
+    }: {
+      isDisconnect?: boolean;
+      isAbort?: boolean;
+    }) {
       if (isAbort || !sessionId) return;
-      // User-initiated stops should not trigger reconnection.
       if (isUserStoppingRef.current) return;
 
-      // The AI SDK rarely sets isDisconnect — treat ANY non-user-initiated
-      // finish as a potential disconnect when the backend stream is active.
       if (isDisconnect) {
         handleReconnectRef.current();
         return;
       }
 
-      // Check if backend executor is still running after clean close.
       await new Promise((r) => setTimeout(r, FINISH_REFETCH_SETTLE_MS));
       if (!isMountedRef.current) return;
       const result = await refetchSession();
@@ -157,8 +148,9 @@ export function useCopilotStream({
       if (hasActiveBackendStream(result)) {
         handleReconnectRef.current();
       }
-    },
-    onError: (error) => {
+    }
+
+    function handleError(error: Error) {
       if (!sessionId) return;
       handleStreamError({
         error,
@@ -166,8 +158,20 @@ export function useCopilotStream({
         onReconnect: () => handleReconnectRef.current(),
         isUserStoppingRef,
       });
-    },
-  });
+    }
+
+    chatRuntime.onFinish = handleFinish;
+    chatRuntime.onError = handleError;
+
+    return () => {
+      if (chatRuntime.onFinish === handleFinish) {
+        chatRuntime.onFinish = undefined;
+      }
+      if (chatRuntime.onError === handleError) {
+        chatRuntime.onError = undefined;
+      }
+    };
+  }, [chatRuntime, sessionId, refetchSession]);
 
   // Flipped to ``true`` the first time the user actually hits Send on this
   // mount. Lets the ``hasConnectedThisMountRef`` latch below distinguish
@@ -202,12 +206,10 @@ export function useCopilotStream({
     }
   }
 
-  // Keep stable refs to sdkStop and resumeStream so async callbacks
-  // (wake re-sync, reconnect timer, unmount cleanup) always invoke the
-  // latest version without stale-closure bugs.
-  const sdkStopRef = useRef(sdkStop);
-  sdkStopRef.current = sdkStop;
   function resumeStreamFromStart() {
+    if (sessionId) {
+      markCopilotChatRuntimeHealthy(sessionId);
+    }
     setMessages((prev) => {
       const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
@@ -264,6 +266,7 @@ export function useCopilotStream({
     if (suppressReason === "duplicate") return;
 
     if (sid) {
+      markCopilotChatRuntimeHealthy(sid);
       useCopilotStreamStore
         .getState()
         .updateCoord(sid, { lastSubmittedMessageText: text });
@@ -327,33 +330,15 @@ export function useCopilotStream({
 
   // ---------------------------------------------------------------------------
   // Mount lifecycle:
-  //  - On mount: reset useChat's Chat instance for this id. AI SDK caches
-  //    Chat instances per id at module scope, so a revisit to a session
-  //    would otherwise show whatever stale messages were left in the cache.
-  //    Starting empty lets hydration + resume rebuild cleanly from server
-  //    state, matching the behaviour of a full page reload.
-  //  - On unmount: abort the in-flight fetch. The backend's SSE generators
-  //    already unsubscribe their listener queues in ``finally`` on client
-  //    disconnect, so issuing an extra session-scoped DELETE here is only an
-  //    optimisation — and it races badly with rapid session switch-back,
-  //    where a stale cleanup request can cancel the fresh resume listener for
-  //    the same session and leave the UI stuck on "Retrieving latest
-  //    messages". Rely on the normal SSE disconnect path instead.
-  // Effect body reads through refs only so its dep array is genuinely empty.
+  //  - On unmount: mark this React subscriber as gone so async follow-up work
+  //    cannot set state into a torn-down mount.
+  //  - Do NOT abort the underlying session Chat runtime here. It is
+  //    intentionally kept alive in JS state so switching away from a chat does
+  //    not tear down its live SSE stream.
   // ---------------------------------------------------------------------------
-  const setMessagesRef = useRef(setMessages);
-  setMessagesRef.current = setMessages;
   useMountEffect(() => {
-    setMessagesRef.current([]);
     return () => {
       isMountedRef.current = false;
-      // Reconnect/forced-timeout timers are cleared by `useCopilotReconnect`
-      // via its own mount cleanup — no need to touch them here.
-      try {
-        sdkStopRef.current();
-      } catch {
-        // Best-effort — aborting a non-running fetch is a no-op.
-      }
     };
   });
 

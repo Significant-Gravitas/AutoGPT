@@ -48,16 +48,23 @@ vi.mock("../helpers/convertChatSessionToUiMessages", () => ({
 }));
 vi.mock("../helpers", () => ({
   deduplicateMessages: (msgs: unknown[]) => msgs,
-  getLatestAssistantStatusMessage: (messages: Array<{ role?: string; parts?: unknown[] }>) => {
+  getLatestAssistantStatusMessage: (
+    messages: Array<{ role?: string; parts?: unknown[] }>,
+  ) => {
     const last = messages[messages.length - 1] as
-      | { role?: string; parts?: Array<{ type?: string; data?: { message?: unknown } }> }
+      | {
+          role?: string;
+          parts?: Array<{ type?: string; data?: { message?: unknown } }>;
+        }
       | undefined;
     if (last?.role !== "assistant") return null;
     for (let i = (last.parts?.length ?? 0) - 1; i >= 0; i--) {
       const part = last.parts?.[i];
       if (part?.type === "data-cursor") continue;
       if (part?.type === "data-status") {
-        return typeof part.data?.message === "string" ? part.data.message : null;
+        return typeof part.data?.message === "string"
+          ? part.data.message
+          : null;
       }
       return null;
     }
@@ -247,7 +254,10 @@ describe("useCopilotPage — active session restore visibility", () => {
 
     const { result } = renderHook(() => useCopilotPage());
 
-    expect(result.current.messages).toEqual([userMessage, cachedAssistantMessage]);
+    expect(result.current.messages).toEqual([
+      userMessage,
+      cachedAssistantMessage,
+    ]);
   });
 });
 

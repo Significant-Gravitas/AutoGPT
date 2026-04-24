@@ -72,11 +72,9 @@ vi.mock("../components/ReasoningCollapse", () => ({
   ReasoningCollapse: () => null,
 }));
 vi.mock("../components/ThinkingIndicator", () => ({
-  ThinkingIndicator: ({
-    statusMessage,
-  }: {
-    statusMessage?: string | null;
-  }) => <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>,
+  ThinkingIndicator: ({ statusMessage }: { statusMessage?: string | null }) => (
+    <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
+  ),
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -276,7 +274,9 @@ describe("ChatMessagesContainer — loading", () => {
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
     expect(screen.getByText("Reconnecting to live stream...")).toBeDefined();
-    expect(screen.getByText("Still syncing the latest progress.")).toBeDefined();
+    expect(
+      screen.getByText("Still syncing the latest progress."),
+    ).toBeDefined();
   });
 
   it("prefers the backend status message in the restore fallback", () => {

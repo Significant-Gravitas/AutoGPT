@@ -33,7 +33,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
+import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
@@ -45,6 +47,9 @@ export function ChatSidebar() {
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
   const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const sessionNeedsReload = useCopilotChatRuntimeStore(
+    (state) => state.sessionNeedsReload,
+  );
 
   const queryClient = useQueryClient();
 
@@ -331,8 +336,15 @@ export function ChatSidebar() {
                             </Text>
                           </div>
                           {session.is_processing &&
-                            session.id !== sessionId &&
-                            !completedSessionIDs.has(session.id) && (
+                            shouldShowSessionProcessingIndicator({
+                              sessionId: session.id,
+                              currentSessionId: sessionId,
+                              isProcessing: session.is_processing,
+                              hasCompletedIndicator: completedSessionIDs.has(
+                                session.id,
+                              ),
+                              needsReload: !!sessionNeedsReload[session.id],
+                            }) && (
                               <CircleNotch
                                 className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
                                 weight="bold"

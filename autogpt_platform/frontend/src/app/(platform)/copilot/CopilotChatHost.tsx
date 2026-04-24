@@ -12,8 +12,8 @@ interface Props {
 
 /**
  * Session-scoped chat host. Parent mounts this with `key={sessionId}` so
- * every session switch gives us a fresh `useChat` Chat instance — no
- * orphaned AI-SDK state bleeding between sessions.
+ * session-local view state resets on switch, while the actual AI SDK Chat
+ * instance is preserved in the per-session runtime registry.
  */
 export function CopilotChatHost({
   droppedFiles,

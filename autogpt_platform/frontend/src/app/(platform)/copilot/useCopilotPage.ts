@@ -127,17 +127,16 @@ export function useCopilotPage() {
   );
   const restoreStatusMessage = useMemo(
     () =>
-      isRestoringActiveSession ? getLatestAssistantStatusMessage(messages) : null,
+      isRestoringActiveSession
+        ? getLatestAssistantStatusMessage(messages)
+        : null,
     [isRestoringActiveSession, messages],
   );
-  const displayMessages = useMemo(
-    () => {
-      if (!isRestoringActiveSession) return messages;
-      if (hasAssistantTail(cachedMessages)) return cachedMessages;
-      return trimVisibleMessagesForActiveRestore(messages);
-    },
-    [isRestoringActiveSession, messages, cachedMessages],
-  );
+  const displayMessages = useMemo(() => {
+    if (!isRestoringActiveSession) return messages;
+    if (hasAssistantTail(cachedMessages)) return cachedMessages;
+    return trimVisibleMessagesForActiveRestore(messages);
+  }, [isRestoringActiveSession, messages, cachedMessages]);
 
   // Chip state machine (peek sync + auto-continue promotion + mid-turn poll)
   // lives in a dedicated hook so this component is just glue.

@@ -5,6 +5,10 @@ import type { FileUIPart } from "ai";
 import { getCopilotAuthHeaders } from "./helpers";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 
+export interface MutableValue<T> {
+  current: T;
+}
+
 interface CreateTransportArgs {
   sessionId: string;
   /**
@@ -13,9 +17,9 @@ interface CreateTransportArgs {
    * recreating the transport — recreating would reset `useChat`'s internal
    * `Chat` instance and break mid-session streaming.
    */
-  copilotModeRef: React.MutableRefObject<CopilotMode | undefined>;
+  copilotModeRef: MutableValue<CopilotMode | undefined>;
   /** Ref to the current model tier. See `copilotModeRef` for rationale. */
-  copilotModelRef: React.MutableRefObject<CopilotLlmModel | undefined>;
+  copilotModelRef: MutableValue<CopilotLlmModel | undefined>;
 }
 
 /**

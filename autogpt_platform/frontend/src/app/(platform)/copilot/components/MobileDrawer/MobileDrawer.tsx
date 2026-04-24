@@ -15,6 +15,8 @@ import {
 } from "@phosphor-icons/react";
 import { parseAsString, useQueryState } from "nuqs";
 import { Drawer } from "vaul";
+import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
+import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
 import { useSessionDeletion } from "../../useSessionDeletion";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
@@ -58,6 +60,9 @@ export function MobileDrawer() {
     isDrawerOpen,
     setDrawerOpen,
   } = useCopilotUIStore();
+  const sessionNeedsReload = useCopilotChatRuntimeStore(
+    (state) => state.sessionNeedsReload,
+  );
 
   const { data: sessionsResponse, isLoading } = useGetV2ListSessions(
     { limit: 50 },
@@ -183,8 +188,15 @@ export function MobileDrawer() {
                           {session.title || "Untitled chat"}
                         </Text>
                         {session.is_processing &&
-                          !completedSessionIDs.has(session.id) &&
-                          session.id !== currentSessionId && (
+                          shouldShowSessionProcessingIndicator({
+                            sessionId: session.id,
+                            currentSessionId,
+                            isProcessing: session.is_processing,
+                            hasCompletedIndicator: completedSessionIDs.has(
+                              session.id,
+                            ),
+                            needsReload: !!sessionNeedsReload[session.id],
+                          }) && (
                             <CircleNotch
                               className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
                               weight="bold"

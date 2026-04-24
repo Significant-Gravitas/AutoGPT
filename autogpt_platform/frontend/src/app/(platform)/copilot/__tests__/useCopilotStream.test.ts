@@ -50,7 +50,9 @@ vi.mock("../helpers", () => ({
       };
       if (part.type === "data-cursor") continue;
       if (part.type === "data-status") {
-        return typeof part.data?.message === "string" ? part.data.message : null;
+        return typeof part.data?.message === "string"
+          ? part.data.message
+          : null;
       }
       return null;
     }
@@ -89,15 +91,12 @@ vi.mock("ai", () => ({
   }),
 }));
 
-// --- @ai-sdk/react useChat mock with callback capture ---
-type OnFinishArgs = { isDisconnect?: boolean; isAbort?: boolean };
+// --- @ai-sdk/react useChat mock with persistent Chat instances ---
 type UseChatOptions = {
   id?: string;
-  onFinish?: (args: OnFinishArgs) => void | Promise<void>;
-  onError?: (e: Error) => void;
+  chat?: { id?: string };
 };
-let capturedUseChatOptions: UseChatOptions | null = null;
-const capturedUseChatIds: string[] = [];
+const capturedUseChatChats: Array<{ id?: string } | undefined> = [];
 const mockResumeStream = vi.fn();
 const mockSdkStop = vi.fn();
 const mockSdkSendMessage = vi.fn();
@@ -106,9 +105,29 @@ let mockMessages: UIMessage[] = [];
 let mockStatus: "ready" | "streaming" | "submitted" | "error" = "ready";
 
 vi.mock("@ai-sdk/react", () => ({
+  Chat: class MockChat {
+    id: string;
+    onFinish?: (args: {
+      isDisconnect?: boolean;
+      isAbort?: boolean;
+    }) => void | Promise<void>;
+    onError?: (error: Error) => void;
+
+    constructor(options: {
+      id?: string;
+      onFinish?: (args: {
+        isDisconnect?: boolean;
+        isAbort?: boolean;
+      }) => void | Promise<void>;
+      onError?: (error: Error) => void;
+    }) {
+      this.id = options.id ?? "";
+      this.onFinish = options.onFinish;
+      this.onError = options.onError;
+    }
+  },
   useChat: (opts: UseChatOptions) => {
-    capturedUseChatOptions = opts;
-    capturedUseChatIds.push(opts.id ?? "");
+    capturedUseChatChats.push(opts.chat);
     return {
       messages: mockMessages,
       sendMessage: mockSdkSendMessage,
@@ -122,6 +141,11 @@ vi.mock("@ai-sdk/react", () => ({
 }));
 
 // Import after mocks
+import {
+  getOrCreateCopilotChatRuntime,
+  resetCopilotChatRegistry,
+  shouldReloadCopilotChatRuntime,
+} from "../copilotChatRegistry";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { RESTORE_STALL_TIMEOUT_MS } from "../restoreConstants";
 import { useCopilotStream } from "../useCopilotStream";
@@ -144,8 +168,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   mockMessages = [];
   mockStatus = "ready";
-  capturedUseChatOptions = null;
-  capturedUseChatIds.length = 0;
+  capturedUseChatChats.length = 0;
   mockResumeStream.mockClear();
   mockSdkStop.mockClear();
   mockSdkSendMessage.mockClear();
@@ -153,6 +176,7 @@ beforeEach(() => {
   mockToast.mockClear();
   mockHasActiveBackendStream.mockReturnValue(false);
   mockInvalidateQueries.mockClear();
+  resetCopilotChatRegistry();
   // Zustand stores are module singletons — wipe per-session coord state so
   // tests don't leak into each other.
   useCopilotStreamStore.getState().resetAll();
@@ -164,7 +188,7 @@ afterEach(() => {
 });
 
 describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
-  it("uses a fresh AI SDK chat instance id on each mount of the same session", () => {
+  it("reuses the same session chat runtime across remounts", () => {
     const first = renderHook((args: Args) => useCopilotStream(args), {
       initialProps: makeArgs({ sessionId: "sess-1" }),
     });
@@ -174,10 +198,10 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
       initialProps: makeArgs({ sessionId: "sess-1" }),
     });
 
-    expect(capturedUseChatIds).toHaveLength(2);
-    expect(capturedUseChatIds[0]).toMatch(/^sess-1:/);
-    expect(capturedUseChatIds[1]).toMatch(/^sess-1:/);
-    expect(capturedUseChatIds[0]).not.toBe(capturedUseChatIds[1]);
+    expect(capturedUseChatChats).toHaveLength(2);
+    expect(capturedUseChatChats[0]?.id).toBe("sess-1");
+    expect(capturedUseChatChats[1]?.id).toBe("sess-1");
+    expect(capturedUseChatChats[0]).toBe(capturedUseChatChats[1]);
   });
 
   it("defers resume until hydration completes when hydratedMessages arrives late", () => {
@@ -453,20 +477,14 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
 });
 
 describe("useCopilotStream — unmount cleanup", () => {
-  it("stops the in-flight fetch on unmount", () => {
+  it("keeps the in-flight fetch alive on unmount", () => {
     const { unmount } = renderHook((args: Args) => useCopilotStream(args), {
       initialProps: makeArgs({ sessionId: "sess-A" }),
     });
 
-    // Start a reconnect cycle so there's state to tear down.
-    // (handleReconnect arms a timer; unmount should not resume the stream.)
-    void capturedUseChatOptions!.onFinish!({ isDisconnect: true });
-
     unmount();
 
-    // Abort the fetch so the backend SSE generator sees a normal client
-    // disconnect and unsubscribes its listener queue in ``finally``.
-    expect(mockSdkStop).toHaveBeenCalled();
+    expect(mockSdkStop).not.toHaveBeenCalled();
   });
 
   it("reconnect timer does not fire resumeStream after unmount", async () => {
@@ -475,7 +493,9 @@ describe("useCopilotStream — unmount cleanup", () => {
     });
 
     await act(async () => {
-      await capturedUseChatOptions!.onFinish!({ isDisconnect: true });
+      await getOrCreateCopilotChatRuntime("sess-A").onFinish?.({
+        isDisconnect: true,
+      });
     });
 
     // Parent would remount us with a new session key — simulate the
@@ -488,6 +508,48 @@ describe("useCopilotStream — unmount cleanup", () => {
 
     expect(mockResumeStream).not.toHaveBeenCalled();
   });
+
+  it("marks a background-disconnected session for full reload on reopen", async () => {
+    useCopilotStreamStore
+      .getState()
+      .updateCoord("sess-A", { lastSubmittedMessageText: "hello" });
+    useCopilotStreamStore.getState().setMessageSnapshot("sess-A", [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "partial" }],
+      } as unknown as UIMessage,
+    ]);
+
+    const firstRuntime = getOrCreateCopilotChatRuntime("sess-A");
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-A" }),
+    }).unmount();
+
+    await act(async () => {
+      await (
+        firstRuntime.chat as unknown as {
+          onFinish?: (args: { isDisconnect?: boolean }) => Promise<void> | void;
+        }
+      ).onFinish?.({ isDisconnect: true });
+    });
+
+    expect(shouldReloadCopilotChatRuntime("sess-A")).toBe(true);
+    expect(
+      useCopilotStreamStore.getState().getMessageSnapshot("sess-A"),
+    ).toEqual([]);
+    expect(
+      useCopilotStreamStore.getState().getCoord("sess-A")
+        .lastSubmittedMessageText,
+    ).toBeNull();
+
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-A" }),
+    });
+
+    expect(capturedUseChatChats.at(-1)).not.toBe(firstRuntime.chat);
+    expect(shouldReloadCopilotChatRuntime("sess-A")).toBe(false);
+  });
 });
 
 describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
@@ -499,7 +561,9 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
 
     // Kick off reconnect via a disconnect finish.
     await act(async () => {
-      await capturedUseChatOptions!.onFinish!({ isDisconnect: true });
+      await getOrCreateCopilotChatRuntime("sess-1").onFinish?.({
+        isDisconnect: true,
+      });
     });
 
     // Initially reconnect is scheduled — but we won't let it succeed. Instead
@@ -525,7 +589,9 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
     });
 
     await act(async () => {
-      await capturedUseChatOptions!.onFinish!({ isDisconnect: true });
+      await getOrCreateCopilotChatRuntime("sess-1").onFinish?.({
+        isDisconnect: true,
+      });
     });
 
     // Parent remounts on session switch — the old mount unmounts. Any
@@ -550,16 +616,12 @@ describe("useCopilotStream — forced reconnect timeout (SECRT-2241)", () => {
 // `*-delta` / `*-end` chunks, and a cursor-based XREAD skips the envelope +
 // `*-start` chunks that precede the cursor. See copilotStreamTransport.ts.
 
-describe("useCopilotStream — mount starts with clean useChat state", () => {
-  it("calls setMessages([]) on mount to avoid stale Chat-instance bleed-through", () => {
+describe("useCopilotStream — mount preserves session runtime state", () => {
+  it("does not clear the chat runtime on mount", () => {
     renderHook((args: Args) => useCopilotStream(args), {
       initialProps: makeArgs({ sessionId: "sess-A" }),
     });
 
-    // The mount effect resets the AI SDK's messages array. AI SDK v5
-    // caches Chat instances per id, so without this a revisit to a
-    // session would render stale pre-refetch messages until hydration
-    // catches up.
-    expect(mockSetMessages).toHaveBeenCalledWith([]);
+    expect(mockSetMessages).not.toHaveBeenCalledWith([]);
   });
 });

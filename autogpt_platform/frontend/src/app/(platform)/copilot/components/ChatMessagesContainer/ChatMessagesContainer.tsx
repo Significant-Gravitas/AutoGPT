@@ -383,9 +383,8 @@ export function ChatMessagesContainer({
     );
     return () => clearTimeout(timer);
   }, [isRestoringActiveSession]);
-  const { elapsedSeconds: restoreElapsedSeconds } = useElapsedTimer(
-    showRestoreFallback,
-  );
+  const { elapsedSeconds: restoreElapsedSeconds } =
+    useElapsedTimer(showRestoreFallback);
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.

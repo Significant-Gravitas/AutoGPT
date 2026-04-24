@@ -29,12 +29,10 @@ export function CopilotPage() {
   const isMobile = useIsMobile();
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const { isUserLoading, isLoggedIn } = useSupabase();
-  // Read sessionId here purely to key the chat-host subtree — the inner
-  // host's useChatSession reads the same URL param via nuqs so both stay
-  // in sync. Keying the subtree guarantees that every session switch
-  // mounts a fresh useChat Chat instance, eliminating orphaned AI-SDK
-  // state from the previous session (which was causing stuck UI on
-  // session-switch-back — full reload worked, switch-back didn't).
+  // Read sessionId here purely to key the chat-host subtree. The view still
+  // remounts on session switch, but the underlying AI SDK Chat runtime now
+  // lives in a per-session registry so live streams can continue in
+  // background JS state while another chat is on screen.
   const [sessionId] = useQueryState("sessionId", parseAsString);
 
   if (isUserLoading || !isLoggedIn) {
