@@ -430,11 +430,7 @@ async def execute_block(
                         )
                     )
         finally:
-            # Release auto-cred locks on ALL exit paths (normal return, early
-            # return from credit check, any exception mid-coerce / mid-charge
-            # / mid-execute). Sentry r3135420231: previously locks stranded
-            # in Redis until TTL if anything between acquire and the inner
-            # wait_for try raised.
+            # Release auto-cred locks on every exit path so Redis doesn't hold them until TTL.
             for lock in auto_locks:
                 try:
                     await lock.release()
