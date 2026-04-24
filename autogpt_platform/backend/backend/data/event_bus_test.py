@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import BaseModel
 
-from backend.data.event_bus import AsyncRedisEventBus, _assert_no_wildcard
+from backend.data.event_bus import (
+    AsyncRedisEventBus,
+    RedisEventBus,
+    _assert_no_wildcard,
+)
 
 
 class SampleEvent(BaseModel):
@@ -248,3 +252,265 @@ async def test_listen_events_rejects_wildcard_channel():
     with pytest.raises(ValueError):
         async for _ in bus.listen_events("user/*/exec"):
             break
+
+
+# ---------- Serialization + size guard ----------
+
+
+def test_serialize_message_tags_full_channel_name():
+    """_serialize_message returns the ``<bus>/<key>`` full channel name."""
+    bus = _BusUnderTest()
+    _, full = bus._serialize_message(SampleEvent(message="x"), "chan")
+    assert full == "test_event_bus/chan"
+
+
+def test_serialize_message_truncates_oversized_payload(monkeypatch):
+    """If the payload exceeds max_message_size_limit, it's replaced with an
+    ``error_comms_update`` payload rather than crashing the cluster."""
+    import backend.data.event_bus as event_bus
+
+    bus = _BusUnderTest()
+    # Cap tiny to force truncation.
+    monkeypatch.setattr(event_bus.config, "max_message_size_limit", 50)
+    message, _ = bus._serialize_message(SampleEvent(message="x" * 1000), "chan")
+    assert "error_comms_update" in message
+    assert "Payload too large" in message
+
+
+def test_deserialize_message_rejects_non_pubsub_types():
+    """Non ``smessage|message|pmessage`` deliveries deserialize to None."""
+    bus = _BusUnderTest()
+    assert bus._deserialize_message({"type": "ssubscribe", "data": 1}, "c") is None
+    assert bus._deserialize_message({"type": "subscribe", "data": 1}, "c") is None
+
+
+def test_deserialize_message_swallows_bad_json():
+    """Corrupted payloads must not raise — they return None (logged elsewhere)."""
+    bus = _BusUnderTest()
+    assert (
+        bus._deserialize_message({"type": "smessage", "data": "not-json"}, "c") is None
+    )
+
+
+def test_deserialize_message_parses_smessage():
+    """Happy-path ``smessage`` yields the inner event model."""
+    bus = _BusUnderTest()
+    wrapped = '{"payload":{"message":"hi"}}'
+    parsed = bus._deserialize_message({"type": "smessage", "data": wrapped}, "chan")
+    assert parsed is not None and parsed.message == "hi"
+
+
+# ---------- Sync RedisEventBus ----------
+
+
+class _SyncBusUnderTest(RedisEventBus[SampleEvent]):
+    Model = SampleEvent
+
+    @property
+    def event_bus_name(self) -> str:
+        return "test_event_bus"
+
+
+def test_sync_publish_event_spublish_plus_dual_publish():
+    """Sync publish_event must SPUBLISH then classic PUBLISH when DUAL_PUBLISH on."""
+    bus = _SyncBusUnderTest()
+    cluster = MagicMock()
+    cluster.execute_command = MagicMock()
+
+    with (
+        patch("backend.data.event_bus.redis.get_redis", return_value=cluster),
+        patch("backend.data.event_bus.DUAL_PUBLISH", True),
+    ):
+        bus.publish_event(SampleEvent(message="m"), "chan")
+
+    commands = [c.args[0] for c in cluster.execute_command.call_args_list]
+    assert commands == ["SPUBLISH", "PUBLISH"]
+
+
+def test_sync_publish_event_spublish_only_when_dual_off():
+    bus = _SyncBusUnderTest()
+    cluster = MagicMock()
+    cluster.execute_command = MagicMock()
+
+    with (
+        patch("backend.data.event_bus.redis.get_redis", return_value=cluster),
+        patch("backend.data.event_bus.DUAL_PUBLISH", False),
+    ):
+        bus.publish_event(SampleEvent(message="m"), "chan")
+
+    cluster.execute_command.assert_called_once()
+    assert cluster.execute_command.call_args.args[0] == "SPUBLISH"
+
+
+def test_sync_publish_event_rejects_wildcard():
+    bus = _SyncBusUnderTest()
+    with patch("backend.data.event_bus.redis.get_redis") as mock_get:
+        with pytest.raises(ValueError):
+            bus.publish_event(SampleEvent(message="m"), "user/*/exec")
+    mock_get.assert_not_called()
+
+
+def test_sync_publish_event_swallows_connection_errors():
+    """publish_event must never raise to callers — logs + drops on failure."""
+    bus = _SyncBusUnderTest()
+    with patch(
+        "backend.data.event_bus.redis.get_redis",
+        side_effect=ConnectionError("no redis"),
+    ):
+        # Should NOT raise.
+        bus.publish_event(SampleEvent(message="m"), "chan")
+
+
+def test_sync_listen_events_rejects_wildcard():
+    bus = _SyncBusUnderTest()
+    with pytest.raises(ValueError):
+        next(iter(bus.listen_events("user/*/exec")))
+
+
+def test_sync_listen_events_ssubscribes_and_yields_decoded_events():
+    """Sync listen_events: SSUBSCRIBE on the full channel, decode smessage payloads."""
+    bus = _SyncBusUnderTest()
+
+    fake_pubsub = MagicMock()
+    fake_pubsub.ssubscribe = MagicMock()
+    fake_pubsub.sunsubscribe = MagicMock()
+    fake_pubsub.close = MagicMock()
+    fake_pubsub.listen = MagicMock(
+        return_value=iter(
+            [
+                {"type": "ssubscribe", "data": 1},
+                {"type": "smessage", "data": '{"payload":{"message":"one"}}'},
+            ]
+        )
+    )
+
+    cluster = MagicMock()
+    cluster.pubsub = MagicMock(return_value=fake_pubsub)
+
+    with patch("backend.data.event_bus.redis.get_redis", return_value=cluster):
+        gen = bus.listen_events("chan")
+        first = next(iter(gen))
+
+    assert first.message == "one"
+    fake_pubsub.ssubscribe.assert_called_once_with("test_event_bus/chan")
+
+
+def test_sync_listen_events_teardown_swallows_sunsubscribe_errors():
+    """Teardown must not propagate SUNSUBSCRIBE/close failures."""
+    bus = _SyncBusUnderTest()
+
+    fake_pubsub = MagicMock()
+    fake_pubsub.ssubscribe = MagicMock()
+    fake_pubsub.sunsubscribe = MagicMock(side_effect=RuntimeError("SUNSUB broke"))
+    fake_pubsub.close = MagicMock(side_effect=RuntimeError("close broke"))
+    fake_pubsub.listen = MagicMock(return_value=iter([]))
+    cluster = MagicMock()
+    cluster.pubsub = MagicMock(return_value=fake_pubsub)
+
+    with patch("backend.data.event_bus.redis.get_redis", return_value=cluster):
+        # Exhausting the generator runs the ``finally`` teardown.
+        list(bus.listen_events("chan"))
+
+    fake_pubsub.sunsubscribe.assert_called_once()
+    fake_pubsub.close.assert_called_once()
+
+
+# ---------- Async close() teardown ----------
+
+
+@pytest.mark.asyncio
+async def test_async_close_releases_pubsub_and_client():
+    """close() must aclose() both the pubsub AND the shard-pinned client."""
+    bus = _BusUnderTest()
+    fake_pubsub = MagicMock()
+    fake_pubsub.aclose = AsyncMock()
+    fake_client = MagicMock()
+    fake_client.aclose = AsyncMock()
+    bus._pubsub = fake_pubsub
+    bus._pubsub_client = fake_client
+
+    await bus.close()
+
+    fake_pubsub.aclose.assert_awaited_once()
+    fake_client.aclose.assert_awaited_once()
+    assert bus._pubsub is None
+    assert bus._pubsub_client is None
+
+
+@pytest.mark.asyncio
+async def test_async_close_swallows_pubsub_aclose_errors():
+    """A broken pubsub must still let the client aclose run (no leak)."""
+    bus = _BusUnderTest()
+    fake_pubsub = MagicMock()
+    fake_pubsub.aclose = AsyncMock(side_effect=RuntimeError("pubsub broke"))
+    fake_client = MagicMock()
+    fake_client.aclose = AsyncMock(side_effect=RuntimeError("client broke"))
+    bus._pubsub = fake_pubsub
+    bus._pubsub_client = fake_client
+
+    # Must not raise.
+    await bus.close()
+    assert bus._pubsub is None
+    assert bus._pubsub_client is None
+
+
+@pytest.mark.asyncio
+async def test_async_close_noop_when_nothing_open():
+    """Idempotent close is safe to call on a never-listened bus."""
+    bus = _BusUnderTest()
+    await bus.close()  # must not crash
+
+
+@pytest.mark.asyncio
+async def test_async_wait_for_event_returns_none_on_timeout():
+    """wait_for_event must coerce asyncio.TimeoutError → None."""
+    import asyncio as _asyncio
+
+    bus = _BusUnderTest()
+
+    async def _never(self, channel_key):
+        await _asyncio.sleep(10)
+        yield  # pragma: no cover — unreachable
+
+    with patch.object(_BusUnderTest, "listen_events", _never):
+        result = await bus.wait_for_event("chan", timeout=0.01)
+
+    assert result is None
+
+
+# The listen_events async happy path is covered by the live-cluster integration
+# test above; this one exercises the close-on-exception fallback.
+@pytest.mark.asyncio
+async def test_async_listen_events_closes_on_exception():
+    """If the pump raises, close() must still run to release the shard-pinned client."""
+    bus = _BusUnderTest()
+
+    fake_pubsub = MagicMock()
+    fake_pubsub.execute_command = AsyncMock()
+    fake_pubsub.channels = {}
+    fake_pubsub.aclose = AsyncMock()
+
+    class _Boom(Exception):
+        pass
+
+    async def _listen():
+        raise _Boom()
+        yield  # pragma: no cover — unreachable
+
+    fake_pubsub.listen = _listen
+
+    fake_client = MagicMock()
+    fake_client.pubsub = MagicMock(return_value=fake_pubsub)
+    fake_client.aclose = AsyncMock()
+
+    with patch(
+        "backend.data.event_bus.redis.connect_sharded_pubsub_async",
+        AsyncMock(return_value=fake_client),
+    ):
+        with pytest.raises(_Boom):
+            async for _ in bus.listen_events("chan"):
+                pass
+
+    # close() must have fired (both aclose calls).
+    fake_pubsub.aclose.assert_awaited_once()
+    fake_client.aclose.assert_awaited_once()
