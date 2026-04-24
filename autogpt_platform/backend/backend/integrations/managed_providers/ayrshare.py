@@ -32,6 +32,7 @@ platform UX, not a credential concern.
 from __future__ import annotations
 
 import logging
+import secrets
 
 from pydantic import SecretStr
 
@@ -99,9 +100,6 @@ class AyrshareManagedProvider(ManagedCredentialProvider):
                     "[ayrshare] Clearing legacy profile_key for user %s", user_id
                 )
                 user_integrations.managed_credentials.ayrshare_profile_key = None
-
-
-import secrets
 
 
 def _profile_title(user_id: str) -> str:
