@@ -462,9 +462,9 @@ async def _validate_node_input_credentials(
             except ValidationError as e:
                 # Validation error means credentials were provided but invalid
                 # This should always be an error, even if optional
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_INVALID_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_INVALID_PREFIX} {e}"
+                )
                 continue
 
             try:
@@ -475,15 +475,15 @@ async def _validate_node_input_credentials(
             except Exception as e:
                 # Handle any errors fetching credentials
                 # If credentials were explicitly configured but unavailable, it's an error
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                )
                 continue
 
             if not credentials:
-                credential_errors[node.id][
-                    field_name
-                ] = f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                credential_errors[node.id][field_name] = (
+                    f"{CRED_ERR_UNKNOWN_PREFIX}{credentials_meta.id}"
+                )
                 continue
 
             if (
@@ -593,18 +593,18 @@ async def _validate_node_input_credentials(
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        )
                         continue
                     if not creds:
                         if field_is_optional:
                             _mark_optional_skip()
                             continue
                         has_missing_credentials = True
-                        credential_errors[node.id][
-                            field_name
-                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+                        )
 
         # If node has optional credentials and any are missing, skip the
         # node so the executor doesn't try to execute it with None creds.
@@ -902,10 +902,8 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-# ``_v2`` suffix marks the classic→quorum rollover: new-image pods declare
-# these fresh quorum queues while old-image consumers drain the classic
-# ``graph_execution_queue`` / ``graph_execution_cancel_queue``. Orphans are
-# cleaned up by a follow-up PR once rollout is stable.
+# ``_v2`` suffix marks the classic→quorum rollover; old-image consumers
+# drain the unsuffixed queue. Orphans cleaned up in a follow-up PR.
 GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue_v2"
 GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
@@ -936,9 +934,8 @@ def create_execution_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # Quorum-typed queue: classic mirrored queues are deprecated in
-            # RabbitMQ 4.x, and quorum gives us automatic leader election
-            # plus stronger replication guarantees for long-running turns.
+            # Quorum (not classic mirrored) for leader election + stronger
+            # replication across RabbitMQ 4.x cluster nodes.
             "x-queue-type": "quorum",
             # x-consumer-timeout (24h)
             # Problem: Default 30-minute consumer timeout kills long-running graph executions

@@ -71,10 +71,8 @@ COPILOT_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-# ``_v2`` suffix marks the classic→quorum rollover: new-image pods declare
-# these fresh quorum queues while old-image consumers drain the classic
-# ``copilot_execution_queue`` / ``copilot_cancel_queue``. Orphans cleaned up
-# by a follow-up PR once rollout is stable.
+# ``_v2`` suffix marks the classic→quorum rollover; old-image consumers
+# drain the unsuffixed queue. Orphans cleaned up in a follow-up PR.
 COPILOT_EXECUTION_QUEUE_NAME = "copilot_execution_queue_v2"
 COPILOT_EXECUTION_ROUTING_KEY = "copilot.run"
 
@@ -122,9 +120,8 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
-            # Quorum-typed queue: classic mirrored queues are deprecated in
-            # RabbitMQ 4.x, and quorum gives us automatic leader election
-            # plus stronger replication guarantees for long-running turns.
+            # Quorum (not classic mirrored) for leader election + stronger
+            # replication across RabbitMQ 4.x cluster nodes.
             "x-queue-type": "quorum",
             # Consumer timeout matches the pod graceful-shutdown window so a
             # rolling deploy never forces redelivery of a turn that the pod
