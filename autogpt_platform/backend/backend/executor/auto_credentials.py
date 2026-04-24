@@ -24,19 +24,6 @@ class MissingAutoCredentialsError(ValueError):
     structured response instead of a bare error.
     """
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        field_name: str,
-        provider: str,
-        picker_config: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.field_name = field_name
-        self.provider = provider
-        self.picker_config = picker_config or {}
-
 
 async def acquire_auto_credentials(
     input_model: type[BlockSchema],
@@ -103,9 +90,7 @@ async def acquire_auto_credentials(
                     raise MissingAutoCredentialsError(
                         f"Authentication missing for '{file_name}' in field "
                         f"'{field_name}'. Please re-select the file to "
-                        f"authenticate with {provider.capitalize()}.",
-                        field_name=field_name,
-                        provider=provider,
+                        f"authenticate with {provider.capitalize()}."
                     )
             elif field_data is None and field_name not in input_data:
                 # Field not in input_data at all = connected from upstream, skip
@@ -114,9 +99,7 @@ async def acquire_auto_credentials(
                 raise MissingAutoCredentialsError(
                     f"No file selected for '{field_name}'. "
                     f"Please select a file to provide "
-                    f"{provider.capitalize()} authentication.",
-                    field_name=field_name,
-                    provider=provider,
+                    f"{provider.capitalize()} authentication."
                 )
             else:
                 raise ValueError(
