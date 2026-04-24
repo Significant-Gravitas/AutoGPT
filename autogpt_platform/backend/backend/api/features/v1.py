@@ -44,6 +44,7 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
+from backend.copilot.rate_limit import get_tier_multipliers
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -708,6 +709,15 @@ class SubscriptionStatusResponse(BaseModel):
     tier: Literal["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> amount in cents
+    tier_multipliers: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → rate-limit multiplier. Covers the same tiers listed in"
+            " ``tier_costs`` so the frontend can render rate-limit badges"
+            " relative to the lowest visible tier without knowing backend"
+            " defaults."
+        ),
+    )
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
     pending_tier: Optional[Literal["BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
@@ -816,6 +826,18 @@ async def get_subscription_status(
         if pid:
             tier_costs[t.value] = cost
 
+    # Expose the effective rate-limit multipliers alongside prices so the
+    # frontend can render "Nx rate limits" relative to the lowest visible
+    # tier without hard-coding backend defaults.  Only emit entries for tiers
+    # that land in ``tier_costs`` — rows hidden at the price layer must stay
+    # hidden in the multiplier layer too.
+    multipliers = await get_tier_multipliers()
+    tier_multipliers: dict[str, float] = {
+        t.value: multipliers.get(t, 1.0)
+        for t in priceable_tiers
+        if t.value in tier_costs
+    }
+
     current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
 
@@ -837,6 +859,7 @@ async def get_subscription_status(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
+        tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
     )
     if pending is not None:

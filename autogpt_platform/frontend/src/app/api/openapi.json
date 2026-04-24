@@ -15996,6 +15996,12 @@
             "type": "object",
             "title": "Tier Costs"
           },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "description": "Tier → rate-limit multiplier. Covers the same tiers listed in ``tier_costs`` so the frontend can render rate-limit badges relative to the lowest visible tier without knowing backend defaults."
+          },
           "proration_credit_cents": {
             "type": "integer",
             "title": "Proration Credit Cents"

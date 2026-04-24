@@ -7,6 +7,7 @@ import pytest
 from redis.exceptions import RedisError
 
 from .rate_limit import (
+    _DEFAULT_TIER_MULTIPLIERS,
     DEFAULT_TIER,
     TIER_MULTIPLIERS,
     CoPilotUsageStatus,
@@ -15,12 +16,15 @@ from .rate_limit import (
     UsageWindow,
     _daily_key,
     _daily_reset_time,
+    _fetch_cost_limits_flag,
+    _fetch_tier_multipliers_flag,
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
     check_rate_limit,
     get_daily_reset_count,
     get_global_rate_limits,
+    get_tier_multipliers,
     get_usage_status,
     get_user_tier,
     increment_daily_reset_count,
@@ -353,11 +357,14 @@ class TestSubscriptionTier:
         assert SubscriptionTier.ENTERPRISE.value == "ENTERPRISE"
 
     def test_tier_multipliers(self):
-        assert TIER_MULTIPLIERS[SubscriptionTier.BASIC] == 1
-        assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5
-        assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20
-        assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 60
-        assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60
+        # Float-typed so LD-provided fractional multipliers compose naturally;
+        # equality against int literals still holds for the whole defaults.
+        assert TIER_MULTIPLIERS[SubscriptionTier.BASIC] == 1.0
+        assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5.0
+        assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20.0
+        assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 60.0
+        assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60.0
+        assert TIER_MULTIPLIERS is _DEFAULT_TIER_MULTIPLIERS
 
     def test_default_tier_is_basic(self):
         assert DEFAULT_TIER == SubscriptionTier.BASIC
@@ -378,6 +385,290 @@ class TestSubscriptionTier:
             tier=SubscriptionTier.PRO,
         )
         assert status.tier == SubscriptionTier.PRO
+
+
+# ---------------------------------------------------------------------------
+# get_tier_multipliers (LD-backed resolver)
+# ---------------------------------------------------------------------------
+
+
+class TestGetTierMultipliers:
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        """Clear the LD flag cache between tests so patches don't leak."""
+        _fetch_tier_multipliers_flag.cache_clear()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_defaults_when_flag_unset(self):
+        """With no LD override, the resolver returns the default map."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await get_tier_multipliers()
+        assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
+
+    @pytest.mark.asyncio
+    async def test_ld_override(self):
+        """LD override populates the targeted tiers; others inherit defaults."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value={"PRO": 7.5, "BUSINESS": 25},
+        ):
+            result = await get_tier_multipliers()
+        assert result["PRO"] == 7.5
+        assert result["BUSINESS"] == 25.0
+        # Untouched tiers inherit defaults.
+        assert result["BASIC"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BASIC]
+        assert result["MAX"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
+        assert (
+            result["ENTERPRISE"]
+            == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE]
+        )
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_falls_back(self):
+        """A non-object LD value (string, list, bool) falls back to defaults."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value="broken",
+        ):
+            result = await get_tier_multipliers()
+        assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
+
+    @pytest.mark.asyncio
+    async def test_unknown_tier_key_skipped(self):
+        """Unknown tier keys and non-positive values are silently ignored."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value={"PRO": 3, "BOGUS": 99, "MAX": -1, "BUSINESS": "nope"},
+        ):
+            result = await get_tier_multipliers()
+        assert result["PRO"] == 3.0
+        # MAX had a non-positive override → falls back to default.
+        assert result["MAX"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.MAX]
+        # BUSINESS had an unparseable override → falls back to default.
+        assert (
+            result["BUSINESS"] == _DEFAULT_TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
+        )
+
+    @pytest.mark.asyncio
+    async def test_ld_failure_falls_back(self):
+        """LD lookup raising propagates to defaults, not up the call stack."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LD SDK not initialized"),
+        ):
+            result = await get_tier_multipliers()
+        assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
+
+
+# ---------------------------------------------------------------------------
+# get_global_rate_limits — LD-flag cost limits parsing
+# ---------------------------------------------------------------------------
+
+
+class TestGetGlobalRateLimitsCostLimitsFlag:
+    """Coverage for the ``copilot-cost-limits`` JSON flag parsing path."""
+
+    _CONFIG_DAILY = 625_000
+    _CONFIG_WEEKLY = 3_125_000
+
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        _fetch_tier_multipliers_flag.cache_clear()  # type: ignore[attr-defined]
+        _fetch_cost_limits_flag.cache_clear()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_flag_unset_uses_config_defaults(self):
+        async def _ld(_flag_key: str, _uid: str, default):
+            return default  # LD returns default → None for cost-limits
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == self._CONFIG_DAILY
+        assert weekly == self._CONFIG_WEEKLY
+        assert tier == SubscriptionTier.BASIC
+
+    @pytest.mark.asyncio
+    async def test_flag_with_both_keys_honoured(self):
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": 2_000_000, "weekly": 10_000_000}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == 2_000_000
+        assert weekly == 10_000_000
+
+    @pytest.mark.asyncio
+    async def test_flag_with_only_daily_weekly_defaults(self):
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": 9_999_999}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == 9_999_999
+        assert weekly == self._CONFIG_WEEKLY
+
+    @pytest.mark.asyncio
+    async def test_non_dict_payload_falls_back_and_warns(self, caplog):
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return "not-a-dict"
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+            caplog.at_level("WARNING"),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == self._CONFIG_DAILY
+        assert weekly == self._CONFIG_WEEKLY
+        assert any("copilot-cost-limits" in rec.message for rec in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_invalid_per_key_values_fall_back(self):
+        """Negative / non-int per-key values resolve to the config default for
+        that key while any valid key survives."""
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": -5, "weekly": "oops"}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == self._CONFIG_DAILY
+        assert weekly == self._CONFIG_WEEKLY
+
+    @pytest.mark.asyncio
+    async def test_partial_invalid_key_preserves_valid_key(self):
+        """A valid daily + invalid weekly → daily honoured, weekly defaults."""
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": 1_234_567, "weekly": -1}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == 1_234_567
+        assert weekly == self._CONFIG_WEEKLY
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "bad_value",
+        [True, False, "100", 1.9, [1, 2], None],
+        ids=["bool-true", "bool-false", "str-numeric", "float", "list", "null"],
+    )
+    async def test_non_strict_int_values_rejected(self, bad_value):
+        """Strings like '100', booleans, floats, lists — none should coerce.
+
+        Docstring promises "non-int values are skipped"; this asserts the
+        strict-check (``isinstance(x, int) and not isinstance(x, bool)``)
+        actually rejects values ``int()`` would silently coerce.
+        """
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": bad_value}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.BASIC,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, _ = await get_global_rate_limits(
+                _USER, self._CONFIG_DAILY, self._CONFIG_WEEKLY
+            )
+        assert daily == self._CONFIG_DAILY
+        assert weekly == self._CONFIG_WEEKLY
 
 
 # ---------------------------------------------------------------------------
@@ -652,18 +943,60 @@ class TestSetUserTier:
 
 
 class TestGetGlobalRateLimitsWithTiers:
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        """Clear the LD flag caches between tests so patches don't leak."""
+        _fetch_tier_multipliers_flag.cache_clear()  # type: ignore[attr-defined]
+        _fetch_cost_limits_flag.cache_clear()  # type: ignore[attr-defined]
+
     @staticmethod
     def _ld_side_effect(daily: int, weekly: int):
-        """Return an async side_effect that dispatches by flag_key."""
+        """Return an async side_effect that dispatches by flag_key.
 
-        async def _side_effect(flag_key: str, _uid: str, default: int) -> int:
-            if "daily" in flag_key.lower():
-                return daily
-            if "weekly" in flag_key.lower():
-                return weekly
+        Returns the cost-limits JSON shape for ``copilot-cost-limits`` and
+        the raw default for the tier-multipliers flag so existing tests
+        continue to exercise the default multiplier map.
+        """
+
+        async def _side_effect(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": daily, "weekly": weekly}
             return default
 
         return _side_effect
+
+    @pytest.mark.asyncio
+    async def test_ld_override_applies_fractional_multiplier(self):
+        """A fractional LD multiplier is applied and truncated back to int."""
+
+        async def _ld(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": 1_000_000, "weekly": 5_000_000}
+            if "tier-multipliers" in flag_key.lower():
+                return {"PRO": 8.5}
+            return default
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.PRO,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=_ld,
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 1_000_000, 5_000_000
+            )
+
+        assert tier == SubscriptionTier.PRO
+        assert daily == 8_500_000  # 1_000_000 * 8.5
+        assert weekly == 42_500_000  # 5_000_000 * 8.5
+        # Both results are plain ints so microdollar math stays integer.
+        assert isinstance(daily, int)
+        assert isinstance(weekly, int)
 
     @pytest.mark.asyncio
     async def test_free_tier_no_multiplier(self):
@@ -789,14 +1122,17 @@ class TestTierLimitsRespected:
     _BASE_DAILY = 2_500_000
     _BASE_WEEKLY = 12_500_000
 
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        _fetch_tier_multipliers_flag.cache_clear()  # type: ignore[attr-defined]
+        _fetch_cost_limits_flag.cache_clear()  # type: ignore[attr-defined]
+
     @staticmethod
     def _ld_side_effect(daily: int, weekly: int):
 
-        async def _side_effect(flag_key: str, _uid: str, default: int) -> int:
-            if "daily" in flag_key.lower():
-                return daily
-            if "weekly" in flag_key.lower():
-                return weekly
+        async def _side_effect(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": daily, "weekly": weekly}
             return default
 
         return _side_effect
@@ -998,15 +1334,18 @@ class TestTierLimitsEnforced:
     _BASE_DAILY = 1_000_000
     _BASE_WEEKLY = 5_000_000
 
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        _fetch_tier_multipliers_flag.cache_clear()  # type: ignore[attr-defined]
+        _fetch_cost_limits_flag.cache_clear()  # type: ignore[attr-defined]
+
     @staticmethod
     def _ld_side_effect(daily: int, weekly: int):
         """Mock LD flag lookup returning the given raw limits."""
 
-        async def _side_effect(flag_key: str, _uid: str, default: int) -> int:
-            if "daily" in flag_key.lower():
-                return daily
-            if "weekly" in flag_key.lower():
-                return weekly
+        async def _side_effect(flag_key: str, _uid: str, default):
+            if "cost-limits" in flag_key.lower():
+                return {"daily": daily, "weekly": weekly}
             return default
 
         return _side_effect
@@ -1014,7 +1353,7 @@ class TestTierLimitsEnforced:
     @pytest.mark.asyncio
     async def test_pro_within_limit_allowed(self):
         """Usage under PRO daily limit should not raise."""
-        pro_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO]
+        pro_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO])
         mock_redis = AsyncMock()
         # Simulate usage just under the PRO daily limit
         mock_redis.get = AsyncMock(side_effect=[str(pro_daily - 1), "0"])
@@ -1045,7 +1384,7 @@ class TestTierLimitsEnforced:
     @pytest.mark.asyncio
     async def test_pro_at_limit_rejected(self):
         """Usage at exactly the PRO daily limit should raise."""
-        pro_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO]
+        pro_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO])
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=[str(pro_daily), "0"])
 
@@ -1074,8 +1413,8 @@ class TestTierLimitsEnforced:
     @pytest.mark.asyncio
     async def test_business_higher_limit_allows_pro_overflow(self):
         """Usage exceeding PRO but under BUSINESS should pass for BUSINESS."""
-        pro_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO]
-        biz_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
+        pro_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO])
+        biz_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BUSINESS])
         # Usage between PRO and BUSINESS limits
         usage = pro_daily + 1_000_000
         assert usage < biz_daily, "test sanity: usage must be under BUSINESS limit"
@@ -1109,7 +1448,7 @@ class TestTierLimitsEnforced:
     @pytest.mark.asyncio
     async def test_weekly_limit_enforced_for_tier(self):
         """Weekly limit should also be tier-multiplied and enforced."""
-        pro_weekly = self._BASE_WEEKLY * TIER_MULTIPLIERS[SubscriptionTier.PRO]
+        pro_weekly = int(self._BASE_WEEKLY * TIER_MULTIPLIERS[SubscriptionTier.PRO])
         mock_redis = AsyncMock()
         # Daily usage fine, weekly at limit
         mock_redis.get = AsyncMock(side_effect=["0", str(pro_weekly)])
@@ -1173,8 +1512,8 @@ class TestTierLimitsEnforced:
         rate-limit check, so a lower-tier user cannot 'bypass' limits that
         would be acceptable for a higher tier.
         """
-        basic_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC]
-        pro_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO]
+        basic_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC])
+        pro_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.PRO])
         # Usage above BASIC limit but below PRO limit
         usage = basic_daily + 500_000
         assert usage < pro_daily, "test sanity: usage must be under PRO limit"
@@ -1215,8 +1554,8 @@ class TestTierLimitsEnforced:
         change, and that usage that was over the BASIC limit is within the new
         BUSINESS limit.
         """
-        basic_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC]
-        biz_daily = self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BUSINESS]
+        basic_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BASIC])
+        biz_daily = int(self._BASE_DAILY * TIER_MULTIPLIERS[SubscriptionTier.BUSINESS])
         # Usage above BASIC limit but below BUSINESS limit
         usage = basic_daily + 500_000
         assert usage < biz_daily, "test sanity: usage must be under BUSINESS limit"

@@ -197,7 +197,7 @@ def test_e2b_sandbox_blocks_bill_one_credit_per_ten_seconds():
         assert cost == 0
 
 
-def test_fal_video_block_bills_three_credits_per_second():
+def test_fal_video_block_bills_fifteen_credits_per_second():
     block = AIVideoGeneratorBlock()
     creds = {
         "credentials": {
@@ -206,9 +206,9 @@ def test_fal_video_block_bills_three_credits_per_second():
             "type": fal_credentials.type,
         }
     }
-    # 8s clip → 3 * 8 = 24 credits.
+    # 8s clip → 15 * 8 = 120 credits.
     cost, _ = block_usage_cost(block, creds, stats=NodeExecutionStats(walltime=8.0))
-    assert cost == 24
+    assert cost == 120
     # Pre-flight → 0.
     cost, _ = block_usage_cost(block, creds)
     assert cost == 0

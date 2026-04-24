@@ -954,7 +954,7 @@ async def test_get_subscription_price_id_pro():
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value="price_pro_monthly",
+        return_value={"PRO": "price_pro_monthly", "MAX": "price_max_monthly"},
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.PRO)
         assert price_id == "price_pro_monthly"
@@ -969,7 +969,7 @@ async def test_get_subscription_price_id_basic_returns_ld_flag():
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value="price_basic_monthly",
+        return_value={"BASIC": "price_basic_monthly"},
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.BASIC)
         assert price_id == "price_basic_monthly"
@@ -984,7 +984,7 @@ async def test_get_subscription_price_id_max():
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value="price_max_monthly",
+        return_value={"MAX": "price_max_monthly"},
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.MAX)
         assert price_id == "price_max_monthly"
@@ -995,23 +995,124 @@ async def test_get_subscription_price_id_max():
 async def test_get_subscription_price_id_enterprise_returns_none():
     from backend.data.credit import get_subscription_price_id
 
-    # ENTERPRISE bypasses the LD flag lookup entirely (returns None before fetch).
-    price_id = await get_subscription_price_id(SubscriptionTier.ENTERPRISE)
-    assert price_id is None
+    # ENTERPRISE is never a key in the JSON flag → resolves to None.
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": "price_pro_monthly"},
+    ):
+        price_id = await get_subscription_price_id(SubscriptionTier.ENTERPRISE)
+        assert price_id is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
 async def test_get_subscription_price_id_empty_flag_returns_none():
+    """Empty dict payload → every tier resolves to None."""
     from backend.data.credit import get_subscription_price_id
 
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value="",  # LD flag not set
+        return_value={},
     ):
-        price_id = await get_subscription_price_id(SubscriptionTier.BUSINESS)
+        for tier in (
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+            SubscriptionTier.ENTERPRISE,
+        ):
+            assert await get_subscription_price_id(tier) is None
+            get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_partial_dict():
+    """Dict with only PRO resolves PRO, other tiers return None."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": "price_pro_monthly"},
+    ):
+        assert (
+            await get_subscription_price_id(SubscriptionTier.PRO) == "price_pro_monthly"
+        )
+        get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+        assert await get_subscription_price_id(SubscriptionTier.MAX) is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_empty_string_value_returns_none():
+    """Empty-string price_id in the JSON resolves to None (defensive)."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": ""},
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO) is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_non_string_value_returns_none():
+    """Non-string price_id (e.g. number, null) resolves to None."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": 123, "MAX": None},
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO) is None
+        get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+        assert await get_subscription_price_id(SubscriptionTier.MAX) is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_non_dict_payload_returns_none(caplog):
+    """A non-dict LD value logs a warning and returns None for every tier."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value="not-a-dict",
+    ):
+        with caplog.at_level("WARNING"):
+            price_id = await get_subscription_price_id(SubscriptionTier.PRO)
         assert price_id is None
+        assert any(
+            "copilot-tier-stripe-prices" in rec.message for rec in caplog.records
+        )
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_ld_raises_returns_none():
+    """Transient LD failure (here surfaced as a caught exception inside
+    get_feature_flag_value → default None) returns None and does not raise."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value=None,
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO) is None
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
 
 
@@ -1026,12 +1127,12 @@ async def test_get_subscription_price_id_none_not_cached():
     from backend.data.credit import get_subscription_price_id
 
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
-    mock_ld = AsyncMock(side_effect=["", "price_pro_monthly"])
+    mock_ld = AsyncMock(side_effect=[None, {"PRO": "price_pro_monthly"}])
     with patch("backend.data.credit.get_feature_flag_value", mock_ld):
-        # First call: LD returns empty string → None (transient failure)
+        # First call: LD returns None (transient failure)
         first = await get_subscription_price_id(SubscriptionTier.PRO)
         assert first is None
-        # Second call: LD returns the real price ID — must NOT be blocked by cached None
+        # Second call: LD returns the real price dict — must NOT be blocked by cached None
         second = await get_subscription_price_id(SubscriptionTier.PRO)
         assert second == "price_pro_monthly"
         assert mock_ld.call_count == 2  # both calls hit LD (None was not cached)
