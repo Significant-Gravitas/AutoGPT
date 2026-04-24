@@ -9,7 +9,7 @@ volumes:
   clamav-data:
   workspace-data:
   falkordb_data:
-  redis-data:
+  redis-0-data:
 
 x-agpt-services:
   &agpt-services
@@ -32,11 +32,29 @@ services:
       file: ./docker-compose.platform.yml
       service: migrate
 
-  redis:
+  redis-0:
     <<: *agpt-services
     extends:
       file: ./docker-compose.platform.yml
-      service: redis
+      service: redis-0
+
+  redis-1:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: redis-1
+
+  redis-2:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: redis-2
+
+  redis-init:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: redis-init
 
   falkordb:
     <<: *agpt-services
@@ -175,7 +193,10 @@ services:
       - auth
       - db
       - studio
-      - redis
+      - redis-0
+      - redis-1
+      - redis-2
+      - redis-init
       - rabbitmq
       - clamav
       - falkordb
