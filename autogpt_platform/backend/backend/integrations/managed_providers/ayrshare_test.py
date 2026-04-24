@@ -8,7 +8,7 @@ from pydantic import SecretStr
 from backend.data.model import APIKeyCredentials
 from backend.integrations.managed_providers.ayrshare import (
     AyrshareManagedProvider,
-    _read_or_create_profile_key,
+    _migrate_legacy_or_create_profile_key,
     settings_available,
 )
 
@@ -44,7 +44,7 @@ class TestIsAvailable:
             assert await AyrshareManagedProvider().is_available() is False
 
     def test_auto_provision_opt_out(self):
-        """Ayrshare opts out of the startup sweep — per-user Ayrshare profiles
+        """Ayrshare opts out of the credentials sweep — per-user Ayrshare profiles
         count against our subscription quota, so we only provision when the
         user explicitly clicks the builder's SSO flow."""
         assert AyrshareManagedProvider.auto_provision is False
@@ -105,7 +105,7 @@ class TestReadOrCreateProfileKey:
     async def test_reuses_legacy_key_without_clearing(self):
         """Legacy field is NOT cleared here — that happens in post_provision.
 
-        If `_read_or_create_profile_key` cleared eagerly and the subsequent
+        If `_migrate_legacy_or_create_profile_key` cleared eagerly and the subsequent
         `add_managed_credential` failed, a retry would see an empty legacy
         field and create a fresh Ayrshare profile, orphaning the user's
         linked social accounts.
@@ -116,7 +116,7 @@ class TestReadOrCreateProfileKey:
         with patch(
             "backend.integrations.managed_providers.ayrshare.AyrshareClient"
         ) as mock_client:
-            result = await _read_or_create_profile_key(_USER_ID, store)
+            result = await _migrate_legacy_or_create_profile_key(_USER_ID, store)
 
         assert result == "legacy-profile-key"
         # create_profile must NOT be called — we reuse the existing one.
@@ -137,7 +137,7 @@ class TestReadOrCreateProfileKey:
             "backend.integrations.managed_providers.ayrshare.AyrshareClient",
             return_value=client_instance,
         ):
-            result = await _read_or_create_profile_key(_USER_ID, store)
+            result = await _migrate_legacy_or_create_profile_key(_USER_ID, store)
 
         assert result == "fresh-profile-key"
         client_instance.create_profile.assert_awaited_once()
@@ -226,7 +226,7 @@ class TestProvision:
         store = MagicMock()
         with patch(
             "backend.integrations.managed_providers.ayrshare."
-            "_read_or_create_profile_key",
+            "_migrate_legacy_or_create_profile_key",
             new=AsyncMock(return_value="profile-key-xyz"),
         ) as read_mock:
             creds = await AyrshareManagedProvider().provision(_USER_ID, store)
