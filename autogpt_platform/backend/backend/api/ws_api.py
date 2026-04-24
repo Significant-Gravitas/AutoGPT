@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -17,14 +16,11 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.data.execution import AsyncRedisExecutionEventBus
-from backend.data.notification_bus import AsyncRedisNotificationEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
 )
-from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -34,9 +30,9 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    manager = get_connection_manager()
-    fut = asyncio.create_task(event_broadcaster(manager))
-    fut.add_done_callback(lambda _: logger.info("Event broadcaster stopped"))
+    # No global broadcaster: every connected websocket owns its own
+    # SSUBSCRIBE set via ConnectionManager, sharded pub/sub routes only
+    # to the shard that holds each channel's keyslot.
     yield
 
 
@@ -59,31 +55,6 @@ def get_connection_manager():
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
     return _connection_manager
-
-
-@continuous_retry()
-async def event_broadcaster(manager: ConnectionManager):
-    execution_bus = AsyncRedisExecutionEventBus()
-    notification_bus = AsyncRedisNotificationEventBus()
-
-    try:
-
-        async def execution_worker():
-            async for event in execution_bus.listen("*"):
-                await manager.send_execution_update(event)
-
-        async def notification_worker():
-            async for notification in notification_bus.listen("*"):
-                await manager.send_notification(
-                    user_id=notification.user_id,
-                    payload=notification.payload,
-                )
-
-        await asyncio.gather(execution_worker(), notification_worker())
-    finally:
-        # Ensure PubSub connections are closed on any exit to prevent leaks
-        await execution_bus.close()
-        await notification_bus.close()
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
@@ -321,7 +292,7 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect_socket(websocket, user_id=user_id)
+        await manager.disconnect_socket(websocket, user_id=user_id)
         logger.debug("WebSocket client disconnected")
     finally:
         update_websocket_connections(user_id, -1)
