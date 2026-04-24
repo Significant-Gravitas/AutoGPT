@@ -47,6 +47,7 @@ class Flag(str, Enum):
     STRIPE_PRICE_BASIC = "stripe-price-id-basic"
     STRIPE_PRICE_PRO = "stripe-price-id-pro"
     STRIPE_PRICE_MAX = "stripe-price-id-max"
+    STRIPE_PRICE_BUSINESS = "stripe-price-id-business"
     GRAPHITI_MEMORY = "graphiti-memory"
 
     # Copilot model routing — string-valued, returns the model identifier

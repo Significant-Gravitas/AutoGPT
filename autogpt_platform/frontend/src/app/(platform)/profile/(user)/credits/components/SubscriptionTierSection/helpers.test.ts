@@ -19,11 +19,13 @@ describe("formatCost", () => {
 
   it("returns a placeholder when paid tier has no price yet", () => {
     expect(formatCost(0, "PRO")).toBe("Pricing available soon");
+    expect(formatCost(0, "MAX")).toBe("Pricing available soon");
     expect(formatCost(0, "BUSINESS")).toBe("Pricing available soon");
   });
 
   it("formats cents to a dollars-per-month string for paid tiers", () => {
     expect(formatCost(999, "PRO")).toBe("$9.99/mo");
+    expect(formatCost(32000, "MAX")).toBe("$320.00/mo");
     expect(formatCost(4900, "BUSINESS")).toBe("$49.00/mo");
   });
 });
@@ -32,7 +34,8 @@ describe("getTierLabel", () => {
   it("returns the canonical label for known tiers", () => {
     expect(getTierLabel("FREE")).toBe("Basic");
     expect(getTierLabel("PRO")).toBe("Pro");
-    expect(getTierLabel("BUSINESS")).toBe("Max");
+    expect(getTierLabel("MAX")).toBe("Max");
+    expect(getTierLabel("BUSINESS")).toBe("Business");
   });
 
   it("title-cases unknown tier keys as a fallback", () => {

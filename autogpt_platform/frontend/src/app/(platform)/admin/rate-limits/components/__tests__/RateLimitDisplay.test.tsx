@@ -86,7 +86,7 @@ describe("RateLimitDisplay", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText("Subscription tier");
     expect(select).toBeDefined();
-    expect(select.querySelectorAll("option").length).toBe(4);
+    expect(select.querySelectorAll("option").length).toBe(5);
   });
 
   it("disables tier dropdown when onTierChange is not provided", () => {

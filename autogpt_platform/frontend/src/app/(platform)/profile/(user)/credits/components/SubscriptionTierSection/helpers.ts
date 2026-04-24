@@ -19,14 +19,20 @@ export const TIERS: TierInfo[] = [
     description: "5x AutoPilot capacity — run 5× more tasks per day/week",
   },
   {
-    key: "BUSINESS",
+    key: "MAX",
     label: "Max",
+    multiplier: "20x",
+    description: "20x AutoPilot capacity — ideal for power users",
+  },
+  {
+    key: "BUSINESS",
+    label: "Business",
     multiplier: "60x",
     description: "60x AutoPilot capacity — ideal for teams and heavy workloads",
   },
 ];
 
-export const TIER_ORDER = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"];
+export const TIER_ORDER = ["FREE", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function formatCost(cents: number, tierKey: string): string {
   if (cents === 0)

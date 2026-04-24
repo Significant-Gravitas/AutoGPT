@@ -699,17 +699,17 @@ async def get_user_auto_top_up(
 
 
 class SubscriptionTierRequest(BaseModel):
-    tier: Literal["FREE", "PRO", "BUSINESS"]
+    tier: Literal["FREE", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["FREE", "PRO", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["FREE", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> amount in cents
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
-    pending_tier: Optional[Literal["FREE", "PRO", "BUSINESS"]] = None
+    pending_tier: Optional[Literal["FREE", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
     url: str = Field(
         default="",
@@ -799,6 +799,7 @@ async def get_subscription_status(
     priceable_tiers = [
         SubscriptionTier.FREE,
         SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
         SubscriptionTier.BUSINESS,
     ]
     price_ids = await asyncio.gather(
@@ -846,6 +847,7 @@ async def get_subscription_status(
         if pending_tier_enum in (
             SubscriptionTier.FREE,
             SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
             SubscriptionTier.BUSINESS,
         ):
             response.pending_tier = pending_tier_enum.value
@@ -864,7 +866,7 @@ async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
-    # Pydantic validates tier is one of FREE/PRO/BUSINESS via Literal type.
+    # Pydantic validates tier is one of FREE/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
 
     # ENTERPRISE tier is admin-managed — block self-service changes from ENTERPRISE users.

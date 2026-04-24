@@ -15982,7 +15982,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+            "enum": ["FREE", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
             "title": "Tier"
           },
           "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
@@ -15997,7 +15997,7 @@
           },
           "pending_tier": {
             "anyOf": [
-              { "type": "string", "enum": ["FREE", "PRO", "BUSINESS"] },
+              { "type": "string", "enum": ["FREE", "PRO", "MAX", "BUSINESS"] },
               { "type": "null" }
             ],
             "title": "Pending Tier"
@@ -16027,7 +16027,7 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+        "enum": ["FREE", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -16035,7 +16035,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS"],
+            "enum": ["FREE", "PRO", "MAX", "BUSINESS"],
             "title": "Tier"
           },
           "success_url": {

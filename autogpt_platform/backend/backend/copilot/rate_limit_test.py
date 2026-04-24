@@ -348,12 +348,14 @@ class TestSubscriptionTier:
     def test_tier_values(self):
         assert SubscriptionTier.FREE.value == "FREE"
         assert SubscriptionTier.PRO.value == "PRO"
+        assert SubscriptionTier.MAX.value == "MAX"
         assert SubscriptionTier.BUSINESS.value == "BUSINESS"
         assert SubscriptionTier.ENTERPRISE.value == "ENTERPRISE"
 
     def test_tier_multipliers(self):
         assert TIER_MULTIPLIERS[SubscriptionTier.FREE] == 1
         assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5
+        assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20
         assert TIER_MULTIPLIERS[SubscriptionTier.BUSINESS] == 60
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60
 
@@ -706,6 +708,28 @@ class TestGetGlobalRateLimitsWithTiers:
         assert daily == 12_500_000
         assert weekly == 62_500_000
         assert tier == SubscriptionTier.PRO
+
+    @pytest.mark.asyncio
+    async def test_max_tier_20x_multiplier(self):
+        """Max tier should multiply limits by 20 (self-service $320 tier)."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.MAX,
+            ),
+            patch(
+                "backend.util.feature_flag.get_feature_flag_value",
+                side_effect=self._ld_side_effect(2_500_000, 12_500_000),
+            ),
+        ):
+            daily, weekly, tier = await get_global_rate_limits(
+                _USER, 2_500_000, 12_500_000
+            )
+
+        assert daily == 50_000_000
+        assert weekly == 250_000_000
+        assert tier == SubscriptionTier.MAX
 
     @pytest.mark.asyncio
     async def test_business_tier_60x_multiplier(self):

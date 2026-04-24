@@ -975,6 +975,21 @@ async def test_get_subscription_price_id_free_returns_ld_flag():
 
 
 @pytest.mark.asyncio
+async def test_get_subscription_price_id_max():
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value="price_max_monthly",
+    ):
+        price_id = await get_subscription_price_id(SubscriptionTier.MAX)
+        assert price_id == "price_max_monthly"
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_get_subscription_price_id_enterprise_returns_none():
     from backend.data.credit import get_subscription_price_id
 

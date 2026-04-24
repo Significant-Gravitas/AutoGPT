@@ -37,7 +37,7 @@ describe("PendingChangeBanner", () => {
     render(
       <PendingChangeBanner
         {...baseProps}
-        currentTier="BUSINESS"
+        currentTier="MAX"
         pendingTier="PRO"
       />,
     );

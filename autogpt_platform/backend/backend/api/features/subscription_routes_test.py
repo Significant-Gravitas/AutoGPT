@@ -63,7 +63,8 @@ def _stub_pending_subscription_change(mocker: pytest_mock.MockFixture) -> None:
 _DEFAULT_TIER_PRICES: dict[SubscriptionTier, str | None] = {
     SubscriptionTier.FREE: None,  # Legacy: stripe-price-id-basic unset by default.
     SubscriptionTier.PRO: "price_pro",
-    SubscriptionTier.BUSINESS: "price_max",
+    SubscriptionTier.MAX: "price_max",
+    SubscriptionTier.BUSINESS: None,  # Reserved: Business card hidden by default.
 }
 
 
@@ -139,9 +140,15 @@ def test_get_subscription_status_pro(
     prices = {
         SubscriptionTier.FREE: "price_basic",
         SubscriptionTier.PRO: "price_pro",
-        SubscriptionTier.BUSINESS: "price_max",
+        SubscriptionTier.MAX: "price_max",
+        SubscriptionTier.BUSINESS: "price_business",
     }
-    amounts = {"price_basic": 0, "price_pro": 1999, "price_max": 4999}
+    amounts = {
+        "price_basic": 0,
+        "price_pro": 1999,
+        "price_max": 4999,
+        "price_business": 14999,
+    }
 
     async def mock_price_id(tier: SubscriptionTier) -> str | None:
         return prices.get(tier)
@@ -175,7 +182,8 @@ def test_get_subscription_status_pro(
     assert data["tier"] == "PRO"
     assert data["monthly_cost"] == 1999
     assert data["tier_costs"]["PRO"] == 1999
-    assert data["tier_costs"]["BUSINESS"] == 4999
+    assert data["tier_costs"]["MAX"] == 4999
+    assert data["tier_costs"]["BUSINESS"] == 14999
     assert data["tier_costs"]["FREE"] == 0
     assert "ENTERPRISE" not in data["tier_costs"]
     assert data["proration_credit_cents"] == 500
@@ -773,6 +781,16 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
+    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+        return {
+            **_DEFAULT_TIER_PRICES,
+            SubscriptionTier.BUSINESS: "price_business",
+        }.get(tier)
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_id_with_business,
+    )
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,
@@ -808,6 +826,49 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     checkout_mock.assert_not_awaited()
 
 
+def test_update_subscription_tier_max_checkout(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """POST /credits/subscription from PRO→MAX modifies the existing subscription."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == ""
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
+    checkout_mock.assert_not_awaited()
+
+
 def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
@@ -821,6 +882,16 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
+    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+        return {
+            **_DEFAULT_TIER_PRICES,
+            SubscriptionTier.BUSINESS: "price_business",
+        }.get(tier)
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_id_with_business,
+    )
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,
@@ -876,7 +947,8 @@ def test_update_subscription_tier_priced_free_no_sub_falls_through_to_checkout(
         return {
             SubscriptionTier.FREE: "price_basic",
             SubscriptionTier.PRO: "price_pro",
-            SubscriptionTier.BUSINESS: "price_max",
+            SubscriptionTier.MAX: "price_max",
+            SubscriptionTier.BUSINESS: "price_business",
         }.get(tier)
 
     mocker.patch(
@@ -992,6 +1064,16 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
+    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+        return {
+            **_DEFAULT_TIER_PRICES,
+            SubscriptionTier.BUSINESS: "price_business",
+        }.get(tier)
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_id_with_business,
+    )
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,
@@ -1152,6 +1234,16 @@ def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
+    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+        return {
+            **_DEFAULT_TIER_PRICES,
+            SubscriptionTier.BUSINESS: "price_business",
+        }.get(tier)
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_id_with_business,
+    )
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,

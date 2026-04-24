@@ -11,7 +11,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
-const TIER_ORDER = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"];
+const TIER_ORDER = ["FREE", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function useSubscriptionTierSection() {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
