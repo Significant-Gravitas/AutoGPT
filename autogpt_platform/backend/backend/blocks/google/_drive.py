@@ -139,16 +139,15 @@ def GoogleDriveFileField(
         "(including one parsed from a Drive URL the user pasted in chat) — "
         "only the picker attaches the _credentials_id needed for auth."
     )
-    full_description = (
-        f"{description.rstrip('.')}. {agent_builder_hint}"
-        if description
-        else agent_builder_hint
-    )
 
     return SchemaField(
         default=None,
         title=title,
-        description=full_description,
+        description=(
+            f"{description.rstrip('.')}. {agent_builder_hint}"
+            if description
+            else agent_builder_hint
+        ),
         placeholder=placeholder or "Select from Google Drive",
         # Use google-drive-picker format so frontend renders existing component
         format="google-drive-picker",

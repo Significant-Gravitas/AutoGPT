@@ -311,117 +311,130 @@ async def execute_block(
             )
         except ValueError as e:
             return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
-        exec_kwargs.update(auto_extra_kwargs)
 
-        # Coerce non-matching data types to the expected input schema.
-        coerce_inputs_to_schema(input_data, block.input_schema)
+        # Everything from here owns the auto-cred locks; wrap so any early
+        # return / exception (coerce, credit check, execution, etc.) still
+        # releases them. Previously a raise between the acquire and the
+        # inner wait_for try could strand locks until Redis TTL.
+        try:
+            exec_kwargs.update(auto_extra_kwargs)
 
-        # Pre-execution credit check (courtesy; spend_credits is atomic)
-        cost, cost_filter = block_usage_cost(block, input_data)
-        has_cost = cost > 0
-        _credit_db = credit_db()
-        if has_cost:
-            balance = await _credit_db.get_credits(user_id)
-            if balance < cost:
+            # Coerce non-matching data types to the expected input schema.
+            coerce_inputs_to_schema(input_data, block.input_schema)
+
+            # Pre-execution credit check (courtesy; spend_credits is atomic)
+            cost, cost_filter = block_usage_cost(block, input_data)
+            has_cost = cost > 0
+            _credit_db = credit_db()
+            if has_cost:
+                balance = await _credit_db.get_credits(user_id)
+                if balance < cost:
+                    return ErrorResponse(
+                        message=(
+                            f"Insufficient credits to run '{block.name}'. "
+                            "Please top up your credits to continue."
+                        ),
+                        session_id=session_id,
+                    )
+
+            # Execute the block under the shared MCP wait cap. A block is
+            # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
+            # MCP handler would block the stream close to the idle timeout.
+            # wait_for cancels the generator on timeout, but the finally below
+            # still settles billing via asyncio.shield — external side effects
+            # may already have landed and the user should be charged for them.
+            outputs: dict[str, list[Any]] = defaultdict(list)
+            charge_handled = False
+            try:
+                await asyncio.wait_for(
+                    _collect_block_outputs(block, input_data, exec_kwargs, outputs),
+                    timeout=MAX_TOOL_WAIT_SECONDS,
+                )
+
+                # Normal (non-cancelled) path. Mark charge_handled BEFORE the
+                # await so an outer cancellation landing mid-charge can't race
+                # the finally block into a double-charge. asyncio.shield keeps
+                # the spend running to completion even if the outer awaitable
+                # is cancelled.
+                if has_cost:
+                    charge_handled = True
+                    await asyncio.shield(
+                        _charge_block_credits(
+                            _credit_db,
+                            user_id=user_id,
+                            block_name=block.name,
+                            block_id=block_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            synthetic_graph_id=synthetic_graph_id,
+                            synthetic_node_id=synthetic_node_id,
+                        )
+                    )
+
+                return BlockOutputResponse(
+                    message=f"Block '{block.name}' executed successfully",
+                    block_id=block_id,
+                    block_name=block.name,
+                    outputs=dict(outputs),
+                    success=True,
+                    session_id=session_id,
+                )
+            except asyncio.TimeoutError:
+                # Structured record of tool-call timeouts (SECRT-2247 part 3).
+                # Grep prod logs for `copilot_tool_timeout` to find tools that
+                # keep hitting the cap — candidates for prompt tuning or
+                # escalation to the async start+poll pattern.
+                logger.warning(
+                    "copilot_tool_timeout tool=run_block block=%s block_id=%s "
+                    "input_keys=%s user=%s session=%s cap_s=%d",
+                    block.name,
+                    block_id,
+                    sorted(input_data.keys()),
+                    user_id,
+                    session_id,
+                    MAX_TOOL_WAIT_SECONDS,
+                )
                 return ErrorResponse(
                     message=(
-                        f"Insufficient credits to run '{block.name}'. "
-                        "Please top up your credits to continue."
+                        f"Block '{block.name}' exceeded the "
+                        f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and "
+                        "was cancelled. Long-running work should go through "
+                        "run_agent (graph executions) or run_sub_session "
+                        "(sub-AutoPilot tasks) — those use async start+poll "
+                        "so nothing blocks the chat stream."
                     ),
                     session_id=session_id,
                 )
-
-        # Execute the block under the shared MCP wait cap. A block is
-        # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
-        # MCP handler would block the stream close to the idle timeout.
-        # wait_for cancels the generator on timeout, but the finally below
-        # still settles billing via asyncio.shield — external side effects
-        # may already have landed and the user should be charged for them.
-        outputs: dict[str, list[Any]] = defaultdict(list)
-        charge_handled = False
-        try:
-            await asyncio.wait_for(
-                _collect_block_outputs(block, input_data, exec_kwargs, outputs),
-                timeout=MAX_TOOL_WAIT_SECONDS,
-            )
-
-            # Normal (non-cancelled) path. Mark charge_handled BEFORE the
-            # await so an outer cancellation landing mid-charge can't race
-            # the finally block into a double-charge. asyncio.shield keeps
-            # the spend running to completion even if the outer awaitable
-            # is cancelled.
-            if has_cost:
-                charge_handled = True
-                await asyncio.shield(
-                    _charge_block_credits(
-                        _credit_db,
-                        user_id=user_id,
-                        block_name=block.name,
-                        block_id=block_id,
-                        node_exec_id=node_exec_id,
-                        cost=cost,
-                        cost_filter=cost_filter,
-                        synthetic_graph_id=synthetic_graph_id,
-                        synthetic_node_id=synthetic_node_id,
+            finally:
+                # Sentry r3105079148: asyncio.wait_for raises CancelledError
+                # into the generator. Normal `except Exception` doesn't catch
+                # it, so without this finally a cancelled block would skip
+                # credit charging entirely while external side effects still
+                # landed. Only run when the normal-path charge was NOT
+                # reached (the flag is set before the await, so any
+                # cancellation during charge still sets it and avoids
+                # double-billing — r3105216985).
+                if has_cost and outputs and not charge_handled:
+                    await asyncio.shield(
+                        _charge_block_credits(
+                            _credit_db,
+                            user_id=user_id,
+                            block_name=block.name,
+                            block_id=block_id,
+                            node_exec_id=node_exec_id,
+                            cost=cost,
+                            cost_filter=cost_filter,
+                            synthetic_graph_id=synthetic_graph_id,
+                            synthetic_node_id=synthetic_node_id,
+                        )
                     )
-                )
-
-            return BlockOutputResponse(
-                message=f"Block '{block.name}' executed successfully",
-                block_id=block_id,
-                block_name=block.name,
-                outputs=dict(outputs),
-                success=True,
-                session_id=session_id,
-            )
-        except asyncio.TimeoutError:
-            # Structured record of tool-call timeouts (SECRT-2247 part 3).
-            # Grep prod logs for `copilot_tool_timeout` to find tools that
-            # keep hitting the cap — candidates for prompt tuning or
-            # escalation to the async start+poll pattern.
-            logger.warning(
-                "copilot_tool_timeout tool=run_block block=%s block_id=%s "
-                "input_keys=%s user=%s session=%s cap_s=%d",
-                block.name,
-                block_id,
-                sorted(input_data.keys()),
-                user_id,
-                session_id,
-                MAX_TOOL_WAIT_SECONDS,
-            )
-            return ErrorResponse(
-                message=(
-                    f"Block '{block.name}' exceeded the "
-                    f"{MAX_TOOL_WAIT_SECONDS}s single-tool wait cap and was "
-                    "cancelled. Long-running work should go through run_agent "
-                    "(graph executions) or run_sub_session (sub-AutoPilot "
-                    "tasks) — those use async start+poll so nothing blocks "
-                    "the chat stream."
-                ),
-                session_id=session_id,
-            )
         finally:
-            # Sentry r3105079148: asyncio.wait_for raises CancelledError into
-            # the generator. Normal `except Exception` doesn't catch it, so
-            # without this finally a cancelled block would skip credit
-            # charging entirely while external side effects still landed.
-            # Only run when the normal-path charge was NOT reached (the flag
-            # is set before the await, so any cancellation during charge still
-            # sets it and avoids double-billing — r3105216985).
-            if has_cost and outputs and not charge_handled:
-                await asyncio.shield(
-                    _charge_block_credits(
-                        _credit_db,
-                        user_id=user_id,
-                        block_name=block.name,
-                        block_id=block_id,
-                        node_exec_id=node_exec_id,
-                        cost=cost,
-                        cost_filter=cost_filter,
-                        synthetic_graph_id=synthetic_graph_id,
-                        synthetic_node_id=synthetic_node_id,
-                    )
-                )
+            # Release auto-cred locks on ALL exit paths (normal return, early
+            # return from credit check, any exception mid-coerce / mid-charge
+            # / mid-execute). Sentry r3135420231: previously locks stranded
+            # in Redis until TTL if anything between acquire and the inner
+            # wait_for try raised.
             for lock in auto_locks:
                 try:
                     await lock.release()
@@ -612,24 +625,52 @@ async def prepare_block_for_execution(
             )
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
+    required_keys = set(input_schema.get("required", []))
+    required_non_credential_keys = required_keys - credentials_fields
+    provided_input_keys = set(input_data.keys()) - credentials_fields
 
-    if missing_credentials and not dry_run:
+    # Picker-backed required fields that the caller hasn't filled surface the
+    # same setup card as missing OAuth credentials — the frontend renders
+    # the picker inline via FormRenderer's custom-field dispatch. Detecting
+    # it here (instead of only inside execute_block's auto-creds layer)
+    # saves a round trip when the caller omitted the field entirely.
+    picker_fields_missing = [
+        f
+        for f in required_non_credential_keys - provided_input_keys
+        if isinstance(input_schema.get("properties", {}).get(f), dict)
+        and (
+            input_schema["properties"][f].get("format") == "google-drive-picker"
+            or "auto_credentials" in input_schema["properties"][f]
+        )
+    ]
+
+    if (missing_credentials or picker_fields_missing) and not dry_run:
         credentials_fields_info = _resolve_discriminated_credentials(block, input_data)
         missing_creds_dict = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
         missing_creds_list = list(missing_creds_dict.values())
+        if missing_credentials:
+            message = (
+                f"Block '{block.name}' requires credentials that are not "
+                "configured. Please set up the required credentials before "
+                "running this block."
+            )
+        else:
+            message = (
+                f"Block '{block.name}' needs "
+                f"{', '.join(repr(f) for f in picker_fields_missing)} "
+                "picked before it can run. Select in the card below; the "
+                "tool will re-run automatically."
+            )
         return SetupRequirementsResponse(
-            message=(
-                f"Block '{block.name}' requires credentials that are not configured. "
-                "Please set up the required credentials before running this block."
-            ),
+            message=message,
             session_id=session_id,
             setup_info=SetupInfo(
                 agent_id=block_id,
                 agent_name=block.name,
                 user_readiness=UserReadiness(
-                    has_all_credentials=False,
+                    has_all_credentials=not missing_credentials,
                     missing_credentials=missing_creds_dict,
                     ready_to_run=False,
                 ),
@@ -646,9 +687,6 @@ async def prepare_block_for_execution(
             graph_id=None,
             graph_version=None,
         )
-    required_keys = set(input_schema.get("required", []))
-    required_non_credential_keys = required_keys - credentials_fields
-    provided_input_keys = set(input_data.keys()) - credentials_fields
 
     valid_fields = set(input_schema.get("properties", {}).keys()) - credentials_fields
     unrecognized_fields = provided_input_keys - valid_fields
