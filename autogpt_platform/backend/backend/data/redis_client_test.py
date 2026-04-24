@@ -50,10 +50,18 @@ def test_address_remap_pins_host_and_preserves_port() -> None:
     """CLUSTER SLOTS returns the announced hostname of each shard; remap
     rewrites that to the configured seed so a single deployment works from
     both the compose network (HOST=redis) and the laptop (HOST=localhost)."""
-    assert redis_client._address_remap(("any-other-host", 6380)) == (
-        redis_client.HOST,
-        6380,
-    )
+    with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", False):
+        assert redis_client._address_remap(("any-other-host", 6380)) == (
+            redis_client.HOST,
+            6380,
+        )
+
+
+def test_address_remap_passthrough_when_use_announced_address() -> None:
+    """When each shard's announced host resolves directly (compose DNS), the
+    remap leaves the address alone."""
+    with patch.object(redis_client, "USE_ANNOUNCED_ADDRESS", True):
+        assert redis_client._address_remap(("redis-1", 17001)) == ("redis-1", 17001)
 
 
 @pytest.mark.asyncio

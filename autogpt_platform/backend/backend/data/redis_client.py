@@ -38,6 +38,18 @@ SOCKET_CONNECT_TIMEOUT = float(os.getenv("REDIS_SOCKET_CONNECT_TIMEOUT", "5"))
 # sockets; cheap and avoids waiting for the OS TCP keepalive (~2h default).
 HEALTH_CHECK_INTERVAL = int(os.getenv("REDIS_HEALTH_CHECK_INTERVAL", "30"))
 
+# Bypass the HOST-pinning address_remap when each shard already announces a
+# hostname the backend can resolve directly (e.g. compose DNS names
+# ``redis-0``/``redis-1``/``redis-2``). Enable this in the compose network
+# where the three shards live under distinct service names. Leave off on the
+# laptop (HOST=localhost + distinct published ports reach each container) and
+# in prod (HOST pins onto the load-balanced seed Service).
+USE_ANNOUNCED_ADDRESS = os.getenv("REDIS_USE_ANNOUNCED_ADDRESS", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
 logger = logging.getLogger(__name__)
 
 # Aliases kept so call-sites don't care which class this is — the backend
@@ -47,17 +59,21 @@ AsyncRedisClient = AsyncRedisCluster
 
 
 def _address_remap(addr: tuple[str, int]) -> tuple[str, int]:
-    """Pin every cluster node to the configured seed host.
+    """Rewrite the address returned by ``CLUSTER SLOTS`` for each shard.
 
-    The local-dev cluster runs three redis-server processes in one container
-    on ports 6379/6380/6381 and announces its own container hostname. That
-    hostname is reachable via Docker DNS inside the compose network, but a
-    backend running natively on the host cannot resolve it. Remapping the
-    returned host to ``HOST`` lets the same deployment work from both the
-    compose network (HOST=redis) and the host (HOST=localhost) without any
-    ``/etc/hosts`` hackery. In prod the seed DNS name already routes to
-    every shard, so this is a no-op there too.
+    Default: pin every shard to the configured seed ``HOST`` and keep its
+    announced port. This works when the seed DNS load-balances across
+    shards (prod) and when each shard is reachable at the seed host via a
+    distinct published port (laptop talking to the local compose cluster,
+    where each of 17000/17001/17002 maps to its container).
+
+    When ``REDIS_USE_ANNOUNCED_ADDRESS`` is set we pass the announced
+    ``(host, port)`` straight through — the caller is inside a network
+    where each shard's announced hostname resolves to its own container
+    (e.g. compose DNS names ``redis-0``/``redis-1``/``redis-2``).
     """
+    if USE_ANNOUNCED_ADDRESS:
+        return addr
     _, port = addr
     return HOST, port
 
