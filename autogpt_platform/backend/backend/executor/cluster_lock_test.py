@@ -21,15 +21,21 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def redis_client():
-    """Get Redis client for testing using same config as backend."""
-    from backend.data.redis_client import HOST, PASSWORD, PORT
+    """Get Redis client for testing using same config as backend.
 
-    # Use same config as backend but without decode_responses since ClusterLock needs raw bytes
-    client = redis.Redis(
-        host=HOST,
-        port=PORT,
+    Uses ``RedisCluster`` (not plain ``Redis``) so tests exercise the same
+    cluster-aware routing as prod — a plain client against a sharded
+    cluster bounces on ``MOVED`` for any key hashing to a non-owned slot.
+    """
+    from redis.cluster import ClusterNode, RedisCluster
+
+    from backend.data.redis_client import HOST, PASSWORD, PORT, _address_remap
+
+    client = RedisCluster(
+        startup_nodes=[ClusterNode(HOST, PORT)],
         password=PASSWORD,
         decode_responses=False,  # ClusterLock needs raw bytes for ownership verification
+        address_remap=_address_remap,
     )
 
     # Clean up any existing test keys
