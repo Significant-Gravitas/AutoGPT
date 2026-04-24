@@ -143,12 +143,14 @@ def resolve_shard_for_channel(channel: str) -> tuple[str, int]:
 def connect_sharded_pubsub(channel: str) -> Redis:
     """Open a plain ``Redis`` connection pinned to the channel's owning shard."""
     host, port = resolve_shard_for_channel(channel)
+    # socket_timeout=None: pubsub reads block indefinitely; a spurious
+    # read timeout forces a reconnect whose PING races with subscribe-mode.
     c = Redis(
         host=host,
         port=port,
         password=PASSWORD,
         decode_responses=True,
-        socket_timeout=SOCKET_TIMEOUT,
+        socket_timeout=None,
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
@@ -161,12 +163,13 @@ def connect_sharded_pubsub(channel: str) -> Redis:
 async def connect_sharded_pubsub_async(channel: str) -> AsyncRedis:
     """Async variant of :func:`connect_sharded_pubsub`."""
     host, port = resolve_shard_for_channel(channel)
+    # socket_timeout=None: see ``connect_sharded_pubsub``.
     c = AsyncRedis(
         host=host,
         port=port,
         password=PASSWORD,
         decode_responses=True,
-        socket_timeout=SOCKET_TIMEOUT,
+        socket_timeout=None,
         socket_connect_timeout=SOCKET_CONNECT_TIMEOUT,
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
