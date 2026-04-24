@@ -56,6 +56,7 @@ export function SettingsMobileNav() {
               <Link
                 key={href}
                 href={href}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => setOpen(false)}
                 className={cn(
                   "flex h-[38px] items-center gap-2 rounded-[8px] px-3",

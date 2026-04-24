@@ -1,3 +1,4 @@
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import {
   render,
   screen,
@@ -5,6 +6,11 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type MockLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  children: ReactNode;
+  href: string;
+};
 
 const { usePathnameMock } = vi.hoisted(() => ({
   usePathnameMock: vi.fn(() => "/settings/billing"),
@@ -26,11 +32,13 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: ({ children, href, ...props }: any) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
+  default: function MockLink({ children, href, ...props }: MockLinkProps) {
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+  },
   useLinkStatus: () => ({ pending: false }),
 }));
 

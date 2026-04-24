@@ -1,5 +1,11 @@
+import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type MockLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
+  children: ReactNode;
+  href: string;
+};
 
 const { usePathnameMock } = vi.hoisted(() => ({
   usePathnameMock: vi.fn(() => "/settings/profile"),
@@ -21,11 +27,13 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next/link", () => ({
   __esModule: true,
-  default: ({ children, href, ...props }: any) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
+  default: function MockLink({ children, href, ...props }: MockLinkProps) {
+    return (
+      <a href={href} {...props}>
+        {children}
+      </a>
+    );
+  },
   useLinkStatus: () => ({ pending: false }),
 }));
 
@@ -62,10 +70,10 @@ describe("SettingsSidebar", () => {
     render(<SettingsSidebar />);
 
     const billing = screen.getByRole("link", { name: /billing/i });
-    expect(billing.className).toContain("#EFEFF0");
+    expect(billing.getAttribute("aria-current")).toBe("page");
 
     const profile = screen.getByRole("link", { name: /profile/i });
-    expect(profile.className).not.toContain("#EFEFF0");
+    expect(profile.getAttribute("aria-current")).toBeNull();
   });
 
   it("treats nested paths under a nav item as active", () => {
@@ -73,6 +81,6 @@ describe("SettingsSidebar", () => {
     render(<SettingsSidebar />);
 
     const integrations = screen.getByRole("link", { name: /integrations/i });
-    expect(integrations.className).toContain("#EFEFF0");
+    expect(integrations.getAttribute("aria-current")).toBe("page");
   });
 });
