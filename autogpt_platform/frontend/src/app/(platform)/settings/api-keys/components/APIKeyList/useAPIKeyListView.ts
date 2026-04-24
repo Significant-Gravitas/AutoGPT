@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useAPIKeysList } from "../hooks/useAPIKeysList";
 import { useAPIKeySelection } from "./useAPIKeySelection";
 
 export function useAPIKeyListView() {
   const list = useAPIKeysList();
-  const allIds = list.keys.map((key) => key.id);
+  // Stabilise the id array so useAPIKeySelection's effect doesn't re-run on
+  // every parent render (the effect only cares when the set of ids changes).
+  const allIds = useMemo(() => list.keys.map((key) => key.id), [list.keys]);
   const selection = useAPIKeySelection(allIds);
   const [deleteTarget, setDeleteTarget] = useState<string[] | null>(null);
 
