@@ -42,13 +42,13 @@ def test_hardware_rate_constant_in_range():
     assert 0.0005 <= _REPLICATE_USD_PER_SEC <= 0.002
 
 
-def _make_fake_prediction(output, predict_time=None):
+def _make_fake_prediction(output, predict_time=None, status="succeeded", error=None):
     """Build a stand-in for replicate's Prediction with the attrs we touch."""
     pred = MagicMock()
     pred.output = output
-    pred.metrics = (
-        {"predict_time": predict_time} if predict_time is not None else None
-    )
+    pred.status = status
+    pred.error = error
+    pred.metrics = {"predict_time": predict_time} if predict_time is not None else None
     pred.async_wait = AsyncMock(return_value=None)
     return pred
 
@@ -115,9 +115,7 @@ async def test_run_model_emits_provider_cost_from_predict_time():
         ),
         patch.object(block, "merge_stats", side_effect=captured.append),
     ):
-        result = await block.run_model(
-            "owner/model", {}, SecretStr("fake-key")
-        )
+        result = await block.run_model("owner/model", {}, SecretStr("fake-key"))
 
     assert len(captured) == 1
     stats = captured[0]
@@ -179,5 +177,57 @@ async def test_run_model_skips_merge_when_predict_time_is_zero():
         patch.object(block, "merge_stats", side_effect=captured.append),
     ):
         await block.run_model("owner/model", {}, SecretStr("fake-key"))
+
+    assert captured == []
+
+
+@pytest.mark.asyncio
+async def test_run_model_raises_on_failed_status_and_does_not_bill():
+    """async_wait returns normally on 'failed' — without an explicit status
+    check we'd bill partial compute time AND yield 'status: succeeded' with
+    empty output. Verify we raise BEFORE merge_stats so the failed run is
+    not billed."""
+    block = ReplicateModelBlock()
+    prediction = _make_fake_prediction(
+        output=None, predict_time=2.5, status="failed", error="CUDA OOM"
+    )
+
+    client = MagicMock()
+    client.predictions.async_create = AsyncMock(return_value=prediction)
+
+    captured: list[NodeExecutionStats] = []
+    with (
+        patch(
+            "backend.blocks.replicate.replicate_block.ReplicateClient",
+            return_value=client,
+        ),
+        patch.object(block, "merge_stats", side_effect=captured.append),
+    ):
+        with pytest.raises(RuntimeError, match="CUDA OOM"):
+            await block.run_model("owner/model", {}, SecretStr("fake-key"))
+
+    assert captured == []
+
+
+@pytest.mark.asyncio
+async def test_run_model_raises_on_canceled_status_and_does_not_bill():
+    """Canceled predictions — same guarantees as failed: don't bill, surface
+    the cancellation."""
+    block = ReplicateModelBlock()
+    prediction = _make_fake_prediction(output=None, predict_time=1.0, status="canceled")
+
+    client = MagicMock()
+    client.predictions.async_create = AsyncMock(return_value=prediction)
+
+    captured: list[NodeExecutionStats] = []
+    with (
+        patch(
+            "backend.blocks.replicate.replicate_block.ReplicateClient",
+            return_value=client,
+        ),
+        patch.object(block, "merge_stats", side_effect=captured.append),
+    ):
+        with pytest.raises(RuntimeError, match="canceled"):
+            await block.run_model("owner/model", {}, SecretStr("fake-key"))
 
     assert captured == []

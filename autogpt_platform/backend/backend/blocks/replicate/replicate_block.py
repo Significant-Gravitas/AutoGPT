@@ -179,8 +179,16 @@ class ReplicateModelBlock(Block):
 
         await prediction.async_wait()
 
-        # Bill by real compute time so long-running models (video gen,
-        # heavy LLMs) don't slip past a flat fee.
+        # async_wait returns normally on "failed"/"canceled" — only async_run
+        # raises. Without this check we'd bill partial compute time on a
+        # failed run and silently yield empty output.
+        if prediction.status == "failed":
+            raise RuntimeError(
+                f"Replicate prediction failed: {prediction.error or 'unknown error'}"
+            )
+        if prediction.status == "canceled":
+            raise RuntimeError("Replicate prediction was canceled")
+
         if prediction.metrics and prediction.metrics.get("predict_time"):
             predict_time = float(prediction.metrics["predict_time"])
             self.merge_stats(
@@ -190,4 +198,6 @@ class ReplicateModelBlock(Block):
                 )
             )
 
+        if prediction.output is None:
+            raise RuntimeError("Replicate prediction returned no output")
         return extract_result(prediction.output)
