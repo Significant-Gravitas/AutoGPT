@@ -357,8 +357,7 @@ async def publish_webhook_event(event: WebhookEvent):
 async def wait_for_webhook_event(
     webhook_id: str, event_type: str, timeout: Optional[float] = None
 ) -> WebhookEvent | None:
-    # Sharded pub/sub needs a concrete channel; the only caller already
-    # passes a specific event_type ("ping"), so drop the wildcard fallback.
+    # Concrete event_type required: sharded pub/sub has no pattern support.
     return await _webhook_event_bus.wait_for_event(
         f"{webhook_id}/{event_type}", timeout
     )

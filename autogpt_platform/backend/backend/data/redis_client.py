@@ -122,10 +122,8 @@ async def get_redis_async() -> AsyncRedisClient:
     return client
 
 
-# Sharded pub/sub routes every channel to exactly one shard (the keyslot
-# owner). Subscribers must open a plain (Async)Redis connection pinned to
-# that specific shard; redis-py 6.x has no cluster pubsub wrapper, so we
-# resolve the owning node manually.
+# Sharded pub/sub only delivers on the keyslot-owning shard; subscribers
+# need a plain (Async)Redis connection pinned to that node.
 
 
 def resolve_shard_for_channel(channel: str) -> tuple[str, int]:

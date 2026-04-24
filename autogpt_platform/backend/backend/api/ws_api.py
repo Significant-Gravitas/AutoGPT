@@ -31,9 +31,7 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Per-connection SSUBSCRIBE needs the Prisma client to resolve
-    # graph_id from graph_exec_id; old WS server only forwarded events
-    # so it never connected. Connect on startup, disconnect on shutdown.
+    # Prisma is needed to resolve graph_id from graph_exec_id on subscribe.
     await db.connect()
     try:
         yield

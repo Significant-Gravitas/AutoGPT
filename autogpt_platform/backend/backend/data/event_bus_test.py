@@ -1,8 +1,4 @@
-"""Tests for event_bus publish/listen paths.
-
-Focus on SPUBLISH routing, dual-publish during migration, and the
-wildcard guard that replaces the old PSUBSCRIBE-based wildcard.
-"""
+"""Tests for event_bus publish/listen paths."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -104,8 +100,7 @@ def test_assert_no_wildcard_guard():
     _assert_no_wildcard("execution_event/user-1/graph-1/exec-1")
 
 
-# Live SSUBSCRIBE round-trip against the 3-shard compose cluster. Skip
-# cleanly when no cluster is reachable so CI without docker doesn't flap.
+# Live SSUBSCRIBE round-trip; skipped when no cluster is reachable.
 
 
 def _has_live_cluster() -> bool:
@@ -148,8 +143,7 @@ async def test_ssubscribe_end_to_end_async():
             return
 
     task = asyncio.create_task(consume())
-    # Let SSUBSCRIBE settle before publishing; ssubscribe is sent before
-    # Redis can ack, and publishes racing the subscribe are dropped.
+    # Let SSUBSCRIBE settle; races drop the publish otherwise.
     await asyncio.sleep(0.3)
     try:
         with patch("backend.data.event_bus.DUAL_PUBLISH", False):

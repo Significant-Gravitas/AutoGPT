@@ -30,10 +30,7 @@ config = Settings().config
 M = TypeVar("M", bound=BaseModel)
 
 
-# Dual-publish (classic PUBLISH + SPUBLISH) during the rolling window so
-# old-image pods reading via PSUBSCRIBE still see every event. Flip to
-# false once every pod is on the new image; remove the classic path in
-# the cleanup PR.
+# Dual-publish keeps old-image PSUBSCRIBE listeners alive during rollout.
 DUAL_PUBLISH = os.getenv("EVENT_BUS_DUAL_PUBLISH", "true").lower() in (
     "1",
     "true",
@@ -103,9 +100,7 @@ class BaseRedisEventBus(Generic[M], ABC):
         return message, channel_name
 
     def _deserialize_message(self, msg: Any, channel_key: str) -> M | None:
-        # ``smessage`` is the sharded pub/sub delivery type.  Accept both
-        # sharded and classic message types so the cleanup PR can drop the
-        # dual-publish without touching this code path.
+        # Accept sharded (smessage) and classic (message/pmessage) deliveries.
         if msg["type"] not in ("smessage", "message", "pmessage"):
             return None
         try:
@@ -137,14 +132,10 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
             cluster = redis.get_redis()
-            # SPUBLISH routes to the single keyslot-owning shard, avoiding
-            # the cluster-bus broadcast that classic PUBLISH triggers.
+            # SPUBLISH targets only the keyslot-owning shard; classic PUBLISH
+            # broadcasts via cluster bus for old-image PSUBSCRIBE listeners.
             cluster.execute_command("SPUBLISH", full_channel_name, message)
             if DUAL_PUBLISH:
-                # Classic PUBLISH for the rolling-deploy compatibility window.
-                # Routed via the cluster client's execute_command — the
-                # cluster bus gossips the message to every shard so PSUBSCRIBE
-                # listeners on old-image pods still receive it.
                 cluster.execute_command("PUBLISH", full_channel_name, message)
         except Exception:
             logger.exception(
@@ -156,8 +147,6 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
         _assert_no_wildcard(channel_key)
         full_channel_name = self._build_channel_name(channel_key)
 
-        # Sync cluster pubsub natively supports ssubscribe/smessage in
-        # redis-py 6.x.
         cluster = redis.get_redis()
         pubsub: PubSub = cluster.pubsub()
         try:
@@ -215,14 +204,10 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
             cluster = await redis.get_redis_async()
-            # redis-py 6.x async cluster has no spublish() wrapper; route
-            # via execute_command so the cluster client still handles MOVED.
+            # redis-py 6.x async cluster lacks spublish(); execute_command
+            # still handles MOVED. Classic PUBLISH covers rolling-deploy.
             await cluster.execute_command("SPUBLISH", full_channel_name, message)
             if DUAL_PUBLISH:
-                # Classic PUBLISH for the rolling-deploy compatibility window.
-                # Routed via the cluster client's execute_command — the
-                # cluster bus gossips the message to every shard so PSUBSCRIBE
-                # listeners on old-image pods still receive it.
                 await cluster.execute_command("PUBLISH", full_channel_name, message)
         except Exception:
             logger.exception(
@@ -234,20 +219,16 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         _assert_no_wildcard(channel_key)
         full_channel_name = self._build_channel_name(channel_key)
 
-        # Pin a plain AsyncRedis to the shard that owns the keyslot; sharded
-        # pub/sub is only delivered on that shard. redis-py 6.x async PubSub
-        # has no ssubscribe wrapper, so we send the raw command and flip
-        # ``channels`` ourselves so ``listen()`` sees a subscribed client.
+        # Sharded pub/sub only delivers on the keyslot-owning shard, so pin
+        # a plain AsyncRedis to that node.
         client = await redis.connect_sharded_pubsub_async(full_channel_name)
         self._pubsub_client = client
         pubsub = client.pubsub()
         self._pubsub = pubsub
         try:
             await pubsub.execute_command("SSUBSCRIBE", full_channel_name)
-            # redis-py 6.x async PubSub.subscribed checks the ``channels``
-            # dict; subscribe()/psubscribe() populate it, but our raw
-            # SSUBSCRIBE does not. Flip it manually so ``listen()`` treats
-            # the client as subscribed and keeps reading.
+            # redis-py 6.x async PubSub.listen() exits when ``channels`` is
+            # empty; raw SSUBSCRIBE doesn't populate it, so do it ourselves.
             pubsub.channels[full_channel_name] = None  # type: ignore[index]
             async for message in pubsub.listen():
                 if event := self._deserialize_message(message, channel_key):

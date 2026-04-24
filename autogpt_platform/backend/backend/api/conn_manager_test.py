@@ -38,8 +38,7 @@ def _meta(graph_id: str = "test_graph") -> MagicMock:
 async def test_connect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    # connect_socket kicks off a per-user notification SSUBSCRIBE; stub it
-    # out so the test never touches Redis.
+    # Stub the SSUBSCRIBE the test has no Redis for.
     with patch.object(
         connection_manager, "_start_notification_subscription", AsyncMock()
     ):

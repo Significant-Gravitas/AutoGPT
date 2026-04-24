@@ -34,11 +34,6 @@ class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):
         await self.publish_event(event, event.user_id)
 
     async def listen(self, user_id: str) -> AsyncGenerator[NotificationEvent, None]:
-        """Stream notifications for a specific user.
-
-        ``user_id`` must be concrete — sharded pub/sub has no pattern
-        support, and the websocket server now issues one SSUBSCRIBE per
-        connected user rather than relying on a global ``listen("*")``.
-        """
+        """Stream notifications for a specific user."""
         async for event in self.listen_events(user_id):
             yield event

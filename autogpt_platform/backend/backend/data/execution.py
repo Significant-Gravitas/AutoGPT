@@ -1337,10 +1337,8 @@ ExecutionEvent = Annotated[
 ]
 
 
-# Hash-tagged channel keys: Redis Cluster routes every channel with the
-# same ``{tag}`` to the same keyslot, so the per-exec channel and the
-# per-graph "all" channel land on the same shard. A single SSUBSCRIBE
-# connection can watch both without reconnecting to a second node.
+# Hash-tagged channels keep per-exec and per-graph keys on the same shard,
+# so one SSUBSCRIBE connection can watch both.
 
 
 def _graph_scope_tag(user_id: str, graph_id: str) -> str:
@@ -1392,21 +1390,14 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
             event.input_data = truncate(event.input_data, limit)
             event.output_data = truncate(event.output_data, limit)
 
-        # Fan-out is the publisher's job: single-exec watchers listen to
-        # the exec channel, whole-graph watchers listen to the graph-wide
-        # channel. Hash tags land both on the same shard.
+        # Publisher fans out: per-exec and per-graph watchers.
         super().publish_event(event, _exec_channel(user_id, graph_id, graph_exec_id))
         super().publish_event(event, _graph_all_channel(user_id, graph_id))
 
     def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> Generator[ExecutionEvent, None, None]:
-        """Stream events for a specific graph execution.
-
-        All three IDs must be concrete — sharded pub/sub has no pattern
-        support, and broad ``listen("*")`` fan-in is now the websocket
-        server's per-connection responsibility.
-        """
+        """Stream events for a specific graph execution."""
         for event in self.listen_events(
             _exec_channel(user_id, graph_id, graph_exec_id)
         ):
@@ -1471,7 +1462,7 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     async def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        """Stream events for a specific graph execution (all three IDs required)."""
+        """Stream events for a specific graph execution."""
         async for event in self.listen_events(
             _exec_channel(user_id, graph_id, graph_exec_id)
         ):

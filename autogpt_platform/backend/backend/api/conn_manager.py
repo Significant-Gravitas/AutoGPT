@@ -39,13 +39,7 @@ def _notification_bus_channel(user_id: str) -> str:
 
 
 class _Subscription:
-    """One SSUBSCRIBE lifecycle bound to a WebSocket.
-
-    Owns a shard-pinned ``Redis`` client because sharded pub/sub only
-    delivers on the shard that owns the channel's keyslot. A subscribed
-    connection cannot share a socket with regular commands, so each
-    subscription gets its own connection.
-    """
+    """One SSUBSCRIBE lifecycle bound to a WebSocket, pinned to the owning shard."""
 
     def __init__(self, full_channel: str) -> None:
         _assert_no_wildcard(full_channel)
@@ -58,8 +52,8 @@ class _Subscription:
         self._client = await redis.connect_sharded_pubsub_async(self.full_channel)
         self._pubsub = self._client.pubsub()
         await self._pubsub.execute_command("SSUBSCRIBE", self.full_channel)
-        # redis-py 6.x async has no ssubscribe wrapper; pubsub.listen()
-        # exits as soon as ``channels`` is empty, so populate it ourselves.
+        # redis-py 6.x async PubSub.listen() exits when ``channels`` is
+        # empty; raw SSUBSCRIBE doesn't populate it, so do it ourselves.
         self._pubsub.channels[self.full_channel] = None  # type: ignore[index]
         self._task = asyncio.create_task(self._pump(on_message))
 
@@ -132,8 +126,7 @@ class ConnectionManager:
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
         self.active_connections.discard(websocket)
-        # Tear down every per-connection SSUBSCRIBE before dropping
-        # bookkeeping so Redis doesn't leak sockets on client hangups.
+        # Stop SSUBSCRIBE pumps before dropping bookkeeping to avoid leaks.
         subs = self._ws_subs.pop(websocket, {})
         for sub in subs.values():
             await sub.stop()
@@ -153,8 +146,7 @@ class ConnectionManager:
     async def subscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str:
-        # Sharded channels need the ``graph_id`` (part of the hash tag).
-        # Resolve it via a single DB lookup the first time we subscribe.
+        # Hash-tagged channel needs graph_id; resolve once per subscribe.
         meta = await get_graph_execution_meta(user_id, graph_exec_id)
         if meta is None:
             raise ValueError(
@@ -222,9 +214,8 @@ class ConnectionManager:
     ) -> None:
         if raw_payload is None:
             return
-        # ``raw_payload`` is the serialized ``_EventPayloadWrapper[ExecutionEvent]``
-        # emitted by AsyncRedisExecutionEventBus. Unwrap it and re-wrap as a
-        # WS message so the client sees the same shape as before.
+        # Payload is a serialized ``_EventPayloadWrapper[ExecutionEvent]``;
+        # unwrap then re-wrap as a WS message.
         try:
             wrapper = (
                 raw_payload.decode()
@@ -258,10 +249,7 @@ class ConnectionManager:
     async def _start_notification_subscription(
         self, websocket: WebSocket, *, user_id: str
     ) -> None:
-        # Each connected user gets a single SSUBSCRIBE on their notification
-        # channel; fan-out to multiple tabs/devices happens in-process via
-        # ``user_connections`` because notifications are user-scoped rather
-        # than connection-scoped.
+        # One SSUBSCRIBE per user; in-process fan-out to multiple tabs.
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
@@ -286,9 +274,7 @@ class ConnectionManager:
                 if isinstance(raw_payload, (bytes, bytearray))
                 else raw_payload
             )
-            # Messages on the wire are wrapped by ``_EventPayloadWrapper``
-            # ({"payload": {...NotificationEvent...}}); strip one level
-            # before validating.
+            # Strip ``_EventPayloadWrapper`` envelope before validating.
             parsed = _json.loads(wrapper_json)
             inner = parsed.get("payload") if isinstance(parsed, dict) else None
             if not isinstance(inner, dict):
@@ -301,8 +287,7 @@ class ConnectionManager:
                 exc_info=True,
             )
             return
-        # Publisher already scopes to ``user_id``; skip any cross-user
-        # leakage just in case.
+        # Defense in depth: reject cross-user payloads.
         if event.user_id != user_id:
             return
         await self.send_notification(user_id=user_id, payload=event.payload)
@@ -310,12 +295,7 @@ class ConnectionManager:
     async def send_execution_update(
         self, exec_event: GraphExecutionEvent | NodeExecutionEvent
     ) -> int:
-        """Route an in-process event (tests/back-compat) to local subscribers.
-
-        Production delivery goes through the per-connection SSUBSCRIBE path
-        in ``_open_subscription``; this helper lets unit tests exercise the
-        app-level fan-out without a live Redis cluster.
-        """
+        """Route an in-process event to local subscribers (test/back-compat path)."""
         graph_exec_id = (
             exec_event.id
             if isinstance(exec_event, GraphExecutionEvent)
