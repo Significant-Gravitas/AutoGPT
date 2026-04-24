@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import WebSocket
@@ -9,6 +9,7 @@ from backend.api.model import NotificationPayload, WSMessage, WSMethod
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEvent,
+    GraphExecutionMeta,
     NodeExecutionEvent,
 )
 
@@ -25,27 +26,41 @@ def mock_websocket() -> AsyncMock:
     return websocket
 
 
+def _meta(graph_id: str = "test_graph") -> MagicMock:
+    meta = MagicMock(spec=GraphExecutionMeta)
+    meta.id = "graph-exec-1"
+    meta.user_id = "user-1"
+    meta.graph_id = graph_id
+    return meta
+
+
 @pytest.mark.asyncio
 async def test_connect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.connect_socket(mock_websocket, user_id="user-1")
+    # connect_socket kicks off a per-user notification SSUBSCRIBE; stub it
+    # out so the test never touches Redis.
+    with patch.object(
+        connection_manager, "_start_notification_subscription", AsyncMock()
+    ):
+        await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     assert mock_websocket in connection_manager.active_connections
     assert mock_websocket in connection_manager.user_connections["user-1"]
     mock_websocket.accept.assert_called_once()
 
 
-def test_disconnect(
+@pytest.mark.asyncio
+async def test_disconnect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     connection_manager.active_connections.add(mock_websocket)
     connection_manager.subscriptions["test_channel_42"] = {mock_websocket}
     connection_manager.user_connections["user-1"] = {mock_websocket}
 
-    connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+    await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
 
     assert mock_websocket not in connection_manager.active_connections
-    assert mock_websocket not in connection_manager.subscriptions["test_channel_42"]
+    assert "test_channel_42" not in connection_manager.subscriptions
     assert "user-1" not in connection_manager.user_connections
 
 
@@ -53,15 +68,26 @@ def test_disconnect(
 async def test_subscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.subscribe_graph_exec(
-        user_id="user-1",
-        graph_exec_id="graph-exec-1",
-        websocket=mock_websocket,
-    )
+    fake_sub = MagicMock()
+    fake_sub.start = AsyncMock()
+    fake_sub.stop = AsyncMock()
+    with (
+        patch(
+            "backend.api.conn_manager.get_graph_execution_meta",
+            AsyncMock(return_value=_meta()),
+        ),
+        patch("backend.api.conn_manager._Subscription", return_value=fake_sub),
+    ):
+        await connection_manager.subscribe_graph_exec(
+            user_id="user-1",
+            graph_exec_id="graph-exec-1",
+            websocket=mock_websocket,
+        )
     assert (
         mock_websocket
         in connection_manager.subscriptions["user-1|graph_exec#graph-exec-1"]
     )
+    fake_sub.start.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -69,7 +95,10 @@ async def test_unsubscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     channel_key = "user-1|graph_exec#graph-exec-1"
+    fake_sub = MagicMock()
+    fake_sub.stop = AsyncMock()
     connection_manager.subscriptions[channel_key] = {mock_websocket}
+    connection_manager._ws_subs[mock_websocket] = {channel_key: fake_sub}
 
     await connection_manager.unsubscribe_graph_exec(
         user_id="user-1",
@@ -77,7 +106,8 @@ async def test_unsubscribe(
         websocket=mock_websocket,
     )
 
-    assert "test_graph" not in connection_manager.subscriptions
+    assert channel_key not in connection_manager.subscriptions
+    fake_sub.stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio

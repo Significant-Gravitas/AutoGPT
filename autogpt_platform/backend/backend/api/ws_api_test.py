@@ -44,9 +44,12 @@ def test_websocket_server_uses_cors_helper(mocker) -> None:
         "backend.api.ws_api.build_cors_params", return_value=cors_params
     )
 
-    with override_config(
-        settings, "backend_cors_allow_origins", cors_params["allow_origins"]
-    ), override_config(settings, "app_env", AppEnvironment.LOCAL):
+    with (
+        override_config(
+            settings, "backend_cors_allow_origins", cors_params["allow_origins"]
+        ),
+        override_config(settings, "app_env", AppEnvironment.LOCAL),
+    ):
         WebsocketServer().run()
 
     build_cors.assert_called_once_with(
@@ -65,9 +68,12 @@ def test_websocket_server_uses_cors_helper(mocker) -> None:
 def test_websocket_server_blocks_localhost_in_production(mocker) -> None:
     mocker.patch("backend.api.ws_api.uvicorn.run")
 
-    with override_config(
-        settings, "backend_cors_allow_origins", ["http://localhost:3000"]
-    ), override_config(settings, "app_env", AppEnvironment.PRODUCTION):
+    with (
+        override_config(
+            settings, "backend_cors_allow_origins", ["http://localhost:3000"]
+        ),
+        override_config(settings, "app_env", AppEnvironment.PRODUCTION),
+    ):
         with pytest.raises(ValueError):
             WebsocketServer().run()
 
@@ -290,7 +296,7 @@ async def test_handle_unsubscribe_missing_data(
         message=message,
     )
 
-    mock_manager._unsubscribe.assert_not_called()
+    mock_manager.unsubscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]
