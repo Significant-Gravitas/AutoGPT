@@ -551,9 +551,13 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             cost_amount=150,
         )
     ],
+    # D-ID: $5.90/min of generated video. Median 10-sec clip ≈ $0.98 →
+    # 148 cr at 1.5x. 100 cr flat is a conservative middle; long clips
+    # still under-bill, short clips over-bill modestly. Revisit if the
+    # block starts surfacing per-call duration from D-ID's response.
     CreateTalkingAvatarVideoBlock: [
         BlockCost(
-            cost_amount=15,
+            cost_amount=100,
             cost_filter={
                 "credentials": {
                     "id": did_credentials.id,
@@ -563,13 +567,11 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # Jina Reader Search: $0.01/query on the paid tier. Block emits
-    # merge_stats(provider_cost=0.01, cost_usd) so the COST_USD resolver
-    # bills 1 platform credit per call AND the platform cost telemetry
-    # captures real USD spend (RUN wouldn't populate costMicrodollars).
+    # Jina Reader Search: $0.01/query on the paid tier. 150 cr/$ matches
+    # the 1.5x margin baseline used across every other COST_USD block.
     SearchTheWebBlock: [
         BlockCost(
-            cost_amount=100,
+            cost_amount=150,
             cost_type=BlockCostType.COST_USD,
             cost_filter={
                 "credentials": {
@@ -593,9 +595,10 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
+    # Ideogram V2/default = $0.08/image; V3 Quality = $0.09/image.
     IdeogramModelBlock: [
         BlockCost(
-            cost_amount=16,
+            cost_amount=12,
             cost_filter={
                 "credentials": {
                     "id": ideogram_credentials.id,
@@ -605,7 +608,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=18,
+            cost_amount=14,
             cost_filter={
                 "ideogram_model_name": "V_3",
                 "credentials": {
@@ -689,7 +692,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=20,
+            cost_amount=12,  # Flux Kontext Max: ~$0.08/image @ 1.5x margin
             cost_filter={
                 "model": FluxKontextModelName.FLUX_KONTEXT_MAX,
                 "credentials": {
@@ -796,7 +799,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     ],
     GetLinkedinProfilePictureBlock: [
         BlockCost(
-            cost_amount=3,
+            cost_amount=1,
             cost_filter={
                 "credentials": {
                     "id": enrichlayer_credentials.id,
@@ -910,7 +913,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=14,  # Nano Banana Pro: $0.14 per image at 2K
+            cost_amount=21,  # Nano Banana Pro: $0.14/image at 2K @ 1.5x margin
             cost_filter={
                 "model": ImageGenModel.NANO_BANANA_PRO,
                 "credentials": {
@@ -921,7 +924,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
+            cost_amount=21,  # Nano Banana 2: same pricing tier as Pro
             cost_filter={
                 "model": ImageGenModel.NANO_BANANA_2,
                 "credentials": {
@@ -945,7 +948,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=14,  # Nano Banana Pro: $0.14 per image at 2K
+            cost_amount=21,  # Nano Banana Pro: $0.14/image at 2K @ 1.5x margin
             cost_filter={
                 "model": GeminiImageModel.NANO_BANANA_PRO,
                 "credentials": {
@@ -956,7 +959,7 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         ),
         BlockCost(
-            cost_amount=14,  # Nano Banana 2: same pricing tier as Pro
+            cost_amount=21,  # Nano Banana 2: same pricing tier as Pro
             cost_filter={
                 "model": GeminiImageModel.NANO_BANANA_2,
                 "credentials": {
@@ -1157,13 +1160,12 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # ZeroBounce: $16 / 2K validations = $0.008 per email. One email per call.
-    # Block emits merge_stats(provider_cost=0.008, cost_usd) so the platform
-    # cost telemetry records real USD; resolver bills 2 credits per call
-    # (ceil(0.008 * 250)).
+    # ZeroBounce: ~$0.008-$0.02/validation depending on tier. 150 cr/$
+    # normalizes the margin to the 1.5x baseline used across other
+    # COST_USD blocks (was 250 cr/$ = 2.5x margin).
     ValidateEmailsBlock: [
         BlockCost(
-            cost_amount=250,
+            cost_amount=150,
             cost_type=BlockCostType.COST_USD,
             cost_filter={
                 "credentials": {
@@ -1222,12 +1224,13 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # FAL video generation: $0.001–$0.02 per output second. Charge 3 credits
-    # per walltime second (~$0.03) — covers the median tier with margin and
-    # scales fairly across short clips vs long renders.
+    # FAL video generation: Veo/Seedance tier $0.25-0.30/s, Lite tier
+    # ~$0.05-0.10/s. 15 cr/s (~$0.15/s) covers the Lite tier with 1.5x
+    # margin; higher tiers still slightly under-bill until the block
+    # surfaces per-call provider_cost and we migrate to COST_USD.
     AIVideoGeneratorBlock: [
         BlockCost(
-            cost_amount=3,
+            cost_amount=15,
             cost_type=BlockCostType.SECOND,
             cost_filter={
                 "credentials": {
