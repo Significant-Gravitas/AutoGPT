@@ -35,11 +35,13 @@ SHUTDOWN_ERROR_MESSAGE = (
     "Copilot executor shut down before this turn finished. Please retry."
 )
 
-# How long to wait before logging again that a cancelled turn is still draining.
-# The worker must not return while the async turn is still alive; returning early
-# would let the manager ACK/NACK the message and release the session lock while
-# the cancelled coroutine can still write to the stream.
+# Max time execute() blocks after requesting async turn cancellation. The worker
+# waits for normal cleanup so late stream writes do not race the manager, but it
+# must still escape to the sync fail-close safety net if cleanup wedges.
 _CANCEL_GRACE_SECONDS = 5.0
+
+# How long to wait before logging again that a cancelled turn is still draining.
+_CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
 
 # Max time the sync safety net itself spends on a single Redis CAS. Without
 # this bound the whole point of ``sync_fail_close_session`` is defeated —
@@ -408,16 +410,28 @@ class CoPilotProcessor:
             if cancel_started_at is None or last_cancel_log_at is None:
                 return
             now = time.monotonic()
-            if now - last_cancel_log_at < _CANCEL_GRACE_SECONDS:
+            if now - last_cancel_log_at < _CANCEL_DRAIN_LOG_INTERVAL_SECONDS:
                 return
             elapsed = now - cancel_started_at
             log.warning(f"Waiting for cancelled turn to drain ({elapsed:.1f}s elapsed)")
             last_cancel_log_at = now
 
+        def cancel_drain_timed_out() -> bool:
+            if cancel_started_at is None:
+                return False
+            elapsed = time.monotonic() - cancel_started_at
+            if elapsed < _CANCEL_GRACE_SECONDS:
+                return False
+            log.warning(
+                f"Cancelled turn did not drain within {_CANCEL_GRACE_SECONDS:.1f}s; "
+                "falling through to sync fail-close"
+            )
+            future.cancel()
+            return True
+
         # Wait for completion, checking cancel periodically. A cancellation
-        # request must not make this worker return until the async task has
-        # actually stopped; otherwise the manager would release the per-session
-        # lock while the coroutine can still publish late stream events.
+        # request waits for normal async cleanup, but remains bounded so the
+        # worker does not refresh the per-session lock forever on a wedged turn.
         while True:
             try:
                 future.result(timeout=1.0)
@@ -430,6 +444,8 @@ class CoPilotProcessor:
                 if cancel.is_set() and not cancel_requested:
                     request_cancel()
                 elif cancel_requested and cancel_started_at is not None:
+                    if cancel_drain_timed_out():
+                        return
                     log_cancel_wait()
                 cluster_lock.refresh()
 
