@@ -13,6 +13,11 @@ from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
 from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.claude_code import ClaudeCodeBlock
+from backend.blocks.code_executor import (
+    ExecuteCodeBlock,
+    ExecuteCodeStepBlock,
+    InstantiateCodeSandboxBlock,
+)
 from backend.blocks.codex import CodeGenerationBlock, CodexModel
 from backend.blocks.enrichlayer.linkedin import (
     GetLinkedinProfileBlock,
@@ -20,8 +25,10 @@ from backend.blocks.enrichlayer.linkedin import (
     LinkedinPersonLookupBlock,
     LinkedinRoleLookupBlock,
 )
+from backend.blocks.fal.ai_video_generator import AIVideoGeneratorBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
+from backend.blocks.jina.chunking import JinaChunkingBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.fact_checker import FactCheckerBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -54,6 +61,7 @@ from backend.blocks.smartlead.campaign import (
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.blocks.video.narration import VideoNarrationBlock
+from backend.blocks.youtube import TranscribeYoutubeVideoBlock
 from backend.blocks.zerobounce.validate_emails import ValidateEmailsBlock
 from backend.integrations.credentials_store import (
     aiml_api_credentials,
@@ -63,6 +71,7 @@ from backend.integrations.credentials_store import (
     e2b_credentials,
     elevenlabs_credentials,
     enrichlayer_credentials,
+    fal_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
@@ -77,6 +86,7 @@ from backend.integrations.credentials_store import (
     smartlead_credentials,
     unreal_credentials,
     v0_credentials,
+    webshare_proxy_credentials,
     zerobounce_credentials,
 )
 
@@ -170,6 +180,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GROK_4_20_MULTI_AGENT: 5,
     LlmModel.GROK_CODE_FAST_1: 1,
     LlmModel.KIMI_K2: 1,
+    LlmModel.KIMI_K2_0905: 1,
+    LlmModel.KIMI_K2_5: 1,
+    LlmModel.KIMI_K2_6: 2,
+    LlmModel.KIMI_K2_THINKING: 2,
     LlmModel.QWEN3_235B_A22B_THINKING: 1,
     LlmModel.QWEN3_CODER: 9,
     # Z.ai (Zhipu) models
@@ -952,12 +966,9 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # ClaudeCodeBlock runs an E2B sandbox (~$0.00003/sec compute) AND
-    # executes Claude Sonnet inside it. Real session cost is dominated by
-    # the LLM and varies $0.50–$2 per typical run. Flat 100 credits ($1.00)
-    # is a conservative-but-fair estimate; revisit once we expose the
-    # x-total-cost header from the in-sandbox Claude calls back to
-    # NodeExecutionStats.provider_cost.
+    # ClaudeCodeBlock runs an E2B sandbox AND executes Claude Sonnet inside it.
+    # Real cost $0.50-$2/run; flat 100 credits is conservative until we pipe
+    # x-total-cost from the in-sandbox Claude calls into provider_cost.
     ClaudeCodeBlock: [
         BlockCost(
             cost_amount=100,
@@ -966,6 +977,94 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": e2b_credentials.id,
                     "provider": e2b_credentials.provider,
                     "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # Ayrshare post blocks use the @cost(...) decorator directly on each block
+    # class (see backend/blocks/ayrshare/_cost.py). They can't be listed here
+    # because post_to_*.py imports from backend.sdk, which imports from this
+    # module — registering via decorator avoids the circular import.
+    # E2B code-execution blocks: Hobby tier ~$0.000014/vCPU-s. A typical 30s
+    # sandbox with 2 vCPU is ~$0.00084. Flat 2 credits covers the floor with
+    # margin; accurate per-second billing happens via walltime-based resolver
+    # in the dynamic-pricing follow-up.
+    ExecuteCodeBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    InstantiateCodeSandboxBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    ExecuteCodeStepBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": e2b_credentials.id,
+                    "provider": e2b_credentials.provider,
+                    "type": e2b_credentials.type,
+                }
+            },
+        )
+    ],
+    # FAL video generation: $0.001-$0.02 per output second. A 5s clip costs
+    # us ~$0.05-$0.10 in practice. 10 credits is a safe floor until walltime
+    # billing lands.
+    AIVideoGeneratorBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "credentials": {
+                    "id": fal_credentials.id,
+                    "provider": fal_credentials.provider,
+                    "type": fal_credentials.type,
+                }
+            },
+        )
+    ],
+    # Webshare is a flat monthly proxy subscription — the per-call cost to us
+    # is effectively zero, but the transcription step itself consumes compute
+    # time we haven't otherwise charged for. 1 credit is a tooling-tax floor.
+    TranscribeYoutubeVideoBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": webshare_proxy_credentials.id,
+                    "provider": webshare_proxy_credentials.provider,
+                    "type": webshare_proxy_credentials.type,
+                }
+            },
+        )
+    ],
+    # Jina chunking: $0.02/1M tokens. Flat 1 credit floor so the block is not
+    # wallet-free; embedding/search already have their own entries.
+    JinaChunkingBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": jina_credentials.id,
+                    "provider": jina_credentials.provider,
+                    "type": jina_credentials.type,
                 }
             },
         )

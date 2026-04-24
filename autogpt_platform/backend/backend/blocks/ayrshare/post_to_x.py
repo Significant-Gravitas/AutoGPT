@@ -6,11 +6,14 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToXBlock(Block):
     """Block for posting to X / Twitter with Twitter-specific options."""
 
@@ -156,7 +159,7 @@ class PostToXBlock(Block):
         if input_data.alt_text:
             for i, alt in enumerate(input_data.alt_text):
                 if len(alt) > 1000:
-                    yield "error", f"X alt text {i+1} exceeds 1,000 character limit ({len(alt)} characters)"
+                    yield "error", f"X alt text {i + 1} exceeds 1,000 character limit ({len(alt)} characters)"
                     return
 
         # Validate subtitle settings

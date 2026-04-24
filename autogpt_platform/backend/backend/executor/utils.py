@@ -331,11 +331,29 @@ async def _validate_node_input_credentials(
 
         # Find any fields of type CredentialsMetaInput
         credentials_fields = block.input_schema.get_credentials_fields()
-        if not credentials_fields:
+        auto_credentials_fields = block.input_schema.get_auto_credentials_fields()
+        if not credentials_fields and not auto_credentials_fields:
             continue
 
         # Track if any credential field is missing for this node
         has_missing_credentials = False
+
+        # Local helper: mark the node as skippable when a per-field branch
+        # decides the field is optional-and-missing. We add to
+        # `nodes_to_skip` here rather than relying on the post-loop
+        # guard — that guard only fires when the NODE-level
+        # ``is_creds_optional`` is True. For auto-credential fields the
+        # optionality is usually field-level (``field_name not in
+        # required_fields`` because the schema default is None), so
+        # deferring would let the node silently pass validation and then
+        # crash in ``_acquire_auto_credentials`` at runtime. See Cursor
+        # thread PRRT_kwDOJKSTjM58r_37. Defined once per node (not per
+        # field) to avoid redefining the closure each inner-loop
+        # iteration — see Cursor thread PRRT_kwDOJKSTjM58sEDe.
+        def _mark_optional_skip() -> None:
+            nonlocal has_missing_credentials
+            has_missing_credentials = True
+            nodes_to_skip.add(node.id)
 
         # A credential field is optional if the node metadata says so, or if
         # the block schema declares a default for the field.
@@ -415,17 +433,127 @@ async def _validate_node_input_credentials(
                 credential_errors[node.id][field_name] = CRED_ERR_INVALID_TYPE_MISMATCH
                 continue
 
-        # If node has optional credentials and any are missing, allow running without.
-        # The executor will pass credentials=None to the block's run().
+        # Validate auto-credentials (GoogleDriveFileField-based)
+        # These have _credentials_id embedded in the file field data
+        if auto_credentials_fields:
+            for _kwarg_name, info in auto_credentials_fields.items():
+                field_name = info["field_name"]
+                field_is_optional = (
+                    is_creds_optional or field_name not in required_fields
+                )
+                # Check input_default and nodes_input_masks for the field value
+                field_value = node.input_default.get(field_name)
+                if nodes_input_masks and node.id in nodes_input_masks:
+                    field_value = nodes_input_masks[node.id].get(
+                        field_name, field_value
+                    )
+
+                if field_value is None:
+                    # Sentry HIGH: an explicitly-None value (e.g. cleared by
+                    # `_reassign_ids` on fork, or nulled by a mask) means
+                    # credentials were there and are now gone. Treat as
+                    # missing so optional fields hit `nodes_to_skip` and
+                    # required fields surface a clean re-auth message —
+                    # don't silently fall through to `_acquire_auto_credentials`
+                    # which would then crash with ValueError at runtime.
+                    # NOTE: this branch only fires when the key is
+                    # explicitly `None`. If the field is absent from
+                    # `input_default` altogether (chained from upstream
+                    # via `input_links`), `.get()` also returns None — but
+                    # that path is handled at execute time by
+                    # `_acquire_auto_credentials` skipping fields not in
+                    # `input_data`. To keep this validator from over-reaching
+                    # in that case, callers set the field explicitly to
+                    # `None` only for the cleared-fork scenario.
+                    field_is_explicitly_none = field_name in node.input_default or (
+                        nodes_input_masks
+                        and node.id in nodes_input_masks
+                        and field_name in nodes_input_masks[node.id]
+                    )
+                    if not field_is_explicitly_none:
+                        continue
+                    if field_is_optional:
+                        _mark_optional_skip()
+                        continue
+                    has_missing_credentials = True
+                    credential_errors[node.id][field_name] = (
+                        f"{CRED_ERR_NOT_AVAILABLE_PREFIX} no file selected "
+                        "for this field. Please select a file via the "
+                        "picker to authenticate."
+                    )
+                    continue
+
+                if field_value and isinstance(field_value, dict):
+                    if "_credentials_id" not in field_value:
+                        # Key removed (e.g., on fork) — needs re-auth. Use the
+                        # CRED_ERR_NOT_AVAILABLE_PREFIX marker so the copilot
+                        # credential-race fallback recognises this as a
+                        # credentials gate failure.
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} authentication "
+                            "missing for the selected file. Please re-select "
+                            "the file to authenticate with your own account."
+                        )
+                        continue
+                    cred_id = field_value.get("_credentials_id")
+                    if cred_id is None:
+                        # Explicitly None means the value is being chained in
+                        # at execution time from an upstream block — skip.
+                        continue
+                    if not isinstance(cred_id, str) or not cred_id.strip():
+                        # Non-string or empty string is a corrupted state —
+                        # treat it like a missing credential so the user
+                        # re-authenticates rather than silently running with
+                        # no creds.
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][field_name] = (
+                            f"{CRED_ERR_NOT_AVAILABLE_PREFIX} credential id "
+                            "on the selected file is empty or invalid. "
+                            "Please re-select the file."
+                        )
+                        continue
+                    try:
+                        creds_store = get_integration_credentials_store()
+                        creds = await creds_store.get_creds_by_id(user_id, cred_id)
+                    except Exception as e:
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_NOT_AVAILABLE_PREFIX} {e}"
+                        continue
+                    if not creds:
+                        if field_is_optional:
+                            _mark_optional_skip()
+                            continue
+                        has_missing_credentials = True
+                        credential_errors[node.id][
+                            field_name
+                        ] = f"{CRED_ERR_UNKNOWN_PREFIX}{cred_id}"
+
+        # If node has optional credentials and any are missing, skip the
+        # node so the executor doesn't try to execute it with None creds.
+        # The per-field loops above deliberately didn't record an error for
+        # the optional case — the "will be marked for skip after loop"
+        # contract lives here.
         if (
             has_missing_credentials
             and is_creds_optional
             and node.id not in credential_errors
         ):
             logger.info(
-                f"Node #{node.id}: optional credentials not configured, "
-                "running without"
+                f"Node #{node.id}: optional credentials not configured, " "skipping"
             )
+            nodes_to_skip.add(node.id)
 
     return credential_errors, nodes_to_skip
 
@@ -446,8 +574,9 @@ def make_node_credentials_input_map(
     """
     result: dict[str, dict[str, JsonValue]] = {}
 
-    # Get aggregated credentials fields for the graph
-    graph_cred_inputs = graph.aggregate_credentials_inputs()
+    # Only map regular credentials (not auto_credentials, which are resolved
+    # at execution time from _credentials_id in file field data)
+    graph_cred_inputs = graph.regular_credentials_inputs
 
     for graph_input_name, (_, compatible_node_fields, _) in graph_cred_inputs.items():
         # Best-effort map: skip missing items

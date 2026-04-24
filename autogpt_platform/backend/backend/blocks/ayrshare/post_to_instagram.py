@@ -8,8 +8,10 @@ from backend.sdk import (
     BlockSchemaOutput,
     BlockType,
     SchemaField,
+    cost,
 )
 
+from ._cost import AYRSHARE_POST_COSTS
 from ._util import (
     BaseAyrshareInput,
     InstagramUserTag,
@@ -18,6 +20,7 @@ from ._util import (
 )
 
 
+@cost(*AYRSHARE_POST_COSTS)
 class PostToInstagramBlock(Block):
     """Block for posting to Instagram with Instagram-specific options."""
 
@@ -191,7 +194,7 @@ class PostToInstagramBlock(Block):
             # Validate alt text length
             for i, alt in enumerate(input_data.alt_text):
                 if len(alt) > 1000:
-                    yield "error", f"Alt text {i+1} exceeds 1,000 character limit ({len(alt)} characters)"
+                    yield "error", f"Alt text {i + 1} exceeds 1,000 character limit ({len(alt)} characters)"
                     return
             instagram_options["altText"] = input_data.alt_text
 

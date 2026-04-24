@@ -55,7 +55,7 @@ export function useCopilotPage() {
     setSessionId,
     hydratedMessages,
     rawSessionMessages,
-    historicalDurations,
+    historicalTurnStats,
     hasActiveStream,
     hasMoreMessages,
     oldestSequence,
@@ -88,13 +88,21 @@ export function useCopilotPage() {
     copilotModel: isModeToggleEnabled ? copilotLlmModel : undefined,
   });
 
-  const { pagedMessages, hasMore, isLoadingMore, loadMore } =
+  const { pagedMessages, pagedTurnStats, hasMore, isLoadingMore, loadMore } =
     useLoadMoreMessages({
       sessionId,
       initialOldestSequence: oldestSequence,
       initialHasMore: hasMoreMessages,
       initialPageRawMessages: rawSessionMessages,
     });
+
+  // Merge the older-pages and current-page stat maps; current-page (historical)
+  // wins on overlap since it was persisted more recently.
+  const turnStats = useMemo(() => {
+    const merged = new Map(pagedTurnStats);
+    historicalTurnStats?.forEach((v, k) => merged.set(k, v));
+    return merged;
+  }, [pagedTurnStats, historicalTurnStats]);
 
   // Ref that mirrors whether a stream turn is currently in-flight.
   // Updated synchronously on every render so it always reflects the latest
@@ -491,8 +499,8 @@ export function useCopilotPage() {
     handleDeleteClick,
     handleConfirmDelete,
     handleCancelDelete,
-    // Historical durations for persisted timer stats
-    historicalDurations,
+    // Per-message stats (duration + reasoning duration + timestamp)
+    turnStats,
     // Rate limit reset
     rateLimitMessage,
     dismissRateLimit,

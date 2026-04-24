@@ -19,6 +19,7 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -45,7 +46,7 @@ interface Props {
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  historicalDurations?: Map<string, number>;
+  turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
 }
@@ -256,7 +257,7 @@ export function ChatMessagesContainer({
   isLoadingMore,
   onLoadMore,
   onRetry,
-  historicalDurations,
+  turnStats,
   queuedMessages,
 }: Props) {
   // Hide the container for one frame when messages first load so
@@ -304,7 +305,27 @@ export function ChatMessagesContainer({
     status === "submitted" || (status === "streaming" && !hasInflight);
 
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+
+  // Anchor the live "Thinking Xs" counter to the latest server timestamp
+  // within the current turn.  Messages arrive in chronological order, so
+  // the first createdAt we hit walking backwards IS the latest one. Stop
+  // at the user-message boundary so a fresh send (where the user's just-
+  // optimistic message isn't in turnStats yet) doesn't fall back to the
+  // previous turn's assistant 30s+ in the past.
+  const liveAnchorIso = useMemo(() => {
+    if (!turnStats) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const iso = turnStats.get(messages[i].id)?.createdAt;
+      if (iso) return iso;
+      if (messages[i].role === "user") return null;
+    }
+    return null;
+  }, [messages, turnStats]);
+
+  const { elapsedSeconds } = useElapsedTimer(
+    isActivelyStreaming,
+    liveAnchorIso,
+  );
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.
@@ -441,7 +462,7 @@ export function ChatMessagesContainer({
                         ? frozenElapsedRef.current
                         : undefined
                     }
-                    durationMs={historicalDurations?.get(message.id)}
+                    stats={turnStats?.get(message.id)}
                   />
                 )}
                 {isLastAssistant && showThinking && (
@@ -452,7 +473,21 @@ export function ChatMessagesContainer({
                 )}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  {(() => {
+                    const createdAt = turnStats?.get(message.id)?.createdAt;
+                    if (!createdAt) return null;
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return null;
+                    return (
+                      <span className="text-[11px] tabular-nums text-neutral-500">
+                        {date.toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    );
+                  })()}
                   <CopyButton text={textParts.map((p) => p.text).join("\n")} />
                 </MessageActions>
               )}
