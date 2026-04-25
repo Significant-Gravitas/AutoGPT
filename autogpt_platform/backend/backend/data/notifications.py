@@ -8,7 +8,7 @@ from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
 from prisma.types import (
     NotificationEventCreateInput,
-    UserNotificationBatchCreateInput,
+    UserNotificationBatchCreateWithoutRelationsInput,
     UserNotificationBatchWhereInput,
 )
 
@@ -460,30 +460,44 @@ async def create_or_add_to_user_notification_batch(
             raise ValueError("Notification data must be provided")
 
         json_data: Json = SafeJson(notification_data.data.model_dump())
-        new_notification = NotificationEventCreateInput(
-            type=notification_type,
-            data=json_data,
+
+        # Step 1: ensure the batch row exists. ``create_many`` with
+        # ``skip_duplicates=True`` lowers to ``INSERT ... ON CONFLICT DO
+        # NOTHING`` which is race-safe across concurrent writers. (Prisma's
+        # upsert is read-then-write and collides on the unique index under
+        # heavy concurrent first-time creation.)
+        await UserNotificationBatch.prisma().create_many(
+            data=[
+                UserNotificationBatchCreateWithoutRelationsInput(
+                    userId=user_id, type=notification_type
+                )
+            ],
+            skip_duplicates=True,
         )
 
-        # Atomic upsert: the `@@unique([userId, type])` key makes this race-safe.
-        # Avoid eager-loading all Notifications — heavy batches have thousands
-        # of rows which blew Postgres statement_timeout on an exists-check.
-        resp = await UserNotificationBatch.prisma().upsert(
+        # Step 2: append the notification to the (now-guaranteed) batch.
+        # Avoid eager-loading all sibling Notifications — a heavy AGENT_RUN
+        # batch holds thousands of rows and blew Postgres statement_timeout
+        # on the exists-check this function used to do.
+        resp = await UserNotificationBatch.prisma().update(
             where={
-                "userId_type": {
-                    "userId": user_id,
-                    "type": notification_type,
-                }
+                "userId_type": {"userId": user_id, "type": notification_type}
             },
             data={
-                "create": UserNotificationBatchCreateInput(
-                    userId=user_id,
-                    type=notification_type,
-                    Notifications={"create": [new_notification]},
-                ),
-                "update": {"Notifications": {"create": [new_notification]}},
+                "Notifications": {
+                    "create": [
+                        NotificationEventCreateInput(
+                            type=notification_type, data=json_data
+                        )
+                    ]
+                }
             },
         )
+        if resp is None:
+            raise DatabaseError(
+                f"Notification batch for user {user_id} type {notification_type} "
+                "vanished between create_many and update"
+            )
         return UserNotificationBatchDTO.from_db(resp)
     except Exception as e:
         raise DatabaseError(
