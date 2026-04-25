@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from prisma.actions import UserNotificationBatchActions
 from prisma.enums import NotificationType
 from prisma.errors import UniqueViolationError
 from prisma.models import NotificationEvent, User, UserNotificationBatch
@@ -349,8 +350,6 @@ async def test_upsert_retries_on_unique_violation(
     Async gather + a shared connection pool can serialize concurrent calls
     in some test setups, so we patch the actions class to inject a unique
     violation on the first call and prove the retry actually runs."""
-    from prisma.actions import UserNotificationBatchActions
-
     user_id = f"notif-retry-{uuid4()}"
     await _create_test_user(user_id)
 
