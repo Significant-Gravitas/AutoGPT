@@ -42,42 +42,15 @@ async def test_publish_event_handles_connection_failure_gracefully():
 
 @pytest.mark.asyncio
 async def test_publish_event_spublishes_via_cluster_client():
-    """publish_event routes SPUBLISH + classic PUBLISH through the cluster client."""
+    """publish_event routes a single SPUBLISH through the cluster client."""
     bus = _BusUnderTest()
     event = SampleEvent(message="test message")
 
     mock_cluster = MagicMock()
     mock_cluster.execute_command = AsyncMock()
 
-    with (
-        patch(
-            "backend.data.event_bus.redis.get_redis_async", return_value=mock_cluster
-        ),
-        patch("backend.data.event_bus.DUAL_PUBLISH", True),
-    ):
-        await bus.publish_event(event, "test_channel")
-
-    # Both SPUBLISH and classic PUBLISH fire via the cluster client while
-    # dual-publish is on.
-    assert mock_cluster.execute_command.await_count == 2
-    commands = [call.args[0] for call in mock_cluster.execute_command.await_args_list]
-    assert commands == ["SPUBLISH", "PUBLISH"]
-
-
-@pytest.mark.asyncio
-async def test_publish_event_skips_classic_when_dual_publish_off():
-    """When dual-publish is off, only SPUBLISH runs."""
-    bus = _BusUnderTest()
-    event = SampleEvent(message="test message")
-
-    mock_cluster = MagicMock()
-    mock_cluster.execute_command = AsyncMock()
-
-    with (
-        patch(
-            "backend.data.event_bus.redis.get_redis_async", return_value=mock_cluster
-        ),
-        patch("backend.data.event_bus.DUAL_PUBLISH", False),
+    with patch(
+        "backend.data.event_bus.redis.get_redis_async", return_value=mock_cluster
     ):
         await bus.publish_event(event, "test_channel")
 
@@ -150,10 +123,7 @@ async def test_ssubscribe_end_to_end_async():
     # Let SSUBSCRIBE settle; races drop the publish otherwise.
     await asyncio.sleep(0.3)
     try:
-        with patch("backend.data.event_bus.DUAL_PUBLISH", False):
-            await publisher.publish_event(
-                SampleEvent(message="hello-ssub"), channel_key
-            )
+        await publisher.publish_event(SampleEvent(message="hello-ssub"), channel_key)
         await asyncio.wait_for(task, timeout=5.0)
     finally:
         if not task.done():
@@ -229,8 +199,7 @@ async def test_execution_bus_listen_and_listen_graph_both_deliver():
     await asyncio.sleep(0.3)
 
     try:
-        with patch("backend.data.event_bus.DUAL_PUBLISH", False):
-            await publisher.publish(event)
+        await publisher.publish(event)
         await asyncio.wait_for(asyncio.gather(t1, t2), timeout=5.0)
     finally:
         for t in (t1, t2):
@@ -311,31 +280,13 @@ class _SyncBusUnderTest(RedisEventBus[SampleEvent]):
         return "test_event_bus"
 
 
-def test_sync_publish_event_spublish_plus_dual_publish():
-    """Sync publish_event must SPUBLISH then classic PUBLISH when DUAL_PUBLISH on."""
+def test_sync_publish_event_spublish_only():
+    """Sync publish_event must issue a single SPUBLISH (no classic fallback)."""
     bus = _SyncBusUnderTest()
     cluster = MagicMock()
     cluster.execute_command = MagicMock()
 
-    with (
-        patch("backend.data.event_bus.redis.get_redis", return_value=cluster),
-        patch("backend.data.event_bus.DUAL_PUBLISH", True),
-    ):
-        bus.publish_event(SampleEvent(message="m"), "chan")
-
-    commands = [c.args[0] for c in cluster.execute_command.call_args_list]
-    assert commands == ["SPUBLISH", "PUBLISH"]
-
-
-def test_sync_publish_event_spublish_only_when_dual_off():
-    bus = _SyncBusUnderTest()
-    cluster = MagicMock()
-    cluster.execute_command = MagicMock()
-
-    with (
-        patch("backend.data.event_bus.redis.get_redis", return_value=cluster),
-        patch("backend.data.event_bus.DUAL_PUBLISH", False),
-    ):
+    with patch("backend.data.event_bus.redis.get_redis", return_value=cluster):
         bus.publish_event(SampleEvent(message="m"), "chan")
 
     cluster.execute_command.assert_called_once()

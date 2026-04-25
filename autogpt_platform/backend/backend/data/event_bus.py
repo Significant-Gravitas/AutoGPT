@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
@@ -28,14 +27,6 @@ config = Settings().config
 
 
 M = TypeVar("M", bound=BaseModel)
-
-
-# Dual-publish keeps old-image PSUBSCRIBE listeners alive during rollout.
-DUAL_PUBLISH = os.getenv("EVENT_BUS_DUAL_PUBLISH", "true").lower() in (
-    "1",
-    "true",
-    "yes",
-)
 
 
 def _assert_no_wildcard(channel_key: str) -> None:
@@ -132,11 +123,8 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
             cluster = redis.get_redis()
-            # SPUBLISH targets only the keyslot-owning shard; classic PUBLISH
-            # broadcasts via cluster bus for old-image PSUBSCRIBE listeners.
+            # SPUBLISH targets only the keyslot-owning shard.
             cluster.execute_command("SPUBLISH", full_channel_name, message)
-            if DUAL_PUBLISH:
-                cluster.execute_command("PUBLISH", full_channel_name, message)
         except Exception:
             logger.exception(
                 f"Failed to publish event to Redis channel {channel_key}. "
@@ -205,10 +193,8 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
             message, full_channel_name = self._serialize_message(event, channel_key)
             cluster = await redis.get_redis_async()
             # redis-py 6.x async cluster lacks spublish(); execute_command
-            # still handles MOVED. Classic PUBLISH covers rolling-deploy.
+            # still handles MOVED.
             await cluster.execute_command("SPUBLISH", full_channel_name, message)
-            if DUAL_PUBLISH:
-                await cluster.execute_command("PUBLISH", full_channel_name, message)
         except Exception:
             logger.exception(
                 f"Failed to publish event to Redis channel {channel_key}. "

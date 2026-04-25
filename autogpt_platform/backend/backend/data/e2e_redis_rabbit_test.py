@@ -24,8 +24,6 @@ What's covered (mapped to the original PR brief):
 7. Idle WS connection 60s: covers the pump-crash bug from 23a332b7d.
 8. Graph-execution queue durability: publish to the quorum queue +
    consume → message survives.
-10. Dual-publish (rolling deploy): publishing via SPUBLISH+PUBLISH lands
-    on both sharded and classic listeners.
 
 Scenario 9 (force-restart of a shard mid-stream) is covered by the
 sibling ``e2e_redis_restart_test.py`` against an isolated docker
@@ -546,75 +544,3 @@ async def test_graph_execution_queue_uses_quorum_via_real_broker() -> None:
         assert q.name == GRAPH_EXECUTION_QUEUE_NAME
     finally:
         await client.disconnect()
-
-
-# ---------- Scenario 10: dual-publish (SPUBLISH + PUBLISH) rolling deploy ----------
-
-
-@pytest.mark.asyncio
-@cluster_only
-async def test_dual_publish_runs_both_spublish_and_publish() -> None:
-    """Dual-publish keeps old-image PSUBSCRIBE listeners alive during a
-    rolling deploy: AsyncRedisEventBus.publish_event must issue both
-    SPUBLISH (sharded, new) and PUBLISH (classic, old) when
-    ``DUAL_PUBLISH`` is on. We assert both commands round-trip without
-    raising MOVED/ASK or routing errors and that the SPUBLISH side reaches
-    a real sharded listener."""
-    redis_client._async_clients.clear()
-    user_id = f"u-dual-{uuid4().hex[:8]}"
-    graph_id = f"g-{uuid4().hex[:8]}"
-    gex_id = f"x-{uuid4().hex[:8]}"
-    full_channel = f"execution_event/{_exec_channel(user_id, graph_id, gex_id)}"
-
-    # Sharded listener (new image): SSUBSCRIBE on the slot owner.
-    sharded_client = await redis_client.connect_sharded_pubsub_async(full_channel)
-    sharded_ps = sharded_client.pubsub()
-    await sharded_ps.execute_command("SSUBSCRIBE", full_channel)
-    sharded_ps.channels[full_channel] = None  # type: ignore[index]
-
-    sharded_received: list[str] = []
-
-    async def _drain_sharded() -> None:
-        async for msg in sharded_ps.listen():
-            if msg.get("type") == "smessage":
-                sharded_received.append(msg["data"])
-                return
-
-    sharded_task = asyncio.create_task(_drain_sharded())
-    await asyncio.sleep(0.3)
-
-    try:
-        # Async bus → SPUBLISH + (DUAL_PUBLISH=on) PUBLISH. Both commands
-        # must succeed; the cluster client routes PUBLISH via cluster bus.
-        bus = AsyncRedisExecutionEventBus()
-        await bus.publish_event(
-            _make_node_event(
-                user_id=user_id, graph_id=graph_id, gex_id=gex_id, marker="dual"
-            ),
-            _exec_channel(user_id, graph_id, gex_id),
-        )
-
-        # Sharded listener must receive the SPUBLISH side.
-        await asyncio.wait_for(sharded_task, timeout=5.0)
-        assert len(sharded_received) == 1
-        assert "dual" in sharded_received[0]
-
-        # And the classic PUBLISH command must have completed without
-        # raising — we exercise that by counting subscribers on the
-        # underlying cluster, which would 0 with a routing failure.
-        cluster = await redis_client.get_redis_async()
-        # PUBLISH with a noop payload — must succeed (no subs is fine).
-        n_subs = await cluster.execute_command(
-            "PUBLISH", full_channel, "post-dual-probe"
-        )
-        assert isinstance(n_subs, int)
-    finally:
-        if not sharded_task.done():
-            sharded_task.cancel()
-        try:
-            await sharded_ps.execute_command("SUNSUBSCRIBE", full_channel)
-        except Exception:
-            pass
-        await sharded_ps.aclose()
-        await sharded_client.aclose()
-        await redis_client.disconnect_async()

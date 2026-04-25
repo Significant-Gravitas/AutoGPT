@@ -165,10 +165,7 @@ async def test_async_publish_truncates_oversized_payload(monkeypatch):
 
     cluster = MagicMock()
     cluster.execute_command = AsyncMock()
-    with (
-        patch("backend.data.event_bus.redis.get_redis_async", return_value=cluster),
-        patch("backend.data.event_bus.DUAL_PUBLISH", False),
-    ):
+    with patch("backend.data.event_bus.redis.get_redis_async", return_value=cluster):
         await bus.publish(_sample_node_event())
 
     # Called twice: per-exec and per-graph channel.
