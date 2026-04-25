@@ -299,7 +299,12 @@ async def test_upsert_concurrent_invocations_no_unique_violation(
 ):
     """Two concurrent invocations on an empty batch must both succeed: one
     creates, one appends. Neither loses its event, and no
-    @@unique([userId, type]) violation leaks out of the helper."""
+    @@unique([userId, type]) violation leaks out of the helper.
+
+    Prisma's upsert is find→INSERT/UPDATE, not a true SQL ON CONFLICT, so
+    two concurrent calls can both miss the existing row and both attempt
+    INSERT. The helper retries on UniqueViolationError so the loser
+    converges on the UPDATE path."""
     user_id = f"notif-race-{uuid4()}"
     await _create_test_user(user_id)
 
@@ -318,8 +323,6 @@ async def test_upsert_concurrent_invocations_no_unique_violation(
             return_exceptions=True,
         )
 
-        # Neither call raised — the atomic upsert swallows the race that the
-        # old find→create/update pattern exposed.
         assert all(not isinstance(r, Exception) for r in results), results
 
         batch_count = await UserNotificationBatch.prisma().count(
@@ -331,5 +334,63 @@ async def test_upsert_concurrent_invocations_no_unique_violation(
             where={"UserNotificationBatch": {"is": {"userId": user_id}}}
         )
         assert event_count == 2, "both concurrent notifications must persist"
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_retries_on_unique_violation(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """Deterministic coverage for the retry path: when the first upsert
+    raises UniqueViolationError (the loser of a concurrent INSERT race),
+    the helper retries and the second attempt succeeds via UPDATE.
+
+    Async gather + a shared connection pool can serialize concurrent calls
+    in some test setups, so we patch the actions class to inject a unique
+    violation on the first call and prove the retry actually runs."""
+    from prisma.actions import UserNotificationBatchActions
+
+    user_id = f"notif-retry-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        # Pre-create the batch so the retry's UPDATE path has a row to hit.
+        await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="seed"),
+        )
+
+        original_upsert = UserNotificationBatchActions.upsert
+        call_count = {"n": 0}
+
+        async def flaky_upsert(self, *args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise UniqueViolationError(
+                    {
+                        "error": (
+                            "Unique constraint failed on the fields: (`userId`,`type`)"
+                        ),
+                        "user_facing_error": {},
+                    }
+                )
+            return await original_upsert(self, *args, **kwargs)
+
+        monkeypatch.setattr(UserNotificationBatchActions, "upsert", flaky_upsert)
+
+        resp = await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="retry"),
+        )
+        assert resp.user_id == user_id
+        assert call_count["n"] == 2, "retry path must run exactly once"
+
+        event_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert event_count == 2
     finally:
         await _cleanup_test_user(user_id)
