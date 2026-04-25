@@ -480,9 +480,7 @@ async def create_or_add_to_user_notification_batch(
         # batch holds thousands of rows and blew Postgres statement_timeout
         # on the exists-check this function used to do.
         resp = await UserNotificationBatch.prisma().update(
-            where={
-                "userId_type": {"userId": user_id, "type": notification_type}
-            },
+            where={"userId_type": {"userId": user_id, "type": notification_type}},
             data={
                 "Notifications": {
                     "create": [
