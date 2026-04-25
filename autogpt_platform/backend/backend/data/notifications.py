@@ -5,10 +5,11 @@ from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
 from prisma import Json
 from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
 from prisma.models import NotificationEvent, UserNotificationBatch
 from prisma.types import (
     NotificationEventCreateInput,
-    UserNotificationBatchCreateWithoutRelationsInput,
+    UserNotificationBatchCreateInput,
     UserNotificationBatchWhereInput,
 )
 
@@ -461,37 +462,54 @@ async def create_or_add_to_user_notification_batch(
 
         json_data: Json = SafeJson(notification_data.data.model_dump())
 
-        # `create_many` with `skip_duplicates=True` lowers to `INSERT ... ON
-        # CONFLICT DO NOTHING`: race-safe under concurrent first-time creation.
-        await UserNotificationBatch.prisma().create_many(
-            data=[
-                UserNotificationBatchCreateWithoutRelationsInput(
-                    userId=user_id, type=notification_type
+        # Prisma's upsert is find→INSERT/UPDATE under the hood, not a true
+        # SQL ON CONFLICT, so two concurrent calls on a missing row can both
+        # take the INSERT branch and one loses to @@unique([userId, type]).
+        # Retry once on UniqueViolationError: the row now exists, so the
+        # second pass takes the UPDATE branch. Avoids a write-skipping
+        # find_unique pre-check on the hot path. Skips the eager
+        # `Notifications` include that loaded thousands of rows for heavy
+        # AGENT_RUN users and tripped Postgres statement_timeout.
+        for attempt in range(2):
+            try:
+                resp = await UserNotificationBatch.prisma().upsert(
+                    where={
+                        "userId_type": {
+                            "userId": user_id,
+                            "type": notification_type,
+                        }
+                    },
+                    data={
+                        "create": UserNotificationBatchCreateInput(
+                            userId=user_id,
+                            type=notification_type,
+                            Notifications={
+                                "create": [
+                                    NotificationEventCreateInput(
+                                        type=notification_type,
+                                        data=json_data,
+                                    )
+                                ]
+                            },
+                        ),
+                        "update": {
+                            "Notifications": {
+                                "create": [
+                                    NotificationEventCreateInput(
+                                        type=notification_type,
+                                        data=json_data,
+                                    )
+                                ]
+                            }
+                        },
+                    },
                 )
-            ],
-            skip_duplicates=True,
-        )
-
-        # Don't eager-load Notifications here: a heavy AGENT_RUN batch holds
-        # thousands of rows and blows the Postgres statement_timeout.
-        resp = await UserNotificationBatch.prisma().update(
-            where={"userId_type": {"userId": user_id, "type": notification_type}},
-            data={
-                "Notifications": {
-                    "create": [
-                        NotificationEventCreateInput(
-                            type=notification_type, data=json_data
-                        )
-                    ]
-                }
-            },
-        )
-        if resp is None:
-            raise DatabaseError(
-                f"Notification batch for user {user_id} type {notification_type} "
-                "vanished between create_many and update"
-            )
-        return UserNotificationBatchDTO.from_db(resp)
+                return UserNotificationBatchDTO.from_db(resp)
+            except UniqueViolationError:
+                if attempt == 0:
+                    continue
+                raise
+        raise RuntimeError("unreachable")  # for type-checkers
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"

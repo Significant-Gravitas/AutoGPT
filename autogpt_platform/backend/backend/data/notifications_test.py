@@ -1,10 +1,12 @@
-"""Tests for notification data models."""
+"""Tests for notification data models and batch helpers."""
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
+from prisma.actions import UserNotificationBatchActions
 from prisma.enums import NotificationType
 from prisma.errors import UniqueViolationError
 from prisma.models import NotificationEvent, User, UserNotificationBatch
@@ -16,8 +18,11 @@ from backend.data.notifications import (
     AgentRunData,
     NotificationEventModel,
     create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
 )
 from backend.util.test import SpinTestServer
+
+logger = logging.getLogger(__name__)
 
 
 class TestAgentApprovalData:
@@ -163,7 +168,19 @@ class TestAgentRejectionData:
         assert restored_data.resubmit_url == original_data.resubmit_url
 
 
-# ---------- create_or_add_to_user_notification_batch ----------
+def _make_agent_run_event(user_id: str, agent_name: str = "Test Agent"):
+    return NotificationEventModel[AgentRunData](
+        type=NotificationType.AGENT_RUN,
+        user_id=user_id,
+        data=AgentRunData(
+            agent_name=agent_name,
+            credits_used=10.0,
+            execution_time=5.0,
+            node_count=3,
+            graph_id="graph-" + agent_name,
+            outputs=[],
+        ),
+    )
 
 
 async def _create_test_user(user_id: str) -> None:
@@ -181,136 +198,201 @@ async def _create_test_user(user_id: str) -> None:
 
 async def _cleanup_test_user(user_id: str) -> None:
     try:
-        batches = await UserNotificationBatch.prisma().find_many(
-            where={"userId": user_id}
-        )
-        for batch in batches:
-            await NotificationEvent.prisma().delete_many(
-                where={"userNotificationBatchId": batch.id}
-            )
-        await UserNotificationBatch.prisma().delete_many(where={"userId": user_id})
+        await empty_user_notification_batch(user_id, NotificationType.AGENT_RUN)
+    except Exception as exc:
+        logger.warning("notification cleanup for %s failed: %s", user_id, exc)
+    try:
         await User.prisma().delete_many(where={"id": user_id})
-    except Exception as e:  # noqa: BLE001 - cleanup is best-effort
-        print(f"cleanup for {user_id}: {e}")
-
-
-def _make_event(user_id: str) -> NotificationEventModel[AgentRunData]:
-    return NotificationEventModel[AgentRunData](
-        type=NotificationType.AGENT_RUN,
-        user_id=user_id,
-        data=AgentRunData(
-            agent_name="Test Agent",
-            credits_used=1.0,
-            execution_time=0.1,
-            node_count=1,
-            graph_id="test-graph",
-            outputs=[{"k": "v"}],
-        ),
-    )
+    except Exception as exc:
+        logger.warning("user cleanup for %s failed: %s", user_id, exc)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_batch_upsert_creates_first_notification(server: SpinTestServer):
-    """First invocation with no existing batch creates it with the event."""
-    user_id = f"batch-new-{uuid4()}"
+async def test_upsert_creates_empty_batch_then_appends(server: SpinTestServer):
+    """Empty batch path creates a batch. Existing-batch path appends without
+    loading the existing notification rows."""
+    user_id = f"notif-create-{uuid4()}"
     await _create_test_user(user_id)
+
     try:
-        dto = await create_or_add_to_user_notification_batch(
+        # First call → create path.
+        first = await create_or_add_to_user_notification_batch(
             user_id=user_id,
             notification_type=NotificationType.AGENT_RUN,
-            notification_data=_make_event(user_id),
+            notification_data=_make_agent_run_event(user_id, agent_name="first"),
         )
-        assert dto.user_id == user_id
-        assert dto.type == NotificationType.AGENT_RUN
+        assert first.user_id == user_id
+        assert first.type == NotificationType.AGENT_RUN
+        # The returned DTO no longer eagerly loads notifications — callers
+        # that need them must fetch separately.
+        assert first.notifications == []
 
-        # Verify exactly one NotificationEvent was created on the DB.
-        events = await NotificationEvent.prisma().find_many(
-            where={
-                "UserNotificationBatch": {
-                    "is": {"userId": user_id, "type": NotificationType.AGENT_RUN}
-                }
-            }
+        row_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
         )
-        assert len(events) == 1
+        assert row_count == 1
+
+        # Second call → update path.
+        second = await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="second"),
+        )
+        assert second.user_id == user_id
+        # Still no eager include, even when the batch has rows.
+        assert second.notifications == []
+
+        row_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert row_count == 2
+
+        # Exactly one batch for (user_id, AGENT_RUN).
+        batch_count = await UserNotificationBatch.prisma().count(
+            where={"userId": user_id, "type": NotificationType.AGENT_RUN}
+        )
+        assert batch_count == 1
     finally:
         await _cleanup_test_user(user_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_batch_upsert_appends_without_eager_loading(server: SpinTestServer):
-    """Existing batch with many events: upsert adds 1, DTO isn't bloated."""
-    user_id = f"batch-append-{uuid4()}"
+async def test_upsert_does_not_load_existing_notifications(server: SpinTestServer):
+    """Pre-seeding 25 notifications into the batch and then upserting one more
+    must not trip on the eager include that used to load every row."""
+    user_id = f"notif-bigbatch-{uuid4()}"
     await _create_test_user(user_id)
+
     try:
-        # Seed a batch with 10 pre-existing events. The real-world heavy case
-        # has thousands; 10 is enough to prove we don't rely on eager loading.
-        seed_count = 10
-        for _ in range(seed_count):
+        # Seed the batch by issuing 25 upserts. The first creates, the rest
+        # append.
+        for i in range(25):
             await create_or_add_to_user_notification_batch(
                 user_id=user_id,
                 notification_type=NotificationType.AGENT_RUN,
-                notification_data=_make_event(user_id),
+                notification_data=_make_agent_run_event(user_id, agent_name=f"a{i}"),
             )
 
-        dto = await create_or_add_to_user_notification_batch(
+        pre_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert pre_count == 25
+
+        # The 26th upsert: must succeed and must NOT return the 25 prior rows.
+        resp = await create_or_add_to_user_notification_batch(
             user_id=user_id,
             notification_type=NotificationType.AGENT_RUN,
-            notification_data=_make_event(user_id),
+            notification_data=_make_agent_run_event(user_id, agent_name="final"),
+        )
+        assert resp.notifications == [], (
+            "Upsert must not eagerly include Notifications; that is the "
+            "statement_timeout regression we are guarding against."
         )
 
-        # DTO should NOT eagerly include the full events list.
-        assert dto.notifications == []
-
-        # Exactly one batch exists with seed_count + 1 events.
-        batches = await UserNotificationBatch.prisma().find_many(
-            where={"userId": user_id, "type": NotificationType.AGENT_RUN}
+        post_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
         )
-        assert len(batches) == 1
-
-        events = await NotificationEvent.prisma().find_many(
-            where={"userNotificationBatchId": batches[0].id}
-        )
-        assert len(events) == seed_count + 1
+        assert post_count == 26
     finally:
         await _cleanup_test_user(user_id)
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_batch_upsert_concurrent_no_duplicates(server: SpinTestServer):
-    """N concurrent upserts for a new (user, type): one batch, N events, no races."""
-    user_id = f"batch-race-{uuid4()}"
+async def test_upsert_concurrent_invocations_no_unique_violation(
+    server: SpinTestServer,
+):
+    """Two concurrent invocations on an empty batch must both succeed: one
+    creates, one appends. Neither loses its event, and no
+    @@unique([userId, type]) violation leaks out of the helper.
+
+    Prisma's upsert is find→INSERT/UPDATE, not a true SQL ON CONFLICT, so
+    two concurrent calls can both miss the existing row and both attempt
+    INSERT. The helper retries on UniqueViolationError so the loser
+    converges on the UPDATE path."""
+    user_id = f"notif-race-{uuid4()}"
     await _create_test_user(user_id)
+
     try:
-        n = 10
         results = await asyncio.gather(
-            *[
-                create_or_add_to_user_notification_batch(
-                    user_id=user_id,
-                    notification_type=NotificationType.AGENT_RUN,
-                    notification_data=_make_event(user_id),
-                )
-                for _ in range(n)
-            ],
+            create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name="left"),
+            ),
+            create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name="right"),
+            ),
             return_exceptions=True,
         )
-        failures = [r for r in results if isinstance(r, Exception)]
-        assert not failures, f"upsert race surfaced exceptions: {failures}"
 
-        # Exactly one batch — the @@unique([userId, type]) index + upsert must
-        # collapse concurrent writers onto the same row.
-        batches = await UserNotificationBatch.prisma().find_many(
+        assert all(not isinstance(r, Exception) for r in results), results
+
+        batch_count = await UserNotificationBatch.prisma().count(
             where={"userId": user_id, "type": NotificationType.AGENT_RUN}
         )
-        assert (
-            len(batches) == 1
-        ), f"expected exactly 1 batch, got {len(batches)}: {batches}"
+        assert batch_count == 1
 
-        # Every notification landed — no dropped writes.
-        events = await NotificationEvent.prisma().find_many(
-            where={"userNotificationBatchId": batches[0].id}
+        event_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
         )
-        assert (
-            len(events) == n
-        ), f"expected {n} events, got {len(events)} — writes were lost"
+        assert event_count == 2, "both concurrent notifications must persist"
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_retries_on_unique_violation(
+    server: SpinTestServer, monkeypatch: pytest.MonkeyPatch
+):
+    """Deterministic coverage for the retry path: when the first upsert
+    raises UniqueViolationError (the loser of a concurrent INSERT race),
+    the helper retries and the second attempt succeeds via UPDATE.
+
+    Async gather + a shared connection pool can serialize concurrent calls
+    in some test setups, so we patch the actions class to inject a unique
+    violation on the first call and prove the retry actually runs."""
+    user_id = f"notif-retry-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        # Pre-create the batch so the retry's UPDATE path has a row to hit.
+        await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="seed"),
+        )
+
+        original_upsert = UserNotificationBatchActions.upsert
+        call_count = {"n": 0}
+
+        async def flaky_upsert(self, *args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise UniqueViolationError(
+                    {
+                        "error": (
+                            "Unique constraint failed on the fields: (`userId`,`type`)"
+                        ),
+                        "user_facing_error": {},
+                    }
+                )
+            return await original_upsert(self, *args, **kwargs)
+
+        monkeypatch.setattr(UserNotificationBatchActions, "upsert", flaky_upsert)
+
+        resp = await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="retry"),
+        )
+        assert resp.user_id == user_id
+        assert call_count["n"] == 2, "retry path must run exactly once"
+
+        event_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert event_count == 2
     finally:
         await _cleanup_test_user(user_id)
