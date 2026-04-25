@@ -1,20 +1,6 @@
-"""Isolated container-restart e2e for the sharded pubsub reconnect path.
-
-Scenario #9 from the original PR brief: a real ``docker restart`` of one
-of the cluster shards mid-stream. The previous /pr-test agent scoped this
-down to a client-side socket close because the shared compose stack would
-have been disrupted; this file brings the destructive variant back, but
-stands up a dedicated 3-shard cluster on its own bridge network + custom
-host ports so it never touches the user's main dev stack.
-
-Gating:
-
-* ``cluster_restart_only`` requires ``docker`` on PATH **and**
-  ``E2E_RESTART_ISOLATED=1`` in the environment. CI sets that flag; locally
-  it stays off so a contributor running ``poetry run test`` doesn't spend
-  ~30s tearing up + tearing down extra containers.
-* Marked ``pytest.mark.slow`` so it is excluded from the fast suite.
-"""
+"""Sharded pubsub reconnect across a real `docker restart` of a shard,
+against a private 3-shard cluster on isolated host ports. Gated on
+`E2E_RESTART_ISOLATED=1` + `docker` on PATH, marked `pytest.mark.slow`."""
 
 from __future__ import annotations
 
@@ -29,9 +15,7 @@ from uuid import uuid4
 
 import pytest
 
-# Distinct from 17000–17002 so this never collides with the user's dev
-# compose, and distinct from CI's published 17000–17002 too — both runs
-# can coexist on the same host.
+# Disjoint from the dev-compose ports (17000-17002) so both stacks coexist.
 ISOLATED_PROJECT = "redis-restart-test"
 ISOLATED_PORTS = (27110, 27111, 27112)
 ISOLATED_BUS_PORTS = (37110, 37111, 37112)
@@ -75,13 +59,8 @@ def _wait_port(port: int, *, deadline_s: float = 60.0) -> None:
 
 
 def _start_isolated_cluster() -> None:
-    """Spin up a private 3-shard cluster.
-
-    Bypasses docker compose: three named ``redis:7`` containers + a one-
-    shot ``redis-cli --cluster create`` is cheaper than parsing the full
-    platform compose file (which references services not in scope here)
-    and keeps the test self-contained.
-    """
+    """Spin up a private 3-shard cluster via raw `docker run` + one-shot
+    `redis-cli --cluster create`."""
     network = f"{ISOLATED_PROJECT}-net"
     _run(["docker", "network", "create", network])  # may exist; ignore exit
     for i, (port, bus) in enumerate(zip(ISOLATED_PORTS, ISOLATED_BUS_PORTS)):
@@ -208,25 +187,11 @@ def isolated_cluster():
 @pytest.mark.slow
 @cluster_restart_only
 async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) -> None:
-    """Real container-restart scenario:
-
-    1. Point the redis_client module at the isolated cluster.
-    2. Pick a random hash-tagged channel and look up its slot owner.
-    3. Publish "before-restart"; subscriber receives it.
-    4. ``docker restart <slot-owner>`` — that container blinks for ~5s.
-    5. Wait for cluster_state:ok.
-    6. Reopen the sharded-pubsub client (the broker dropped the socket on
-       restart; reconnect is up to the caller, mirroring how
-       ``listen_events`` behaves in production via the ``with_pubsub``
-       reconnect loop).
-    7. Publish "after-restart"; the new subscriber must receive it within
-       15s.
-    """
-    # Override every env var that ``redis_client`` reads at import time
-    # — including ``REDIS_CLUSTER_HOST/PORT`` which take precedence over
-    # ``REDIS_HOST/PORT``. Without this, a contributor's ``backend/.env``
-    # pointing at the dev compose cluster (17000) wins over the isolated
-    # cluster (27110).
+    """Subscriber must receive a post-`docker restart` SPUBLISH after
+    reopening the sharded-pubsub client (the broker drops the socket on
+    restart; production's `with_pubsub` loop reconnects the same way)."""
+    # Must override REDIS_CLUSTER_HOST/PORT too — those take precedence
+    # over REDIS_HOST/PORT and a stray .env would point us at the dev cluster.
     monkeypatch.setenv("REDIS_HOST", "127.0.0.1")
     monkeypatch.setenv("REDIS_PORT", str(ISOLATED_PORTS[0]))
     monkeypatch.setenv("REDIS_CLUSTER_HOST", "127.0.0.1")
@@ -238,16 +203,11 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
 
     importlib.reload(rc)
 
-    # Pick any hash tag and look up which shard owns it; the test
-    # restarts that specific container instead of guessing redis-1. This
-    # decouples the test from which announced address redis-py chose
-    # after ``_address_remap``.
+    # Restart whichever container owns the keyslot, not a guess.
     cluster = rc.get_redis()
     target_tag = f"restart-{uuid4().hex[:8]}"
     channel = "{" + target_tag + "}/restart-test"
     owner = cluster.get_node_from_key(channel)
-    # Map back from owner port → container index. Each shard listens on
-    # its own port, so this mapping is unambiguous.
     port_to_idx = {p: i for i, p in enumerate(ISOLATED_PORTS)}
     target_idx = port_to_idx.get(owner.port)
     assert target_idx is not None, (
@@ -291,8 +251,7 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
         # Hold a small grace window for shard's gossip to settle.
         await asyncio.sleep(1.0)
 
-        # Old socket is dead. Close it and open a fresh sharded-pubsub
-        # connection — same pattern the production reconnect loop uses.
+        # Old socket is dead — open a fresh sharded-pubsub connection.
         try:
             await pubsub.aclose()
         except Exception:

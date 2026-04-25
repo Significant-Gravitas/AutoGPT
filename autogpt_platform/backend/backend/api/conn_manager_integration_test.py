@@ -1,24 +1,6 @@
-"""Integration tests for ConnectionManager against the live 3-shard Redis cluster.
-
-These tests exercise the full SSUBSCRIBE → SPUBLISH → WebSocket forwarding
-chain with no mocks on the Redis side, on top of the local docker-compose
-3-shard cluster. They are skipped when no cluster is reachable so CI on
-machines without docker doesn't flap.
-
-Coverage focus:
-- Two clients on different graph_exec_ids → independent SSUBSCRIBE on the
-  right shard, no cross-talk.
-- Aggregate channel: subscribe to ``graph_execs`` → publish to per-exec
-  AND aggregate channels → both reach their subscribers.
-- Disconnect → SUNSUBSCRIBE called → next publish doesn't reach the (now-
-  dead) subscriber.
-- Slow consumer: queue many events fast → all delivered without loss.
-
-These cover the bug class fixed by AUTOGPT-SERVER-8SX (K8s shard collapse):
-when SSUBSCRIBE doesn't reach the slot owner, the WebSocket forwarder gets
-no events and the user sees a hung run. With the cluster correctly routed,
-each test must observe the published payload on the right WebSocket.
-"""
+"""ConnectionManager integration over the live 3-shard Redis cluster:
+SSUBSCRIBE → SPUBLISH → WebSocket forwarding with no Redis mocks. Skips
+when the cluster is unreachable."""
 
 import asyncio
 import json
@@ -146,10 +128,8 @@ async def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -
 async def test_two_clients_get_independent_ssubscribes_on_right_shards(
     monkeypatch,
 ) -> None:
-    """Two WebSocket clients subscribe to two different graph_exec_ids — each
-    must receive ONLY its own publish, even when the channels land on
-    different shards (which is the realistic deployment topology).
-    """
+    """Two WS clients on different graph_exec_ids each receive ONLY their
+    own publish, even when the channels land on different shards."""
     user_id = "user-conn-int-1"
     graph_a = f"graph-a-{uuid4().hex[:8]}"
     graph_b = f"graph-b-{uuid4().hex[:8]}"
@@ -358,9 +338,8 @@ async def test_disconnect_unsubscribes_and_drops_future_publishes(monkeypatch) -
 
 @pytest.mark.asyncio
 async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> None:
-    """Queue many SPUBLISHes in quick succession on a single channel and
-    assert every one reaches the subscriber. Catches reorderings and drops
-    in the pubsub pump."""
+    """Burst-publish many SPUBLISHes; assert every one reaches the subscriber
+    in order — guards against drops/reorderings in the pubsub pump."""
     user_id = "user-conn-int-4"
     graph_id = f"graph-{uuid4().hex[:8]}"
     exec_id = f"exec-{uuid4().hex[:8]}"

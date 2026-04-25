@@ -1,32 +1,5 @@
-"""Tests for the RabbitMQ helpers in ``backend.data.rabbitmq``.
-
-Two layers of coverage:
-
-1. Configuration assertions over the queue helpers in ``executor`` and
-   ``copilot.executor`` — verifies the classic→quorum rollover landed
-   correctly. Quorum queues survive a single broker-node outage; classic
-   queues hosted on a missing node go ``state=down`` and publishes NACK
-   (the AUTOGPT-SERVER-8ST/SV/SW issue family). These tests pin the
-   ``x-queue-type=quorum`` argument so a future regression can't quietly
-   revert.
-
-2. Mock-driven behaviour tests against ``AsyncRabbitMQ.publish_message``:
-   - 100 publishes against a healthy mock channel → all confirmed.
-   - Broker-side ``DeliveryError`` (e.g. NACK from a missing node) →
-     ``func_retry`` retries the configured number of times and then
-     raises gracefully without crashing the calling task.
-   - ``ChannelInvalidStateError`` → forces a reconnect and retries.
-   - Dual-deploy parallel scenario: one publisher targets the legacy
-     classic queue name (``copilot_execution``) while another publishes
-     to the new ``copilot_execution_v2`` quorum queue — both must
-     succeed, modelling the rolling-deploy window where two image
-     versions co-exist.
-
-Why no real broker: the real broker behaviour we care about is exercised
-by /pr-test scenarios in ``e2e_redis_rabbit_test.py``. These tests pin
-the publisher contract under failure modes that would be hard to
-reproduce reliably without injecting faults.
-"""
+"""Quorum-queue config assertions + mock-driven publish behaviour for
+`AsyncRabbitMQ`. Live-broker scenarios live in `e2e_redis_rabbit_test.py`."""
 
 from __future__ import annotations
 
@@ -59,10 +32,8 @@ from backend.executor.utils import (
 
 
 def test_graph_execution_queue_is_quorum() -> None:
-    """The run queue MUST declare ``x-queue-type=quorum`` so it survives a
-    single broker-node outage. Without quorum, classic queues hosted on a
-    Pending node go ``state=down`` and publishes NACK
-    (AUTOGPT-SERVER-8ST/SV/SW)."""
+    """Run queue must declare `x-queue-type=quorum` to survive a single
+    broker-node outage (AUTOGPT-SERVER-8ST/SV/SW)."""
     cfg = create_execution_queue_config()
     run = next(q for q in cfg.queues if q.name == GRAPH_EXECUTION_QUEUE_NAME)
     assert run.arguments is not None
@@ -237,15 +208,8 @@ async def test_publish_reconnects_on_channel_invalid_state() -> None:
 
 @pytest.mark.asyncio
 async def test_dual_deploy_publishes_to_legacy_and_new_queues_in_parallel() -> None:
-    """Rolling-deploy window: an old-image producer still publishes to
-    ``copilot_execution`` (classic) while a new-image producer publishes to
-    ``copilot_execution_v2`` (quorum). Both publishers must succeed
-    independently — neither queue's failure may break the other.
-
-    We model both producers as separate AsyncRabbitMQ clients sharing the
-    same broker mock and assert the publishes land on distinct routing
-    keys / queues without interfering.
-    """
+    """Rolling-deploy window: old-image producer publishes to classic queue,
+    new-image to `_v2` quorum queue — both must succeed independently."""
     legacy_client, _, legacy_exchange = _make_async_client()
     new_client, _, new_exchange = _make_async_client()
 
@@ -276,10 +240,8 @@ async def test_dual_deploy_publishes_to_legacy_and_new_queues_in_parallel() -> N
 
 @pytest.mark.asyncio
 async def test_dual_deploy_legacy_failure_does_not_affect_new_queue() -> None:
-    """If the legacy classic queue NACKs (because its hosting node is
-    Pending — the AUTOGPT-SERVER-8ST scenario), the new quorum queue
-    must keep accepting publishes. Models the dev incident exactly:
-    quorum survived, classic NACKed."""
+    """Legacy classic queue NACKing (AUTOGPT-SERVER-8ST) must not break
+    publishes on the new `_v2` quorum queue."""
     legacy_publish = AsyncMock(
         side_effect=aio_pika.exceptions.DeliveryError(message=None, frame=None)
     )

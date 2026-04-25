@@ -154,12 +154,10 @@ def _has_live_cluster() -> bool:
     reason="local redis cluster not reachable; skip sharded pub/sub integration",
 )
 def test_sharded_pubsub_end_to_end_sync() -> None:
-    """SPUBLISH → SSUBSCRIBE round-trip via the sync cluster client.
-
-    Uses per-node ``get_message`` because redis-py 6.x's
-    ``ClusterPubSub.get_sharded_message(ignore_subscribe_messages=True)``
-    drops every message, not just the subscribe confirmation.
-    """
+    """SPUBLISH → SSUBSCRIBE round-trip via the sync cluster client. Uses
+    per-node `get_message` because redis-py 6.x's
+    `ClusterPubSub.get_sharded_message(ignore_subscribe_messages=True)`
+    drops every message, not just the subscribe confirmation."""
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
     channel = "pr12900:sharded-pubsub:integration"
@@ -211,9 +209,8 @@ async def test_sharded_spublish_end_to_end_async() -> None:
 
 
 def test_connect_sharded_pubsub_pins_host_and_disables_socket_timeout() -> None:
-    """socket_timeout=None on the pubsub socket (from commit 23a332b7d): a
-    spurious read timeout forces a reconnect whose PING races with subscribe-
-    mode. The fix is load-bearing, regress-guard it."""
+    """`socket_timeout=None` on the pubsub socket: a spurious read timeout
+    forces a reconnect whose PING races with subscribe-mode."""
     with (
         patch.object(
             redis_client,
@@ -315,8 +312,8 @@ def test_resolve_shard_for_channel_passthrough_with_announced_flag() -> None:
 
 
 def test_health_check_interval_is_30s_default() -> None:
-    """The idle-connection PING interval must be <=30s so half-open pubsub
-    sockets don't wait for the OS TCP keepalive (~2h) — round-2 regression."""
+    """Idle PING interval must be <=30s so half-open pubsub sockets don't
+    wait for the OS TCP keepalive (~2h)."""
     assert redis_client.HEALTH_CHECK_INTERVAL <= 30
 
 
@@ -335,16 +332,9 @@ def test_connect_sets_health_check_interval() -> None:
 
 
 def test_k8s_shard_collapse_with_announced_address_off_routes_all_to_seed() -> None:
-    """Reproduces AUTOGPT-SERVER-8SX: in K8s, all 3 shard pods serve on the
-    same port (6379) behind the seed service. The default ``_address_remap``
-    rewrites the announced shard host to ``HOST`` and keeps the announced
-    port — which is identical for every shard — so every shard collapses to
-    the same ``(HOST, 6379)`` endpoint. Sharded pubsub MOVED-loops on the
-    wrong shard and the conn_manager pump crashes on the first PING.
-
-    The infra fix is to set ``REDIS_USE_ANNOUNCED_ADDRESS=true``; this test
-    pins the regression so the fix can never silently regress.
-    """
+    """In K8s every shard serves on port 6379 behind the seed service, so the
+    default `_address_remap` collapses all shards to `(HOST, 6379)` — the
+    AUTOGPT-SERVER-8SX bug. Fix: `REDIS_USE_ANNOUNCED_ADDRESS=true`."""
     cluster = MagicMock()
     # 3 shards, each owning a distinct hash slot, but every pod serves on
     # 6379 in K8s — exactly the production topology.
@@ -375,10 +365,8 @@ def test_k8s_shard_collapse_with_announced_address_off_routes_all_to_seed() -> N
 
 
 def test_k8s_shard_collapse_fixed_with_announced_address_on() -> None:
-    """The fix for AUTOGPT-SERVER-8SX: with ``REDIS_USE_ANNOUNCED_ADDRESS=true``,
-    each shard's announced FQDN passes through unchanged, so distinct hash
-    slots resolve to distinct endpoints and SSUBSCRIBE lands on the slot owner.
-    """
+    """With `REDIS_USE_ANNOUNCED_ADDRESS=true`, each shard's announced FQDN
+    passes through, so distinct slots resolve to distinct endpoints."""
     cluster = MagicMock()
     nodes_by_channel = {
         "{ch-a}/x": MagicMock(host="redis-cluster-redis-0", port=6379),
@@ -406,10 +394,8 @@ def test_k8s_shard_collapse_fixed_with_announced_address_on() -> None:
 
 
 def test_local_compose_remap_keeps_distinct_ports_per_shard() -> None:
-    """Why the bug only bit K8s: local docker-compose announces distinct
-    ports (17000/17001/17002) per shard, so even with the host pinned to
-    seed, the (host, port) tuple stays distinct. This test guards against
-    a regression that would also break local dev."""
+    """Local docker-compose announces distinct ports per shard, so the
+    `(host, port)` tuple stays distinct even with `HOST` pinned to seed."""
     cluster = MagicMock()
     nodes_by_channel = {
         "{ch-a}/x": MagicMock(host="redis-0", port=17000),
@@ -447,12 +433,7 @@ def _channel_owner(channel: str) -> tuple[str, int]:
 
 
 def _channels_on_distinct_shards(n: int = 3) -> list[str]:
-    """Build N hash-tagged channels that each map to a distinct shard.
-
-    Hash tags are picked deterministically by trying short tags until we've
-    covered ``n`` distinct slot owners — keeps the test independent of the
-    cluster's slot map.
-    """
+    """Build N hash-tagged channels each mapping to a distinct shard."""
     seen: dict[tuple[str, int], str] = {}
     for tag_id in range(2000):
         chan = "{u" + str(tag_id) + "/g}/exec/e"
@@ -469,9 +450,7 @@ def _channels_on_distinct_shards(n: int = 3) -> list[str]:
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_resolve_shard_for_channel_lands_on_distinct_shards() -> None:
-    """End-to-end multi-shard routing: 3 hash-tagged channels resolve to 3
-    different shards, exercising the slot-distribution code path that the
-    K8s collapse bug broke."""
+    """3 hash-tagged channels resolve to 3 different shards (slot-distribution)."""
     redis_client.get_redis.cache_clear()
     try:
         channels = _channels_on_distinct_shards(3)
@@ -488,12 +467,7 @@ def test_resolve_shard_for_channel_lands_on_distinct_shards() -> None:
 )
 def test_sharded_pubsub_concurrent_subscribers_on_three_shards() -> None:
     """SSUBSCRIBE on three channels owned by three different shards, then
-    SPUBLISH to each — every payload must land on the right subscriber.
-
-    Guards against the bug where conn_manager would route every subscribe
-    to the same shard (the K8s collapse) and only one channel would receive
-    its events.
-    """
+    SPUBLISH to each — every payload must land on its subscriber."""
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
     try:
@@ -543,13 +517,8 @@ def test_sharded_pubsub_concurrent_subscribers_on_three_shards() -> None:
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_idle_subscriber_survives_health_check_window() -> None:
-    """Regression guard for commit 23a332b7d: an SSUBSCRIBE connection must
-    survive an idle window longer than ``HEALTH_CHECK_INTERVAL`` (30s).
-    Before the fix, the health-check PING crashed in subscribe-mode and the
-    pump died.
-
-    Uses ``HEALTH_CHECK_INTERVAL + 5s`` to provoke at least one health check.
-    """
+    """An SSUBSCRIBE connection must survive an idle window longer than
+    `HEALTH_CHECK_INTERVAL` — uses `+5s` to provoke at least one health check."""
     import time as _time
 
     redis_client.get_redis.cache_clear()
@@ -586,11 +555,8 @@ def test_sharded_pubsub_idle_subscriber_survives_health_check_window() -> None:
     reason="local redis cluster not reachable; skip multi-shard integration",
 )
 def test_sharded_pubsub_reconnect_after_forced_disconnect() -> None:
-    """Simulates a pod restart: client closes the underlying socket, then
-    reconnects and resubscribes — must still receive new SPUBLISH events.
-
-    This is the "subscriber reconnect after a forced disconnect" scenario.
-    """
+    """Subscriber reconnect after a forced disconnect — close socket, open
+    a fresh one, and verify new SPUBLISH events still arrive."""
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
     channel = "{reconnect-test}/exec/e"

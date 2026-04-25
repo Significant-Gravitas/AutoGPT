@@ -1,40 +1,6 @@
-"""End-to-end tests over the live 3-shard Redis cluster + RabbitMQ broker.
-
-These tests exercise scenarios that mirror the failure modes observed in
-dev (AUTOGPT-SERVER-8SX / 8ST / 8SV / 8SW) without requiring a running
-frontend or full app stack — they go through the real data-layer APIs
-(RedisExecutionEventBus, RedisNotificationEventBus, AsyncRabbitMQ) using
-the same hash-tagged channels and quorum queues that production uses.
-
-What's covered (mapped to the original PR brief):
-
-1. List-graphs cache path: cluster cache GET/SETEX round-trip works
-   across slots.
-2. Run a graph (event flow): publish per-exec events → SSUBSCRIBE
-   listener receives them in order, completes < 10s.
-3. Two concurrent graphs: two listeners on different graph_exec_ids
-   receive independent event streams, no cross-talk.
-4. Aggregate channel: triggering 3 executions all land on the
-   ``/all`` channel of the parent graph.
-5. Copilot session signal: SPUBLISH on the per-session cancel channel
-   reaches an SSUBSCRIBE listener — this is the "copilot cancel signal"
-   primitive.
-6. Notification fan-out: per-user SSUBSCRIBE receives publishes targeted
-   at that user only.
-7. Idle WS connection 60s: covers the pump-crash bug from 23a332b7d.
-8. Graph-execution queue durability: publish to the quorum queue +
-   consume → message survives.
-
-Scenario 9 (force-restart of a shard mid-stream) is covered by the
-sibling ``e2e_redis_restart_test.py`` against an isolated docker
-cluster. Here we exercise the equivalent client-side behaviour by
-closing+reopening the shard client connection — same reconnect
-codepath, no docker dependency.
-
-All tests skip gracefully when their respective infrastructure isn't
-running, so this file safely co-exists with CI runners that don't have
-docker compose.
-"""
+"""End-to-end coverage of the data-layer APIs over the live 3-shard Redis
+cluster + RabbitMQ broker. Tests skip when their infra is unreachable.
+Container-restart scenarios live in `e2e_redis_restart_test.py`."""
 
 from __future__ import annotations
 
@@ -408,11 +374,8 @@ async def test_notification_fan_out_per_user_channel() -> None:
 @pytest.mark.asyncio
 @cluster_only
 async def test_idle_subscriber_60s_then_receives_publish() -> None:
-    """Long idle WS connection regression (23a332b7d): an SSUBSCRIBE that
-    sits idle past one health-check interval must still deliver a
-    subsequent SPUBLISH. Uses 35s (HEALTH_CHECK_INTERVAL=30 + 5s buffer)
-    rather than 60s to keep the test bearable in CI; the bug repros at
-    any value > HEALTH_CHECK_INTERVAL."""
+    """An SSUBSCRIBE that sits idle past one health-check interval must
+    still deliver a subsequent SPUBLISH (uses HEALTH_CHECK_INTERVAL+5s)."""
     redis_client._async_clients.clear()
     channel = "{idle-e2e}/exec/" + uuid4().hex[:8]
     client = await redis_client.connect_sharded_pubsub_async(channel)
@@ -450,16 +413,9 @@ async def test_idle_subscriber_60s_then_receives_publish() -> None:
 @pytest.mark.asyncio
 @rabbit_only
 async def test_graph_execution_queue_publish_and_consume() -> None:
-    """End-to-end through the live RabbitMQ broker against a dedicated test
-    queue mirroring the production settings (quorum + durable):
-    1. Declare a test-scoped quorum queue bound to the production exchange
-       via a unique routing key, so a real autogpt-server-executor consumer
-       (if present) doesn't race us for the message.
-    2. Publish via AsyncRabbitMQ.publish_message → broker ACK.
-    3. Consume from the test queue → message round-trips intact.
-
-    Pins the run-queue publish path used by the executor service.
-    """
+    """End-to-end on a test-scoped quorum queue: publish via AsyncRabbitMQ
+    → consume → payload round-trips intact. Uses a unique routing key so
+    the live executor consumer (if any) doesn't race for the message."""
     from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 
     test_queue_name = f"e2e_test_{uuid4().hex[:8]}_v2"
@@ -524,10 +480,8 @@ async def test_graph_execution_queue_publish_and_consume() -> None:
 @pytest.mark.asyncio
 @rabbit_only
 async def test_graph_execution_queue_uses_quorum_via_real_broker() -> None:
-    """Declare ``graph_execution_queue_v2`` against the live broker via the
-    production helper and verify the broker reports it as a quorum queue.
-    Catches a regression where the ``x-queue-type=quorum`` argument is
-    accidentally dropped from the helper."""
+    """Live-broker check that `graph_execution_queue_v2` is declared as
+    quorum — passive re-declare with `x-queue-type=quorum` must not raise."""
     cfg = create_execution_queue_config()
     client = AsyncRabbitMQ(cfg)
     await client.connect()  # declares everything in cfg

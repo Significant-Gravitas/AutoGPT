@@ -140,8 +140,8 @@ def test_graph_execs_channel_key_shape() -> None:
 
 @pytest.mark.asyncio
 async def test_subscription_start_issues_ssubscribe_and_primes_channels_map() -> None:
-    """start() must SSUBSCRIBE and prime pubsub.channels — redis-py 6.x listen()
-    exits immediately if channels is empty, so the fix matters."""
+    """start() must SSUBSCRIBE and prime pubsub.channels — redis-py 6.x
+    `listen()` exits immediately if `channels` is empty."""
     fake_pubsub = MagicMock()
     fake_pubsub.execute_command = AsyncMock()
     fake_pubsub.channels = {}
@@ -258,8 +258,7 @@ async def test_subscription_pump_swallows_handler_exceptions() -> None:
 
 @pytest.mark.asyncio
 async def test_subscription_pump_logs_and_exits_on_listen_crash() -> None:
-    """If the underlying ``pubsub.listen()`` raises (e.g. RESP parse error),
-    the pump must log and exit cleanly — not propagate to the task supervisor."""
+    """A `pubsub.listen()` crash must log + exit cleanly, not propagate."""
     fake_pubsub = MagicMock()
     fake_pubsub.execute_command = AsyncMock()
     fake_pubsub.channels = {}
