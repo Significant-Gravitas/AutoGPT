@@ -461,11 +461,8 @@ async def create_or_add_to_user_notification_batch(
 
         json_data: Json = SafeJson(notification_data.data.model_dump())
 
-        # Step 1: ensure the batch row exists. ``create_many`` with
-        # ``skip_duplicates=True`` lowers to ``INSERT ... ON CONFLICT DO
-        # NOTHING`` which is race-safe across concurrent writers. (Prisma's
-        # upsert is read-then-write and collides on the unique index under
-        # heavy concurrent first-time creation.)
+        # `create_many` with `skip_duplicates=True` lowers to `INSERT ... ON
+        # CONFLICT DO NOTHING`: race-safe under concurrent first-time creation.
         await UserNotificationBatch.prisma().create_many(
             data=[
                 UserNotificationBatchCreateWithoutRelationsInput(
@@ -475,10 +472,8 @@ async def create_or_add_to_user_notification_batch(
             skip_duplicates=True,
         )
 
-        # Step 2: append the notification to the (now-guaranteed) batch.
-        # Avoid eager-loading all sibling Notifications — a heavy AGENT_RUN
-        # batch holds thousands of rows and blew Postgres statement_timeout
-        # on the exists-check this function used to do.
+        # Don't eager-load Notifications here: a heavy AGENT_RUN batch holds
+        # thousands of rows and blows the Postgres statement_timeout.
         resp = await UserNotificationBatch.prisma().update(
             where={"userId_type": {"userId": user_id, "type": notification_type}},
             data={

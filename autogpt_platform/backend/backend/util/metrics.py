@@ -55,11 +55,9 @@ _AMQP_KEYWORDS = [
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
-# Pika reconnect noise: AUTOGPT-SERVER-6JC/6JD/6JE/6JF. The reconnect logic in
-# ``conn_retry`` handles these correctly; they should not surface as Sentry
-# ERROR events. We narrowly drop the four known signatures from the three
-# pika network-layer loggers so genuine pika ERRORs (auth failure, channel
-# close on declare error, etc.) still get through.
+# Pika reconnect noise: `conn_retry` already handles these. Drop only the
+# four known signatures so genuine pika ERRORs (auth, declare failures) still
+# reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
 _PIKA_RECONNECT_LOGGERS = {
     "pika.adapters.utils.io_services_utils",
     "pika.adapters.blocking_connection",
@@ -111,11 +109,7 @@ def _before_send(event, hint):
         ):
             return None
 
-        # Prisma UniqueViolationError — always caught and handled in our codebase.
-        # These arise from concurrent create operations racing on unique constraints
-        # (workspace files, credits, library folders, store listings, chat messages).
-        # Every call site has an except handler; the global FastAPI handler also
-        # catches them and returns 400.  Safe to drop unconditionally.
+        # Prisma UniqueViolationError is always handled (FastAPI returns 400).
         if exc_type and exc_type.__name__ == "UniqueViolationError":
             return None
 

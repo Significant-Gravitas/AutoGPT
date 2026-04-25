@@ -115,21 +115,14 @@ class _EventPayloadWrapper(BaseModel, Generic[M]):
 
 class RedisEventBus(BaseRedisEventBus[M], ABC):
     def publish_event(self, event: M, channel_key: str):
-        """
-        Publish an event to Redis. Gracefully handles connection failures
-        by logging the error instead of raising exceptions.
-        """
+        """Publish via SPUBLISH; swallow failures so Redis blips don't crash callers."""
         _assert_no_wildcard(channel_key)
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
             cluster = redis.get_redis()
-            # SPUBLISH targets only the keyslot-owning shard.
             cluster.execute_command("SPUBLISH", full_channel_name, message)
         except Exception:
-            logger.exception(
-                f"Failed to publish event to Redis channel {channel_key}. "
-                "Event bus operation will continue without Redis connectivity."
-            )
+            logger.exception(f"Failed to publish event to Redis channel {channel_key}")
 
     def listen_events(self, channel_key: str) -> Generator[M, None, None]:
         _assert_no_wildcard(channel_key)
@@ -184,22 +177,15 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
                 self._pubsub_client = None
 
     async def publish_event(self, event: M, channel_key: str):
-        """
-        Publish an event to Redis. Gracefully handles connection failures
-        by logging the error instead of raising exceptions.
-        """
+        """Publish via SPUBLISH; swallow failures so Redis blips don't crash callers."""
         _assert_no_wildcard(channel_key)
         try:
             message, full_channel_name = self._serialize_message(event, channel_key)
             cluster = await redis.get_redis_async()
-            # redis-py 6.x async cluster lacks spublish(); execute_command
-            # still handles MOVED.
+            # redis-py 6.x async cluster has no spublish(); execute_command handles MOVED.
             await cluster.execute_command("SPUBLISH", full_channel_name, message)
         except Exception:
-            logger.exception(
-                f"Failed to publish event to Redis channel {channel_key}. "
-                "Event bus operation will continue without Redis connectivity."
-            )
+            logger.exception(f"Failed to publish event to Redis channel {channel_key}")
 
     async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
         _assert_no_wildcard(channel_key)

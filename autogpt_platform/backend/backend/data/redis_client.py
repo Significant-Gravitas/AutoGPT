@@ -43,13 +43,10 @@ AsyncRedisClient = AsyncRedisCluster
 
 
 def _address_remap(addr: tuple[str, int]) -> tuple[str, int]:
-    """Rewrite the per-shard address returned by ``CLUSTER SLOTS``.
+    """Pin each shard to the seed `HOST`, keep its announced port.
 
-    Default: pin every shard to the seed ``HOST`` and keep its announced
-    port. Works for a load-balanced seed DNS (prod) and for laptop compose
-    where each shard is reachable at the seed host via a distinct
-    published port. When ``REDIS_USE_ANNOUNCED_ADDRESS`` is set, pass the
-    announced address through unchanged.
+    Set `REDIS_USE_ANNOUNCED_ADDRESS=true` when the announced shard FQDNs
+    resolve directly (e.g. each pod has its own DNS).
     """
     if USE_ANNOUNCED_ADDRESS:
         return addr
