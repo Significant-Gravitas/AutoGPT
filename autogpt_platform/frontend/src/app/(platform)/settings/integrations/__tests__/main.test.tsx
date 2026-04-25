@@ -10,9 +10,11 @@ import {
 import { server } from "@/mocks/mock-server";
 import {
   getDeleteV1DeleteCredentialsMockHandler,
+  getDeleteV1DeleteCredentialsMockHandler401,
   getGetV1ListCredentialsMockHandler,
   getGetV1ListCredentialsMockHandler401,
   getGetV1ListProvidersMockHandler,
+  getPostV1CreateCredentialsMockHandler,
 } from "@/app/api/__generated__/endpoints/integrations/integrations.msw";
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import type { ProviderMetadata } from "@/app/api/__generated__/models/providerMetadata";
@@ -276,5 +278,151 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/connect a service/i)).toBeDefined();
     expect(await within(dialog).findByText(/issues and prs/i)).toBeDefined();
+  });
+
+  test("clicking a provider in the list moves to the detail view with auth tabs", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "linear",
+          description: "Issues and project tracking",
+          supported_auth_types: ["oauth2", "api_key"],
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    const connectButtons = await screen.findAllByRole("button", {
+      name: /connect.*service/i,
+    });
+    fireEvent.click(connectButtons[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByText(/issues and project tracking/i),
+    );
+
+    // Detail view: back arrow + provider name heading + both tab triggers.
+    expect(
+      await within(dialog).findByRole("button", { name: /back to services/i }),
+    ).toBeDefined();
+    expect(
+      within(dialog).getByRole("heading", { name: /linear/i }),
+    ).toBeDefined();
+    expect(within(dialog).getByRole("tab", { name: /oauth/i })).toBeDefined();
+    expect(within(dialog).getByRole("tab", { name: /api key/i })).toBeDefined();
+  });
+
+  test("API key tab: submitting the form posts credentials and closes the dialog", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "openai",
+          description: "GPT models",
+          supported_auth_types: ["api_key"],
+        }),
+      ]),
+      getPostV1CreateCredentialsMockHandler({
+        id: "new-cred",
+        provider: "openai",
+        type: "api_key",
+        title: "My OpenAI key",
+        scopes: null,
+        username: null,
+        host: null,
+        is_managed: false,
+      }),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    const connectButtons = await screen.findAllByRole("button", {
+      name: /connect.*service/i,
+    });
+    fireEvent.click(connectButtons[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByText(/gpt models/i));
+
+    // Two text inputs in the API-key form: title (placeholder "My … key") and
+    // the secret (placeholder "sk-...").
+    const titleInput =
+      await within(dialog).findByPlaceholderText(/my openai key/i);
+    const apiKeyInput = within(dialog).getByPlaceholderText(/^sk-\.\.\./);
+    fireEvent.change(titleInput, { target: { value: "My OpenAI key" } });
+    fireEvent.change(apiKeyInput, { target: { value: "sk-test-key-123" } });
+
+    // RHF onChange-mode validation flips formState.isValid asynchronously;
+    // wait until the Save button becomes enabled before clicking.
+    const saveBtn = within(dialog).getByRole("button", {
+      name: /save api key/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(saveBtn.disabled).toBe(false);
+    });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
+
+  test("Back from detail view returns to the provider list", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([]),
+      getGetV1ListProvidersMockHandler([
+        makeProvider({
+          name: "github",
+          description: "Issues and PRs",
+          supported_auth_types: ["api_key"],
+        }),
+      ]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    const connectButtons = await screen.findAllByRole("button", {
+      name: /connect.*service/i,
+    });
+    fireEvent.click(connectButtons[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByText(/issues and prs/i));
+
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /back to services/i }),
+    );
+
+    expect(
+      await within(dialog).findByLabelText(/search services/i),
+    ).toBeDefined();
+  });
+});
+
+describe("SettingsIntegrationsPage — delete error path", () => {
+  test("a 401 on delete surfaces the failure toast and keeps the row", async () => {
+    server.use(
+      getGetV1ListCredentialsMockHandler([
+        makeCred({ id: "g1", provider: "github", title: "Personal" }),
+      ]),
+      getDeleteV1DeleteCredentialsMockHandler401(),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /delete personal/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^remove$/i }));
+
+    // Delete failed → row stays in the DOM after the dialog closes.
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(screen.getByText("Personal")).toBeDefined();
   });
 });
