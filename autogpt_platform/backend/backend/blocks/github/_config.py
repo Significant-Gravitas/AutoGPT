@@ -2,6 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-github = ProviderBuilder("github").with_description(
-    "Issues, pull requests, repositories"
-).build()
+github = (
+    ProviderBuilder("github")
+    .with_description("Issues, pull requests, repositories")
+    .with_supported_auth_types("api_key", "oauth2")
+    .build()
+)

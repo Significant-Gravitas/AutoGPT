@@ -7,6 +7,9 @@ Apollo doesn't use a full :class:`ProviderBuilder` chain (auth is set up in
 
 from backend.sdk import ProviderBuilder
 
-apollo = ProviderBuilder("apollo").with_description(
-    "Sales intelligence and prospecting"
-).build()
+apollo = (
+    ProviderBuilder("apollo")
+    .with_description("Sales intelligence and prospecting")
+    .with_supported_auth_types("api_key")
+    .build()
+)

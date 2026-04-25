@@ -2,6 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-notion = ProviderBuilder("notion").with_description(
-    "Pages, databases, and blocks"
-).build()
+notion = (
+    ProviderBuilder("notion")
+    .with_description("Pages, databases, and blocks")
+    .with_supported_auth_types("oauth2")
+    .build()
+)

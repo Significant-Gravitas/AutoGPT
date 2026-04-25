@@ -2,4 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-todoist = ProviderBuilder("todoist").with_description("Tasks and projects").build()
+todoist = (
+    ProviderBuilder("todoist")
+    .with_description("Tasks and projects")
+    .with_supported_auth_types("oauth2")
+    .build()
+)

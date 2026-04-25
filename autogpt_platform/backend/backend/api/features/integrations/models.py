@@ -7,6 +7,7 @@ allowing frontend code generators like Orval to create corresponding TypeScript 
 
 from pydantic import BaseModel, Field
 
+from backend.data.model import CredentialsType
 from backend.integrations.providers import ProviderName
 from backend.sdk.registry import AutoRegistry
 
@@ -59,6 +60,28 @@ class ProviderMetadata(BaseModel):
             "provider's ``_config.py``. ``None`` if not set."
         ),
     )
+    supported_auth_types: list[CredentialsType] = Field(
+        default_factory=list,
+        description=(
+            "Credential types this provider accepts. Drives which connection "
+            "tabs the settings UI renders for the provider. Empty list means "
+            "no auth types declared."
+        ),
+    )
+
+
+def get_supported_auth_types(name: str) -> list[CredentialsType]:
+    """Return the provider's supported credential types from :class:`AutoRegistry`.
+
+    Populated by :meth:`ProviderBuilder.with_supported_auth_types` (or by
+    ``with_oauth`` / ``with_api_key`` / ``with_user_password`` when the provider
+    uses the full builder chain). Returns an empty list for providers with no
+    auth types declared.
+    """
+    provider = AutoRegistry.get_provider(name)
+    if provider is None:
+        return []
+    return sorted(provider.supported_auth_types)
 
 
 def get_provider_description(name: str) -> str | None:

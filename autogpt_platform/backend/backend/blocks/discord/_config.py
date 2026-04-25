@@ -2,6 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-discord = ProviderBuilder("discord").with_description(
-    "Messages, channels, and servers"
-).build()
+discord = (
+    ProviderBuilder("discord")
+    .with_description("Messages, channels, and servers")
+    .with_supported_auth_types("api_key", "oauth2")
+    .build()
+)

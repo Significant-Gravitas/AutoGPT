@@ -2,6 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-compass = ProviderBuilder("compass").with_description(
-    "Geospatial context for agents"
-).build()
+compass = (
+    ProviderBuilder("compass")
+    .with_description("Geospatial context for agents")
+    .with_supported_auth_types("api_key")
+    .build()
+)

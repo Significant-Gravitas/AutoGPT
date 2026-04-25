@@ -72,6 +72,7 @@ from .models import (
     ProviderNamesResponse,
     get_all_provider_names,
     get_provider_description,
+    get_supported_auth_types,
 )
 
 if TYPE_CHECKING:
@@ -1234,7 +1235,11 @@ async def list_providers() -> List[ProviderMetadata]:
 
     all_providers = get_all_provider_names()
     return [
-        ProviderMetadata(name=name, description=get_provider_description(name))
+        ProviderMetadata(
+            name=name,
+            description=get_provider_description(name),
+            supported_auth_types=get_supported_auth_types(name),
+        )
         for name in all_providers
     ]
 

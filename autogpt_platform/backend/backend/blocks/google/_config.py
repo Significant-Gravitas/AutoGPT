@@ -2,6 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-google = ProviderBuilder("google").with_description(
-    "Gmail, Drive, Calendar, Sheets"
-).build()
+google = (
+    ProviderBuilder("google")
+    .with_description("Gmail, Drive, Calendar, Sheets")
+    .with_supported_auth_types("oauth2")
+    .build()
+)

@@ -2,6 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-twitter = ProviderBuilder("twitter").with_description(
-    "Tweets, timelines, and DMs"
-).build()
+twitter = (
+    ProviderBuilder("twitter")
+    .with_description("Tweets, timelines, and DMs")
+    .with_supported_auth_types("oauth2")
+    .build()
+)

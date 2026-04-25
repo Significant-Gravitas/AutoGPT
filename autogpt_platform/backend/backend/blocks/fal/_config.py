@@ -2,4 +2,9 @@
 
 from backend.sdk import ProviderBuilder
 
-fal = ProviderBuilder("fal").with_description("Hosted model inference").build()
+fal = (
+    ProviderBuilder("fal")
+    .with_description("Hosted model inference")
+    .with_supported_auth_types("api_key")
+    .build()
+)
