@@ -120,7 +120,9 @@ describe("filterProviders", () => {
     {
       id: "openai",
       name: "OpenAI",
-      credentials: [makeView({ id: "o1", title: "Work key", username: "Abhi" })],
+      credentials: [
+        makeView({ id: "o1", title: "Work key", username: "Abhi" }),
+      ],
     },
   ];
 
