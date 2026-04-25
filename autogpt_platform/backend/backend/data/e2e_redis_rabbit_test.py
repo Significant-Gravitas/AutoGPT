@@ -27,10 +27,11 @@ What's covered (mapped to the original PR brief):
 10. Dual-publish (rolling deploy): publishing via SPUBLISH+PUBLISH lands
     on both sharded and classic listeners.
 
-Scenarios 9 (force-restart redis-1 mid-stream) requires destructive
-docker control which the orchestrator-managed compose stack guards. We
-exercise the equivalent behaviour by closing+reopening the shard
-client connection, which exercises the same reconnect codepath.
+Scenario 9 (force-restart of a shard mid-stream) is covered by the
+sibling ``e2e_redis_restart_test.py`` against an isolated docker
+cluster. Here we exercise the equivalent client-side behaviour by
+closing+reopening the shard client connection — same reconnect
+codepath, no docker dependency.
 
 All tests skip gracefully when their respective infrastructure isn't
 running, so this file safely co-exists with CI runners that don't have
