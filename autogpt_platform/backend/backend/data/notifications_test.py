@@ -1,11 +1,24 @@
-"""Tests for notification data models."""
+"""Tests for notification data models and batch helpers."""
 
+import asyncio
 from datetime import datetime, timezone
+from uuid import uuid4
 
 import pytest
+from prisma.enums import NotificationType
+from prisma.errors import UniqueViolationError
+from prisma.models import NotificationEvent, User, UserNotificationBatch
 from pydantic import ValidationError
 
-from backend.data.notifications import AgentApprovalData, AgentRejectionData
+from backend.data.notifications import (
+    AgentApprovalData,
+    AgentRejectionData,
+    AgentRunData,
+    NotificationEventModel,
+    create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
+)
+from backend.util.test import SpinTestServer
 
 
 class TestAgentApprovalData:
@@ -149,3 +162,174 @@ class TestAgentRejectionData:
         assert restored_data.comments == original_data.comments
         assert restored_data.reviewed_at == original_data.reviewed_at
         assert restored_data.resubmit_url == original_data.resubmit_url
+
+
+def _make_agent_run_event(user_id: str, agent_name: str = "Test Agent"):
+    return NotificationEventModel[AgentRunData](
+        type=NotificationType.AGENT_RUN,
+        user_id=user_id,
+        data=AgentRunData(
+            agent_name=agent_name,
+            credits_used=10.0,
+            execution_time=5.0,
+            node_count=3,
+            graph_id="graph-" + agent_name,
+            outputs=[],
+        ),
+    )
+
+
+async def _create_test_user(user_id: str) -> None:
+    try:
+        await User.prisma().create(
+            data={
+                "id": user_id,
+                "email": f"test-{user_id}@example.com",
+                "name": f"Test User {user_id[:8]}",
+            }
+        )
+    except UniqueViolationError:
+        pass
+
+
+async def _cleanup_test_user(user_id: str) -> None:
+    try:
+        await empty_user_notification_batch(user_id, NotificationType.AGENT_RUN)
+    except Exception:
+        pass
+    try:
+        await User.prisma().delete_many(where={"id": user_id})
+    except Exception:
+        pass
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_creates_empty_batch_then_appends(server: SpinTestServer):
+    """Empty batch path creates a batch. Existing-batch path appends without
+    loading the existing notification rows."""
+    user_id = f"notif-create-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        # First call → create path.
+        first = await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="first"),
+        )
+        assert first.user_id == user_id
+        assert first.type == NotificationType.AGENT_RUN
+        # The returned DTO no longer eagerly loads notifications — callers
+        # that need them must fetch separately.
+        assert first.notifications == []
+
+        row_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert row_count == 1
+
+        # Second call → update path.
+        second = await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="second"),
+        )
+        assert second.user_id == user_id
+        # Still no eager include, even when the batch has rows.
+        assert second.notifications == []
+
+        row_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert row_count == 2
+
+        # Exactly one batch for (user_id, AGENT_RUN).
+        batch_count = await UserNotificationBatch.prisma().count(
+            where={"userId": user_id, "type": NotificationType.AGENT_RUN}
+        )
+        assert batch_count == 1
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_does_not_load_existing_notifications(server: SpinTestServer):
+    """Pre-seeding 25 notifications into the batch and then upserting one more
+    must not trip on the eager include that used to load every row."""
+    user_id = f"notif-bigbatch-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        # Seed the batch by issuing 25 upserts. The first creates, the rest
+        # append.
+        for i in range(25):
+            await create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name=f"a{i}"),
+            )
+
+        pre_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert pre_count == 25
+
+        # The 26th upsert: must succeed and must NOT return the 25 prior rows.
+        resp = await create_or_add_to_user_notification_batch(
+            user_id=user_id,
+            notification_type=NotificationType.AGENT_RUN,
+            notification_data=_make_agent_run_event(user_id, agent_name="final"),
+        )
+        assert resp.notifications == [], (
+            "Upsert must not eagerly include Notifications; that is the "
+            "statement_timeout regression we are guarding against."
+        )
+
+        post_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert post_count == 26
+    finally:
+        await _cleanup_test_user(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_concurrent_invocations_no_unique_violation(
+    server: SpinTestServer,
+):
+    """Two concurrent invocations on an empty batch must both succeed: one
+    creates, one appends. Neither loses its event, and no
+    @@unique([userId, type]) violation leaks out of the helper."""
+    user_id = f"notif-race-{uuid4()}"
+    await _create_test_user(user_id)
+
+    try:
+        results = await asyncio.gather(
+            create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name="left"),
+            ),
+            create_or_add_to_user_notification_batch(
+                user_id=user_id,
+                notification_type=NotificationType.AGENT_RUN,
+                notification_data=_make_agent_run_event(user_id, agent_name="right"),
+            ),
+            return_exceptions=True,
+        )
+
+        # Neither call raised — the atomic upsert swallows the race that the
+        # old find→create/update pattern exposed.
+        assert all(not isinstance(r, Exception) for r in results), results
+
+        batch_count = await UserNotificationBatch.prisma().count(
+            where={"userId": user_id, "type": NotificationType.AGENT_RUN}
+        )
+        assert batch_count == 1
+
+        event_count = await NotificationEvent.prisma().count(
+            where={"UserNotificationBatch": {"is": {"userId": user_id}}}
+        )
+        assert event_count == 2, "both concurrent notifications must persist"
+    finally:
+        await _cleanup_test_user(user_id)
