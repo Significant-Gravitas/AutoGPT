@@ -301,16 +301,16 @@ async def test_batch_upsert_concurrent_no_duplicates(server: SpinTestServer):
         batches = await UserNotificationBatch.prisma().find_many(
             where={"userId": user_id, "type": NotificationType.AGENT_RUN}
         )
-        assert (
-            len(batches) == 1
-        ), f"expected exactly 1 batch, got {len(batches)}: {batches}"
+        assert len(batches) == 1, (
+            f"expected exactly 1 batch, got {len(batches)}: {batches}"
+        )
 
         # Every notification landed — no dropped writes.
         events = await NotificationEvent.prisma().find_many(
             where={"userNotificationBatchId": batches[0].id}
         )
-        assert (
-            len(events) == n
-        ), f"expected {n} events, got {len(events)} — writes were lost"
+        assert len(events) == n, (
+            f"expected {n} events, got {len(events)} — writes were lost"
+        )
     finally:
         await _cleanup_test_user(user_id)
