@@ -56,7 +56,7 @@ _AMQP_KEYWORDS = [
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
 # Pika reconnect noise: AUTOGPT-SERVER-6JC/6JD/6JE/6JF. The reconnect logic in
-# ``func_retry`` handles these correctly; they should not surface as Sentry
+# ``conn_retry`` handles these correctly; they should not surface as Sentry
 # ERROR events. We narrowly drop the four known signatures from the three
 # pika network-layer loggers so genuine pika ERRORs (auth failure, channel
 # close on declare error, etc.) still get through.
