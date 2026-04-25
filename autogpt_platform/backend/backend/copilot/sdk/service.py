@@ -133,7 +133,7 @@ from ..transcript import (
     upload_transcript,
     validate_transcript,
 )
-from ..transcript_builder import TranscriptBuilder
+from ..transcript_builder import TranscriptBuilder, TranscriptSnapshot
 from .compaction import CompactionTracker, filter_compaction_messages
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import record_turn_cost_from_openrouter
@@ -586,7 +586,7 @@ class _InterruptedAttempt:
         self,
         session: ChatSession,
         transcript_builder: "TranscriptBuilder",
-        transcript_snap: object,
+        transcript_snap: TranscriptSnapshot,
         pre_attempt_msg_count: int,
     ) -> None:
         """Roll back ``session.messages`` + transcript, keeping the partial.
@@ -601,7 +601,7 @@ class _InterruptedAttempt:
             tail.pop()
         self.partial = tail
         session.messages = session.messages[:pre_attempt_msg_count]
-        transcript_builder.restore(transcript_snap)  # type: ignore[arg-type]
+        transcript_builder.restore(transcript_snap)
 
     def clear(self) -> None:
         """Drop captured state — used on successful retry."""
