@@ -7,15 +7,35 @@ from typing import Any
 
 
 def _truncate_string_middle(value: str, limit: int) -> str:
-    """Shorten *value* to *limit* chars by removing the **middle** portion."""
+    """Shorten *value* to at most *limit* chars by removing the **middle** portion.
+
+    The returned string (head + sentinel + tail) is guaranteed to be no longer
+    than *limit*. The sentinel ``"… (omitted N chars)…"`` itself counts toward
+    the budget — previously it was added on top, so callers always overshot
+    the limit by ~22 chars and ``truncate(value, N)`` violated its own
+    docstring contract. For very small *limit* values where the sentinel
+    alone wouldn't fit, we degrade gracefully to a head-only slice.
+    """
 
     if len(value) <= limit:
         return value
 
-    head_len = max(1, limit // 2)
-    tail_len = limit - head_len  # ensures total == limit
+    # Reserve room for the sentinel inside the budget. Worst-case sentinel
+    # length is "… (omitted <len(value)> chars)…" — bounded by the input.
+    sentinel_template = "… (omitted {n} chars)…"
+    sentinel_len = len(sentinel_template.format(n=len(value)))
+
+    if limit <= sentinel_len:
+        # Not enough room for any kept content alongside the sentinel.
+        # Fall back to a hard slice that respects the limit exactly.
+        return value[:limit]
+
+    keep_budget = limit - sentinel_len
+    head_len = max(1, keep_budget // 2)
+    tail_len = keep_budget - head_len  # may be 0 for very tight budgets
     omitted = len(value) - (head_len + tail_len)
-    return f"{value[:head_len]}… (omitted {omitted} chars)…{value[-tail_len:]}"
+    tail = value[-tail_len:] if tail_len > 0 else ""
+    return f"{value[:head_len]}{sentinel_template.format(n=omitted)}{tail}"
 
 
 # ---------------------------------------------------------------------------
