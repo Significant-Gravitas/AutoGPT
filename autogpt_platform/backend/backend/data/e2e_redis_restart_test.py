@@ -222,7 +222,7 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
 
     received: list[str] = []
 
-    async def _drain_one(timeout_s: float) -> str | None:
+    async def _drain_one() -> str | None:
         try:
             async for msg in pubsub.listen():
                 if msg.get("type") == "smessage":
@@ -235,7 +235,7 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
         async_cluster = await rc.get_redis_async()
         await async_cluster.execute_command("SPUBLISH", channel, "before-restart")
 
-        first = await asyncio.wait_for(_drain_one(5.0), timeout=6.0)
+        first = await asyncio.wait_for(_drain_one(), timeout=6.0)
         received.append(first or "")
         assert received == ["before-restart"], (
             f"pre-restart publish did not arrive: {received}"
