@@ -1,6 +1,7 @@
 """Tests for notification data models and batch helpers."""
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -20,6 +21,8 @@ from backend.data.notifications import (
     empty_user_notification_batch,
 )
 from backend.util.test import SpinTestServer
+
+logger = logging.getLogger(__name__)
 
 
 class TestAgentApprovalData:
@@ -196,12 +199,12 @@ async def _create_test_user(user_id: str) -> None:
 async def _cleanup_test_user(user_id: str) -> None:
     try:
         await empty_user_notification_batch(user_id, NotificationType.AGENT_RUN)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("notification cleanup for %s failed: %s", user_id, exc)
     try:
         await User.prisma().delete_many(where={"id": user_id})
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("user cleanup for %s failed: %s", user_id, exc)
 
 
 @pytest.mark.asyncio(loop_scope="session")
