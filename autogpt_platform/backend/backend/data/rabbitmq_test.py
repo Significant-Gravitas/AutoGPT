@@ -55,7 +55,6 @@ from backend.executor.utils import (
     create_execution_queue_config,
 )
 
-
 # ---------- Quorum queue config: classic→quorum rollover guard ----------
 
 
@@ -216,9 +215,7 @@ async def test_publish_reconnects_on_channel_invalid_state() -> None:
             None,
         ]
     )
-    client, fake_channel, fake_exchange = _make_async_client(
-        exchange_publish=publish
-    )
+    client, fake_channel, fake_exchange = _make_async_client(exchange_publish=publish)
     exchange = Exchange(name="test_exchange", type=ExchangeType.DIRECT)
 
     # Patch connect() so the reconnect path doesn't try to hit a real broker.

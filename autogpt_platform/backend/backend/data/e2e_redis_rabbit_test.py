@@ -48,6 +48,7 @@ from uuid import uuid4
 import pytest
 
 import backend.data.redis_client as redis_client
+from backend.api.model import NotificationPayload
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
@@ -55,7 +56,6 @@ from backend.data.execution import (
     _exec_channel,
     _graph_all_channel,
 )
-from backend.api.model import NotificationPayload
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,

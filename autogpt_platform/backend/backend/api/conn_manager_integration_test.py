@@ -158,13 +158,9 @@ async def test_two_clients_get_independent_ssubscribes_on_right_shards(
 
     # Stub Prisma lookup so tests don't need a DB.
     async def _fake_meta(_uid, gex_id):
-        return _meta(
-            user_id, graph_a if gex_id == exec_a else graph_b, gex_id
-        )
+        return _meta(user_id, graph_a if gex_id == exec_a else graph_b, gex_id)
 
-    monkeypatch.setattr(
-        "backend.api.conn_manager.get_graph_execution_meta", _fake_meta
-    )
+    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
 
     cm = ConnectionManager()
     ws_a: AsyncMock = AsyncMock(spec=WebSocket)
@@ -242,9 +238,7 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
     async def _fake_meta(_uid, gex_id):
         return _meta(user_id, graph_id, gex_id)
 
-    monkeypatch.setattr(
-        "backend.api.conn_manager.get_graph_execution_meta", _fake_meta
-    )
+    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
 
     cm = ConnectionManager()
     ws_agg: AsyncMock = AsyncMock(spec=WebSocket)
@@ -278,9 +272,7 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
         cluster.spublish(chan_per, payload)
         cluster.spublish(chan_all, payload)
 
-        delivered = await _wait_until(
-            lambda: sent_agg and sent_per, timeout=5.0
-        )
+        delivered = await _wait_until(lambda: sent_agg and sent_per, timeout=5.0)
         assert delivered, f"sent_agg={sent_agg!r} sent_per={sent_per!r}"
         agg_msg = json.loads(sent_agg[0])
         per_msg = json.loads(sent_per[0])
@@ -309,9 +301,7 @@ async def test_disconnect_unsubscribes_and_drops_future_publishes(monkeypatch) -
     async def _fake_meta(_uid, gex_id):
         return _meta(user_id, graph_id, gex_id)
 
-    monkeypatch.setattr(
-        "backend.api.conn_manager.get_graph_execution_meta", _fake_meta
-    )
+    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
 
     cm = ConnectionManager()
     ws: AsyncMock = AsyncMock(spec=WebSocket)
@@ -379,9 +369,7 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
     async def _fake_meta(_uid, gex_id):
         return _meta(user_id, graph_id, gex_id)
 
-    monkeypatch.setattr(
-        "backend.api.conn_manager.get_graph_execution_meta", _fake_meta
-    )
+    monkeypatch.setattr("backend.api.conn_manager.get_graph_execution_meta", _fake_meta)
 
     cm = ConnectionManager()
     ws: AsyncMock = AsyncMock(spec=WebSocket)
@@ -416,9 +404,7 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
         assert delivered, f"only delivered {len(sent)}/{n_events}"
 
         # Validate ordering — Redis pub/sub is FIFO per channel.
-        markers = [
-            json.loads(m)["data"]["input_data"]["in"] for m in sent[:n_events]
-        ]
+        markers = [json.loads(m)["data"]["input_data"]["in"] for m in sent[:n_events]]
         assert markers == [f"m{i}" for i in range(n_events)]
     finally:
         await cm.disconnect_socket(ws, user_id=user_id)
