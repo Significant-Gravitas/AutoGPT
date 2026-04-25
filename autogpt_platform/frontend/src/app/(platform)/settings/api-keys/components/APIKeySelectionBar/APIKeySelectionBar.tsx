@@ -24,25 +24,13 @@ export function APIKeySelectionBar({
           {selectedCount} selected
         </Text>
         {!allSelected && (
-          <button
-            type="button"
-            onClick={onSelectAll}
-            className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
-          >
-            <Text variant="body-medium" as="span" className="text-textBlack">
-              Select All
-            </Text>
-          </button>
+          <Button variant="ghost" size="small" onClick={onSelectAll}>
+            Select All
+          </Button>
         )}
-        <button
-          type="button"
-          onClick={onDeselectAll}
-          className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800"
-        >
-          <Text variant="body-medium" as="span" className="text-textBlack">
-            Deselect
-          </Text>
-        </button>
+        <Button variant="ghost" size="small" onClick={onDeselectAll}>
+          Deselect
+        </Button>
       </div>
       <Button
         variant="destructive"

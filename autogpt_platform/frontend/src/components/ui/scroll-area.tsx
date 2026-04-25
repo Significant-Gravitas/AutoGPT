@@ -28,13 +28,17 @@ const ScrollArea = React.forwardRef<
     ref,
   ) => {
     const viewportRef = React.useRef<HTMLDivElement | null>(null);
+    const reduceMotion = useReducedMotion();
     const fabVisible = useScrolledPastThreshold(viewportRef, {
       enabled: showScrollToTop,
       threshold: 200,
     });
 
     function scrollToTop() {
-      viewportRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+      viewportRef.current?.scrollTo({
+        top: 0,
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
     }
 
     return (
@@ -99,6 +103,8 @@ function useScrolledPastThreshold(
     if (!viewport) return;
 
     function update() {
+      // TS can't narrow the captured `viewport` inside a nested closure, so
+      // keep the guard — the outer early-return still covers runtime.
       if (!viewport) return;
       setVisible(viewport.scrollTop > threshold);
     }
@@ -126,7 +132,7 @@ function ScrollToTopFab({ visible, onClick }: ScrollToTopFabProps) {
           type="button"
           onClick={onClick}
           aria-label="Scroll to top"
-          className="absolute bottom-6 left-1/2 z-30 -ml-[22px] flex h-11 w-11 items-center justify-center rounded-full bg-zinc-800 text-white shadow-md transition-colors hover:bg-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 focus-visible:ring-offset-2"
+          className="absolute bottom-6 left-1/2 z-30 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md transition-colors hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           initial={
             reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }
           }

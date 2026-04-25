@@ -3,32 +3,39 @@ import { describe, expect, it } from "vitest";
 import {
   formatCost,
   formatPendingDate,
+  formatRelativeMultiplier,
   getTierLabel,
   TIERS,
   TIER_ORDER,
 } from "./helpers";
 
 describe("formatCost", () => {
-  it("returns 'Free' for the FREE tier regardless of cents", () => {
-    expect(formatCost(0, "FREE")).toBe("Free");
-    expect(formatCost(999, "FREE")).toBe("Free");
+  it("returns 'Free' only when BASIC actually costs $0", () => {
+    expect(formatCost(0, "BASIC")).toBe("Free");
+  });
+
+  it("formats BASIC to a dollars-per-month string when LD sets a non-zero price", () => {
+    expect(formatCost(999, "BASIC")).toBe("$9.99/mo");
   });
 
   it("returns a placeholder when paid tier has no price yet", () => {
     expect(formatCost(0, "PRO")).toBe("Pricing available soon");
+    expect(formatCost(0, "MAX")).toBe("Pricing available soon");
     expect(formatCost(0, "BUSINESS")).toBe("Pricing available soon");
   });
 
   it("formats cents to a dollars-per-month string for paid tiers", () => {
     expect(formatCost(999, "PRO")).toBe("$9.99/mo");
+    expect(formatCost(32000, "MAX")).toBe("$320.00/mo");
     expect(formatCost(4900, "BUSINESS")).toBe("$49.00/mo");
   });
 });
 
 describe("getTierLabel", () => {
   it("returns the canonical label for known tiers", () => {
-    expect(getTierLabel("FREE")).toBe("Free");
+    expect(getTierLabel("BASIC")).toBe("Basic");
     expect(getTierLabel("PRO")).toBe("Pro");
+    expect(getTierLabel("MAX")).toBe("Max");
     expect(getTierLabel("BUSINESS")).toBe("Business");
   });
 
@@ -58,5 +65,69 @@ describe("TIERS / TIER_ORDER", () => {
     for (const tier of TIERS) {
       expect(TIER_ORDER).toContain(tier.key);
     }
+  });
+});
+
+describe("formatRelativeMultiplier", () => {
+  it("returns null for the lowest visible tier — it's the baseline", () => {
+    expect(
+      formatRelativeMultiplier("BASIC", { BASIC: 1, PRO: 5, MAX: 20 }),
+    ).toBeNull();
+  });
+
+  it("formats a clean integer multiplier as 'N.0x rate limits'", () => {
+    expect(formatRelativeMultiplier("PRO", { BASIC: 1, PRO: 4, MAX: 20 })).toBe(
+      "4.0x rate limits",
+    );
+  });
+
+  it("rounds to one decimal when the ratio isn't a whole number", () => {
+    expect(formatRelativeMultiplier("MAX", { BASIC: 2, PRO: 5, MAX: 17 })).toBe(
+      "8.5x rate limits",
+    );
+  });
+
+  it("returns null when the tier isn't in the multipliers map (hidden)", () => {
+    expect(
+      formatRelativeMultiplier("BUSINESS", { BASIC: 1, PRO: 5 }),
+    ).toBeNull();
+  });
+
+  it("ignores the baseline from hidden tiers so visible-tier deltas stay honest", () => {
+    // BASIC hidden but PRO/MAX visible — PRO becomes the baseline, MAX is 4×.
+    expect(formatRelativeMultiplier("MAX", { PRO: 5, MAX: 20 })).toBe(
+      "4.0x rate limits",
+    );
+    expect(formatRelativeMultiplier("PRO", { PRO: 5, MAX: 20 })).toBeNull();
+  });
+
+  it("handles fractional LD-provided multipliers cleanly", () => {
+    // LD override can set e.g. PRO=7.5×; the relative display still computes
+    // correctly against a non-integer minimum.
+    expect(formatRelativeMultiplier("PRO", { BASIC: 1.5, PRO: 7.5 })).toBe(
+      "5.0x rate limits",
+    );
+  });
+
+  it("returns null for every tier when all visible multipliers are equal", () => {
+    // Edge case: if LD sets every tier to the same value, none are "above"
+    // the baseline — the UI shouldn't label any of them.
+    expect(formatRelativeMultiplier("PRO", { PRO: 5, MAX: 5 })).toBeNull();
+    expect(formatRelativeMultiplier("MAX", { PRO: 5, MAX: 5 })).toBeNull();
+  });
+
+  it("returns null when the tier's own multiplier is zero or negative", () => {
+    // Defensive: a misconfigured LD value leaking through shouldn't render as
+    // "0.0x rate limits" — hide the badge entirely.
+    expect(formatRelativeMultiplier("BASIC", { BASIC: 0, PRO: 5 })).toBeNull();
+    expect(formatRelativeMultiplier("BASIC", { BASIC: -1, PRO: 5 })).toBeNull();
+  });
+
+  it("rounds 8.533... to '8.5x rate limits' (not 8.53 or 9)", () => {
+    // Price-ratio-derived multiplier from the real $320/$50 → 6.4, or from
+    // limit-ratio 26.67/3.13 → ~8.53. The display rule is one decimal place.
+    expect(formatRelativeMultiplier("MAX", { PRO: 3, MAX: 25.6 })).toBe(
+      "8.5x rate limits",
+    );
   });
 });

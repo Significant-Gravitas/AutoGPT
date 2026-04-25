@@ -4,6 +4,7 @@ Meeting BaaS bot (recording) blocks.
 
 from typing import Optional
 
+from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -21,13 +22,15 @@ from backend.sdk import (
 from ._api import MeetingBaasAPI
 from ._config import baas
 
+# Meeting BaaS recording rate: $0.69 per hour.
+_MEETING_BAAS_USD_PER_SECOND = 0.69 / 3600
 
-# Meeting BaaS charges $0.69/hour of recording. The Join block is the
-# trigger that starts the recording session; the meeting itself runs out
-# of band (we don't get duration back from the FetchMeetingData response
-# we use). 30 cr ≈ $0.30 covers a median 30-minute meeting with margin.
-# Interim until FetchMeetingData surfaces duration for post-flight
-# reconciliation.
+# Join bills a flat 30 cr commit (covers median short meeting);
+# FetchMeetingData bills the duration-scaled remainder from the
+# `duration_seconds` field on the API response. Long meetings no
+# longer under-bill.
+
+
 @cost(BlockCost(cost_type=BlockCostType.RUN, cost_amount=30))
 class BaasBotJoinMeetingBlock(Block):
     """
@@ -144,6 +147,7 @@ class BaasBotLeaveMeetingBlock(Block):
         yield "left", left
 
 
+@cost(BlockCost(cost_type=BlockCostType.COST_USD, cost_amount=150))
 class BaasBotFetchMeetingDataBlock(Block):
     """
     Pull MP4 URL, transcript & metadata for a completed meeting.
@@ -186,9 +190,21 @@ class BaasBotFetchMeetingDataBlock(Block):
             include_transcripts=input_data.include_transcripts,
         )
 
+        bot_meta = data.get("bot_data", {}).get("bot", {}) or {}
+        # Bill recording duration via COST_USD so multi-hour meetings
+        # scale past the Join block's flat 30 cr deposit.
+        duration_seconds = float(bot_meta.get("duration_seconds") or 0)
+        if duration_seconds > 0:
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=duration_seconds * _MEETING_BAAS_USD_PER_SECOND,
+                    provider_cost_type="cost_usd",
+                )
+            )
+
         yield "mp4_url", data.get("mp4", "")
         yield "transcript", data.get("bot_data", {}).get("transcripts", [])
-        yield "metadata", data.get("bot_data", {}).get("bot", {})
+        yield "metadata", bot_meta
 
 
 class BaasBotDeleteRecordingBlock(Block):

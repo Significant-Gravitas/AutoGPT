@@ -23,10 +23,19 @@ export function PermissionsCheckboxGroup({ value, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      <Text variant="large-medium" as="span" className="text-textBlack">
+      <Text
+        id="api-key-permissions-label"
+        variant="large-medium"
+        as="span"
+        className="text-textBlack"
+      >
         Permissions
       </Text>
-      <div className="grid max-h-[220px] grid-cols-2 gap-x-4 gap-y-2 overflow-y-auto">
+      <div
+        role="group"
+        aria-labelledby="api-key-permissions-label"
+        className="grid max-h-[220px] grid-cols-2 gap-x-4 gap-y-2 overflow-y-auto"
+      >
         {PERMISSION_OPTIONS.map((option) => {
           const checked = value.includes(option.value);
           return (

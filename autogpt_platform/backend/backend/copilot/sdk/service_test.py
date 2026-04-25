@@ -614,10 +614,10 @@ class TestResolveSdkModelForRequestLdFallback:
         self, monkeypatch, _clean_config_env
     ):
         """Bug reported in local test: subscription mode + LD serving Kimi
-        on ``copilot-thinking-standard-model`` returned ``None`` (CLI
-        picked subscription default Opus), silently ignoring the LD
-        override.  An LD value different from the config default is an
-        explicit admin decision and must win."""
+        on ``copilot-model-routing[thinking][standard]`` returned
+        ``None`` (CLI picked subscription default Opus), silently
+        ignoring the LD override.  An LD value different from the
+        config default is an explicit admin decision and must win."""
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             claude_agent_model=None,

@@ -10,6 +10,7 @@ import {
 import { server } from "@/mocks/mock-server";
 import {
   getDeleteV1RevokeApiKeyMockHandler200,
+  getDeleteV1RevokeApiKeyMockHandler422,
   getGetV1ListUserApiKeysMockHandler,
 } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
 import type { APIKeyInfo } from "@/app/api/__generated__/models/aPIKeyInfo";
@@ -126,6 +127,38 @@ describe("SettingsApiKeysPage - revoke flow", () => {
     expect(
       screen.getByRole("button", { name: /delete selected/i }),
     ).toBeDefined();
+  });
+
+  test("keeps the dialog open and does not clear selection when revoke fails", async () => {
+    server.use(
+      getGetV1ListUserApiKeysMockHandler([
+        makeKey({ id: "k1", name: "Alpha" }),
+        makeKey({ id: "k2", name: "Beta" }),
+      ]),
+      getDeleteV1RevokeApiKeyMockHandler422(),
+    );
+
+    render(<SettingsApiKeysPage />);
+    await screen.findByText("Alpha");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /select alpha/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /select beta/i }));
+    await screen.findByText(/2 selected/i);
+
+    fireEvent.click(screen.getByRole("button", { name: /delete selected/i }));
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /^revoke keys$/i }),
+    );
+
+    // Dialog stays open, selection bar still present, nothing cleared.
+    await waitFor(() => {
+      expect(
+        within(dialog).getByRole("button", { name: /^revoke keys$/i }),
+      ).toBeDefined();
+    });
+    expect(screen.getByText(/2 selected/i)).toBeDefined();
   });
 
   test("batch delete opens a multi-key confirm dialog and closes on confirm", async () => {

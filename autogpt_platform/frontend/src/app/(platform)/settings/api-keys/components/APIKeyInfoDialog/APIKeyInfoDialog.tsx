@@ -60,14 +60,14 @@ export function APIKeyInfoDialog({ open, apiKey, onOpenChange }: Props) {
 
           <Section label="Created">
             <Text variant="body" className="text-zinc-700">
-              {format(apiKey.created_at, "PPP p")}
+              {format(new Date(apiKey.created_at), "PPP p")}
             </Text>
           </Section>
 
           <Section label="Last used">
             <Text variant="body" className="text-zinc-700">
               {apiKey.last_used_at
-                ? format(apiKey.last_used_at, "PPP p")
+                ? format(new Date(apiKey.last_used_at), "PPP p")
                 : "Never used"}
             </Text>
           </Section>

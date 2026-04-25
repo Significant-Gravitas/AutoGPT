@@ -4,7 +4,9 @@ export function maskAPIKey(head: string, tail: string): string {
   return `${head}••••••••${tail}`;
 }
 
-export function formatLastUsed(lastUsedAt: Date | null | undefined): string {
+export function formatLastUsed(
+  lastUsedAt: Date | string | null | undefined,
+): string {
   if (!lastUsedAt) return "Never used";
-  return `Used ${formatDistanceToNow(lastUsedAt, { addSuffix: true })}`;
+  return `Used ${formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true })}`;
 }

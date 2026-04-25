@@ -265,20 +265,23 @@ class TestNewlyRegisteredBlockCosts:
     """
 
     def test_perplexity_block_registered(self):
+        from backend.blocks._base import BlockCostType
         from backend.blocks.perplexity import PerplexityBlock, PerplexityModel
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert PerplexityBlock in BLOCK_COSTS
         entries = BLOCK_COSTS[PerplexityBlock]
-        # Pin model->cost mapping so swapped prices fail the regression test.
-        costs_by_model = {
-            entry.cost_filter["model"]: entry.cost_amount for entry in entries
+        # All 3 Perplexity tiers bill via COST_USD 150 cr/$ (OpenRouter
+        # returns x-total-cost on each response). Pin cost_type + amount
+        # so a regression to per-model flat RUN tiers fails this test.
+        assert {entry.cost_filter["model"] for entry in entries} == {
+            PerplexityModel.SONAR,
+            PerplexityModel.SONAR_PRO,
+            PerplexityModel.SONAR_DEEP_RESEARCH,
         }
-        assert costs_by_model == {
-            PerplexityModel.SONAR: 1,
-            PerplexityModel.SONAR_PRO: 5,
-            PerplexityModel.SONAR_DEEP_RESEARCH: 10,
-        }
+        for entry in entries:
+            assert entry.cost_type == BlockCostType.COST_USD
+            assert entry.cost_amount == 150
 
     def test_fact_checker_block_registered(self):
         from backend.blocks.jina.fact_checker import FactCheckerBlock
@@ -337,27 +340,29 @@ class TestNewlyRegisteredBlockCosts:
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert ValidateEmailsBlock in BLOCK_COSTS
-        # COST_USD with multiplier 250 → ceil(provider_cost_usd * 250) credits.
+        # COST_USD with multiplier 150 → ceil(provider_cost_usd * 150) credits.
         # Block reports $0.008/call via merge_stats, so effective charge is 2.
         assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_type == BlockCostType.COST_USD
-        assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 250
+        assert BLOCK_COSTS[ValidateEmailsBlock][0].cost_amount == 150
 
     def test_claude_code_block_registered(self):
         """ClaudeCodeBlock spawns an E2B sandbox + runs Claude inside it.
 
-        Cost is dominated by the in-sandbox LLM spend ($0.50-$2/run typical),
-        not the sandbox compute itself. Flat 100 credits ($1.00) is the
-        conservative estimate until we wire the in-sandbox x-total-cost back
-        into NodeExecutionStats.provider_cost.
+        Claude Code CLI returns ``total_cost_usd`` on every response; the
+        block pipes it into execution_stats and bills via COST_USD 150 cr/$
+        (1.5× margin matching TOKEN_COST).
         """
+        from backend.blocks._base import BlockCostType
         from backend.blocks.claude_code import ClaudeCodeBlock
         from backend.data.block_cost_config import BLOCK_COSTS
 
         assert ClaudeCodeBlock in BLOCK_COSTS
-        assert BLOCK_COSTS[ClaudeCodeBlock][0].cost_amount == 100
+        entry = BLOCK_COSTS[ClaudeCodeBlock][0]
+        assert entry.cost_type == BlockCostType.COST_USD
+        assert entry.cost_amount == 150
         # Filter keys on `e2b_credentials` (not `credentials`) — verifies the
         # cost gate matches the block's actual input field name.
-        assert "e2b_credentials" in BLOCK_COSTS[ClaudeCodeBlock][0].cost_filter
+        assert "e2b_credentials" in entry.cost_filter
 
 
 # ---------------------------------------------------------------------------
@@ -1035,3 +1040,293 @@ async def test_prepare_block_file_ref_expansion_error() -> None:
         )
     assert isinstance(result, ErrorResponse)
     assert "file reference" in result.message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Auto-credentials (Google Drive picker) regression tests for execute_block
+# ---------------------------------------------------------------------------
+
+
+def _make_block_with_auto_creds(
+    field_name: str = "spreadsheet",
+    kwarg_name: str = "credentials",
+    provider: str = "google",
+):
+    """Mock block exposing one auto_credentials field (Drive picker style)."""
+    block = _make_block(block_id="drive-consumer", name="DriveConsumer")
+    block.input_schema.get_auto_credentials_fields = MagicMock(
+        return_value={
+            kwarg_name: {
+                "field_name": field_name,
+                "config": {
+                    "provider": provider,
+                    "type": "oauth2",
+                    "scopes": ["https://www.googleapis.com/auth/drive.file"],
+                },
+            }
+        }
+    )
+    block.input_schema.get_credentials_fields = MagicMock(return_value={})
+    block.input_schema.jsonschema = MagicMock(
+        return_value={
+            "type": "object",
+            "properties": {
+                field_name: {
+                    "type": "object",
+                    "title": "Spreadsheet",
+                    "format": "google-drive-picker",
+                    "google_drive_picker_config": {
+                        "multiselect": False,
+                        "allowed_views": ["SPREADSHEETS"],
+                    },
+                },
+                "range": {"type": "string", "title": "Range"},
+            },
+            "required": [field_name],
+        }
+    )
+    return block
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestExecuteBlockAutoCredentials:
+    async def test_happy_path_resolves_picker_credentials(self):
+        """Drive file with valid _credentials_id → block executes with creds injected."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _mock_credit = _patch_credit_db()
+        mock_creds = MagicMock(id="cred-id-123", provider="google")
+        mock_lock = AsyncMock()
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.acquire = AsyncMock(
+            return_value=(mock_creds, mock_lock)
+        )
+        creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "_credentials_id": "cred-id-123",
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-1",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        assert result.success is True
+        creds_manager_cls.return_value.acquire.assert_awaited_once_with(
+            _USER, "cred-id-123"
+        )
+        mock_lock.release.assert_awaited_once()
+
+    async def test_missing_credentials_id_returns_setup_requirements(self):
+        """Drive field without _credentials_id → SetupRequirementsResponse
+        surfacing the picker field to the frontend."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-2",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, SetupRequirementsResponse)
+        inputs = result.setup_info.requirements["inputs"]
+        picker_field = next((i for i in inputs if i["name"] == "spreadsheet"), None)
+        assert picker_field is not None
+        assert picker_field["format"] == "google-drive-picker"
+        assert "google_drive_picker_config" in picker_field
+
+    async def test_chained_none_credentials_id_skips_acquisition(self):
+        """_credentials_id=None (upstream-chained) → skip acquire, execute anyway."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.acquire = AsyncMock()
+        creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "_credentials_id": None,
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-3",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, BlockOutputResponse)
+        creds_manager_cls.return_value.acquire.assert_not_awaited()
+
+    async def test_no_file_selected_returns_setup_requirements(self):
+        """Drive field provided as None → SetupRequirementsResponse."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={"spreadsheet": None, "range": "A1:C10"},
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-4",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, SetupRequirementsResponse)
+        assert result.setup_info.user_readiness.ready_to_run is False
+
+    async def test_auto_cred_locks_released_when_coerce_raises(self):
+        """Regression guard for Sentry r3135420231: if coerce_inputs_to_schema
+        raises between acquire_auto_credentials and the inner wait_for try,
+        the auto-cred locks must still be released."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+        mock_creds = MagicMock(id="cred-id-123", provider="google")
+        mock_lock = AsyncMock()
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.acquire = AsyncMock(
+            return_value=(mock_creds, mock_lock)
+        )
+        creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.coerce_inputs_to_schema",
+                side_effect=RuntimeError("boom during coerce"),
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "_credentials_id": "cred-id-123",
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-5",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        # Exception propagates to the outer ErrorResponse path, but the lock
+        # must have been released on the way out (not stranded in Redis).
+        assert isinstance(result, ErrorResponse)
+        mock_lock.release.assert_awaited_once()
+
+    async def test_auto_cred_locks_released_on_insufficient_credits(self):
+        """Early-return from the credit-balance check must still release
+        auto-cred locks (same r3135420231 surface, different trigger)."""
+        block = _make_block_with_auto_creds()
+        # balance < cost → early return ErrorResponse
+        credit_patch, _ = _patch_credit_db(get_credits_return=0)
+        mock_creds = MagicMock(id="cred-id-123", provider="google")
+        mock_lock = AsyncMock()
+        creds_manager_cls = MagicMock()
+        creds_manager_cls.return_value.acquire = AsyncMock(
+            return_value=(mock_creds, mock_lock)
+        )
+        creds_manager_cls.return_value.get = AsyncMock(return_value=None)
+
+        with (
+            _patch_workspace(),
+            credit_patch,
+            patch(
+                "backend.copilot.tools.helpers.IntegrationCredentialsManager",
+                creds_manager_cls,
+            ),
+            patch(
+                "backend.copilot.tools.helpers.block_usage_cost",
+                return_value=(10, {}),
+            ),
+        ):
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {
+                        "_credentials_id": "cred-id-123",
+                        "id": "file-1",
+                        "name": "Test.xlsx",
+                        "mimeType": "application/vnd.google-apps.spreadsheet",
+                    },
+                    "range": "A1:C10",
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-6",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse)
+        assert "Insufficient credits" in result.message
+        mock_lock.release.assert_awaited_once()

@@ -250,20 +250,24 @@ class PerplexityBlock(Block):
                 self.execution_stats.output_token_count = (
                     response.usage.completion_tokens
                 )
-            # OpenRouter's ``x-total-cost`` response header carries the real
-            # per-request USD cost. Piping it into ``provider_cost`` lets the
-            # direct-run ``PlatformCostLog`` flow
-            # (``executor.cost_tracking::log_system_credential_cost``) record
-            # the actual operator-side spend instead of inferring from tokens.
-            # Always overwrite — ``execution_stats`` is instance state, so a
-            # response without the header must not reuse a previous run's cost.
-            self.execution_stats.provider_cost = extract_openrouter_cost(response)
+            self._record_openrouter_cost(response)
 
             return {"response": response_content, "annotations": annotations or []}
 
         except Exception as e:
             logger.error(f"Error calling Perplexity: {e}")
             raise
+
+    def _record_openrouter_cost(self, response: Any) -> None:
+        """Feed OpenRouter's ``x-total-cost`` USD into execution stats for
+        the COST_USD resolver. Tag as ``cost_usd`` only when the value is
+        concrete and positive — leaving it unset on None/0 keeps the
+        billing gap observable instead of silently floored to 0.
+        """
+        cost_usd = extract_openrouter_cost(response)
+        self.execution_stats.provider_cost = cost_usd
+        if cost_usd is not None and cost_usd > 0:
+            self.execution_stats.provider_cost_type = "cost_usd"
 
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs

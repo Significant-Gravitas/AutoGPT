@@ -794,8 +794,8 @@ async def _resolve_thinking_model_for_user(
 ) -> str:
     """LD-aware thinking-tier model pick for a specific user.
 
-    Consults ``copilot-thinking-{tier}-model`` and falls back to the
-    ``ChatConfig`` default on missing user / missing flag.
+    Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
+    to the ``ChatConfig`` default on missing user / missing flag.
     """
     return await resolve_model("thinking", tier, user_id, config=config)
 
@@ -831,10 +831,11 @@ async def _resolve_sdk_model_for_request(
 
     Priority (highest first):
     1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
-    2. LaunchDarkly ``copilot-thinking-{tier}-model`` if it serves a value
-       different from the config default for *user_id*.  An LD-served
-       override wins over subscription mode so admins can route specific
-       users to a specific model without flipping subscription on/off.
+    2. LaunchDarkly ``copilot-model-routing[thinking][{tier}]`` if it
+       serves a value different from the config default for *user_id*.
+       An LD-served override wins over subscription mode so admins can
+       route specific users to a specific model without flipping
+       subscription on/off.
     3. ``config.use_claude_code_subscription`` on the standard tier —
        returns ``None`` so the CLI picks the subscription default (this
        branch fires when LD has no opinion, i.e. the value equals the
@@ -864,8 +865,8 @@ async def _resolve_sdk_model_for_request(
     # user somewhere).  Any LD override — even to the same value with
     # stripped whitespace normalised — is an explicit admin choice that
     # must be honoured.  Without this, a subscription-mode deployment
-    # silently ignores the ``copilot-thinking-standard-model`` flag
-    # entirely, which defeats the point of cohort-based routing.
+    # silently ignores the ``copilot-model-routing[thinking][standard]``
+    # flag entirely, which defeats the point of cohort-based routing.
     ld_overrides_default = resolved != tier_default
     if (
         not ld_overrides_default

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -17,6 +17,19 @@ import {
 
 import SettingsApiKeysPage from "../page";
 
+const toastSpy = vi.fn();
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return {
+    ...actual,
+    toast: (...args: Parameters<typeof actual.toast>) => toastSpy(...args),
+  };
+});
+
 function openCreateDialog() {
   const createButtons = screen.getAllByRole("button", {
     name: /^create key$/i,
@@ -25,6 +38,10 @@ function openCreateDialog() {
 }
 
 describe("SettingsApiKeysPage - create flow", () => {
+  beforeEach(() => {
+    toastSpy.mockClear();
+  });
+
   test("opens the create dialog with a form when Create Key is clicked", async () => {
     server.use(getGetV1ListUserApiKeysMockHandler([]));
 
@@ -38,6 +55,36 @@ describe("SettingsApiKeysPage - create flow", () => {
     expect(within(dialog).getByLabelText(/^name$/i)).toBeDefined();
     expect(within(dialog).getByLabelText(/description/i)).toBeDefined();
     expect(within(dialog).getByText(/permissions/i)).toBeDefined();
+  });
+
+  test("toggling a permission off re-disables the submit button", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+    await screen.findByText(/no api key found/i);
+
+    openCreateDialog();
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText(/^name$/i), {
+      target: { value: "Toggle Key" },
+    });
+    const checkbox = within(dialog).getByRole("checkbox", {
+      name: /execute graph/i,
+    });
+
+    fireEvent.click(checkbox);
+    const submit = within(dialog).getByRole("button", {
+      name: /create key/i,
+    }) as HTMLButtonElement;
+    await waitFor(() => {
+      expect(submit.disabled).toBe(false);
+    });
+
+    fireEvent.click(checkbox);
+    await waitFor(() => {
+      expect(submit.disabled).toBe(true);
+    });
   });
 
   test("disables submit until the form is valid", async () => {
@@ -104,6 +151,22 @@ describe("SettingsApiKeysPage - create flow", () => {
     expect(
       within(dialog).getAllByRole("button", { name: /^close$/i }).length,
     ).toBeGreaterThan(0);
+  });
+
+  test("dismisses the dialog via the header Close button when not submitting", async () => {
+    server.use(getGetV1ListUserApiKeysMockHandler([]));
+
+    render(<SettingsApiKeysPage />);
+    await screen.findByText(/no api key found/i);
+
+    openCreateDialog();
+    const dialog = await screen.findByRole("dialog");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^close$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
   });
 
   test("keeps the form open when the API returns 422", async () => {
@@ -189,5 +252,102 @@ describe("SettingsApiKeysPage - create flow", () => {
     ) as HTMLInputElement;
     expect(nameInput.value).toBe("");
     expect(within(dialog).queryByText(/your new api key/i)).toBeNull();
+  });
+
+  describe("success view", () => {
+    const plain = "sk-super-secret-1234567890";
+    const originalClipboard = Object.getOwnPropertyDescriptor(
+      globalThis.navigator,
+      "clipboard",
+    );
+    let writeTextSpy: ReturnType<typeof vi.fn>;
+
+    async function submitUntilSuccessView() {
+      server.use(
+        getGetV1ListUserApiKeysMockHandler([]),
+        getPostV1CreateNewApiKeyMockHandler200(
+          getPostV1CreateNewApiKeyResponseMock200({ plain_text_key: plain }),
+        ),
+      );
+      render(<SettingsApiKeysPage />);
+      await screen.findByText(/no api key found/i);
+
+      openCreateDialog();
+      const dialog = await screen.findByRole("dialog");
+      fireEvent.change(within(dialog).getByLabelText(/^name$/i), {
+        target: { value: "Copyable Key" },
+      });
+      fireEvent.click(
+        within(dialog).getByRole("checkbox", { name: /execute graph/i }),
+      );
+      const submit = within(dialog).getByRole("button", {
+        name: /create key/i,
+      }) as HTMLButtonElement;
+      await waitFor(() => {
+        expect(submit.disabled).toBe(false);
+      });
+      fireEvent.click(submit);
+      await screen.findByText(plain);
+      return dialog;
+    }
+
+    function installClipboard(writeText: ReturnType<typeof vi.fn>) {
+      Object.defineProperty(globalThis.navigator, "clipboard", {
+        configurable: true,
+        value: { writeText },
+      });
+    }
+
+    afterEach(() => {
+      if (originalClipboard) {
+        Object.defineProperty(
+          globalThis.navigator,
+          "clipboard",
+          originalClipboard,
+        );
+      } else {
+        // @ts-expect-error — ensure a missing clipboard stays missing across tests
+        delete globalThis.navigator.clipboard;
+      }
+    });
+
+    test("copies the plaintext key and shows a success toast when Copy is clicked", async () => {
+      writeTextSpy = vi.fn().mockResolvedValue(undefined);
+      installClipboard(writeTextSpy);
+
+      const dialog = await submitUntilSuccessView();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: /^copy$/i }));
+
+      await waitFor(() => {
+        expect(writeTextSpy).toHaveBeenCalledWith(plain);
+      });
+      await waitFor(() => {
+        expect(toastSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Copied to clipboard",
+            variant: "success",
+          }),
+        );
+      });
+    });
+
+    test("shows a destructive toast when the clipboard write fails", async () => {
+      writeTextSpy = vi.fn().mockRejectedValue(new Error("denied"));
+      installClipboard(writeTextSpy);
+
+      const dialog = await submitUntilSuccessView();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: /^copy$/i }));
+
+      await waitFor(() => {
+        expect(toastSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Could not copy to clipboard",
+            variant: "destructive",
+          }),
+        );
+      });
+    });
   });
 });

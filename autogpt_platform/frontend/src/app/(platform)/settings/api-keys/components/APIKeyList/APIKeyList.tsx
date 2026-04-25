@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-import { InfiniteScroll } from "@/components/contextual/InfiniteScroll/InfiniteScroll";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { APIKeyListEmpty } from "../APIKeyListEmpty/APIKeyListEmpty";
 import { APIKeyListSkeleton } from "../APIKeyListSkeleton/APIKeyListSkeleton";
@@ -15,10 +15,10 @@ export function APIKeyList() {
   const {
     keys,
     isLoading,
+    isError,
+    error,
+    refetch,
     isEmpty,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
     selection,
     deleteTarget,
     requestDelete,
@@ -28,6 +28,18 @@ export function APIKeyList() {
   const reduceMotion = useReducedMotion();
 
   if (isLoading) return <APIKeyListSkeleton />;
+  if (isError) {
+    const message = error instanceof Error ? error.message : undefined;
+    return (
+      <ErrorCard
+        context="API keys"
+        responseError={message ? { message } : undefined}
+        onRetry={() => {
+          refetch();
+        }}
+      />
+    );
+  }
   if (isEmpty) return <APIKeyListEmpty />;
 
   return (
@@ -52,8 +64,7 @@ export function APIKeyList() {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-0 z-20 bg-[#F9F9FA]"
-            style={{ overflow: "hidden" }}
+            className="sticky top-0 z-20 overflow-hidden bg-[#F9F9FA]"
           >
             <APIKeySelectionBar
               selectedCount={selection.selectedCount}
@@ -66,36 +77,17 @@ export function APIKeyList() {
         )}
       </AnimatePresence>
 
-      <InfiniteScroll
-        hasNextPage={hasNextPage}
-        isFetchingNextPage={isFetchingNextPage}
-        fetchNextPage={fetchNextPage}
-        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
-      >
-        {keys.map((key, index) => (
-          <motion.div
+      <div className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white">
+        {keys.map((key) => (
+          <APIKeyRow
             key={key.id}
-            initial={
-              reduceMotion
-                ? { opacity: 0 }
-                : { opacity: 0, y: 8 }
-            }
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              duration: 0.2,
-              delay: Math.min(index, 10) * 0.03,
-              ease: [0, 0, 0.2, 1],
-            }}
-          >
-            <APIKeyRow
-              apiKey={key}
-              selected={selection.isSelected(key.id)}
-              onToggleSelected={() => selection.toggle(key.id)}
-              onDelete={() => requestDelete([key.id])}
-            />
-          </motion.div>
+            apiKey={key}
+            selected={selection.isSelected(key.id)}
+            onToggleSelected={() => selection.toggle(key.id)}
+            onDelete={() => requestDelete([key.id])}
+          />
         ))}
-      </InfiniteScroll>
+      </div>
 
       {deleteTarget && (
         <DeleteAPIKeyDialog

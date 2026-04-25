@@ -23,7 +23,8 @@ export function DeleteAPIKeyDialog({
   const isBatch = keyIds.length > 1;
 
   async function handleConfirm() {
-    await revoke(keyIds);
+    const succeeded = await revoke(keyIds);
+    if (!succeeded) return;
     onDeleted?.();
     onOpenChange(false);
   }

@@ -141,7 +141,7 @@ def test_e2b_sandbox_blocks_bill_per_walltime_second():
 
 
 def test_fal_video_generator_bills_per_walltime_second():
-    """FAL AIVideoGeneratorBlock uses SECOND with cost_amount=3 (3 credits/s)."""
+    """FAL AIVideoGeneratorBlock uses SECOND with cost_amount=15 (15 credits/s)."""
     from backend.data.model import NodeExecutionStats
 
     creds = {
@@ -154,11 +154,11 @@ def test_fal_video_generator_bills_per_walltime_second():
     # Pre-flight: unknown walltime ⇒ 0 credits.
     cost, _ = block_usage_cost(AIVideoGeneratorBlock(), creds)
     assert cost == 0
-    # Post-flight: 5s clip ⇒ 3 * 5 = 15 credits.
+    # Post-flight: 5s clip ⇒ 15 * 5 = 75 credits.
     cost, _ = block_usage_cost(
         AIVideoGeneratorBlock(), creds, stats=NodeExecutionStats(walltime=5.0)
     )
-    assert cost == 15
+    assert cost == 75
 
 
 def test_transcribe_youtube_has_one_credit_tooling_floor():

@@ -1,7 +1,7 @@
 {
   "daily_cost_limit_microdollars": 2500000,
   "daily_cost_used_microdollars": 0,
-  "tier": "FREE",
+  "tier": "BASIC",
   "user_email": "target@example.com",
   "user_id": "5e53486c-cf57-477e-ba2a-cb02dc828e1c",
   "weekly_cost_limit_microdollars": 12500000,
