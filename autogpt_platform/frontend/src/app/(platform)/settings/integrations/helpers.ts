@@ -103,10 +103,7 @@ export function groupCredentialsByProvider(
 }
 
 function normalizeSearchText(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  return value.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 export function filterProviders(

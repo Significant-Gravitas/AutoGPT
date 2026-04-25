@@ -24,21 +24,24 @@ export function useIntegrationsList() {
   const credentialsQuery = useGetV1ListCredentials({
     query: {
       select: (response) =>
-        response.status === 200
-          ? filterSystemCredentials(response.data)
-          : [],
+        response.status === 200 ? filterSystemCredentials(response.data) : [],
     },
   });
 
   const credentials = credentialsQuery.data ?? [];
-  const allProviders: ProviderGroupView[] = groupCredentialsByProvider(credentials);
+  const allProviders: ProviderGroupView[] =
+    groupCredentialsByProvider(credentials);
   const providers = filterProviders(allProviders, debouncedQuery);
 
   const allCredentialIds = providers.flatMap((p) =>
     p.credentials.map((c) => c.id),
   );
   const selection = useIntegrationsSelection(allCredentialIds);
-  const { remove, isPending: isDeleting, isDeletingId } = useDeleteIntegration();
+  const {
+    remove,
+    isPending: isDeleting,
+    isDeletingId,
+  } = useDeleteIntegration();
 
   function buildTargets(ids: string[]): DeleteIntegrationTarget[] {
     const lookup = new Map<string, { provider: string; name: string }>();
@@ -50,7 +53,8 @@ export function useIntegrationsList() {
     const targets: DeleteIntegrationTarget[] = [];
     for (const id of ids) {
       const entry = lookup.get(id);
-      if (entry) targets.push({ id, provider: entry.provider, name: entry.name });
+      if (entry)
+        targets.push({ id, provider: entry.provider, name: entry.name });
     }
     return targets;
   }
@@ -74,8 +78,7 @@ export function useIntegrationsList() {
 
   const isLoading = credentialsQuery.isLoading;
   const isError = credentialsQuery.isError;
-  const hasNoCredentials =
-    !isLoading && !isError && allProviders.length === 0;
+  const hasNoCredentials = !isLoading && !isError && allProviders.length === 0;
 
   return {
     query,

@@ -202,9 +202,7 @@ class ProviderBuilder:
         self._description = description
         return self
 
-    def with_supported_auth_types(
-        self, *types: CredentialsType
-    ) -> "ProviderBuilder":
+    def with_supported_auth_types(self, *types: CredentialsType) -> "ProviderBuilder":
         """Declare which credential types this provider accepts.
 
         Surfaced via ``GET /integrations/providers`` so the settings UI can

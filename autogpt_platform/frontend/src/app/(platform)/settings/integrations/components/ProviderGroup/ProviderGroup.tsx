@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import {
   Accordion,
   AccordionContent,
@@ -80,11 +81,14 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
   }
 
   return (
-    <img
+    <Image
       src={src}
       alt={`${provider.name} logo`}
+      width={24}
+      height={24}
       onError={() => setBroken(true)}
       className="size-6 rounded-full bg-white object-contain"
+      unoptimized
     />
   );
 }

@@ -2,6 +2,4 @@
 
 from backend.sdk import ProviderBuilder
 
-mcp = ProviderBuilder("mcp").with_description(
-    "Model Context Protocol servers"
-).build()
+mcp = ProviderBuilder("mcp").with_description("Model Context Protocol servers").build()

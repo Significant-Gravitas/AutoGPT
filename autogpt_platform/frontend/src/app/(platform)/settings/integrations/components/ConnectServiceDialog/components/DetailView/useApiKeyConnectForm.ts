@@ -11,10 +11,7 @@ import {
 } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
-import {
-  apiKeyConnectSchema,
-  type ApiKeyConnectFormValues,
-} from "./schema";
+import { apiKeyConnectSchema, type ApiKeyConnectFormValues } from "./schema";
 
 interface Args {
   provider: string;

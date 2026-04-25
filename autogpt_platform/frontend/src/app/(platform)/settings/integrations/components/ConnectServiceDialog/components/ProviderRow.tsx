@@ -18,7 +18,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
     <button
       type="button"
       onClick={() => onSelect(provider.id)}
-      className="group flex h-16 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-zinc-50 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
+      className="group flex h-16 w-full items-center gap-3 rounded-xl border border-zinc-200 bg-white px-[0.875rem] py-[0.625rem] text-left transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 active:bg-zinc-100 active:ring-1 active:ring-zinc-300"
     >
       {broken ? (
         <div aria-hidden className="size-9 shrink-0 rounded-md bg-zinc-100" />

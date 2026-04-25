@@ -18,18 +18,18 @@ interface Props {
   onSuccess: () => void;
 }
 
-export function ApiKeyConnectForm({ provider, providerName, onSuccess }: Props) {
+export function ApiKeyConnectForm({
+  provider,
+  providerName,
+  onSuccess,
+}: Props) {
   const { form, handleSubmit, isPending } = useApiKeyConnectForm({
     provider,
     onSuccess,
   });
 
   return (
-    <Form
-      form={form}
-      onSubmit={handleSubmit}
-      className="flex flex-col gap-4"
-    >
+    <Form form={form} onSubmit={handleSubmit} className="flex flex-col gap-4">
       <FormField
         control={form.control}
         name="title"

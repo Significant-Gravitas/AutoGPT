@@ -3,7 +3,14 @@
 import { motion, useReducedMotion } from "framer-motion";
 
 const ROW_A = ["github", "google", "notion", "airtable", "openai", "linear"];
-const ROW_B = ["discord", "anthropic", "hubspot", "reddit", "telegram", "ideogram"];
+const ROW_B = [
+  "discord",
+  "anthropic",
+  "hubspot",
+  "reddit",
+  "telegram",
+  "ideogram",
+];
 
 export function IntegrationsMarquee() {
   const reduceMotion = useReducedMotion();

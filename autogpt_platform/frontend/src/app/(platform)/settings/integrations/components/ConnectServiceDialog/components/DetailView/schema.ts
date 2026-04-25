@@ -15,10 +15,9 @@ export const apiKeyConnectSchema = z
       .refine((value) => !value || !Number.isNaN(Date.parse(value)), {
         message: "Pick a valid date",
       })
-      .refine(
-        (value) => !value || Date.parse(value) > Date.now(),
-        { message: "Expiry must be in the future" },
-      ),
+      .refine((value) => !value || Date.parse(value) > Date.now(), {
+        message: "Expiry must be in the future",
+      }),
   })
   .strict();
 

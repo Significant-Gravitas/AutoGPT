@@ -3,8 +3,7 @@ import { ProviderMetadataSupportedAuthTypesItem as AuthType } from "@/app/api/__
 
 import { formatProviderName } from "../../helpers";
 
-export type AuthMethod =
-  (typeof AuthType)[keyof typeof AuthType];
+export type AuthMethod = (typeof AuthType)[keyof typeof AuthType];
 
 export { AuthType };
 
@@ -46,10 +45,7 @@ export function toConnectableProviders(
 }
 
 function normalize(text: string): string {
-  return text
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
+  return text.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 export function filterConnectableProviders(

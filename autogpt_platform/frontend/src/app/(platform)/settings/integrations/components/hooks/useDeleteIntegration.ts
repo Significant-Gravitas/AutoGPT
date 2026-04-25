@@ -30,7 +30,11 @@ export function useDeleteIntegration() {
     targets: DeleteIntegrationTarget[],
     force = false,
   ): Promise<RemoveResult> {
-    const empty: RemoveResult = { succeeded: [], failed: [], needsConfirmation: [] };
+    const empty: RemoveResult = {
+      succeeded: [],
+      failed: [],
+      needsConfirmation: [],
+    };
     if (targets.length === 0) return empty;
 
     setIsPending(true);
@@ -42,11 +46,19 @@ export function useDeleteIntegration() {
     try {
       const results = await Promise.allSettled(
         targets.map((t) =>
-          deleteV1DeleteCredentials(t.provider, t.id, force ? { force } : undefined),
+          deleteV1DeleteCredentials(
+            t.provider,
+            t.id,
+            force ? { force } : undefined,
+          ),
         ),
       );
 
-      const out: RemoveResult = { succeeded: [], failed: [], needsConfirmation: [] };
+      const out: RemoveResult = {
+        succeeded: [],
+        failed: [],
+        needsConfirmation: [],
+      };
 
       results.forEach((r, idx) => {
         const target = targets[idx];
@@ -96,7 +108,8 @@ export function useDeleteIntegration() {
           .map((t) => t.name ?? `${t.provider}/${t.id.slice(0, 6)}`)
           .slice(0, 3)
           .join(", ");
-        const more = out.failed.length > 3 ? ` +${out.failed.length - 3} more` : "";
+        const more =
+          out.failed.length > 3 ? ` +${out.failed.length - 3} more` : "";
         toast({
           title:
             out.failed.length === targets.length

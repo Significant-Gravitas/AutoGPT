@@ -45,7 +45,8 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
   );
 
   const remembered = lastTabByProvider.get(provider.id);
-  const defaultTab = remembered && tabs.includes(remembered) ? remembered : tabs[0];
+  const defaultTab =
+    remembered && tabs.includes(remembered) ? remembered : tabs[0];
 
   return (
     <div className="flex flex-col gap-5">
@@ -100,7 +101,9 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
             <TabsLineContent key={method} value={method}>
               <motion.div
                 initial={
-                  reduceMotion ? { opacity: 0 } : { opacity: 0, x: 6, filter: "blur(2px)" }
+                  reduceMotion
+                    ? { opacity: 0 }
+                    : { opacity: 0, x: 6, filter: "blur(2px)" }
                 }
                 animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                 transition={PANEL_TRANSITION}

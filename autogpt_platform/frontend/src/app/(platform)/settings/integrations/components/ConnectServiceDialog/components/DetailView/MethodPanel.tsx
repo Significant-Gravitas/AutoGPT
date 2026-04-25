@@ -1,6 +1,10 @@
 "use client";
 
-import { AuthType, type AuthMethod, type ConnectableProvider } from "../../helpers";
+import {
+  AuthType,
+  type AuthMethod,
+  type ConnectableProvider,
+} from "../../helpers";
 import { ApiKeyConnectForm } from "./ApiKeyConnectForm";
 import { OAuthConnectButton } from "./OAuthConnectButton";
 import { UnsupportedNotice } from "./UnsupportedNotice";

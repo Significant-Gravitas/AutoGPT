@@ -13,7 +13,11 @@ interface Props {
   onSuccess: () => void;
 }
 
-export function OAuthConnectButton({ provider, providerName, onSuccess }: Props) {
+export function OAuthConnectButton({
+  provider,
+  providerName,
+  onSuccess,
+}: Props) {
   const { connect, isPending } = useOAuthConnect({ provider, onSuccess });
 
   return (
