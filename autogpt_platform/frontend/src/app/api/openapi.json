@@ -14542,7 +14542,16 @@
           "description": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Description",
-            "description": "One-line human-readable summary of what the provider does. ``None`` for providers that haven't declared a description via ``ProviderBuilder.with_description(...)`` or ``STATIC_PROVIDER_DESCRIPTIONS``."
+            "description": "One-line human-readable summary of what the provider does. Declared via ``ProviderBuilder.with_description(...)`` in the provider's ``_config.py``. ``None`` if not set."
+          },
+          "supported_auth_types": {
+            "items": {
+              "type": "string",
+              "enum": ["api_key", "oauth2", "user_password", "host_scoped"]
+            },
+            "type": "array",
+            "title": "Supported Auth Types",
+            "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
           }
         },
         "type": "object",

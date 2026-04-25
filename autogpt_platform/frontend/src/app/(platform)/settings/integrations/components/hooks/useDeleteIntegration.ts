@@ -12,16 +12,33 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 export interface DeleteIntegrationTarget {
   id: string;
   provider: string;
+  name?: string;
+}
+
+interface RemoveResult {
+  succeeded: DeleteIntegrationTarget[];
+  failed: DeleteIntegrationTarget[];
+  needsConfirmation: { target: DeleteIntegrationTarget; message: string }[];
 }
 
 export function useDeleteIntegration() {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
+  const [pendingIds, setPendingIds] = useState<Record<string, true>>({});
 
-  async function remove(targets: DeleteIntegrationTarget[], force = false) {
-    if (targets.length === 0) return;
+  async function remove(
+    targets: DeleteIntegrationTarget[],
+    force = false,
+  ): Promise<RemoveResult> {
+    const empty: RemoveResult = { succeeded: [], failed: [], needsConfirmation: [] };
+    if (targets.length === 0) return empty;
 
     setIsPending(true);
+    setPendingIds(() => {
+      const next: Record<string, true> = {};
+      for (const t of targets) next[t.id] = true;
+      return next;
+    });
     try {
       const results = await Promise.allSettled(
         targets.map((t) =>
@@ -29,44 +46,63 @@ export function useDeleteIntegration() {
         ),
       );
 
-      const failures: string[] = [];
-      const needsConfirmation: string[] = [];
+      const out: RemoveResult = { succeeded: [], failed: [], needsConfirmation: [] };
 
       results.forEach((r, idx) => {
+        const target = targets[idx];
         if (r.status === "rejected") {
-          failures.push(targets[idx].id);
+          out.failed.push(target);
           return;
         }
         const body = r.value.status === 200 ? r.value.data : null;
         if (body && "need_confirmation" in body && body.need_confirmation) {
-          needsConfirmation.push(body.message);
+          out.needsConfirmation.push({ target, message: body.message });
+          return;
         }
+        out.succeeded.push(target);
       });
 
-      const successCount = targets.length - failures.length - needsConfirmation.length;
+      const successCount = out.succeeded.length;
 
-      if (successCount > 0) {
+      if (successCount === 1) {
+        const only = out.succeeded[0];
         toast({
-          title:
-            successCount === 1
-              ? "Integration removed"
-              : `${successCount} integrations removed`,
+          title: only.name ? `Removed ${only.name}` : "Integration removed",
+          variant: "success",
+        });
+      } else if (successCount > 1) {
+        const previewNames = out.succeeded
+          .map((t) => t.name)
+          .filter(Boolean)
+          .slice(0, 3)
+          .join(", ");
+        toast({
+          title: `${successCount} integrations removed`,
+          description: previewNames || undefined,
           variant: "success",
         });
       }
 
-      if (needsConfirmation.length > 0) {
+      if (out.needsConfirmation.length > 0) {
         toast({
           title: "Confirmation required",
-          description: needsConfirmation[0],
+          description: out.needsConfirmation[0].message,
           variant: "destructive",
         });
       }
 
-      if (failures.length > 0) {
+      if (out.failed.length > 0) {
+        const failedNames = out.failed
+          .map((t) => t.name ?? `${t.provider}/${t.id.slice(0, 6)}`)
+          .slice(0, 3)
+          .join(", ");
+        const more = out.failed.length > 3 ? ` +${out.failed.length - 3} more` : "";
         toast({
-          title: "Some integrations could not be removed",
-          description: `${failures.length} of ${targets.length} failed.`,
+          title:
+            out.failed.length === targets.length
+              ? "Failed to remove integration"
+              : `${out.failed.length} of ${targets.length} could not be removed`,
+          description: `${failedNames}${more}. Try again to retry the failed ones.`,
           variant: "destructive",
         });
       }
@@ -74,10 +110,17 @@ export function useDeleteIntegration() {
       await queryClient.invalidateQueries({
         queryKey: getGetV1ListCredentialsQueryKey(),
       });
+
+      return out;
     } finally {
       setIsPending(false);
+      setPendingIds({});
     }
   }
 
-  return { remove, isPending };
+  function isDeletingId(id: string): boolean {
+    return Boolean(pendingIds[id]);
+  }
+
+  return { remove, isPending, isDeletingId };
 }

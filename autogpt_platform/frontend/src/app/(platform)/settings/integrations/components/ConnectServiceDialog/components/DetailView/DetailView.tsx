@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
 import { ArrowLeftIcon } from "@phosphor-icons/react";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
@@ -13,9 +12,10 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 
-import { ConnectableProvider } from "../../helpers";
-import { ApiKeyConnectForm } from "./ApiKeyConnectForm";
-import { OAuthConnectButton } from "./OAuthConnectButton";
+import { AuthType, ConnectableProvider, type AuthMethod } from "../../helpers";
+import { MethodPanel, TAB_LABEL } from "./MethodPanel";
+import { ProviderAvatar } from "./ProviderAvatar";
+import { UnsupportedNotice } from "./UnsupportedNotice";
 
 interface Props {
   provider: ConnectableProvider;
@@ -23,8 +23,29 @@ interface Props {
   onSuccess: () => void;
 }
 
+const TAB_PRIORITY: AuthMethod[] = [
+  AuthType.oauth2,
+  AuthType.api_key,
+  AuthType.user_password,
+  AuthType.host_scoped,
+];
+
+// Per-provider last-selected tab. Lives in module scope so it survives dialog
+// close/reopen during the same session without surviving a hard refresh.
+const lastTabByProvider = new Map<string, AuthMethod>();
+
+// Standard product-UI ease-out — keep transitions under Emil's 300ms ceiling.
+const PANEL_TRANSITION = { duration: 0.18, ease: [0, 0, 0.2, 1] as const };
+
 export function DetailView({ provider, onBack, onSuccess }: Props) {
   const description = provider.description;
+  const reduceMotion = useReducedMotion();
+  const tabs = TAB_PRIORITY.filter((method) =>
+    provider.supportedAuthTypes.includes(method),
+  );
+
+  const remembered = lastTabByProvider.get(provider.id);
+  const defaultTab = remembered && tabs.includes(remembered) ? remembered : tabs[0];
 
   return (
     <div className="flex flex-col gap-5">
@@ -52,44 +73,49 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
         </div>
       </div>
 
-      <TabsLine defaultValue="oauth">
-        <TabsLineList>
-          <TabsLineTrigger value="oauth">OAuth</TabsLineTrigger>
-          <TabsLineTrigger value="api_key">API key</TabsLineTrigger>
-        </TabsLineList>
-        <TabsLineContent value="oauth">
-          <OAuthConnectButton
-            provider={provider.id}
-            providerName={provider.name}
-            onSuccess={onSuccess}
-          />
-        </TabsLineContent>
-        <TabsLineContent value="api_key">
-          <ApiKeyConnectForm
-            provider={provider.id}
-            providerName={provider.name}
-            onSuccess={onSuccess}
-          />
-        </TabsLineContent>
-      </TabsLine>
+      {tabs.length === 0 ? (
+        <UnsupportedNotice providerName={provider.name} />
+      ) : tabs.length === 1 ? (
+        <MethodPanel
+          method={tabs[0]}
+          provider={provider}
+          onSuccess={onSuccess}
+        />
+      ) : (
+        <TabsLine
+          defaultValue={defaultTab}
+          onValueChange={(value) => {
+            const next = value as AuthMethod;
+            if (tabs.includes(next)) lastTabByProvider.set(provider.id, next);
+          }}
+        >
+          <TabsLineList>
+            {tabs.map((method) => (
+              <TabsLineTrigger key={method} value={method}>
+                {TAB_LABEL[method]}
+              </TabsLineTrigger>
+            ))}
+          </TabsLineList>
+          {tabs.map((method) => (
+            <TabsLineContent key={method} value={method}>
+              <motion.div
+                initial={
+                  reduceMotion ? { opacity: 0 } : { opacity: 0, x: 6, filter: "blur(2px)" }
+                }
+                animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                transition={PANEL_TRANSITION}
+                style={{ willChange: "transform, opacity, filter" }}
+              >
+                <MethodPanel
+                  method={method}
+                  provider={provider}
+                  onSuccess={onSuccess}
+                />
+              </motion.div>
+            </TabsLineContent>
+          ))}
+        </TabsLine>
+      )}
     </div>
-  );
-}
-
-function ProviderAvatar({ id, name }: { id: string; name: string }) {
-  const [broken, setBroken] = useState(false);
-  if (broken) {
-    return <div aria-hidden className="size-10 shrink-0 rounded-md bg-zinc-100" />;
-  }
-  return (
-    <Image
-      src={`/integrations/${id}.png`}
-      alt={`${name} logo`}
-      width={40}
-      height={40}
-      className="size-10 shrink-0 object-contain"
-      onError={() => setBroken(true)}
-      unoptimized
-    />
   );
 }

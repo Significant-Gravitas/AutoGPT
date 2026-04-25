@@ -47,7 +47,8 @@ const PROVIDER_DISPLAY_NAME_OVERRIDES: Record<string, string> = {
   zerobounce: "ZeroBounce",
 };
 
-export function formatProviderName(slug: string): string {
+export function formatProviderName(slug: unknown): string {
+  if (typeof slug !== "string" || slug.length === 0) return "";
   if (PROVIDER_DISPLAY_NAME_OVERRIDES[slug]) {
     return PROVIDER_DISPLAY_NAME_OVERRIDES[slug];
   }
@@ -101,23 +102,30 @@ export function groupCredentialsByProvider(
   return groups;
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
 export function filterProviders(
   providers: ProviderGroupView[],
   query: string,
 ): ProviderGroupView[] {
-  const q = query.trim().toLowerCase();
+  const q = normalizeSearchText(query.trim());
   if (!q) return providers;
 
   const result: ProviderGroupView[] = [];
   for (const provider of providers) {
-    if (provider.name.toLowerCase().includes(q)) {
+    if (normalizeSearchText(provider.name).includes(q)) {
       result.push(provider);
       continue;
     }
     const matched = provider.credentials.filter(
       (c) =>
-        c.title.toLowerCase().includes(q) ||
-        c.username?.toLowerCase().includes(q),
+        normalizeSearchText(c.title).includes(q) ||
+        (c.username && normalizeSearchText(c.username).includes(q)),
     );
     if (matched.length > 0) {
       result.push({ ...provider, credentials: matched });

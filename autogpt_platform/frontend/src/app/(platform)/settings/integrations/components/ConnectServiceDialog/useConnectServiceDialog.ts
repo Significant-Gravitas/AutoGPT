@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 
 import { formatProviderName } from "../../helpers";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   filterConnectableProviders,
   toConnectableProviders,
@@ -18,6 +19,7 @@ interface Args {
 
 export function useConnectServiceDialog({ open, onOpenChange }: Args) {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [direction, setDirection] = useState<1 | -1>(1);
 
@@ -36,20 +38,17 @@ export function useConnectServiceDialog({ open, onOpenChange }: Args) {
     }
   }, [open]);
 
-  const allProviders = useMemo(
-    () => toConnectableProviders(providersQuery.data ?? []),
-    [providersQuery.data],
-  );
-
-  const providers = useMemo(
-    () => filterConnectableProviders(allProviders, query),
-    [allProviders, query],
-  );
+  const allProviders = toConnectableProviders(providersQuery.data ?? []);
+  const providers = filterConnectableProviders(allProviders, debouncedQuery);
 
   const selectedProvider: ConnectableProvider | null = selectedId
     ? allProviders.find((p) => p.id === selectedId) ??
       (providersQuery.data?.some((p) => p.name === selectedId)
-        ? { id: selectedId, name: formatProviderName(selectedId) }
+        ? {
+            id: selectedId,
+            name: formatProviderName(selectedId),
+            supportedAuthTypes: [],
+          }
         : null)
     : null;
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 
 const ROW_A = ["github", "google", "notion", "airtable", "openai", "linear"];
@@ -66,11 +65,14 @@ function GhostIntegrationCard({ id }: { id: string }) {
   return (
     <div className="flex h-[58px] w-[180px] shrink-0 items-center gap-3 rounded-xl border border-zinc-200/50 bg-white/50 px-3 opacity-70 shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-50/60">
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element -- decorative tiny logo, no LCP candidate */}
+        <img
           src={`/integrations/${id}.png`}
           alt=""
           width={20}
           height={20}
+          loading="lazy"
+          decoding="async"
           className="size-5 rounded-sm object-contain opacity-80"
         />
       </div>

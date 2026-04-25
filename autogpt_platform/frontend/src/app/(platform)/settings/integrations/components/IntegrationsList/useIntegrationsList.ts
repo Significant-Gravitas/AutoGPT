@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import { useGetV1ListCredentials } from "@/app/api/__generated__/endpoints/integrations/integrations";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -14,10 +14,12 @@ import {
   useDeleteIntegration,
   type DeleteIntegrationTarget,
 } from "../hooks/useDeleteIntegration";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useIntegrationsSelection } from "./useIntegrationsSelection";
 
 export function useIntegrationsList() {
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 250);
 
   const credentialsQuery = useGetV1ListCredentials({
     query: {
@@ -29,34 +31,26 @@ export function useIntegrationsList() {
   });
 
   const credentials = credentialsQuery.data ?? [];
-
-  const allProviders: ProviderGroupView[] = useMemo(
-    () => groupCredentialsByProvider(credentials),
-    [credentials],
-  );
-
-  const providers = useMemo(
-    () => filterProviders(allProviders, query),
-    [allProviders, query],
-  );
+  const allProviders: ProviderGroupView[] = groupCredentialsByProvider(credentials);
+  const providers = filterProviders(allProviders, debouncedQuery);
 
   const allCredentialIds = providers.flatMap((p) =>
     p.credentials.map((c) => c.id),
   );
   const selection = useIntegrationsSelection(allCredentialIds);
-  const { remove, isPending: isDeleting } = useDeleteIntegration();
+  const { remove, isPending: isDeleting, isDeletingId } = useDeleteIntegration();
 
   function buildTargets(ids: string[]): DeleteIntegrationTarget[] {
-    const lookup = new Map<string, string>();
+    const lookup = new Map<string, { provider: string; name: string }>();
     for (const provider of allProviders) {
       for (const cred of provider.credentials) {
-        lookup.set(cred.id, cred.provider);
+        lookup.set(cred.id, { provider: cred.provider, name: cred.title });
       }
     }
     const targets: DeleteIntegrationTarget[] = [];
     for (const id of ids) {
-      const provider = lookup.get(id);
-      if (provider) targets.push({ id, provider });
+      const entry = lookup.get(id);
+      if (entry) targets.push({ id, provider: entry.provider, name: entry.name });
     }
     return targets;
   }
@@ -64,8 +58,18 @@ export function useIntegrationsList() {
   async function requestDelete(ids: string[]) {
     const targets = buildTargets(ids);
     if (targets.length === 0) return;
-    await remove(targets);
-    selection.clear();
+    const result = await remove(targets);
+    // Keep failed items selected so the user can retry without re-selecting.
+    if (result.failed.length === 0) {
+      selection.clear();
+    } else {
+      const failedIds = new Set(result.failed.map((t) => t.id));
+      for (const id of ids) {
+        if (!failedIds.has(id) && selection.isSelected(id)) {
+          selection.toggle(id);
+        }
+      }
+    }
   }
 
   const isLoading = credentialsQuery.isLoading;
@@ -86,5 +90,7 @@ export function useIntegrationsList() {
     selection,
     requestDelete,
     isDeleting,
+    isDeletingId,
+    buildTargets,
   };
 }

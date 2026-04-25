@@ -39,6 +39,7 @@ export function ApiKeyConnectForm({ provider, providerName, onSuccess }: Props) 
               <Input
                 {...field}
                 id={field.name}
+                autoComplete="off"
                 label="Name"
                 placeholder={`My ${providerName} key`}
                 wrapperClassName="!mb-0"
@@ -59,8 +60,31 @@ export function ApiKeyConnectForm({ provider, providerName, onSuccess }: Props) 
                 {...field}
                 id={field.name}
                 type="password"
+                autoComplete="new-password"
+                spellCheck={false}
                 label="API key"
                 placeholder="sk-..."
+                wrapperClassName="!mb-0"
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="expiresAt"
+        render={({ field }) => (
+          <FormItem>
+            <FormControl>
+              <Input
+                {...field}
+                value={field.value ?? ""}
+                id={field.name}
+                type="date"
+                label="Expires (optional)"
+                hint="Leave blank to keep the key indefinitely"
                 wrapperClassName="!mb-0"
               />
             </FormControl>

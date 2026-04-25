@@ -2,43 +2,55 @@
 
 import { useEffect, useState } from "react";
 
+type SelectionMap = Record<string, true>;
+
 export function useIntegrationsSelection(allIds: string[]) {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<SelectionMap>({});
 
   useEffect(() => {
-    setSelectedIds((prev) => {
-      if (prev.size === 0) return prev;
+    setSelected((prev) => {
+      const prevKeys = Object.keys(prev);
+      if (prevKeys.length === 0) return prev;
       const existing = new Set(allIds);
-      const next = new Set<string>();
-      for (const id of prev) {
-        if (existing.has(id)) next.add(id);
+      const next: SelectionMap = {};
+      let removed = false;
+      for (const id of prevKeys) {
+        if (existing.has(id)) next[id] = true;
+        else removed = true;
       }
-      return next.size === prev.size ? prev : next;
+      return removed ? next : prev;
     });
   }, [allIds]);
 
   function toggle(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    setSelected((prev) => {
+      if (prev[id]) {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: true };
     });
   }
 
   function selectAll() {
-    setSelectedIds(new Set(allIds));
+    const next: SelectionMap = {};
+    for (const id of allIds) next[id] = true;
+    setSelected(next);
   }
 
   function clear() {
-    setSelectedIds(new Set());
+    setSelected({});
   }
+
+  const selectedIds = Object.keys(selected);
+  const selectedCount = selectedIds.length;
 
   return {
     selectedIds,
-    selectedCount: selectedIds.size,
-    allSelected: allIds.length > 0 && selectedIds.size === allIds.length,
-    isSelected: (id: string) => selectedIds.has(id),
+    selectedCount,
+    allSelected: allIds.length > 0 && selectedCount === allIds.length,
+    isSelected: (id: string) => Boolean(selected[id]),
     toggle,
     selectAll,
     clear,

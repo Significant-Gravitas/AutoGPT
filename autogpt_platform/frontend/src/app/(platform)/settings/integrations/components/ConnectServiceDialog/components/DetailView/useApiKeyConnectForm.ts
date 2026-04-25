@@ -21,13 +21,20 @@ interface Args {
   onSuccess: () => void;
 }
 
+function toUnixSeconds(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return undefined;
+  return Math.floor(ms / 1000);
+}
+
 export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
 
   const form = useForm<ApiKeyConnectFormValues>({
     resolver: zodResolver(apiKeyConnectSchema),
-    defaultValues: { title: "", apiKey: "" },
+    defaultValues: { title: "", apiKey: "", expiresAt: "" },
     mode: "onChange",
   });
 
@@ -39,6 +46,7 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
         type: "api_key",
         title: values.title,
         api_key: values.apiKey,
+        expires_at: toUnixSeconds(values.expiresAt),
       });
 
       if (response.status !== 200) {

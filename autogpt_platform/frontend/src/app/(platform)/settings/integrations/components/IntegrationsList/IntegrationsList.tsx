@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
+import { DeleteConfirmDialog } from "../DeleteConfirmDialog/DeleteConfirmDialog";
 import { IntegrationsListEmpty } from "../IntegrationsListEmpty/IntegrationsListEmpty";
 import { IntegrationsSearch } from "../IntegrationsSearch/IntegrationsSearch";
 import { IntegrationsSelectionBar } from "../IntegrationsSelectionBar/IntegrationsSelectionBar";
@@ -23,8 +25,27 @@ export function IntegrationsList() {
     isEmpty,
     selection,
     requestDelete,
+    isDeleting,
+    isDeletingId,
+    buildTargets,
   } = useIntegrationsList();
   const reduceMotion = useReducedMotion();
+  const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+
+  function askDelete(ids: string[]) {
+    if (ids.length === 0) return;
+    setPendingDeleteIds(ids);
+  }
+
+  async function confirmDelete() {
+    const ids = pendingDeleteIds;
+    setPendingDeleteIds([]);
+    await requestDelete(ids);
+  }
+
+  const pendingNames = buildTargets(pendingDeleteIds).map(
+    (t) => t.name ?? t.provider,
+  );
 
   if (isLoading) {
     return (
@@ -74,7 +95,7 @@ export function IntegrationsList() {
                 : { opacity: 0, height: 0, marginBottom: -12 }
             }
             transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="sticky top-0 z-20 bg-[#F9F9FA]"
+            className="sticky top-2 z-20 bg-[#F9F9FA] sm:top-0"
             style={{ overflow: "hidden" }}
           >
             <IntegrationsSelectionBar
@@ -82,9 +103,8 @@ export function IntegrationsList() {
               allSelected={selection.allSelected}
               onSelectAll={selection.selectAll}
               onDeselectAll={selection.clear}
-              onDeleteSelected={() =>
-                requestDelete([...selection.selectedIds])
-              }
+              onDeleteSelected={() => askDelete(selection.selectedIds)}
+              isDeleting={isDeleting}
             />
           </motion.div>
         )}
@@ -100,11 +120,22 @@ export function IntegrationsList() {
               provider={provider}
               isSelected={selection.isSelected}
               onToggleSelected={selection.toggle}
-              onDelete={(id) => requestDelete([id])}
+              onDelete={(id) => askDelete([id])}
+              isDeletingId={isDeletingId}
             />
           ))}
         </div>
       )}
+
+      <DeleteConfirmDialog
+        open={pendingDeleteIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteIds([]);
+        }}
+        itemNames={pendingNames}
+        isPending={isDeleting}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

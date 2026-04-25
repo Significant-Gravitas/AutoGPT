@@ -2,6 +2,7 @@
 
 import {
   CheckSquareIcon,
+  SpinnerIcon,
   SquareIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
@@ -17,6 +18,7 @@ interface Props {
   selected: boolean;
   onToggleSelected: () => void;
   onDelete: () => void;
+  isDeleting?: boolean;
 }
 
 export function CredentialRow({
@@ -24,6 +26,7 @@ export function CredentialRow({
   selected,
   onToggleSelected,
   onDelete,
+  isDeleting = false,
 }: Props) {
   return (
     <div
@@ -70,10 +73,16 @@ export function CredentialRow({
       <button
         type="button"
         onClick={onDelete}
+        disabled={isDeleting}
+        aria-busy={isDeleting}
         aria-label={`Delete ${credential.title}`}
-        className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400"
+        className="inline-flex size-5 items-center justify-center text-[#1F1F20] transition-colors hover:text-red-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-[#1F1F20]"
       >
-        <TrashIcon size={20} />
+        {isDeleting ? (
+          <SpinnerIcon size={20} className="animate-spin" />
+        ) : (
+          <TrashIcon size={20} />
+        )}
       </button>
     </div>
   );

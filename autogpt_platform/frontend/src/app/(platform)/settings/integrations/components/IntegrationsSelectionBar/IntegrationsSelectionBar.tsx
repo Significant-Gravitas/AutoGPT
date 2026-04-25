@@ -10,6 +10,7 @@ interface Props {
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onDeleteSelected: () => void;
+  isDeleting?: boolean;
 }
 
 export function IntegrationsSelectionBar({
@@ -18,6 +19,7 @@ export function IntegrationsSelectionBar({
   onSelectAll,
   onDeselectAll,
   onDeleteSelected,
+  isDeleting = false,
 }: Props) {
   return (
     <div className="flex w-full items-center justify-between rounded-[4px] border border-zinc-200 bg-zinc-100 px-4 py-2">
@@ -51,6 +53,8 @@ export function IntegrationsSelectionBar({
         size="small"
         leftIcon={<TrashIcon size={16} />}
         onClick={onDeleteSelected}
+        loading={isDeleting}
+        disabled={isDeleting}
       >
         Delete selected
       </Button>

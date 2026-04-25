@@ -15,6 +15,7 @@ interface Props {
   isSelected: (id: string) => boolean;
   onToggleSelected: (id: string) => void;
   onDelete: (id: string) => void;
+  isDeletingId?: (id: string) => boolean;
 }
 
 export function ProviderGroup({
@@ -22,6 +23,7 @@ export function ProviderGroup({
   isSelected,
   onToggleSelected,
   onDelete,
+  isDeletingId,
 }: Props) {
   const count = provider.credentials.length;
 
@@ -53,6 +55,7 @@ export function ProviderGroup({
                 selected={isSelected(credential.id)}
                 onToggleSelected={() => onToggleSelected(credential.id)}
                 onDelete={() => onDelete(credential.id)}
+                isDeleting={isDeletingId?.(credential.id) ?? false}
               />
             ))}
           </div>
