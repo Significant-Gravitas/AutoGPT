@@ -46,6 +46,7 @@ class ConnectIntegrationTool(BaseTool):
             "automatically detects and prompts for the correct provider based "
             "on the agent's graph metadata. Using this tool for agent blocks "
             "risks requesting the WRONG provider. "
+<<<<<<< HEAD
             "The `provider` parameter must match what the failing CLI/API "
             "actually needs. Double-check that the provider is in the supported "
             "list above before calling. "
