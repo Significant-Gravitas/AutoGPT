@@ -1,6 +1,5 @@
 import asyncio
 import json
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,13 +13,8 @@ from backend.api.conn_manager import (
     _notification_bus_channel,
     _Subscription,
 )
-from backend.api.model import NotificationPayload, WSMessage, WSMethod
-from backend.data.execution import (
-    ExecutionStatus,
-    GraphExecutionEvent,
-    GraphExecutionMeta,
-    NodeExecutionEvent,
-)
+from backend.api.model import WSMethod
+from backend.data.execution import GraphExecutionMeta
 
 
 @pytest.fixture
@@ -53,7 +47,6 @@ async def test_connect(
     ):
         await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     assert mock_websocket in connection_manager.active_connections
-    assert mock_websocket in connection_manager.user_connections["user-1"]
     mock_websocket.accept.assert_called_once()
 
 
@@ -63,13 +56,11 @@ async def test_disconnect(
 ) -> None:
     connection_manager.active_connections.add(mock_websocket)
     connection_manager.subscriptions["test_channel_42"] = {mock_websocket}
-    connection_manager.user_connections["user-1"] = {mock_websocket}
 
     await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
 
     assert mock_websocket not in connection_manager.active_connections
     assert "test_channel_42" not in connection_manager.subscriptions
-    assert "user-1" not in connection_manager.user_connections
 
 
 @pytest.mark.asyncio
@@ -116,157 +107,6 @@ async def test_unsubscribe(
 
     assert channel_key not in connection_manager.subscriptions
     fake_sub.stop.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_send_graph_execution_result(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    channel_key = "user-1|graph_exec#graph-exec-1"
-    connection_manager.subscriptions[channel_key] = {mock_websocket}
-    result = GraphExecutionEvent(
-        id="graph-exec-1",
-        user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
-        preset_id=None,
-        status=ExecutionStatus.COMPLETED,
-        started_at=datetime.now(tz=timezone.utc),
-        ended_at=datetime.now(tz=timezone.utc),
-        stats=GraphExecutionEvent.Stats(
-            cost=0,
-            duration=1.2,
-            node_exec_time=0.5,
-            node_exec_count=2,
-        ),
-        inputs={
-            "input_1": "some input value :)",
-            "input_2": "some *other* input value",
-        },
-        credential_inputs=None,
-        nodes_input_masks=None,
-        outputs={
-            "the_output": ["some output value"],
-            "other_output": ["sike there was another output"],
-        },
-    )
-
-    await connection_manager.send_execution_update(result)
-
-    mock_websocket.send_text.assert_called_once_with(
-        WSMessage(
-            method=WSMethod.GRAPH_EXECUTION_EVENT,
-            channel="user-1|graph_exec#graph-exec-1",
-            data=result.model_dump(),
-        ).model_dump_json()
-    )
-
-
-@pytest.mark.asyncio
-async def test_send_node_execution_result(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    channel_key = "user-1|graph_exec#graph-exec-1"
-    connection_manager.subscriptions[channel_key] = {mock_websocket}
-    result = NodeExecutionEvent(
-        user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
-        graph_exec_id="graph-exec-1",
-        node_exec_id="test_node_exec_id",
-        node_id="test_node_id",
-        block_id="test_block_id",
-        status=ExecutionStatus.COMPLETED,
-        input_data={"input1": "value1"},
-        output_data={"output1": ["result1"]},
-        add_time=datetime.now(tz=timezone.utc),
-        queue_time=None,
-        start_time=datetime.now(tz=timezone.utc),
-        end_time=datetime.now(tz=timezone.utc),
-    )
-
-    await connection_manager.send_execution_update(result)
-
-    mock_websocket.send_text.assert_called_once_with(
-        WSMessage(
-            method=WSMethod.NODE_EXECUTION_EVENT,
-            channel="user-1|graph_exec#graph-exec-1",
-            data=result.model_dump(),
-        ).model_dump_json()
-    )
-
-
-@pytest.mark.asyncio
-async def test_send_execution_result_user_mismatch(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    channel_key = "user-1|graph_exec#graph-exec-1"
-    connection_manager.subscriptions[channel_key] = {mock_websocket}
-    result = NodeExecutionEvent(
-        user_id="user-2",
-        graph_id="test_graph",
-        graph_version=1,
-        graph_exec_id="graph-exec-1",
-        node_exec_id="test_node_exec_id",
-        node_id="test_node_id",
-        block_id="test_block_id",
-        status=ExecutionStatus.COMPLETED,
-        input_data={"input1": "value1"},
-        output_data={"output1": ["result1"]},
-        add_time=datetime.now(tz=timezone.utc),
-        queue_time=None,
-        start_time=datetime.now(tz=timezone.utc),
-        end_time=datetime.now(tz=timezone.utc),
-    )
-
-    await connection_manager.send_execution_update(result)
-
-    mock_websocket.send_text.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_send_execution_result_no_subscribers(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    result = NodeExecutionEvent(
-        user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
-        graph_exec_id="test_exec_id",
-        node_exec_id="test_node_exec_id",
-        node_id="test_node_id",
-        block_id="test_block_id",
-        status=ExecutionStatus.COMPLETED,
-        input_data={"input1": "value1"},
-        output_data={"output1": ["result1"]},
-        add_time=datetime.now(),
-        queue_time=None,
-        start_time=datetime.now(),
-        end_time=datetime.now(),
-    )
-
-    await connection_manager.send_execution_update(result)
-
-    mock_websocket.send_text.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_send_notification(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    connection_manager.user_connections["user-1"] = {mock_websocket}
-
-    await connection_manager.send_notification(
-        user_id="user-1", payload=NotificationPayload(type="info", event="hey")
-    )
-
-    mock_websocket.send_text.assert_called_once()
-    sent_message = mock_websocket.send_text.call_args[0][0]
-    expected_message = WSMessage(
-        method=WSMethod.NOTIFICATION,
-        data={"type": "info", "event": "hey"},
-    ).model_dump_json()
-    assert sent_message == expected_message
 
 
 # ---------- Channel-name helpers ----------
@@ -621,7 +461,6 @@ async def test_disconnect_stops_all_pumps_and_notification_sub(
     connection_manager._ws_notifications[mock_websocket] = notif_sub
     connection_manager.subscriptions[channel_a] = {mock_websocket}
     connection_manager.subscriptions[channel_b] = {mock_websocket}
-    connection_manager.user_connections["user-1"] = {mock_websocket}
 
     await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
 
@@ -796,18 +635,19 @@ async def test_start_notification_subscription_swallows_start_errors(
 
 
 @pytest.mark.asyncio
-async def test_forward_notification_delivers_to_user_sockets(
+async def test_forward_notification_delivers_to_owning_websocket(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    """The notification wrapper → WSMessage round-trip must work end-to-end."""
-    connection_manager.user_connections["user-1"] = {mock_websocket}
+    """The notification wrapper → WSMessage round-trip must reach the owning WS."""
     inner = {
         "user_id": "user-1",
         "payload": {"type": "info", "event": "hi"},
     }
     wrapper = json.dumps({"payload": inner})
 
-    await connection_manager._forward_notification("user-1", wrapper.encode())
+    await connection_manager._forward_notification(
+        mock_websocket, "user-1", wrapper.encode()
+    )
 
     mock_websocket.send_text.assert_called_once()
     sent = json.loads(mock_websocket.send_text.call_args[0][0])
@@ -820,16 +660,15 @@ async def test_forward_notification_rejects_cross_user_payload(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     """Defense in depth: a payload for a different user must be dropped."""
-    connection_manager.user_connections["user-1"] = {mock_websocket}
-    # The pubsub envelope says payload is for user-2, but the pump dispatches
-    # via the user-1 channel. Must drop.
     inner = {
         "user_id": "user-2",
         "payload": {"type": "info", "event": "sneaky"},
     }
     wrapper = json.dumps({"payload": inner})
 
-    await connection_manager._forward_notification("user-1", wrapper.encode())
+    await connection_manager._forward_notification(
+        mock_websocket, "user-1", wrapper.encode()
+    )
 
     mock_websocket.send_text.assert_not_called()
 
@@ -838,7 +677,7 @@ async def test_forward_notification_rejects_cross_user_payload(
 async def test_forward_notification_noop_on_none(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager._forward_notification("user-1", None)
+    await connection_manager._forward_notification(mock_websocket, "user-1", None)
     mock_websocket.send_text.assert_not_called()
 
 
@@ -847,8 +686,9 @@ async def test_forward_notification_swallows_bad_envelope(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     """Malformed notification payload must not blow up or send anything."""
-    connection_manager.user_connections["user-1"] = {mock_websocket}
-    await connection_manager._forward_notification("user-1", b"not json")
+    await connection_manager._forward_notification(
+        mock_websocket, "user-1", b"not json"
+    )
     mock_websocket.send_text.assert_not_called()
 
 
@@ -856,10 +696,28 @@ async def test_forward_notification_swallows_bad_envelope(
 async def test_forward_notification_drops_non_dict_inner(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.user_connections["user-1"] = {mock_websocket}
     wrapper = json.dumps({"payload": "not-a-dict"})
-    await connection_manager._forward_notification("user-1", wrapper.encode())
+    await connection_manager._forward_notification(
+        mock_websocket, "user-1", wrapper.encode()
+    )
     mock_websocket.send_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_forward_notification_swallows_websocket_send_failure(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """A flaky websocket must not propagate the failure to the pump."""
+    mock_websocket.send_text = AsyncMock(side_effect=RuntimeError("ws closed"))
+    inner = {
+        "user_id": "user-1",
+        "payload": {"type": "info", "event": "hi"},
+    }
+    wrapper = json.dumps({"payload": inner})
+    # Must not raise.
+    await connection_manager._forward_notification(
+        mock_websocket, "user-1", wrapper.encode()
+    )
 
 
 @pytest.mark.asyncio
@@ -872,26 +730,3 @@ async def test_connect_socket_starts_notification_subscription(
     ) as mock_start:
         await connection_manager.connect_socket(mock_websocket, user_id="user-1")
     mock_start.assert_awaited_once_with(mock_websocket, user_id="user-1")
-
-
-@pytest.mark.asyncio
-async def test_disconnect_socket_cleans_up_last_user_conn(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    """Last ws for a user → user_connections entry drops entirely."""
-    connection_manager.active_connections.add(mock_websocket)
-    connection_manager.user_connections["user-1"] = {mock_websocket}
-    await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
-    assert "user-1" not in connection_manager.user_connections
-
-
-@pytest.mark.asyncio
-async def test_disconnect_socket_keeps_other_user_conns(
-    connection_manager: ConnectionManager, mock_websocket: AsyncMock
-) -> None:
-    """Other sockets on the same user survive the disconnect."""
-    other: AsyncMock = AsyncMock(spec=WebSocket)
-    connection_manager.active_connections.update({mock_websocket, other})
-    connection_manager.user_connections["user-1"] = {mock_websocket, other}
-    await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
-    assert connection_manager.user_connections["user-1"] == {other}

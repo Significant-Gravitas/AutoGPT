@@ -7,13 +7,11 @@ from fastapi import WebSocket
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
 
-from backend.api.model import NotificationPayload, WSMessage, WSMethod
+from backend.api.model import WSMessage, WSMethod
 from backend.data import redis_client as redis
 from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
     ExecutionEventType,
-    GraphExecutionEvent,
-    NodeExecutionEvent,
     _exec_channel,
     _graph_all_channel,
     get_graph_execution_meta,
@@ -115,8 +113,6 @@ class ConnectionManager:
         self.active_connections: Set[WebSocket] = set()
         # channel_key → sockets subscribed (public channel keys, not raw Redis channels)
         self.subscriptions: Dict[str, Set[WebSocket]] = {}
-        # user_id → sockets (used by per-user notification fan-out)
-        self.user_connections: Dict[str, Set[WebSocket]] = {}
         # websocket → {channel_key: _Subscription}
         self._ws_subs: Dict[WebSocket, Dict[str, _Subscription]] = {}
         # websocket → notification subscription
@@ -126,7 +122,6 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections.add(websocket)
         self._ws_subs.setdefault(websocket, {})
-        self.user_connections.setdefault(user_id, set()).add(websocket)
         await self._start_notification_subscription(websocket, user_id=user_id)
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
@@ -142,11 +137,6 @@ class ConnectionManager:
             subscribers.discard(websocket)
             if not subscribers:
                 self.subscriptions.pop(channel_key, None)
-        user_conns = self.user_connections.get(user_id)
-        if user_conns is not None:
-            user_conns.discard(websocket)
-            if not user_conns:
-                self.user_connections.pop(user_id, None)
 
     async def subscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
@@ -257,12 +247,12 @@ class ConnectionManager:
     async def _start_notification_subscription(
         self, websocket: WebSocket, *, user_id: str
     ) -> None:
-        # One SSUBSCRIBE per user; in-process fan-out to multiple tabs.
+        # One SSUBSCRIBE per WS; the pump delivers straight to its owning socket.
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
         async def on_message(data: Optional[bytes | str]) -> None:
-            await self._forward_notification(user_id, data)
+            await self._forward_notification(websocket, user_id, data)
 
         try:
             await sub.start(on_message)
@@ -274,7 +264,10 @@ class ConnectionManager:
         self._ws_notifications[websocket] = sub
 
     async def _forward_notification(
-        self, user_id: str, raw_payload: Optional[bytes | str]
+        self,
+        websocket: WebSocket,
+        user_id: str,
+        raw_payload: Optional[bytes | str],
     ) -> None:
         if raw_payload is None:
             return
@@ -300,61 +293,18 @@ class ConnectionManager:
         # Defense in depth: reject cross-user payloads.
         if event.user_id != user_id:
             return
-        await self.send_notification(user_id=user_id, payload=event.payload)
-
-    async def send_execution_update(
-        self, exec_event: GraphExecutionEvent | NodeExecutionEvent
-    ) -> int:
-        """Route an in-process event to local subscribers (test/back-compat path)."""
-        graph_exec_id = (
-            exec_event.id
-            if isinstance(exec_event, GraphExecutionEvent)
-            else exec_event.graph_exec_id
-        )
-
-        n_sent = 0
-
-        channels: set[str] = {
-            _graph_exec_channel_key(exec_event.user_id, graph_exec_id=graph_exec_id)
-        }
-        if isinstance(exec_event, GraphExecutionEvent):
-            channels.add(
-                _graph_execs_channel_key(
-                    exec_event.user_id, graph_id=exec_event.graph_id
-                )
-            )
-
-        for channel in channels.intersection(self.subscriptions.keys()):
-            message = WSMessage(
-                method=_EVENT_TYPE_TO_METHOD_MAP[exec_event.event_type],
-                channel=channel,
-                data=exec_event.model_dump(),
-            ).model_dump_json()
-            for connection in self.subscriptions[channel]:
-                await connection.send_text(message)
-                n_sent += 1
-
-        return n_sent
-
-    async def send_notification(
-        self, *, user_id: str, payload: NotificationPayload
-    ) -> int:
-        """Send a notification to all websocket connections belonging to a user."""
         message = WSMessage(
             method=WSMethod.NOTIFICATION,
-            data=payload.model_dump(),
+            data=event.payload.model_dump(),
         ).model_dump_json()
-
-        connections = tuple(self.user_connections.get(user_id, set()))
-        if not connections:
-            return 0
-
-        await asyncio.gather(
-            *(connection.send_text(message) for connection in connections),
-            return_exceptions=True,
-        )
-
-        return len(connections)
+        try:
+            await websocket.send_text(message)
+        except Exception:
+            logger.warning(
+                "Failed to deliver notification to WS for user=%s",
+                user_id,
+                exc_info=True,
+            )
 
 
 def _graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
