@@ -46,7 +46,7 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
         expires_at: toUnixSeconds(values.expiresAt),
       });
 
-      if (response.status !== 200) {
+      if (response.status !== 201) {
         throw new Error("Failed to save API key");
       }
 
