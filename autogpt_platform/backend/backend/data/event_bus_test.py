@@ -85,7 +85,7 @@ def _has_live_cluster() -> bool:
 
     try:
         c = redis_client.connect()
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - any connect failure → skip the test
         return False
     try:
         c.close()

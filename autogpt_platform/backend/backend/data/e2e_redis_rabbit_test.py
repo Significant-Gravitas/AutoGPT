@@ -57,7 +57,7 @@ def _has_live_rabbit() -> bool:
             (s.config.rabbitmq_host, s.config.rabbitmq_port), timeout=1.0
         ):
             return True
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - any connect failure → skip the test
         return False
 
 
