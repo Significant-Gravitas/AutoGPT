@@ -75,7 +75,7 @@ async def resolve_model(
         return fallback
 
     try:
-        payload = await get_feature_flag_value(
+        payload: object = await get_feature_flag_value(
             Flag.COPILOT_MODEL_ROUTING.value, user_id, default=None
         )
     except Exception:
@@ -104,6 +104,17 @@ async def resolve_model(
         return fallback
 
     mode_cell = payload.get(mode)
+    if mode in payload and not isinstance(mode_cell, dict):
+        # Operator typed something at the mode level (e.g. a string) instead of
+        # a {tier: model} dict — surface the typo in logs.
+        logger.warning(
+            "[model_router] copilot-model-routing[%s] expected a JSON object, "
+            "got %r — using config default %s for tier %s",
+            mode,
+            mode_cell,
+            fallback,
+            tier,
+        )
     if not isinstance(mode_cell, dict):
         return fallback
 
