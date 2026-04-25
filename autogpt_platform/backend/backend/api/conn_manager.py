@@ -212,8 +212,7 @@ class ConnectionManager:
     ) -> None:
         if raw_payload is None:
             return
-        # Payload is a serialized ``_EventPayloadWrapper[ExecutionEvent]``;
-        # unwrap then re-wrap as a WS message.
+        # Unwrap the `_EventPayloadWrapper` envelope, then re-wrap as a WS message.
         try:
             wrapper = (
                 raw_payload.decode()
@@ -247,7 +246,6 @@ class ConnectionManager:
     async def _start_notification_subscription(
         self, websocket: WebSocket, *, user_id: str
     ) -> None:
-        # One SSUBSCRIBE per WS; the pump delivers straight to its owning socket.
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
@@ -277,7 +275,6 @@ class ConnectionManager:
                 if isinstance(raw_payload, (bytes, bytearray))
                 else raw_payload
             )
-            # Strip ``_EventPayloadWrapper`` envelope before validating.
             parsed = json.loads(wrapper_json)
             inner = parsed.get("payload") if isinstance(parsed, dict) else None
             if not isinstance(inner, dict):
@@ -290,7 +287,7 @@ class ConnectionManager:
                 exc_info=True,
             )
             return
-        # Defense in depth: reject cross-user payloads.
+        # Defense in depth against cross-user payloads.
         if event.user_id != user_id:
             return
         message = WSMessage(
