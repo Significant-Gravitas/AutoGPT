@@ -305,4 +305,9 @@ async def test_subscriber_survives_shard_restart(isolated_cluster, monkeypatch) 
         except Exception:
             pass
         await rc.disconnect_async()
+        # Undo monkeypatched env BEFORE reloading so subsequent tests see the
+        # original REDIS_HOST/PORT — otherwise the module captures the
+        # isolated cluster's port (27110) which is torn down right after this
+        # test, and any later test that touches redis hangs on conn_retry.
+        monkeypatch.undo()
         importlib.reload(rc)
