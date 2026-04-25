@@ -55,6 +55,23 @@ _AMQP_KEYWORDS = [
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
+# Pika reconnect noise: AUTOGPT-SERVER-6JC/6JD/6JE/6JF. The reconnect logic in
+# ``func_retry`` handles these correctly; they should not surface as Sentry
+# ERROR events. We narrowly drop the four known signatures from the three
+# pika network-layer loggers so genuine pika ERRORs (auth failure, channel
+# close on declare error, etc.) still get through.
+_PIKA_RECONNECT_LOGGERS = {
+    "pika.adapters.utils.io_services_utils",
+    "pika.adapters.blocking_connection",
+    "pika.adapters.base_connection",
+}
+_PIKA_RECONNECT_SIGNATURES = (
+    "streamlosterror",
+    "transport indicated eof",
+    "socket eof",
+    "connection_lost",
+)
+
 
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
@@ -119,7 +136,11 @@ def _before_send(event, hint):
     log_msg = (
         logentry.get("formatted") or logentry.get("message") or event.get("message")
     )
-    if event.get("logger") and log_msg:
+    logger_name = event.get("logger")
+    if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
+        if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name and log_msg:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",
