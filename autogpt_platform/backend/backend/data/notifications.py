@@ -459,57 +459,32 @@ async def create_or_add_to_user_notification_batch(
         if not notification_data.data:
             raise ValueError("Notification data must be provided")
 
-        # Serialize the data
         json_data: Json = SafeJson(notification_data.data.model_dump())
+        new_notification = NotificationEventCreateInput(
+            type=notification_type,
+            data=json_data,
+        )
 
-        # First try to find existing batch
-        existing_batch = await UserNotificationBatch.prisma().find_unique(
+        # Atomic upsert: the `@@unique([userId, type])` key makes this race-safe.
+        # Avoid eager-loading all Notifications — heavy batches have thousands
+        # of rows which blew Postgres statement_timeout on an exists-check.
+        resp = await UserNotificationBatch.prisma().upsert(
             where={
                 "userId_type": {
                     "userId": user_id,
                     "type": notification_type,
                 }
             },
-            include={"Notifications": True},
-        )
-
-        if not existing_batch:
-            resp = await UserNotificationBatch.prisma().create(
-                data=UserNotificationBatchCreateInput(
+            data={
+                "create": UserNotificationBatchCreateInput(
                     userId=user_id,
                     type=notification_type,
-                    Notifications={
-                        "create": [
-                            NotificationEventCreateInput(
-                                type=notification_type,
-                                data=json_data,
-                            )
-                        ]
-                    },
+                    Notifications={"create": [new_notification]},
                 ),
-                include={"Notifications": True},
-            )
-            return UserNotificationBatchDTO.from_db(resp)
-        else:
-            resp = await UserNotificationBatch.prisma().update(
-                where={"id": existing_batch.id},
-                data={
-                    "Notifications": {
-                        "create": [
-                            NotificationEventCreateInput(
-                                type=notification_type,
-                                data=json_data,
-                            )
-                        ]
-                    }
-                },
-                include={"Notifications": True},
-            )
-            if not resp:
-                raise DatabaseError(
-                    f"Failed to add notification event to existing batch {existing_batch.id}"
-                )
-            return UserNotificationBatchDTO.from_db(resp)
+                "update": {"Notifications": {"create": [new_notification]}},
+            },
+        )
+        return UserNotificationBatchDTO.from_db(resp)
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
