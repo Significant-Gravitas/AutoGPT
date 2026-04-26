@@ -3,9 +3,10 @@ import json
 import logging
 from typing import Awaitable, Callable, Dict, Optional, Set
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
+from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
 from backend.data import redis_client as redis
@@ -21,6 +22,21 @@ from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 _settings = Settings()
+
+
+def _is_ws_close_race(exc: BaseException, websocket: WebSocket) -> bool:
+    """A SPUBLISH→WS send racing with WS close — benign, drop quietly."""
+    if isinstance(exc, WebSocketDisconnect):
+        return True
+    if (
+        getattr(websocket, "application_state", None) == WebSocketState.DISCONNECTED
+        or getattr(websocket, "client_state", None) == WebSocketState.DISCONNECTED
+    ):
+        return True
+    if isinstance(exc, RuntimeError) and "close message has been sent" in str(exc):
+        return True
+    return False
+
 
 _EVENT_TYPE_TO_METHOD_MAP: dict[ExecutionEventType, WSMethod] = {
     ExecutionEventType.GRAPH_EXEC_UPDATE: WSMethod.GRAPH_EXECUTION_EVENT,
@@ -240,7 +256,10 @@ class ConnectionManager:
                 data=event_data,
             ).model_dump_json()
             await websocket.send_text(message)
-        except Exception:
+        except Exception as e:
+            if _is_ws_close_race(e, websocket):
+                logger.debug("Dropped exec event on closed WS for %s", channel_key)
+                return
             logger.exception("Failed to forward exec event on %s", channel_key)
 
     async def _start_notification_subscription(
@@ -296,7 +315,10 @@ class ConnectionManager:
         ).model_dump_json()
         try:
             await websocket.send_text(message)
-        except Exception:
+        except Exception as e:
+            if _is_ws_close_race(e, websocket):
+                logger.debug("Dropped notification on closed WS for user=%s", user_id)
+                return
             logger.warning(
                 "Failed to deliver notification to WS for user=%s",
                 user_id,

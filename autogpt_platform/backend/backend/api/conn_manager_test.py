@@ -601,6 +601,59 @@ async def test_forward_exec_event_swallows_malformed_json(
     mock_websocket.send_text.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_forward_exec_event_logs_ws_close_race_at_debug(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """SPUBLISH racing WS close → debug, not exception."""
+    inner = {
+        "event_type": "graph_execution_update",
+        "id": "x",
+        "user_id": "user-1",
+        "graph_id": "g",
+        "graph_version": 1,
+        "status": "COMPLETED",
+    }
+    wrapper = json.dumps({"payload": inner})
+    mock_websocket.send_text = AsyncMock(
+        side_effect=RuntimeError(
+            'Cannot call "send" once a close message has been sent.'
+        )
+    )
+    with patch("backend.api.conn_manager.logger") as mock_logger:
+        await connection_manager._forward_exec_event(
+            mock_websocket, "chan", wrapper.encode()
+        )
+    mock_logger.exception.assert_not_called()
+    mock_logger.debug.assert_called_once()
+    assert "Dropped exec event on closed WS" in mock_logger.debug.call_args[0][0]
+
+
+@pytest.mark.asyncio
+async def test_forward_exec_event_logs_real_send_error_at_exception(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """A non-close-race RuntimeError must still log at exception level."""
+    inner = {
+        "event_type": "graph_execution_update",
+        "id": "x",
+        "user_id": "user-1",
+        "graph_id": "g",
+        "graph_version": 1,
+        "status": "COMPLETED",
+    }
+    wrapper = json.dumps({"payload": inner})
+    mock_websocket.send_text = AsyncMock(side_effect=RuntimeError("something else"))
+    # Force application_state to a sentinel that is NOT DISCONNECTED.
+    mock_websocket.application_state = None
+    mock_websocket.client_state = None
+    with patch("backend.api.conn_manager.logger") as mock_logger:
+        await connection_manager._forward_exec_event(
+            mock_websocket, "chan", wrapper.encode()
+        )
+    mock_logger.exception.assert_called_once()
+
+
 # ---------- _start_notification_subscription / _forward_notification ----------
 
 
@@ -717,6 +770,30 @@ async def test_forward_notification_swallows_websocket_send_failure(
     await connection_manager._forward_notification(
         mock_websocket, "user-1", wrapper.encode()
     )
+
+
+@pytest.mark.asyncio
+async def test_forward_notification_logs_ws_close_race_at_debug(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """SPUBLISH racing WS close on notification path → debug, not warning."""
+    mock_websocket.send_text = AsyncMock(
+        side_effect=RuntimeError(
+            'Cannot call "send" once a close message has been sent.'
+        )
+    )
+    inner = {
+        "user_id": "user-1",
+        "payload": {"type": "info", "event": "hi"},
+    }
+    wrapper = json.dumps({"payload": inner})
+    with patch("backend.api.conn_manager.logger") as mock_logger:
+        await connection_manager._forward_notification(
+            mock_websocket, "user-1", wrapper.encode()
+        )
+    mock_logger.warning.assert_not_called()
+    mock_logger.debug.assert_called_once()
+    assert "Dropped notification on closed WS" in mock_logger.debug.call_args[0][0]
 
 
 @pytest.mark.asyncio
