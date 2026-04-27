@@ -33,7 +33,7 @@ export function useIntegrationsList() {
     groupCredentialsByProvider(credentials);
   const providers = filterProviders(allProviders, debouncedQuery);
 
-  const allCredentialIds = providers.flatMap((p) =>
+  const allCredentialIds = allProviders.flatMap((p) =>
     p.credentials.map((c) => c.id),
   );
   const selection = useIntegrationsSelection(allCredentialIds);
