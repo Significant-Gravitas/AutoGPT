@@ -122,7 +122,7 @@ export function TimezoneCard({
                   : { opacity: 0, y: -4, height: 0 }
               }
               transition={{ duration: 0.22, ease: EASE_OUT }}
-              className="flex w-full items-center gap-2 overflow-hidden rounded-xl border border-dashed border-violet-300 bg-violet-50/60 px-3 py-2 text-left text-violet-800 transition-colors duration-150 ease-out hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
+              className="flex w-fit items-center gap-2 self-end overflow-hidden rounded-full border border-violet-300 bg-violet-50/60 px-3 py-1.5 text-left text-violet-800 transition-colors duration-150 ease-out hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
             >
               <GlobeIcon size={16} weight="duotone" />
               <Text variant="small" as="span" className="text-violet-800">
