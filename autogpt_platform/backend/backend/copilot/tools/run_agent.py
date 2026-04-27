@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+from prisma.enums import OnboardingStep
 from pydantic import BaseModel, Field, field_validator
 
 from backend.copilot.config import ChatConfig
@@ -13,6 +14,10 @@ from backend.data.db_accessors import execution_db, graph_db, library_db, user_d
 from backend.data.execution import ExecutionStatus, GraphExecutionWithNodes
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
+from backend.data.onboarding import (
+    check_social_block_execution,
+    complete_onboarding_step,
+)
 from backend.executor import utils as execution_utils
 from backend.executor.utils import is_credential_validation_error_message
 from backend.util.clients import get_scheduler_client
@@ -657,6 +662,17 @@ class RunAgentTool(BaseTool):
             library_agent_id=library_agent.id,
         )
 
+        # Complete onboarding step for first copilot agent run
+        if not dry_run:
+            try:
+                await complete_onboarding_step(
+                    user_id, OnboardingStep.COPILOT_FIRST_RUN
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to complete COPILOT_FIRST_RUN step", exc_info=True
+                )
+
         library_agent_link = f"/library/agents/{library_agent.id}"
 
         # If wait_for_result is requested, wait for execution to complete
@@ -672,6 +688,13 @@ class RunAgentTool(BaseTool):
             )
 
             if completed and completed.status == ExecutionStatus.COMPLETED:
+                # Check if execution used social media blocks (for SHARE_PLATFORM)
+                if not dry_run:
+                    try:
+                        await check_social_block_execution(user_id, execution.id)
+                    except Exception:
+                        logger.warning("Failed social block check", exc_info=True)
+
                 outputs = get_execution_outputs(completed)
                 # Inline the per-node execution trace on dry-runs so the
                 # LLM can inspect "did every block run, what did each
@@ -894,6 +917,16 @@ class RunAgentTool(BaseTool):
             cron=cron,
             library_agent_id=library_agent.id,
         )
+
+        # Complete onboarding step for first copilot agent schedule
+        try:
+            await complete_onboarding_step(
+                user_id, OnboardingStep.COPILOT_SCHEDULE_AGENT
+            )
+        except Exception:
+            logger.warning(
+                "Failed to complete COPILOT_SCHEDULE_AGENT step", exc_info=True
+            )
 
         library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(

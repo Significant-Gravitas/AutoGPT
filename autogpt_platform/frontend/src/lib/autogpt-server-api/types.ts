@@ -887,6 +887,11 @@ export type OnboardingStep =
   | "TRIGGER_WEBHOOK"
   | "RUN_14_DAYS"
   | "RUN_AGENTS_100"
+  // Copilot-centric tasks
+  | "COPILOT_FIRST_RUN"
+  | "COPILOT_CREATE_AGENT"
+  | "COPILOT_SCHEDULE_AGENT"
+  | "SHARE_PLATFORM"
   // No longer used but tracked
   | "BUILDER_OPEN"
   | "BUILDER_RUN_AGENT";

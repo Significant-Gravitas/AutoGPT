@@ -21,6 +21,7 @@ import { X } from "lucide-react";
 import confetti, { type Options as ConfettiOptions } from "canvas-confetti";
 import { AGPT_CONFETTI_COLORS } from "@/components/molecules/Confetti/Confetti";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { SharePlatformDialog } from "./components/SharePlatformDialog";
 import { WalletRefill } from "./components/WalletRefill";
 import { TaskGroups } from "./components/WalletTaskGroups";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -31,6 +32,7 @@ export interface Task {
   amount: number;
   details: string;
   video?: string;
+  action?: boolean;
   progress?: {
     current: number;
     target: number;
@@ -47,17 +49,32 @@ export function Wallet() {
   const { state, updateState } = useOnboarding();
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
 
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+
+  const handleTaskClick = useCallback((taskId: OnboardingStep) => {
+    if (taskId === "SHARE_PLATFORM") {
+      setShareDialogOpen(true);
+    }
+  }, []);
+
   const groups = useMemo<TaskGroup[]>(() => {
     return [
       {
-        name: "First Wins",
-        details: "Kickstart your journey with quick wins.",
+        name: "Getting Started",
+        details: "Get to your first successful agent run.",
         tasks: [
           {
-            id: "GET_RESULTS",
-            name: "Complete onboarding and see your first agent's results",
-            amount: 3,
-            details: "",
+            id: "VISIT_COPILOT",
+            name: "Visit the Copilot",
+            amount: 5,
+            details: "Open the Copilot to start your AI automation journey",
+          },
+          {
+            id: "COPILOT_FIRST_RUN",
+            name: "Run your first agent via Copilot",
+            amount: 1,
+            details:
+              "Ask the Copilot to run an agent for you and see the results",
           },
           {
             id: "MARKETPLACE_VISIT",
@@ -74,6 +91,12 @@ export function Wallet() {
               "Search for an agent in the Marketplace and add it to your Library",
             video: "/onboarding/marketplace-add.mp4",
           },
+        ],
+      },
+      {
+        name: "Building Habits",
+        details: "Build your rhythm and make agents part of your routine.",
+        tasks: [
           {
             id: "MARKETPLACE_RUN_AGENT",
             name: "Open the Library page and run an agent",
@@ -82,36 +105,30 @@ export function Wallet() {
             video: "/onboarding/marketplace-run.mp4",
           },
           {
-            id: "BUILDER_SAVE_AGENT",
-            name: "Place your first blocks and save your agent",
-            amount: 1,
-            details:
-              "Open block library on the left and add a block to the canvas then save your agent",
-            video: "/onboarding/builder-save.mp4",
-          },
-        ],
-      },
-      {
-        name: "Consistency Challenge",
-        details: "Build your rhythm and make agents part of your routine.",
-        tasks: [
-          {
             id: "RE_RUN_AGENT",
             name: "Re-run an agent",
             amount: 1,
             details: "Re-run an agent from the Library",
           },
           {
-            id: "SCHEDULE_AGENT",
-            name: "Schedule your first agent",
+            id: "COPILOT_CREATE_AGENT",
+            name: "Create an agent with Copilot",
             amount: 1,
-            details: "Schedule an agent to run on a recurring basis",
+            details:
+              "Ask the Copilot to create a new agent for you and save it",
+          },
+          {
+            id: "COPILOT_SCHEDULE_AGENT",
+            name: "Schedule an agent via Copilot",
+            amount: 1,
+            details:
+              "Ask the Copilot to schedule an agent to run on a recurring basis",
           },
           {
             id: "RUN_AGENTS",
             name: "Run 10 agents",
             amount: 3,
-            details: "Run agents from Library or Builder 10 times",
+            details: "Run agents from Library or Copilot 10 times",
             progress: {
               current: state?.agentRuns || 0,
               target: 10,
@@ -121,8 +138,7 @@ export function Wallet() {
             id: "RUN_3_DAYS",
             name: "Run agents 3 days in a row",
             amount: 1,
-            details:
-              "Run any agents from the Library or Builder for 3 days in a row",
+            details: "Run any agents for 3 days in a row",
             progress: {
               current: state?.consecutiveRunDays || 0,
               target: 3,
@@ -131,22 +147,22 @@ export function Wallet() {
         ],
       },
       {
-        name: "The Pro Playground",
-        details: "Master powerful features to supercharge your workflow.",
+        name: "Power User",
+        details: "Deeper engagement and sharing.",
         tasks: [
           {
-            id: "TRIGGER_WEBHOOK",
-            name: "Trigger an agent via webhook",
+            id: "SHARE_PLATFORM",
+            name: "Share AutoGPT",
             amount: 1,
             details:
-              "In the Builder, go to Settings and copy the Webhook URL. Use it to trigger your agent from another app.",
+              "Create a sharing automation with the Copilot to spread the word",
+            action: true,
           },
           {
             id: "RUN_14_DAYS",
             name: "Run agents 14 days in a row",
             amount: 3,
-            details:
-              "Run any agents from the Library or Builder for 10 days in a row",
+            details: "Run any agents for 14 days in a row",
             progress: {
               current: state?.consecutiveRunDays || 0,
               target: 14,
@@ -351,9 +367,13 @@ export function Wallet() {
           <p className="mx-1 my-3 font-sans text-xs font-normal text-zinc-400">
             Complete the following tasks to earn more credits!
           </p>
-          <TaskGroups groups={groups} />
+          <TaskGroups groups={groups} onTaskClick={handleTaskClick} />
         </ScrollArea>
       </PopoverContent>
+      <SharePlatformDialog
+        open={shareDialogOpen}
+        onOpenChange={setShareDialogOpen}
+      />
     </Popover>
   );
 }

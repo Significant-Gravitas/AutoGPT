@@ -1,3 +1,4 @@
+import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { cn } from "@/lib/utils";
 import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { BadgeQuestionMark, Check, ChevronDown } from "lucide-react";
@@ -8,9 +9,10 @@ import { Task, TaskGroup } from "../Wallet";
 
 interface Props {
   groups: TaskGroup[];
+  onTaskClick?: (taskId: OnboardingStep) => void;
 }
 
-export function TaskGroups({ groups }: Props) {
+export function TaskGroups({ groups, onTaskClick }: Props) {
   const { state, updateState } = useOnboarding();
   const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -213,7 +215,18 @@ export function TaskGroups({ groups }: Props) {
               <div
                 key={task.id}
                 ref={setRef(task.id)}
-                className="mx-3 border-t border-zinc-200 px-1 pb-0.5 pt-3"
+                className={cn(
+                  "mx-3 border-t border-zinc-200 px-1 pb-0.5 pt-3",
+                  task.action &&
+                    !isTaskCompleted(task) &&
+                    onTaskClick &&
+                    "cursor-pointer hover:bg-zinc-100",
+                )}
+                onClick={
+                  task.action && !isTaskCompleted(task) && onTaskClick
+                    ? () => onTaskClick(task.id)
+                    : undefined
+                }
               >
                 <div className="mb-2 flex items-center justify-between">
                   {/* Checkmark and name */}

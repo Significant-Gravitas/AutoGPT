@@ -8,6 +8,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
 import { useBreakpoint } from "@/lib/hooks/useBreakpoint";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart } from "ai";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -135,6 +136,12 @@ export function useCopilotPage() {
   });
 
   useCopilotNotifications(sessionId);
+
+  // Mark copilot visit task as completed
+  const { completeStep } = useOnboarding();
+  useEffect(() => {
+    completeStep("VISIT_COPILOT");
+  }, [completeStep]);
 
   // --- Delete session ---
   const { mutate: deleteSessionMutation, isPending: isDeleting } =

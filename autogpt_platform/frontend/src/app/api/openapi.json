@@ -6928,7 +6928,8 @@
                 "CONGRATS",
                 "VISIT_COPILOT",
                 "MARKETPLACE_VISIT",
-                "BUILDER_OPEN"
+                "BUILDER_OPEN",
+                "SHARE_PLATFORM"
               ],
               "type": "string",
               "title": "Step"
@@ -13608,6 +13609,10 @@
           "TRIGGER_WEBHOOK",
           "RUN_14_DAYS",
           "RUN_AGENTS_100",
+          "COPILOT_FIRST_RUN",
+          "COPILOT_CREATE_AGENT",
+          "COPILOT_SCHEDULE_AGENT",
+          "SHARE_PLATFORM",
           "BUILDER_OPEN",
           "BUILDER_RUN_AGENT"
         ],

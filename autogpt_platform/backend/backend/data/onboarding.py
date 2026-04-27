@@ -44,6 +44,7 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.VISIT_COPILOT,
     OnboardingStep.MARKETPLACE_VISIT,
     OnboardingStep.BUILDER_OPEN,
+    OnboardingStep.SHARE_PLATFORM,
 ]
 
 
@@ -153,6 +154,14 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
             reward = 300
         case OnboardingStep.RUN_AGENTS_100:
             reward = 300
+        case OnboardingStep.COPILOT_FIRST_RUN:
+            reward = 100
+        case OnboardingStep.COPILOT_CREATE_AGENT:
+            reward = 100
+        case OnboardingStep.COPILOT_SCHEDULE_AGENT:
+            reward = 100
+        case OnboardingStep.SHARE_PLATFORM:
+            reward = 100
 
     if reward == 0:
         return
@@ -369,6 +378,32 @@ async def increment_onboarding_runs(user_id: str):
     # Send progress notification if no steps were completed, so client refetches onboarding state
     if not new_steps:
         await _send_onboarding_notification(user_id, None, event="increment_runs")
+
+
+async def check_social_block_execution(user_id: str, execution_id: str) -> None:
+    """Complete SHARE_PLATFORM if execution used social media blocks."""
+    from backend.blocks.ayrshare import AYRSHARE_BLOCK_IDS
+
+    onboarding = await get_user_onboarding(user_id)
+    if OnboardingStep.SHARE_PLATFORM in onboarding.completedSteps:
+        return
+
+    execution = await execution_db.get_graph_execution(
+        user_id=user_id,
+        execution_id=execution_id,
+        include_node_executions=True,
+    )
+    if not execution:
+        return
+
+    social_block_ids = set(AYRSHARE_BLOCK_IDS)
+    for node_exec in execution.node_executions:
+        if (
+            node_exec.block_id in social_block_ids
+            and node_exec.status == execution_db.ExecutionStatus.COMPLETED
+        ):
+            await complete_onboarding_step(user_id, OnboardingStep.SHARE_PLATFORM)
+            return
 
 
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:

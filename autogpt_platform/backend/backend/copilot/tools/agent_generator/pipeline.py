@@ -174,6 +174,18 @@ async def fix_validate_and_save(
         created_graph, library_agent = await save_agent_to_library(
             agent_json, user_id, is_update=is_update, folder_id=folder_id
         )
+
+        try:
+            from prisma.enums import OnboardingStep
+
+            from backend.data.onboarding import complete_onboarding_step
+
+            await complete_onboarding_step(user_id, OnboardingStep.COPILOT_CREATE_AGENT)
+        except Exception:
+            logger.warning(
+                "Failed to complete COPILOT_CREATE_AGENT step", exc_info=True
+            )
+
         return AgentSavedResponse(
             message=(
                 (save_message or f"Agent '{created_graph.name}' has been saved!")
