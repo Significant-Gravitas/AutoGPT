@@ -96,7 +96,7 @@ def get_provider_description(name: str) -> str | None:
     provider = AutoRegistry.get_provider(name)
     if provider is None:
         return None
-    return getattr(provider, "description", None)
+    return provider.description
 
 
 class ProviderConstants(BaseModel):
