@@ -46,6 +46,7 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    GENERIC_TRIGGER_AGENTS = "generic-trigger-agents"
 
     # Copilot model routing — JSON-valued, returns the per-(mode, tier)
     # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or

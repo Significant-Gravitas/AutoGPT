@@ -8,6 +8,7 @@ import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecu
 import { GraphExecutionMeta } from "@/app/api/__generated__/models/graphExecutionMeta";
 import { LibraryAgentPreset } from "@/app/api/__generated__/models/libraryAgentPreset";
 import { okData } from "@/app/api/helpers";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -36,8 +37,9 @@ export function useNewAgentLibraryView() {
     error,
   } = useGetV2GetLibraryAgent(agentId, { query: { select: okData } });
 
+  const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
   const { data: triggerAgents } = useGetV2ListTriggerAgents(agentId, {
-    query: { enabled: !!agentId, select: okData },
+    query: { enabled: triggerAgentsEnabled && !!agentId, select: okData },
   });
 
   const [{ activeItem, activeTab: activeTabRaw }, setQueryStates] =
@@ -231,6 +233,7 @@ export function useNewAgentLibraryView() {
   }
 
   const isActiveItemTriggerAgent =
+    triggerAgentsEnabled &&
     activeTab === "triggers" &&
     !!activeItem &&
     !!triggerAgents?.some((t) => t.id === activeItem);

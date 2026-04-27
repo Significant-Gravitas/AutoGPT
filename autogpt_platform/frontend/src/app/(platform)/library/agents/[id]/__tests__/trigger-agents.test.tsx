@@ -56,6 +56,17 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   useToastOnFail: () => vi.fn(),
 }));
 
+// Default to flag ON so the existing tests exercise the full UI; the
+// flag-off branch is covered by a dedicated test that overrides this
+// per-call.
+const mockUseGetFlag = vi.hoisted(() => vi.fn(() => true));
+vi.mock("@/services/feature-flags/use-get-flag", () => ({
+  Flag: {
+    GENERIC_TRIGGER_AGENTS: "generic-trigger-agents",
+  },
+  useGetFlag: mockUseGetFlag,
+}));
+
 // Per-test render wrapper so we can set the nuqs initial URL state
 // (e.g. activeTab=triggers) — Radix tab clicks don't always round-trip
 // through the NuqsTestingAdapter within a single sync frame.
@@ -117,6 +128,7 @@ describe("Library agent view — trigger agents", () => {
   beforeEach(() => {
     server.resetHandlers();
     mockToast.mockClear();
+    mockUseGetFlag.mockReturnValue(true);
   });
 
   test("hides Triggers tab when there are no trigger agents and no webhook triggers", async () => {
@@ -439,5 +451,65 @@ describe("Library agent view — trigger agents", () => {
         }),
       );
     });
+  });
+
+  test("when generic-trigger-agents flag is off, hides 'Trigger Agents' subsection and skips the trigger-agents fetch", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+
+    let triggerAgentsCallCount = 0;
+    const triggerAgent = getGetV2GetLibraryAgentResponseMock({
+      id: TRIGGER_ID,
+      graph_id: TRIGGER_GRAPH_ID,
+      name: "Hidden Watcher",
+      is_hidden: true,
+    });
+
+    server.use(
+      ...baseHandlers(),
+      emptySchedulesHandler,
+      // Ensure backend would still serve a trigger agent if asked; we
+      // assert the request never fires when the flag is off.
+      getGetV2ListTriggerAgentsMockHandler(() => {
+        triggerAgentsCallCount += 1;
+        return [triggerAgent];
+      }),
+      // Webhook trigger so the Triggers tab still has reason to exist.
+      getGetV2ListPresetsMockHandler({
+        presets: [
+          {
+            id: "preset-1",
+            user_id: "user-1",
+            graph_id: PARENT_GRAPH_ID,
+            graph_version: 1,
+            name: "Webhook Trigger",
+            description: "",
+            inputs: {},
+            credentials: {},
+            is_active: true,
+            webhook_id: "webhook-1",
+            webhook: null,
+            created_at: new Date("2026-01-01T00:00:00.000Z"),
+            updated_at: new Date("2026-01-01T00:00:00.000Z"),
+          },
+        ],
+        pagination: {
+          total_items: 1,
+          total_pages: 1,
+          current_page: 1,
+          page_size: 100,
+        },
+      }),
+    );
+
+    renderWithInitialParams(<NewAgentLibraryView />, "activeTab=triggers");
+
+    await screen.findByText("Parent Agent");
+    await screen.findByText("Webhook Triggers");
+    // The "Trigger Agents" subsection must not render and the row name
+    // must be absent.
+    expect(screen.queryByText("Trigger Agents")).toBeNull();
+    expect(screen.queryByText("Hidden Watcher")).toBeNull();
+    // And the GET .../triggers request never fires.
+    expect(triggerAgentsCallCount).toBe(0);
   });
 });

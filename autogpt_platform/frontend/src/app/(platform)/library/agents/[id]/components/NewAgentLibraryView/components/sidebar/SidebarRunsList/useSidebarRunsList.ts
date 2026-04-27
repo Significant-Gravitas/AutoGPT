@@ -13,6 +13,7 @@ import { useGetV2ListTriggerAgents } from "@/app/api/__generated__/endpoints/lib
 import { useGetV2ListPresets } from "@/app/api/__generated__/endpoints/presets/presets";
 import { useGetV1ListExecutionSchedulesForAGraph } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import { useExecutionEvents } from "@/hooks/useExecutionEvents";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryStates } from "nuqs";
 
@@ -89,9 +90,10 @@ export function useSidebarRunsList({
     },
   );
 
+  const triggerAgentsEnabled = useGetFlag(Flag.GENERIC_TRIGGER_AGENTS);
   const triggerAgentsQuery = useGetV2ListTriggerAgents(libraryAgentID, {
     query: {
-      enabled: !!libraryAgentID,
+      enabled: triggerAgentsEnabled && !!libraryAgentID,
       select: okData,
     },
   });
@@ -111,7 +113,9 @@ export function useSidebarRunsList({
     () => allPresets.filter((preset) => !preset.webhook_id),
     [allPresets],
   );
-  const triggerAgents = triggerAgentsQuery.data || [];
+  const triggerAgents = triggerAgentsEnabled
+    ? triggerAgentsQuery.data || []
+    : [];
 
   const runsCount = getPaginatedTotalCount(runsQuery.data, runs.length);
   const schedulesCount = schedules.length;
@@ -123,12 +127,12 @@ export function useSidebarRunsList({
     !runsQuery.isSuccess ||
     !schedulesQuery.isSuccess ||
     !presetsQuery.isSuccess ||
-    !triggerAgentsQuery.isSuccess;
+    (triggerAgentsEnabled && !triggerAgentsQuery.isSuccess);
   const stale =
     runsQuery.isStale ||
     schedulesQuery.isStale ||
     presetsQuery.isStale ||
-    triggerAgentsQuery.isStale;
+    (triggerAgentsEnabled && triggerAgentsQuery.isStale);
 
   // Update query cache when execution events arrive via websocket
   useExecutionEvents({
@@ -202,7 +206,7 @@ export function useSidebarRunsList({
       schedulesQuery.error ||
       runsQuery.error ||
       presetsQuery.error ||
-      triggerAgentsQuery.error,
+      (triggerAgentsEnabled ? triggerAgentsQuery.error : null),
     loading,
     runsQuery,
     tabValue,
