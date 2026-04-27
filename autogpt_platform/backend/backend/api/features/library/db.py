@@ -2013,6 +2013,8 @@ _AGENT_EXECUTOR_BLOCK_ID = "e189baac-8c20-45a1-94a7-55177ea42565"
 async def list_trigger_agents(
     user_id: str,
     library_agent_id: str,
+    *,
+    parent_graph_id: Optional[str] = None,
 ) -> list[library_model.LibraryAgent]:
     """List trigger agents for the given parent library agent.
 
@@ -2020,8 +2022,13 @@ async def list_trigger_agents(
     AgentExecutorBlock node referencing the parent's graph_id. The
     relationship is derived from graph contents — no separate link
     table — so it stays consistent when triggers are edited.
+
+    Pass ``parent_graph_id`` if the caller already has the parent
+    loaded — skips the redundant ``get_library_agent`` lookup.
     """
-    parent = await get_library_agent(id=library_agent_id, user_id=user_id)
+    if parent_graph_id is None:
+        parent = await get_library_agent(id=library_agent_id, user_id=user_id)
+        parent_graph_id = parent.graph_id
 
     triggers, schedule_info = await asyncio.gather(
         prisma.models.LibraryAgent.prisma().find_many(
@@ -2039,7 +2046,7 @@ async def list_trigger_agents(
                                     prisma.types.JsonFilter,
                                     {
                                         "path": ["graph_id"],
-                                        "equals": prisma.Json(parent.graph_id),
+                                        "equals": prisma.Json(parent_graph_id),
                                     },
                                 ),
                             }

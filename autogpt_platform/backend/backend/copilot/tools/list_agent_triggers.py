@@ -1,5 +1,6 @@
 """Tool for listing all triggers (trigger agents + webhook presets) for an agent."""
 
+import asyncio
 import logging
 from typing import Any, Literal
 
@@ -120,18 +121,22 @@ class ListAgentTriggersTool(BaseTool):
                 session_id=session_id,
             )
 
-        trigger_agents = await list_trigger_agents(
-            user_id=user_id, library_agent_id=library_agent_id
-        )
-
-        # Webhook presets are scoped per-graph (preset.graph_id), so we
-        # filter by the parent's graph_id and keep only the entries that
-        # actually represent a webhook trigger.
-        preset_response = await list_presets(
-            user_id=user_id,
-            page=1,
-            page_size=100,
-            graph_id=parent.graph_id,
+        # Pass parent_graph_id so list_trigger_agents skips its own
+        # get_library_agent call (we already loaded the parent above).
+        # Both queries can run concurrently since they don't depend
+        # on each other once we have the parent's graph_id.
+        trigger_agents, preset_response = await asyncio.gather(
+            list_trigger_agents(
+                user_id=user_id,
+                library_agent_id=library_agent_id,
+                parent_graph_id=parent.graph_id,
+            ),
+            list_presets(
+                user_id=user_id,
+                page=1,
+                page_size=100,
+                graph_id=parent.graph_id,
+            ),
         )
         webhook_presets = [
             p for p in preset_response.presets if p.webhook_id is not None

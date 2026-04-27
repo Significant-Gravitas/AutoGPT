@@ -554,6 +554,40 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
 
 
 @pytest.mark.asyncio
+async def test_list_trigger_agents_skips_get_library_agent_when_parent_graph_id_passed(
+    mocker,
+):
+    """When the caller passes parent_graph_id explicitly, the function
+    must skip the redundant get_library_agent lookup and use the
+    provided graph_id directly. Regression for a Sentry-flagged double
+    lookup from list_agent_triggers."""
+    get_lib_spy = mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=mocker.AsyncMock(),
+    )
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_many = mock_find_many
+    mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    result = await db.list_trigger_agents(
+        user_id="test-user",
+        library_agent_id="parent-id",
+        parent_graph_id="explicit-graph-id",
+    )
+
+    assert result == []
+    get_lib_spy.assert_not_called()
+    nodes_some = mock_find_many.call_args.kwargs["where"]["AgentGraph"]["is"]["Nodes"][
+        "some"
+    ]
+    assert nodes_some["constantInput"]["equals"] == prisma.Json("explicit-graph-id")
+
+
+@pytest.mark.asyncio
 async def test_list_trigger_agents_propagates_schedule_info(mocker):
     """Trigger agents have schedules — _fetch_schedule_info must be
     called and its result threaded through LibraryAgent.from_db so the
