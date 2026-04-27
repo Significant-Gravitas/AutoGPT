@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { PlusIcon } from "@phosphor-icons/react";
 
@@ -28,14 +29,12 @@ export function ProviderRow({ provider, onSelect }: Props) {
           {provider.name?.charAt(0) ?? provider.id.charAt(0)}
         </div>
       ) : (
-        /* eslint-disable-next-line @next/next/no-img-element -- decorative provider logo, no LCP candidate */
-        <img
+        <Image
           src={src}
           alt=""
           width={36}
           height={36}
           loading="lazy"
-          decoding="async"
           className="size-9 shrink-0 object-contain"
           onError={() => setBroken(true)}
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 
 interface Props {
@@ -20,14 +21,12 @@ export function ProviderAvatar({ id, name }: Props) {
     );
   }
   return (
-    /* eslint-disable-next-line @next/next/no-img-element -- decorative provider logo, no LCP candidate */
-    <img
+    <Image
       src={`/integrations/${id}.png`}
       alt={`${name} logo`}
       width={40}
       height={40}
       loading="lazy"
-      decoding="async"
       onError={() => setBroken(true)}
       className="size-10 shrink-0 object-contain"
     />
