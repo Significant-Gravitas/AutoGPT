@@ -1,16 +1,22 @@
 "use client";
 
-import { Text } from "@/components/atoms/Text/Text";
+import { useState } from "react";
+
+import { ConnectServiceDialog } from "./components/ConnectServiceDialog/ConnectServiceDialog";
+import { IntegrationsHeader } from "./components/IntegrationsHeader/IntegrationsHeader";
+import { IntegrationsList } from "./components/IntegrationsList/IntegrationsList";
 
 export default function SettingsIntegrationsPage() {
+  const [isConnectOpen, setIsConnectOpen] = useState(false);
+
   return (
     <>
-      <Text variant="h4" className="text-[#1F1F20]">
-        Integrations
-      </Text>
-      <Text variant="large" className="mt-2 text-zinc-600">
-        Coming soon.
-      </Text>
+      <IntegrationsHeader onConnect={() => setIsConnectOpen(true)} />
+      <IntegrationsList />
+      <ConnectServiceDialog
+        open={isConnectOpen}
+        onOpenChange={setIsConnectOpen}
+      />
     </>
   );
 }

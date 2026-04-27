@@ -7,6 +7,7 @@ from backend.sdk import BlockCostType, ProviderBuilder
 # Build the DataForSEO provider with username/password authentication
 dataforseo = (
     ProviderBuilder("dataforseo")
+    .with_description("SEO and SERP data")
     .with_user_password(
         username_env_var="DATAFORSEO_USERNAME",
         password_env_var="DATAFORSEO_PASSWORD",

@@ -12,7 +12,7 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-import { createRequestHeaders } from "./helpers";
+import { buildUrlWithQuery, createRequestHeaders } from "./helpers";
 import {
   API_KEY_HEADER_NAME,
   IMPERSONATION_HEADER_NAME,
@@ -21,6 +21,37 @@ import {
 function makeRequest(headers: Record<string, string>): Request {
   return new Request("http://example.com/test", { headers });
 }
+
+describe("buildUrlWithQuery", () => {
+  const url = "http://example.com/api";
+
+  it("returns the URL unchanged when query is undefined", () => {
+    expect(buildUrlWithQuery(url)).toBe(url);
+  });
+
+  it("returns the URL unchanged when every value is null or undefined", () => {
+    expect(buildUrlWithQuery(url, { a: null, b: undefined })).toBe(url);
+  });
+
+  it("filters out null and undefined values but keeps falsy primitives", () => {
+    const result = buildUrlWithQuery(url, {
+      kept: "yes",
+      zero: 0,
+      empty: "",
+      flag: false,
+      missing: undefined,
+      blank: null,
+    });
+
+    const params = new URL(result).searchParams;
+    expect(params.get("kept")).toBe("yes");
+    expect(params.get("zero")).toBe("0");
+    expect(params.get("empty")).toBe("");
+    expect(params.get("flag")).toBe("false");
+    expect(params.has("missing")).toBe(false);
+    expect(params.has("blank")).toBe(false);
+  });
+});
 
 describe("createRequestHeaders — basics", () => {
   it("adds Content-Type when hasRequestBody is true", () => {

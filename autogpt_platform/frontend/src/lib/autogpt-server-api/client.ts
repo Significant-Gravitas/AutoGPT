@@ -372,8 +372,14 @@ export default class BackendAPI {
     );
   }
 
-  listProviders(): Promise<string[]> {
-    return this._get("/integrations/providers");
+  async listProviders(): Promise<string[]> {
+    // The endpoint returns `ProviderMetadata[]` (`{ name, description }`) but
+    // legacy consumers (e.g. CredentialsProvider) still expect a flat string[]
+    // of provider names. Map down so we keep that contract.
+    const response: Array<{ name: string }> = await this._get(
+      "/integrations/providers",
+    );
+    return response.map((p) => p.name);
   }
 
   listSystemProviders(): Promise<string[]> {
