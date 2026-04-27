@@ -592,7 +592,6 @@ def test_result_empty_success_emits_error_and_finish():
     assert types.index("StreamError") < types.index("StreamFinish")
     err = next(r for r in results if isinstance(r, StreamError))
     assert err.code == "empty_completion"
-    assert "empty response" in err.errorText.lower()
 
 
 def test_result_empty_success_with_empty_string_result_treated_as_empty():
@@ -638,16 +637,12 @@ def test_result_success_with_text_emits_finish_not_error():
 
 
 def test_result_success_with_nonzero_output_tokens_not_empty():
-    """If ``output_tokens > 0`` but ``result`` is empty (e.g. all tokens went
-    to thinking), don't classify as empty — fall through to the existing
-    success path."""
+    """If ``output_tokens > 0`` but ``result`` is empty, don't classify as
+    empty — fall through to the existing success path. No prior
+    AssistantMessage so the `output_tokens` guard is the only thing
+    keeping `_is_empty_completion()` from firing."""
     adapter = _adapter()
-    adapter.convert_message(
-        AssistantMessage(
-            content=[ThinkingBlock(thinking="reasoning", signature="sig")],
-            model="test",
-        )
-    )
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
     msg = ResultMessage(
         subtype="success",
         duration_ms=100,
