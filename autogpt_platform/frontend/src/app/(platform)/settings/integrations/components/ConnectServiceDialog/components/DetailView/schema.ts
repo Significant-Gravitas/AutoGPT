@@ -12,11 +12,22 @@ export const apiKeyConnectSchema = z
       .string()
       .trim()
       .optional()
-      .refine((value) => !value || !Number.isNaN(Date.parse(value)), {
-        message: "Pick a valid date",
-      })
-      .refine((value) => !value || Date.parse(value) > Date.now(), {
-        message: "Expiry must be in the future",
+      .superRefine((value, ctx) => {
+        if (!value) return;
+        const parsed = Date.parse(value);
+        if (Number.isNaN(parsed)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Pick a valid date",
+          });
+          return;
+        }
+        if (parsed <= Date.now()) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "Expiry must be in the future",
+          });
+        }
       }),
   })
   .strict();
