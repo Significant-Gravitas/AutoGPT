@@ -52,6 +52,8 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamStart,
+    StreamStartStep,
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
@@ -846,11 +848,14 @@ def _ui_message_stream_headers() -> dict[str, str]:
 
 def _empty_ui_message_stream_response() -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str, None]:
-        # Vercel AI SDK's UI-message-stream parser expects StreamFinishStep
-        # immediately before StreamFinish (every non-empty turn emits the
-        # pair).  Emitting just StreamFinish skipped the step boundary and
-        # left the parser's activeTextParts/activeReasoningParts state from
-        # any prior partial unflushed.
+        # Vercel AI SDK's UI-message-stream parser expects symmetric
+        # start/finish framing at both stream and step level — every
+        # non-empty turn emits the pair.  Without an opener, today's parser
+        # tolerates the closer (no active parts to flush) but a future SDK
+        # tightening would silently break the queue-mid-turn UX.  Emit the
+        # full empty pair so the contract stays correct.
+        yield StreamStart().to_sse()
+        yield StreamStartStep().to_sse()
         yield StreamFinishStep().to_sse()
         yield StreamFinish().to_sse()
         yield "data: [DONE]\n\n"
@@ -909,7 +914,6 @@ async def stream_chat_post(
         extra={"json_fields": log_meta},
     )
     session = await _validate_and_get_session(session_id, user_id)
-    builder_permissions = resolve_session_permissions(session)
 
     if (
         request.is_user_message
@@ -928,6 +932,11 @@ async def stream_chat_post(
         except HTTPException as exc:
             if exc.status_code != 409:
                 raise
+
+    # Permission resolution is only needed below for the actual turn — keep
+    # it after the queue-fall-through so a queued mid-turn request returns
+    # without paying the work.
+    builder_permissions = resolve_session_permissions(session)
 
     logger.info(
         f"[TIMING] session validated in {(time.perf_counter() - stream_start_time) * 1000:.1f}ms",
