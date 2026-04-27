@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { SettingsSidebar } from "./components/SettingsSidebar/SettingsSidebar";
 import { SettingsMobileNav } from "./components/SettingsMobileNav/SettingsMobileNav";
 
@@ -12,7 +13,10 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="flex h-full w-full overflow-hidden bg-[#F9F9FA]">
+    <div
+      className="flex w-full overflow-hidden bg-[#F9F9FA]"
+      style={{ height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
+    >
       <SettingsSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <SettingsMobileNav />

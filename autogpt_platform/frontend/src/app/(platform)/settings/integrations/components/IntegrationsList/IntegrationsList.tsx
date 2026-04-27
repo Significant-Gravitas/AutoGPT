@@ -73,7 +73,9 @@ export function IntegrationsList() {
 
   return (
     <div className="flex w-full flex-col gap-3">
-      <IntegrationsSearch value={query} onChange={setQuery} />
+      <div className="sticky top-0 z-10 -mx-1 bg-[#F9F9FA] px-1 pb-1 pt-1">
+        <IntegrationsSearch value={query} onChange={setQuery} />
+      </div>
 
       <AnimatePresence initial={false}>
         {selection.selectedCount > 0 && (
@@ -113,7 +115,7 @@ export function IntegrationsList() {
       {isEmpty ? (
         <IntegrationsListEmpty query={query} />
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 pb-4">
           {providers.map((provider) => (
             <ProviderGroup
               key={provider.id}

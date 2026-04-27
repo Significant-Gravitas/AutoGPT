@@ -74,9 +74,11 @@ function ProviderAvatar({ provider }: { provider: ProviderGroupView }) {
     return (
       <div
         aria-hidden="true"
-        className="size-6 rounded-full bg-[#D9D9D9]"
+        className="flex size-6 items-center justify-center rounded-full bg-[#D9D9D9] text-[10px] font-semibold uppercase text-zinc-700"
         data-testid={`provider-avatar-${provider.id}`}
-      />
+      >
+        {provider.name?.charAt(0) ?? provider.id.charAt(0)}
+      </div>
     );
   }
 
