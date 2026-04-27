@@ -1,8 +1,17 @@
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
 
 export const MAX_LINKS = 5;
+export const INITIAL_LINK_SLOTS = 3;
 export const MAX_BIO_LENGTH = 280;
 export const HANDLE_REGEX = /^[a-zA-Z0-9_-]{2,30}$/;
+
+function padLinks(links: string[]): string[] {
+  if (links.length >= INITIAL_LINK_SLOTS) return links;
+  return [
+    ...links,
+    ...Array<string>(INITIAL_LINK_SLOTS - links.length).fill(""),
+  ];
+}
 
 export type ProfileFormState = {
   name: string;
@@ -18,7 +27,7 @@ export function profileToFormState(profile: ProfileDetails): ProfileFormState {
     username: profile.username ?? "",
     description: profile.description ?? "",
     avatar_url: profile.avatar_url ?? "",
-    links: profile.links ?? [],
+    links: padLinks(profile.links ?? []),
   };
 }
 

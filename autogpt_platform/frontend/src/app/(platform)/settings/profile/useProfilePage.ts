@@ -26,7 +26,7 @@ const EMPTY_FORM: ProfileFormState = {
   username: "",
   description: "",
   avatar_url: "",
-  links: [],
+  links: ["", "", ""],
 };
 
 export function useProfilePage() {

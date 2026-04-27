@@ -1,5 +1,6 @@
 "use client";
 
+import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { LinksSection } from "./components/LinksSection/LinksSection";
@@ -47,11 +48,23 @@ export default function SettingsProfilePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-28">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex flex-col pb-2">
+        <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
+          Profile
+        </Text>
+        <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
+          Manage how you appear on the marketplace — your photo, handle, bio,
+          and links.
+        </Text>
+      </div>
+
       <ProfileHeader
         avatarUrl={formState.avatar_url}
         name={formState.name}
-        email={user.email}
+        username={formState.username}
+        errors={validation.errors}
+        onChange={patchField}
         isUploading={isUploading}
         onUpload={uploadAvatar}
       />
@@ -70,7 +83,7 @@ export default function SettingsProfilePage() {
       />
 
       <SaveBar
-        visible={dirty}
+        dirty={dirty}
         saving={isSaving}
         canSave={validation.valid && dirty}
         onDiscard={discardChanges}
