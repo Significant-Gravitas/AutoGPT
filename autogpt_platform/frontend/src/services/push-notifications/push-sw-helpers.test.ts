@@ -15,9 +15,6 @@ function loadServiceWorkerHelpers() {
   const swPath = resolve(here, "../../../public/push-sw.js");
   const source = readFileSync(swPath, "utf8");
 
-  // Stub globals the SW touches during evaluation — we only need the helper
-  // functions, not the install/push/click listeners (those no-op in this
-  // sandbox).
   const sandbox: Record<string, unknown> = {
     self: {
       skipWaiting: () => undefined,
@@ -28,6 +25,7 @@ function loadServiceWorkerHelpers() {
     },
     URL,
     Array,
+    Object,
   };
   runInNewContext(source, sandbox);
   return sandbox as {
@@ -44,6 +42,8 @@ function loadServiceWorkerHelpers() {
       client: { visibilityState: string; focused: boolean; url: string },
       targetUrl: string,
     ) => boolean;
+    _clientUrls: Record<string, string>;
+    _effectiveUrl: (client: { id: string; url: string }) => string;
   };
 }
 
@@ -154,5 +154,35 @@ describe("push-sw isClientViewingTarget", () => {
       "/copilot",
     );
     expect(result).toBe(true);
+  });
+});
+
+describe("push-sw _effectiveUrl", () => {
+  const sw = loadServiceWorkerHelpers();
+
+  it("falls back to client.url when no cached URL is set", () => {
+    const result = sw._effectiveUrl({
+      id: "no-cache",
+      url: "https://example.com/copilot",
+    });
+    expect(result).toBe("https://example.com/copilot");
+  });
+
+  it("returns the cached URL when present (resolves against SW origin)", () => {
+    sw._clientUrls["client-1"] = "/library";
+    const result = sw._effectiveUrl({
+      id: "client-1",
+      url: "https://example.com/copilot?sessionId=stale",
+    });
+    expect(result).toBe("https://example.com/library");
+  });
+
+  it("preserves query string from the cached URL", () => {
+    sw._clientUrls["client-2"] = "/copilot?sessionId=fresh";
+    const result = sw._effectiveUrl({
+      id: "client-2",
+      url: "https://example.com/copilot?sessionId=stale",
+    });
+    expect(result).toBe("https://example.com/copilot?sessionId=fresh");
   });
 });

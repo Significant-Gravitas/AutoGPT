@@ -46,6 +46,29 @@ self.addEventListener("activate", function (event) {
   event.waitUntil(self.clients.claim());
 });
 
+// Chrome's WindowClient.url doesn't update for Next.js client-side navigation
+// (history.pushState), so the SW sees stale URLs. Pages postMessage their
+// current pathname+search whenever it changes; we cache it per client id and
+// use it for suppression decisions instead of trusting client.url.
+var _clientUrls = {};
+
+self.addEventListener("message", function (event) {
+  if (!event.data || event.data.type !== "CLIENT_URL") return;
+  if (!event.source || !event.source.id) return;
+  if (typeof event.data.url !== "string") return;
+  _clientUrls[event.source.id] = event.data.url;
+});
+
+function _effectiveUrl(client) {
+  var cached = _clientUrls[client.id];
+  if (typeof cached === "string") {
+    // Cached value is pathname + search; the URL constructor needs an origin
+    // to parse it, so resolve against this SW's origin.
+    return new URL(cached, self.location.origin).href;
+  }
+  return client.url;
+}
+
 function isClientViewingTarget(client, targetUrl) {
   if (client.visibilityState !== "visible" || !client.focused) return false;
   try {
@@ -88,8 +111,23 @@ self.addEventListener("push", function (event) {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(function (clients) {
+        // Drop URL cache entries for clients that no longer exist.
+        var liveIds = {};
+        clients.forEach(function (c) {
+          liveIds[c.id] = true;
+        });
+        Object.keys(_clientUrls).forEach(function (id) {
+          if (!liveIds[id]) delete _clientUrls[id];
+        });
         var userIsAlreadyLooking = clients.some(function (c) {
-          return isClientViewingTarget(c, targetUrl);
+          return isClientViewingTarget(
+            {
+              visibilityState: c.visibilityState,
+              focused: c.focused,
+              url: _effectiveUrl(c),
+            },
+            targetUrl,
+          );
         });
         if (userIsAlreadyLooking) return;
 
