@@ -153,30 +153,36 @@ self.addEventListener("notificationclick", function (event) {
   event.notification.close();
   var url = (event.notification.data && event.notification.data.url) || "/";
 
+  function openFresh() {
+    return self.clients.openWindow ? self.clients.openWindow(url) : undefined;
+  }
+
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(function (clientList) {
-        // Use _effectiveUrl(c), not c.url — the latter is stale for SPA
-        // navigation, so a tab that's actually on /library would look like
-        // it's still on the notification's target and we'd skip the navigate.
+        // Use _effectiveUrl(c), not c.url — c.url is stale for SPA navigation.
         for (var i = 0; i < clientList.length; i++) {
           var client = clientList[i];
           if (_effectiveUrl(client).includes(url) && "focus" in client) {
-            return client.focus();
+            return client.focus().catch(openFresh);
           }
         }
+        // navigate() throws if the SW doesn't control the target client (e.g.
+        // an older SW version still controls it after an update). Catch and
+        // fall back to opening a new window.
         for (var j = 0; j < clientList.length; j++) {
           var c = clientList[j];
           if ("focus" in c && "navigate" in c) {
-            return c.focus().then(function (focused) {
-              return focused.navigate(url);
-            });
+            return c
+              .focus()
+              .then(function (focused) {
+                return focused.navigate(url).catch(openFresh);
+              })
+              .catch(openFresh);
           }
         }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow(url);
-        }
+        return openFresh();
       }),
   );
 });
