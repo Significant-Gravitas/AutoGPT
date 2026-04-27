@@ -3,14 +3,12 @@ import { describe, expect, it } from "vitest";
 import SettingsProfilePage from "../profile/page";
 import SettingsCreatorDashboardPage from "../creator-dashboard/page";
 import SettingsBillingPage from "../billing/page";
-import SettingsPreferencesPage from "../preferences/page";
 import SettingsOAuthAppsPage from "../oauth-apps/page";
 
 const pages = [
   { Component: SettingsProfilePage, title: "Profile" },
   { Component: SettingsCreatorDashboardPage, title: "Creator Dashboard" },
   { Component: SettingsBillingPage, title: "Billing" },
-  { Component: SettingsPreferencesPage, title: "Settings" },
   { Component: SettingsOAuthAppsPage, title: "OAuth Apps" },
 ];
 
