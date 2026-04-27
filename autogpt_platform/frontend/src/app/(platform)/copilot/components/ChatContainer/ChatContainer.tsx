@@ -41,8 +41,6 @@ export interface ChatContainerProps {
   /** True the moment the user clicks Stop — overrides isStreaming so the UI
    * flips immediately regardless of AI SDK's status timing. */
   isUserStopping?: boolean;
-  /** True while re-syncing session state after device wake. */
-  isSyncing?: boolean;
   onCreateSession: () => void | Promise<string>;
   onSend: (message: string, files?: File[]) => void | Promise<void>;
   onStop: () => void;
@@ -74,7 +72,6 @@ export const ChatContainer = ({
   restoreStatusMessage,
   activeStreamStartedAt,
   isUserStopping,
-  isSyncing,
   onCreateSession,
   onSend,
   onStop,
@@ -103,9 +100,13 @@ export const ChatContainer = ({
   const isStreaming =
     !isUserStopping && (status === "streaming" || status === "submitted");
   // The input is only truly disabled when the session isn't ready at all
-  // (reconnecting, syncing, loading, or errored) — NOT during normal streaming.
+  // (reconnecting, loading, or errored) — NOT during normal streaming and NOT
+  // during the wake re-sync (background refetch after long visibility-hidden;
+  // locking the input there caused users to see a "stuck" disabled input on
+  // refocus when the refetch was slow or revealed stale ``active_stream``
+  // state from the backend).
   const isSessionUnavailable =
-    !!isReconnecting || !!isSyncing || isLoadingSession || !!isSessionError;
+    !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
   const isInputDisabled = isSessionUnavailable || isLimitReached;
   const inputLayoutId = "copilot-2-chat-input";

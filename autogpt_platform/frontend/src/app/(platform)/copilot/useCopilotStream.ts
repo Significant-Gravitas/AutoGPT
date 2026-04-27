@@ -530,15 +530,20 @@ export function useCopilotStream({
     }
   }, [hasActiveStream, isUserStopping]);
 
-  // True while reconnecting or backend has active stream but we haven't connected yet.
-  // Suppressed when the user explicitly stopped or when all reconnect attempts
-  // are exhausted — the backend may be slow to clear active_stream but the UI
-  // should remain responsive.
+  // True while reconnecting or backend has active stream but we haven't
+  // connected yet on this mount.  Once we've seen visible content this mount,
+  // a lingering ``hasActiveStream=true`` from a slow session refetch (e.g.
+  // backend still clearing metadata after the SSE finish) must NOT lock the
+  // input — legitimate reconnect cases set ``isReconnectScheduled`` via
+  // ``handleFinish`` / the watchdogs.
   const isReconnecting =
     !isUserStoppingRef.current &&
     !reconnectExhausted &&
     (isReconnectScheduled ||
-      (hasActiveStream && status !== "streaming" && status !== "submitted"));
+      (hasActiveStream &&
+        !hasConnectedThisMountRef.current &&
+        status !== "streaming" &&
+        status !== "submitted"));
 
   const isRestoringActiveSession =
     !isUserStoppingRef.current &&

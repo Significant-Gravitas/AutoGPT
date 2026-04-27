@@ -30,7 +30,6 @@ export function CopilotChatHost({
     restoreStatusMessage,
     activeStreamStartedAt,
     isUserStopping,
-    isSyncing,
     createSession,
     onSend,
     onEnqueue,
@@ -73,7 +72,6 @@ export function CopilotChatHost({
           restoreStatusMessage={restoreStatusMessage}
           activeStreamStartedAt={activeStreamStartedAt}
           isUserStopping={isUserStopping}
-          isSyncing={isSyncing}
           onCreateSession={createSession}
           onSend={onSend}
           onStop={stop}
