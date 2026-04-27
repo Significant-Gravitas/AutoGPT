@@ -63,6 +63,13 @@ self.addEventListener("message", function (event) {
   if (event.data.type === "CLIENT_URL") {
     if (!event.source || !event.source.id) return;
     if (typeof event.data.url !== "string") return;
+    // Only accept same-origin relative paths. Defends against a hostile
+    // (e.g. XSS-injected) page pinning an attacker-controlled URL that
+    // would later be passed to clients.openWindow on notification click.
+    if (!event.data.url.startsWith("/") || event.data.url.startsWith("//")) {
+      return;
+    }
+    if (event.data.url.length > 2048) return;
     _clientUrls[event.source.id] = event.data.url;
     return;
   }
