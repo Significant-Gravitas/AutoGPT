@@ -38,17 +38,17 @@ export function useApiKeyConnectForm({ provider, onSuccess }: Args) {
   async function handleSubmit(values: ApiKeyConnectFormValues) {
     setIsPending(true);
     try {
-      const response = await postV1CreateCredentials(provider, {
+      // customMutator throws on non-2xx, so reaching this line means success.
+      // Trust HTTP semantics rather than pinning to a specific 2xx code —
+      // proxies / future backend changes can swap 201 ↔ 200 without this
+      // breaking and silently failing in production.
+      await postV1CreateCredentials(provider, {
         provider,
         type: "api_key",
         title: values.title,
         api_key: values.apiKey,
         expires_at: toUnixSeconds(values.expiresAt),
       });
-
-      if (response.status !== 201) {
-        throw new Error("Failed to save API key");
-      }
 
       toast({ title: "API key saved", variant: "success" });
       await queryClient.invalidateQueries({
