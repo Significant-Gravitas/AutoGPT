@@ -398,6 +398,17 @@ class CoPilotProcessor:
             try:
                 task = task_ready.result(timeout=0)
             except concurrent.futures.TimeoutError:
+                # Sub-millisecond race: ``run_coroutine_threadsafe`` returned
+                # before ``run_async_turn`` actually started, so
+                # ``task_ready.set_result`` has not run yet.  ``future.cancel``
+                # on a ``concurrent.futures.Future`` whose underlying task may
+                # already be picked up by the loop is best-effort — frequently
+                # a no-op.  The slow path is intentional: ``cancel.is_set()``
+                # is polled inside ``_execute_async`` and the bounded
+                # ``_CANCEL_GRACE_SECONDS`` drain below force-cancels and falls
+                # through to ``sync_fail_close_session``, so the worst-case
+                # observable behaviour is "cancel takes ~5s in this rare race"
+                # rather than a stuck session.
                 future.cancel()
             else:
                 self.execution_loop.call_soon_threadsafe(task.cancel)
