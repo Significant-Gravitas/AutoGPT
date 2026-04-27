@@ -316,6 +316,70 @@ describe("useHydrateOnStreamEnd", () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 
+  it("does not fire interrupted toast against the pre-turn stale snapshot", () => {
+    mockToast.mockClear();
+    _resetInterruptedToastLedgerForTests();
+
+    const setMessages = vi.fn();
+    const stale: UIMessage[] = [
+      {
+        id: "a",
+        role: "assistant",
+        parts: [
+          {
+            type: "text" as const,
+            text: "half-written reply",
+            state: "streaming" as const,
+          },
+        ],
+      },
+    ];
+
+    const { rerender } = renderHook(
+      ({
+        status,
+        hydratedMessages,
+      }: {
+        status: "streaming" | "ready";
+        hydratedMessages: UIMessage[];
+      }) =>
+        useHydrateOnStreamEnd({
+          sessionId: "sess-stale-toast",
+          status,
+          hydratedMessages,
+          isReconnectScheduled: false,
+          hasActiveStream: false,
+          setMessages,
+        }),
+      { initialProps: { status: "streaming", hydratedMessages: stale } },
+    );
+
+    // status flip with the SAME stale snapshot — force-hydrate is armed,
+    // but the data is still the pre-turn ref. Toast must NOT fire here:
+    // the interrupted bubble may not exist once the refetch lands.
+    rerender({ status: "ready", hydratedMessages: stale });
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(setMessages).not.toHaveBeenCalled();
+
+    // Fresh ref arrives, still has zombie parts → toast fires alongside
+    // the apply.
+    const fresh: UIMessage[] = [
+      {
+        id: "a",
+        role: "assistant",
+        parts: [
+          {
+            type: "text" as const,
+            text: "half-written reply",
+            state: "streaming" as const,
+          },
+        ],
+      },
+    ];
+    rerender({ status: "ready", hydratedMessages: fresh });
+    expect(mockToast).toHaveBeenCalledTimes(1);
+  });
+
   it("only fires the interrupted toast once per session across remounts", () => {
     mockToast.mockClear();
     _resetInterruptedToastLedgerForTests();

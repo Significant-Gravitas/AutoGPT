@@ -153,19 +153,32 @@ export function useHydrateOnStreamEnd({
       ? resolveInterruptedMessage(deduped)
       : deduped;
 
-    if (needsZombieRecovery && sessionId) {
-      if (!sessionsWithInterruptedToastShown.has(sessionId)) {
-        sessionsWithInterruptedToastShown.add(sessionId);
-        toast({
-          title: "Previous response was interrupted",
-          description:
-            "The chat disconnected before the last response finished. Resend to try again.",
-        });
-      }
+    // The stale-ref guard below holds back the force-hydrate apply until
+    // React Query swaps in a fresh reference.  The interrupted-toast must
+    // gate on the same condition: firing earlier would surface "previous
+    // response was interrupted" against the pre-turn snapshot — which may
+    // not actually have zombie parts once the refetch lands — confusing
+    // the user with a toast for state they cannot see yet.
+    const isStaleForceHydrateSnapshot =
+      needsForceHydrateRef.current &&
+      hydratedMessages === staleRefAtStreamEnd.current;
+
+    if (
+      needsZombieRecovery &&
+      sessionId &&
+      !isStaleForceHydrateSnapshot &&
+      !sessionsWithInterruptedToastShown.has(sessionId)
+    ) {
+      sessionsWithInterruptedToastShown.add(sessionId);
+      toast({
+        title: "Previous response was interrupted",
+        description:
+          "The chat disconnected before the last response finished. Resend to try again.",
+      });
     }
 
     if (needsForceHydrateRef.current) {
-      if (hydratedMessages === staleRefAtStreamEnd.current) {
+      if (isStaleForceHydrateSnapshot) {
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
