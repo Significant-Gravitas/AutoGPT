@@ -90,13 +90,13 @@ export function usePreferencesPage() {
   useEffect(
     function syncFormStateOnce() {
       if (hasInitializedFormState.current) return;
-      if (!preferencesQuery.data) return;
-      if (timezoneQuery.isLoading) return;
+      if (!preferencesQuery.isSuccess) return;
+      if (!timezoneQuery.isSuccess) return;
       setFormState(initialState);
       setSavedState(initialState);
       hasInitializedFormState.current = true;
     },
-    [initialState, preferencesQuery.data, timezoneQuery.isLoading],
+    [initialState, preferencesQuery.isSuccess, timezoneQuery.isSuccess],
   );
 
   const dirty = isFormDirty(savedState, formState);
