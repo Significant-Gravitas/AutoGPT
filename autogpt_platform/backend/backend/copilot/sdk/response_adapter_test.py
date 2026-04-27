@@ -565,6 +565,101 @@ def test_result_success_does_not_synthesize_when_no_tools_ran():
     assert text_deltas == []
 
 
+def test_result_empty_success_emits_error_and_no_finish():
+    """SECRT-2252: a ``subtype="success"`` ResultMessage with empty ``result``,
+    no produced content, and ``output_tokens == 0`` is the SDK's ghost-finish
+    bug.  The adapter should surface it as a ``StreamError`` and skip
+    ``StreamFinish`` so the caller can decide retry semantics."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result=None,
+        usage={"input_tokens": 5, "output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamError" in types
+    assert "StreamFinish" not in types
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+    assert "empty response" in err.errorText.lower()
+
+
+def test_result_empty_success_with_empty_string_result_treated_as_empty():
+    """An empty string (not just None) for ``result`` is also empty."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    assert any(isinstance(r, StreamError) for r in results)
+    assert not any(isinstance(r, StreamFinish) for r in results)
+
+
+def test_result_success_with_text_emits_finish_not_error():
+    """Non-empty success (text was produced) keeps the existing
+    ``StreamFinish`` behaviour — no spurious error."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="hello",
+        usage={"output_tokens": 5},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
+def test_result_success_with_nonzero_output_tokens_not_empty():
+    """If ``output_tokens > 0`` but ``result`` is empty (e.g. all tokens went
+    to thinking), don't classify as empty — fall through to the existing
+    success path."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="reasoning", signature="sig")],
+            model="test",
+        )
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
 def test_result_error_emits_error_and_finish():
     adapter = _adapter()
     msg = ResultMessage(
@@ -1008,9 +1103,9 @@ def test_already_resolved_tool_skipped_in_user_message():
     user_msg = UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="real")])
     r = adapter.convert_message(user_msg)
     output_events = [r_ for r_ in r if isinstance(r_, StreamToolOutputAvailable)]
-    assert (
-        len(output_events) == 0
-    ), "Already-resolved tool should not emit duplicate output"
+    assert len(output_events) == 0, (
+        "Already-resolved tool should not emit duplicate output"
+    )
 
 
 # -- _end_text_if_open before compaction -------------------------------------
@@ -1076,16 +1171,16 @@ def test_step_open_must_reset_after_compaction_finish_step():
     if any(isinstance(ev, StreamFinishStep) for ev in events):
         adapter.step_open = False
 
-    assert (
-        adapter.step_open is False
-    ), "step_open must be False after compaction emits StreamFinishStep"
+    assert adapter.step_open is False, (
+        "step_open must be False after compaction emits StreamFinishStep"
+    )
 
     # Next AssistantMessage must open a new step
     msg2 = AssistantMessage(content=[TextBlock(text="continued")], model="test")
     results = adapter.convert_message(msg2)
-    assert any(
-        isinstance(r, StreamStartStep) for r in results
-    ), "A new StreamStartStep must be emitted after compaction closed the step"
+    assert any(isinstance(r, StreamStartStep) for r in results), (
+        "A new StreamStartStep must be emitted after compaction closed the step"
+    )
 
 
 def test_end_text_if_open_no_op_when_no_text_open():
