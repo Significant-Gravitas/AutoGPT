@@ -64,7 +64,7 @@ describe("DeleteConfirmDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
-  test("when isPending, both buttons are disabled and Remove shows a loading state", () => {
+  test("when isPending, both buttons are disabled", () => {
     const onConfirm = vi.fn();
     render(
       <DeleteConfirmDialog
