@@ -44,13 +44,17 @@ export function AccountCard({ user, index = 0 }: Props) {
 
   return (
     <motion.section
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.32,
-        ease: EASE_OUT,
-        delay: 0.04 + index * 0.05,
-      }}
+      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={
+        reduceMotion
+          ? undefined
+          : {
+              duration: 0.32,
+              ease: EASE_OUT,
+              delay: 0.04 + index * 0.05,
+            }
+      }
       className="flex w-full flex-col gap-2"
     >
       <div className="flex flex-col gap-1 px-4">

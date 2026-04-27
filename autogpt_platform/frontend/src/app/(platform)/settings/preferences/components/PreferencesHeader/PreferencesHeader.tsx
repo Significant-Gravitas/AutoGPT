@@ -11,9 +11,9 @@ export function PreferencesHeader() {
 
   return (
     <motion.header
-      initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT }}
+      initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={reduceMotion ? undefined : { duration: 0.32, ease: EASE_OUT }}
       className="flex min-w-0 flex-col pb-2 pl-4"
     >
       <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">

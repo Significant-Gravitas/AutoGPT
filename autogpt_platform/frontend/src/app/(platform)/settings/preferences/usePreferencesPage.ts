@@ -132,34 +132,18 @@ export function usePreferencesPage() {
     if (!dirty || isSaving || !user) return;
 
     setIsSaving(true);
-    try {
-      const tasks: Promise<unknown>[] = [];
 
-      if (dirtyParts.timezone) {
-        tasks.push(
-          updateTimezone.mutateAsync({
-            data: {
-              timezone: formState.timezone as UpdateTimezoneRequestTimezone,
-            },
-          }),
-        );
-      }
+    let timezoneSaved = !dirtyParts.timezone;
+    let notificationsSaved = !dirtyParts.notifications;
+    const failures: string[] = [];
 
-      if (dirtyParts.notifications) {
-        tasks.push(
-          updateNotifications.mutateAsync({
-            data: {
-              email: user.email ?? "",
-              preferences: flagsToPreferenceMap(formState.notifications),
-              daily_limit: 0,
-            },
-          }),
-        );
-      }
-
-      await Promise.all(tasks);
-
-      if (dirtyParts.timezone) {
+    if (dirtyParts.timezone) {
+      try {
+        await updateTimezone.mutateAsync({
+          data: {
+            timezone: formState.timezone as UpdateTimezoneRequestTimezone,
+          },
+        });
         queryClient.setQueryData(
           getGetV1GetUserTimezoneQueryKey(),
           (prev: unknown) => {
@@ -176,25 +160,55 @@ export function usePreferencesPage() {
             return { status: 200, data: { timezone: formState.timezone } };
           },
         );
+        setSavedState((prev) => ({ ...prev, timezone: formState.timezone }));
+        timezoneSaved = true;
+      } catch (err) {
+        failures.push(
+          `Time zone: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
       }
+    }
 
-      if (dirtyParts.notifications) {
+    if (dirtyParts.notifications) {
+      try {
+        await updateNotifications.mutateAsync({
+          data: {
+            email: user.email ?? "",
+            preferences: flagsToPreferenceMap(formState.notifications),
+            daily_limit: 0,
+          },
+        });
         await queryClient.invalidateQueries({
           queryKey: getGetV1GetNotificationPreferencesQueryKey(),
         });
+        setSavedState((prev) => ({
+          ...prev,
+          notifications: formState.notifications,
+        }));
+        notificationsSaved = true;
+      } catch (err) {
+        failures.push(
+          `Notifications: ${err instanceof Error ? err.message : "unknown error"}`,
+        );
       }
+    }
 
-      setSavedState(formState);
+    setIsSaving(false);
 
+    if (failures.length === 0) {
       toast({ title: "Preferences saved", variant: "success" });
-    } catch (err) {
+    } else if (timezoneSaved || notificationsSaved) {
       toast({
-        title: "Couldn't save preferences",
-        description: err instanceof Error ? err.message : undefined,
+        title: "Preferences partially saved",
+        description: failures.join("; "),
         variant: "destructive",
       });
-    } finally {
-      setIsSaving(false);
+    } else {
+      toast({
+        title: "Couldn't save preferences",
+        description: failures.join("; "),
+        variant: "destructive",
+      });
     }
   }
 
