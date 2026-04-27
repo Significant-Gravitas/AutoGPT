@@ -1103,9 +1103,9 @@ def test_already_resolved_tool_skipped_in_user_message():
     user_msg = UserMessage(content=[ToolResultBlock(tool_use_id="t1", content="real")])
     r = adapter.convert_message(user_msg)
     output_events = [r_ for r_ in r if isinstance(r_, StreamToolOutputAvailable)]
-    assert len(output_events) == 0, (
-        "Already-resolved tool should not emit duplicate output"
-    )
+    assert (
+        len(output_events) == 0
+    ), "Already-resolved tool should not emit duplicate output"
 
 
 # -- _end_text_if_open before compaction -------------------------------------
@@ -1171,16 +1171,16 @@ def test_step_open_must_reset_after_compaction_finish_step():
     if any(isinstance(ev, StreamFinishStep) for ev in events):
         adapter.step_open = False
 
-    assert adapter.step_open is False, (
-        "step_open must be False after compaction emits StreamFinishStep"
-    )
+    assert (
+        adapter.step_open is False
+    ), "step_open must be False after compaction emits StreamFinishStep"
 
     # Next AssistantMessage must open a new step
     msg2 = AssistantMessage(content=[TextBlock(text="continued")], model="test")
     results = adapter.convert_message(msg2)
-    assert any(isinstance(r, StreamStartStep) for r in results), (
-        "A new StreamStartStep must be emitted after compaction closed the step"
-    )
+    assert any(
+        isinstance(r, StreamStartStep) for r in results
+    ), "A new StreamStartStep must be emitted after compaction closed the step"
 
 
 def test_end_text_if_open_no_op_when_no_text_open():
