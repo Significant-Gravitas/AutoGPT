@@ -74,7 +74,6 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
             className="relative overflow-hidden"
             animate={{ height: contentHeight ?? "auto" }}
             transition={reduceMotion ? { duration: 0 } : HEIGHT_TRANSITION}
-            style={{ willChange: "height" }}
           >
             <div ref={contentRef}>
               <AnimatePresence mode="wait" initial={false} custom={direction}>
@@ -86,7 +85,6 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
                     initial="initial"
                     animate="active"
                     exit="exit"
-                    style={{ willChange: "transform, opacity" }}
                   >
                     {isLoading ? (
                       <ListLoading />
@@ -117,7 +115,6 @@ export function ConnectServiceDialog({ open, onOpenChange }: Props) {
                     initial="initial"
                     animate="active"
                     exit="exit"
-                    style={{ willChange: "transform, opacity" }}
                   >
                     <DetailView
                       provider={selectedProvider!}

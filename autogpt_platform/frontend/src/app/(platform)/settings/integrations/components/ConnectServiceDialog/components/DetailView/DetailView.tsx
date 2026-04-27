@@ -107,7 +107,6 @@ export function DetailView({ provider, onBack, onSuccess }: Props) {
                 }
                 animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                 transition={PANEL_TRANSITION}
-                style={{ willChange: "transform, opacity, filter" }}
               >
                 <MethodPanel
                   method={method}
