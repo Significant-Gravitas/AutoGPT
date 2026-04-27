@@ -36,6 +36,7 @@ export function AccountCard({ user, index = 0 }: Props) {
   const disableEmailSubmit = emailHasError || isSameEmail;
 
   async function handleEmailSubmit(values: { email: string }) {
+    if (disableEmailSubmit) return;
     const didUpdate = await onSubmitEmail(values);
     if (didUpdate) {
       setEmailDialogOpen(false);
