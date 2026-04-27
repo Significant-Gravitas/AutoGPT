@@ -176,18 +176,11 @@ export function usePreferencesPage() {
         );
       }
 
-      await Promise.all([
-        dirtyParts.timezone
-          ? queryClient.invalidateQueries({
-              queryKey: getGetV1GetUserTimezoneQueryKey(),
-            })
-          : null,
-        dirtyParts.notifications
-          ? queryClient.invalidateQueries({
-              queryKey: getGetV1GetNotificationPreferencesQueryKey(),
-            })
-          : null,
-      ]);
+      if (dirtyParts.notifications) {
+        await queryClient.invalidateQueries({
+          queryKey: getGetV1GetNotificationPreferencesQueryKey(),
+        });
+      }
 
       toast({ title: "Preferences saved", variant: "success" });
     } catch (err) {
