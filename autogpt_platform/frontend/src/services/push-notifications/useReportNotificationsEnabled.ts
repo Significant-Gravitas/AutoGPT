@@ -16,7 +16,7 @@ export function useReportNotificationsEnabled() {
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;
-    if (!("serviceWorker" in navigator)) return;
+    if (!navigator.serviceWorker) return;
 
     function send() {
       navigator.serviceWorker.controller?.postMessage({

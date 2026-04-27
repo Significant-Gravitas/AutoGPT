@@ -30,7 +30,7 @@ export async function setupPushSubscription(): Promise<boolean> {
 }
 
 export async function teardownPushSubscription(): Promise<void> {
-  if (!("serviceWorker" in navigator)) return;
+  if (!navigator.serviceWorker) return;
   const registration = await navigator.serviceWorker.getRegistration("/");
   if (!registration) return;
   const subscription = await registration.pushManager.getSubscription();

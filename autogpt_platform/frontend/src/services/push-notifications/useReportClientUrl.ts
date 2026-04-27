@@ -17,7 +17,7 @@ export function useReportClientUrl() {
 
   useEffect(() => {
     if (typeof navigator === "undefined") return;
-    if (!("serviceWorker" in navigator)) return;
+    if (!navigator.serviceWorker) return;
     const query = searchParams?.toString();
     const url = pathname + (query ? `?${query}` : "");
 
