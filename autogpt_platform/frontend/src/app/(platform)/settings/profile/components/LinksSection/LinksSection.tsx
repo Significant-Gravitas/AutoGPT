@@ -1,16 +1,15 @@
 "use client";
 
-import { useId } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { LinkSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 
-import { MAX_LINKS } from "../../helpers";
+import { type LinkRow, MAX_LINKS } from "../../helpers";
 
 interface Props {
-  links: string[];
+  links: LinkRow[];
   onChange: (index: number, value: string) => void;
   onAdd: () => void;
   onRemove: (index: number) => void;
@@ -20,7 +19,6 @@ const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
   const reduceMotion = useReducedMotion();
-  const baseId = useId();
   const canAdd = links.length < MAX_LINKS;
 
   return (
@@ -45,7 +43,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
           <AnimatePresence initial={false}>
             {links.map((link, index) => (
               <motion.div
-                key={`${baseId}-link-${index}`}
+                key={link.id}
                 layout={!reduceMotion}
                 initial={
                   reduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.97 }
@@ -65,7 +63,7 @@ export function LinksSection({ links, onChange, onAdd, onRemove }: Props) {
                     />
                     <input
                       type="url"
-                      value={link}
+                      value={link.value}
                       placeholder="https://"
                       aria-label={`Link ${index + 1}`}
                       onChange={(e) => onChange(index, e.target.value)}

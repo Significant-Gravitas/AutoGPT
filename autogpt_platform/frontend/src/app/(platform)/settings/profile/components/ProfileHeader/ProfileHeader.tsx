@@ -53,10 +53,10 @@ export function ProfileHeader({
 
   async function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (file) {
       await onUpload(file);
     }
-    if (fileRef.current) fileRef.current.value = "";
   }
 
   return (

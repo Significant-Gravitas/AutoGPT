@@ -3,11 +3,17 @@ import { describe, expect, test } from "vitest";
 import {
   getInitials,
   isFormDirty,
+  makeLinkRow,
   MAX_BIO_LENGTH,
+  MAX_LINKS,
   profileToFormState,
   validateForm,
   type ProfileFormState,
 } from "../helpers";
+
+function rows(...values: string[]) {
+  return values.map((v) => makeLinkRow(v));
+}
 
 function makeState(
   overrides: Partial<ProfileFormState> = {},
@@ -17,7 +23,7 @@ function makeState(
     username: "jane_doe",
     description: "I build agents",
     avatar_url: "https://cdn.example.com/avatar.png",
-    links: ["https://jane.dev", "", ""],
+    links: rows("https://jane.dev", "", ""),
     ...overrides,
   };
 }
@@ -33,13 +39,18 @@ describe("helpers / profileToFormState", () => {
       is_featured: false,
     });
 
-    expect(state).toEqual({
-      username: "jane",
-      name: "Jane",
-      description: "bio",
-      avatar_url: "https://cdn.example.com/a.png",
-      links: ["https://jane.dev", "", ""],
-    });
+    expect(state.username).toBe("jane");
+    expect(state.name).toBe("Jane");
+    expect(state.description).toBe("bio");
+    expect(state.avatar_url).toBe("https://cdn.example.com/a.png");
+    expect(state.links.map((l) => l.value)).toEqual([
+      "https://jane.dev",
+      "",
+      "",
+    ]);
+    expect(state.links.every((l) => typeof l.id === "string")).toBe(true);
+    const ids = state.links.map((l) => l.id);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   test("falls back to empty strings when fields are nullish", () => {
@@ -56,10 +67,10 @@ describe("helpers / profileToFormState", () => {
     expect(state.username).toBe("");
     expect(state.description).toBe("");
     expect(state.avatar_url).toBe("");
-    expect(state.links).toEqual(["", "", ""]);
+    expect(state.links.map((l) => l.value)).toEqual(["", "", ""]);
   });
 
-  test("preserves links when already at or above the initial slot count", () => {
+  test("preserves links above the initial slot count up to MAX_LINKS", () => {
     const state = profileToFormState({
       username: "j",
       name: "J",
@@ -69,7 +80,27 @@ describe("helpers / profileToFormState", () => {
       is_featured: false,
     });
 
-    expect(state.links).toEqual(["a", "b", "c", "d"]);
+    expect(state.links.map((l) => l.value)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  test("truncates incoming links to MAX_LINKS", () => {
+    const tooMany = Array.from(
+      { length: MAX_LINKS + 3 },
+      (_, i) => `https://x${i}.dev`,
+    );
+    const state = profileToFormState({
+      username: "j",
+      name: "J",
+      description: "",
+      avatar_url: "",
+      links: tooMany,
+      is_featured: false,
+    });
+
+    expect(state.links).toHaveLength(MAX_LINKS);
+    expect(state.links.map((l) => l.value)).toEqual(
+      tooMany.slice(0, MAX_LINKS),
+    );
   });
 });
 
@@ -143,26 +174,30 @@ describe("helpers / isFormDirty", () => {
 
   test("ignores empty link slots when comparing", () => {
     const next = makeState({
-      links: ["https://jane.dev", "", "", ""],
+      links: rows("https://jane.dev", "", "", ""),
     });
     expect(isFormDirty(initial, next)).toBe(false);
   });
 
   test("detects a new non-empty link", () => {
     const next = makeState({
-      links: ["https://jane.dev", "https://github.com/jane", ""],
+      links: rows("https://jane.dev", "https://github.com/jane", ""),
     });
     expect(isFormDirty(initial, next)).toBe(true);
   });
 
   test("detects a removed non-empty link", () => {
-    const next = makeState({ links: ["", "", ""] });
+    const next = makeState({ links: rows("", "", "") });
     expect(isFormDirty(initial, next)).toBe(true);
   });
 
   test("detects a reordered link", () => {
-    const base = makeState({ links: ["https://a.dev", "https://b.dev", ""] });
-    const next = makeState({ links: ["https://b.dev", "https://a.dev", ""] });
+    const base = makeState({
+      links: rows("https://a.dev", "https://b.dev", ""),
+    });
+    const next = makeState({
+      links: rows("https://b.dev", "https://a.dev", ""),
+    });
     expect(isFormDirty(base, next)).toBe(true);
   });
 });
@@ -181,5 +216,11 @@ describe("helpers / getInitials", () => {
   test("returns first + last initial for multi-word names", () => {
     expect(getInitials("Jane Doe")).toBe("JD");
     expect(getInitials("ada b. lovelace")).toBe("AL");
+  });
+
+  test("preserves emoji and non-BMP characters as a single code point", () => {
+    // Surrogate pair: U+1F98A (🦊) is two UTF-16 units.
+    expect(getInitials("🦊enny")).toBe("🦊E");
+    expect(getInitials("🦊enny Smith")).toBe("🦊S");
   });
 });

@@ -5,8 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import {
   getGetV2GetUserProfileQueryKey,
-  postV2UpdateUserProfile,
   useGetV2GetUserProfile,
+  usePostV2UpdateUserProfile,
   usePostV2UploadSubmissionMedia,
 } from "@/app/api/__generated__/endpoints/store/store";
 import type { ProfileDetails } from "@/app/api/__generated__/models/profileDetails";
@@ -16,6 +16,8 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 import {
   isFormDirty,
+  makeLinkRow,
+  MAX_LINKS,
   profileToFormState,
   validateForm,
   type ProfileFormState,
@@ -26,7 +28,7 @@ const EMPTY_FORM: ProfileFormState = {
   username: "",
   description: "",
   avatar_url: "",
-  links: ["", "", ""],
+  links: [],
 };
 
 export function useProfilePage() {
@@ -53,7 +55,6 @@ export function useProfilePage() {
   );
 
   const [formState, setFormState] = useState<ProfileFormState>(EMPTY_FORM);
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(
     function syncFormStateOnDataLoad() {
@@ -79,14 +80,19 @@ export function useProfilePage() {
 
   function setLink(index: number, value: string) {
     setFormState((prev) => {
-      const next = [...prev.links];
-      next[index] = value;
+      const next = prev.links.map((row, i) =>
+        i === index ? { ...row, value } : row,
+      );
       return { ...prev, links: next };
     });
   }
 
   function addLink() {
-    setFormState((prev) => ({ ...prev, links: [...prev.links, ""] }));
+    setFormState((prev) =>
+      prev.links.length >= MAX_LINKS
+        ? prev
+        : { ...prev, links: [...prev.links, makeLinkRow("")] },
+    );
   }
 
   function removeLink(index: number) {
@@ -113,43 +119,50 @@ export function useProfilePage() {
   });
 
   async function uploadAvatar(file: File): Promise<string | null> {
-    const res = await uploadMutation.mutateAsync({ data: { file } });
-    if (res.status !== 200) return null;
-    const url = String(res.data ?? "").trim();
-    if (!url) return null;
-    patchField("avatar_url", url);
-    return url;
+    try {
+      const res = await uploadMutation.mutateAsync({ data: { file } });
+      if (res.status !== 200) return null;
+      const url = String(res.data ?? "").trim();
+      if (!url) return null;
+      patchField("avatar_url", url);
+      return url;
+    } catch {
+      return null;
+    }
   }
 
-  async function saveProfile() {
-    if (!validation.valid || isSaving) return;
-    setIsSaving(true);
-    try {
-      const payload = {
+  const updateMutation = usePostV2UpdateUserProfile({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({
+          queryKey: getGetV2GetUserProfileQueryKey(),
+        });
+        toast({ title: "Profile saved", variant: "success" });
+      },
+      onError: (err) => {
+        toast({
+          title: "Failed to save profile",
+          description: err instanceof Error ? err.message : undefined,
+          variant: "destructive",
+        });
+      },
+    },
+  });
+
+  function saveProfile() {
+    if (!validation.valid || updateMutation.isPending) return;
+    updateMutation.mutate({
+      data: {
         name: formState.name.trim(),
         username: formState.username.trim(),
         description: formState.description.trim(),
         avatar_url: formState.avatar_url,
-        links: formState.links.map((l) => l.trim()).filter(Boolean),
-      };
-      const res = await postV2UpdateUserProfile(payload);
-      if (res.status === 200) {
-        await queryClient.invalidateQueries({
-          queryKey: getGetV2GetUserProfileQueryKey(),
-        });
-        toast({ title: "Profile saved", variant: "success" });
-      } else {
-        throw new Error("Update failed");
-      }
-    } catch (err) {
-      toast({
-        title: "Failed to save profile",
-        description: err instanceof Error ? err.message : undefined,
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
+        links: formState.links
+          .map((l) => l.value.trim())
+          .filter(Boolean)
+          .slice(0, MAX_LINKS),
+      },
+    });
   }
 
   return {
@@ -168,7 +181,7 @@ export function useProfilePage() {
     uploadAvatar,
     isUploading: uploadMutation.isPending,
     saveProfile,
-    isSaving,
+    isSaving: updateMutation.isPending,
     dirty,
     validation,
   };

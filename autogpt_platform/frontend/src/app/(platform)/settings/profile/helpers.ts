@@ -5,11 +5,29 @@ export const INITIAL_LINK_SLOTS = 3;
 export const MAX_BIO_LENGTH = 280;
 export const HANDLE_REGEX = /^[a-zA-Z0-9_-]{2,30}$/;
 
-function padLinks(links: string[]): string[] {
-  if (links.length >= INITIAL_LINK_SLOTS) return links;
+export type LinkRow = {
+  id: string;
+  value: string;
+};
+
+let linkIdCounter = 0;
+function nextLinkId(): string {
+  linkIdCounter += 1;
+  return `link-${linkIdCounter}`;
+}
+
+export function makeLinkRow(value = ""): LinkRow {
+  return { id: nextLinkId(), value };
+}
+
+function padLinks(links: string[]): LinkRow[] {
+  const capped = links.slice(0, MAX_LINKS).map((value) => makeLinkRow(value));
+  if (capped.length >= INITIAL_LINK_SLOTS) return capped;
   return [
-    ...links,
-    ...Array<string>(INITIAL_LINK_SLOTS - links.length).fill(""),
+    ...capped,
+    ...Array.from({ length: INITIAL_LINK_SLOTS - capped.length }, () =>
+      makeLinkRow(""),
+    ),
   ];
 }
 
@@ -18,7 +36,7 @@ export type ProfileFormState = {
   username: string;
   description: string;
   avatar_url: string;
-  links: string[];
+  links: LinkRow[];
 };
 
 export function profileToFormState(profile: ProfileDetails): ProfileFormState {
@@ -43,10 +61,10 @@ export function isFormDirty(
   ) {
     return true;
   }
-  const a = initial.links.filter(Boolean);
-  const b = current.links.filter(Boolean);
+  const a = initial.links.map((l) => l.value).filter(Boolean);
+  const b = current.links.map((l) => l.value).filter(Boolean);
   if (a.length !== b.length) return true;
-  return a.some((link, idx) => link !== b[idx]);
+  return a.some((value, idx) => value !== b[idx]);
 }
 
 export function validateForm(state: ProfileFormState): {
@@ -78,6 +96,10 @@ export function validateForm(state: ProfileFormState): {
 export function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+  const first = Array.from(parts[0]!);
+  if (parts.length === 1) {
+    return first.slice(0, 2).join("").toUpperCase();
+  }
+  const last = Array.from(parts[parts.length - 1]!);
+  return (first[0]! + last[0]!).toUpperCase();
 }
