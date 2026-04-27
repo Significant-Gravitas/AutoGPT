@@ -132,17 +132,6 @@ async def queue_pending_for_http(
     otherwise returns the ``QueuePendingMessageResponse`` the handler can
     serialise 1:1.
     """
-    call_count = await check_pending_call_rate(user_id)
-    if call_count > PENDING_CALL_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail=(
-                f"Too many queued message requests this minute: limit is "
-                f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
-                "across all sessions"
-            ),
-        )
-
     sanitized_file_ids: list[str] | None = None
     if file_ids:
         files = await resolve_workspace_files(user_id, file_ids)
@@ -155,6 +144,13 @@ async def queue_pending_for_http(
     # typos, but the upstream ``StreamChatRequest.context: dict[str, str]``
     # is already schemaless, so the strict mode adds no real safety.
     queue_context = PendingMessageContext.model_validate(context) if context else None
+
+    # Push first via the Lua CAS gate.  Bumping the per-user call-rate
+    # counter BEFORE the push would charge a budget tick on every TOCTOU
+    # loss against turn completion (status flips running→completed between
+    # the FE's is_turn_in_flight check and our gate), which both this
+    # endpoint and the POST /stream queue-fall-through can hit.  Pushing
+    # first lets the gate own the no-op short-circuit.
     response = await queue_user_message(
         session_id=session_id,
         message=message,
@@ -167,6 +163,21 @@ async def queue_pending_for_http(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
+
+    # Push landed — now charge the rate counter.  If this tick crosses the
+    # limit we still keep the queued message (next drain will pick it up)
+    # but report 429 so the client backs off further pushes.
+    call_count = await check_pending_call_rate(user_id)
+    if call_count > PENDING_CALL_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Too many queued message requests this minute: limit is "
+                f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
+                "across all sessions"
+            ),
+        )
+
     return response
 
 
@@ -387,14 +398,35 @@ async def persist_pending_as_user_rows(
         transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
+        # ``push_pending_message`` uses the bounded ``capped_rpush`` (LTRIM
+        # to ``MAX_PENDING_MESSAGES``).  If ≥``MAX_PENDING_MESSAGES`` fresh
+        # follow-ups arrived between the original drain and this rollback
+        # (heavy typing across a tool boundary), the LTRIM drops oldest
+        # entries — which can include the ones we just re-pushed. The model
+        # already saw that content (mid-turn injection earlier in the
+        # turn), but no DB row lands so the user sees no UI bubble.
+        # Surface a warning so the bounded data-loss path is visible in
+        # prod (it is rare and would otherwise be observable only via the
+        # absence of a bubble).
+        rollback_buffer_at_cap = False
         for pm in pending:
             try:
-                await push_pending_message(session.session_id, pm)
+                new_length = await push_pending_message(session.session_id, pm)
+                if new_length >= MAX_PENDING_MESSAGES:
+                    rollback_buffer_at_cap = True
             except Exception:
                 logger.exception(
                     "%s Failed to re-queue mid-turn follow-up on rollback",
                     log_prefix,
                 )
+        if rollback_buffer_at_cap:
+            logger.warning(
+                "%s Rollback re-push hit pending-buffer cap (MAX=%d); a "
+                "previously queued follow-up may have been LTRIM-displaced "
+                "(silent UI-bubble drop). Investigate if observed.",
+                log_prefix,
+                MAX_PENDING_MESSAGES,
+            )
         return False
 
     logger.info(
