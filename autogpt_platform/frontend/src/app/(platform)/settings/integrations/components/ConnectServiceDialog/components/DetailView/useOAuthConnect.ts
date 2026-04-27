@@ -33,6 +33,12 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
     setIsPending(true);
     try {
       const initiateResponse = await getV1InitiateOauthFlow(provider);
+      // customMutator rejects non-2xx, so this branch is unreachable at
+      // runtime — it exists only to narrow the discriminated union so the
+      // 200-only LoginResponse shape is accessible below.
+      if (initiateResponse.status !== 200) {
+        throw new Error("Unexpected OAuth initiate response");
+      }
       const { login_url, state_token } = initiateResponse.data;
 
       const { promise, cleanup } = openOAuthPopup(login_url, {
