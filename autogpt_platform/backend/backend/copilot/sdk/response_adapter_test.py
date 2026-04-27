@@ -571,7 +571,8 @@ def test_result_empty_success_emits_error_and_finish():
     bug. The adapter surfaces it as a ``StreamError`` *paired with*
     ``StreamFinish`` so the service-layer post-stream flow flips
     ``acc.stream_completed`` and skips the ``STOPPED_BY_USER_MARKER``
-    branch."""
+    branch. ``SystemMessage(subtype="init")`` opened a step, so the
+    empty-completion branch must close it before emitting the error."""
     adapter = _adapter()
     adapter.convert_message(SystemMessage(subtype="init", data={}))
     msg = ResultMessage(
@@ -586,9 +587,12 @@ def test_result_empty_success_emits_error_and_finish():
     )
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
+    assert "StreamFinishStep" in types
     assert "StreamError" in types
     assert "StreamFinish" in types
-    # StreamError must precede StreamFinish on the wire.
+    # Open step must be closed before the error, and the error must
+    # precede StreamFinish on the wire.
+    assert types.index("StreamFinishStep") < types.index("StreamError")
     assert types.index("StreamError") < types.index("StreamFinish")
     err = next(r for r in results if isinstance(r, StreamError))
     assert err.code == "empty_completion"
@@ -609,7 +613,8 @@ def test_result_empty_success_with_empty_string_result_treated_as_empty():
         usage={"output_tokens": 0},
     )
     results = adapter.convert_message(msg)
-    assert any(isinstance(r, StreamError) for r in results)
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
     assert any(isinstance(r, StreamFinish) for r in results)
 
 
