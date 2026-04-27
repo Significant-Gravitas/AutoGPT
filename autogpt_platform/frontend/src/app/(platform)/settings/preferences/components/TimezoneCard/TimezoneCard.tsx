@@ -113,14 +113,14 @@ export function TimezoneCard({
               key="autodetect"
               type="button"
               onClick={() => onChange(browserTz)}
-              initial={
-                reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, height: 0 }
+              initial={reduceMotion ? false : { opacity: 0, y: -4, height: 0 }}
+              animate={
+                reduceMotion ? undefined : { opacity: 1, y: 0, height: "auto" }
               }
-              animate={{ opacity: 1, y: 0, height: "auto" }}
-              exit={
-                reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, height: 0 }
+              exit={reduceMotion ? undefined : { opacity: 0, y: -4, height: 0 }}
+              transition={
+                reduceMotion ? undefined : { duration: 0.22, ease: EASE_OUT }
               }
-              transition={{ duration: 0.22, ease: EASE_OUT }}
               className="flex w-fit items-center gap-2 self-end overflow-hidden rounded-full border border-violet-300 bg-violet-50/60 px-3 py-1.5 text-left text-violet-800 transition-colors duration-150 ease-out hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
             >
               <GlobeIcon size={16} weight="duotone" />

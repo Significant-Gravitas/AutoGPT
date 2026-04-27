@@ -88,10 +88,12 @@ export function NotificationsCard({ values, onToggle, index = 0 }: Props) {
         <AnimatePresence initial={false} mode="wait">
           <motion.div
             key={activeTab}
-            initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
-            transition={{ duration: 0.2, ease: EASE_OUT }}
+            initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+            animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={
+              reduceMotion ? undefined : { duration: 0.2, ease: EASE_OUT }
+            }
             className="flex flex-col gap-1"
           >
             {visibleGroups.map((group) => (
