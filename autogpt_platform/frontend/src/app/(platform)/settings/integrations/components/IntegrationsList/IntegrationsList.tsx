@@ -31,6 +31,7 @@ export function IntegrationsList() {
   } = useIntegrationsList();
   const reduceMotion = useReducedMotion();
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
+  const [pendingForceIds, setPendingForceIds] = useState<string[]>([]);
 
   function askDelete(ids: string[]) {
     if (ids.length === 0) return;
@@ -40,10 +41,22 @@ export function IntegrationsList() {
   async function confirmDelete() {
     const ids = pendingDeleteIds;
     setPendingDeleteIds([]);
-    await requestDelete(ids);
+    const { needsConfirmationIds } = await requestDelete(ids);
+    if (needsConfirmationIds.length > 0) {
+      setPendingForceIds(needsConfirmationIds);
+    }
+  }
+
+  async function confirmForceDelete() {
+    const ids = pendingForceIds;
+    setPendingForceIds([]);
+    await requestDelete(ids, true);
   }
 
   const pendingNames = buildTargets(pendingDeleteIds).map(
+    (t) => t.name ?? t.provider,
+  );
+  const pendingForceNames = buildTargets(pendingForceIds).map(
     (t) => t.name ?? t.provider,
   );
 
@@ -137,6 +150,17 @@ export function IntegrationsList() {
         itemNames={pendingNames}
         isPending={isDeleting}
         onConfirm={confirmDelete}
+      />
+
+      <DeleteConfirmDialog
+        variant="force"
+        open={pendingForceIds.length > 0}
+        onOpenChange={(open) => {
+          if (!open) setPendingForceIds([]);
+        }}
+        itemNames={pendingForceNames}
+        isPending={isDeleting}
+        onConfirm={confirmForceDelete}
       />
     </div>
   );

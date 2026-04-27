@@ -95,13 +95,8 @@ export function useDeleteIntegration() {
         });
       }
 
-      if (out.needsConfirmation.length > 0) {
-        toast({
-          title: "Confirmation required",
-          description: out.needsConfirmation[0].message,
-          variant: "destructive",
-        });
-      }
+      // needsConfirmation is surfaced by the caller as a force-delete dialog,
+      // so we deliberately don't toast here — the dialog *is* the prompt.
 
       if (out.failed.length > 0) {
         const failedNames = out.failed

@@ -64,6 +64,26 @@ describe("DeleteConfirmDialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
+  test("force variant: retitles, swaps the warning copy, and labels the action 'Force remove'", () => {
+    render(
+      <DeleteConfirmDialog
+        open
+        variant="force"
+        onOpenChange={() => {}}
+        itemNames={["GitHub key"]}
+        onConfirm={() => {}}
+      />,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.textContent).toContain("Force remove GitHub key");
+    expect(dialog.textContent).toMatch(
+      /referenced by an active webhook or workflow/i,
+    );
+    expect(
+      screen.getByRole("button", { name: /^force remove$/i }),
+    ).toBeDefined();
+  });
+
   test("when isPending, both buttons are disabled", () => {
     const onConfirm = vi.fn();
     render(

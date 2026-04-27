@@ -59,25 +59,29 @@ export function useIntegrationsList() {
     return targets;
   }
 
-  async function requestDelete(ids: string[]) {
+  async function requestDelete(ids: string[], force = false) {
     const targets = buildTargets(ids);
-    if (targets.length === 0) return;
-    const result = await remove(targets);
+    if (targets.length === 0) return { needsConfirmationIds: [] as string[] };
+    const result = await remove(targets, force);
+    const needsConfirmationIds = result.needsConfirmation.map(
+      (c) => c.target.id,
+    );
     // Keep failed AND needs-confirmation items selected so the user retains
     // visual context of which credentials still need action.
     const keepSelected = new Set([
       ...result.failed.map((t) => t.id),
-      ...result.needsConfirmation.map((c) => c.target.id),
+      ...needsConfirmationIds,
     ]);
     if (keepSelected.size === 0) {
       selection.clear();
-      return;
+      return { needsConfirmationIds };
     }
     for (const id of ids) {
       if (!keepSelected.has(id) && selection.isSelected(id)) {
         selection.toggle(id);
       }
     }
+    return { needsConfirmationIds };
   }
 
   const isLoading = credentialsQuery.isLoading;
