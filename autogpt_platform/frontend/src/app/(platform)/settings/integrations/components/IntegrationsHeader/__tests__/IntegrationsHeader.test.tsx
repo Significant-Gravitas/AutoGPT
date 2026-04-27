@@ -1,10 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
-import {
-  fireEvent,
-  render,
-  screen,
-} from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 
 import { IntegrationsHeader } from "../IntegrationsHeader";
 
@@ -14,9 +10,7 @@ describe("IntegrationsHeader", () => {
     expect(
       screen.getByRole("heading", { name: /third party integrations/i }),
     ).toBeDefined();
-    expect(
-      screen.getByText(/Manage the 3rd party accounts/i),
-    ).toBeDefined();
+    expect(screen.getByText(/Manage the 3rd party accounts/i)).toBeDefined();
   });
 
   test("invokes onConnect when any 'Connect Service' button is clicked", () => {
