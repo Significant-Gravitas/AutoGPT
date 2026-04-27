@@ -114,10 +114,14 @@ export function useDeleteIntegration() {
           .join(", ");
         const more =
           out.failed.length > 3 ? ` +${out.failed.length - 3} more` : "";
+        const allFailedTitle =
+          targets.length === 1
+            ? "Failed to remove integration"
+            : `Failed to remove ${targets.length} integrations`;
         toast({
           title:
             out.failed.length === targets.length
-              ? "Failed to remove integration"
+              ? allFailedTitle
               : `${out.failed.length} of ${targets.length} could not be removed`,
           description: `${failedNames}${more}. Try again to retry the failed ones.`,
           variant: "destructive",

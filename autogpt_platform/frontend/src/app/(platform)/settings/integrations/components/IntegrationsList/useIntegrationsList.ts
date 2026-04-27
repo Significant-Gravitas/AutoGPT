@@ -63,15 +63,19 @@ export function useIntegrationsList() {
     const targets = buildTargets(ids);
     if (targets.length === 0) return;
     const result = await remove(targets);
-    // Keep failed items selected so the user can retry without re-selecting.
-    if (result.failed.length === 0) {
+    // Keep failed AND needs-confirmation items selected so the user retains
+    // visual context of which credentials still need action.
+    const keepSelected = new Set([
+      ...result.failed.map((t) => t.id),
+      ...result.needsConfirmation.map((c) => c.target.id),
+    ]);
+    if (keepSelected.size === 0) {
       selection.clear();
-    } else {
-      const failedIds = new Set(result.failed.map((t) => t.id));
-      for (const id of ids) {
-        if (!failedIds.has(id) && selection.isSelected(id)) {
-          selection.toggle(id);
-        }
+      return;
+    }
+    for (const id of ids) {
+      if (!keepSelected.has(id) && selection.isSelected(id)) {
+        selection.toggle(id);
       }
     }
   }
