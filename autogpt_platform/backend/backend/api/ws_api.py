@@ -16,7 +16,7 @@ from backend.api.model import (
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.data import db
+from backend.data import db, redis_client
 from backend.data.user import DEFAULT_USER_ID
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
@@ -36,6 +36,10 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        try:
+            await redis_client.disconnect_async()
+        except Exception as e:
+            logger.debug(f"redis_client.disconnect_async failed: {e}")
         await db.disconnect()
 
 

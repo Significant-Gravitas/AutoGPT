@@ -33,6 +33,7 @@ from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
+from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
@@ -411,6 +412,18 @@ class AppService(BaseAppService, ABC):
         # Startup - this runs before Uvicorn starts accepting connections
 
         yield
+
+        # Close the cached AsyncRedisCluster so asyncio's GC doesn't emit
+        # "Unclosed ClusterNode/RedisCluster client" warnings at interpreter
+        # shutdown (AUTOGPT-SERVER-8V6/8V4/8V3/8T1). disconnect_async is a
+        # no-op if no client was ever created on this loop.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.debug(
+                f"[{self.service_name}] redis_client.disconnect_async failed",
+                exc_info=True,
+            )
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")

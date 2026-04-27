@@ -41,6 +41,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -145,6 +146,11 @@ async def lifespan_context(app: fastapi.FastAPI):
         await shutdown_workspace_storage()
     except Exception as e:
         logger.warning(f"Error shutting down workspace storage: {e}")
+
+    try:
+        await backend.data.redis_client.disconnect_async()
+    except Exception as e:
+        logger.debug(f"redis_client.disconnect_async failed: {e}")
 
     await backend.data.db.disconnect()
 
