@@ -402,6 +402,57 @@ describe("SettingsIntegrationsPage — connect dialog", () => {
   });
 });
 
+describe("SettingsIntegrationsPage — force delete", () => {
+  test("a need_confirmation response opens the force-delete dialog and confirming retries with force=true", async () => {
+    let deleteCalls = 0;
+    server.use(
+      getGetV1ListCredentialsMockHandler([
+        makeCred({ id: "g1", provider: "github", title: "Personal" }),
+      ]),
+      // First call (no force): backend asks for confirmation. Second call
+      // (force=true from the dialog) succeeds.
+      getDeleteV1DeleteCredentialsMockHandler(() => {
+        deleteCalls += 1;
+        if (deleteCalls === 1) {
+          return {
+            deleted: false,
+            need_confirmation: true,
+            message: "Webhook still active — confirm to force-remove.",
+          };
+        }
+        return { deleted: true, revoked: null };
+      }),
+    );
+
+    render(<SettingsIntegrationsPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /delete personal/i }),
+    );
+    const firstDialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      within(firstDialog).getByRole("button", { name: /^remove$/i }),
+    );
+
+    // After the first response, the force-delete dialog auto-opens.
+    const forceDialog = await screen.findByRole("dialog", {
+      name: /force remove/i,
+    });
+    expect(within(forceDialog).getByText(/active webhook/i)).toBeDefined();
+
+    // The list refetch after a successful force-delete returns no rows.
+    server.use(getGetV1ListCredentialsMockHandler([]));
+    fireEvent.click(
+      within(forceDialog).getByRole("button", { name: /^force remove$/i }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText("Personal")).toBeNull();
+    });
+    expect(deleteCalls).toBe(2);
+  });
+});
+
 describe("SettingsIntegrationsPage — delete error path", () => {
   test("a 401 on delete surfaces the failure toast and keeps the row", async () => {
     server.use(
