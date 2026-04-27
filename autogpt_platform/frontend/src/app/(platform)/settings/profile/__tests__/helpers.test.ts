@@ -9,7 +9,9 @@ import {
   type ProfileFormState,
 } from "../helpers";
 
-function makeState(overrides: Partial<ProfileFormState> = {}): ProfileFormState {
+function makeState(
+  overrides: Partial<ProfileFormState> = {},
+): ProfileFormState {
   return {
     name: "Jane Doe",
     username: "jane_doe",

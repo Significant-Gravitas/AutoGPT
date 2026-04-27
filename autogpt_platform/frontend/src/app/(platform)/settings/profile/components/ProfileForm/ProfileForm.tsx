@@ -225,7 +225,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
                 "[&_a]:text-purple-600 [&_a]:underline hover:[&_a]:text-purple-700",
                 "[&_strong]:font-semibold",
                 "[&_em]:italic",
-                "[&_del]:line-through [&_del]:text-zinc-500",
+                "[&_del]:text-zinc-500 [&_del]:line-through",
                 "[&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
                 "[&_blockquote]:border-l-2 [&_blockquote]:border-zinc-300 [&_blockquote]:pl-3 [&_blockquote]:text-zinc-600",
                 "[&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold",

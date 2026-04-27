@@ -5,7 +5,6 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { LinkSimpleIcon, PlusIcon, TrashIcon } from "@phosphor-icons/react";
 
 import { Button } from "@/components/atoms/Button/Button";
-import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
 
 import { MAX_LINKS } from "../../helpers";

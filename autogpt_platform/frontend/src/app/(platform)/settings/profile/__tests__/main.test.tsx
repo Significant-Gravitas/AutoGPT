@@ -1,11 +1,4 @@
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  test,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   fireEvent,
@@ -107,9 +100,11 @@ describe("SettingsProfilePage - data loading", () => {
       "jane_doe",
     );
     expect(
-      (screen.getByPlaceholderText(/tell people what you build/i) as
-        | HTMLTextAreaElement
-        | null)?.value,
+      (
+        screen.getByPlaceholderText(
+          /tell people what you build/i,
+        ) as HTMLTextAreaElement | null
+      )?.value,
     ).toBe("I build agents");
     expect((screen.getByLabelText(/^link 1$/i) as HTMLInputElement).value).toBe(
       "https://jane.dev",
@@ -152,8 +147,11 @@ describe("SettingsProfilePage - validation", () => {
 
     expect(await screen.findByText(/display name is required/i)).toBeDefined();
     expect(
-      (screen.getByRole("button", { name: /save changes/i }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: /save changes/i,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -260,9 +258,7 @@ describe("SettingsProfilePage - markdown toolbar & preview", () => {
 
   test("Strikethrough wraps selection with ~~", async () => {
     server.use(
-      getGetV2GetUserProfileMockHandler200(
-        makeProfile({ description: "abc" }),
-      ),
+      getGetV2GetUserProfileMockHandler200(makeProfile({ description: "abc" })),
     );
 
     render(<SettingsProfilePage />);
@@ -314,7 +310,9 @@ describe("SettingsProfilePage - markdown toolbar & preview", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
 
-    expect(screen.queryByPlaceholderText(/tell people what you build/i)).toBeNull();
+    expect(
+      screen.queryByPlaceholderText(/tell people what you build/i),
+    ).toBeNull();
     expect(screen.getByText("hi").tagName.toLowerCase()).toBe("strong");
   });
 
@@ -407,7 +405,9 @@ describe("SettingsProfilePage - links section", () => {
 
     render(<SettingsProfilePage />);
 
-    const link = (await screen.findByLabelText(/^link 1$/i)) as HTMLInputElement;
+    const link = (await screen.findByLabelText(
+      /^link 1$/i,
+    )) as HTMLInputElement;
     fireEvent.change(link, { target: { value: "https://changed.dev" } });
 
     expect(link.value).toBe("https://changed.dev");
@@ -423,9 +423,11 @@ describe("SettingsProfilePage - save & discard", () => {
     await screen.findByLabelText(/display name/i);
 
     expect(
-      (screen.getByRole("button", {
-        name: /save changes/i,
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: /save changes/i,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     expect(
       (screen.getByRole("button", { name: /discard/i }) as HTMLButtonElement)
@@ -526,8 +528,11 @@ describe("SettingsProfilePage - avatar upload", () => {
 
     await waitFor(() => {
       expect(
-        (screen.getByRole("button", { name: /save changes/i }) as HTMLButtonElement)
-          .disabled,
+        (
+          screen.getByRole("button", {
+            name: /save changes/i,
+          }) as HTMLButtonElement
+        ).disabled,
       ).toBe(false);
     });
   });
@@ -597,9 +602,9 @@ describe("SettingsProfilePage - skeleton & nullish profile fields", () => {
       /display name/i,
     )) as HTMLInputElement;
     expect(nameInput.value).toBe("");
-    expect(
-      (screen.getByLabelText(/^handle$/i) as HTMLInputElement).value,
-    ).toBe("");
+    expect((screen.getByLabelText(/^handle$/i) as HTMLInputElement).value).toBe(
+      "",
+    );
 
     // 3 padded link slots
     expect(screen.getByLabelText(/^link 1$/i)).toBeDefined();
