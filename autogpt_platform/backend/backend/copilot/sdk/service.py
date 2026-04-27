@@ -184,17 +184,10 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
     "Try breaking your request into smaller parts."
 )
 
-# Idle timeout thresholds — two regimes:
-#   - Between turns, no tool call pending → _IDLE_TIMEOUT_SECONDS (30 min).
-#     Fires when the SDK itself is stuck with nothing to do.
-#   - Tool call pending (agent waiting on a legitimately long operation such
-#     as a sub-AutoPilot or graph run) → _HUNG_TOOL_CAP_SECONDS (2 hours).
-#     Fires only for truly wedged tools; allows ~45-min sub-AutoPilots.
-# Two-regime design is the fix for SECRT-2247: old behavior killed long tool
-# calls at 10 min; unlimited wait would leak resources on a hung tool (e.g.
-# TCP hang) per Sentry review feedback.
-_IDLE_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
-_HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60  # 2 hours
+# Two regimes: no tool pending → 30 min (SDK genuinely idle); tool pending →
+# 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
+_IDLE_TIMEOUT_SECONDS = 30 * 60
+_HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
 
 
 def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
@@ -2404,12 +2397,7 @@ async def _run_stream_attempt(
                     yield ev
                 yield StreamHeartbeat()
 
-                # Idle timeout: pick a threshold based on whether a tool call
-                # is pending (_idle_timeout_threshold). Short threshold when
-                # the SDK is truly idle; long threshold while legitimately
-                # waiting on a tool. We never reset the clock — even a pending
-                # tool has a hard cap so a hung tool doesn't leak resources
-                # forever.
+                # Threshold flips to the long cap while a tool is pending; clock never resets.
                 idle_seconds = time.monotonic() - _last_real_msg_time
                 threshold = _idle_timeout_threshold(state.adapter)
                 if idle_seconds >= threshold:
