@@ -234,12 +234,16 @@ self.addEventListener("pushsubscriptionchange", function (event) {
         });
       })
       .catch(function () {
-        // If re-subscription fails, notify open clients so they can retry
-        self.clients.matchAll({ type: "window" }).then(function (clientList) {
-          for (var i = 0; i < clientList.length; i++) {
-            clientList[i].postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" });
-          }
-        });
+        // If re-subscription fails, notify open clients so they can retry.
+        // Return the promise so event.waitUntil keeps the SW alive until
+        // every postMessage has been delivered.
+        return self.clients
+          .matchAll({ type: "window" })
+          .then(function (clientList) {
+            for (var i = 0; i < clientList.length; i++) {
+              clientList[i].postMessage({ type: "PUSH_SUBSCRIPTION_CHANGED" });
+            }
+          });
       }),
   );
 });
