@@ -47,7 +47,12 @@ from backend.copilot.rate_limit import (
     release_reset_lock,
     reset_daily_usage,
 )
-from backend.copilot.response_model import StreamError, StreamFinish, StreamHeartbeat
+from backend.copilot.response_model import (
+    StreamError,
+    StreamFinish,
+    StreamFinishStep,
+    StreamHeartbeat,
+)
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.tools.e2b_sandbox import kill_sandbox
 from backend.copilot.tools.models import (
@@ -841,6 +846,12 @@ def _ui_message_stream_headers() -> dict[str, str]:
 
 def _empty_ui_message_stream_response() -> StreamingResponse:
     async def event_generator() -> AsyncGenerator[str, None]:
+        # Vercel AI SDK's UI-message-stream parser expects StreamFinishStep
+        # immediately before StreamFinish (every non-empty turn emits the
+        # pair).  Emitting just StreamFinish skipped the step boundary and
+        # left the parser's activeTextParts/activeReasoningParts state from
+        # any prior partial unflushed.
+        yield StreamFinishStep().to_sse()
         yield StreamFinish().to_sse()
         yield "data: [DONE]\n\n"
 
