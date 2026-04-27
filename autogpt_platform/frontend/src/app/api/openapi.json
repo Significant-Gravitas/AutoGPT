@@ -14721,6 +14721,7 @@
           "review_required",
           "schedule_list",
           "schedule_deleted",
+          "agent_trigger_list",
           "mcp_guide",
           "mcp_tools_discovered",
           "mcp_tool_output",

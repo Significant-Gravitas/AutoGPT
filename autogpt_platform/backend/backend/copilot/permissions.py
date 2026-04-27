@@ -93,6 +93,7 @@ ToolName = Literal[
     "get_doc_page",
     "get_mcp_guide",
     "get_sub_session_result",
+    "list_agent_triggers",
     "list_folders",
     "list_schedules",
     "list_workspace_files",

@@ -369,6 +369,14 @@ contents**: any hidden agent whose graph contains an AgentExecutorBlock
 referencing the parent's graph_id is listed under that parent's
 triggers. No explicit linking is needed.
 
+**Inspecting an agent's existing triggers:**
+
+- Use `list_agent_triggers` with the parent's `library_agent_id` to see
+  all triggers configured for that agent — both trigger agents
+  (`kind="agent"`) and webhook presets (`kind="webhook"`). Use this
+  before adding a new trigger (to avoid duplicates) or before deleting
+  one (to find the right ID).
+
 **Managing schedules:**
 
 - Use `list_schedules` to see existing schedules (optionally filtered by

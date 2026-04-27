@@ -222,6 +222,9 @@ async def get_library_agents_for_generation(
             page=1,
             page_size=max_results,
             include_executions=True,
+            # Hide trigger agents — they aren't reusable as sub-agents
+            # (parent-coupled, single-purpose).
+            is_hidden=False,
         )
 
         results: list[LibraryAgentSummary] = []
