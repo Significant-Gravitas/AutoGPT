@@ -33,9 +33,6 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
     setIsPending(true);
     try {
       const initiateResponse = await getV1InitiateOauthFlow(provider);
-      if (initiateResponse.status !== 200) {
-        throw new Error("Couldn't start OAuth flow");
-      }
       const { login_url, state_token } = initiateResponse.data;
 
       const { promise, cleanup } = openOAuthPopup(login_url, {
@@ -46,13 +43,10 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       const { code, state } = await promise;
       abortRef.current = null;
 
-      const exchangeResponse = await postV1ExchangeOauthCodeForTokens(
-        provider,
-        { code, state_token: state },
-      );
-      if (exchangeResponse.status !== 200) {
-        throw new Error("OAuth exchange failed");
-      }
+      await postV1ExchangeOauthCodeForTokens(provider, {
+        code,
+        state_token: state,
+      });
 
       toast({ title: "Connected via OAuth", variant: "success" });
       await queryClient.invalidateQueries({
