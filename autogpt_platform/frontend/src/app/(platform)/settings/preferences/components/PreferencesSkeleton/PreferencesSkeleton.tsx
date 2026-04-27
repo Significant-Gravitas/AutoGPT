@@ -17,7 +17,7 @@ export function PreferencesSkeleton() {
 
 function SectionSkeleton({ rows }: { rows: number }) {
   return (
-    <div className="flex flex-col gap-4 rounded-[16px] border border-zinc-200 bg-white p-6">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Skeleton className="h-5 w-40" />
         <Skeleton className="h-3.5 w-56" />

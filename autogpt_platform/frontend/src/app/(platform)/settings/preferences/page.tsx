@@ -31,7 +31,6 @@ export default function SettingsPreferencesPage() {
     isSaving,
     setTimezone,
     toggleNotification,
-    setAllInGroup,
     discardChanges,
     savePreferences,
   } = usePreferencesPage();
@@ -59,7 +58,7 @@ export default function SettingsPreferencesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-28">
+    <div className="flex flex-col gap-6 pb-8">
       <PreferencesHeader />
 
       <AccountCard user={user} index={0} />
@@ -74,7 +73,6 @@ export default function SettingsPreferencesPage() {
       <NotificationsCard
         values={formState.notifications}
         onToggle={toggleNotification}
-        onSetAllInGroup={setAllInGroup}
         index={2}
       />
 

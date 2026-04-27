@@ -157,6 +157,25 @@ export function usePreferencesPage() {
 
       await Promise.all(tasks);
 
+      if (dirtyParts.timezone) {
+        queryClient.setQueryData(
+          getGetV1GetUserTimezoneQueryKey(),
+          (prev: unknown) => {
+            if (
+              prev &&
+              typeof prev === "object" &&
+              "data" in (prev as Record<string, unknown>)
+            ) {
+              return {
+                ...(prev as Record<string, unknown>),
+                data: { timezone: formState.timezone },
+              };
+            }
+            return { status: 200, data: { timezone: formState.timezone } };
+          },
+        );
+      }
+
       await Promise.all([
         dirtyParts.timezone
           ? queryClient.invalidateQueries({

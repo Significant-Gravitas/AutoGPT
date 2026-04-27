@@ -1,12 +1,14 @@
 "use client";
 
 import type { User } from "@supabase/supabase-js";
-import { ShieldCheckIcon } from "@phosphor-icons/react";
+import { PencilSimpleIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
+import { useState } from "react";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import {
   Form,
   FormControl,
@@ -24,103 +26,142 @@ interface Props {
 
 export function AccountCard({ user, index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const { form, onSubmit, isLoading, currentEmail } = useAccountCard({ user });
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const { emailForm, onSubmitEmail, isUpdatingEmail, currentEmail } =
+    useAccountCard({ user });
 
-  const watched = form.watch("email");
-  const hasError = Object.keys(form.formState.errors).length > 0;
-  const isSameEmail = watched === currentEmail;
-  const disableSubmit = hasError || isSameEmail;
+  const watchedEmail = emailForm.watch("email");
+  const emailHasError = Object.keys(emailForm.formState.errors).length > 0;
+  const isSameEmail = watchedEmail === currentEmail;
+  const disableEmailSubmit = emailHasError || isSameEmail;
+
+  async function handleEmailSubmit(values: { email: string }) {
+    await onSubmitEmail(values);
+    if (!emailHasError && !isSameEmail) {
+      setEmailDialogOpen(false);
+    }
+  }
 
   return (
     <motion.section
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }}
-      className="rounded-[18px] border border-zinc-200 bg-white p-6 shadow-[0_1px_2px_rgba(15,15,20,0.04)] transition-shadow duration-200 ease-out focus-within:shadow-[0_8px_28px_-12px_rgba(15,15,20,0.12)]"
+      className="flex w-full flex-col gap-2"
     >
-      <CardTitle
-        eyebrow="Account & Security"
-        title="How you sign in"
-        description="Update the email tied to your account or rotate your password."
-      />
+      <div className="flex flex-col gap-1 px-4">
+        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          Account
+        </Text>
+        <Text variant="small" className="text-zinc-500">
+          Manage your sign-in details.
+        </Text>
+      </div>
 
-      <Form form={form} onSubmit={onSubmit} className="mt-6 space-y-0">
-        <FormField
-          control={form.control}
-          name="email"
-          render={({ field, fieldState }) => (
-            <FormItem className="space-y-0">
-              <FormControl>
-                <Input
-                  id={field.name}
-                  label="Email"
-                  type="email"
-                  autoComplete="email"
-                  size="medium"
-                  className="w-full"
-                  error={fieldState.error?.message}
-                  {...field}
-                />
-              </FormControl>
-            </FormItem>
-          )}
-        />
+      <div className="flex flex-col divide-y divide-zinc-200 rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
+      <div className="flex items-center justify-between gap-4 px-4 py-4">
+        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          Email
+        </Text>
 
-        <div className="-mt-2 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-zinc-500">
-            <ShieldCheckIcon size={16} weight="duotone" />
-            <Text variant="small" as="span" className="text-zinc-500">
-              We'll send a confirmation link to verify your new address.
-            </Text>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              as="NextLink"
-              href="/reset-password"
-              size="small"
-            >
-              Reset password
-            </Button>
-            <Button
-              type="submit"
-              size="small"
-              disabled={disableSubmit}
-              loading={isLoading}
-            >
-              {isLoading ? "Saving" : "Update email"}
-            </Button>
-          </div>
+        <div className="flex min-w-0 items-center gap-3">
+          <Text
+            variant="body"
+            as="span"
+            className="min-w-0 truncate text-[#1F1F20]"
+          >
+            {currentEmail}
+          </Text>
+
+          <Dialog
+            title="Update email"
+            styling={{ maxWidth: "420px" }}
+            controlled={{
+              isOpen: emailDialogOpen,
+              set: (open) => {
+                setEmailDialogOpen(open);
+                if (open) emailForm.reset({ email: currentEmail });
+              },
+            }}
+          >
+            <Dialog.Trigger>
+              <Button
+                variant="secondary"
+                size="small"
+                aria-label="Edit email"
+                className="h-7 min-w-0 px-1.5 py-0.5"
+              >
+                <PencilSimpleIcon size={14} weight="duotone" />
+              </Button>
+            </Dialog.Trigger>
+            <Dialog.Content>
+              <Form form={emailForm} onSubmit={handleEmailSubmit}>
+                <div className="flex flex-col gap-4">
+                  <Text variant="small" as="span" className="text-zinc-500">
+                    We'll send a confirmation link to verify your new
+                    address.
+                  </Text>
+                  <FormField
+                    control={emailForm.control}
+                    name="email"
+                    render={({ field, fieldState }) => (
+                      <FormItem className="space-y-0">
+                        <FormControl>
+                          <Input
+                            id={field.name}
+                            label="Email"
+                            type="email"
+                            autoComplete="email"
+                            size="medium"
+                            className="w-full"
+                            wrapperClassName="!mb-0"
+                            error={fieldState.error?.message}
+                            {...field}
+                          />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <Dialog.Footer>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="small"
+                    onClick={() => setEmailDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    size="small"
+                    disabled={disableEmailSubmit}
+                    loading={isUpdatingEmail}
+                  >
+                    {isUpdatingEmail ? "Saving" : "Update email"}
+                  </Button>
+                </Dialog.Footer>
+              </Form>
+            </Dialog.Content>
+          </Dialog>
         </div>
-      </Form>
-    </motion.section>
-  );
-}
+      </div>
 
-function CardTitle({
-  eyebrow,
-  title,
-  description,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <Text
-        variant="small-medium"
-        as="span"
-        className="uppercase tracking-[0.08em] text-zinc-400"
-      >
-        {eyebrow}
-      </Text>
-      <Text variant="h4" as="h2" className="text-[#1F1F20]">
-        {title}
-      </Text>
-      <Text variant="small" className="text-zinc-500">
-        {description}
-      </Text>
-    </div>
+      <div className="flex items-center justify-between gap-4 px-4 py-4">
+        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          Password
+        </Text>
+
+        <Button
+          as="NextLink"
+          href="/reset-password"
+          size="small"
+          variant="secondary"
+        >
+          Reset password
+        </Button>
+      </div>
+      </div>
+    </motion.section>
   );
 }

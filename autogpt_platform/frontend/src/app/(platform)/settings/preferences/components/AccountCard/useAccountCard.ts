@@ -35,7 +35,7 @@ async function updateEmailViaSupabase(email: string) {
 export function useAccountCard({ user }: { user: User }) {
   const currentEmail = user.email ?? "";
 
-  const form = useForm<EmailFormValues>({
+  const emailForm = useForm<EmailFormValues>({
     resolver: zodResolver(emailSchema),
     defaultValues: { email: currentEmail },
     mode: "onChange",
@@ -43,7 +43,7 @@ export function useAccountCard({ user }: { user: User }) {
 
   const updateEmailServer = usePostV1UpdateUserEmail();
 
-  async function onSubmit(values: EmailFormValues) {
+  async function onSubmitEmail(values: EmailFormValues) {
     if (values.email === currentEmail) return;
 
     try {
@@ -66,9 +66,9 @@ export function useAccountCard({ user }: { user: User }) {
   }
 
   return {
-    form,
-    onSubmit,
-    isLoading: updateEmailServer.isPending,
+    emailForm,
+    onSubmitEmail,
+    isUpdatingEmail: updateEmailServer.isPending,
     currentEmail,
   };
 }

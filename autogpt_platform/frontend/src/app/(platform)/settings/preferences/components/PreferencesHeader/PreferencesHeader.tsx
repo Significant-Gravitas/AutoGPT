@@ -14,16 +14,12 @@ export function PreferencesHeader() {
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: EASE_OUT }}
-      className="flex flex-col gap-2"
+      className="flex min-w-0 flex-col pb-2 pl-4"
     >
-      <Text
-        variant="h3"
-        as="h1"
-        className="bg-gradient-to-br from-[#1F1F20] via-[#3a3a3f] to-[#7a4dff] bg-clip-text text-transparent"
-      >
+      <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
         Settings
       </Text>
-      <Text variant="large" className="text-zinc-500">
+      <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
         Tune your account, time zone, and which notifications reach you.
       </Text>
     </motion.header>
