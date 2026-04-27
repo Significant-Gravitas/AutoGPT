@@ -18,7 +18,7 @@ import logging
 import shlex
 from typing import Any
 
-from e2b import AsyncSandbox
+from e2b import AsyncSandbox, CommandExitException
 from e2b.exceptions import TimeoutException
 
 from backend.copilot.context import E2B_WORKDIR, get_current_sandbox
@@ -33,6 +33,28 @@ from .models import BashExecResponse, ErrorResponse, ToolResponseBase
 from .sandbox import get_workspace_dir, has_full_sandbox, run_sandboxed
 
 logger = logging.getLogger(__name__)
+
+
+def _build_completion_response(
+    stdout: str | None,
+    stderr: str | None,
+    exit_code: int,
+    secret_values: list[str],
+    session_id: str | None,
+) -> BashExecResponse:
+    out = stdout or ""
+    err = stderr or ""
+    for secret in secret_values:
+        out = out.replace(secret, "[REDACTED]")
+        err = err.replace(secret, "[REDACTED]")
+    return BashExecResponse(
+        message=f"Command executed with status code {exit_code}",
+        stdout=out,
+        stderr=err,
+        exit_code=exit_code,
+        timed_out=False,
+        session_id=session_id,
+    )
 
 
 class BashExecTool(BaseTool):
@@ -175,31 +197,27 @@ class BashExecTool(BaseTool):
                 timeout=timeout,
                 envs=envs,
             )
-            stdout = result.stdout or ""
-            stderr = result.stderr or ""
-            # Scrub injected tokens from command output to prevent exfiltration
-            # via `echo $GH_TOKEN`, `env`, `printenv`, etc.
-            for secret in secret_values:
-                stdout = stdout.replace(secret, "[REDACTED]")
-                stderr = stderr.replace(secret, "[REDACTED]")
+            return _build_completion_response(
+                result.stdout,
+                result.stderr,
+                result.exit_code,
+                secret_values,
+                session_id,
+            )
+        except CommandExitException as exc:
+            return _build_completion_response(
+                exc.stdout, exc.stderr, exc.exit_code, secret_values, session_id
+            )
+        except TimeoutException:
             return BashExecResponse(
-                message=f"Command executed with status code {result.exit_code}",
-                stdout=stdout,
-                stderr=stderr,
-                exit_code=result.exit_code,
-                timed_out=False,
+                message="Execution timed out",
+                stdout="",
+                stderr=f"Timed out after {timeout}s",
+                exit_code=-1,
+                timed_out=True,
                 session_id=session_id,
             )
         except Exception as exc:
-            if isinstance(exc, TimeoutException):
-                return BashExecResponse(
-                    message="Execution timed out",
-                    stdout="",
-                    stderr=f"Timed out after {timeout}s",
-                    exit_code=-1,
-                    timed_out=True,
-                    session_id=session_id,
-                )
             logger.error("[E2B] bash_exec failed: %s", exc, exc_info=True)
             return ErrorResponse(
                 message=f"E2B execution failed: {exc}",

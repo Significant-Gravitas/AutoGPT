@@ -44,6 +44,7 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
+from backend.copilot.rate_limit import get_tier_multipliers
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
@@ -699,23 +700,32 @@ async def get_user_auto_top_up(
 
 
 class SubscriptionTierRequest(BaseModel):
-    tier: Literal["FREE", "PRO", "BUSINESS"]
+    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["FREE", "PRO", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> amount in cents
+    tier_multipliers: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → rate-limit multiplier. Covers the same tiers listed in"
+            " ``tier_costs`` so the frontend can render rate-limit badges"
+            " relative to the lowest visible tier without knowing backend"
+            " defaults."
+        ),
+    )
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
-    pending_tier: Optional[Literal["FREE", "PRO", "BUSINESS"]] = None
+    pending_tier: Optional[Literal["BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
     url: str = Field(
         default="",
         description=(
             "Populated only when POST /credits/subscription starts a Stripe Checkout"
-            " Session (FREE → paid upgrade). Empty string in all other branches —"
+            " Session (BASIC → paid upgrade). Empty string in all other branches —"
             " the client redirects to this URL when non-empty."
         ),
     )
@@ -794,24 +804,39 @@ async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
     user = await get_user_by_id(user_id)
-    tier = user.subscription_tier or SubscriptionTier.FREE
+    tier = user.subscription_tier or SubscriptionTier.BASIC
 
-    paid_tiers = [SubscriptionTier.PRO, SubscriptionTier.BUSINESS]
+    priceable_tiers = [
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ]
     price_ids = await asyncio.gather(
-        *[get_subscription_price_id(t) for t in paid_tiers]
+        *[get_subscription_price_id(t) for t in priceable_tiers]
     )
-
-    tier_costs: dict[str, int] = {
-        SubscriptionTier.FREE.value: 0,
-        SubscriptionTier.ENTERPRISE.value: 0,
-    }
 
     async def _cost(pid: str | None) -> int:
         return (await _get_stripe_price_amount(pid) or 0) if pid else 0
 
     costs = await asyncio.gather(*[_cost(pid) for pid in price_ids])
-    for t, cost in zip(paid_tiers, costs):
-        tier_costs[t.value] = cost
+
+    tier_costs: dict[str, int] = {}
+    for t, pid, cost in zip(priceable_tiers, price_ids, costs):
+        if pid:
+            tier_costs[t.value] = cost
+
+    # Expose the effective rate-limit multipliers alongside prices so the
+    # frontend can render "Nx rate limits" relative to the lowest visible
+    # tier without hard-coding backend defaults.  Only emit entries for tiers
+    # that land in ``tier_costs`` — rows hidden at the price layer must stay
+    # hidden in the multiplier layer too.
+    multipliers = await get_tier_multipliers()
+    tier_multipliers: dict[str, float] = {
+        t.value: multipliers.get(t, 1.0)
+        for t in priceable_tiers
+        if t.value in tier_costs
+    }
 
     current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
@@ -834,17 +859,18 @@ async def get_subscription_status(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
+        tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at = pending
-        if pending_tier_enum == SubscriptionTier.FREE:
-            response.pending_tier = "FREE"
-        elif pending_tier_enum == SubscriptionTier.PRO:
-            response.pending_tier = "PRO"
-        elif pending_tier_enum == SubscriptionTier.BUSINESS:
-            response.pending_tier = "BUSINESS"
-        if response.pending_tier is not None:
+        if pending_tier_enum in (
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+        ):
+            response.pending_tier = pending_tier_enum.value
             response.pending_tier_effective_at = pending_effective_at
     return response
 
@@ -860,23 +886,25 @@ async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
-    # Pydantic validates tier is one of FREE/PRO/BUSINESS via Literal type.
+    # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
 
     # ENTERPRISE tier is admin-managed — block self-service changes from ENTERPRISE users.
     user = await get_user_by_id(user_id)
-    if (user.subscription_tier or SubscriptionTier.FREE) == SubscriptionTier.ENTERPRISE:
+    if (
+        user.subscription_tier or SubscriptionTier.BASIC
+    ) == SubscriptionTier.ENTERPRISE:
         raise HTTPException(
             status_code=403,
             detail="ENTERPRISE subscription changes must be managed by an administrator",
         )
 
     # Same-tier request = "stay on my current tier" = cancel any pending
-    # scheduled change (paid→paid downgrade or paid→FREE cancel). This is the
+    # scheduled change (paid→paid downgrade or paid→BASIC cancel). This is the
     # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
     # route. Safe when no pending change exists: release_pending_subscription_schedule
     # returns False and we simply return the current status.
-    if (user.subscription_tier or SubscriptionTier.FREE) == tier:
+    if (user.subscription_tier or SubscriptionTier.BASIC) == tier:
         try:
             await release_pending_subscription_schedule(user_id)
         except stripe.StripeError as e:
@@ -898,22 +926,22 @@ async def update_subscription_tier(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
-    # Downgrade to FREE: schedule Stripe cancellation at period end so the user
-    # keeps their tier for the time they already paid for. The DB tier is NOT
-    # updated here when a subscription exists — the customer.subscription.deleted
-    # webhook fires at period end and downgrades to FREE then.
-    # Exception: if the user has no active Stripe subscription (e.g. admin-granted
-    # tier), cancel_stripe_subscription returns False and we update the DB tier
-    # immediately since no webhook will ever fire.
-    # When payment is disabled entirely, update the DB tier directly.
-    if tier == SubscriptionTier.FREE:
+    current_tier = user.subscription_tier or SubscriptionTier.BASIC
+    target_price_id, current_tier_price_id = await asyncio.gather(
+        get_subscription_price_id(tier),
+        get_subscription_price_id(current_tier),
+    )
+
+    # Legacy cancel: target BASIC + stripe-price-id-basic unset. Schedule Stripe
+    # cancellation at period end; cancel_at_period_end=True lets the webhook flip
+    # the DB tier. No active sub (admin-granted) or payment disabled → DB flip.
+    # Once stripe-price-id-basic is configured, BASIC becomes a real sub and falls
+    # through to the modify/checkout flow below.
+    if tier == SubscriptionTier.BASIC and target_price_id is None:
         if payment_enabled:
             try:
                 had_subscription = await cancel_stripe_subscription(user_id)
             except stripe.StripeError as e:
-                # Log full Stripe error server-side but return a generic message
-                # to the client — raw Stripe errors can leak customer/sub IDs and
-                # infrastructure config details.
                 logger.exception(
                     "Stripe error cancelling subscription for user %s: %s",
                     user_id,
@@ -927,39 +955,37 @@ async def update_subscription_tier(
                     ),
                 )
             if not had_subscription:
-                # No active Stripe subscription found — the user was on an
-                # admin-granted tier. Update DB immediately since the
-                # subscription.deleted webhook will never fire.
                 await set_subscription_tier(user_id, tier)
             return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
         return await get_subscription_status(user_id)
 
-    # Paid tier changes require payment to be enabled — block self-service upgrades
-    # when the flag is off.  Admins use the /api/admin/ routes to set tiers directly.
     if not payment_enabled:
         raise HTTPException(
             status_code=422,
-            detail=f"Subscription not available for tier {tier}",
+            detail=f"Subscription not available for tier {tier.value}",
         )
 
-    # Paid→paid tier change: if the user already has a Stripe subscription,
-    # modify it in-place with proration instead of creating a new Checkout
-    # Session. This preserves remaining paid time and avoids double-charging.
-    # The customer.subscription.updated webhook fires and updates the DB tier.
-    current_tier = user.subscription_tier or SubscriptionTier.FREE
-    if current_tier in (SubscriptionTier.PRO, SubscriptionTier.BUSINESS):
+    # Target has no LD price — not provisionable (matches the GET hiding).
+    if target_price_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Subscription not available for tier {tier.value}",
+        )
+
+    # User has an active Stripe subscription (current tier has an LD price):
+    # modify it in-place. modify_stripe_subscription_for_tier returns False when no
+    # active sub exists — that's only a "DB-only flip is OK" signal for admin-granted
+    # paid tiers (PRO/BUSINESS with no Stripe record). Priced-BASIC users without a
+    # sub must still go through Checkout so they set up payment.
+    if current_tier_price_id is not None:
         try:
             modified = await modify_stripe_subscription_for_tier(user_id, tier)
             if modified:
                 return await get_subscription_status(user_id)
-            # modify_stripe_subscription_for_tier returns False when no active
-            # Stripe subscription exists — i.e. the user has an admin-granted
-            # paid tier with no Stripe record.  In that case, update the DB
-            # tier directly (same as the FREE-downgrade path for admin-granted
-            # users) rather than sending them through a new Checkout Session.
-            await set_subscription_tier(user_id, tier)
-            return await get_subscription_status(user_id)
+            if current_tier != SubscriptionTier.BASIC:
+                await set_subscription_tier(user_id, tier)
+                return await get_subscription_status(user_id)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
         except stripe.StripeError as e:
@@ -974,7 +1000,7 @@ async def update_subscription_tier(
                 ),
             )
 
-    # Paid upgrade from FREE → create Stripe Checkout Session.
+    # No active Stripe subscription → create Stripe Checkout Session.
     if not request.success_url or not request.cancel_url:
         raise HTTPException(
             status_code=422,

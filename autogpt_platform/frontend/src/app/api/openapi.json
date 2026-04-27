@@ -4515,7 +4515,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Ayrshare Sso Url",
-        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "description": "Generate a JWT SSO URL so the user can link their social accounts.\n\nThe per-user Ayrshare profile key is provisioned and persisted as a\nstandard ``is_managed=True`` credential by\n:class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.\nThis endpoint only signs a short-lived JWT pointing at the Ayrshare-\nhosted social-linking page; all profile lifecycle logic lives with the\nmanaged provider.",
         "operationId": "getV1GetAyrshareSsoUrl",
         "responses": {
           "200": {
@@ -4564,7 +4564,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
-        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
         "operationId": "getV1ListProviders",
         "responses": {
           "200": {
@@ -4572,7 +4572,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "type": "string" },
+                  "items": { "$ref": "#/components/schemas/ProviderMetadata" },
                   "type": "array",
                   "title": "Response Getv1Listproviders"
                 }
@@ -4981,6 +4981,57 @@
         }
       }
     },
+    "/api/integrations/{provider}/credentials/{cred_id}/picker-token": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Issue a short-lived access token for a provider-hosted picker",
+        "description": "Return the raw access token for an OAuth2 credential so the frontend\ncan initialize a provider-hosted picker (e.g. Google Drive Picker).\n\n`GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see\n`CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in\n`router_test.py`). That hardening broke the Drive picker, which needs the\nraw access token to call `google.picker.Builder.setOAuthToken(...)`. This\nendpoint carves a narrow, explicit hole: the caller must own the\ncredential, it must be OAuth2, and the endpoint returns only the access\ntoken + its expiry — nothing else about the credential. SDK-default\ncredentials are excluded for the same reason as `get_credential`.",
+        "operationId": "postV1GetPickerToken",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider that owns the credentials",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The ID of the OAuth2 credentials to mint a token from"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PickerTokenResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -5006,6 +5057,15 @@
               "type": "string",
               "title": "Comma-separated list of authorization scopes",
               "default": ""
+            }
+          },
+          {
+            "name": "credential_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "ID of existing credential to upgrade scopes for"
             }
           }
         ],
@@ -9716,7 +9776,12 @@
             "type": "object",
             "title": "Cost Filter"
           },
-          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" },
+          "cost_divisor": {
+            "type": "integer",
+            "title": "Cost Divisor",
+            "default": 1
+          }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
@@ -9724,7 +9789,7 @@
       },
       "BlockCostType": {
         "type": "string",
-        "enum": ["run", "byte", "second"],
+        "enum": ["run", "byte", "second", "items", "cost_usd", "tokens"],
         "title": "BlockCostType"
       },
       "BlockDetails": {
@@ -10317,7 +10382,7 @@
           },
           "tier": {
             "$ref": "#/components/schemas/SubscriptionTier",
-            "default": "FREE"
+            "default": "BASIC"
           },
           "reset_cost": {
             "type": "integer",
@@ -13749,6 +13814,24 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PickerTokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "OAuth access token suitable for the picker SDK call."
+          },
+          "access_token_expires_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Access Token Expires At",
+            "description": "Unix timestamp at which the access token expires, if known."
+          }
+        },
+        "type": "object",
+        "required": ["access_token"],
+        "title": "PickerTokenResponse",
+        "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
       "PlatformCostDashboard": {
         "properties": {
           "by_provider": {
@@ -14375,6 +14458,33 @@
         "required": ["provider"],
         "title": "ProviderEnumResponse",
         "description": "Response containing a provider from the enum."
+      },
+      "ProviderMetadata": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider slug (e.g. ``github``)"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "One-line human-readable summary of what the provider does. Declared via ``ProviderBuilder.with_description(...)`` in the provider's ``_config.py``. ``None`` if not set."
+          },
+          "supported_auth_types": {
+            "items": {
+              "type": "string",
+              "enum": ["api_key", "oauth2", "user_password", "host_scoped"]
+            },
+            "type": "array",
+            "title": "Supported Auth Types",
+            "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "ProviderMetadata",
+        "description": "Display metadata for a provider, shown in the settings integrations UI."
       },
       "ProviderNamesResponse": {
         "properties": {
@@ -15904,7 +16014,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
             "title": "Tier"
           },
           "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
@@ -15913,13 +16023,19 @@
             "type": "object",
             "title": "Tier Costs"
           },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "description": "Tier → rate-limit multiplier. Covers the same tiers listed in ``tier_costs`` so the frontend can render rate-limit badges relative to the lowest visible tier without knowing backend defaults."
+          },
           "proration_credit_cents": {
             "type": "integer",
             "title": "Proration Credit Cents"
           },
           "pending_tier": {
             "anyOf": [
-              { "type": "string", "enum": ["FREE", "PRO", "BUSINESS"] },
+              { "type": "string", "enum": ["BASIC", "PRO", "MAX", "BUSINESS"] },
               { "type": "null" }
             ],
             "title": "Pending Tier"
@@ -15934,7 +16050,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
             "default": ""
           }
         },
@@ -15949,7 +16065,7 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+        "enum": ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -15957,7 +16073,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS"],
+            "enum": ["BASIC", "PRO", "MAX", "BUSINESS"],
             "title": "Tier"
           },
           "success_url": {

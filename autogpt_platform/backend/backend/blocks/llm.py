@@ -1628,6 +1628,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                                 llm_call_count=retry_count + 1,
                                 llm_retry_count=retry_count,
                                 provider_cost=total_provider_cost,
+                                provider_cost_type=(
+                                    "cost_usd"
+                                    if total_provider_cost is not None
+                                    else None
+                                ),
                             )
                         )
                         yield "response", response_obj
@@ -1649,6 +1654,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             llm_call_count=retry_count + 1,
                             llm_retry_count=retry_count,
                             provider_cost=total_provider_cost,
+                            provider_cost_type=(
+                                "cost_usd" if total_provider_cost is not None else None
+                            ),
                         )
                     )
                     yield "response", {"response": response_text}
@@ -1683,7 +1691,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         # All retries exhausted or user-error break: persist accumulated cost so
         # the executor can still charge/report the spend even on failure.
         if total_provider_cost is not None:
-            self.merge_stats(NodeExecutionStats(provider_cost=total_provider_cost))
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=total_provider_cost,
+                    provider_cost_type="cost_usd",
+                )
+            )
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(

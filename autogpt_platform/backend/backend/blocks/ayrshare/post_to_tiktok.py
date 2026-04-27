@@ -2,6 +2,7 @@ from enum import Enum
 
 from backend.integrations.ayrshare import PostIds, PostResponse, SocialPlatform
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -12,7 +13,7 @@ from backend.sdk import (
 )
 
 from ._cost import AYRSHARE_POST_COSTS
-from ._util import BaseAyrshareInput, create_ayrshare_client, get_profile_key
+from ._util import BaseAyrshareInput, create_ayrshare_client
 
 
 class TikTokVisibility(str, Enum):
@@ -116,14 +117,13 @@ class PostToTikTokBlock(Block):
         )
 
     async def run(
-        self, input_data: "PostToTikTokBlock.Input", *, user_id: str, **kwargs
+        self,
+        input_data: "PostToTikTokBlock.Input",
+        *,
+        credentials: APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         """Post to TikTok with TikTok-specific validation and options."""
-        profile_key = await get_profile_key(user_id)
-        if not profile_key:
-            yield "error", "Please link a social account via Ayrshare"
-            return
-
         client = create_ayrshare_client()
         if not client:
             yield "error", "Ayrshare integration is not configured. Please set up the AYRSHARE_API_KEY."
@@ -238,7 +238,7 @@ class PostToTikTokBlock(Block):
             random_media_url=input_data.random_media_url,
             notes=input_data.notes,
             tiktok_options=tiktok_options if tiktok_options else None,
-            profile_key=profile_key.get_secret_value(),
+            profile_key=credentials.api_key.get_secret_value(),
         )
         yield "post_result", response
         if response.postIds:

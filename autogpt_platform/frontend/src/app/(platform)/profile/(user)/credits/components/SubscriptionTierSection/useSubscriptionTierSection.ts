@@ -11,7 +11,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
-const TIER_ORDER = ["FREE", "PRO", "BUSINESS", "ENTERPRISE"];
+const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function useSubscriptionTierSection() {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
@@ -85,8 +85,8 @@ export function useSubscriptionTierSection() {
       toast({
         title: "Subscription updated",
         description:
-          tier === "FREE"
-            ? "Your plan will be downgraded to Free at the end of your current billing period."
+          tier === "BASIC"
+            ? "Your plan will be downgraded to Basic at the end of your current billing period."
             : "Your subscription has been updated.",
       });
     } catch (e: unknown) {

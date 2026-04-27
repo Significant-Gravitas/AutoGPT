@@ -20,6 +20,7 @@ import {
   disconnectSessionStream,
   shouldDebounceReconnect,
 } from "./helpers";
+import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 
@@ -62,6 +63,7 @@ export function useCopilotStream({
   copilotModel,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
@@ -269,6 +271,20 @@ export function useCopilotStream({
       }
       const isRateLimited = errorDetail.toLowerCase().includes("usage limit");
       if (isRateLimited) {
+        // Backend raises 429 BEFORE persisting the user message, so the
+        // optimistic user bubble added by useChat is a lie. Restore the text
+        // into the composer (via the same store slot URL pre-fills use) and
+        // drop the unsent bubble so the user can edit/resend after reset.
+        const unsentText = lastSubmittedMsgRef.current;
+        if (unsentText) {
+          setInitialPrompt(unsentText);
+          lastSubmittedMsgRef.current = null;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "user") return prev.slice(0, -1);
+            return prev;
+          });
+        }
         setRateLimitMessage(
           errorDetail ||
             "You've reached your usage limit. Please try again later.",
