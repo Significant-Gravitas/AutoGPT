@@ -279,9 +279,7 @@ describe("SettingsPreferencesPage", () => {
 
     render(<SettingsPreferencesPage />);
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Edit email" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Edit email" }));
 
     const dialogInput = (await screen.findByLabelText(
       "Email",
