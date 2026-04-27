@@ -14,8 +14,8 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="flex h-full w-full overflow-hidden bg-[#F9F9FA]"
-      style={{ maxHeight: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
+      className="flex w-full overflow-hidden bg-[#F9F9FA]"
+      style={{ height: `calc(100vh - ${NAVBAR_HEIGHT_PX}px)` }}
     >
       <SettingsSidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
