@@ -79,6 +79,10 @@ export function usePreferencesPage() {
     timezone: detectBrowserTimezone(),
     notifications: EMPTY_FLAGS,
   });
+  const [savedState, setSavedState] = useState<PreferencesFormState>({
+    timezone: detectBrowserTimezone(),
+    notifications: EMPTY_FLAGS,
+  });
   const [isSaving, setIsSaving] = useState(false);
   const hasInitializedFormState = useRef(false);
 
@@ -87,19 +91,20 @@ export function usePreferencesPage() {
       if (hasInitializedFormState.current) return;
       if (!preferencesQuery.data || timezoneQuery.data === undefined) return;
       setFormState(initialState);
+      setSavedState(initialState);
       hasInitializedFormState.current = true;
     },
     [initialState, preferencesQuery.data, timezoneQuery.data],
   );
 
   const dirty = useMemo(
-    () => isFormDirty(initialState, formState),
-    [initialState, formState],
+    () => isFormDirty(savedState, formState),
+    [savedState, formState],
   );
 
   const dirtyParts = useMemo(
-    () => dirtyKinds(initialState, formState),
-    [initialState, formState],
+    () => dirtyKinds(savedState, formState),
+    [savedState, formState],
   );
 
   function setTimezone(value: string) {
@@ -122,7 +127,7 @@ export function usePreferencesPage() {
   }
 
   function discardChanges() {
-    setFormState(initialState);
+    setFormState(savedState);
   }
 
   const updateTimezone = usePostV1UpdateUserTimezone();
@@ -185,6 +190,8 @@ export function usePreferencesPage() {
         });
       }
 
+      setSavedState(formState);
+
       toast({ title: "Preferences saved", variant: "success" });
     } catch (err) {
       toast({
@@ -204,7 +211,7 @@ export function usePreferencesPage() {
     error: preferencesQuery.error,
     refetch: preferencesQuery.refetch,
     formState,
-    initialState,
+    savedState,
     rawTimezone: timezoneQuery.data,
     dirty,
     isSaving,
