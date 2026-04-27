@@ -52,11 +52,24 @@ self.addEventListener("activate", function (event) {
 // use it for suppression decisions instead of trusting client.url.
 var _clientUrls = {};
 
+// User-controlled master toggle. Pages postMessage on mount and on change.
+// Default true: if the SW restarts and no tab has reported yet, pushes still
+// fire — the worst case is one notification before the page mounts and
+// re-syncs the flag.
+var _notificationsEnabled = true;
+
 self.addEventListener("message", function (event) {
-  if (!event.data || event.data.type !== "CLIENT_URL") return;
-  if (!event.source || !event.source.id) return;
-  if (typeof event.data.url !== "string") return;
-  _clientUrls[event.source.id] = event.data.url;
+  if (!event.data) return;
+  if (event.data.type === "CLIENT_URL") {
+    if (!event.source || !event.source.id) return;
+    if (typeof event.data.url !== "string") return;
+    _clientUrls[event.source.id] = event.data.url;
+    return;
+  }
+  if (event.data.type === "NOTIFICATIONS_ENABLED") {
+    _notificationsEnabled = event.data.value !== false;
+    return;
+  }
 });
 
 function _effectiveUrl(client) {
@@ -74,17 +87,11 @@ function isClientViewingTarget(client, targetUrl) {
   try {
     var clientUrl = new URL(client.url);
     var target = new URL(targetUrl, self.location.origin);
-    if (clientUrl.pathname !== target.pathname) return false;
-    // Compare every query param the target cares about — otherwise a
-    // notification for /copilot?sessionId=B gets suppressed while the user
-    // is viewing /copilot?sessionId=A, and they'd miss session B finishing.
-    var keys = Array.from(target.searchParams.keys());
-    for (var i = 0; i < keys.length; i++) {
-      if (clientUrl.searchParams.get(keys[i]) !== target.searchParams.get(keys[i])) {
-        return false;
-      }
-    }
-    return true;
+    // Pathname-only — any /copilot page covers any session: the sidebar's
+    // green-check indicator already surfaces completed sessions, so an OS
+    // popup on top of that is noise. The only thing this suppression
+    // *prevents* is duplicates while the user is already in the feature.
+    return clientUrl.pathname === target.pathname;
   } catch (_) {
     return false;
   }
@@ -92,6 +99,7 @@ function isClientViewingTarget(client, targetUrl) {
 
 self.addEventListener("push", function (event) {
   if (!event.data) return;
+  if (!_notificationsEnabled) return;
 
   var data;
   try {

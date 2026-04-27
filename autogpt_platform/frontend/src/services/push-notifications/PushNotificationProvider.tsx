@@ -1,10 +1,12 @@
 "use client";
 
-import { useReportClientUrl } from "./useReportClientUrl";
 import { usePushNotifications } from "./usePushNotifications";
+import { useReportClientUrl } from "./useReportClientUrl";
+import { useReportNotificationsEnabled } from "./useReportNotificationsEnabled";
 
 export function PushNotificationProvider() {
   usePushNotifications();
   useReportClientUrl();
+  useReportNotificationsEnabled();
   return null;
 }

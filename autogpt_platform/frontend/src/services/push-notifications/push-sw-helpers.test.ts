@@ -140,15 +140,15 @@ describe("push-sw isClientViewingTarget", () => {
     expect(result).toBe(true);
   });
 
-  it("returns false when sessionId differs — prevents wrong-session suppression", () => {
+  it("returns true when on a different session of the same feature page — sidebar shows the green check, OS popup would be noise", () => {
     const result = sw.isClientViewingTarget(
       client({ url: "https://example.com/copilot?sessionId=A" }),
       "/copilot?sessionId=B",
     );
-    expect(result).toBe(false);
+    expect(result).toBe(true);
   });
 
-  it("ignores extra client params the target doesn't care about", () => {
+  it("ignores query params on either side", () => {
     const result = sw.isClientViewingTarget(
       client({ url: "https://example.com/copilot?utm_source=email" }),
       "/copilot",
@@ -184,5 +184,15 @@ describe("push-sw _effectiveUrl", () => {
       url: "https://example.com/copilot?sessionId=stale",
     });
     expect(result).toBe("https://example.com/copilot?sessionId=fresh");
+  });
+});
+
+describe("push-sw notifications toggle", () => {
+  const sw = loadServiceWorkerHelpers() as ReturnType<
+    typeof loadServiceWorkerHelpers
+  > & { _notificationsEnabled: boolean };
+
+  it("defaults to enabled so a freshly-restarted SW still delivers", () => {
+    expect(sw._notificationsEnabled).toBe(true);
   });
 });
