@@ -43,8 +43,8 @@ export function useAccountCard({ user }: { user: User }) {
 
   const updateEmailServer = usePostV1UpdateUserEmail();
 
-  async function onSubmitEmail(values: EmailFormValues) {
-    if (values.email === currentEmail) return;
+  async function onSubmitEmail(values: EmailFormValues): Promise<boolean> {
+    if (values.email === currentEmail) return false;
 
     try {
       await Promise.all([
@@ -56,12 +56,14 @@ export function useAccountCard({ user }: { user: User }) {
         description: "Check your inbox to confirm the change.",
         variant: "success",
       });
+      return true;
     } catch (err) {
       toast({
         title: "Couldn't update email",
         description: err instanceof Error ? err.message : undefined,
         variant: "destructive",
       });
+      return false;
     }
   }
 

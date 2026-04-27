@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { ClockIcon, GlobeIcon, InfoIcon } from "@phosphor-icons/react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -34,19 +33,15 @@ export function TimezoneCard({
   index = 0,
 }: Props) {
   const reduceMotion = useReducedMotion();
-  const browserTz = useMemo(detectBrowserTimezone, []);
-  const offset = useMemo(() => formatGmtOffset(value), [value]);
-  const browserLabel = useMemo(
-    () => findTimezoneLabel(browserTz),
-    [browserTz],
-  );
+  const browserTz = detectBrowserTimezone();
+  const offset = formatGmtOffset(value);
+  const browserLabel = findTimezoneLabel(browserTz);
 
   const showAutoDetect = initialValue !== browserTz && value !== browserTz;
 
-  const options = useMemo(() => {
-    if (TIMEZONES.some((t) => t.value === value)) return TIMEZONES;
-    return [{ value, label: findTimezoneLabel(value) }, ...TIMEZONES];
-  }, [value]);
+  const options = TIMEZONES.some((t) => t.value === value)
+    ? TIMEZONES
+    : [{ value, label: findTimezoneLabel(value) }, ...TIMEZONES];
 
   return (
     <motion.section
@@ -126,7 +121,7 @@ export function TimezoneCard({
             >
               <GlobeIcon size={16} weight="duotone" />
               <Text variant="small" as="span" className="text-violet-800">
-                Looks like you're in{" "}
+                Looks like you&apos;re in{" "}
                 <span className="font-medium">{browserLabel}</span>. Use that?
               </Text>
             </motion.button>

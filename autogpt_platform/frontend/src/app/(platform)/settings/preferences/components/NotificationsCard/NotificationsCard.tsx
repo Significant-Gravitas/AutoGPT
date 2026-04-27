@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import { Switch } from "@/components/atoms/Switch/Switch";
@@ -33,17 +33,15 @@ export function NotificationsCard({ values, onToggle, index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState<TabId>(NOTIFICATION_GROUPS[0].id);
 
-  const tabs = useMemo<{ id: TabId; label: string; count: number }[]>(() => {
-    return NOTIFICATION_GROUPS.map((group) => ({
+  const tabs: { id: TabId; label: string; count: number }[] =
+    NOTIFICATION_GROUPS.map((group) => ({
       id: group.id,
       label: group.title,
       count: group.items.filter((item) => values[item.key]).length,
     }));
-  }, [values]);
 
-  const visibleGroups = useMemo<NotificationGroup[]>(
-    () => NOTIFICATION_GROUPS.filter((g) => g.id === activeTab),
-    [activeTab],
+  const visibleGroups: NotificationGroup[] = NOTIFICATION_GROUPS.filter(
+    (g) => g.id === activeTab,
   );
 
   return (

@@ -15,7 +15,7 @@ import { usePreferencesPage } from "./usePreferencesPage";
 
 export default function SettingsPreferencesPage() {
   useEffect(() => {
-    document.title = "Settings – AutoGPT Platform";
+    document.title = "Preferences – AutoGPT Platform";
   }, []);
 
   const {

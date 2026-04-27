@@ -17,7 +17,7 @@ export function PreferencesHeader() {
       className="flex min-w-0 flex-col pb-2 pl-4"
     >
       <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">
-        Settings
+        Preferences
       </Text>
       <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
         Tune your account, time zone, and which notifications reach you.

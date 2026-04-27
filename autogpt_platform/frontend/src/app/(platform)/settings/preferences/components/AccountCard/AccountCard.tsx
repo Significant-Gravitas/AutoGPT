@@ -36,8 +36,8 @@ export function AccountCard({ user, index = 0 }: Props) {
   const disableEmailSubmit = emailHasError || isSameEmail;
 
   async function handleEmailSubmit(values: { email: string }) {
-    await onSubmitEmail(values);
-    if (!emailHasError && !isSameEmail) {
+    const didUpdate = await onSubmitEmail(values);
+    if (didUpdate) {
       setEmailDialogOpen(false);
     }
   }
@@ -98,7 +98,7 @@ export function AccountCard({ user, index = 0 }: Props) {
               <Form form={emailForm} onSubmit={handleEmailSubmit}>
                 <div className="flex flex-col gap-4">
                   <Text variant="small" as="span" className="text-zinc-500">
-                    We'll send a confirmation link to verify your new
+                    We&apos;ll send a confirmation link to verify your new
                     address.
                   </Text>
                   <FormField

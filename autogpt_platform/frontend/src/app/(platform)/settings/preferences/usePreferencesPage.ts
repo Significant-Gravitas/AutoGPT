@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -64,16 +64,17 @@ export function usePreferencesPage() {
     timezoneQuery.isLoading ||
     !preferencesQuery.data;
 
-  const initialState = useMemo<PreferencesFormState>(() => {
-    const tz =
-      timezoneQuery.data && timezoneQuery.data !== "not-set"
-        ? timezoneQuery.data
-        : detectBrowserTimezone();
-    const flags = preferencesQuery.data
-      ? preferencesToFlags(preferencesQuery.data)
-      : EMPTY_FLAGS;
-    return { timezone: tz, notifications: flags };
-  }, [preferencesQuery.data, timezoneQuery.data]);
+  const initialTimezone =
+    timezoneQuery.data && timezoneQuery.data !== "not-set"
+      ? timezoneQuery.data
+      : detectBrowserTimezone();
+  const initialFlags = preferencesQuery.data
+    ? preferencesToFlags(preferencesQuery.data)
+    : EMPTY_FLAGS;
+  const initialState: PreferencesFormState = {
+    timezone: initialTimezone,
+    notifications: initialFlags,
+  };
 
   const [formState, setFormState] = useState<PreferencesFormState>({
     timezone: detectBrowserTimezone(),
@@ -89,23 +90,16 @@ export function usePreferencesPage() {
   useEffect(
     function syncFormStateOnce() {
       if (hasInitializedFormState.current) return;
-      if (!preferencesQuery.data || timezoneQuery.data === undefined) return;
+      if (!preferencesQuery.data) return;
       setFormState(initialState);
       setSavedState(initialState);
       hasInitializedFormState.current = true;
     },
-    [initialState, preferencesQuery.data, timezoneQuery.data],
+    [initialState, preferencesQuery.data],
   );
 
-  const dirty = useMemo(
-    () => isFormDirty(savedState, formState),
-    [savedState, formState],
-  );
-
-  const dirtyParts = useMemo(
-    () => dirtyKinds(savedState, formState),
-    [savedState, formState],
-  );
+  const dirty = isFormDirty(savedState, formState);
+  const dirtyParts = dirtyKinds(savedState, formState);
 
   function setTimezone(value: string) {
     setFormState((prev) => ({ ...prev, timezone: value }));
@@ -207,8 +201,8 @@ export function usePreferencesPage() {
   return {
     user,
     isLoading,
-    isError: preferencesQuery.isError,
-    error: preferencesQuery.error,
+    isError: preferencesQuery.isError || timezoneQuery.isError,
+    error: preferencesQuery.error ?? timezoneQuery.error,
     refetch: preferencesQuery.refetch,
     formState,
     savedState,
