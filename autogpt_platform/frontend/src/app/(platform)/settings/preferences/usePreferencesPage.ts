@@ -131,17 +131,20 @@ export function usePreferencesPage() {
   async function savePreferences() {
     if (!dirty || isSaving || !user) return;
 
+    const snapshot = formState;
+    const partsAtSubmit = dirtyParts;
+
     setIsSaving(true);
 
-    let timezoneSaved = !dirtyParts.timezone;
-    let notificationsSaved = !dirtyParts.notifications;
+    let timezoneSaved = !partsAtSubmit.timezone;
+    let notificationsSaved = !partsAtSubmit.notifications;
     const failures: string[] = [];
 
-    if (dirtyParts.timezone) {
+    if (partsAtSubmit.timezone) {
       try {
         await updateTimezone.mutateAsync({
           data: {
-            timezone: formState.timezone as UpdateTimezoneRequestTimezone,
+            timezone: snapshot.timezone as UpdateTimezoneRequestTimezone,
           },
         });
         queryClient.setQueryData(
@@ -154,13 +157,13 @@ export function usePreferencesPage() {
             ) {
               return {
                 ...(prev as Record<string, unknown>),
-                data: { timezone: formState.timezone },
+                data: { timezone: snapshot.timezone },
               };
             }
-            return { status: 200, data: { timezone: formState.timezone } };
+            return { status: 200, data: { timezone: snapshot.timezone } };
           },
         );
-        setSavedState((prev) => ({ ...prev, timezone: formState.timezone }));
+        setSavedState((prev) => ({ ...prev, timezone: snapshot.timezone }));
         timezoneSaved = true;
       } catch (err) {
         failures.push(
@@ -169,12 +172,12 @@ export function usePreferencesPage() {
       }
     }
 
-    if (dirtyParts.notifications) {
+    if (partsAtSubmit.notifications) {
       try {
         await updateNotifications.mutateAsync({
           data: {
             email: user.email ?? "",
-            preferences: flagsToPreferenceMap(formState.notifications),
+            preferences: flagsToPreferenceMap(snapshot.notifications),
             daily_limit: 0,
           },
         });
@@ -183,7 +186,7 @@ export function usePreferencesPage() {
         });
         setSavedState((prev) => ({
           ...prev,
-          notifications: formState.notifications,
+          notifications: snapshot.notifications,
         }));
         notificationsSaved = true;
       } catch (err) {
