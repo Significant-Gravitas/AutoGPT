@@ -66,7 +66,11 @@ export function useDeleteIntegration() {
           out.failed.push(target);
           return;
         }
-        const body = r.value.status === 200 ? r.value.data : null;
+        if (r.value.status !== 200) {
+          out.failed.push(target);
+          return;
+        }
+        const body = r.value.data;
         if (body && "need_confirmation" in body && body.need_confirmation) {
           out.needsConfirmation.push({ target, message: body.message });
           return;
