@@ -258,6 +258,29 @@ class TestSendPushForUser:
         )
 
     @pytest.mark.asyncio
+    async def test_removes_subscription_when_status_only_in_message(
+        self, mocker, mock_db_client
+    ):
+        """Some pywebpush versions don't expose .response.status_code; the
+        sender must still detect 410 from the exception message and clean up."""
+        from pywebpush import WebPushException
+
+        mocker.patch.object(push_sender, "_settings", _make_settings())
+        sub = _make_subscription()
+        mock_db_client.get_user_push_subscriptions.return_value = [sub]
+
+        # No usable response object — only the message carries the status.
+        exc = WebPushException("Push failed: 410 Gone\nResponse body:gone")
+        exc.response = None  # type: ignore[assignment]
+        mocker.patch("backend.data.push_sender.webpush", side_effect=exc)
+
+        await push_sender.send_push_for_user("user-1", _make_payload())
+
+        mock_db_client.delete_push_subscription.assert_awaited_once_with(
+            sub.user_id, sub.endpoint
+        )
+
+    @pytest.mark.asyncio
     async def test_increments_fail_count_on_other_webpush_error(
         self, mocker, mock_db_client
     ):

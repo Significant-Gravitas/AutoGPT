@@ -74,15 +74,21 @@ async def event_broadcaster(manager: ConnectionManager):
             async for event in execution_bus.listen("*"):
                 await manager.send_execution_update(event)
 
+        _push_tasks: set[asyncio.Task] = set()
+
         async def notification_worker():
             async for notification in notification_bus.listen("*"):
                 await manager.send_notification(
                     user_id=notification.user_id,
                     payload=notification.payload,
                 )
-                asyncio.create_task(
+                # Hold a strong reference: asyncio only keeps weak refs to
+                # tasks, so a fire-and-forget create_task can be GC'd mid-run.
+                task = asyncio.create_task(
                     _safe_send_push(notification.user_id, notification.payload)
                 )
+                _push_tasks.add(task)
+                task.add_done_callback(_push_tasks.discard)
 
         await asyncio.gather(execution_worker(), notification_worker())
     finally:

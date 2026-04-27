@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import re
 import time
 import uuid
 
@@ -26,6 +27,23 @@ _user_last_push: TTLCache[str, float] = TTLCache(maxsize=10_000, ttl=DEBOUNCE_SE
 
 # Fields to forward from the notification payload to the push message
 _FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")
+
+
+def _extract_status_code(e: WebPushException) -> int | None:
+    """Extract HTTP status code from a pywebpush exception.
+
+    pywebpush's ``response`` attribute shape varies across versions — sometimes
+    a ``requests.Response`` with ``status_code``, sometimes a different object.
+    Falls back to parsing ``"Push failed: 410 Gone"`` from the exception
+    message so 410/404 cleanup is reliable.
+    """
+    resp = getattr(e, "response", None)
+    status = getattr(resp, "status_code", None) if resp is not None else None
+    if status is not None:
+        return status
+    # Last resort: parse the message. Format is "Push failed: <code> <reason>".
+    match = re.search(r"Push failed:\s*(\d{3})\b", str(e))
+    return int(match.group(1)) if match else None
 
 
 def _build_push_payload(payload: NotificationPayload) -> str:
@@ -99,7 +117,7 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
             await db_client.delete_push_subscription(sub.user_id, sub.endpoint)
             return
         except WebPushException as e:
-            status = getattr(e.response, "status_code", None) if e.response else None
+            status = _extract_status_code(e)
             if status in (410, 404):
                 logger.info(
                     "Push subscription gone (%s), removing: %s",
