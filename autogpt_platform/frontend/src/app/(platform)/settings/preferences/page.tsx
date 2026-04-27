@@ -42,9 +42,7 @@ export default function SettingsPreferencesPage() {
       <ErrorCard
         context="settings"
         responseError={
-          error
-            ? { detail: (error as { detail?: string }).detail }
-            : undefined
+          error ? { detail: (error as { detail?: string }).detail } : undefined
         }
         onRetry={() => {
           void refetch();

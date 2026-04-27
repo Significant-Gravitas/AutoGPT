@@ -48,7 +48,11 @@ export function NotificationsCard({ values, onToggle, index = 0 }: Props) {
     <motion.section
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }}
+      transition={{
+        duration: 0.32,
+        ease: EASE_OUT,
+        delay: 0.04 + index * 0.05,
+      }}
       className="flex w-full flex-col gap-2 pt-0"
     >
       <div className="flex flex-col gap-1 px-4">

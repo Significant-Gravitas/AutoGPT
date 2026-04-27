@@ -58,8 +58,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
       {
         key: "notifyOnAgentRun",
         title: "Run started or completed",
-        description:
-          "Hear from us when an agent kicks off or finishes a run.",
+        description: "Hear from us when an agent kicks off or finishes a run.",
       },
       {
         key: "notifyOnBlockExecutionFailed",
@@ -89,8 +88,7 @@ export const NOTIFICATION_GROUPS: NotificationGroup[] = [
       {
         key: "notifyOnAgentRejected",
         title: "Agent needs changes",
-        description:
-          "Reviewers have feedback before your agent can go live.",
+        description: "Reviewers have feedback before your agent can go live.",
       },
     ],
   },

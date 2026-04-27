@@ -138,8 +138,7 @@ export function usePreferencesPage() {
         tasks.push(
           updateTimezone.mutateAsync({
             data: {
-              timezone:
-                formState.timezone as UpdateTimezoneRequestTimezone,
+              timezone: formState.timezone as UpdateTimezoneRequestTimezone,
             },
           }),
         );

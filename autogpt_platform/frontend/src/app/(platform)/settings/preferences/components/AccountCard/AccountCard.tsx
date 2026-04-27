@@ -46,7 +46,11 @@ export function AccountCard({ user, index = 0 }: Props) {
     <motion.section
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }}
+      transition={{
+        duration: 0.32,
+        ease: EASE_OUT,
+        delay: 0.04 + index * 0.05,
+      }}
       className="flex w-full flex-col gap-2"
     >
       <div className="flex flex-col gap-1 px-4">
@@ -59,108 +63,108 @@ export function AccountCard({ user, index = 0 }: Props) {
       </div>
 
       <div className="flex flex-col divide-y divide-zinc-200 rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-      <div className="flex items-center justify-between gap-4 px-4 py-4">
-        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
-          Email
-        </Text>
-
-        <div className="flex min-w-0 items-center gap-3">
-          <Text
-            variant="body"
-            as="span"
-            className="min-w-0 truncate text-[#1F1F20]"
-          >
-            {currentEmail}
+        <div className="flex items-center justify-between gap-4 px-4 py-4">
+          <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+            Email
           </Text>
 
-          <Dialog
-            title="Update email"
-            styling={{ maxWidth: "420px" }}
-            controlled={{
-              isOpen: emailDialogOpen,
-              set: (open) => {
-                setEmailDialogOpen(open);
-                if (open) emailForm.reset({ email: currentEmail });
-              },
-            }}
-          >
-            <Dialog.Trigger>
-              <Button
-                variant="secondary"
-                size="small"
-                aria-label="Edit email"
-                className="h-7 min-w-0 px-1.5 py-0.5"
-              >
-                <PencilSimpleIcon size={14} weight="duotone" />
-              </Button>
-            </Dialog.Trigger>
-            <Dialog.Content>
-              <Form form={emailForm} onSubmit={handleEmailSubmit}>
-                <div className="flex flex-col gap-4">
-                  <Text variant="small" as="span" className="text-zinc-500">
-                    We&apos;ll send a confirmation link to verify your new
-                    address.
-                  </Text>
-                  <FormField
-                    control={emailForm.control}
-                    name="email"
-                    render={({ field, fieldState }) => (
-                      <FormItem className="space-y-0">
-                        <FormControl>
-                          <Input
-                            id={field.name}
-                            label="Email"
-                            type="email"
-                            autoComplete="email"
-                            size="medium"
-                            className="w-full"
-                            wrapperClassName="!mb-0"
-                            error={fieldState.error?.message}
-                            {...field}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <Dialog.Footer>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="small"
-                    onClick={() => setEmailDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    size="small"
-                    disabled={disableEmailSubmit}
-                    loading={isUpdatingEmail}
-                  >
-                    {isUpdatingEmail ? "Saving" : "Update email"}
-                  </Button>
-                </Dialog.Footer>
-              </Form>
-            </Dialog.Content>
-          </Dialog>
+          <div className="flex min-w-0 items-center gap-3">
+            <Text
+              variant="body"
+              as="span"
+              className="min-w-0 truncate text-[#1F1F20]"
+            >
+              {currentEmail}
+            </Text>
+
+            <Dialog
+              title="Update email"
+              styling={{ maxWidth: "420px" }}
+              controlled={{
+                isOpen: emailDialogOpen,
+                set: (open) => {
+                  setEmailDialogOpen(open);
+                  if (open) emailForm.reset({ email: currentEmail });
+                },
+              }}
+            >
+              <Dialog.Trigger>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  aria-label="Edit email"
+                  className="h-7 min-w-0 px-1.5 py-0.5"
+                >
+                  <PencilSimpleIcon size={14} weight="duotone" />
+                </Button>
+              </Dialog.Trigger>
+              <Dialog.Content>
+                <Form form={emailForm} onSubmit={handleEmailSubmit}>
+                  <div className="flex flex-col gap-4">
+                    <Text variant="small" as="span" className="text-zinc-500">
+                      We&apos;ll send a confirmation link to verify your new
+                      address.
+                    </Text>
+                    <FormField
+                      control={emailForm.control}
+                      name="email"
+                      render={({ field, fieldState }) => (
+                        <FormItem className="space-y-0">
+                          <FormControl>
+                            <Input
+                              id={field.name}
+                              label="Email"
+                              type="email"
+                              autoComplete="email"
+                              size="medium"
+                              className="w-full"
+                              wrapperClassName="!mb-0"
+                              error={fieldState.error?.message}
+                              {...field}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <Dialog.Footer>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="small"
+                      onClick={() => setEmailDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      size="small"
+                      disabled={disableEmailSubmit}
+                      loading={isUpdatingEmail}
+                    >
+                      {isUpdatingEmail ? "Saving" : "Update email"}
+                    </Button>
+                  </Dialog.Footer>
+                </Form>
+              </Dialog.Content>
+            </Dialog>
+          </div>
         </div>
-      </div>
 
-      <div className="flex items-center justify-between gap-4 px-4 py-4">
-        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
-          Password
-        </Text>
+        <div className="flex items-center justify-between gap-4 px-4 py-4">
+          <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+            Password
+          </Text>
 
-        <Button
-          as="NextLink"
-          href="/reset-password"
-          size="small"
-          variant="secondary"
-        >
-          Reset password
-        </Button>
-      </div>
+          <Button
+            as="NextLink"
+            href="/reset-password"
+            size="small"
+            variant="secondary"
+          >
+            Reset password
+          </Button>
+        </div>
       </div>
     </motion.section>
   );

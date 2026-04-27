@@ -47,7 +47,11 @@ export function TimezoneCard({
     <motion.section
       initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }}
+      transition={{
+        duration: 0.32,
+        ease: EASE_OUT,
+        delay: 0.04 + index * 0.05,
+      }}
       className="flex w-full flex-col"
     >
       <div className="flex h-fit flex-col justify-center gap-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
@@ -106,15 +110,11 @@ export function TimezoneCard({
               type="button"
               onClick={() => onChange(browserTz)}
               initial={
-                reduceMotion
-                  ? { opacity: 0 }
-                  : { opacity: 0, y: -4, height: 0 }
+                reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, height: 0 }
               }
               animate={{ opacity: 1, y: 0, height: "auto" }}
               exit={
-                reduceMotion
-                  ? { opacity: 0 }
-                  : { opacity: 0, y: -4, height: 0 }
+                reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4, height: 0 }
               }
               transition={{ duration: 0.22, ease: EASE_OUT }}
               className="flex w-fit items-center gap-2 self-end overflow-hidden rounded-full border border-violet-300 bg-violet-50/60 px-3 py-1.5 text-left text-violet-800 transition-colors duration-150 ease-out hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
@@ -127,7 +127,6 @@ export function TimezoneCard({
             </motion.button>
           ) : null}
         </AnimatePresence>
-
       </div>
     </motion.section>
   );
