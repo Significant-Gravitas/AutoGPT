@@ -22,6 +22,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 
 from .service import (
+    _RETRYABLE_STREAM_ERROR_CODES,
     _classify_final_failure,
     _FinalFailure,
     _flush_orphan_tool_uses_to_session,
@@ -320,3 +321,22 @@ class TestRetryRollbackContract:
             "part-2",
             f"{COPILOT_ERROR_PREFIX} Boom",
         ]
+
+
+class TestRetryableStreamErrorCodes:
+    """SECRT-2252: ``_dispatch_response`` consults this set to decide whether
+    the StreamError flowing through it should append a retryable marker (UI
+    shows a retry button) or a terminal one (UI shows ErrorCard only)."""
+
+    def test_transient_api_error_is_retryable(self):
+        assert "transient_api_error" in _RETRYABLE_STREAM_ERROR_CODES
+
+    def test_empty_completion_is_retryable(self):
+        # The adapter emits this for ghost-finished SDK turns. The user
+        # message ("The model returned an empty response.") only makes sense
+        # if the UI offers a retry — otherwise the user sees a dead error.
+        assert "empty_completion" in _RETRYABLE_STREAM_ERROR_CODES
+
+    def test_unknown_codes_are_not_retryable(self):
+        assert "sdk_error" not in _RETRYABLE_STREAM_ERROR_CODES
+        assert "all_attempts_exhausted" not in _RETRYABLE_STREAM_ERROR_CODES
