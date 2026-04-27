@@ -20,9 +20,11 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
   const queryClient = useQueryClient();
   const [isPending, setIsPending] = useState(false);
   const abortRef = useRef<(() => void) | null>(null);
+  const isUnmountedRef = useRef(false);
 
   useEffect(() => {
     return () => {
+      isUnmountedRef.current = true;
       abortRef.current?.();
     };
   }, []);
@@ -58,6 +60,7 @@ export function useOAuthConnect({ provider, onSuccess }: Args) {
       });
       onSuccess();
     } catch (error) {
+      if (isUnmountedRef.current) return;
       toast({
         title: "OAuth connection failed",
         description:
