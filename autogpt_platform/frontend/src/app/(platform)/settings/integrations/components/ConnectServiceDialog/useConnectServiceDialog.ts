@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 
 import { useGetV1ListProviders } from "@/app/api/__generated__/endpoints/integrations/integrations";
 
-import { formatProviderName } from "../../helpers";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import {
   filterConnectableProviders,
@@ -42,14 +41,7 @@ export function useConnectServiceDialog({ open, onOpenChange }: Args) {
   const providers = filterConnectableProviders(allProviders, debouncedQuery);
 
   const selectedProvider: ConnectableProvider | null = selectedId
-    ? (allProviders.find((p) => p.id === selectedId) ??
-      (providersQuery.data?.some((p) => p.name === selectedId)
-        ? {
-            id: selectedId,
-            name: formatProviderName(selectedId),
-            supportedAuthTypes: [],
-          }
-        : null))
+    ? (allProviders.find((p) => p.id === selectedId) ?? null)
     : null;
 
   const view: "list" | "detail" = selectedProvider ? "detail" : "list";
