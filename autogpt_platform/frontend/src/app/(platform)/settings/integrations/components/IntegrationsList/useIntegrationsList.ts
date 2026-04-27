@@ -82,7 +82,6 @@ export function useIntegrationsList() {
 
   const isLoading = credentialsQuery.isLoading;
   const isError = credentialsQuery.isError;
-  const hasNoCredentials = !isLoading && !isError && allProviders.length === 0;
 
   return {
     query,
@@ -93,7 +92,6 @@ export function useIntegrationsList() {
     error: credentialsQuery.error,
     refetch: credentialsQuery.refetch,
     isEmpty: providers.length === 0,
-    hasNoCredentials,
     selection,
     requestDelete,
     isDeleting,
