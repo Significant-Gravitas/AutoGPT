@@ -9,8 +9,9 @@ interface Props {
 }
 
 export function ProviderAvatar({ id, name }: Props) {
-  const [broken, setBroken] = useState(false);
-  if (broken) {
+  const src = `/integrations/${id}.png`;
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  if (brokenSrc === src) {
     return (
       <div
         aria-hidden
@@ -22,12 +23,12 @@ export function ProviderAvatar({ id, name }: Props) {
   }
   return (
     <Image
-      src={`/integrations/${id}.png`}
+      src={src}
       alt={`${name} logo`}
       width={40}
       height={40}
       loading="lazy"
-      onError={() => setBroken(true)}
+      onError={() => setBrokenSrc(src)}
       className="size-10 shrink-0 object-contain"
     />
   );

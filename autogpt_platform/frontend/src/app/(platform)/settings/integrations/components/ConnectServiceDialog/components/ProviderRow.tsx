@@ -12,8 +12,9 @@ interface Props {
 }
 
 export function ProviderRow({ provider, onSelect }: Props) {
-  const [broken, setBroken] = useState(false);
   const src = `/integrations/${provider.id}.png`;
+  const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
+  const broken = brokenSrc === src;
 
   return (
     <button
@@ -36,7 +37,7 @@ export function ProviderRow({ provider, onSelect }: Props) {
           height={36}
           loading="lazy"
           className="size-9 shrink-0 object-contain"
-          onError={() => setBroken(true)}
+          onError={() => setBrokenSrc(src)}
         />
       )}
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
