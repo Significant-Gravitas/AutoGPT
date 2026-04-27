@@ -177,12 +177,26 @@ self.addEventListener("notificationclick", function (event) {
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(function (clientList) {
         // Use _effectiveUrl(c), not c.url — c.url is stale for SPA navigation.
-        // Only focus a tab whose URL already matches the target; never
+        // Only focus a tab whose pathname already matches the target; never
         // navigate an unrelated tab away from what the user was doing.
+        // Substring matching (.includes) is wrong here: a fallback target of
+        // "/" would match every URL, and "/copilot" would match
+        // "/copilot-archive".
+        var targetPath;
+        try {
+          targetPath = new URL(url, self.location.origin).pathname;
+        } catch (_) {
+          return openFresh();
+        }
         for (var i = 0; i < clientList.length; i++) {
           var client = clientList[i];
-          if (_effectiveUrl(client).includes(url) && "focus" in client) {
-            return client.focus().catch(openFresh);
+          if (!("focus" in client)) continue;
+          try {
+            if (new URL(_effectiveUrl(client)).pathname === targetPath) {
+              return client.focus().catch(openFresh);
+            }
+          } catch (_) {
+            // skip clients with unparseable URLs
           }
         }
         return openFresh();
@@ -202,15 +216,19 @@ self.addEventListener("pushsubscriptionchange", function (event) {
     )
       .then(function (newSub) {
         if (!newSub) return;
+        // toJSON() returns base64url-encoded keys per the Web Push spec, which
+        // is what pywebpush on the backend expects. Building the keys via
+        // btoa(...) would produce standard base64 (with +/=) and break decoding.
+        var json = newSub.toJSON();
         return fetch("/api/proxy/api/push/subscribe", {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            endpoint: newSub.endpoint,
+            endpoint: json.endpoint,
             keys: {
-              p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(newSub.getKey("p256dh")))),
-              auth: btoa(String.fromCharCode.apply(null, new Uint8Array(newSub.getKey("auth")))),
+              p256dh: (json.keys && json.keys.p256dh) || "",
+              auth: (json.keys && json.keys.auth) || "",
             },
           }),
         });
