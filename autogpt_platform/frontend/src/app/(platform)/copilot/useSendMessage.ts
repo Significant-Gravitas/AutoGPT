@@ -41,6 +41,13 @@ export function useSendMessage({
   isUserStoppingRef,
 }: Args) {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  // Synchronous concurrency guard for the "no session yet" path: rapid
+  // double-press / double-Enter would otherwise overwrite `pendingFirstSend`
+  // (losing the first message) AND fire two parallel `createSession`
+  // requests (creating duplicate sessions). The ref flips before the
+  // mutation dispatches and resets in `finally`, so a second call inside
+  // the same tick short-circuits.
+  const isCreatingSessionRef = useRef(false);
 
   async function uploadFiles(
     files: File[],
@@ -174,6 +181,8 @@ export function useSendMessage({
       return;
     }
 
+    if (isCreatingSessionRef.current) return;
+    isCreatingSessionRef.current = true;
     useCopilotStreamStore
       .getState()
       .setPendingFirstSend({ text: trimmed, files: files ?? [] });
@@ -185,6 +194,8 @@ export function useSendMessage({
       setPendingFirstSend(null);
       setPendingFileParts([]);
       throw err;
+    } finally {
+      isCreatingSessionRef.current = false;
     }
   }
 
