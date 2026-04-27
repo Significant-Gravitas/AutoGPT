@@ -10,6 +10,7 @@ export function IntegrationsListSkeleton() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
+          data-testid="integration-skeleton-item"
           className="w-full overflow-hidden rounded-lg border border-[#DADADC] bg-white"
         >
           {/* Mirrors ProviderGroup accordion trigger row */}
