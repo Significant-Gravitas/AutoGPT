@@ -554,6 +554,84 @@ async def test_list_trigger_agents_filters_by_parent_graph_id(mocker):
 
 
 @pytest.mark.asyncio
+async def test_list_trigger_agents_propagates_schedule_info(mocker):
+    """Trigger agents have schedules — _fetch_schedule_info must be
+    called and its result threaded through LibraryAgent.from_db so the
+    `is_scheduled` / `next_scheduled_run` fields are accurate.
+    Regression for a Sentry finding."""
+    parent_agent = library_model.LibraryAgent(
+        id="parent-id",
+        graph_id="parent-graph-id",
+        graph_version=1,
+        name="Parent",
+        description="",
+        image_url=None,
+        creator_name="",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        output_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        has_human_in_the_loop=False,
+        has_sensitive_action=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        is_favorite=False,
+        is_hidden=False,
+        created_at=datetime.now(),
+        updated_at=datetime.now(),
+    )
+    mocker.patch(
+        "backend.api.features.library.db.get_library_agent",
+        new=mocker.AsyncMock(return_value=parent_agent),
+    )
+
+    trigger_prisma = prisma.models.LibraryAgent(
+        id="trig-1",
+        userId="test-user",
+        agentGraphId="trig-graph-id",
+        settings="{}",  # type: ignore
+        agentGraphVersion=1,
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        isHidden=True,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=prisma.models.AgentGraph(
+            id="trig-graph-id",
+            version=1,
+            name="Trigger Agent",
+            description="",
+            userId="test-user",
+            isActive=True,
+            createdAt=datetime.now(),
+        ),
+    )
+    mock_prisma = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_prisma.return_value.find_many = mocker.AsyncMock(return_value=[trigger_prisma])
+
+    schedule_info = {"trig-graph-id": "2026-05-01T08:00:00+00:00"}
+    schedule_spy = mocker.patch(
+        "backend.api.features.library.db._fetch_schedule_info",
+        new=mocker.AsyncMock(return_value=schedule_info),
+    )
+
+    result = await db.list_trigger_agents(
+        user_id="test-user", library_agent_id="parent-id"
+    )
+
+    schedule_spy.assert_awaited_once_with("test-user")
+    assert len(result) == 1
+    assert result[0].is_scheduled is True
+    assert result[0].next_scheduled_run is not None
+
+
+@pytest.mark.asyncio
 async def test_list_trigger_agents_returns_empty_when_no_triggers(mocker):
     """When the parent has no trigger agents, return an empty list
     rather than raising — the Triggers tab hides itself in that case."""

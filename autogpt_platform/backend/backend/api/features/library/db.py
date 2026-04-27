@@ -2023,31 +2023,37 @@ async def list_trigger_agents(
     """
     parent = await get_library_agent(id=library_agent_id, user_id=user_id)
 
-    triggers = await prisma.models.LibraryAgent.prisma().find_many(
-        where={
-            "userId": user_id,
-            "isHidden": True,
-            "isDeleted": False,
-            "isArchived": False,
-            "AgentGraph": {
-                "is": {
-                    "Nodes": {
-                        "some": {
-                            "agentBlockId": _AGENT_EXECUTOR_BLOCK_ID,
-                            "constantInput": cast(
-                                prisma.types.JsonFilter,
-                                {
-                                    "path": ["graph_id"],
-                                    "equals": prisma.Json(parent.graph_id),
-                                },
-                            ),
+    triggers, schedule_info = await asyncio.gather(
+        prisma.models.LibraryAgent.prisma().find_many(
+            where={
+                "userId": user_id,
+                "isHidden": True,
+                "isDeleted": False,
+                "isArchived": False,
+                "AgentGraph": {
+                    "is": {
+                        "Nodes": {
+                            "some": {
+                                "agentBlockId": _AGENT_EXECUTOR_BLOCK_ID,
+                                "constantInput": cast(
+                                    prisma.types.JsonFilter,
+                                    {
+                                        "path": ["graph_id"],
+                                        "equals": prisma.Json(parent.graph_id),
+                                    },
+                                ),
+                            }
                         }
                     }
-                }
+                },
             },
-        },
-        include=library_agent_include(
-            user_id, include_nodes=False, include_executions=False
+            include=library_agent_include(
+                user_id, include_nodes=False, include_executions=False
+            ),
         ),
+        _fetch_schedule_info(user_id),
     )
-    return [library_model.LibraryAgent.from_db(t) for t in triggers]
+    return [
+        library_model.LibraryAgent.from_db(t, schedule_info=schedule_info)
+        for t in triggers
+    ]
