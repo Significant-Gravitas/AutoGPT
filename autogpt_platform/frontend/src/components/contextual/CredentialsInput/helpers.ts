@@ -187,13 +187,13 @@ export function isSystemCredential(credential: {
 }
 
 export function filterSystemCredentials<
-  T extends { title?: string; is_system?: boolean },
+  T extends { title?: string | null; is_system?: boolean },
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => !isSystemCredential(cred));
 }
 
 export function getSystemCredentials<
-  T extends { title?: string; is_system?: boolean },
+  T extends { title?: string | null; is_system?: boolean },
 >(credentials: T[]): T[] {
   return credentials.filter((cred) => isSystemCredential(cred));
 }

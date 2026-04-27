@@ -1063,3 +1063,36 @@ async def test_get_or_create_builder_session_recreates_when_pointer_stale(
     assert result is new_session
     create_mock.assert_awaited_once()
     library_db_mock.update_library_agent.assert_awaited_once()
+
+
+def test_chat_message_from_db_round_trips_created_at() -> None:
+    """ChatMessage.from_db surfaces the DB row's createdAt on the pydantic
+    model so the API response carries it through to the frontend's TurnStats
+    map (powering the hover-reveal date on the copilot UI)."""
+    from datetime import datetime, timezone
+
+    from prisma.models import ChatMessage as PrismaChatMessage
+
+    created_at = datetime(2026, 4, 23, 10, 15, 30, tzinfo=timezone.utc)
+    row = PrismaChatMessage.model_construct(
+        id="m1",
+        sessionId="sess-1",
+        role="assistant",
+        content="hi",
+        name=None,
+        toolCallId=None,
+        refusal=None,
+        toolCalls=None,
+        functionCall=None,
+        sequence=3,
+        durationMs=4200,
+        createdAt=created_at,
+    )
+
+    msg = ChatMessage.from_db(row)
+
+    assert msg.role == "assistant"
+    assert msg.content == "hi"
+    assert msg.sequence == 3
+    assert msg.duration_ms == 4200
+    assert msg.created_at == created_at

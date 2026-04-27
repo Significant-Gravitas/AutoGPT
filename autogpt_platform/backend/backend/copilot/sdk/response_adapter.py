@@ -166,7 +166,7 @@ class SDKResponseAdapter:
             # are still executing concurrently and haven't finished yet.
             is_tool_only = all(isinstance(b, ToolUseBlock) for b in sdk_message.content)
             if not is_tool_only:
-                self._flush_unresolved_tool_calls(responses)
+                self.flush_unresolved_tool_calls(responses)
 
             # After tool results, the SDK sends a new AssistantMessage for the
             # next LLM turn. Open a new step if the previous one was closed.
@@ -375,7 +375,7 @@ class SDKResponseAdapter:
                 self.step_open = False
 
         elif isinstance(sdk_message, ResultMessage):
-            self._flush_unresolved_tool_calls(responses)
+            self.flush_unresolved_tool_calls(responses)
             # Thinking-only final turn guard: when the model's last LLM
             # call after a tool result produced only a ``ThinkingBlock``
             # (no ``TextBlock``, no ``ToolUseBlock``) the UI has nothing
@@ -703,7 +703,7 @@ class SDKResponseAdapter:
         self._pending_thinking_delta = ""
         self._pending_thinking_index = None
 
-    def _flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
+    def flush_unresolved_tool_calls(self, responses: list[StreamBaseResponse]) -> None:
         """Emit outputs for tool calls that didn't receive a UserMessage result.
 
         SDK built-in tools (WebSearch, Read, etc.) may be executed by the CLI
@@ -711,6 +711,12 @@ class SDKResponseAdapter:
         ``ToolResultBlock`` content.  The ``PostToolUse`` hook stashes their
         output, which we pop and emit here before the next ``AssistantMessage``
         starts.
+
+        Callers that need to both record synthetic tool_results in history AND
+        yield the same events to the client should call this exactly once and
+        share the resulting list — the method mutates ``resolved_tool_calls``,
+        so a second call returns nothing and ``has_unresolved_tool_calls``
+        flips to ``False`` after the first invocation.
         """
         unresolved = [
             (tid, info.get("name", "unknown"))

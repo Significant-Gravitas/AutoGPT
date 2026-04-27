@@ -186,7 +186,7 @@ Multiple worktrees share the same host — Docker infra (postgres, redis, clamav
 
 ### Lock file contract
 
-Path (**always** the root worktree so all siblings see it): `/Users/majdyz/Code/AutoGPT/.ign.testing.lock`
+Path (**always** the root worktree so all siblings see it): `$REPO_ROOT/.ign.testing.lock`
 
 Body (one `key=value` per line):
 ```
@@ -202,7 +202,7 @@ intent=<one-line description + rough duration>
 ### Claim
 
 ```bash
-LOCK=/Users/majdyz/Code/AutoGPT/.ign.testing.lock
+LOCK=$REPO_ROOT/.ign.testing.lock
 NOW=$(date -u +%Y-%m-%dT%H:%MZ)
 STALE_AFTER_MIN=5
 
@@ -252,7 +252,7 @@ echo "$HEARTBEAT_PID" > /tmp/pr-test-heartbeat.pid
 kill "$HEARTBEAT_PID" 2>/dev/null
 rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
 echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock" \
-    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+    >> $REPO_ROOT/.ign.testing.log
 ```
 
 Use a `trap` so release runs even on `exit 1`:
@@ -278,7 +278,7 @@ Concretely, the sequence at the end of every `/pr-test` run (success or failure)
 kill "$HEARTBEAT_PID" 2>/dev/null
 rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
 echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock (app may still be running)" \
-    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+    >> $REPO_ROOT/.ign.testing.log
 # 3. Optionally leave the app running and note it so the user knows:
 echo "Native stack still running on :3000 / :8006 for manual poking. Kill with:"
 echo "  pkill -9 -f 'poetry run app'; pkill -9 -f 'next-server|next dev'"
@@ -288,10 +288,10 @@ If a sibling agent's `/pr-test` needs to take over, it'll do the kill+rebuild da
 
 ### Shared status log
 
-`/Users/majdyz/Code/AutoGPT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
+`$REPO_ROOT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
 ```bash
 echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] <message>" \
-    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+    >> $REPO_ROOT/.ign.testing.log
 ```
 
 ## Step 3: Environment setup

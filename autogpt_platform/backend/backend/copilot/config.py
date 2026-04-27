@@ -49,14 +49,14 @@ class ChatConfig(BaseSettings):
             "CHAT_FAST_MODEL",
         ),
         description="Baseline path, 'standard' / ``None`` tier.  Per-user "
-        "overrides flow through the ``copilot-fast-standard-model`` LD flag "
+        "overrides flow through ``copilot-model-routing[fast][standard]`` "
         "(see ``copilot/model_router.py``); this value is the fallback.",
     )
     fast_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",
         validation_alias=AliasChoices("CHAT_FAST_ADVANCED_MODEL"),
         description="Baseline path, 'advanced' tier.  LD override: "
-        "``copilot-fast-advanced-model``.",
+        "``copilot-model-routing[fast][advanced]``.",
     )
     thinking_standard_model: str = Field(
         default="anthropic/claude-sonnet-4-6",
@@ -65,7 +65,7 @@ class ChatConfig(BaseSettings):
             "CHAT_MODEL",
         ),
         description="SDK (extended-thinking) path, 'standard' / ``None`` "
-        "tier.  LD override: ``copilot-thinking-standard-model``.",
+        "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",
@@ -74,7 +74,7 @@ class ChatConfig(BaseSettings):
             "CHAT_ADVANCED_MODEL",
         ),
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
-        "override: ``copilot-thinking-advanced-model``.",
+        "override: ``copilot-model-routing[thinking][advanced]``.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",
@@ -207,14 +207,18 @@ class ChatConfig(BaseSettings):
         "overloaded). The SDK automatically retries with this cheaper model. "
         "Empty string disables the fallback (no --fallback-model flag passed to CLI).",
     )
-    claude_agent_max_turns: int = Field(
-        default=50,
+    agent_max_turns: int = Field(
+        default=100,
         ge=1,
         le=10000,
-        description="Maximum number of agentic turns (tool-use loops) per query. "
-        "Prevents runaway tool loops from burning budget. "
-        "Changed from 1000 to 50 in SDK 0.1.58 upgrade — override via "
-        "CHAT_CLAUDE_AGENT_MAX_TURNS env var if your workflows need more.",
+        validation_alias=AliasChoices(
+            "CHAT_AGENT_MAX_TURNS",
+            "CHAT_CLAUDE_AGENT_MAX_TURNS",
+        ),
+        description="Maximum number of tool-call rounds per turn — applies to "
+        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
+        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
+        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,
@@ -224,6 +228,20 @@ class ChatConfig(BaseSettings):
         "to wrap up gracefully when this budget is reached. "
         "Set to $10 to allow most tasks to complete (p50=$5.37, p75=$13.07). "
         "Override via CHAT_CLAUDE_AGENT_MAX_BUDGET_USD env var.",
+    )
+    claude_agent_autocompact_pct_override: int = Field(
+        default=50,
+        ge=0,
+        le=100,
+        description="Auto-compaction trigger threshold as a percentage of the "
+        "CLI's perceived window (sets ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` on the "
+        "SDK subprocess). The CLI caps at its default (~93% of window); values "
+        "above that have no effect. 50 (= 100K of a 200K window) keeps Anthropic "
+        "context creation costs down. Set to 0 to omit the env var entirely "
+        "and let the CLI use its default ~93% threshold — useful when the "
+        "post-compaction floor (system prompt + tool defs ≈ 65-110K) is close "
+        "to the trigger and a more aggressive value causes back-to-back "
+        "compaction cascades. Skipped unconditionally for Moonshot routes.",
     )
     claude_agent_max_thinking_tokens: int = Field(
         default=8192,

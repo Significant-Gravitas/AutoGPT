@@ -1,24 +1,31 @@
 """LaunchDarkly-aware model selection for the copilot.
 
 Each cell of the ``(mode, tier)`` matrix has a static default baked into
-``ChatConfig`` (see ``copilot/config.py``) and a matching LaunchDarkly
-string-valued feature flag that can override it per-user.  This module
-centralises the lookup so both the baseline and SDK paths agree on the
-selection rule and so A/B experiments can target a single cell without
-shipping a config change.
+``ChatConfig`` (see ``copilot/config.py``) and a single JSON-valued
+LaunchDarkly feature flag — ``copilot-model-routing`` — that can override
+it per-user.  This module centralises the lookup so both the baseline
+and SDK paths agree on the selection rule and so A/B experiments can
+target a single cell without shipping a config change.
 
 Matrix:
 
-    +----------+-------------------------------------+-------------------------------------+
-    |          | standard                            | advanced                            |
-    +----------+-------------------------------------+-------------------------------------+
-    | fast     | copilot-fast-standard-model         | copilot-fast-advanced-model         |
-    | thinking | copilot-thinking-standard-model     | copilot-thinking-advanced-model     |
-    +----------+-------------------------------------+-------------------------------------+
+    +----------+----------+----------+
+    |          | standard | advanced |
+    +----------+----------+----------+
+    | fast     |    .     |    .     |
+    | thinking |    .     |    .     |
+    +----------+----------+----------+
 
-LD flag values are arbitrary strings (model identifiers, e.g.
-``"anthropic/claude-sonnet-4-6"`` or ``"moonshotai/kimi-k2.6"``).  Empty
-or non-string values fall back to the config default.
+LD payload shape::
+
+    {
+      "fast":     {"standard": "anthropic/claude-sonnet-4-6", "advanced": "anthropic/claude-opus-4-6"},
+      "thinking": {"standard": "moonshotai/kimi-k2.6",         "advanced": "anthropic/claude-opus-4-6"}
+    }
+
+Missing mode, missing tier-within-mode, non-string cell value, non-dict
+payload, or LD failure all fall back to the corresponding ``ChatConfig``
+default.
 """
 
 from __future__ import annotations
@@ -33,14 +40,6 @@ logger = logging.getLogger(__name__)
 
 ModelMode = Literal["fast", "thinking"]
 ModelTier = Literal["standard", "advanced"]
-
-
-_FLAG_BY_CELL: dict[tuple[ModelMode, ModelTier], Flag] = {
-    ("fast", "standard"): Flag.COPILOT_FAST_STANDARD_MODEL,
-    ("fast", "advanced"): Flag.COPILOT_FAST_ADVANCED_MODEL,
-    ("thinking", "standard"): Flag.COPILOT_THINKING_STANDARD_MODEL,
-    ("thinking", "advanced"): Flag.COPILOT_THINKING_ADVANCED_MODEL,
-}
 
 
 def _config_default(config: ChatConfig, mode: ModelMode, tier: ModelTier) -> str:
@@ -66,38 +65,73 @@ async def resolve_model(
 ) -> str:
     """Return the model identifier for a ``(mode, tier)`` cell.
 
-    Consults the matching LaunchDarkly flag for *user_id* first and
-    falls back to the ``ChatConfig`` default on missing user, missing
-    flag, or non-string flag value.  Passing *config* explicitly keeps
-    the resolver cheap to unit-test.
+    Consults ``copilot-model-routing`` (JSON) for *user_id* — LD targeting is
+    still per-user so cohorts can receive different routing — and falls back to
+    the ``ChatConfig`` default on missing user, missing / invalid flag payload,
+    or non-string cell value.
     """
     fallback = _config_default(config, mode, tier).strip()
     if not user_id:
         return fallback
 
-    flag = _FLAG_BY_CELL[(mode, tier)]
     try:
-        value = await get_feature_flag_value(flag.value, user_id, default=fallback)
+        payload: object = await get_feature_flag_value(
+            Flag.COPILOT_MODEL_ROUTING.value, user_id, default=None
+        )
     except Exception:
         logger.warning(
-            "[model_router] LD lookup failed for %s — using config default %s",
-            flag.value,
+            "[model_router] LD lookup failed for copilot-model-routing — "
+            "using config default %s for (%s, %s)",
             fallback,
+            mode,
+            tier,
             exc_info=True,
         )
         return fallback
 
+    if payload is None:
+        return fallback
+
+    if not isinstance(payload, dict):
+        logger.warning(
+            "[model_router] copilot-model-routing expected a JSON object, got %r — "
+            "using config default %s for (%s, %s)",
+            payload,
+            fallback,
+            mode,
+            tier,
+        )
+        return fallback
+
+    mode_cell = payload.get(mode)
+    if mode in payload and not isinstance(mode_cell, dict):
+        # Operator typed something at the mode level (e.g. a string) instead of
+        # a {tier: model} dict — surface the typo in logs.
+        logger.warning(
+            "[model_router] copilot-model-routing[%s] expected a JSON object, "
+            "got %r — using config default %s for tier %s",
+            mode,
+            mode_cell,
+            fallback,
+            tier,
+        )
+    if not isinstance(mode_cell, dict):
+        return fallback
+
+    value = mode_cell.get(tier)
     if isinstance(value, str) and value.strip():
         return value.strip()
-    if value != fallback:
+    if value is not None:
         reason = (
             "empty string"
             if isinstance(value, str)
             else f"non-string ({type(value).__name__})"
         )
         logger.warning(
-            "[model_router] LD flag %s returned %s — using config default %s",
-            flag.value,
+            "[model_router] copilot-model-routing[%s][%s] returned %s — "
+            "using config default %s",
+            mode,
+            tier,
             reason,
             fallback,
         )

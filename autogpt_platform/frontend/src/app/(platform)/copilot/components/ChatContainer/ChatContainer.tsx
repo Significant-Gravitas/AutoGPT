@@ -6,6 +6,7 @@ import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
 import { useCallback } from "react";
 import { useCopilotUIStore } from "../../store";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -38,8 +39,8 @@ export interface ChatContainerProps {
   droppedFiles?: File[];
   /** Called after droppedFiles have been consumed by ChatInput. */
   onDroppedFilesConsumed?: () => void;
-  /** Duration in ms for historical turns, keyed by message ID. */
-  historicalDurations?: Map<string, number>;
+  /** Per-message stats (durationMs, createdAt), keyed by message ID. */
+  turnStats?: TurnStatsMap;
 }
 export const ChatContainer = ({
   messages,
@@ -62,7 +63,7 @@ export const ChatContainer = ({
   onLoadMore,
   droppedFiles,
   onDroppedFilesConsumed,
-  historicalDurations,
+  turnStats,
 }: ChatContainerProps) => {
   const isArtifactsEnabled = useGetFlag(Flag.ARTIFACTS);
   const isArtifactPanelOpen = useCopilotUIStore((s) => s.artifactPanel.isOpen);
@@ -116,7 +117,7 @@ export const ChatContainer = ({
                 isLoadingMore={isLoadingMore}
                 onLoadMore={onLoadMore}
                 onRetry={handleRetry}
-                historicalDurations={historicalDurations}
+                turnStats={turnStats}
                 queuedMessages={queuedMessages}
               />
               <motion.div
