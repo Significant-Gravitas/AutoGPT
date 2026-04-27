@@ -170,11 +170,7 @@ describe("useHydrateOnStreamEnd", () => {
     };
     const result = updater([msg("a"), promoted, msg("b")]);
     // Promoted bubble survives because no hydrated user message contains its text.
-    expect(result.map((m) => m.id)).toEqual([
-      "a",
-      "b",
-      "promoted-midturn-xyz",
-    ]);
+    expect(result.map((m) => m.id)).toEqual(["a", "b", "promoted-midturn-xyz"]);
   });
 
   it("drops promoted bubbles whose text is already represented in the DB", () => {
