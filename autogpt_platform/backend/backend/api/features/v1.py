@@ -36,7 +36,6 @@ from backend.api.model import (
     CreateAPIKeyResponse,
     CreateGraph,
     GraphExecutionSource,
-    ListAPIKeysPaginatedResponse,
     RequestTopUp,
     SetGraphActiveVersion,
     TimezoneResponse,
@@ -1994,38 +1993,6 @@ async def get_api_keys(
 ) -> list[api_key_db.APIKeyInfo]:
     """List all API keys for the user"""
     return await api_key_db.list_user_api_keys(user_id)
-
-
-@v1_router.get(
-    "/api-keys/paginated",
-    summary="List user API keys (paginated)",
-    tags=["api-keys"],
-    dependencies=[Security(requires_user)],
-)
-async def list_user_api_keys_paginated(
-    user_id: Annotated[str, Security(get_user_id)],
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 15,
-) -> ListAPIKeysPaginatedResponse:
-    """
-    List the caller's ACTIVE API keys with cursor-less pagination.
-
-    Powers the Settings v2 infinite-scroll API keys page. Revoked keys are
-    hidden by default so the list stays clean; the legacy ``/api-keys``
-    endpoint still returns every status for backward compatibility.
-    """
-    items, total_count = await api_key_db.list_user_api_keys_paginated(
-        user_id=user_id,
-        page=page,
-        page_size=page_size,
-    )
-    return ListAPIKeysPaginatedResponse(
-        items=items,
-        total_count=total_count,
-        page=page,
-        page_size=page_size,
-        has_more=page * page_size < total_count,
-    )
 
 
 @v1_router.get(
