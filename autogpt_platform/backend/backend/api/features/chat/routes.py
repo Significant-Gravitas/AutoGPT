@@ -847,6 +847,12 @@ def _ui_message_stream_headers() -> dict[str, str]:
 
 
 def _empty_ui_message_stream_response() -> StreamingResponse:
+    # Stable placeholder messageId for the empty queued-mid-turn stream.
+    # Real turns generate per-message UUIDs via the executor; this stream
+    # has no message to attach to, but the AI SDK parser still requires a
+    # non-empty ``messageId`` field on ``StreamStart``.
+    message_id = uuid4().hex
+
     async def event_generator() -> AsyncGenerator[str, None]:
         # Vercel AI SDK's UI-message-stream parser expects symmetric
         # start/finish framing at both stream and step level — every
@@ -854,7 +860,7 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
         # tolerates the closer (no active parts to flush) but a future SDK
         # tightening would silently break the queue-mid-turn UX.  Emit the
         # full empty pair so the contract stays correct.
-        yield StreamStart().to_sse()
+        yield StreamStart(messageId=message_id).to_sse()
         yield StreamStartStep().to_sse()
         yield StreamFinishStep().to_sse()
         yield StreamFinish().to_sse()
