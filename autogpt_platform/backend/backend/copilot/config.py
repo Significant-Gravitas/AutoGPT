@@ -49,14 +49,14 @@ class ChatConfig(BaseSettings):
             "CHAT_FAST_MODEL",
         ),
         description="Baseline path, 'standard' / ``None`` tier.  Per-user "
-        "overrides flow through the ``copilot-fast-standard-model`` LD flag "
+        "overrides flow through ``copilot-model-routing[fast][standard]`` "
         "(see ``copilot/model_router.py``); this value is the fallback.",
     )
     fast_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",
         validation_alias=AliasChoices("CHAT_FAST_ADVANCED_MODEL"),
         description="Baseline path, 'advanced' tier.  LD override: "
-        "``copilot-fast-advanced-model``.",
+        "``copilot-model-routing[fast][advanced]``.",
     )
     thinking_standard_model: str = Field(
         default="anthropic/claude-sonnet-4-6",
@@ -65,7 +65,7 @@ class ChatConfig(BaseSettings):
             "CHAT_MODEL",
         ),
         description="SDK (extended-thinking) path, 'standard' / ``None`` "
-        "tier.  LD override: ``copilot-thinking-standard-model``.",
+        "tier.  LD override: ``copilot-model-routing[thinking][standard]``.",
     )
     thinking_advanced_model: str = Field(
         default="anthropic/claude-opus-4.7",
@@ -74,7 +74,7 @@ class ChatConfig(BaseSettings):
             "CHAT_ADVANCED_MODEL",
         ),
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
-        "override: ``copilot-thinking-advanced-model``.",
+        "override: ``copilot-model-routing[thinking][advanced]``.",
     )
     title_model: str = Field(
         default="openai/gpt-4o-mini",

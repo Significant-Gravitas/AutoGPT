@@ -10,7 +10,10 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
 
 // --- Environment mock ---
 vi.mock("@/services/environment", () => ({
-  environment: { getAGPTServerBaseUrl: () => "http://localhost:8006" },
+  environment: {
+    getAGPTServerBaseUrl: () => "http://localhost:8006",
+    isServerSide: () => false,
+  },
 }));
 
 // --- API endpoints mock ---
@@ -35,6 +38,7 @@ const mockHasActiveBackendStream = vi.fn(
 vi.mock("../helpers", () => ({
   getCopilotAuthHeaders: vi.fn(async () => ({ Authorization: "Bearer test" })),
   deduplicateMessages: (msgs: UIMessage[]) => msgs,
+  parseSessionIDs: (_raw: string | null | undefined) => new Set<string>(),
   extractSendMessageText: (arg: unknown) =>
     arg && typeof arg === "object" && "text" in arg
       ? String((arg as { text: string }).text)
@@ -148,6 +152,7 @@ import {
 } from "../copilotChatRegistry";
 import { useCopilotStreamStore } from "../copilotStreamStore";
 import { RESTORE_STALL_TIMEOUT_MS } from "../restoreConstants";
+import { useCopilotUIStore } from "../store";
 import { useCopilotStream } from "../useCopilotStream";
 
 type Args = Parameters<typeof useCopilotStream>[0];
@@ -623,5 +628,87 @@ describe("useCopilotStream — mount preserves session runtime state", () => {
     });
 
     expect(mockSetMessages).not.toHaveBeenCalledWith([]);
+  });
+});
+
+describe("useCopilotStream — rate-limit recovery", () => {
+  it("restores the unsent text and drops the optimistic user bubble on 429 usage-limit", async () => {
+    useCopilotUIStore.getState().setInitialPrompt(null);
+    useCopilotStreamStore
+      .getState()
+      .updateCoord("sess-1", { lastSubmittedMessageText: "recover me" });
+
+    const { result } = renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-1" }),
+    });
+
+    await act(async () => {
+      await getOrCreateCopilotChatRuntime("sess-1").onError?.(
+        new Error(JSON.stringify({ detail: "Daily usage limit exceeded" })),
+      );
+    });
+
+    expect(useCopilotUIStore.getState().initialPrompt).toBe("recover me");
+    expect(result.current.rateLimitMessage).toContain("Daily usage limit");
+    expect(
+      useCopilotStreamStore.getState().getCoord("sess-1")
+        .lastSubmittedMessageText,
+    ).toBeNull();
+
+    const dropCall = mockSetMessages.mock.calls.find(([arg]) => {
+      if (typeof arg !== "function") return false;
+      const prev: UIMessage[] = [
+        {
+          id: "u1",
+          role: "user",
+          parts: [{ type: "text", text: "recover me" }],
+        } as unknown as UIMessage,
+      ];
+      const next = (arg as (p: UIMessage[]) => UIMessage[])(prev);
+      return next.length === 0;
+    });
+    expect(dropCall).toBeTruthy();
+
+    // Branch: when the trailing message is NOT a user bubble (e.g. an
+    // assistant turn already landed), the rollback updater must leave the
+    // list untouched so we don't clobber the assistant reply.
+    const updater = mockSetMessages.mock.calls
+      .map(([arg]) => arg)
+      .find(
+        (arg): arg is (p: UIMessage[]) => UIMessage[] =>
+          typeof arg === "function",
+      );
+    expect(updater).toBeDefined();
+    const assistantOnly: UIMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "ok" }],
+      } as unknown as UIMessage,
+    ];
+    expect(updater!(assistantOnly)).toBe(assistantOnly);
+    expect(updater!([])).toEqual([]);
+  });
+
+  it("skips composer restore on 429 when there is no captured unsent text", async () => {
+    useCopilotUIStore.getState().setInitialPrompt(null);
+    renderHook((args: Args) => useCopilotStream(args), {
+      initialProps: makeArgs({ sessionId: "sess-1" }),
+    });
+
+    await act(async () => {
+      await getOrCreateCopilotChatRuntime("sess-1").onError?.(
+        new Error(JSON.stringify({ detail: "Daily usage limit exceeded" })),
+      );
+    });
+
+    // No prior sendMessage → coord lastSubmittedMessageText stays null →
+    // restore branch must be skipped. The store stays untouched and
+    // setMessages is NOT invoked with a rollback updater.
+    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+    const rollbackUpdaterCall = mockSetMessages.mock.calls.find(
+      ([arg]) => typeof arg === "function",
+    );
+    expect(rollbackUpdaterCall).toBeUndefined();
   });
 });

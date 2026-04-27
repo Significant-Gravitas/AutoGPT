@@ -70,7 +70,8 @@ _DEFAULT_TIER_PRICES: dict[SubscriptionTier, str | None] = {
 
 @pytest.fixture(autouse=True)
 def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
-    """Stub Stripe price + proration lookups used by get_subscription_status.
+    """Stub Stripe price + proration + tier-multiplier lookups used by
+    get_subscription_status.
 
     The POST /credits/subscription handler now returns the full subscription
     status payload from every branch (same-tier, BASIC downgrade, paid→paid
@@ -89,6 +90,16 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         "backend.api.features.v1.get_proration_credit_cents",
         new_callable=AsyncMock,
         return_value=0,
+    )
+    # Default tier-multiplier resolver to the backend defaults so the endpoint
+    # never reaches LaunchDarkly during tests.  Individual tests override for
+    # LD-override scenarios.
+    from backend.copilot.rate_limit import _DEFAULT_TIER_MULTIPLIERS
+
+    mocker.patch(
+        "backend.api.features.v1.get_tier_multipliers",
+        new_callable=AsyncMock,
+        return_value=dict(_DEFAULT_TIER_MULTIPLIERS),
     )
 
 
@@ -187,6 +198,51 @@ def test_get_subscription_status_pro(
     assert data["tier_costs"]["BASIC"] == 0
     assert "ENTERPRISE" not in data["tier_costs"]
     assert data["proration_credit_cents"] == 500
+    # tier_multipliers mirrors the same set of tiers that land in tier_costs,
+    # so the frontend never renders a multiplier badge for a hidden row.
+    assert set(data["tier_multipliers"].keys()) == set(data["tier_costs"].keys())
+    assert data["tier_multipliers"]["BASIC"] == 1.0
+    assert data["tier_multipliers"]["PRO"] == 5.0
+    assert data["tier_multipliers"]["MAX"] == 20.0
+    assert data["tier_multipliers"]["BUSINESS"] == 60.0
+
+
+def test_get_subscription_status_tier_multipliers_ld_override(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A LaunchDarkly-overridden tier multiplier flows through the response."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BASIC
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+
+    # LD says PRO is 7.5× (instead of the 5× default); other tiers unchanged.
+    mocker.patch(
+        "backend.api.features.v1.get_tier_multipliers",
+        new_callable=AsyncMock,
+        return_value={
+            SubscriptionTier.BASIC: 1.0,
+            SubscriptionTier.PRO: 7.5,
+            SubscriptionTier.MAX: 20.0,
+            SubscriptionTier.BUSINESS: 60.0,
+            SubscriptionTier.ENTERPRISE: 60.0,
+        },
+    )
+
+    response = client.get("/credits/subscription")
+    assert response.status_code == 200
+    data = response.json()
+    # Only tiers that made it into tier_costs get a multiplier (default stub
+    # exposes PRO + MAX via _DEFAULT_TIER_PRICES).
+    assert data["tier_multipliers"]["PRO"] == 7.5
+    assert data["tier_multipliers"]["MAX"] == 20.0
+    # BUSINESS has no price configured → hidden from both maps.
+    assert "BUSINESS" not in data["tier_multipliers"]
 
 
 def test_get_subscription_status_defaults_to_basic(

@@ -70,6 +70,7 @@ function makeSubscription({
   tier = "BASIC",
   monthlyCost = 0,
   tierCosts = { BASIC: 0, PRO: 1999, MAX: 32000, ENTERPRISE: 0 },
+  tierMultipliers = { BASIC: 1, PRO: 5, MAX: 20, BUSINESS: 60 },
   prorationCreditCents = 0,
   pendingTier = null as string | null,
   pendingTierEffectiveAt = null as Date | string | null,
@@ -77,6 +78,7 @@ function makeSubscription({
   tier?: string;
   monthlyCost?: number;
   tierCosts?: Record<string, number>;
+  tierMultipliers?: Record<string, number>;
   prorationCreditCents?: number;
   pendingTier?: string | null;
   pendingTierEffectiveAt?: Date | string | null;
@@ -85,6 +87,7 @@ function makeSubscription({
     tier,
     monthly_cost: monthlyCost,
     tier_costs: tierCosts,
+    tier_multipliers: tierMultipliers,
     proration_credit_cents: prorationCreditCents,
     pending_tier: pendingTier,
     pending_tier_effective_at: pendingTierEffectiveAt,
@@ -376,6 +379,50 @@ describe("SubscriptionTierSection", () => {
     expect(screen.getByText("Pro")).toBeDefined();
     expect(screen.queryByText("Max")).toBeNull();
     expect(screen.queryByText("Basic")).toBeNull();
+  });
+
+  it("renders rate-limit badges relative to the lowest visible tier", () => {
+    // BASIC is baseline (1×) → no badge; PRO/MAX/BUSINESS show their ratio.
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BASIC",
+        tierCosts: { BASIC: 0, PRO: 1999, MAX: 32000, BUSINESS: 14999 },
+        tierMultipliers: { BASIC: 1, PRO: 5, MAX: 20, BUSINESS: 60 },
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.queryByText(/1\.0x rate limits/i)).toBeNull();
+    expect(screen.getByText(/5\.0x rate limits/i)).toBeDefined();
+    expect(screen.getByText(/20\.0x rate limits/i)).toBeDefined();
+    expect(screen.getByText(/60\.0x rate limits/i)).toBeDefined();
+  });
+
+  it("rebases relative multipliers when the lowest tier is hidden", () => {
+    // With BASIC hidden, PRO becomes the baseline (no badge) and MAX shows
+    // "4.0x rate limits" (20 / 5).
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "PRO",
+        tierCosts: { PRO: 1999, MAX: 32000 },
+        tierMultipliers: { PRO: 5, MAX: 20 },
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.queryByText(/5\.0x rate limits/i)).toBeNull();
+    expect(screen.getByText(/4\.0x rate limits/i)).toBeDefined();
+  });
+
+  it("honours fractional LD-provided multipliers in the relative display", () => {
+    // LD can override the multiplier to a non-integer value (e.g. PRO=8.5×).
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "BASIC",
+        tierCosts: { BASIC: 0, PRO: 1999 },
+        tierMultipliers: { BASIC: 1, PRO: 8.5 },
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(screen.getByText(/8\.5x rate limits/i)).toBeDefined();
   });
 
   it("shows ENTERPRISE message for ENTERPRISE tier users", () => {

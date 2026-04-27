@@ -66,7 +66,14 @@ from backend.util.exceptions import (
 )
 from backend.util.settings import Settings
 
-from .models import ProviderConstants, ProviderNamesResponse, get_all_provider_names
+from .models import (
+    ProviderConstants,
+    ProviderMetadata,
+    ProviderNamesResponse,
+    get_all_provider_names,
+    get_provider_description,
+    get_supported_auth_types,
+)
 
 if TYPE_CHECKING:
     from backend.integrations.oauth import BaseOAuthHandler
@@ -1204,20 +1211,37 @@ async def get_ayrshare_sso_url(
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
-@router.get("/providers", response_model=List[str])
-async def list_providers() -> List[str]:
+@router.get("/providers", response_model=List[ProviderMetadata])
+async def list_providers() -> List[ProviderMetadata]:
     """
-    Get a list of all available provider names.
+    Get metadata for every available provider.
 
-    Returns both statically defined providers (from ProviderName enum)
-    and dynamically registered providers (from SDK decorators).
+    Returns both statically defined providers (from ``ProviderName`` enum) and
+    dynamically registered providers (from SDK decorators). Each entry includes
+    a ``description`` declared via ``ProviderBuilder.with_description(...)`` in
+    the provider's ``_config.py``.
 
     Note: The complete list of provider names is also available as a constant
     in the generated TypeScript client via PROVIDER_NAMES.
     """
-    # Get all providers at runtime
+    # Ensure all block modules (and therefore every provider's _config.py) are
+    # imported before we read from AutoRegistry. Cached on first call.
+    try:
+        from backend.blocks import load_all_blocks
+
+        load_all_blocks()
+    except Exception as e:
+        logger.warning(f"Failed to load blocks for provider metadata: {e}")
+
     all_providers = get_all_provider_names()
-    return all_providers
+    return [
+        ProviderMetadata(
+            name=name,
+            description=get_provider_description(name),
+            supported_auth_types=get_supported_auth_types(name),
+        )
+        for name in all_providers
+    ]
 
 
 @router.get("/providers/system", response_model=List[str])

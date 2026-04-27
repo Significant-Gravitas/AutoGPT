@@ -80,20 +80,148 @@ class SubscriptionTier(str, Enum):
     ENTERPRISE = "ENTERPRISE"
 
 
-# Multiplier applied to the base cost limits (from LD / config) for each tier.
-# Intentionally int (not float): keeps limits as whole microdollars and avoids
-# floating-point rounding. If fractional multipliers are ever needed, change
-# the type and round the result in get_global_rate_limits().
-# BUSINESS matches ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier.
-TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
-    SubscriptionTier.BASIC: 1,
-    SubscriptionTier.PRO: 5,
-    SubscriptionTier.MAX: 20,
-    SubscriptionTier.BUSINESS: 60,
-    SubscriptionTier.ENTERPRISE: 60,
+# Default multiplier applied to the base cost limits (from LD / config) for each
+# tier. Used as the fallback when the LD flag ``copilot-tier-multipliers`` is
+# unset or unparseable — see ``get_tier_multipliers``.  BUSINESS matches
+# ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier. Float-typed
+# so LD-provided fractional multipliers (e.g. 8.5×) compose naturally; the
+# eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
+# downstream microdollar math integer.
+_DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
+    SubscriptionTier.BASIC: 1.0,
+    SubscriptionTier.PRO: 5.0,
+    SubscriptionTier.MAX: 20.0,
+    SubscriptionTier.BUSINESS: 60.0,
+    SubscriptionTier.ENTERPRISE: 60.0,
 }
 
+# Public re-export retained for backward compatibility with call-sites / tests
+# that historically read ``TIER_MULTIPLIERS`` directly.  New code should prefer
+# ``get_tier_multipliers`` so LD overrides are honoured.
+TIER_MULTIPLIERS = _DEFAULT_TIER_MULTIPLIERS
+
 DEFAULT_TIER = SubscriptionTier.BASIC
+
+
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None:
+    """Fetch the ``copilot-tier-multipliers`` LD flag and parse it.
+
+    Returns a sparse ``{tier: multiplier}`` map built from whichever keys are
+    valid in the flag payload, or ``None`` when the flag is unset / invalid /
+    LD is unavailable.  ``cache_none=False`` avoids pinning a transient LD
+    failure for a full minute — the next call retries.
+
+    The LD value is expected to be a JSON object keyed by tier enum name
+    (``{"BASIC": 1, "PRO": 5, "BUSINESS": 20.5}``).  Unknown tier keys and
+    non-numeric / non-positive values are skipped; callers merge whatever
+    survives into :data:`_DEFAULT_TIER_MULTIPLIERS`.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(
+        Flag.COPILOT_TIER_MULTIPLIERS.value, "system", None
+    )
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-tier-multipliers (expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[SubscriptionTier, float] = {}
+    for key, value in raw.items():
+        try:
+            tier = SubscriptionTier(key)
+        except ValueError:
+            continue
+        try:
+            multiplier = float(value)
+        except (TypeError, ValueError):
+            continue
+        if multiplier <= 0:
+            continue
+        parsed[tier] = multiplier
+    return parsed or None
+
+
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_cost_limits_flag() -> dict[str, int] | None:
+    """Fetch the ``copilot-cost-limits`` LD flag and parse it.
+
+    Returns a sparse ``{"daily": int, "weekly": int}`` map built from whichever
+    keys are valid in the flag payload, or ``None`` when the flag is unset /
+    invalid / LD is unavailable.  Callers merge whatever survives into their
+    config defaults (see :func:`get_global_rate_limits`).
+
+    The LD value is expected to be a JSON object keyed by window name
+    (``{"daily": 625000, "weekly": 3125000}``).  Non-int / negative values
+    are skipped so a broken key degrades to the config default instead of
+    wiping out the limit.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(Flag.COPILOT_COST_LIMITS.value, "system", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-cost-limits (expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[str, int] = {}
+    for key in ("daily", "weekly"):
+        if key not in raw:
+            continue
+        value = raw[key]
+        # Strict int check — booleans are subclasses of int in Python, and we
+        # don't want to coerce strings like "100" or floats like 1.9 silently
+        # into a rate-limit cap. Docstring says "non-int values are skipped".
+        if isinstance(value, bool) or not isinstance(value, int):
+            logger.warning(
+                "Invalid LD value for copilot-cost-limits[%s]: %r", key, value
+            )
+            continue
+        if value < 0:
+            logger.warning(
+                "Negative LD value for copilot-cost-limits[%s]: %r", key, value
+            )
+            continue
+        parsed[key] = value
+    return parsed or None
+
+
+async def get_tier_multipliers() -> dict[str, float]:
+    """Return the effective ``{tier_value: multiplier}`` map.
+
+    Honours the ``copilot-tier-multipliers`` LD flag when set; missing tiers
+    inherit :data:`_DEFAULT_TIER_MULTIPLIERS`.  Unparseable flag values or LD
+    fetch failures fall back to the defaults without raising.
+
+    Keys are the tier enum string values (``"BASIC"``, ``"PRO"``, …) rather
+    than the enum itself so callers holding ``prisma.enums.SubscriptionTier``
+    don't hit a spurious mismatch against this module's local mirror.
+
+    The flag is evaluated system-wide — per-tier multipliers are a global knob.
+    If per-cohort overrides are ever needed, add a user_id parameter here and
+    thread it through ``_fetch_tier_multipliers_flag`` to LD.
+    """
+    try:
+        override = await _fetch_tier_multipliers_flag()
+    except Exception:
+        # LD SDK / Redis / network failures here are best-effort — fall back.
+        logger.warning("get_tier_multipliers: LD lookup failed", exc_info=True)
+        override = None
+    merged: dict[SubscriptionTier, float] = dict(_DEFAULT_TIER_MULTIPLIERS)
+    if override:
+        merged.update(override)
+    return {tier.value: multiplier for tier, multiplier in merged.items()}
 
 
 class UsageWindow(BaseModel):
@@ -673,37 +801,27 @@ async def get_global_rate_limits(
     Returns:
         (daily_cost_limit, weekly_cost_limit, tier) — limits in microdollars.
     """
-    # Lazy import to avoid circular dependency:
-    # rate_limit -> feature_flag -> settings -> ... -> rate_limit
-    from backend.util.feature_flag import Flag, get_feature_flag_value
-
-    # Fetch daily + weekly flags in parallel — each LD evaluation is an
-    # independent network round-trip, so gather cuts latency roughly in half.
-    daily_raw, weekly_raw = await asyncio.gather(
-        get_feature_flag_value(
-            Flag.COPILOT_DAILY_COST_LIMIT.value, user_id, config_daily
-        ),
-        get_feature_flag_value(
-            Flag.COPILOT_WEEKLY_COST_LIMIT.value, user_id, config_weekly
-        ),
-    )
     try:
-        daily = max(0, int(daily_raw))
-    except (TypeError, ValueError):
-        logger.warning("Invalid LD value for daily cost limit: %r", daily_raw)
-        daily = config_daily
-    try:
-        weekly = max(0, int(weekly_raw))
-    except (TypeError, ValueError):
-        logger.warning("Invalid LD value for weekly cost limit: %r", weekly_raw)
-        weekly = config_weekly
+        override = await _fetch_cost_limits_flag()
+    except Exception:
+        logger.warning("get_global_rate_limits: LD lookup failed", exc_info=True)
+        override = None
+    override = override or {}
+    daily = override.get("daily", config_daily)
+    weekly = override.get("weekly", config_weekly)
 
-    # Apply tier multiplier
+    # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
+    # so multipliers can be tuned without a deploy. Falls back to the defaults
+    # when LD is unavailable.
     tier = await get_user_tier(user_id)
-    multiplier = TIER_MULTIPLIERS.get(tier, 1)
-    if multiplier != 1:
-        daily = daily * multiplier
-        weekly = weekly * multiplier
+    multipliers = await get_tier_multipliers()
+    multiplier = multipliers.get(tier.value, 1.0)
+    if multiplier != 1.0:
+        # Cast back to int to preserve the microdollar integer contract
+        # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the
+        # last microdollar, which is well below any meaningful precision.
+        daily = int(daily * multiplier)
+        weekly = int(weekly * multiplier)
 
     return daily, weekly, tier
 

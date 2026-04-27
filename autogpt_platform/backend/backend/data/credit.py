@@ -1944,25 +1944,26 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
 async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
     """Return Stripe Price ID for a tier from LaunchDarkly, cached for 60 seconds.
 
-    Price IDs are LaunchDarkly flag values that change only at deploy time.
-    Caching for 60 seconds avoids hitting the LD SDK on every webhook delivery
-    and every GET /credits/subscription page load (called 2x per request).
+    Reads the ``copilot-tier-stripe-prices`` JSON flag once and looks up the
+    requested tier. The flag is a JSON object keyed by tier enum value
+    (``{"PRO": "price_xxx", "MAX": "price_yyy"}``); tiers missing from the
+    payload resolve to ``None`` ("not offered").
 
     ``cache_none=False`` prevents a transient LD failure from caching ``None``
     and blocking subscription upgrades for the full 60-second TTL window.
-    ENTERPRISE has no LD flag and returns None from an O(1) dict lookup before
-    hitting LD, so the extra LD call is never made.
     """
-    flag_map = {
-        SubscriptionTier.BASIC: Flag.STRIPE_PRICE_BASIC,
-        SubscriptionTier.PRO: Flag.STRIPE_PRICE_PRO,
-        SubscriptionTier.MAX: Flag.STRIPE_PRICE_MAX,
-        SubscriptionTier.BUSINESS: Flag.STRIPE_PRICE_BUSINESS,
-    }
-    flag = flag_map.get(tier)
-    if flag is None:
+    raw = await get_feature_flag_value(
+        Flag.COPILOT_TIER_STRIPE_PRICES.value, user_id="system", default=None
+    )
+    if raw is None:
         return None
-    price_id = await get_feature_flag_value(flag.value, user_id="system", default="")
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-tier-stripe-prices (expected JSON object): %r",
+            raw,
+        )
+        return None
+    price_id = raw.get(tier.value)
     return price_id if isinstance(price_id, str) and price_id else None
 
 

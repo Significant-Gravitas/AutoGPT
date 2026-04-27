@@ -142,6 +142,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
@@ -331,6 +332,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_7_OPUS: ModelMetadata(
+        "anthropic", 200000, 128000, "Claude Opus 4.7", "Anthropic", "Anthropic", 3
+    ),  # claude-opus-4-7
     LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-sonnet-4-6
@@ -1624,6 +1628,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                                 llm_call_count=retry_count + 1,
                                 llm_retry_count=retry_count,
                                 provider_cost=total_provider_cost,
+                                provider_cost_type=(
+                                    "cost_usd"
+                                    if total_provider_cost is not None
+                                    else None
+                                ),
                             )
                         )
                         yield "response", response_obj
@@ -1645,6 +1654,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             llm_call_count=retry_count + 1,
                             llm_retry_count=retry_count,
                             provider_cost=total_provider_cost,
+                            provider_cost_type=(
+                                "cost_usd" if total_provider_cost is not None else None
+                            ),
                         )
                     )
                     yield "response", {"response": response_text}
@@ -1679,7 +1691,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         # All retries exhausted or user-error break: persist accumulated cost so
         # the executor can still charge/report the spend even on failure.
         if total_provider_cost is not None:
-            self.merge_stats(NodeExecutionStats(provider_cost=total_provider_cost))
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=total_provider_cost,
+                    provider_cost_type="cost_usd",
+                )
+            )
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(
