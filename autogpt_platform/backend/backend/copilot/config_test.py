@@ -203,35 +203,38 @@ class TestSdkModelVendorCompatibility:
     guard in ``_normalize_model_name`` so misconfig surfaces at boot
     instead of as a 500 on the first SDK turn."""
 
-    def test_direct_anthropic_with_kimi_default_raises(self):
-        """The ``moonshotai/kimi-k2.6`` default must fail at config load
-        when the deployment has no OpenRouter credentials."""
+    def test_direct_anthropic_with_kimi_override_raises(self):
+        """A non-Anthropic SDK model must fail at config load when the
+        deployment has no OpenRouter credentials."""
         with pytest.raises(Exception, match="requires an Anthropic model"):
             ChatConfig(
                 use_openrouter=False,
                 api_key=None,
                 base_url=None,
                 use_claude_code_subscription=False,
+                thinking_standard_model="moonshotai/kimi-k2.6",
             )
 
-    def test_direct_anthropic_with_anthropic_override_succeeds(self):
-        """Direct-Anthropic mode is fine when both SDK slugs are anthropic/*."""
+    def test_direct_anthropic_with_anthropic_default_succeeds(self):
+        """Direct-Anthropic mode is fine when both SDK slugs are anthropic/*
+        — which is the default after the LD-routed model rollout."""
         cfg = ChatConfig(
             use_openrouter=False,
             api_key=None,
             base_url=None,
             use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
         )
         assert cfg.thinking_standard_model == "anthropic/claude-sonnet-4-6"
 
-    def test_openrouter_with_kimi_default_succeeds(self):
-        """Default Kimi slug round-trips cleanly when OpenRouter is on."""
+    def test_openrouter_with_kimi_override_succeeds(self):
+        """Kimi slug round-trips cleanly when OpenRouter is on — exercised
+        via the LD-flag override path in production."""
         cfg = ChatConfig(
             use_openrouter=True,
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
             use_claude_code_subscription=False,
+            thinking_standard_model="moonshotai/kimi-k2.6",
         )
         assert cfg.thinking_standard_model == "moonshotai/kimi-k2.6"
 

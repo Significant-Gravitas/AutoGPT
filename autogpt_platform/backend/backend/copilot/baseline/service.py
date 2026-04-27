@@ -45,6 +45,8 @@ from backend.copilot.model import (
     maybe_append_user_message,
     upsert_chat_session,
 )
+from backend.copilot.model_router import resolve_model
+from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.pending_message_helpers import (
     combine_pending_with_current,
     drain_pending_safe,
@@ -119,8 +121,57 @@ logger = logging.getLogger(__name__)
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-# Maximum number of tool-call rounds before forcing a text response.
-_MAX_TOOL_ROUNDS = 30
+# Hint appended on the last tool round so the model wraps up with a summary
+# instead of issuing another tool call that gets cut off cold. The shared
+# ``tool_call_loop`` drops ``tools`` on the last iteration (see util/tool_call_loop.py),
+# so the model is forced to produce text and always finishes naturally.
+_LAST_ITERATION_HINT = (
+    "You have reached the tool-call budget for this turn. Do not call any "
+    "more tools — produce a final text response summarizing what you did, "
+    "what remains, and how the user can continue the work in the next turn."
+)
+
+# Fallback surfaced when the tool-round budget is exhausted *and* the forced-
+# text last round left the user with zero visible response.
+_BUDGET_EXHAUSTED_FALLBACK_TEXT = (
+    "Reached the tool-call budget for this turn. "
+    "Send a follow-up message to continue from here."
+)
+
+
+def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
+    """Return the fallback notice when a budget-exhausted turn produced no
+    visible text, or ``None`` when the model already summarised itself.
+
+    ``terminal_round_text`` is the text added by the *final* round only —
+    earlier-round chatter shouldn't mask a silent final round.
+    """
+    if terminal_round_text.strip():
+        return None
+    return _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+def _build_budget_exhausted_fallback_events(
+    terminal_round_text: str,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Build the fallback stream events surfaced when a budget-exhausted
+    turn left the terminal round with no visible text.
+
+    Returns ``(events, text_to_append)``.  Empty list + empty string when
+    no fallback is needed.  Split out of the async generator so it's unit-
+    testable without the surrounding streaming machinery.
+    """
+    notice = _budget_exhausted_notice_text(terminal_round_text)
+    if notice is None:
+        return [], ""
+    block_id = str(uuid.uuid4())
+    events: list[StreamBaseResponse] = [
+        StreamTextStart(id=block_id),
+        StreamTextDelta(id=block_id, delta=notice),
+        StreamTextEnd(id=block_id),
+    ]
+    return events, notice
+
 
 # Max seconds to wait for transcript upload in the finally block before
 # letting it continue as a background task (tracked in _background_tasks).
@@ -318,20 +369,17 @@ def _filter_tools_by_permissions(
     ]
 
 
-def _resolve_baseline_model(tier: CopilotLlmModel | None) -> str:
+async def _resolve_baseline_model(
+    tier: CopilotLlmModel | None, user_id: str | None
+) -> str:
     """Pick the model for the baseline path based on the per-request tier.
 
-    Baseline resolves independently of SDK via the ``fast_*_model`` cells
-    of the (path, tier) matrix.  ``'standard'`` / ``None`` picks Kimi
-    K2.6 by default (cheap + OpenRouter ``reasoning`` support);
-    ``'advanced'`` picks Opus by default so the advanced tier is a clean
-    A/B against the SDK advanced tier — same model, different path —
-    isolating reasoning-wire + cache differences from model capability.
-    Both defaults are overridable per ``CHAT_FAST_*_MODEL`` env vars.
+    Delegates to :func:`copilot.model_router.resolve_model` so the
+    ``(fast, tier)`` cell is LD-overridable per user.  ``None`` tier
+    maps to ``"standard"``.
     """
-    if tier == "advanced":
-        return config.fast_advanced_model
-    return config.fast_standard_model
+    tier_name = "advanced" if tier == "advanced" else "standard"
+    return await resolve_model("fast", tier_name, user_id, config=config)
 
 
 @dataclass
@@ -428,23 +476,37 @@ def _emit_all(
 def _is_anthropic_model(model: str) -> bool:
     """Return True if *model* routes to Anthropic (native or via OpenRouter).
 
-    Cache-control markers on message content + the ``anthropic-beta`` header
-    are Anthropic-specific.  OpenAI rejects the unknown ``cache_control``
-    field with a 400 ("Extra inputs are not permitted") and Grok / other
-    providers behave similarly.  OpenRouter strips unknown headers but
-    passes through ``cache_control`` on the body regardless of provider —
-    which would also fail when OpenRouter routes to a non-Anthropic model.
-
     Examples that return True:
       - ``anthropic/claude-sonnet-4-6`` (OpenRouter route)
       - ``claude-3-5-sonnet-20241022`` (direct Anthropic API)
       - ``anthropic.claude-3-5-sonnet`` (Bedrock-style)
 
     False for ``openai/gpt-4o``, ``google/gemini-2.5-pro``, ``xai/grok-4``
-    etc.
+    etc.  Moonshot is False here too even though Moonshot's
+    Anthropic-compat endpoint honours ``cache_control`` — use
+    :func:`_supports_prompt_cache_markers` for the cache-gating decision,
+    which also allows Moonshot routes.  This function stays scoped to
+    "genuinely Anthropic" so callers that need the stricter check (e.g.
+    ``anthropic-beta`` header emission) keep their existing semantics.
     """
     lowered = model.lower()
     return "claude" in lowered or lowered.startswith("anthropic")
+
+
+def _supports_prompt_cache_markers(model: str) -> bool:
+    """Return True when *model* accepts Anthropic-style ``cache_control``.
+
+    Superset of :func:`_is_anthropic_model` — also allows Moonshot
+    (``moonshotai/*``), whose OpenRouter Anthropic-compat endpoint
+    honours the marker and empirically lifts cache hit rate on
+    continuation turns from near-zero (Moonshot's own automatic prefix
+    cache, which drifts readily) to the 60-95% Anthropic ballpark.
+
+    OpenAI / Grok / Gemini still 400 on ``cache_control``, so this
+    function returns False for those providers — add new vendors here
+    only after verifying their endpoint accepts the field.
+    """
+    return _is_anthropic_model(model) or is_moonshot_model(model)
 
 
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
@@ -567,19 +629,24 @@ async def _baseline_llm_caller(
     round_text = ""
     try:
         client = _get_openai_client()
-        # Cache markers are Anthropic-specific.  For OpenAI/Grok/other
-        # providers, leaving them on would trigger a 400 ("Extra inputs
-        # are not permitted" on cache_control).  Tools were precomputed
-        # in stream_chat_completion_baseline via _mark_tools_with_cache_control
-        # (only when the model was Anthropic), so on non-Anthropic routes
-        # tools ship without cache_control on the last entry too.
+        # Cache markers are accepted by Anthropic AND Moonshot (via OR's
+        # Anthropic-compat endpoint).  OpenAI/Grok/Gemini 400 on the
+        # unknown ``cache_control`` field — tools were precomputed in
+        # stream_chat_completion_baseline via _mark_tools_with_cache_control
+        # with the same gate, so on unsupported routes tools ship
+        # unmarked too.
         #
-        # `extra_body` `usage.include=true` asks OpenRouter to embed the real
-        # generation cost into the final usage chunk — required by the
-        # cost-based rate limiter in routes.py.  Separate from the Anthropic
+        # The ``anthropic-beta`` header is only emitted for genuinely
+        # Anthropic routes (see :func:`_is_anthropic_model`) — Moonshot
+        # doesn't need the beta header; sending it is a no-op but we
+        # keep the check strict for clarity.
+        #
+        # `extra_body` `usage.include=true` asks OpenRouter to embed the
+        # real generation cost into the final usage chunk — required by
+        # the cost-based rate limiter in routes.py.  Separate from the
         # caching headers, always sent.
-        is_anthropic = _is_anthropic_model(state.model)
-        if is_anthropic:
+        supports_cache = _supports_prompt_cache_markers(state.model)
+        if supports_cache:
             # Build the cached system dict once per session and splice it in
             # on each round.  The full ``messages`` list grows with every
             # tool call, so copying the entire list just to mutate index 0
@@ -595,7 +662,11 @@ async def _baseline_llm_caller(
                 final_messages = [state.cached_system_message, *messages[1:]]
             else:
                 final_messages = messages
-            extra_headers = _fresh_anthropic_caching_headers()
+            extra_headers = (
+                _fresh_anthropic_caching_headers()
+                if _is_anthropic_model(state.model)
+                else None
+            )
         else:
             final_messages = messages
             extra_headers = None
@@ -1358,7 +1429,7 @@ async def stream_chat_completion_baseline(
     # Select model based on the per-request tier toggle (standard / advanced).
     # The path (fast vs extended_thinking) is already decided — we're in the
     # baseline (fast) path; ``mode`` is accepted for logging parity only.
-    active_model = _resolve_baseline_model(model)
+    active_model = await _resolve_baseline_model(model, user_id)
 
     # --- E2B sandbox setup (feature parity with SDK path) ---
     e2b_sandbox = None
@@ -1638,9 +1709,10 @@ async def stream_chat_completion_baseline(
     # _baseline_llm_caller) avoids re-copying ~43 tool dicts on every LLM
     # round of the tool-call loop.
     #
-    # Only apply to Anthropic routes — OpenAI/Grok/other providers would
-    # 400 on the unknown ``cache_control`` field inside tool definitions.
-    if _is_anthropic_model(active_model):
+    # Applies to Anthropic AND Moonshot routes — OpenAI/Grok/Gemini 400
+    # on the unknown ``cache_control`` field inside tool definitions, so
+    # the gate stays narrow (see :func:`_supports_prompt_cache_markers`).
+    if _supports_prompt_cache_markers(active_model):
         tools = cast(
             list[ChatCompletionToolParam], _mark_tools_with_cache_control(tools)
         )
@@ -1713,6 +1785,12 @@ async def stream_chat_completion_baseline(
     # UI for the whole window before flushing the backlog in one burst.
     loop_result_holder: list[Any] = [None]
     loop_task: asyncio.Task[None] | None = None
+    # Length of ``state.assistant_text`` at the end of the last non-final
+    # yield — used as an anchor by the budget-exhausted fallback to check
+    # whether the *terminal* round produced any visible text, not the whole
+    # turn. Without this, earlier-round chatter would suppress a fallback
+    # that should fire.
+    text_len_before_final_round: list[int] = [0]
 
     async def _run_tool_call_loop() -> None:
         # Read/write the current session via ``_session_holder`` so this
@@ -1721,13 +1799,15 @@ async def stream_chat_completion_baseline(
         # but the holder is typed non-optional after the preflight guard
         # above.
         try:
+            max_tool_rounds = config.agent_max_turns
             async for loop_result in tool_call_loop(
                 messages=openai_messages,
                 tools=tools,
                 llm_call=_bound_llm_caller,
                 execute_tool=_bound_tool_executor,
                 update_conversation=_bound_conversation_updater,
-                max_iterations=_MAX_TOOL_ROUNDS,
+                max_iterations=max_tool_rounds,
+                last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
                 # Inject any messages the user queued while the turn was
@@ -1748,10 +1828,15 @@ async def stream_chat_completion_baseline(
                 # get picked up at the start of the next turn.
                 is_final_yield = (
                     loop_result.finished_naturally
-                    or loop_result.iterations >= _MAX_TOOL_ROUNDS
+                    or loop_result.iterations >= max_tool_rounds
                 )
                 if is_final_yield:
                     continue
+                # Non-final yield: the next round may be the last one, so
+                # record where ``assistant_text`` ends now.  If that next
+                # round hits the budget without adding any text, the outer
+                # fallback uses this anchor to detect a silent finish.
+                text_len_before_final_round[0] = len(state.assistant_text)
                 try:
                     pending = await drain_pending_messages(session_id)
                 except Exception:
@@ -1870,16 +1955,33 @@ async def stream_chat_completion_baseline(
         # Sentinel received — surface any exception the inner task hit.
         await loop_task
         loop_result = loop_result_holder[0]
-        if loop_result and not loop_result.finished_naturally:
-            limit_msg = (
-                f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
-                "without a final response."
+        # Budget was reached when iterations hit the configured cap. This
+        # covers both exit paths out of ``tool_call_loop``:
+        #   - ``finished_naturally=True``: the last iteration ran with
+        #     ``tools=[]`` and the model returned text (may be empty)
+        #   - ``finished_naturally=False``: a non-compliant model still
+        #     emitted tool calls despite the empty tool list, so the loop
+        #     fell through the ``while`` guard
+        # Either way, we check the terminal round's text contribution — an
+        # empty one means the user got no explanation and we need to emit
+        # the fallback notice.
+        budget_reached = bool(
+            loop_result and loop_result.iterations >= config.agent_max_turns
+        )
+        if budget_reached:
+            if loop_result and not loop_result.finished_naturally:
+                logger.warning(
+                    "[Baseline] Hit %d-round tool budget without natural finish; "
+                    "ending turn gracefully",
+                    loop_result.iterations,
+                )
+            terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
+            fallback_events, fallback_text = _build_budget_exhausted_fallback_events(
+                terminal_round_text
             )
-            logger.error("[Baseline] %s", limit_msg)
-            yield StreamError(
-                errorText=limit_msg,
-                code="baseline_tool_round_limit",
-            )
+            for evt in fallback_events:
+                yield evt
+            state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
         error_msg = str(e) or type(e).__name__

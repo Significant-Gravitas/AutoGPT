@@ -178,7 +178,7 @@ describe("RateLimitManager", () => {
         weekly_cost_limit_microdollars: 50_000_000,
         daily_cost_used_microdollars: 2_500_000,
         weekly_cost_used_microdollars: 10_000_000,
-        tier: "FREE",
+        tier: "BASIC",
       },
     });
 
@@ -201,7 +201,7 @@ describe("RateLimitManager", () => {
         weekly_cost_limit_microdollars: 50_000_000,
         daily_cost_used_microdollars: 2_500_000,
         weekly_cost_used_microdollars: 10_000_000,
-        tier: "FREE",
+        tier: "BASIC",
       },
     });
 

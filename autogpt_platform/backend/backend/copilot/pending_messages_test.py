@@ -16,7 +16,7 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
-    _clear_pending_messages_unsafe,
+    clear_pending_messages_unsafe,
     drain_and_format_for_injection,
     drain_pending_for_persist,
     drain_pending_messages,
@@ -208,15 +208,15 @@ async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
 async def test_clear_removes_buffer(fake_redis: _FakeRedis) -> None:
     await push_pending_message("sess4", PendingMessage(content="x"))
     await push_pending_message("sess4", PendingMessage(content="y"))
-    await _clear_pending_messages_unsafe("sess4")
+    await clear_pending_messages_unsafe("sess4")
     assert await peek_pending_count("sess4") == 0
 
 
 @pytest.mark.asyncio
 async def test_clear_is_idempotent(fake_redis: _FakeRedis) -> None:
     # Clearing an already-empty buffer should not raise
-    await _clear_pending_messages_unsafe("sess_empty")
-    await _clear_pending_messages_unsafe("sess_empty")
+    await clear_pending_messages_unsafe("sess_empty")
+    await clear_pending_messages_unsafe("sess_empty")
 
 
 # ── Publish hook ────────────────────────────────────────────────────

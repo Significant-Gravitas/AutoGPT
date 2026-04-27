@@ -10,6 +10,7 @@ import {
   TIER_ORDER,
   formatCost,
   formatPendingDate,
+  formatRelativeMultiplier,
   getTierLabel,
 } from "./helpers";
 
@@ -143,7 +144,9 @@ export function SubscriptionTierSection() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {TIERS.map((tier) => {
+        {TIERS.filter(
+          (tier) => subscription.tier_costs[tier.key] !== undefined,
+        ).map((tier) => {
           const isCurrent = currentTier === tier.key;
           const cost = subscription.tier_costs[tier.key] ?? 0;
           const currentIdx = TIER_ORDER.indexOf(currentTier);
@@ -153,6 +156,10 @@ export function SubscriptionTierSection() {
           const isThisPending = pendingTier === tier.key;
           const isScheduledTier =
             hasPendingChange && pendingTierFromSubscription === tier.key;
+          const rateLimitLabel = formatRelativeMultiplier(
+            tier.key,
+            subscription.tier_multipliers ?? {},
+          );
 
           return (
             <div
@@ -176,9 +183,11 @@ export function SubscriptionTierSection() {
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
-              <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                {tier.multiplier} rate limits
-              </p>
+              {rateLimitLabel && (
+                <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+                  {rateLimitLabel}
+                </p>
+              )}
               <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {tier.description}
               </p>
@@ -206,7 +215,7 @@ export function SubscriptionTierSection() {
         })}
       </div>
 
-      {currentTier !== "FREE" && isPaymentEnabled && (
+      {currentTier !== "BASIC" && isPaymentEnabled && (
         <p className="text-sm text-neutral-500">
           Your subscription is managed through Stripe. Upgrades take effect
           immediately. Downgrades take effect at the end of your current billing
@@ -225,8 +234,8 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {confirmDowngradeTo === "FREE"
-              ? "Downgrading to Free will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
+            {confirmDowngradeTo === "BASIC"
+              ? "Downgrading to Basic will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
               : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect at the end of your current billing period. You keep your current plan until then.`}{" "}
             Are you sure?
           </p>

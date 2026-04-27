@@ -138,6 +138,29 @@ def test_tool_use_emits_input_start_and_available():
     assert results[2].input == {"q": "x"}
 
 
+def test_tool_use_strips_whitespace_in_tool_name():
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[
+            ToolUseBlock(
+                id="tool-1",
+                name=f" {MCP_TOOL_PREFIX}find_block",
+                input={},
+            )
+        ],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    tool_events = [
+        r
+        for r in results
+        if isinstance(r, (StreamToolInputStart, StreamToolInputAvailable))
+    ]
+    assert tool_events, "expected tool input events"
+    for event in tool_events:
+        assert event.toolName == "find_block"
+
+
 def test_text_then_tool_ends_text_block():
     adapter = _adapter()
     text_msg = AssistantMessage(content=[TextBlock(text="thinking...")], model="test")

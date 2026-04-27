@@ -42,11 +42,21 @@ class Flag(str, Enum):
     CHAT = "chat"
     CHAT_MODE_OPTION = "chat-mode-option"
     COPILOT_SDK = "copilot-sdk"
-    COPILOT_DAILY_COST_LIMIT = "copilot-daily-cost-limit-microdollars"
-    COPILOT_WEEKLY_COST_LIMIT = "copilot-weekly-cost-limit-microdollars"
-    STRIPE_PRICE_PRO = "stripe-price-id-pro"
-    STRIPE_PRICE_BUSINESS = "stripe-price-id-business"
+    COPILOT_COST_LIMITS = "copilot-cost-limits"
+    COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
+    COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+
+    # Copilot model routing — JSON-valued, returns the per-(mode, tier)
+    # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or
+    # ``"moonshotai/kimi-k2.6"``).  Shape:
+    # ``{"fast": {"standard": "...", "advanced": "..."},
+    #   "thinking": {"standard": "...", "advanced": "..."}}``.
+    # Missing mode, missing tier-within-mode, non-string value, non-dict
+    # payload, or LD failure all fall back to the corresponding
+    # ``ChatConfig`` default.  Evaluated per user_id so cohorts can be
+    # targeted.
+    COPILOT_MODEL_ROUTING = "copilot-model-routing"
 
 
 def is_configured() -> bool:

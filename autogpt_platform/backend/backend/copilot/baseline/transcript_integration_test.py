@@ -67,34 +67,40 @@ class TestResolveBaselineModel:
 
     Baseline reads the ``fast_*_model`` cells of the (path, tier) matrix
     and never falls through to the SDK-side ``thinking_*_model`` cells.
-    Default routing:
-    - ``standard`` / ``None`` → ``config.fast_standard_model`` (Kimi K2.6)
-    - ``advanced`` → ``config.fast_advanced_model`` (Opus — same as SDK's
-      advanced tier, so the advanced A/B isolates path differences)
+    Without a user_id (so no LD context) the resolver returns the
+    ``ChatConfig`` static default; per-user overrides are exercised in
+    ``copilot/model_router_test.py``.
     """
 
-    def test_advanced_tier_selects_fast_advanced_model(self):
-        assert _resolve_baseline_model("advanced") == config.fast_advanced_model
+    @pytest.mark.asyncio
+    async def test_advanced_tier_selects_fast_advanced_model(self):
+        assert (
+            await _resolve_baseline_model("advanced", None)
+            == config.fast_advanced_model
+        )
 
-    def test_standard_tier_selects_fast_standard_model(self):
-        assert _resolve_baseline_model("standard") == config.fast_standard_model
+    @pytest.mark.asyncio
+    async def test_standard_tier_selects_fast_standard_model(self):
+        assert (
+            await _resolve_baseline_model("standard", None)
+            == config.fast_standard_model
+        )
 
-    def test_none_tier_selects_fast_standard_model(self):
-        """Baseline users without a tier get the cheap fast-standard default."""
-        assert _resolve_baseline_model(None) == config.fast_standard_model
+    @pytest.mark.asyncio
+    async def test_none_tier_selects_fast_standard_model(self):
+        """Baseline users without a tier get the fast-standard default."""
+        assert await _resolve_baseline_model(None, None) == config.fast_standard_model
 
-    def test_fast_standard_default_is_kimi(self):
-        """Shipped default: Kimi K2.6 on the baseline standard cell.
-
-        Asserts the declared ``Field`` default — env-independent — so a
-        deploy-time ``CHAT_FAST_STANDARD_MODEL`` rollback override
-        doesn't fail CI while still pinning the shipped default.
-        """
+    def test_fast_standard_default_is_sonnet(self):
+        """Shipped default: Sonnet on the baseline standard cell — the
+        non-Anthropic routes ship via the LD flag instead of a config
+        change.  Asserts the declared ``Field`` default so a deploy-time
+        ``CHAT_FAST_STANDARD_MODEL`` override doesn't flake CI."""
         from backend.copilot.config import ChatConfig
 
         assert (
             ChatConfig.model_fields["fast_standard_model"].default
-            == "moonshotai/kimi-k2.6"
+            == "anthropic/claude-sonnet-4-6"
         )
 
     def test_fast_advanced_default_is_opus(self):
@@ -107,17 +113,6 @@ class TestResolveBaselineModel:
             ChatConfig.model_fields["fast_advanced_model"].default
             == "anthropic/claude-opus-4.7"
         )
-
-    def test_standard_cells_share_kimi_default_across_paths(self):
-        """After PR #12878 both paths default to the same cheap model
-        (``moonshotai/kimi-k2.6``).  The split exists for *override*
-        flexibility, not for forcing a price gap — guard against an
-        accidental regression that pins the SDK path back to Sonnet."""
-        from backend.copilot.config import ChatConfig
-
-        kimi = "moonshotai/kimi-k2.6"
-        assert ChatConfig.model_fields["fast_standard_model"].default == kimi
-        assert ChatConfig.model_fields["thinking_standard_model"].default == kimi
 
     def test_standard_and_advanced_cells_differ_on_fast(self):
         """Advanced tier defaults to a different model than standard on

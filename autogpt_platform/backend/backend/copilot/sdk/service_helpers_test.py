@@ -17,6 +17,7 @@ from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
     ReducedContext,
+    _compaction_target_tokens,
     _is_prompt_too_long,
     _is_tool_only_message,
     _iter_sdk_messages,
@@ -1000,3 +1001,129 @@ class TestRestoreCliSessionModeCheck:
         gap_asst = result.context_messages[3]
         assert gap_user.content == "GAP_USER_2"
         assert gap_asst.content == "GAP_ASSISTANT_3"
+
+
+# ---------------------------------------------------------------------------
+# _compaction_target_tokens — keeps our retry compaction below the CLI's
+# autocompact threshold so a compacted retry doesn't immediately re-trigger
+# the CLI's own autocompact on the next call.
+# ---------------------------------------------------------------------------
+
+
+class TestCompactionTargetTokens:
+    @pytest.mark.parametrize(
+        ("model", "window", "pct", "expected"),
+        [
+            # Sonnet 200K window with PCT=50 → CLI threshold 100K → target 80K
+            ("anthropic/claude-sonnet-4-6", 200_000, 50, 80_000),
+            # Sonnet 200K with PCT=0 → CLI uses ~93% (window-13K=187K) → 167K target
+            ("anthropic/claude-sonnet-4-6", 200_000, 0, 167_000),
+            # Aggressive PCT=30 on 200K window → CLI threshold 60K → target 40K
+            ("anthropic/claude-sonnet-4-6", 200_000, 30, 40_000),
+        ],
+    )
+    def test_anthropic_target_below_cli_threshold(
+        self, model, window, pct, expected
+    ) -> None:
+        with (
+            patch("backend.util.prompt.get_context_window", return_value=window),
+            patch("backend.copilot.sdk.service.config") as mock_cfg,
+        ):
+            mock_cfg.claude_agent_autocompact_pct_override = pct
+            assert _compaction_target_tokens(model) == expected
+
+    def test_moonshot_uses_cli_default_threshold(self) -> None:
+        # Moonshot routes ignore PCT override (config.gate skips the env var
+        # entirely), so our target should mirror the CLI's ~93% default
+        # regardless of the configured pct value.
+        with (
+            patch("backend.util.prompt.get_context_window", return_value=262_144),
+            patch("backend.copilot.sdk.service.config") as mock_cfg,
+        ):
+            mock_cfg.claude_agent_autocompact_pct_override = 50  # ignored
+            # 262144 - 13000 = 249144 (CLI default), minus 20K headroom = 229144
+            assert _compaction_target_tokens("moonshotai/kimi-k2.6") == 229_144
+
+    def test_unknown_model_falls_back_to_default_threshold(self) -> None:
+        from backend.util.prompt import DEFAULT_TOKEN_THRESHOLD
+
+        with patch("backend.util.prompt.get_context_window", return_value=None):
+            assert _compaction_target_tokens("unknown/model") == DEFAULT_TOKEN_THRESHOLD
+
+    def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
+        # PCT=1 on a 50K window → CLI threshold = 500 → target would be
+        # negative without the floor.
+        with (
+            patch("backend.util.prompt.get_context_window", return_value=50_000),
+            patch("backend.copilot.sdk.service.config") as mock_cfg,
+        ):
+            mock_cfg.claude_agent_autocompact_pct_override = 1
+            assert _compaction_target_tokens("anthropic/foo") == 10_000
+
+    def test_resolve_env_model_prefers_moonshot_fallback(self) -> None:
+        """When the primary is Anthropic and the fallback is Moonshot, the
+        env-gate model resolves to the fallback so a 529-triggered swap to
+        Kimi still suppresses ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``."""
+        from backend.copilot.sdk.service import _resolve_env_model
+
+        assert (
+            _resolve_env_model("anthropic/claude-sonnet-4-6", "moonshotai/kimi-k2.6")
+            == "moonshotai/kimi-k2.6"
+        )
+
+    def test_resolve_env_model_keeps_primary_when_fallback_anthropic(self) -> None:
+        from backend.copilot.sdk.service import _resolve_env_model
+
+        assert (
+            _resolve_env_model(
+                "anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-3-5"
+            )
+            == "anthropic/claude-sonnet-4-6"
+        )
+
+    def test_resolve_env_model_keeps_primary_when_no_fallback(self) -> None:
+        from backend.copilot.sdk.service import _resolve_env_model
+
+        assert (
+            _resolve_env_model("anthropic/claude-sonnet-4-6", None)
+            == "anthropic/claude-sonnet-4-6"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reduce_context_uses_runtime_model_for_target(self) -> None:
+        """Compactor LLM is fixed (Sonnet) but target must be sized for the
+        RUNTIME model that the CLI is actually serving — otherwise a Kimi
+        runtime gets a 200K-window-derived target while the CLI threshold
+        is computed against Kimi's 256K window.
+        """
+        from backend.copilot.sdk.service import _reduce_context
+
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        captured: dict = {}
+
+        async def fake_compact(content, *, model, log_prefix, target_tokens):
+            captured["target_tokens"] = target_tokens
+            captured["compactor_model"] = model
+            return None
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.compact_transcript",
+                side_effect=fake_compact,
+            ),
+            patch(
+                "backend.copilot.sdk.service._compaction_target_tokens",
+                side_effect=lambda m: 12345 if "kimi" in m else 99999,
+            ),
+        ):
+            await _reduce_context(
+                transcript,
+                False,
+                "sess",
+                "/tmp",
+                "[t]",
+                runtime_model="moonshotai/kimi-k2.6",
+            )
+
+        # Target derived from the RUNTIME model, not the compactor model.
+        assert captured["target_tokens"] == 12345
