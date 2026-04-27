@@ -157,9 +157,12 @@ self.addEventListener("notificationclick", function (event) {
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then(function (clientList) {
+        // Use _effectiveUrl(c), not c.url — the latter is stale for SPA
+        // navigation, so a tab that's actually on /library would look like
+        // it's still on the notification's target and we'd skip the navigate.
         for (var i = 0; i < clientList.length; i++) {
           var client = clientList[i];
-          if (client.url.includes(url) && "focus" in client) {
+          if (_effectiveUrl(client).includes(url) && "focus" in client) {
             return client.focus();
           }
         }
