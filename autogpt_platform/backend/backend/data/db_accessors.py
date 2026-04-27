@@ -155,3 +155,16 @@ def platform_cost_db():
         platform_cost_db = get_database_manager_async_client()
 
     return platform_cost_db
+
+
+def platform_linking_db():
+    if db.is_connected():
+        from backend.platform_linking import db as _platform_linking_db
+
+        platform_linking_db = _platform_linking_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        platform_linking_db = get_database_manager_async_client()
+
+    return platform_linking_db

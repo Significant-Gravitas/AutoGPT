@@ -45,10 +45,31 @@ describe("classifyArtifact", () => {
     expect(classifyArtifact("text/markdown", "x").type).toBe("markdown");
   });
 
-  it("gates files > 10MB to download-only", () => {
+  it("gates text/code files > 10MB to download-only", () => {
     const c = classifyArtifact("text/plain", "big.txt", 20 * 1024 * 1024);
     expect(c.openable).toBe(false);
     expect(c.type).toBe("download-only");
+  });
+
+  // SECRT-2221: large images (hi-res PNGs, etc.) were getting force-classified
+  // as download-only by the generic >10MB gate, so clicking them started a
+  // download instead of previewing — and the preview was "broken" in the
+  // sense that it never appeared. Images, videos, and PDFs are decoded
+  // natively by the browser and don't run through our JS render pipeline,
+  // so the size gate shouldn't apply to them.
+  it("does NOT size-gate large images, videos, or PDFs (SECRT-2221)", () => {
+    expect(
+      classifyArtifact("image/png", "hires.png", 25 * 1024 * 1024).type,
+    ).toBe("image");
+    expect(
+      classifyArtifact("image/jpeg", "huge.jpg", 50 * 1024 * 1024).type,
+    ).toBe("image");
+    expect(
+      classifyArtifact("video/mp4", "long.mp4", 500 * 1024 * 1024).type,
+    ).toBe("video");
+    expect(
+      classifyArtifact("application/pdf", "book.pdf", 80 * 1024 * 1024).type,
+    ).toBe("pdf");
   });
 
   it("treats binary/octet-stream MIME as download-only", () => {

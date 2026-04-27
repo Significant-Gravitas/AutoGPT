@@ -5,7 +5,8 @@ import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, Sequence, get_args
+from typing import Annotated, Any, Literal, Sequence, cast, get_args
+from urllib.parse import urlparse
 
 import pydantic
 import stripe
@@ -25,10 +26,11 @@ from fastapi import (
 )
 from fastapi.concurrency import run_in_threadpool
 from prisma.enums import SubscriptionTier
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
+from backend.api.features.workspace.routes import create_file_download_response
 from backend.api.model import (
     CreateAPIKeyRequest,
     CreateAPIKeyResponse,
@@ -42,23 +44,31 @@ from backend.api.model import (
     UploadFileResponse,
 )
 from backend.blocks import get_block, get_blocks
+from backend.copilot.rate_limit import get_tier_multipliers
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.auth import api_key as api_key_db
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    PendingChangeUnknown,
     RefundRequest,
     TransactionHistory,
     UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_auto_top_up,
+    get_pending_subscription_change,
+    get_proration_credit_cents,
     get_subscription_price_id,
     get_user_credit_model,
+    handle_subscription_payment_failure,
+    modify_stripe_subscription_for_tier,
+    release_pending_subscription_schedule,
     set_auto_top_up,
     set_subscription_tier,
     sync_subscription_from_stripe,
+    sync_subscription_schedule_from_stripe,
 )
 from backend.data.graph import GraphSettings
 from backend.data.model import CredentialsMetaInput, UserOnboarding
@@ -88,6 +98,7 @@ from backend.data.user import (
     update_user_notification_preference,
     update_user_timezone,
 )
+from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -689,19 +700,97 @@ async def get_user_auto_top_up(
 
 
 class SubscriptionTierRequest(BaseModel):
-    tier: Literal["FREE", "PRO", "BUSINESS"]
+    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
 
 
-class SubscriptionCheckoutResponse(BaseModel):
-    url: str
-
-
 class SubscriptionStatusResponse(BaseModel):
-    tier: str
-    monthly_cost: int
-    tier_costs: dict[str, int]
+    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    monthly_cost: int  # amount in cents (Stripe convention)
+    tier_costs: dict[str, int]  # tier name -> amount in cents
+    tier_multipliers: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → rate-limit multiplier. Covers the same tiers listed in"
+            " ``tier_costs`` so the frontend can render rate-limit badges"
+            " relative to the lowest visible tier without knowing backend"
+            " defaults."
+        ),
+    )
+    proration_credit_cents: int  # unused portion of current sub to convert on upgrade
+    pending_tier: Optional[Literal["BASIC", "PRO", "MAX", "BUSINESS"]] = None
+    pending_tier_effective_at: Optional[datetime] = None
+    url: str = Field(
+        default="",
+        description=(
+            "Populated only when POST /credits/subscription starts a Stripe Checkout"
+            " Session (BASIC → paid upgrade). Empty string in all other branches —"
+            " the client redirects to this URL when non-empty."
+        ),
+    )
+
+
+def _validate_checkout_redirect_url(url: str) -> bool:
+    """Return True if `url` matches the configured frontend origin.
+
+    Prevents open-redirect: attackers must not be able to supply arbitrary
+    success_url/cancel_url that Stripe will redirect users to after checkout.
+
+    Pre-parse rejection rules (applied before urlparse):
+    - Backslashes (``\\``) are normalised differently across parsers/browsers.
+    - Control characters (U+0000–U+001F) are not valid in URLs and may confuse
+      some URL-parsing implementations.
+    """
+    # Reject characters that can confuse URL parsers before any parsing.
+    if "\\" in url:
+        return False
+    if any(ord(c) < 0x20 for c in url):
+        return False
+
+    allowed = settings.config.frontend_base_url or settings.config.platform_base_url
+    if not allowed:
+        # No configured origin — refuse to validate rather than allow arbitrary URLs.
+        return False
+    try:
+        parsed = urlparse(url)
+        allowed_parsed = urlparse(allowed)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    # Reject ``user:pass@host`` authority tricks — ``@`` in the netloc component
+    # can trick browsers into connecting to a different host than displayed.
+    # ``@`` in query/fragment is harmless and must be allowed.
+    if "@" in parsed.netloc:
+        return False
+    return (
+        parsed.scheme == allowed_parsed.scheme
+        and parsed.netloc == allowed_parsed.netloc
+    )
+
+
+@cached(ttl_seconds=300, maxsize=32, cache_none=False)
+async def _get_stripe_price_amount(price_id: str) -> int | None:
+    """Return the unit_amount (cents) for a Stripe Price ID, cached for 5 minutes.
+
+    Returns ``None`` on transient Stripe errors. ``cache_none=False`` opts out
+    of caching the ``None`` sentinel so the next request retries Stripe instead
+    of being served a stale "no price" for the rest of the TTL window. Callers
+    should treat ``None`` as an unknown price and fall back to 0.
+
+    Stripe prices rarely change; caching avoids a ~200-600 ms Stripe round-trip on
+    every GET /credits/subscription page load and reduces quota consumption.
+    """
+    try:
+        price = await run_in_threadpool(stripe.Price.retrieve, price_id)
+        return price.unit_amount or 0
+    except stripe.StripeError:
+        logger.warning(
+            "Failed to retrieve Stripe price %s — returning None (not cached)",
+            price_id,
+        )
+        return None
 
 
 @v1_router.get(
@@ -715,34 +804,80 @@ async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
     user = await get_user_by_id(user_id)
-    tier = user.subscription_tier or SubscriptionTier.FREE
+    tier = user.subscription_tier or SubscriptionTier.BASIC
 
-    paid_tiers = [SubscriptionTier.PRO, SubscriptionTier.BUSINESS]
+    priceable_tiers = [
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    ]
     price_ids = await asyncio.gather(
-        *[get_subscription_price_id(t) for t in paid_tiers]
+        *[get_subscription_price_id(t) for t in priceable_tiers]
     )
 
-    tier_costs: dict[str, int] = {"FREE": 0, "ENTERPRISE": 0}
-    for t, price_id in zip(paid_tiers, price_ids):
-        cost = 0
-        if price_id:
-            try:
-                price = await run_in_threadpool(stripe.Price.retrieve, price_id)
-                cost = price.unit_amount or 0
-            except stripe.StripeError:
-                pass
-        tier_costs[t.value] = cost
+    async def _cost(pid: str | None) -> int:
+        return (await _get_stripe_price_amount(pid) or 0) if pid else 0
 
-    return SubscriptionStatusResponse(
+    costs = await asyncio.gather(*[_cost(pid) for pid in price_ids])
+
+    tier_costs: dict[str, int] = {}
+    for t, pid, cost in zip(priceable_tiers, price_ids, costs):
+        if pid:
+            tier_costs[t.value] = cost
+
+    # Expose the effective rate-limit multipliers alongside prices so the
+    # frontend can render "Nx rate limits" relative to the lowest visible
+    # tier without hard-coding backend defaults.  Only emit entries for tiers
+    # that land in ``tier_costs`` — rows hidden at the price layer must stay
+    # hidden in the multiplier layer too.
+    multipliers = await get_tier_multipliers()
+    tier_multipliers: dict[str, float] = {
+        t.value: multipliers.get(t, 1.0)
+        for t in priceable_tiers
+        if t.value in tier_costs
+    }
+
+    current_monthly_cost = tier_costs.get(tier.value, 0)
+    proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
+
+    try:
+        pending = await get_pending_subscription_change(user_id)
+    except (stripe.StripeError, PendingChangeUnknown):
+        # Swallow Stripe-side failures (rate limits, transient network) AND
+        # PendingChangeUnknown (LaunchDarkly price-id lookup failed). Both
+        # propagate past the cache so the next request retries fresh instead
+        # of serving a stale None for the TTL window. Let real bugs (KeyError,
+        # AttributeError, etc.) propagate so they surface in Sentry.
+        logger.exception(
+            "get_subscription_status: failed to resolve pending change for user %s",
+            user_id,
+        )
+        pending = None
+
+    response = SubscriptionStatusResponse(
         tier=tier.value,
-        monthly_cost=tier_costs.get(tier.value, 0),
+        monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
+        tier_multipliers=tier_multipliers,
+        proration_credit_cents=proration_credit,
     )
+    if pending is not None:
+        pending_tier_enum, pending_effective_at = pending
+        if pending_tier_enum in (
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
+        ):
+            response.pending_tier = pending_tier_enum.value
+            response.pending_tier_effective_at = pending_effective_at
+    return response
 
 
 @v1_router.post(
     path="/credits/subscription",
-    summary="Start a Stripe Checkout session to upgrade subscription tier",
+    summary="Update subscription tier or start a Stripe Checkout session",
     operation_id="updateSubscriptionTier",
     tags=["credits"],
     dependencies=[Security(requires_user)],
@@ -750,39 +885,154 @@ async def get_subscription_status(
 async def update_subscription_tier(
     request: SubscriptionTierRequest,
     user_id: Annotated[str, Security(get_user_id)],
-) -> SubscriptionCheckoutResponse:
-    # Pydantic validates tier is one of FREE/PRO/BUSINESS via Literal type.
+) -> SubscriptionStatusResponse:
+    # Pydantic validates tier is one of BASIC/PRO/MAX/BUSINESS via Literal type.
     tier = SubscriptionTier(request.tier)
 
     # ENTERPRISE tier is admin-managed — block self-service changes from ENTERPRISE users.
     user = await get_user_by_id(user_id)
-    if (user.subscription_tier or SubscriptionTier.FREE) == SubscriptionTier.ENTERPRISE:
+    if (
+        user.subscription_tier or SubscriptionTier.BASIC
+    ) == SubscriptionTier.ENTERPRISE:
         raise HTTPException(
             status_code=403,
             detail="ENTERPRISE subscription changes must be managed by an administrator",
         )
 
+    # Same-tier request = "stay on my current tier" = cancel any pending
+    # scheduled change (paid→paid downgrade or paid→BASIC cancel). This is the
+    # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
+    # route. Safe when no pending change exists: release_pending_subscription_schedule
+    # returns False and we simply return the current status.
+    if (user.subscription_tier or SubscriptionTier.BASIC) == tier:
+        try:
+            await release_pending_subscription_schedule(user_id)
+        except stripe.StripeError as e:
+            logger.exception(
+                "Stripe error releasing pending subscription change for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to cancel the pending subscription change right now. "
+                    "Please try again or contact support."
+                ),
+            )
+        return await get_subscription_status(user_id)
+
     payment_enabled = await is_feature_enabled(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
-    # Downgrade to FREE: cancel active Stripe subscription, then update the DB tier.
-    if tier == SubscriptionTier.FREE:
+    current_tier = user.subscription_tier or SubscriptionTier.BASIC
+    target_price_id, current_tier_price_id = await asyncio.gather(
+        get_subscription_price_id(tier),
+        get_subscription_price_id(current_tier),
+    )
+
+    # Legacy cancel: target BASIC + stripe-price-id-basic unset. Schedule Stripe
+    # cancellation at period end; cancel_at_period_end=True lets the webhook flip
+    # the DB tier. No active sub (admin-granted) or payment disabled → DB flip.
+    # Once stripe-price-id-basic is configured, BASIC becomes a real sub and falls
+    # through to the modify/checkout flow below.
+    if tier == SubscriptionTier.BASIC and target_price_id is None:
         if payment_enabled:
-            await cancel_stripe_subscription(user_id)
+            try:
+                had_subscription = await cancel_stripe_subscription(user_id)
+            except stripe.StripeError as e:
+                logger.exception(
+                    "Stripe error cancelling subscription for user %s: %s",
+                    user_id,
+                    e,
+                )
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "Unable to cancel your subscription right now. "
+                        "Please try again or contact support."
+                    ),
+                )
+            if not had_subscription:
+                await set_subscription_tier(user_id, tier)
+            return await get_subscription_status(user_id)
         await set_subscription_tier(user_id, tier)
-        return SubscriptionCheckoutResponse(url="")
+        return await get_subscription_status(user_id)
 
-    # Beta users (payment not enabled) → update tier directly without Stripe.
     if not payment_enabled:
-        await set_subscription_tier(user_id, tier)
-        return SubscriptionCheckoutResponse(url="")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Subscription not available for tier {tier.value}",
+        )
 
-    # Paid upgrade → create Stripe Checkout Session.
+    # Target has no LD price — not provisionable (matches the GET hiding).
+    if target_price_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Subscription not available for tier {tier.value}",
+        )
+
+    # User has an active Stripe subscription (current tier has an LD price):
+    # modify it in-place. modify_stripe_subscription_for_tier returns False when no
+    # active sub exists — that's only a "DB-only flip is OK" signal for admin-granted
+    # paid tiers (PRO/BUSINESS with no Stripe record). Priced-BASIC users without a
+    # sub must still go through Checkout so they set up payment.
+    if current_tier_price_id is not None:
+        try:
+            modified = await modify_stripe_subscription_for_tier(user_id, tier)
+            if modified:
+                return await get_subscription_status(user_id)
+            if current_tier != SubscriptionTier.BASIC:
+                await set_subscription_tier(user_id, tier)
+                return await get_subscription_status(user_id)
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except stripe.StripeError as e:
+            logger.exception(
+                "Stripe error modifying subscription for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Unable to update your subscription right now. "
+                    "Please try again or contact support."
+                ),
+            )
+
+    # No active Stripe subscription → create Stripe Checkout Session.
     if not request.success_url or not request.cancel_url:
         raise HTTPException(
             status_code=422,
             detail="success_url and cancel_url are required for paid tier upgrades",
+        )
+    # Open-redirect protection: both URLs must point to the configured frontend
+    # origin, otherwise an attacker could use our Stripe integration as a
+    # redirector to arbitrary phishing sites.
+    #
+    # Fail early with a clear 503 if the server is misconfigured (neither
+    # frontend_base_url nor platform_base_url set), so operators get an
+    # actionable error instead of the misleading "must match the platform
+    # frontend origin" 422 that _validate_checkout_redirect_url would otherwise
+    # produce when `allowed` is empty.
+    if not (settings.config.frontend_base_url or settings.config.platform_base_url):
+        logger.error(
+            "update_subscription_tier: neither frontend_base_url nor "
+            "platform_base_url is configured; cannot validate checkout redirect URLs"
+        )
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Payment redirect URLs cannot be validated: "
+                "frontend_base_url or platform_base_url must be set on the server."
+            ),
+        )
+    if not _validate_checkout_redirect_url(
+        request.success_url
+    ) or not _validate_checkout_redirect_url(request.cancel_url):
+        raise HTTPException(
+            status_code=422,
+            detail="success_url and cancel_url must match the platform frontend origin",
         )
     try:
         url = await create_subscription_checkout(
@@ -791,54 +1041,113 @@ async def update_subscription_tier(
             success_url=request.success_url,
             cancel_url=request.cancel_url,
         )
-    except (ValueError, stripe.StripeError) as e:
+    except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except stripe.StripeError as e:
+        logger.exception(
+            "Stripe error creating checkout session for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to start checkout right now. "
+                "Please try again or contact support."
+            ),
+        )
 
-    return SubscriptionCheckoutResponse(url=url)
+    status = await get_subscription_status(user_id)
+    status.url = url
+    return status
 
 
 @v1_router.post(
     path="/credits/stripe_webhook", summary="Handle Stripe webhooks", tags=["credits"]
 )
 async def stripe_webhook(request: Request):
+    webhook_secret = settings.secrets.stripe_webhook_secret
+    if not webhook_secret:
+        # Guard: an empty secret allows HMAC forgery (attacker can compute a valid
+        # signature over the same empty key). Reject all webhook calls when unconfigured.
+        logger.error(
+            "stripe_webhook: STRIPE_WEBHOOK_SECRET is not configured — "
+            "rejecting request to prevent signature bypass"
+        )
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+
     # Get the raw request body
     payload = await request.body()
     # Get the signature header
     sig_header = request.headers.get("stripe-signature")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.secrets.stripe_webhook_secret
-        )
-    except ValueError as e:
+        event = stripe.Webhook.construct_event(payload, sig_header, webhook_secret)
+    except ValueError:
         # Invalid payload
-        raise HTTPException(
-            status_code=400, detail=f"Invalid payload: {str(e) or type(e).__name__}"
-        )
-    except stripe.SignatureVerificationError as e:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.SignatureVerificationError:
         # Invalid signature
-        raise HTTPException(
-            status_code=400, detail=f"Invalid signature: {str(e) or type(e).__name__}"
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Defensive payload extraction. A malformed payload (missing/non-dict
+    # `data.object`, missing `id`) would otherwise raise KeyError/TypeError
+    # AFTER signature verification — which Stripe interprets as a delivery
+    # failure and retries forever, while spamming Sentry with no useful info.
+    # Acknowledge with 200 and a warning so Stripe stops retrying.
+    event_type = event.get("type", "")
+    event_data = event.get("data") or {}
+    data_object = event_data.get("object") if isinstance(event_data, dict) else None
+    if not isinstance(data_object, dict):
+        logger.warning(
+            "stripe_webhook: %s missing or non-dict data.object; ignoring",
+            event_type,
         )
+        return Response(status_code=200)
 
-    if (
-        event["type"] == "checkout.session.completed"
-        or event["type"] == "checkout.session.async_payment_succeeded"
+    if event_type in (
+        "checkout.session.completed",
+        "checkout.session.async_payment_succeeded",
     ):
-        await UserCredit().fulfill_checkout(session_id=event["data"]["object"]["id"])
+        session_id = data_object.get("id")
+        if not session_id:
+            logger.warning(
+                "stripe_webhook: %s missing data.object.id; ignoring", event_type
+            )
+            return Response(status_code=200)
+        await UserCredit().fulfill_checkout(session_id=session_id)
 
-    if event["type"] in (
+    if event_type in (
         "customer.subscription.created",
         "customer.subscription.updated",
         "customer.subscription.deleted",
     ):
-        await sync_subscription_from_stripe(event["data"]["object"])
+        await sync_subscription_from_stripe(data_object)
 
-    if event["type"] == "charge.dispute.created":
-        await UserCredit().handle_dispute(event["data"]["object"])
+    # `subscription_schedule.updated` is deliberately omitted: our own
+    # `SubscriptionSchedule.create` + `.modify` calls in
+    # `_schedule_downgrade_at_period_end` would fire that event right back at us
+    # and loop redundant traffic through this handler. We only care about state
+    # transitions (released / completed); phase advance to the new price is
+    # already covered by `customer.subscription.updated`.
+    if event_type in (
+        "subscription_schedule.released",
+        "subscription_schedule.completed",
+    ):
+        await sync_subscription_schedule_from_stripe(data_object)
 
-    if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
-        await UserCredit().deduct_credits(event["data"]["object"])
+    if event_type == "invoice.payment_failed":
+        await handle_subscription_payment_failure(data_object)
+
+    # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
+    # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
+    # StripeObject (a dict subclass) carrying that runtime shape, so we cast
+    # to satisfy the type checker without changing runtime behaviour.
+    if event_type == "charge.dispute.created":
+        await UserCredit().handle_dispute(cast(stripe.Dispute, data_object))
+
+    if event_type == "refund.created" or event_type == "charge.dispute.closed":
+        await UserCredit().deduct_credits(
+            cast("stripe.Refund | stripe.Dispute", data_object)
+        )
 
     return Response(status_code=200)
 
@@ -1422,6 +1731,10 @@ async def enable_execution_sharing(
     # Generate a unique share token
     share_token = str(uuid.uuid4())
 
+    # Remove stale allowlist records before updating the token — prevents a
+    # window where old records + new token could coexist.
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Update the execution with share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1429,6 +1742,14 @@ async def enable_execution_sharing(
         is_shared=True,
         share_token=share_token,
         shared_at=datetime.now(timezone.utc),
+    )
+
+    # Create allowlist of workspace files referenced in outputs
+    await execution_db.create_shared_execution_files(
+        execution_id=graph_exec_id,
+        share_token=share_token,
+        user_id=user_id,
+        outputs=execution.outputs,
     )
 
     # Return the share URL
@@ -1456,6 +1777,9 @@ async def disable_execution_sharing(
     if not execution:
         raise HTTPException(status_code=404, detail="Execution not found")
 
+    # Remove shared file allowlist records
+    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
+
     # Remove share info
     await execution_db.update_graph_execution_share_status(
         execution_id=graph_exec_id,
@@ -1479,6 +1803,43 @@ async def get_shared_execution(
         raise HTTPException(status_code=404, detail="Shared execution not found")
 
     return execution
+
+
+@v1_router.get(
+    "/public/shared/{share_token}/files/{file_id}/download",
+    summary="Download a file from a shared execution",
+    operation_id="download_shared_file",
+    tags=["graphs"],
+)
+async def download_shared_file(
+    share_token: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+    file_id: Annotated[
+        str,
+        Path(pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
+    ],
+) -> Response:
+    """Download a workspace file from a shared execution (no auth required).
+
+    Validates that the file was explicitly exposed when sharing was enabled.
+    Returns a uniform 404 for all failure modes to prevent enumeration attacks.
+    """
+    # Single-query validation against the allowlist
+    execution_id = await execution_db.get_shared_execution_file(
+        share_token=share_token, file_id=file_id
+    )
+    if not execution_id:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Look up the actual file (no workspace scoping needed — the allowlist
+    # already validated that this file belongs to the shared execution)
+    file = await get_workspace_file_by_id(file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return await create_file_download_response(file, inline=True)
 
 
 ########################################################

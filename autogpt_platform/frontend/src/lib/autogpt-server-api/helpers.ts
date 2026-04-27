@@ -68,10 +68,11 @@ export function buildUrlWithQuery(
 ): string {
   if (!query) return url;
 
-  // Filter out undefined values to prevent them from being included as "undefined" strings
+  // Drop null/undefined so URLSearchParams doesn't serialize them as the
+  // strings "null" / "undefined".
   const filteredQuery = Object.entries(query).reduce(
     (acc, [key, value]) => {
-      if (value !== undefined) {
+      if (value != null) {
         acc[key] = value;
       }
       return acc;
@@ -162,6 +163,15 @@ export function createRequestHeaders(
     const apiKeyHeader = originalRequest.headers.get(API_KEY_HEADER_NAME);
     if (apiKeyHeader) {
       headers[API_KEY_HEADER_NAME] = apiKeyHeader;
+    }
+
+    // Forward Sentry distributed-tracing headers so the backend transaction
+    // continues the browser span instead of starting a disconnected trace.
+    for (const name of ["sentry-trace", "baggage"] as const) {
+      const value = originalRequest.headers.get(name);
+      if (value) {
+        headers[name] = value;
+      }
     }
   }
 

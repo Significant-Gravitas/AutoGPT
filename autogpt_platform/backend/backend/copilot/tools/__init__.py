@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Literal
 
 from openai.types.chat import ChatCompletionToolParam
 
@@ -10,7 +11,6 @@ from backend.copilot.tracking import track_tool_called
 from .add_understanding import AddUnderstandingTool
 from .agent_browser import BrowserActTool, BrowserNavigateTool, BrowserScreenshotTool
 from .agent_output import AgentOutputTool
-from .ask_question import AskQuestionTool
 from .base import BaseTool
 from .bash_exec import BashExecTool
 from .connect_integration import ConnectIntegrationTool
@@ -26,6 +26,7 @@ from .fix_agent import FixAgentGraphTool
 from .get_agent_building_guide import GetAgentBuildingGuideTool
 from .get_doc_page import GetDocPageTool
 from .get_mcp_guide import GetMCPGuideTool
+from .get_sub_session_result import GetSubSessionResultTool
 from .graphiti_forget import MemoryForgetConfirmTool, MemoryForgetSearchTool
 from .graphiti_search import MemorySearchTool
 from .graphiti_store import MemoryStoreTool
@@ -40,9 +41,12 @@ from .manage_folders import (
 from .run_agent import RunAgentTool
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
+from .run_sub_session import RunSubSessionTool
 from .search_docs import SearchDocsTool
+from .todo_write import TodoWriteTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
+from .web_search import WebSearchTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
@@ -59,7 +63,6 @@ logger = logging.getLogger(__name__)
 # Single source of truth for all tools
 TOOL_REGISTRY: dict[str, BaseTool] = {
     "add_understanding": AddUnderstandingTool(),
-    "ask_question": AskQuestionTool(),
     "create_agent": CreateAgentTool(),
     "customize_agent": CustomizeAgentTool(),
     "edit_agent": EditAgentTool(),
@@ -81,6 +84,9 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "run_agent": RunAgentTool(),
     "run_block": RunBlockTool(),
     "continue_run_block": ContinueRunBlockTool(),
+    "run_sub_session": RunSubSessionTool(),
+    "get_sub_session_result": GetSubSessionResultTool(),
+    "TodoWrite": TodoWriteTool(),
     "run_mcp_tool": RunMCPToolTool(),
     "get_mcp_guide": GetMCPGuideTool(),
     "view_agent_output": AgentOutputTool(),
@@ -89,6 +95,7 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "get_agent_building_guide": GetAgentBuildingGuideTool(),
     # Web fetch for safe URL retrieval
     "web_fetch": WebFetchTool(),
+    "web_search": WebSearchTool(),
     # Agent-browser multi-step automation (navigate, act, screenshot)
     "browser_navigate": BrowserNavigateTool(),
     "browser_act": BrowserActTool(),
@@ -115,15 +122,45 @@ find_agent_tool = TOOL_REGISTRY["find_agent"]
 run_agent_tool = TOOL_REGISTRY["run_agent"]
 
 
-def get_available_tools() -> list[ChatCompletionToolParam]:
+# Capability groups a tool may belong to.  The service layer can hide all
+# tools in a group when the backing capability isn't available to this user
+# (e.g. Graphiti memory behind a feature flag), so the model doesn't reach
+# for tools whose backend is off and then hit opaque runtime errors.  Add
+# a new group by extending ``ToolGroup`` and registering its members in
+# ``TOOL_GROUPS`` below.
+ToolGroup = Literal["graphiti"]
+
+TOOL_GROUPS: dict[str, ToolGroup] = {
+    "memory_store": "graphiti",
+    "memory_search": "graphiti",
+    "memory_forget_search": "graphiti",
+    "memory_forget_confirm": "graphiti",
+}
+
+
+def tool_names_in_groups(groups: Iterable[ToolGroup]) -> frozenset[str]:
+    """Return the set of tool short-names belonging to any of *groups*."""
+    group_set = frozenset(groups)
+    return frozenset(name for name, g in TOOL_GROUPS.items() if g in group_set)
+
+
+def get_available_tools(
+    *,
+    disabled_groups: Iterable[ToolGroup] = (),
+) -> list[ChatCompletionToolParam]:
     """Return OpenAI tool schemas for tools available in the current environment.
 
     Called per-request so that env-var or binary availability is evaluated
     fresh each time (e.g. browser_* tools are excluded when agent-browser
-    CLI is not installed).
+    CLI is not installed).  Tools belonging to any *disabled_groups* are
+    also filtered out — use this to hide capability-gated tools (e.g.
+    ``graphiti`` when the memory backend is off for the current user).
     """
+    hidden = tool_names_in_groups(disabled_groups)
     return [
-        tool.as_openai_tool() for tool in TOOL_REGISTRY.values() if tool.is_available
+        tool.as_openai_tool()
+        for name, tool in TOOL_REGISTRY.items()
+        if tool.is_available and name not in hidden
     ]
 
 

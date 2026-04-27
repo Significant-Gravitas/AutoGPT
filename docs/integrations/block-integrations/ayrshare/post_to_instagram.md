@@ -21,7 +21,7 @@ The block requires an Instagram account connected to a Facebook Page and authent
 |-------|-------------|------|----------|
 | post | The post text (max 2,200 chars, up to 30 hashtags, 3 @mentions) | str | No |
 | media_urls | Optional list of media URLs. Instagram supports up to 10 images/videos in a carousel. | List[str] | No |
-| is_video | Whether the media is a video | bool | No |
+| is_video | Whether the media is a video. Set to True when uploading a video so billing applies the video tier. | bool | No |
 | schedule_date | UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ) | str (date-time) | No |
 | disable_comments | Whether to disable comments | bool | No |
 | shorten_links | Whether to shorten links | bool | No |

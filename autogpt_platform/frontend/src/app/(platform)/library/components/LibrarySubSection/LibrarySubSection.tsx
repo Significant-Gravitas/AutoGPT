@@ -6,9 +6,10 @@ import {
 } from "@/components/molecules/TabsLine/TabsLine";
 import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import { useFavoriteAnimation } from "../../context/FavoriteAnimationContext";
-import { LibraryTab } from "../../types";
+import type { LibraryTab, AgentStatusFilter, FleetSummary } from "../../types";
 import LibraryFolderCreationDialog from "../LibraryFolderCreationDialog/LibraryFolderCreationDialog";
 import { LibrarySortMenu } from "../LibrarySortMenu/LibrarySortMenu";
+import { AgentFilterMenu } from "../AgentFilterMenu/AgentFilterMenu";
 
 interface Props {
   tabs: LibraryTab[];
@@ -17,6 +18,9 @@ interface Props {
   allCount: number;
   favoritesCount: number;
   setLibrarySort: (value: LibraryAgentSort) => void;
+  statusFilter?: AgentStatusFilter;
+  onStatusFilterChange?: (filter: AgentStatusFilter) => void;
+  fleetSummary?: FleetSummary;
 }
 
 export function LibrarySubSection({
@@ -26,6 +30,9 @@ export function LibrarySubSection({
   allCount,
   favoritesCount,
   setLibrarySort,
+  statusFilter = "all",
+  onStatusFilterChange,
+  fleetSummary,
 }: Props) {
   const { registerFavoritesTabRef } = useFavoriteAnimation();
   const favoritesRef = useRef<HTMLButtonElement>(null);
@@ -68,8 +75,15 @@ export function LibrarySubSection({
           ))}
         </TabsLineList>
       </TabsLine>
-      <div className="hidden items-center gap-6 md:flex">
+      <div className="relative top-1.5 hidden items-center gap-6 md:flex">
         <LibraryFolderCreationDialog />
+        {fleetSummary && onStatusFilterChange && (
+          <AgentFilterMenu
+            value={statusFilter}
+            onChange={onStatusFilterChange}
+            summary={fleetSummary}
+          />
+        )}
         <LibrarySortMenu setLibrarySort={setLibrarySort} />
       </div>
     </div>

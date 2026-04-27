@@ -9,13 +9,16 @@ import {
 } from "./route.helpers";
 
 describe("isWorkspaceDownloadRequest", () => {
-  it("matches api/workspace/files/{id}/download pattern", () => {
+  const VALID_UUID = "550e8400-e29b-41d4-a716-446655440000";
+  const VALID_UUID_2 = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
+
+  it("matches api/workspace/files/{uuid}/download pattern", () => {
     expect(
       isWorkspaceDownloadRequest([
         "api",
         "workspace",
         "files",
-        "abc-123",
+        VALID_UUID,
         "download",
       ]),
     ).toBe(true);
@@ -30,7 +33,7 @@ describe("isWorkspaceDownloadRequest", () => {
         "api",
         "workspace",
         "files",
-        "id",
+        VALID_UUID,
         "download",
         "extra",
       ]),
@@ -43,7 +46,7 @@ describe("isWorkspaceDownloadRequest", () => {
         "v1",
         "workspace",
         "files",
-        "id",
+        VALID_UUID,
         "download",
       ]),
     ).toBe(false);
@@ -55,10 +58,621 @@ describe("isWorkspaceDownloadRequest", () => {
         "api",
         "workspace",
         "files",
-        "id",
+        VALID_UUID,
         "metadata",
       ]),
     ).toBe(false);
+  });
+
+  it("matches api/public/shared/{uuid}/files/{uuid}/download pattern", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        VALID_UUID,
+        "files",
+        VALID_UUID_2,
+        "download",
+      ]),
+    ).toBe(true);
+  });
+
+  it("rejects public shared paths not ending with download", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        VALID_UUID,
+        "files",
+        VALID_UUID_2,
+        "metadata",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID file ID in workspace path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "workspace",
+        "files",
+        "not-a-uuid",
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID token in public share path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        "not-a-uuid",
+        "files",
+        VALID_UUID,
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("rejects non-UUID file ID in public share path", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "public",
+        "shared",
+        VALID_UUID,
+        "files",
+        "not-a-uuid",
+        "download",
+      ]),
+    ).toBe(false);
+  });
+
+  it("accepts uppercase hex in UUIDs", () => {
+    expect(
+      isWorkspaceDownloadRequest([
+        "api",
+        "workspace",
+        "files",
+        "550E8400-E29B-41D4-A716-446655440000",
+        "download",
+      ]),
+    ).toBe(true);
+  });
+
+  describe("adversarial inputs", () => {
+    it("rejects empty path", () => {
+      expect(isWorkspaceDownloadRequest([])).toBe(false);
+    });
+
+    it("rejects single-segment path", () => {
+      expect(isWorkspaceDownloadRequest(["download"])).toBe(false);
+    });
+
+    it("rejects path traversal in file ID segment", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "../../etc/passwd",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects path traversal in token segment", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "../../etc/passwd",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects path traversal replacing fixed segments", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "..",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "..",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects swapped workspace/public segments to confuse routing", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "shared",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects case variations on fixed segments", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "API",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "Workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "DOWNLOAD",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "PUBLIC",
+          "shared",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "SHARED",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty string in fixed segments", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty token in public share path", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty file ID in public share path", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          VALID_UUID,
+          "files",
+          "",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects empty file ID in workspace path", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with null bytes injected", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID + "\x00.jpg",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with trailing garbage", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID + "-extra",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with leading garbage", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "prefix-" + VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects truncated UUIDs", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400-e29b-41d4",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID-length strings with wrong format", () => {
+      // Right length (36 chars) but missing hyphens
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400e29b41d4a716446655440000xxxx",
+          "download",
+        ]),
+      ).toBe(false);
+      // Hyphens in wrong positions
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e-8400e29b-41d4a716-44665544-0000",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with non-hex characters", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400-e29b-41d4-a716-44665544000g",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400-e29b-41d4-a716-44665544000!",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects SQL injection via ID segment", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "'; DROP TABLE files;--",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects padded segments with whitespace", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          " workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace ",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          " " + VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects extra trailing segments after download", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "download",
+          "",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+          "extra",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects extra leading segments before api", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "prefix",
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "",
+          "api",
+          "public",
+          "shared",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects URL-encoded segment lookalikes", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace%2Ffiles",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public%2Fshared",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects unicode homoglyph substitutions in fixed segments", () => {
+      // Cyrillic 'а' (U+0430) instead of Latin 'a'
+      expect(
+        isWorkspaceDownloadRequest([
+          "\u0430pi",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      // Fullwidth 'ａ' (U+FF41)
+      expect(
+        isWorkspaceDownloadRequest([
+          "\uff41pi",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects hybrid path mixing workspace and public patterns", () => {
+      // 5-segment but with public prefix
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          VALID_UUID,
+          "download",
+        ]),
+      ).toBe(false);
+      // 7-segment but with workspace prefix
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          VALID_UUID,
+          "files",
+          VALID_UUID_2,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects download appearing in non-terminal position", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "download",
+          "files",
+          VALID_UUID,
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "public",
+          "shared",
+          "download",
+          "files",
+          VALID_UUID,
+          "extra",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects prototype pollution segment names as IDs", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "__proto__",
+          "download",
+        ]),
+      ).toBe(false);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "constructor",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects very long path segments (DoS vector)", () => {
+      const longId = "a".repeat(10000);
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          longId,
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID with embedded path separators", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400/e29b-41d4-a716-446655440000",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects UUID-shaped strings with unicode hyphens", () => {
+      // EN DASH (U+2013) instead of HYPHEN-MINUS
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "550e8400\u2013e29b\u201341d4\u2013a716\u2013446655440000",
+          "download",
+        ]),
+      ).toBe(false);
+    });
+
+    it("rejects SSRF-style payloads in ID position", () => {
+      expect(
+        isWorkspaceDownloadRequest([
+          "api",
+          "workspace",
+          "files",
+          "http://169.254.169.254",
+          "download",
+        ]),
+      ).toBe(false);
+    });
   });
 });
 

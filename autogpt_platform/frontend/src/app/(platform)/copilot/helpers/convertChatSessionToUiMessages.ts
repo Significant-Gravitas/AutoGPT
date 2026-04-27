@@ -1,6 +1,13 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
+export interface TurnStats {
+  durationMs?: number;
+  createdAt?: string;
+}
+
+export type TurnStatsMap = Map<string, TurnStats>;
+
 interface SessionChatMessage {
   role: string;
   content: string | null;
@@ -8,6 +15,7 @@ interface SessionChatMessage {
   tool_calls: unknown[] | null;
   sequence: number | null;
   duration_ms: number | null;
+  created_at: string | null;
 }
 
 function coerceSessionChatMessages(
@@ -39,6 +47,14 @@ function coerceSessionChatMessages(
         sequence: typeof msg.sequence === "number" ? msg.sequence : null,
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
+        // The API mutator transforms ISO strings to Date objects before
+        // the data reaches here, so accept both string and Date.
+        created_at:
+          typeof msg.created_at === "string"
+            ? msg.created_at
+            : msg.created_at instanceof Date
+              ? msg.created_at.toISOString()
+              : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -166,7 +182,7 @@ export function convertChatSessionMessagesToUiMessages(
   },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
-  durations: Map<string, number>;
+  stats: TurnStatsMap;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -187,16 +203,39 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
-  const durations = new Map<string, number>();
+  const stats: TurnStatsMap = new Map();
 
-  messages.forEach((msg) => {
+  function patchStats(id: string, patch: Partial<TurnStats>) {
+    const existing = stats.get(id) ?? {};
+    stats.set(id, { ...existing, ...patch });
+  }
+
+  messages.forEach((msg, idx) => {
     if (msg.role === "tool") return;
-    if (msg.role !== "user" && msg.role !== "assistant") return;
+    if (
+      msg.role !== "user" &&
+      msg.role !== "assistant" &&
+      msg.role !== "reasoning"
+    )
+      return;
+
+    // Role=="reasoning" rows carry extended_thinking content.  Treat them as
+    // contributing a reasoning part to the surrounding assistant bubble —
+    // the consecutive-assistant merge below then folds them into the same
+    // UIMessage as the text that follows.
+    const uiRole: "user" | "assistant" =
+      msg.role === "reasoning" ? "assistant" : msg.role;
 
     const parts: UIMessage<unknown, UIDataTypes, UITools>["parts"] = [];
 
     if (typeof msg.content === "string" && msg.content.trim()) {
-      if (msg.role === "user") {
+      if (msg.role === "reasoning") {
+        parts.push({
+          type: "reasoning",
+          text: msg.content,
+          state: "done",
+        } as UIMessage<unknown, UIDataTypes, UITools>["parts"][number]);
+      } else if (msg.role === "user") {
         const { cleanText, fileParts } = extractFileParts(msg.content);
         if (cleanText) {
           parts.push({ type: "text", text: cleanText, state: "done" });
@@ -209,7 +248,7 @@ export function convertChatSessionMessagesToUiMessages(
       }
     }
 
-    if (msg.role === "assistant" && Array.isArray(msg.tool_calls)) {
+    if (uiRole === "assistant" && Array.isArray(msg.tool_calls)) {
       for (const rawToolCall of msg.tool_calls) {
         if (!rawToolCall || typeof rawToolCall !== "object") continue;
         const toolCall = rawToolCall as {
@@ -253,31 +292,54 @@ export function convertChatSessionMessagesToUiMessages(
       }
     }
 
+    // User messages must always be rendered, even with empty content, so the
+    // initial prompt is visible when reloading a session.
+    if (parts.length === 0 && msg.role === "user") {
+      parts.push({ type: "text", text: "", state: "done" });
+    }
     if (parts.length === 0) return;
 
-    // Merge consecutive assistant messages into a single UIMessage
-    // to avoid split bubbles on page reload.
+    // Merge consecutive assistant messages (including reasoning rows) into a
+    // single UIMessage to avoid split bubbles on page reload.
     const prevUI = uiMessages[uiMessages.length - 1];
-    if (msg.role === "assistant" && prevUI && prevUI.role === "assistant") {
+    if (uiRole === "assistant" && prevUI && prevUI.role === "assistant") {
       prevUI.parts.push(...parts);
       // Capture duration on merged message (last assistant msg wins)
       if (msg.duration_ms != null) {
-        durations.set(prevUI.id, msg.duration_ms);
+        patchStats(prevUI.id, { durationMs: msg.duration_ms });
+      }
+      // Advance createdAt to the latest row in the merge so the live
+      // "Thinking Xs" counter anchors to the most recent sub-step rather
+      // than the turn's first assistant row.
+      const existingCreatedAt = stats.get(prevUI.id)?.createdAt;
+      if (
+        msg.created_at &&
+        (!existingCreatedAt || msg.created_at > existingCreatedAt)
+      ) {
+        patchStats(prevUI.id, { createdAt: msg.created_at });
       }
       return;
     }
 
-    const msgId = `${sessionId}-seq-${msg.sequence}`;
+    // Fall back to the loop index when sequence is unexpectedly absent so
+    // multiple sequence-less messages don't collide on the same React key.
+    const msgId =
+      msg.sequence != null
+        ? `${sessionId}-seq-${msg.sequence}`
+        : `${sessionId}-idx-${idx}`;
     uiMessages.push({
       id: msgId,
-      role: msg.role,
+      role: uiRole,
       parts,
     });
 
-    if (msg.role === "assistant" && msg.duration_ms != null) {
-      durations.set(msgId, msg.duration_ms);
+    const patch: Partial<TurnStats> = {};
+    if (msg.created_at) patch.createdAt = msg.created_at;
+    if (uiRole === "assistant" && msg.duration_ms != null) {
+      patch.durationMs = msg.duration_ms;
     }
+    if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });
 
-  return { messages: uiMessages, durations };
+  return { messages: uiMessages, stats };
 }

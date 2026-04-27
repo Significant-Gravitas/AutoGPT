@@ -42,11 +42,13 @@ def main(**kwargs):
     from backend.data.db_manager import DatabaseManager
     from backend.executor import ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
+    from backend.platform_linking.manager import PlatformLinkingManager
 
     run_processes(
         DatabaseManager().set_log_level("warning"),
         Scheduler(),
         NotificationManager(),
+        PlatformLinkingManager(),
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),

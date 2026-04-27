@@ -34,6 +34,15 @@ class ResponseType(str, Enum):
     TEXT_DELTA = "text-delta"
     TEXT_END = "text-end"
 
+    # Reasoning streaming (extended_thinking content blocks).  Matches
+    # the Vercel AI SDK v5 wire names so the client's ``useChat``
+    # transport accumulates these into a ``type: 'reasoning'`` UIMessage
+    # part that the ``ReasoningCollapse`` component renders collapsed by
+    # default.
+    REASONING_START = "reasoning-start"
+    REASONING_DELTA = "reasoning-delta"
+    REASONING_END = "reasoning-end"
+
     # Tool interaction
     TOOL_INPUT_START = "tool-input-start"
     TOOL_INPUT_AVAILABLE = "tool-input-available"
@@ -128,6 +137,31 @@ class StreamTextEnd(StreamBaseResponse):
 
     type: ResponseType = ResponseType.TEXT_END
     id: str = Field(..., description="Text block ID")
+
+
+# ========== Reasoning Streaming ==========
+
+
+class StreamReasoningStart(StreamBaseResponse):
+    """Start of a reasoning block (extended_thinking content)."""
+
+    type: ResponseType = ResponseType.REASONING_START
+    id: str = Field(..., description="Reasoning block ID")
+
+
+class StreamReasoningDelta(StreamBaseResponse):
+    """Streaming reasoning content delta."""
+
+    type: ResponseType = ResponseType.REASONING_DELTA
+    id: str = Field(..., description="Reasoning block ID")
+    delta: str = Field(..., description="Reasoning content delta")
+
+
+class StreamReasoningEnd(StreamBaseResponse):
+    """End of a reasoning block."""
+
+    type: ResponseType = ResponseType.REASONING_END
+    id: str = Field(..., description="Reasoning block ID")
 
 
 # ========== Tool Interaction ==========

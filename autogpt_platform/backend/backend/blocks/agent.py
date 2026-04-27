@@ -171,7 +171,10 @@ class AgentExecutorBlock(Block):
                 )
                 self.merge_stats(
                     NodeExecutionStats(
-                        extra_cost=event.stats.cost if event.stats else 0,
+                        # Sub-graph already debited each of its own nodes; we
+                        # roll up its total so graph_stats.cost reflects the
+                        # full sub-graph spend.
+                        reconciled_cost_delta=(event.stats.cost if event.stats else 0),
                         extra_steps=event.stats.node_exec_count if event.stats else 0,
                     )
                 )

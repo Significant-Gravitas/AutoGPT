@@ -150,6 +150,9 @@ export function splitReasoningAndResponse(parts: MessagePart[]): {
     if (isInteractiveToolPart(part)) {
       pinnedParts.push(part);
     } else {
+      // Reasoning / thinking parts stay inside the outer "Show steps" modal
+      // alongside the tool-use timeline — their own inline accordion handles
+      // expansion inside the modal so there's no visual collision.
       reasoning.push(part);
     }
   }

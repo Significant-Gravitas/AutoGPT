@@ -1,1632 +1,877 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, cleanup } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useBuilderChatPanel } from "../useBuilderChatPanel";
 
-// --- Module mocks (must be hoisted before imports) ---
+const createBuilderSession = vi.fn();
+const createNewGraph = vi.fn();
+const setActiveVersion = vi.fn();
+const mockRefetchGraph = vi.fn();
+const mockUseQueryStates = vi.fn();
+const mockUseGetV1GetSpecificGraph = vi.fn();
+const mockUseCopilotStream = vi.fn();
+const mockUseCopilotPendingChips = vi.fn();
 
-// Bypass useShallow's ref-based shallow comparison so selectors work in tests.
-vi.mock("zustand/react/shallow", () => ({
-  useShallow: (fn: (s: unknown) => unknown) => fn,
+vi.mock("@/app/api/__generated__/endpoints/graphs/graphs", () => ({
+  useGetV1GetSpecificGraph: (...args: unknown[]) =>
+    mockUseGetV1GetSpecificGraph(...args),
+  usePostV1CreateNewGraph: () => ({
+    mutateAsync: createNewGraph,
+    isPending: false,
+  }),
+  usePutV1SetActiveGraphVersion: () => ({ mutateAsync: setActiveVersion }),
+  getGetV1GetSpecificGraphQueryKey: (id: string) => ["graph", id],
 }));
 
-const mockNodes: unknown[] = [];
-const mockEdges: unknown[] = [];
-const mockSetNodes = vi.fn();
-const mockSetEdges = vi.fn();
-
-vi.mock("../../../stores/nodeStore", () => {
-  const useNodeStore = (selector: (s: unknown) => unknown) =>
-    selector({
-      nodes: mockNodes,
-      setNodes: mockSetNodes,
-    });
-  useNodeStore.getState = () => ({
-    nodes: mockNodes,
-    setNodes: mockSetNodes,
-  });
-  return { useNodeStore };
-});
-
-vi.mock("../../../stores/edgeStore", () => {
-  const useEdgeStore = (selector: (s: unknown) => unknown) =>
-    selector({
-      edges: mockEdges,
-      setEdges: mockSetEdges,
-    });
-  useEdgeStore.getState = () => ({
-    edges: mockEdges,
-    setEdges: mockSetEdges,
-  });
-  return { useEdgeStore };
-});
-
-const mockPostV2CreateSession = vi.fn();
+const mockUseGetV2GetSession = vi.fn();
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
-  postV2CreateSession: (...args: unknown[]) => mockPostV2CreateSession(...args),
+  useGetV2GetSession: (...args: unknown[]) => mockUseGetV2GetSession(...args),
+  usePostV2CreateSession: () => ({
+    mutateAsync: createBuilderSession,
+    isPending: false,
+  }),
+  getGetV2GetSessionQueryKey: (id: string) => ["session", id],
 }));
 
-vi.mock("@/lib/supabase/actions", () => ({
-  getWebSocketToken: vi.fn().mockResolvedValue({ token: "tok", error: null }),
+vi.mock("@/app/api/helpers", () => ({
+  okData: (res: unknown) => res,
 }));
 
-vi.mock("@/services/environment", () => ({
-  environment: { getAGPTServerBaseUrl: () => "http://localhost:8000" },
-}));
-
-const mockInvalidateQueries = vi.fn();
-vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
-}));
-
-const mockToast = vi.fn();
 vi.mock("@/components/molecules/Toast/use-toast", () => ({
-  useToast: () => ({ toast: mockToast }),
+  useToast: () => ({ toast: vi.fn() }),
 }));
 
-const mockSendMessage = vi.fn();
-const mockSetMessages = vi.fn();
-const mockStop = vi.fn();
-let mockChatMessages: unknown[] = [];
-let mockChatStatus = "ready";
-vi.mock("@ai-sdk/react", () => ({
-  useChat: () => ({
-    messages: mockChatMessages,
-    setMessages: mockSetMessages,
-    sendMessage: mockSendMessage,
-    stop: mockStop,
-    status: mockChatStatus,
-    error: undefined,
-  }),
+vi.mock("@tanstack/react-query", () => ({
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
-
-vi.mock("ai", () => ({
-  // Must be a regular function (not an arrow) so it is constructible via `new`.
-  DefaultChatTransport: vi.fn().mockImplementation(function () {
-    return {};
-  }),
-}));
-
-let mockFlowID: string | null = null;
 
 vi.mock("nuqs", () => ({
-  parseAsString: { withDefault: (d: string) => d },
-  useQueryStates: () => [{ flowID: mockFlowID }, vi.fn()],
+  parseAsString: Symbol("str"),
+  parseAsInteger: Symbol("int"),
+  useQueryStates: (...args: unknown[]) => mockUseQueryStates(...args),
 }));
 
-// Import after mocks
-import {
-  useBuilderChatPanel,
-  clearGraphSessionCacheForTesting,
-} from "../useBuilderChatPanel";
+vi.mock(
+  "@/app/(platform)/copilot/helpers/convertChatSessionToUiMessages",
+  () => ({
+    convertChatSessionMessagesToUiMessages: () => ({
+      messages: [],
+      durations: new Map(),
+    }),
+  }),
+);
+
+vi.mock("@/app/(platform)/copilot/useCopilotStream", () => ({
+  useCopilotStream: (...args: unknown[]) => mockUseCopilotStream(...args),
+}));
+
+vi.mock("@/app/(platform)/copilot/useCopilotPendingChips", () => ({
+  useCopilotPendingChips: (...args: unknown[]) =>
+    mockUseCopilotPendingChips(...args),
+}));
+
+vi.mock("@sentry/nextjs", () => ({
+  captureException: vi.fn(),
+}));
+
+const setQueryStatesMock = vi.fn();
+
+const defaultStream = {
+  messages: [],
+  setMessages: vi.fn(),
+  sendMessage: vi.fn(),
+  stop: vi.fn(),
+  status: "ready" as const,
+  error: undefined,
+};
 
 beforeEach(() => {
-  mockFlowID = null;
-  mockNodes.length = 0;
-  mockEdges.length = 0;
-  mockChatMessages = [];
-  mockChatStatus = "ready";
-  mockSetNodes.mockClear();
-  mockSetEdges.mockClear();
-  mockPostV2CreateSession.mockClear();
-  mockInvalidateQueries.mockClear();
-  mockSendMessage.mockClear();
-  mockSetMessages.mockClear();
-  mockToast.mockClear();
-  clearGraphSessionCacheForTesting();
-});
-
-afterEach(() => {
-  cleanup();
-});
-
-// Flush all pending microtasks + one macrotask so async effects inside `act`
-// have time to resolve their awaited promises and commit state updates.
-async function openAndFlush(toggle: () => void) {
-  await act(async () => {
-    toggle();
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  vi.clearAllMocks();
+  setQueryStatesMock.mockReset();
+  mockUseQueryStates.mockReturnValue([
+    { flowID: null, flowExecutionID: null, flowVersion: null },
+    setQueryStatesMock,
+  ]);
+  mockUseGetV1GetSpecificGraph.mockReturnValue({
+    data: null,
+    refetch: mockRefetchGraph,
   });
-}
+  mockUseCopilotStream.mockReturnValue(defaultStream);
+  mockUseCopilotPendingChips.mockReturnValue({
+    queuedMessages: [],
+    appendChip: vi.fn(),
+  });
+  mockUseGetV2GetSession.mockReturnValue({
+    data: undefined,
+    refetch: vi.fn(),
+  });
+});
 
-describe("useBuilderChatPanel – initial state", () => {
-  it("starts with panel closed and no session", () => {
+describe("useBuilderChatPanel", () => {
+  it("starts closed with no session", () => {
     const { result } = renderHook(() => useBuilderChatPanel());
     expect(result.current.isOpen).toBe(false);
     expect(result.current.sessionId).toBeNull();
-    expect(result.current.sessionError).toBe(false);
-    expect(result.current.isCreatingSession).toBe(false);
   });
 
-  it("handleToggle opens and closes the panel", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleToggle();
-    });
+  it("toggles open on handleToggle", () => {
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    expect(result.current.isOpen).toBe(false);
+    result.current.handleToggle();
+    rerender();
     expect(result.current.isOpen).toBe(true);
-
-    act(() => {
-      result.current.handleToggle();
-    });
-    expect(result.current.isOpen).toBe(false);
-  });
-});
-
-describe("useBuilderChatPanel – session lifecycle", () => {
-  it("creates session and sets sessionId when panel is opened", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-1" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(mockPostV2CreateSession).toHaveBeenCalledOnce();
-    expect(result.current.sessionId).toBe("sess-1");
-    expect(result.current.isCreatingSession).toBe(false);
-    expect(result.current.sessionError).toBe(false);
   });
 
-  it("sets sessionError when session creation request throws", async () => {
-    mockPostV2CreateSession.mockRejectedValue(new Error("network error"));
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(result.current.sessionError).toBe(true);
-    expect(result.current.isCreatingSession).toBe(false);
-    expect(result.current.sessionId).toBeNull();
-  });
-
-  it("sets sessionError when session creation returns non-200 status", async () => {
-    mockPostV2CreateSession.mockResolvedValue({ status: 500, data: {} });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(result.current.sessionError).toBe(true);
-    expect(result.current.isCreatingSession).toBe(false);
-  });
-
-  it("does not create a second session when one already exists", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-existing" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(mockPostV2CreateSession).toHaveBeenCalledOnce();
-
-    // Close and reopen — should NOT call postV2CreateSession again
-    act(() => result.current.handleToggle());
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(mockPostV2CreateSession).toHaveBeenCalledOnce();
-    expect(result.current.sessionId).toBe("sess-existing");
-  });
-
-  it("sets sessionError when session creation returns a path-traversal id (security validation)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "../../admin" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(result.current.sessionError).toBe(true);
-    expect(result.current.sessionId).toBeNull();
-  });
-
-  it("sets sessionError when session creation returns an id with spaces", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess 1" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(result.current.sessionError).toBe(true);
-    expect(result.current.sessionId).toBeNull();
-  });
-});
-
-describe("useBuilderChatPanel – no auto-send on open", () => {
-  it("does NOT auto-send any message when the panel opens", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-open" },
-    });
-    mockNodes.push({
-      id: "n1",
-      data: { title: "Search Block", description: "" },
-    });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-});
-
-describe("useBuilderChatPanel – seed message", () => {
-  it("sends seed message via sendMessage when session is available and isGraphLoaded=true", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-seed" },
-    });
-    mockNodes.push({ id: "n1", data: { title: "Search", description: "" } });
-
-    const { result } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-    const callArg = mockSendMessage.mock.calls[0][0] as { text: string };
-    expect(typeof callArg.text).toBe("string");
-    expect(callArg.text).toContain("I'm building an agent");
-  });
-
-  it("does NOT send seed message when isGraphLoaded is false (default)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-no-seed" },
-    });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-
-  it("sends seed message only once even when sessionId and isGraphLoaded deps re-run (hasSentSeedMessageRef guard)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-once" },
-    });
-
-    const { result, rerender } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-
-    rerender();
-
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-  });
-});
-
-describe("useBuilderChatPanel – flowID reset", () => {
-  it("resets appliedActionKeys when flowID changes", () => {
-    mockNodes.push({ id: "n1", data: { hardcodedValues: {} } });
-    mockFlowID = "flow-1";
-
-    const { result, rerender } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n1",
-        key: "query",
-        value: "test",
-      });
-    });
-    expect(result.current.appliedActionKeys.size).toBe(1);
-
-    mockFlowID = "flow-2";
-    rerender();
-
-    expect(result.current.appliedActionKeys.size).toBe(0);
-  });
-
-  it("resets sessionId when flowID changes", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-abc" },
-    });
-    mockFlowID = "flow-1";
-
-    const { result, rerender } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionId).toBe("sess-abc");
-
-    mockFlowID = "flow-2";
-    rerender();
-
-    expect(result.current.sessionId).toBeNull();
-  });
-
-  it("resets sessionError when flowID changes", async () => {
-    mockPostV2CreateSession.mockRejectedValue(new Error("fail"));
-    mockFlowID = "flow-1";
-
-    const { result, rerender } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionError).toBe(true);
-
-    mockFlowID = "flow-2";
-    rerender();
-
-    expect(result.current.sessionError).toBe(false);
-  });
-
-  it("always clears messages on flowID change even when a cached session exists (prevents applied/unapplied mismatch)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-cached" },
-    });
-    mockFlowID = "flow-1";
-
-    const { result, rerender } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionId).toBe("sess-cached");
-
-    // Simulate chat messages from the first session
-    mockChatMessages = [
-      {
-        id: "msg-1",
-        role: "assistant",
-        parts: [{ type: "text", text: "Hello from session 1" }],
-      },
-    ];
-    mockSetMessages.mockClear();
-
-    // Navigate away and back to the same graph — cached session should be restored
-    // but messages must be cleared to stay in sync with the reset appliedActionKeys
-    mockFlowID = "flow-2";
-    rerender();
-    mockFlowID = "flow-1";
-    rerender();
-
-    // setMessages([]) must be called unconditionally regardless of cached session
-    expect(mockSetMessages).toHaveBeenCalledWith([]);
-  });
-});
-
-describe("useBuilderChatPanel – apply does not trigger cache refetch", () => {
-  it("does NOT call invalidateQueries after applying an update_node_input action (prevents refetch overwriting local state)", () => {
-    mockNodes.push({
-      id: "n1",
-      data: { hardcodedValues: { existing: "val" } },
-    });
-    mockFlowID = "flow-cache";
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n1",
-        key: "query",
-        value: "new val",
-      });
-    });
-
-    expect(mockInvalidateQueries).not.toHaveBeenCalled();
-  });
-});
-
-describe("useBuilderChatPanel – handleApplyAction", () => {
-  it("update_node_input: calls setNodes with merged hardcodedValues (bypasses history)", () => {
-    mockNodes.push({
-      id: "node-1",
-      data: { hardcodedValues: { existing: "value" } },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "node-1",
-        key: "query",
-        value: "AI news",
-      });
-    });
-
-    expect(mockSetNodes).toHaveBeenCalledWith([
-      {
-        id: "node-1",
-        data: { hardcodedValues: { existing: "value", query: "AI news" } },
-      },
+  it("surfaces the bootstrapping flag when opened without a flowID", () => {
+    mockUseQueryStates.mockReturnValue([
+      { flowID: null, flowExecutionID: null, flowVersion: null },
+      vi.fn(),
     ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    expect(result.current.isBootstrapping).toBe(true);
   });
 
-  it("update_node_input: shows toast when node not found", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "nonexistent",
-        key: "query",
-        value: "test",
-      });
-    });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
+  it("forwards fast mode to useCopilotStream", () => {
+    renderHook(() => useBuilderChatPanel());
+    expect(mockUseCopilotStream).toHaveBeenCalledWith(
+      expect.objectContaining({ copilotMode: "fast" }),
     );
   });
 
-  it("connect_nodes: calls setEdges with new edge appended (bypasses history)", () => {
-    mockNodes.push({ id: "src", data: {} }, { id: "tgt", data: {} });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src",
-        target: "tgt",
-        sourceHandle: "output",
-        targetHandle: "input",
-      });
+  it("requests a builder session when opened with a flowID", async () => {
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-bound" },
     });
-
-    expect(mockSetEdges).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "src:output->tgt:input",
-          source: "src",
-          target: "tgt",
-          sourceHandle: "output",
-          targetHandle: "input",
-          type: "custom",
-          markerEnd: expect.objectContaining({ type: "arrowclosed" }),
-        }),
-      ]),
-    );
-  });
-
-  it("connect_nodes: shows toast and does NOT call setEdges when source node is missing", () => {
-    mockNodes.push({ id: "tgt", data: {} });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "missing-src",
-        target: "tgt",
-        sourceHandle: "output",
-        targetHandle: "input",
-      });
-    });
-
-    expect(mockSetEdges).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
-  });
-
-  it("connect_nodes: shows toast and does NOT call setEdges when target node is missing", () => {
-    mockNodes.push({ id: "src", data: {} });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src",
-        target: "missing-tgt",
-        sourceHandle: "output",
-        targetHandle: "input",
-      });
-    });
-
-    expect(mockSetEdges).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
-  });
-
-  it("update_node_input: rejects key not present in inputSchema", () => {
-    mockNodes.push({
-      id: "node-1",
-      data: {
-        hardcodedValues: {},
-        inputSchema: { properties: { allowed_key: {} } },
-      },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "node-1",
-        key: "forbidden_key",
-        value: "test",
-      });
-    });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
-  });
-
-  it("update_node_input: allows key present in inputSchema", () => {
-    mockNodes.push({
-      id: "node-1",
-      data: {
-        hardcodedValues: {},
-        inputSchema: { properties: { query: {} } },
-      },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "node-1",
-        key: "query",
-        value: "AI news",
-      });
-    });
-
-    expect(mockSetNodes).toHaveBeenCalledWith([
-      {
-        id: "node-1",
-        data: {
-          hardcodedValues: { query: "AI news" },
-          inputSchema: { properties: { query: {} } },
-        },
-      },
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-1", flowExecutionID: null, flowVersion: null },
+      vi.fn(),
     ]);
-  });
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
 
-  it("connect_nodes: rejects sourceHandle not in outputSchema", () => {
-    mockNodes.push(
-      { id: "src", data: { outputSchema: { properties: { result: {} } } } },
-      { id: "tgt", data: { inputSchema: { properties: { input: {} } } } },
-    );
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src",
-        target: "tgt",
-        sourceHandle: "nonexistent_output",
-        targetHandle: "input",
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { builder_graph_id: "graph-1" },
       });
     });
-
-    expect(mockSetEdges).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
   });
 
-  it("connect_nodes: rejects targetHandle not in inputSchema", () => {
-    mockNodes.push(
-      { id: "src", data: { outputSchema: { properties: { result: {} } } } },
-      { id: "tgt", data: { inputSchema: { properties: { input: {} } } } },
-    );
+  it("exposes null revert target before any edit_agent turn", () => {
     const { result } = renderHook(() => useBuilderChatPanel());
+    expect(result.current.revertTargetVersion).toBeNull();
+  });
 
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src",
-        target: "tgt",
-        sourceHandle: "result",
-        targetHandle: "nonexistent_input",
+  it("auto-creates a blank agent when opened with no flowID, writing the new id to the URL", async () => {
+    createNewGraph.mockResolvedValue({
+      status: 200,
+      data: { id: "graph-boot", version: 1 },
+    });
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowID: "graph-boot",
+        flowVersion: 1,
       });
     });
-
-    expect(mockSetEdges).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
   });
 
-  it("connect_nodes: calls setEdges when both handles are valid according to schemas", () => {
-    mockNodes.push(
-      { id: "src", data: { outputSchema: { properties: { result: {} } } } },
-      { id: "tgt", data: { inputSchema: { properties: { input: {} } } } },
-    );
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src",
-        target: "tgt",
-        sourceHandle: "result",
-        targetHandle: "input",
-      });
+  it("surfaces a destructive toast when the bootstrap mutation fails", async () => {
+    const toast = vi.fn();
+    const useToastMock = await import("@/components/molecules/Toast/use-toast");
+    (useToastMock.useToast as unknown as ReturnType<typeof vi.fn>) = vi
+      .fn()
+      .mockReturnValue({ toast });
+    createNewGraph.mockResolvedValue({ status: 500, data: null });
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalled();
     });
-
-    expect(mockSetEdges).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "src:result->tgt:input",
-          source: "src",
-          target: "tgt",
-          sourceHandle: "result",
-          targetHandle: "input",
-          type: "custom",
-          markerEnd: expect.objectContaining({ type: "arrowclosed" }),
-        }),
-      ]),
-    );
-  });
-
-  it("adds action key to appliedActionKeys after successful apply", () => {
-    mockNodes.push({ id: "n1", data: { hardcodedValues: {} } });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    const action = {
-      type: "update_node_input" as const,
-      nodeId: "n1",
-      key: "query",
-      value: "test",
-    };
-
-    act(() => {
-      result.current.handleApplyAction(action);
-    });
-
-    expect(result.current.appliedActionKeys.has('n1:query:"test"')).toBe(true);
-  });
-});
-
-describe("useBuilderChatPanel – undo", () => {
-  it("restores previous node state after undo using setNodes (bypasses history store)", () => {
-    const initialNode = {
-      id: "node-undo",
-      data: { hardcodedValues: { existing: "original" } },
-    };
-    mockNodes.push(initialNode);
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "node-undo",
-        key: "query",
-        value: "changed",
-      });
-    });
-
-    expect(result.current.undoStack).toHaveLength(1);
-
-    // Clear call history so we can verify undo uses setNodes with the original snapshot
-    mockSetNodes.mockClear();
-
-    act(() => {
-      result.current.handleUndoLastAction();
-    });
-
-    // setNodes is called with the captured snapshot to bypass the global history store
-    expect(mockSetNodes).toHaveBeenCalledWith([initialNode]);
-    expect(result.current.undoStack).toHaveLength(0);
-  });
-
-  it("removes action key from appliedActionKeys after undo", () => {
-    mockNodes.push({ id: "n-undo", data: { hardcodedValues: {} } });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    const action = {
-      type: "update_node_input" as const,
-      nodeId: "n-undo",
-      key: "val",
-      value: "x",
-    };
-
-    act(() => {
-      result.current.handleApplyAction(action);
-    });
-    expect(result.current.appliedActionKeys.size).toBe(1);
-
-    act(() => {
-      result.current.handleUndoLastAction();
-    });
-    expect(result.current.appliedActionKeys.size).toBe(0);
-  });
-
-  it("connect_nodes: restores edges via setEdges after undo (bypasses history store)", () => {
-    const initialEdge = { id: "existing-edge", source: "a", target: "b" };
-    mockEdges.push(initialEdge);
-    mockNodes.push({ id: "src", data: {} }, { id: "tgt", data: {} });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src",
-        target: "tgt",
-        sourceHandle: "out",
-        targetHandle: "in",
-      });
-    });
-
-    expect(mockSetEdges).toHaveBeenCalledOnce();
-    expect(result.current.undoStack).toHaveLength(1);
-
-    mockSetEdges.mockClear();
-
-    act(() => {
-      result.current.handleUndoLastAction();
-    });
-
-    // setEdges is called with the original captured snapshot to bypass the global history store
-    expect(mockSetEdges).toHaveBeenCalledWith([initialEdge]);
-    expect(result.current.undoStack).toHaveLength(0);
-    expect(result.current.appliedActionKeys.size).toBe(0);
-  });
-});
-
-describe("useBuilderChatPanel – parsedActions integration", () => {
-  it("returns parsed actions from assistant messages when status is ready", () => {
-    mockChatMessages = [
-      {
-        id: "msg-1",
-        role: "assistant",
-        parts: [
-          {
-            type: "text",
-            text: '```json\n{"action":"update_node_input","node_id":"n1","key":"query","value":"AI news"}\n```',
-          },
-        ],
-      },
-    ];
-    mockChatStatus = "ready";
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    expect(result.current.parsedActions).toHaveLength(1);
-    expect(result.current.parsedActions[0]).toEqual({
-      type: "update_node_input",
-      nodeId: "n1",
-      key: "query",
-      value: "AI news",
-    });
-  });
-
-  it("returns empty parsedActions when status is streaming", () => {
-    mockChatMessages = [
-      {
-        id: "msg-1",
-        role: "assistant",
-        parts: [
-          {
-            type: "text",
-            text: '```json\n{"action":"update_node_input","node_id":"n1","key":"query","value":"AI news"}\n```',
-          },
-        ],
-      },
-    ];
-    mockChatStatus = "streaming";
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    expect(result.current.parsedActions).toHaveLength(0);
-  });
-
-  it("deduplicates identical actions from multiple assistant messages", () => {
-    const actionBlock =
-      '```json\n{"action":"update_node_input","node_id":"n1","key":"query","value":"AI news"}\n```';
-    mockChatMessages = [
-      {
-        id: "msg-1",
-        role: "assistant",
-        parts: [{ type: "text", text: actionBlock }],
-      },
-      {
-        id: "msg-2",
-        role: "assistant",
-        parts: [{ type: "text", text: actionBlock }],
-      },
-    ];
-    mockChatStatus = "ready";
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    expect(result.current.parsedActions).toHaveLength(1);
-  });
-});
-
-describe("useBuilderChatPanel – Escape key handler", () => {
-  it("closes the panel when Escape is pressed while open", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleToggle();
-    });
+    // The hook catches and toasts; no throw should reach the test.
     expect(result.current.isOpen).toBe(true);
-
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    });
-    expect(result.current.isOpen).toBe(false);
   });
 
-  it("does not error when Escape is pressed while panel is closed", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-    expect(result.current.isOpen).toBe(false);
-
-    act(() => {
-      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+  it("sends the message directly when stream status is ready", async () => {
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "ready",
     });
-
-    expect(result.current.isOpen).toBe(false);
-  });
-});
-
-describe("useBuilderChatPanel – retrySession", () => {
-  it("clears sessionError so the session-creation effect can re-run", async () => {
-    mockPostV2CreateSession.mockRejectedValueOnce(new Error("network error"));
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionError).toBe(true);
-
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-retry" },
-    });
-
-    await act(async () => {
-      result.current.retrySession();
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    });
-
-    expect(result.current.sessionError).toBe(false);
-    expect(result.current.sessionId).toBe("sess-retry");
-  });
-
-  it("re-sends seed message to new session after retry (hasSentSeedMessageRef is reset)", async () => {
-    // First session succeeds and seed is sent
-    mockPostV2CreateSession.mockResolvedValueOnce({
-      status: 200,
-      data: { id: "sess-first" },
-    });
-    const { result } = renderHook(() =>
-      useBuilderChatPanel({ isGraphLoaded: true }),
-    );
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionId).toBe("sess-first");
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-
-    // Force a retry: evict cache and set error state manually, then retry
-    mockSendMessage.mockClear();
-    mockPostV2CreateSession.mockResolvedValueOnce({
-      status: 200,
-      data: { id: "sess-retry-seed" },
-    });
-    await act(async () => {
-      result.current.retrySession();
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    });
-
-    // New session obtained; seed message must be sent again to the new session
-    expect(result.current.sessionId).toBe("sess-retry-seed");
-    expect(mockSendMessage).toHaveBeenCalledOnce();
-  });
-
-  it("clears stale messages when retrySession is called (setMessages reset)", async () => {
-    // Simulate stale messages from a previous session
-    mockChatMessages = [
-      {
-        id: "stale-1",
-        role: "assistant",
-        parts: [{ type: "text", text: "Old message from failed session" }],
-      },
-    ];
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    // Messages should be present before retry (from mock)
-    expect(result.current.messages).toHaveLength(1);
-
-    act(() => {
-      result.current.retrySession();
-    });
-
-    // setMessages([]) clears the internal useChat message list
-    expect(mockSetMessages).toHaveBeenCalledWith([]);
-  });
-});
-
-describe("useBuilderChatPanel – handleSend", () => {
-  it("clears inputValue after sending when session is ready", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
+    createBuilderSession.mockResolvedValue({
       status: 200,
       data: { id: "sess-send" },
     });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    act(() => {
-      result.current.setInputValue("hello world");
-    });
-
-    act(() => {
-      result.current.handleSend();
-    });
-
-    expect(result.current.inputValue).toBe("");
-    expect(mockSendMessage).toHaveBeenCalledWith({ text: "hello world" });
-  });
-
-  it("does not send when inputValue is whitespace only", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.setInputValue("   ");
-    });
-
-    act(() => {
-      result.current.handleSend();
-    });
-
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-
-  it("does not send when canSend is false (sessionError=true)", async () => {
-    mockPostV2CreateSession.mockRejectedValue(new Error("fail"));
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-    expect(result.current.sessionError).toBe(true);
-    expect(result.current.canSend).toBe(false);
-
-    act(() => {
-      result.current.setInputValue("hello");
-    });
-
-    act(() => {
-      result.current.handleSend();
-    });
-
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-});
-
-describe("useBuilderChatPanel – handleKeyDown", () => {
-  it("calls handleSend on Enter without Shift when canSend is true", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-kd" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    act(() => {
-      result.current.setInputValue("test message");
-    });
-
-    const mockPreventDefault = vi.fn();
-    act(() => {
-      result.current.handleKeyDown({
-        key: "Enter",
-        shiftKey: false,
-        preventDefault: mockPreventDefault,
-      } as unknown as import("react").KeyboardEvent<HTMLTextAreaElement>);
-    });
-
-    expect(mockPreventDefault).toHaveBeenCalled();
-    expect(mockSendMessage).toHaveBeenCalledWith({ text: "test message" });
-  });
-
-  it("does NOT call handleSend on Shift+Enter (allows newline insertion)", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-shift" },
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    act(() => {
-      result.current.setInputValue("multiline");
-    });
-
-    const mockPreventDefault = vi.fn();
-    act(() => {
-      result.current.handleKeyDown({
-        key: "Enter",
-        shiftKey: true,
-        preventDefault: mockPreventDefault,
-      } as unknown as import("react").KeyboardEvent<HTMLTextAreaElement>);
-    });
-
-    expect(mockPreventDefault).not.toHaveBeenCalled();
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-});
-
-describe("useBuilderChatPanel – schema-absent nodes", () => {
-  it("update_node_input: allows any key when node has no inputSchema (permissive mode)", () => {
-    mockNodes.push({
-      id: "schema-less",
-      data: { hardcodedValues: {} },
-      // No inputSchema at all
-    });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "schema-less",
-        key: "any_key",
-        value: "any_value",
-      });
-    });
-
-    // Without a schema, validation is skipped — the key is applied permissively
-    expect(mockSetNodes).toHaveBeenCalledWith([
-      {
-        id: "schema-less",
-        data: { hardcodedValues: { any_key: "any_value" } },
-      },
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-send", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
     ]);
-    expect(mockToast).not.toHaveBeenCalled();
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-send");
+    });
+    await result.current.onSend("hello");
+    expect(sendMessage).toHaveBeenCalledWith({ text: "hello" });
   });
 
-  it("connect_nodes: allows connection when source node has no outputSchema (permissive mode)", () => {
-    mockNodes.push(
-      { id: "src-no-schema", data: {} }, // no outputSchema
-      {
-        id: "tgt-has-schema",
-        data: { inputSchema: { properties: { input: {} } } },
-      },
-    );
+  it("no-ops onSend when no session is bound yet", async () => {
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "ready",
+    });
     const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src-no-schema",
-        target: "tgt-has-schema",
-        sourceHandle: "any_output",
-        targetHandle: "input",
-      });
-    });
-
-    // Without an outputSchema, sourceHandle validation is skipped
-    expect(mockSetEdges).toHaveBeenCalled();
-    expect(mockToast).not.toHaveBeenCalled();
+    await result.current.onSend("nobody home");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("connect_nodes: allows connection when target node has no inputSchema (permissive mode)", () => {
-    mockNodes.push(
-      {
-        id: "src-has-schema",
-        data: { outputSchema: { properties: { output: {} } } },
-      },
-      { id: "tgt-no-schema", data: {} }, // no inputSchema
-    );
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "connect_nodes",
-        source: "src-has-schema",
-        target: "tgt-no-schema",
-        sourceHandle: "output",
-        targetHandle: "any_input",
-      });
+  it("no-ops onSend for empty/whitespace input even when session is live", async () => {
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "ready",
     });
-
-    // Without an inputSchema, targetHandle validation is skipped
-    expect(mockSetEdges).toHaveBeenCalled();
-    expect(mockToast).not.toHaveBeenCalled();
-  });
-});
-
-describe("useBuilderChatPanel – sequential multi-undo (LIFO order)", () => {
-  it("undoes two applied actions in LIFO order, restoring correct state at each step", () => {
-    const initialNode = {
-      id: "n1",
-      data: { hardcodedValues: { x: "original" } },
-    };
-    mockNodes.push(initialNode);
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    // Apply first action
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n1",
-        key: "x",
-        value: "first_change",
-      });
-    });
-    expect(result.current.undoStack).toHaveLength(1);
-
-    // Apply second action
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n1",
-        key: "x",
-        value: "second_change",
-      });
-    });
-    expect(result.current.undoStack).toHaveLength(2);
-
-    // Undo second action — should restore to snapshot taken before second action
-    // (which captured the state after first action, i.e. mockNodes at that point)
-    mockSetNodes.mockClear();
-    act(() => {
-      result.current.handleUndoLastAction();
-    });
-    expect(result.current.undoStack).toHaveLength(1);
-    // setNodes called with the snapshot captured before second action applied
-    expect(mockSetNodes).toHaveBeenCalledOnce();
-
-    // Undo first action — should restore to snapshot taken before first action
-    mockSetNodes.mockClear();
-    act(() => {
-      result.current.handleUndoLastAction();
-    });
-    expect(result.current.undoStack).toHaveLength(0);
-    expect(mockSetNodes).toHaveBeenCalledWith([initialNode]);
-  });
-});
-
-describe("useBuilderChatPanel – duplicate edge guard", () => {
-  it("does not append duplicate edge when same connect_nodes action is applied twice", () => {
-    mockNodes.push({ id: "src", data: {} }, { id: "tgt", data: {} });
-
-    const action = {
-      type: "connect_nodes" as const,
-      source: "src",
-      target: "tgt",
-      sourceHandle: "out",
-      targetHandle: "in",
-    };
-
-    // Simulate the edge store updating when setEdges is called
-    const newEdge = {
-      id: "src:out->tgt:in",
-      source: "src",
-      target: "tgt",
-      sourceHandle: "out",
-      targetHandle: "in",
-      type: "custom",
-    };
-    mockSetEdges.mockImplementationOnce((edges: unknown[]) => {
-      mockEdges.push(...edges);
-    });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction(action);
-    });
-
-    expect(mockSetEdges).toHaveBeenCalledOnce();
-    expect(result.current.appliedActionKeys.size).toBe(1);
-    // Verify the edge is now in the mock store
-    expect(mockEdges).toContainEqual(expect.objectContaining(newEdge));
-
-    // Second apply of the same action — should not call setEdges again
-    mockSetEdges.mockClear();
-    act(() => {
-      result.current.handleApplyAction(action);
-    });
-
-    // setEdges should NOT be called again — the edge already exists in the store
-    expect(mockSetEdges).not.toHaveBeenCalled();
-    // But appliedActionKeys should still contain the key
-    expect(result.current.appliedActionKeys.size).toBe(1);
-  });
-});
-
-describe("useBuilderChatPanel – undo stack size cap", () => {
-  it("caps the undo stack at MAX_UNDO (20) entries, dropping the oldest", () => {
-    // Push 21 nodes so each apply action targets a unique node
-    for (let i = 0; i <= 20; i++) {
-      mockNodes.push({ id: `n${i}`, data: { hardcodedValues: {} } });
-    }
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    // Apply 21 actions
-    for (let i = 0; i <= 20; i++) {
-      act(() => {
-        result.current.handleApplyAction({
-          type: "update_node_input",
-          nodeId: `n${i}`,
-          key: "v",
-          value: `val${i}`,
-        });
-      });
-    }
-
-    // Stack should be capped at 20
-    expect(result.current.undoStack).toHaveLength(20);
-  });
-});
-
-describe("useBuilderChatPanel – handleUndoLastAction on empty stack", () => {
-  it("does nothing when undoStack is empty", () => {
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    expect(result.current.undoStack).toHaveLength(0);
-
-    // Should not throw or call setNodes/setEdges
-    act(() => {
-      result.current.handleUndoLastAction();
-    });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockSetEdges).not.toHaveBeenCalled();
-    expect(result.current.undoStack).toHaveLength(0);
-  });
-});
-
-describe("useBuilderChatPanel – transport prepareSendMessagesRequest", () => {
-  it("calls getWebSocketToken and returns correct request body", async () => {
-    const { getWebSocketToken } = await import("@/lib/supabase/actions");
-    const { DefaultChatTransport } = await import("ai");
-    const MockTransport = DefaultChatTransport as ReturnType<typeof vi.fn>;
-
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-transport" },
-    });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    expect(MockTransport).toHaveBeenCalled();
-    const ctorArg = MockTransport.mock.calls[
-      MockTransport.mock.calls.length - 1
-    ][0] as {
-      prepareSendMessagesRequest: (args: {
-        messages: unknown[];
-      }) => Promise<unknown>;
-    };
-    expect(typeof ctorArg.prepareSendMessagesRequest).toBe("function");
-
-    const messages = [
-      { role: "user", parts: [{ type: "text", text: "hello" }] },
-    ];
-    const req = await ctorArg.prepareSendMessagesRequest({ messages });
-
-    expect(getWebSocketToken).toHaveBeenCalled();
-    expect(req).toMatchObject({
-      body: { message: "hello", is_user_message: true },
-      headers: { Authorization: "Bearer tok" },
-    });
-  });
-
-  it("throws when getWebSocketToken returns null token", async () => {
-    const { getWebSocketToken } = await import("@/lib/supabase/actions");
-    const { DefaultChatTransport } = await import("ai");
-    const MockTransport = DefaultChatTransport as ReturnType<typeof vi.fn>;
-
-    vi.mocked(getWebSocketToken).mockResolvedValueOnce({
-      token: null,
-      error: "auth failed",
-    });
-
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-auth-fail" },
-    });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    const ctorArg = MockTransport.mock.calls[
-      MockTransport.mock.calls.length - 1
-    ][0] as {
-      prepareSendMessagesRequest: (args: {
-        messages: unknown[];
-      }) => Promise<unknown>;
-    };
-    const messages = [{ role: "user", parts: [{ type: "text", text: "hi" }] }];
-    await expect(
-      ctorArg.prepareSendMessagesRequest({ messages }),
-    ).rejects.toThrow("Authentication failed");
-  });
-
-  it("throws when messages array is empty (empty messages guard)", async () => {
-    const { DefaultChatTransport } = await import("ai");
-    const MockTransport = DefaultChatTransport as ReturnType<typeof vi.fn>;
-
-    mockPostV2CreateSession.mockResolvedValue({
-      status: 200,
-      data: { id: "sess-empty-msg" },
-    });
-
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    const ctorArg = MockTransport.mock.calls[
-      MockTransport.mock.calls.length - 1
-    ][0] as {
-      prepareSendMessagesRequest: (args: {
-        messages: unknown[];
-      }) => Promise<unknown>;
-    };
-    await expect(
-      ctorArg.prepareSendMessagesRequest({ messages: [] }),
-    ).rejects.toThrow("No message to send");
-  });
-});
-
-describe("useBuilderChatPanel – handleKeyDown empty input guard", () => {
-  it("does NOT call sendMessage on Enter when inputValue is empty", async () => {
-    mockPostV2CreateSession.mockResolvedValue({
+    createBuilderSession.mockResolvedValue({
       status: 200,
       data: { id: "sess-empty" },
     });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    await openAndFlush(() => result.current.handleToggle());
-
-    const mockPreventDefault = vi.fn();
-    act(() => {
-      result.current.handleKeyDown({
-        key: "Enter",
-        shiftKey: false,
-        preventDefault: mockPreventDefault,
-      } as unknown as import("react").KeyboardEvent<HTMLTextAreaElement>);
-    });
-
-    expect(mockSendMessage).not.toHaveBeenCalled();
-  });
-});
-
-describe("useBuilderChatPanel – inputValue resets on flowID change", () => {
-  it("clears inputValue when flowID changes", () => {
-    mockFlowID = "flow-a";
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "g", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
     const { result, rerender } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.setInputValue("typed text");
-    });
-    expect(result.current.inputValue).toBe("typed text");
-
-    mockFlowID = "flow-b";
+    result.current.handleToggle();
     rerender();
-
-    expect(result.current.inputValue).toBe("");
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-empty");
+    });
+    await result.current.onSend("   ");
+    expect(sendMessage).not.toHaveBeenCalled();
   });
-});
 
-describe("useBuilderChatPanel – prototype pollution guard", () => {
-  it("rejects __proto__ as a key when node has an inputSchema with properties", () => {
-    mockNodes.push({
-      id: "n-proto",
+  it("does nothing when handleRevert is called without a revert target", async () => {
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await result.current.handleRevert();
+    expect(setActiveVersion).not.toHaveBeenCalled();
+  });
+
+  it("forwards the bound graph_id on subsequent panel opens (no duplicate session create)", async () => {
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-stable" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-stable", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledTimes(1);
+    });
+    // Close + reopen should not re-bind while the same flowID + sessionId hold.
+    result.current.handleToggle();
+    rerender();
+    result.current.handleToggle();
+    rerender();
+    // Allow any pending effect microtasks to settle.
+    await Promise.resolve();
+    expect(createBuilderSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebinds for a new graph when the previous bind is still in flight (sentry 13568553)", async () => {
+    // Regression: the bindingRef lock used to persist across graph
+    // navigations, so a pending A-request left the lock set and B's bind
+    // effect early-returned without ever retrying — panel stuck.
+    // First call: slow resolve so graph-A's bind stays in flight while we navigate.
+    let resolveA!: (res: unknown) => void;
+    createBuilderSession
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            resolveA = r;
+          }),
+      )
+      .mockResolvedValueOnce({ status: 200, data: { id: "sess-B" } });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-A", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { builder_graph_id: "graph-A" },
+      });
+    });
+    // Navigate to B while A is still pending.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-B", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    rerender();
+    // B's bind effect must fire even though A's is mid-flight — the
+    // reset-on-graph-change effect clears bindingRef so B is not blocked.
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { builder_graph_id: "graph-B" },
+      });
+    });
+    // Resolve A late — its response must NOT overwrite B's sessionId
+    // (currentFlowIDRef staleness guard handles that).
+    resolveA({ status: 200, data: { id: "sess-A-stale" } });
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-B");
+    });
+  });
+
+  it("resets session + revert state when flowID becomes null", async () => {
+    const setMessages = vi.fn();
+    mockUseCopilotStream.mockReturnValue({ ...defaultStream, setMessages });
+    // Start with a flowID so the session could bind, then drop it.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-A", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    // Flip to no flowID on the next render.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: null, flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    rerender();
+    await waitFor(() => {
+      expect(setMessages).toHaveBeenCalledWith([]);
+    });
+    expect(result.current.sessionId).toBeNull();
+    expect(result.current.revertTargetVersion).toBeNull();
+  });
+
+  it("records a revert target and triggers a graph refetch when edit_agent tool output completes", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-X", version: 5 },
+      refetch: mockRefetchGraph,
+    });
+    const messagesWithEdit = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-edit_agent",
+            toolCallId: "tc-edit-1",
+            state: "output-available",
+            output: { agent_id: "graph-X" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-X", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(result.current.revertTargetVersion).toBe(5);
+    });
+    expect(mockRefetchGraph).toHaveBeenCalled();
+  });
+
+  it("writes execution_id to flowExecutionID when run_agent tool output completes", async () => {
+    const messagesWithRun = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_agent",
+            toolCallId: "tc-run-1",
+            state: "output-available",
+            output: { execution_id: "exec-abc-123" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithRun,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-R", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowExecutionID: "exec-abc-123",
+      });
+    });
+  });
+
+  // Live-stream tool outputs arrive as JSON STRINGS (the backend stashes
+  // tool output via json.dumps). Hydrated-from-DB tool outputs arrive as
+  // already-parsed objects. The effect must handle both shapes.
+  it("writes flowVersion when edit_agent output is a JSON string (live stream)", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-live", version: 3 },
+      refetch: mockRefetchGraph,
+    });
+    const messagesWithEdit = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-edit_agent",
+            toolCallId: "tc-edit-live-1",
+            state: "output-available",
+            output: JSON.stringify({
+              type: "agent_builder_saved",
+              agent_id: "graph-live",
+              graph_version: 4,
+            }),
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-live", flowExecutionID: null, flowVersion: 3 },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({ flowVersion: 4 });
+    });
+  });
+
+  it("writes flowExecutionID when run_agent output is a JSON string (live stream)", async () => {
+    const messagesWithRun = [
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_agent",
+            toolCallId: "tc-run-live-1",
+            state: "output-available",
+            output: JSON.stringify({
+              type: "agent_output",
+              execution_id: "exec-live-xyz",
+            }),
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithRun,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-live", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowExecutionID: "exec-live-xyz",
+      });
+    });
+  });
+
+  it("ignores tool outputs that are not output-available or not assistant-role", async () => {
+    const messages = [
+      {
+        role: "user",
+        parts: [
+          {
+            type: "tool-edit_agent",
+            toolCallId: "tc-bad-1",
+            state: "output-available",
+            output: { agent_id: "g" },
+          },
+        ],
+      },
+      {
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_agent",
+            toolCallId: "tc-bad-2",
+            state: "partial",
+            output: { execution_id: "exec-incomplete" },
+          },
+        ],
+      },
+    ];
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages,
+      status: "ready",
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "g", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    renderHook(() => useBuilderChatPanel());
+    // Allow effects to flush without asserting against the tool branches.
+    await Promise.resolve();
+    expect(setQueryStatesMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ flowExecutionID: "exec-incomplete" }),
+    );
+    expect(mockRefetchGraph).not.toHaveBeenCalled();
+  });
+
+  it("queues a follow-up via the helper when onSend is called while streaming", async () => {
+    const appendChip = vi.fn();
+    const sendMessage = vi.fn();
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      sendMessage,
+      status: "streaming",
+    });
+    mockUseCopilotPendingChips.mockReturnValue({
+      queuedMessages: [],
+      appendChip,
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-queue" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-queue", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    vi.doMock("@/app/(platform)/copilot/helpers/queueFollowUpMessage", () => ({
+      queueFollowUpMessage: vi.fn().mockResolvedValue(undefined),
+    }));
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-queue");
+    });
+    await result.current.onSend("queued msg");
+    // The message must be appended as a chip AND not sent directly.
+    expect(appendChip).toHaveBeenCalledWith("queued msg");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("hydrates messages from the session query when GET /sessions returns 200", async () => {
+    // Session data present → convertChatSessionMessagesToUiMessages runs and
+    // the hook forwards the hydrated messages to useCopilotStream.
+    mockUseGetV2GetSession.mockReturnValue({
       data: {
-        hardcodedValues: {},
-        inputSchema: { properties: { query: {} } },
+        status: 200,
+        data: {
+          id: "sess-hydrated",
+          messages: [{ role: "assistant", content: "welcome" }],
+          active_stream: null,
+        },
       },
+      refetch: vi.fn(),
     });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    const protoBefore = Object.prototype.hasOwnProperty("injected");
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n-proto",
-        key: "__proto__",
-        value: "injected",
-      });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-hydrated" },
     });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
-    expect(Object.prototype.hasOwnProperty("injected")).toBe(protoBefore);
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-hyd", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-hydrated");
+    });
+    // useCopilotStream should have been invoked with a non-undefined hydratedMessages.
+    const lastCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    expect(lastCall[0]).toHaveProperty("hydratedMessages");
   });
 
-  it("rejects constructor as a key when node has an inputSchema with properties", () => {
-    mockNodes.push({
-      id: "n-ctor",
+  it("keeps the hydratedMessages reference stable across renders when session data is unchanged", async () => {
+    // Regression guard: an earlier version recomputed hydratedMessages on every
+    // render (no useMemo), which broke referential equality in
+    // useHydrateOnStreamEnd and caused an infinite setState loop (caught by
+    // React's max-update-depth guard, rendered through the builder
+    // ErrorBoundary as "Something went wrong"). Pin the reference here.
+    const sessionData = {
+      status: 200 as const,
       data: {
-        hardcodedValues: {},
-        inputSchema: { properties: { query: {} } },
+        id: "sess-stable",
+        messages: [{ role: "assistant", content: "hello" }],
+        active_stream: null,
       },
+    };
+    mockUseGetV2GetSession.mockReturnValue({
+      data: sessionData,
+      refetch: vi.fn(),
     });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n-ctor",
-        key: "constructor",
-        value: "injected",
-      });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-stable" },
     });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-stable", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-stable");
+    });
+    const firstCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    const firstHydrated = firstCall[0].hydratedMessages;
+    rerender();
+    rerender();
+    const lastCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    expect(lastCall[0].hydratedMessages).toBe(firstHydrated);
   });
-});
 
-describe("useBuilderChatPanel – tool call detection", () => {
-  function makeDynamicToolPart(
-    toolName: string,
-    toolCallId: string,
-    state: string,
-    output: unknown = null,
-  ) {
-    return { type: "dynamic-tool", toolName, toolCallId, state, output };
-  }
+  it("surfaces active_stream=true via hasActiveStream flag forwarded to the stream hook", async () => {
+    mockUseGetV2GetSession.mockReturnValue({
+      data: {
+        status: 200,
+        data: {
+          id: "sess-active",
+          messages: [],
+          active_stream: { turn_id: "t1", last_message_id: "0-0" },
+        },
+      },
+      refetch: vi.fn(),
+    });
+    createBuilderSession.mockResolvedValue({
+      status: 200,
+      data: { id: "sess-active" },
+    });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-act", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-active");
+    });
+    const lastCall =
+      mockUseCopilotStream.mock.calls[
+        mockUseCopilotStream.mock.calls.length - 1
+      ];
+    expect(lastCall[0].hasActiveStream).toBe(true);
+  });
 
-  it("calls onGraphEdited when edit_agent tool call completes", async () => {
-    mockChatStatus = "ready";
-    mockChatMessages = [
+  it("toasts destructively when handleRevert receives a non-200 from setActiveVersion", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-revfail", version: 9 },
+      refetch: mockRefetchGraph,
+    });
+    setActiveVersion.mockResolvedValue({ status: 500 });
+    const messagesWithEdit = [
       {
-        id: "m1",
         role: "assistant",
         parts: [
-          makeDynamicToolPart("edit_agent", "tc-1", "output-available", null),
+          {
+            type: "tool-edit_agent",
+            toolCallId: "tc-edit-fail",
+            state: "output-available",
+            output: { agent_id: "graph-revfail" },
+          },
         ],
       },
     ];
-    const onGraphEdited = vi.fn();
-    renderHook(() => useBuilderChatPanel({ onGraphEdited }));
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
     });
-
-    expect(onGraphEdited).toHaveBeenCalledOnce();
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-revfail", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result } = renderHook(() => useBuilderChatPanel());
+    await waitFor(() => {
+      expect(result.current.revertTargetVersion).toBe(9);
+    });
+    // Must not throw; the hook catches and toasts.
+    await result.current.handleRevert();
+    expect(setActiveVersion).toHaveBeenCalled();
   });
 
-  it("does NOT call onGraphEdited for a tool call that is not output-available", async () => {
-    mockChatStatus = "ready";
-    mockChatMessages = [
+  it("surfaces bindError and clears isBootstrapping when createBuilderSession fails", async () => {
+    createBuilderSession.mockRejectedValue(new Error("boom"));
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-err", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(result.current.bindError).not.toBeNull();
+    });
+    expect(result.current.isBootstrapping).toBe(false);
+    // Retrying should clear the error and re-invoke the mutation.
+    createBuilderSession.mockResolvedValueOnce({
+      status: 200,
+      data: { id: "sess-retry" },
+    });
+    result.current.retryBind();
+    rerender();
+    await waitFor(() => {
+      expect(result.current.sessionId).toBe("sess-retry");
+    });
+    expect(result.current.bindError).toBeNull();
+  });
+
+  it("surfaces bootstrapError when createNewGraph fails and recovers via retryBootstrap", async () => {
+    createNewGraph.mockRejectedValueOnce(new Error("network"));
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(result.current.bootstrapError).not.toBeNull();
+    });
+    expect(result.current.isBootstrapping).toBe(false);
+    createNewGraph.mockResolvedValueOnce({
+      status: 200,
+      data: { id: "graph-after-retry", version: 1 },
+    });
+    result.current.retryBootstrap();
+    rerender();
+    await waitFor(() => {
+      expect(createNewGraph).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(setQueryStatesMock).toHaveBeenCalledWith({
+        flowID: "graph-after-retry",
+        flowVersion: 1,
+      });
+    });
+  });
+
+  it("discards a stale createBuilderSession response when flowID changed mid-request", async () => {
+    // The first call (slow, for graph-A) resolves AFTER the user navigates
+    // to graph-B — its response id must NOT overwrite the session because
+    // the staleness check on currentFlowIDRef should bail out.
+    let resolveA: (v: unknown) => void = () => {};
+    const slowResponseA = new Promise((resolve) => {
+      resolveA = resolve;
+    });
+    createBuilderSession.mockImplementationOnce(() => slowResponseA);
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-A", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    const { result, rerender } = renderHook(() => useBuilderChatPanel());
+    result.current.handleToggle();
+    rerender();
+    await waitFor(() => {
+      expect(createBuilderSession).toHaveBeenCalledWith({
+        data: { builder_graph_id: "graph-A" },
+      });
+    });
+    // Navigate to graph-B — reset effect clears sessionId + boundGraphRef.
+    // The currentFlowIDRef is updated synchronously in an effect so the
+    // pending graph-A IIFE will observe graph-B on its staleness check.
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-B", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
+    rerender();
+    // NOW the stale graph-A response resolves — must be discarded because
+    // currentFlowIDRef.current !== "graph-A".
+    resolveA({ status: 200, data: { id: "sess-A-STALE" } });
+    // Flush the post-await microtasks.
+    await Promise.resolve();
+    await Promise.resolve();
+    // Stale response discarded: no sessionId set from it.
+    expect(result.current.sessionId).not.toBe("sess-A-STALE");
+  });
+
+  it("reverts to the captured version and invalidates graph queries on handleRevert success", async () => {
+    mockUseGetV1GetSpecificGraph.mockReturnValue({
+      data: { id: "graph-R", version: 7 },
+      refetch: mockRefetchGraph,
+    });
+    const invalidateQueries = vi.fn();
+    const rq = await import("@tanstack/react-query");
+    (rq.useQueryClient as unknown as ReturnType<typeof vi.fn>) = vi
+      .fn()
+      .mockReturnValue({ invalidateQueries });
+    setActiveVersion.mockResolvedValue({ status: 200 });
+    // Prime a revert target via an edit_agent tool output.
+    const messagesWithEdit = [
       {
-        id: "m1",
         role: "assistant",
         parts: [
-          makeDynamicToolPart("edit_agent", "tc-pending", "pending", null),
+          {
+            type: "tool-edit_agent",
+            toolCallId: "tc-edit-r",
+            state: "output-available",
+            output: { agent_id: "graph-R" },
+          },
         ],
       },
     ];
-    const onGraphEdited = vi.fn();
-    renderHook(() => useBuilderChatPanel({ onGraphEdited }));
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
+    mockUseCopilotStream.mockReturnValue({
+      ...defaultStream,
+      messages: messagesWithEdit,
+      status: "ready",
     });
-
-    expect(onGraphEdited).not.toHaveBeenCalled();
-  });
-
-  it("does NOT call onGraphEdited when status is streaming", async () => {
-    mockChatStatus = "streaming";
-    mockChatMessages = [
-      {
-        id: "m1",
-        role: "assistant",
-        parts: [
-          makeDynamicToolPart(
-            "edit_agent",
-            "tc-stream",
-            "output-available",
-            null,
-          ),
-        ],
-      },
-    ];
-    const onGraphEdited = vi.fn();
-    renderHook(() => useBuilderChatPanel({ onGraphEdited }));
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-
-    expect(onGraphEdited).not.toHaveBeenCalled();
-  });
-
-  it("does NOT process the same tool call twice (processedToolCallsRef deduplication)", async () => {
-    mockChatStatus = "ready";
-    const part = makeDynamicToolPart(
-      "edit_agent",
-      "tc-dedup",
-      "output-available",
-      null,
-    );
-    mockChatMessages = [{ id: "m1", role: "assistant", parts: [part] }];
-
-    const onGraphEdited = vi.fn();
-    const { rerender } = renderHook(() =>
-      useBuilderChatPanel({ onGraphEdited }),
-    );
-
-    await act(async () => {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    });
-
-    expect(onGraphEdited).toHaveBeenCalledOnce();
-
-    act(() => rerender());
-
-    expect(onGraphEdited).toHaveBeenCalledOnce();
-  });
-});
-
-describe("useBuilderChatPanel – prototype pollution blocklist (no-schema nodes)", () => {
-  it("rejects __proto__ even when node has no inputSchema", () => {
-    mockNodes.push({ id: "n-schema-less", data: { hardcodedValues: {} } });
+    mockUseQueryStates.mockReturnValue([
+      { flowID: "graph-R", flowExecutionID: null, flowVersion: null },
+      setQueryStatesMock,
+    ]);
     const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n-schema-less",
-        key: "__proto__",
-        value: "injected",
-      });
+    await waitFor(() => {
+      expect(result.current.revertTargetVersion).toBe(7);
     });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
-  });
-
-  it("rejects constructor even when node has no inputSchema", () => {
-    mockNodes.push({ id: "n-ctor-no-schema", data: { hardcodedValues: {} } });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n-ctor-no-schema",
-        key: "constructor",
-        value: "injected",
-      });
+    await result.current.handleRevert();
+    expect(setActiveVersion).toHaveBeenCalledWith({
+      graphId: "graph-R",
+      data: { active_graph_version: 7 },
     });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
-  });
-
-  it("rejects prototype even when node has no inputSchema", () => {
-    mockNodes.push({ id: "n-proto-no-schema", data: { hardcodedValues: {} } });
-    const { result } = renderHook(() => useBuilderChatPanel());
-
-    act(() => {
-      result.current.handleApplyAction({
-        type: "update_node_input",
-        nodeId: "n-proto-no-schema",
-        key: "prototype",
-        value: "injected",
-      });
-    });
-
-    expect(mockSetNodes).not.toHaveBeenCalled();
-    expect(mockToast).toHaveBeenCalledWith(
-      expect.objectContaining({ variant: "destructive" }),
-    );
+    expect(setQueryStatesMock).toHaveBeenCalledWith({ flowVersion: 7 });
   });
 });

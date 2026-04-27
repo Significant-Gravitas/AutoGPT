@@ -1,4 +1,4 @@
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -14,9 +14,9 @@ import { UsagePanelContent } from "./UsagePanelContent";
 export { UsagePanelContent, formatResetTime } from "./UsagePanelContent";
 
 export function UsageLimits() {
-  const { data: usage, isLoading } = useGetV2GetCopilotUsage({
+  const { data: usage, isSuccess } = useGetV2GetCopilotUsage({
     query: {
-      select: (res) => res.data as CoPilotUsageStatus,
+      select: (res) => res.data as CoPilotUsagePublic,
       refetchInterval: 30000,
       staleTime: 10000,
     },
@@ -28,8 +28,8 @@ export function UsageLimits() {
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
 
-  if (isLoading || !usage?.daily || !usage?.weekly) return null;
-  if (usage.daily.limit <= 0 && usage.weekly.limit <= 0) return null;
+  if (!isSuccess || !usage) return null;
+  if (!usage.daily && !usage.weekly) return null;
 
   return (
     <Popover>

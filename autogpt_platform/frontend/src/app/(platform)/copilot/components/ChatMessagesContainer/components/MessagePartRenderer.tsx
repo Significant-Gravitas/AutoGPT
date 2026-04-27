@@ -26,6 +26,7 @@ import {
   parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
+import { ReasoningCollapse } from "./ReasoningCollapse";
 
 /**
  * Custom img component for Streamdown that renders <video> elements
@@ -104,6 +105,18 @@ export function MessagePartRenderer({
   const key = `${messageID}-${partIndex}`;
 
   switch (part.type) {
+    case "reasoning": {
+      const reasoningText =
+        "text" in part && typeof part.text === "string" ? part.text : "";
+      if (!reasoningText.trim()) return null;
+      return (
+        <ReasoningCollapse key={key}>
+          <pre className="whitespace-pre-wrap text-sm text-zinc-700">
+            {reasoningText}
+          </pre>
+        </ReasoningCollapse>
+      );
+    }
     case "text": {
       const { markerType, markerText, cleanText } = parseSpecialMarkers(
         part.text,

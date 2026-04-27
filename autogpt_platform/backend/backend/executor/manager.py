@@ -38,6 +38,7 @@ from backend.data.execution import (
 from backend.data.graph import Link, Node
 from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.rabbitmq import SyncRabbitMQ
+from backend.data.redis_helpers import incr_with_ttl_sync
 from backend.executor.cost_tracking import (
     drain_pending_cost_logs,
     log_system_credential_cost,
@@ -74,6 +75,7 @@ from backend.util.settings import Settings
 
 from . import billing
 from .activity_status_generator import generate_activity_status_for_execution
+from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
@@ -309,41 +311,14 @@ async def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     # Handle auto-generated credentials (e.g., from GoogleDriveFileInput)
-    for kwarg_name, info in input_model.get_auto_credentials_fields().items():
-        field_name = info["field_name"]
-        field_data = input_data.get(field_name)
-        if field_data and isinstance(field_data, dict):
-            # Check if _credentials_id key exists in the field data
-            if "_credentials_id" in field_data:
-                cred_id = field_data["_credentials_id"]
-                if cred_id:
-                    # Credential ID provided - acquire credentials
-                    provider = info.get("config", {}).get(
-                        "provider", "external service"
-                    )
-                    file_name = field_data.get("name", "selected file")
-                    try:
-                        credentials, lock = await creds_manager.acquire(
-                            user_id, cred_id
-                        )
-                        creds_locks.append(lock)
-                        extra_exec_kwargs[kwarg_name] = credentials
-                    except ValueError:
-                        # Credential was deleted or doesn't exist
-                        raise ValueError(
-                            f"Authentication expired for '{file_name}' in field '{field_name}'. "
-                            f"The saved {provider.capitalize()} credentials no longer exist. "
-                            f"Please re-select the file to re-authenticate."
-                        )
-                # else: _credentials_id is explicitly None, skip credentials (for chained data)
-            else:
-                # _credentials_id key missing entirely - this is an error
-                provider = info.get("config", {}).get("provider", "external service")
-                file_name = field_data.get("name", "selected file")
-                raise ValueError(
-                    f"Authentication missing for '{file_name}' in field '{field_name}'. "
-                    f"Please re-select the file to authenticate with {provider.capitalize()}."
-                )
+    auto_extra_kwargs, auto_locks = await acquire_auto_credentials(
+        input_model=input_model,
+        input_data=input_data,
+        creds_manager=creds_manager,
+        user_id=user_id,
+    )
+    extra_exec_kwargs.update(auto_extra_kwargs)
+    creds_locks.extend(auto_locks)
 
     output_size = 0
 
@@ -365,7 +340,7 @@ async def execute_node(
 
     try:
         if execution_context.dry_run and _dry_run_input is None:
-            block_iter = simulate_block(node_block, input_data)
+            block_iter = simulate_block(node_block, input_data, user_id=user_id)
         else:
             block_iter = node_block.execute(input_data, **extra_exec_kwargs)
 
@@ -634,16 +609,35 @@ class ExecutionProcessor:
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
-        await billing.handle_post_execution_billing(
-            node, node_exec, execution_stats, status, log_metadata
-        )
+        # Log platform cost + reconcile dynamic billing BEFORE graph/node stats
+        # are aggregated and persisted — otherwise the reconciled delta never
+        # lands in `graph_stats.cost` or the persisted node stats. RUN-only
+        # blocks produce a zero delta; dynamic types (SECOND/ITEMS/COST_USD/
+        # TOKENS) settle their post-flight charge or refund here. Dry runs
+        # skip reconciliation so simulation never touches the user's wallet.
+        if status == ExecutionStatus.COMPLETED:
+            await log_system_credential_cost(
+                node_exec=node_exec,
+                block=node.block,
+                stats=execution_stats,
+                db_client=db_client,
+            )
+            if not node_exec.execution_context.dry_run:
+                reconciled_delta, _ = await billing.charge_reconciled_usage(
+                    node_exec=node_exec,
+                    stats=execution_stats,
+                )
+                if reconciled_delta != 0:
+                    execution_stats.reconciled_cost_delta += reconciled_delta
 
         graph_stats, graph_stats_lock = graph_stats_pair
         with graph_stats_lock:
             graph_stats.node_count += 1 + execution_stats.extra_steps
             graph_stats.nodes_cputime += execution_stats.cputime
             graph_stats.nodes_walltime += execution_stats.walltime
-            graph_stats.cost += execution_stats.cost + execution_stats.extra_cost
+            graph_stats.cost += (
+                execution_stats.cost + execution_stats.reconciled_cost_delta
+            )
             if isinstance(execution_stats.error, Exception):
                 graph_stats.node_error_count += 1
 
@@ -663,15 +657,6 @@ class ExecutionProcessor:
             graph_exec_id=node_exec.graph_exec_id,
             stats=graph_stats,
         )
-
-        # Log platform cost if system credentials were used (only on success)
-        if status == ExecutionStatus.COMPLETED:
-            await log_system_credential_cost(
-                node_exec=node_exec,
-                block=node.block,
-                stats=execution_stats,
-                db_client=db_client,
-            )
 
         # If the node failed because a nested tool charge raised IBE,
         # send the user notification so they understand why the run stopped.
@@ -918,13 +903,6 @@ class ExecutionProcessor:
         node_exec: NodeExecutionEntry,
     ) -> tuple[int, int]:
         return await billing.charge_node_usage(node_exec)
-
-    async def charge_extra_runtime_cost(
-        self,
-        node_exec: NodeExecutionEntry,
-        extra_count: int,
-    ) -> tuple[int, int]:
-        return await billing.charge_extra_runtime_cost(node_exec, extra_count)
 
     @time_measured
     def _on_graph_execution(
@@ -1964,10 +1942,12 @@ def increment_execution_count(user_id: str) -> int:
     """
     Increment the execution count for a given user,
     this will be used to charge the user for the execution cost.
+
+    Uses :func:`incr_with_ttl_sync` so INCR and EXPIRE run atomically via
+    MULTI/EXEC — previously this was a bare INCR followed by a separate
+    EXPIRE which could orphan the counter (no TTL) if the process died
+    between the two commands.
     """
     r = redis.get_redis()
     k = f"uec:{user_id}"  # User Execution Count global key
-    counter = cast(int, r.incr(k))
-    if counter == 1:
-        r.expire(k, settings.config.execution_counter_expiration_time)
-    return counter
+    return incr_with_ttl_sync(r, k, settings.config.execution_counter_expiration_time)
