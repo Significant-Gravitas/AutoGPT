@@ -184,7 +184,7 @@ export const ChatContainer = ({
                 {isLimitReached && (
                   <div
                     ref={usageCardRef}
-                    className="pointer-events-none absolute bottom-full left-0 right-0 z-20 pb-2"
+                    className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
                   >
                     <div
                       aria-hidden="true"
