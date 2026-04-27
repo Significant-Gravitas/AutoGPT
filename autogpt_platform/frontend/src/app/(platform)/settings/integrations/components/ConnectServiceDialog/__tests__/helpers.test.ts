@@ -67,7 +67,7 @@ describe("filterConnectableProviders", () => {
       supportedAuthTypes: ["oauth2", "api_key"],
     },
     {
-      id: "acai",
+      id: "acai-juice",
       name: "Açaí",
       description: "Bowls",
       supportedAuthTypes: ["api_key"],
@@ -98,9 +98,11 @@ describe("filterConnectableProviders", () => {
   });
 
   test("matches accented names against unaccented queries (NFKD)", () => {
+    // The id is "acai-juice" so this query can only match by stripping
+    // diacritics from the name "Açaí".
     expect(
       filterConnectableProviders(providers, "acai").map((p) => p.id),
-    ).toEqual(["acai"]);
+    ).toEqual(["acai-juice"]);
   });
 
   test("returns an empty list when nothing matches", () => {
