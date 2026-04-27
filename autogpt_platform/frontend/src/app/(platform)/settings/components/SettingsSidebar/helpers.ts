@@ -1,11 +1,11 @@
 import {
+  ChartLineUpIcon,
   CreditCardIcon,
-  GearIcon,
   IdentificationBadgeIcon,
   KeyIcon,
   PlugsConnectedIcon,
-  SquaresFourIcon,
-  UserCircleIcon,
+  SlidersHorizontalIcon,
+  UserIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 
@@ -16,11 +16,11 @@ export interface SettingsNavItem {
 }
 
 export const settingsNavItems: SettingsNavItem[] = [
-  { label: "Profile", href: "/settings/profile", Icon: UserCircleIcon },
+  { label: "Profile", href: "/settings/profile", Icon: UserIcon },
   {
     label: "Creator Dashboard",
     href: "/settings/creator-dashboard",
-    Icon: SquaresFourIcon,
+    Icon: ChartLineUpIcon,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },
   {
@@ -28,7 +28,11 @@ export const settingsNavItems: SettingsNavItem[] = [
     href: "/settings/integrations",
     Icon: PlugsConnectedIcon,
   },
-  { label: "Settings", href: "/settings/preferences", Icon: GearIcon },
+  {
+    label: "Preferences",
+    href: "/settings/preferences",
+    Icon: SlidersHorizontalIcon,
+  },
   { label: "AutoGPT API Keys", href: "/settings/api-keys", Icon: KeyIcon },
   {
     label: "OAuth Apps",

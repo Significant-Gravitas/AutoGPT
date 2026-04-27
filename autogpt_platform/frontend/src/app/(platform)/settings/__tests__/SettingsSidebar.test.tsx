@@ -44,7 +44,7 @@ const expectedItems = [
   { label: "Creator Dashboard", href: "/settings/creator-dashboard" },
   { label: "Billing", href: "/settings/billing" },
   { label: "Integrations", href: "/settings/integrations" },
-  { label: "Settings", href: "/settings/preferences" },
+  { label: "Preferences", href: "/settings/preferences" },
   { label: "AutoGPT API Keys", href: "/settings/api-keys" },
   { label: "OAuth Apps", href: "/settings/oauth-apps" },
 ];
