@@ -385,12 +385,16 @@ class SDKResponseAdapter:
                     self.step_open = False
                 responses.append(
                     StreamError(
-                        errorText=(
-                            "The model returned an empty response. Please retry."
-                        ),
+                        errorText="The model returned an empty response.",
                         code="empty_completion",
                     )
                 )
+                # Pair with StreamFinish so ``acc.stream_completed`` flips True
+                # in ``_dispatch_response`` — without it the service-layer
+                # post-stream branch mis-classifies the turn as "stopped by
+                # user" and appends a STOPPED_BY_USER_MARKER on top of the
+                # error marker.
+                responses.append(StreamFinish())
                 logger.warning(
                     "[SDK] [%s] Empty-success ResultMessage detected — "
                     "emitting stream error instead of silent finish",

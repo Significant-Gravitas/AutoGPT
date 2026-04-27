@@ -565,11 +565,13 @@ def test_result_success_does_not_synthesize_when_no_tools_ran():
     assert text_deltas == []
 
 
-def test_result_empty_success_emits_error_and_no_finish():
+def test_result_empty_success_emits_error_and_finish():
     """SECRT-2252: a ``subtype="success"`` ResultMessage with empty ``result``,
     no produced content, and ``output_tokens == 0`` is the SDK's ghost-finish
-    bug.  The adapter should surface it as a ``StreamError`` and skip
-    ``StreamFinish`` so the caller can decide retry semantics."""
+    bug. The adapter surfaces it as a ``StreamError`` *paired with*
+    ``StreamFinish`` so the service-layer post-stream flow flips
+    ``acc.stream_completed`` and skips the ``STOPPED_BY_USER_MARKER``
+    branch."""
     adapter = _adapter()
     adapter.convert_message(SystemMessage(subtype="init", data={}))
     msg = ResultMessage(
@@ -585,7 +587,9 @@ def test_result_empty_success_emits_error_and_no_finish():
     results = adapter.convert_message(msg)
     types = [type(r).__name__ for r in results]
     assert "StreamError" in types
-    assert "StreamFinish" not in types
+    assert "StreamFinish" in types
+    # StreamError must precede StreamFinish on the wire.
+    assert types.index("StreamError") < types.index("StreamFinish")
     err = next(r for r in results if isinstance(r, StreamError))
     assert err.code == "empty_completion"
     assert "empty response" in err.errorText.lower()
@@ -607,7 +611,7 @@ def test_result_empty_success_with_empty_string_result_treated_as_empty():
     )
     results = adapter.convert_message(msg)
     assert any(isinstance(r, StreamError) for r in results)
-    assert not any(isinstance(r, StreamFinish) for r in results)
+    assert any(isinstance(r, StreamFinish) for r in results)
 
 
 def test_result_success_with_text_emits_finish_not_error():
