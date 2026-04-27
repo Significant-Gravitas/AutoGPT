@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -80,13 +80,16 @@ export function usePreferencesPage() {
     notifications: EMPTY_FLAGS,
   });
   const [isSaving, setIsSaving] = useState(false);
+  const hasInitializedFormState = useRef(false);
 
   useEffect(
-    function syncFormStateOnLoad() {
-      if (!preferencesQuery.data) return;
+    function syncFormStateOnce() {
+      if (hasInitializedFormState.current) return;
+      if (!preferencesQuery.data || timezoneQuery.data === undefined) return;
       setFormState(initialState);
+      hasInitializedFormState.current = true;
     },
-    [initialState, preferencesQuery.data],
+    [initialState, preferencesQuery.data, timezoneQuery.data],
   );
 
   const dirty = useMemo(
