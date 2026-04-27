@@ -119,7 +119,7 @@ export default function SharePage() {
           <CardTitle>Output</CardTitle>
         </CardHeader>
         <CardContent>
-          <RunOutputs outputs={executionData.outputs} />
+          <RunOutputs outputs={executionData.outputs} shareToken={token} />
         </CardContent>
       </Card>
 

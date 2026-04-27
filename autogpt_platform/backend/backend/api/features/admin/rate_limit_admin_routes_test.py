@@ -57,7 +57,7 @@ def _patch_rate_limit_deps(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000, SubscriptionTier.FREE),
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
@@ -85,11 +85,11 @@ def test_get_rate_limit(
     data = response.json()
     assert data["user_id"] == target_user_id
     assert data["user_email"] == _TARGET_EMAIL
-    assert data["daily_token_limit"] == 2_500_000
-    assert data["weekly_token_limit"] == 12_500_000
-    assert data["daily_tokens_used"] == 500_000
-    assert data["weekly_tokens_used"] == 3_000_000
-    assert data["tier"] == "FREE"
+    assert data["daily_cost_limit_microdollars"] == 2_500_000
+    assert data["weekly_cost_limit_microdollars"] == 12_500_000
+    assert data["daily_cost_used_microdollars"] == 500_000
+    assert data["weekly_cost_used_microdollars"] == 3_000_000
+    assert data["tier"] == "BASIC"
 
     configured_snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True) + "\n",
@@ -117,7 +117,7 @@ def test_get_rate_limit_by_email(
     data = response.json()
     assert data["user_id"] == target_user_id
     assert data["user_email"] == _TARGET_EMAIL
-    assert data["daily_token_limit"] == 2_500_000
+    assert data["daily_cost_limit_microdollars"] == 2_500_000
 
 
 def test_get_rate_limit_by_email_not_found(
@@ -160,10 +160,10 @@ def test_reset_user_usage_daily_only(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["daily_tokens_used"] == 0
+    assert data["daily_cost_used_microdollars"] == 0
     # Weekly is untouched
-    assert data["weekly_tokens_used"] == 3_000_000
-    assert data["tier"] == "FREE"
+    assert data["weekly_cost_used_microdollars"] == 3_000_000
+    assert data["tier"] == "BASIC"
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=False)
 
@@ -192,9 +192,9 @@ def test_reset_user_usage_daily_and_weekly(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["daily_tokens_used"] == 0
-    assert data["weekly_tokens_used"] == 0
-    assert data["tier"] == "FREE"
+    assert data["daily_cost_used_microdollars"] == 0
+    assert data["weekly_cost_used_microdollars"] == 0
+    assert data["tier"] == "BASIC"
 
     mock_reset.assert_awaited_once_with(target_user_id, reset_weekly=True)
 
@@ -231,7 +231,7 @@ def test_get_rate_limit_email_lookup_failure(
     mocker.patch(
         f"{_MOCK_MODULE}.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(2_500_000, 12_500_000, SubscriptionTier.FREE),
+        return_value=(2_500_000, 12_500_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         f"{_MOCK_MODULE}.get_usage_status",
@@ -324,7 +324,7 @@ def test_set_user_tier(
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_tier",
         new_callable=AsyncMock,
-        return_value=SubscriptionTier.FREE,
+        return_value=SubscriptionTier.BASIC,
     )
     mock_set = mocker.patch(
         f"{_MOCK_MODULE}.set_user_tier",
@@ -347,7 +347,7 @@ def test_set_user_tier_downgrade(
     mocker: pytest_mock.MockerFixture,
     target_user_id: str,
 ) -> None:
-    """Test downgrading a user's tier from PRO to FREE."""
+    """Test downgrading a user's tier from PRO to BASIC."""
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_email_by_id",
         new_callable=AsyncMock,
@@ -365,14 +365,14 @@ def test_set_user_tier_downgrade(
 
     response = client.post(
         "/admin/rate_limit/tier",
-        json={"user_id": target_user_id, "tier": "FREE"},
+        json={"user_id": target_user_id, "tier": "BASIC"},
     )
 
     assert response.status_code == 200
     data = response.json()
     assert data["user_id"] == target_user_id
-    assert data["tier"] == "FREE"
-    mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.FREE)
+    assert data["tier"] == "BASIC"
+    mock_set.assert_awaited_once_with(target_user_id, SubscriptionTier.BASIC)
 
 
 def test_set_user_tier_invalid_tier(
@@ -456,7 +456,7 @@ def test_set_user_tier_db_failure(
     mocker.patch(
         f"{_MOCK_MODULE}.get_user_tier",
         new_callable=AsyncMock,
-        return_value=SubscriptionTier.FREE,
+        return_value=SubscriptionTier.BASIC,
     )
     mocker.patch(
         f"{_MOCK_MODULE}.set_user_tier",

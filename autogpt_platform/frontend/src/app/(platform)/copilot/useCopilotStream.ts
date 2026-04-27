@@ -18,11 +18,27 @@ import {
   resolveInProgressTools,
   getSendSuppressionReason,
   disconnectSessionStream,
+  shouldDebounceReconnect,
 } from "./helpers";
+import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
+import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
+
+/**
+ * Minimum spacing between successive reconnect attempts.
+ * `isReconnectScheduledRef` already prevents OVERLAPPING reconnects, but
+ * tab-throttle / visibility wake bursts can fire `onFinish(isDisconnect)`
+ * several times inside a single second — each one would schedule a fresh
+ * reconnect the moment the previous timer cleared the ref. Requests that
+ * arrive inside this window since the last reconnect's resume are COALESCED:
+ * scheduled to run at the window boundary rather than dropped, so a
+ * fast-failing resume (e.g. a 502 on GET /stream that trips `onError` inside
+ * 500 ms) still retries instead of stalling the retry loop.
+ */
+const RECONNECT_DEBOUNCE_MS = 1_500;
 
 /** Minimum time the page must have been hidden to trigger a wake re-sync. */
 const WAKE_RESYNC_THRESHOLD_MS = 30_000;
@@ -47,6 +63,7 @@ export function useCopilotStream({
   copilotModel,
 }: UseCopilotStreamArgs) {
   const queryClient = useQueryClient();
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
   const [rateLimitMessage, setRateLimitMessage] = useState<string | null>(null);
   function dismissRateLimit() {
     setRateLimitMessage(null);
@@ -109,6 +126,11 @@ export function useCopilotStream({
   const isReconnectScheduledRef = useRef(false);
   const [isReconnectScheduled, setIsReconnectScheduled] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // Timestamp of the last reconnect's actual resume call — used together
+  // with RECONNECT_DEBOUNCE_MS to drop rapid duplicate reconnect requests
+  // (e.g. visibility throttle firing onFinish(isDisconnect) several times
+  // in the same second). 0 = no reconnect has fired yet in this session.
+  const lastReconnectResumeAtRef = useRef(0);
   const hasShownDisconnectToast = useRef(false);
   // Set when the user explicitly clicks stop — prevents onError from
   // triggering a reconnect cycle for the resulting AbortError.
@@ -125,6 +147,32 @@ export function useCopilotStream({
 
   function handleReconnect(sid: string) {
     if (isReconnectScheduledRef.current || !sid) return;
+
+    // Debounce: if the previous reconnect resumed within the last
+    // RECONNECT_DEBOUNCE_MS, COALESCE this request onto the window boundary
+    // rather than dropping it. Browser tab-throttle bursts can fire
+    // onFinish(isDisconnect) 2–3 times in a second; without the debounce,
+    // each fires its own GET /stream, each one replays the Redis stream,
+    // and the flicker storm is back. Dropping the request silently (the
+    // previous behaviour) stalled the retry loop when a resume failed
+    // quickly — e.g. a 502 on GET /stream that trips onError inside 500 ms
+    // while the 1500 ms window is still open. Scheduling the retry for
+    // the remaining window preserves both the storm cap and the retry.
+    const remainingDelay = shouldDebounceReconnect(
+      lastReconnectResumeAtRef.current,
+      Date.now(),
+      RECONNECT_DEBOUNCE_MS,
+    );
+    if (remainingDelay !== null) {
+      isReconnectScheduledRef.current = true;
+      setIsReconnectScheduled(true);
+      reconnectTimerRef.current = setTimeout(() => {
+        isReconnectScheduledRef.current = false;
+        setIsReconnectScheduled(false);
+        handleReconnect(sid);
+      }, remainingDelay);
+      return;
+    }
 
     const nextAttempt = reconnectAttemptsRef.current + 1;
     if (nextAttempt > RECONNECT_MAX_ATTEMPTS) {
@@ -162,6 +210,7 @@ export function useCopilotStream({
         }
         return prev;
       });
+      lastReconnectResumeAtRef.current = Date.now();
       resumeStreamRef.current();
     }, delay);
   }
@@ -222,6 +271,20 @@ export function useCopilotStream({
       }
       const isRateLimited = errorDetail.toLowerCase().includes("usage limit");
       if (isRateLimited) {
+        // Backend raises 429 BEFORE persisting the user message, so the
+        // optimistic user bubble added by useChat is a lie. Restore the text
+        // into the composer (via the same store slot URL pre-fills use) and
+        // drop the unsent bubble so the user can edit/resend after reset.
+        const unsentText = lastSubmittedMsgRef.current;
+        if (unsentText) {
+          setInitialPrompt(unsentText);
+          lastSubmittedMsgRef.current = null;
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last?.role === "user") return prev.slice(0, -1);
+            return prev;
+          });
+        }
         setRateLimitMessage(
           errorDetail ||
             "You've reached your usage limit. Please try again later.",
@@ -419,16 +482,15 @@ export function useCopilotStream({
     };
   }, [refetchSession, setMessages]);
 
-  // Hydrate messages from REST API when not actively streaming
-  useEffect(() => {
-    if (!hydratedMessages || hydratedMessages.length === 0) return;
-    if (status === "streaming" || status === "submitted") return;
-    if (isReconnectScheduled) return;
-    setMessages((prev) => {
-      if (prev.length >= hydratedMessages.length) return prev;
-      return deduplicateMessages(hydratedMessages);
-    });
-  }, [hydratedMessages, setMessages, status, isReconnectScheduled]);
+  // After-stream hydration — force-replace AI-SDK state with the DB's view
+  // once React Query has actually refetched, then keep length-gated top-ups
+  // working for pagination. See useHydrateOnStreamEnd for the timing dance.
+  useHydrateOnStreamEnd({
+    status,
+    hydratedMessages,
+    isReconnectScheduled,
+    setMessages,
+  });
 
   // Track resume state per session
   const hasResumedRef = useRef<Map<string, boolean>>(new Map());
@@ -469,6 +531,7 @@ export function useCopilotStream({
     setRateLimitMessage(null);
     hasShownDisconnectToast.current = false;
     lastSubmittedMsgRef.current = null;
+    lastReconnectResumeAtRef.current = 0;
     setReconnectExhausted(false);
     setIsSyncing(false);
     hasResumedRef.current.clear();
@@ -567,6 +630,7 @@ export function useCopilotStream({
 
   return {
     messages,
+    setMessages,
     sendMessage,
     stop,
     status,

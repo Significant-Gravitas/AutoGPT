@@ -108,6 +108,33 @@ class TestClusterLockBasic:
         new_lock = ClusterLock(redis_client, lock_key, new_owner_id, timeout=60)
         assert new_lock.try_acquire() == new_owner_id
 
+    def test_release_does_not_wipe_successor_lock(self, redis_client, lock_key):
+        """Releasing after external delete+reacquire must NOT delete successor.
+
+        Race: an external caller force-deletes the lock key, a new owner
+        acquires it, then the original ClusterLock.release() runs. Owner-checked
+        release must leave the successor's key intact.
+        """
+        owner_a = str(uuid.uuid4())
+        owner_b = str(uuid.uuid4())
+
+        lock_a = ClusterLock(redis_client, lock_key, owner_a, timeout=60)
+        assert lock_a.try_acquire() == owner_a
+
+        # External force-release (e.g. mark_session_completed).
+        redis_client.delete(lock_key)
+
+        # Successor acquires the same key.
+        lock_b = ClusterLock(redis_client, lock_key, owner_b, timeout=60)
+        assert lock_b.try_acquire() == owner_b
+
+        # Original releases — must be a no-op on Redis because value != owner_a.
+        lock_a.release()
+
+        # Successor's lock is still intact.
+        assert redis_client.exists(lock_key) == 1
+        assert redis_client.get(lock_key).decode("utf-8") == owner_b
+
 
 class TestClusterLockRefresh:
     """Lock refresh and TTL management."""

@@ -655,34 +655,78 @@ class AgentValidator:
 
         return valid
 
-    def validate_io_blocks(self, agent: AgentDict) -> bool:
+    def _collect_io_block_ids(
+        self, blocks: list[dict[str, Any]]
+    ) -> tuple[set[str], set[str]]:
         """
-        Validate that the agent has at least one AgentInputBlock and one
-        AgentOutputBlock. These blocks define the agent's interface.
+        Build sets of all input/output block IDs from the blocks registry.
+
+        Input/output blocks are identified by ``uiType`` (populated from
+        ``Block.block_type`` at registration time). Specialized subclasses
+        like ``AgentGoogleDriveFileInputBlock`` count as input blocks even
+        though they have their own block IDs — this matches the runtime
+        behavior, where any subclass of ``AgentInputBlock`` exposes a
+        user-facing input. The literal base IDs are always included so the
+        function works even when called with a minimal blocks list (e.g.
+        unit tests).
+        """
+        input_ids: set[str] = {AGENT_INPUT_BLOCK_ID}
+        output_ids: set[str] = {AGENT_OUTPUT_BLOCK_ID}
+        for block in blocks:
+            block_id = block.get("id")
+            if not block_id:
+                continue
+            ui_type = block.get("uiType")
+            if ui_type == "Input":
+                input_ids.add(block_id)
+            elif ui_type == "Output":
+                output_ids.add(block_id)
+        return input_ids, output_ids
+
+    def validate_io_blocks(
+        self, agent: AgentDict, blocks: list[dict[str, Any]] | None = None
+    ) -> bool:
+        """
+        Validate that the agent has at least one input block and one output
+        block. These blocks define the agent's interface.
+
+        Any block whose ``uiType`` is ``"Input"`` satisfies the input
+        requirement — including specialized variants like
+        ``AgentGoogleDriveFileInputBlock``, ``AgentDropdownInputBlock``,
+        ``AgentTableInputBlock``, etc. The equivalent applies for outputs.
+        This prevents the validator from forcing agents to keep a throwaway
+        base ``AgentInputBlock`` alongside a real specialized input.
 
         Returns True if both are present, False otherwise.
         """
         valid = True
-        block_ids = {node.get("block_id") for node in agent.get("nodes", [])}
+        input_ids, output_ids = self._collect_io_block_ids(blocks or [])
+        node_block_ids = {
+            node.get("block_id")
+            for node in agent.get("nodes", [])
+            if node.get("block_id")
+        }
 
-        if AGENT_INPUT_BLOCK_ID not in block_ids:
+        if not node_block_ids & input_ids:
             self.add_error(
-                f"Agent is missing an AgentInputBlock (block_id: "
-                f"'{AGENT_INPUT_BLOCK_ID}'). Every agent must have at "
-                f"least one AgentInputBlock to define user-facing inputs. "
-                f"Add a node with block_id '{AGENT_INPUT_BLOCK_ID}' and "
-                f"set input_default with 'name' and optionally 'title'."
+                f"Agent is missing an input block. Every agent must have at "
+                f"least one input block to define user-facing inputs. Add a "
+                f"node using the base AgentInputBlock (block_id: "
+                f"'{AGENT_INPUT_BLOCK_ID}') or any specialized input block "
+                f"subclass (e.g. AgentGoogleDriveFileInputBlock, "
+                f"AgentDropdownInputBlock, AgentShortTextInputBlock). Set "
+                f"input_default with 'name' and optionally 'title'."
             )
             valid = False
 
-        if AGENT_OUTPUT_BLOCK_ID not in block_ids:
+        if not node_block_ids & output_ids:
             self.add_error(
-                f"Agent is missing an AgentOutputBlock (block_id: "
-                f"'{AGENT_OUTPUT_BLOCK_ID}'). Every agent must have at "
-                f"least one AgentOutputBlock to define user-facing outputs. "
-                f"Add a node with block_id '{AGENT_OUTPUT_BLOCK_ID}' and "
-                f"set input_default with 'name', then link 'value' from "
-                f"another block's output."
+                f"Agent is missing an output block. Every agent must have "
+                f"at least one output block to define user-facing outputs. "
+                f"Add a node using the base AgentOutputBlock (block_id: "
+                f"'{AGENT_OUTPUT_BLOCK_ID}') or any specialized output "
+                f"block subclass. Set input_default with 'name', then link "
+                f"'value' from another block's output."
             )
             valid = False
 
@@ -1114,7 +1158,7 @@ class AgentValidator:
             ),
             (
                 "IO blocks",
-                self.validate_io_blocks(agent),
+                self.validate_io_blocks(agent, blocks),
             ),
             # Always validate AgentExecutorBlock schemas to prevent
             # frontend crashes

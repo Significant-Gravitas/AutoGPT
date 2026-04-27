@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from backend.executor.scheduler import SchedulerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
     from backend.notifications.notifications import NotificationManagerClient
+    from backend.platform_linking.manager import PlatformLinkingManagerClient
 
 
 @thread_cached
@@ -65,6 +66,15 @@ def get_notification_manager_client() -> "NotificationManagerClient":
     from backend.util.service import get_service_client
 
     return get_service_client(NotificationManagerClient)
+
+
+@thread_cached
+def get_platform_linking_manager_client() -> "PlatformLinkingManagerClient":
+    """Get a thread-cached PlatformLinkingManagerClient."""
+    from backend.platform_linking.manager import PlatformLinkingManagerClient
+    from backend.util.service import get_service_client
+
+    return get_service_client(PlatformLinkingManagerClient)
 
 
 # ============ Execution Event Bus Helpers ============ #
