@@ -116,14 +116,109 @@ describe("useHydrateOnStreamEnd", () => {
     const fresh = [msg("s1"), msg("s2")];
     rerender({ status: "ready", hydratedMessages: fresh });
     expect(setMessages).toHaveBeenCalledTimes(1);
-    const arg = setMessages.mock.calls[0][0];
-    // Force-hydrate replaces unconditionally (not an updater fn).
-    expect(Array.isArray(arg)).toBe(true);
-    expect((arg as UIMessage[]).map((m) => m.id)).toEqual(["s1", "s2"]);
+    const updater = setMessages.mock.calls[0][0];
+    // Force-hydrate uses an updater so it can preserve any in-flight
+    // promoted-* user bubbles whose text isn't in the hydrated DB rows.
+    expect(typeof updater).toBe("function");
+    expect(
+      (updater as (prev: UIMessage[]) => UIMessage[])([]).map((m) => m.id),
+    ).toEqual(["s1", "s2"]);
 
     // Subsequent rerender with same fresh ref → no additional call.
     rerender({ status: "ready", hydratedMessages: fresh });
     expect(setMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves promoted user bubbles whose text isn't in the hydrated DB rows", () => {
+    // Simulates: Claude saw a queued message via mid-turn injection but the
+    // persist rolled back, so the DB has no matching user row. We must NOT
+    // drop the in-flight bubble during force-hydrate.
+    const setMessages = vi.fn();
+    const stale = [msg("a")];
+    const { rerender } = renderHook(
+      ({
+        status,
+        hydratedMessages,
+      }: {
+        status: "submitted" | "streaming" | "ready" | "error";
+        hydratedMessages: UIMessage[];
+      }) =>
+        useHydrateOnStreamEnd({
+          status,
+          hydratedMessages,
+          isReconnectScheduled: false,
+          hasActiveStream: false,
+          setMessages,
+        }),
+      { initialProps: { status: "streaming", hydratedMessages: stale } },
+    );
+
+    // Arm force-hydrate, then drop in a fresh hydrated reference.
+    rerender({ status: "ready", hydratedMessages: stale });
+    const fresh = [msg("a"), msg("b")];
+    rerender({ status: "ready", hydratedMessages: fresh });
+    expect(setMessages).toHaveBeenCalledTimes(1);
+
+    const updater = setMessages.mock.calls[0][0] as (
+      prev: UIMessage[],
+    ) => UIMessage[];
+
+    const promoted: UIMessage = {
+      id: "promoted-midturn-xyz",
+      role: "user",
+      parts: [{ type: "text", text: "queued message", state: "done" }],
+    };
+    const result = updater([msg("a"), promoted, msg("b")]);
+    // Promoted bubble survives because no hydrated user message contains its text.
+    expect(result.map((m) => m.id)).toEqual([
+      "a",
+      "b",
+      "promoted-midturn-xyz",
+    ]);
+  });
+
+  it("drops promoted bubbles whose text is already represented in the DB", () => {
+    const setMessages = vi.fn();
+    const stale = [msg("a")];
+    const { rerender } = renderHook(
+      ({
+        status,
+        hydratedMessages,
+      }: {
+        status: "submitted" | "streaming" | "ready" | "error";
+        hydratedMessages: UIMessage[];
+      }) =>
+        useHydrateOnStreamEnd({
+          status,
+          hydratedMessages,
+          isReconnectScheduled: false,
+          hasActiveStream: false,
+          setMessages,
+        }),
+      { initialProps: { status: "streaming", hydratedMessages: stale } },
+    );
+
+    rerender({ status: "ready", hydratedMessages: stale });
+    const persistedUser: UIMessage = {
+      id: "session-seq-3",
+      role: "user",
+      parts: [{ type: "text", text: "queued message", state: "done" }],
+    };
+    const fresh = [msg("a"), persistedUser, msg("b")];
+    rerender({ status: "ready", hydratedMessages: fresh });
+
+    const updater = setMessages.mock.calls[0][0] as (
+      prev: UIMessage[],
+    ) => UIMessage[];
+
+    const promoted: UIMessage = {
+      id: "promoted-midturn-xyz",
+      role: "user",
+      parts: [{ type: "text", text: "queued message", state: "done" }],
+    };
+    const result = updater([msg("a"), promoted, msg("b")]);
+    // No duplicate — DB user row already covers the bubble's text.
+    expect(result.map((m) => m.id)).toEqual(["a", "session-seq-3", "b"]);
   });
 
   it("ignores undefined or empty hydratedMessages", () => {

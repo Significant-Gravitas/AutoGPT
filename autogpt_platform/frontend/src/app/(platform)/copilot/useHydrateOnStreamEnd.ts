@@ -8,6 +8,50 @@ import {
   resolveInterruptedMessage,
 } from "./helpers";
 
+const PROMOTED_BUBBLE_ID_PREFIX = "promoted-";
+
+function getMessageText(message: UIMessage): string {
+  return message.parts
+    .map((part) => (part.type === "text" && "text" in part ? part.text : ""))
+    .join("\n\n")
+    .trim();
+}
+
+/**
+ * When force-hydrating after a stream ends, replace the in-memory messages
+ * with the canonical DB state — but preserve any ``promoted-*`` bubbles
+ * (mid-turn or auto-continue chip promotions) whose text isn't reflected in
+ * the hydrated user messages yet. This covers the rare case where Claude
+ * already saw the queued message (via mid-turn injection) but the persist
+ * step rolled back, so the DB row never landed; without this guard, the
+ * user sees their message disappear from the feed even though the LLM
+ * responded to it.
+ */
+function preservePromotedUserBubbles(
+  prev: UIMessage[],
+  hydrated: UIMessage[],
+): UIMessage[] {
+  const promoted = prev.filter(
+    (m) =>
+      typeof m.id === "string" && m.id.startsWith(PROMOTED_BUBBLE_ID_PREFIX),
+  );
+  if (promoted.length === 0) return hydrated;
+
+  const hydratedUserText = hydrated
+    .filter((m) => m.role === "user")
+    .map(getMessageText)
+    .join("\n\n");
+
+  const orphans = promoted.filter((bubble) => {
+    const bubbleText = getMessageText(bubble);
+    if (!bubbleText) return false;
+    return !hydratedUserText.includes(bubbleText);
+  });
+  if (orphans.length === 0) return hydrated;
+
+  return [...hydrated, ...orphans];
+}
+
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
 interface Args {
@@ -104,7 +148,7 @@ export function useHydrateOnStreamEnd({
         // Still the pre-turn snapshot — wait for the refetch.
         return;
       }
-      setMessages(finalized);
+      setMessages((prev) => preservePromotedUserBubbles(prev, finalized));
       needsForceHydrateRef.current = false;
       staleRefAtStreamEnd.current = null;
       return;
