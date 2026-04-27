@@ -58,3 +58,7 @@ storybook-static
 
 # Generated API files
 src/app/api/__generated__/
+
+# Video recordings (screen captures, bug repros)
+*.mov
+*.mp4
