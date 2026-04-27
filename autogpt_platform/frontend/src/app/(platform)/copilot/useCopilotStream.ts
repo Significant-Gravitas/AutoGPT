@@ -165,10 +165,21 @@ export function useCopilotStream({
             useCopilotStreamStore.getState().getCoord(sessionId)
               .lastSubmittedMessageText ?? null;
           if (unsentText) {
-            setInitialPrompt(unsentText);
-            useCopilotStreamStore
-              .getState()
-              .updateCoord(sessionId, { lastSubmittedMessageText: null });
+            // The 429 callback fires async — by the time it lands, the user
+            // may have started typing a new draft. Only restore + clear the
+            // recovery slot when the composer is empty; otherwise leave the
+            // unsent text in the per-session store so a reload / resume can
+            // surface it later instead of silently dropping it.
+            const composer = document.getElementById(
+              "chat-input",
+            ) as HTMLTextAreaElement | null;
+            const composerEmpty = !composer || composer.value.length === 0;
+            if (composerEmpty) {
+              setInitialPrompt(unsentText);
+              useCopilotStreamStore
+                .getState()
+                .updateCoord(sessionId, { lastSubmittedMessageText: null });
+            }
             setMessages((prev) => {
               const last = prev[prev.length - 1];
               if (last?.role === "user") return prev.slice(0, -1);

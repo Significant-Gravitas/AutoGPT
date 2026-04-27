@@ -711,4 +711,39 @@ describe("useCopilotStream — rate-limit recovery", () => {
     );
     expect(rollbackUpdaterCall).toBeUndefined();
   });
+
+  it("preserves the unsent text in the store when the user is already typing a new draft", async () => {
+    useCopilotUIStore.getState().setInitialPrompt(null);
+    useCopilotStreamStore
+      .getState()
+      .updateCoord("sess-1", { lastSubmittedMessageText: "rate-limited" });
+
+    const composer = document.createElement("textarea");
+    composer.id = "chat-input";
+    composer.value = "user is typing a new draft";
+    document.body.appendChild(composer);
+
+    try {
+      renderHook((args: Args) => useCopilotStream(args), {
+        initialProps: makeArgs({ sessionId: "sess-1" }),
+      });
+
+      await act(async () => {
+        await getOrCreateCopilotChatRuntime("sess-1").onError?.(
+          new Error(JSON.stringify({ detail: "Daily usage limit exceeded" })),
+        );
+      });
+
+      // Composer non-empty → don't write to the recovery slot, don't clear
+      // the per-session unsent buffer. The user keeps their draft and the
+      // rate-limited text stays available for a future reload/resume.
+      expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+      expect(
+        useCopilotStreamStore.getState().getCoord("sess-1")
+          .lastSubmittedMessageText,
+      ).toBe("rate-limited");
+    } finally {
+      document.body.removeChild(composer);
+    }
+  });
 });
