@@ -56,7 +56,7 @@ export function NotificationsCard({ values, onToggle, index = 0 }: Props) {
       className="flex w-full flex-col gap-2 pt-0"
     >
       <div className="flex flex-col gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+        <Text variant="body-medium" as="span" className="text-textBlack">
           Notifications
         </Text>
         <Text variant="small" className="text-zinc-500">
@@ -150,7 +150,7 @@ function NotificationRow({
       )}
     >
       <div className="flex min-w-0 flex-col">
-        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+        <Text variant="body-medium" as="span" className="text-textBlack">
           {item.title}
         </Text>
         <Text variant="small" as="span" className="text-zinc-500">

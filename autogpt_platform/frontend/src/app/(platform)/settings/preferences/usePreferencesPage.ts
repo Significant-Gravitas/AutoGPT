@@ -91,11 +91,12 @@ export function usePreferencesPage() {
     function syncFormStateOnce() {
       if (hasInitializedFormState.current) return;
       if (!preferencesQuery.data) return;
+      if (timezoneQuery.isLoading) return;
       setFormState(initialState);
       setSavedState(initialState);
       hasInitializedFormState.current = true;
     },
-    [initialState, preferencesQuery.data],
+    [initialState, preferencesQuery.data, timezoneQuery.isLoading],
   );
 
   const dirty = isFormDirty(savedState, formState);
@@ -202,7 +203,10 @@ export function usePreferencesPage() {
     isLoading,
     isError: preferencesQuery.isError || timezoneQuery.isError,
     error: preferencesQuery.error ?? timezoneQuery.error,
-    refetch: preferencesQuery.refetch,
+    refetch: () => {
+      void preferencesQuery.refetch();
+      void timezoneQuery.refetch();
+    },
     formState,
     savedState,
     rawTimezone: timezoneQuery.data,

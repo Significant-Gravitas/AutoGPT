@@ -54,7 +54,7 @@ export function AccountCard({ user, index = 0 }: Props) {
       className="flex w-full flex-col gap-2"
     >
       <div className="flex flex-col gap-1 px-4">
-        <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+        <Text variant="body-medium" as="span" className="text-textBlack">
           Account
         </Text>
         <Text variant="small" className="text-zinc-500">
@@ -64,7 +64,7 @@ export function AccountCard({ user, index = 0 }: Props) {
 
       <div className="flex flex-col divide-y divide-zinc-200 rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          <Text variant="body-medium" as="span" className="text-textBlack">
             Email
           </Text>
 
@@ -72,7 +72,7 @@ export function AccountCard({ user, index = 0 }: Props) {
             <Text
               variant="body"
               as="span"
-              className="min-w-0 truncate text-[#1F1F20]"
+              className="min-w-0 truncate text-textBlack"
             >
               {currentEmail}
             </Text>
@@ -152,7 +152,7 @@ export function AccountCard({ user, index = 0 }: Props) {
         </div>
 
         <div className="flex items-center justify-between gap-4 px-4 py-4">
-          <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+          <Text variant="body-medium" as="span" className="text-textBlack">
             Password
           </Text>
 

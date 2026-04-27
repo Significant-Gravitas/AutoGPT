@@ -57,7 +57,7 @@ export function TimezoneCard({
       <div className="flex h-fit flex-col justify-center gap-3 rounded-[18px] border border-zinc-200 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Text variant="body-medium" as="span" className="text-[#1F1F20]">
+            <Text variant="body-medium" as="span" className="text-textBlack">
               Time zone
             </Text>
             <Tooltip>

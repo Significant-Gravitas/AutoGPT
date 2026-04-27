@@ -10,7 +10,6 @@ import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHea
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
 import { SaveBar } from "./components/SaveBar/SaveBar";
 import { TimezoneCard } from "./components/TimezoneCard/TimezoneCard";
-import { useTimezoneDetection } from "@/app/(platform)/profile/(user)/settings/useTimezoneDetection";
 import { usePreferencesPage } from "./usePreferencesPage";
 
 export default function SettingsPreferencesPage() {
@@ -26,7 +25,6 @@ export default function SettingsPreferencesPage() {
     refetch,
     formState,
     savedState,
-    rawTimezone,
     dirty,
     isSaving,
     setTimezone,
@@ -34,8 +32,6 @@ export default function SettingsPreferencesPage() {
     discardChanges,
     savePreferences,
   } = usePreferencesPage();
-
-  useTimezoneDetection(rawTimezone);
 
   if (isError) {
     return (
