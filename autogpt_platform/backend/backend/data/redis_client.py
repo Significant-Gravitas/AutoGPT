@@ -66,7 +66,15 @@ def connect() -> RedisClient:
         health_check_interval=HEALTH_CHECK_INTERVAL,
         address_remap=_address_remap,
     )
-    c.ping()
+    # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8T1).
+    try:
+        c.ping()
+    except Exception:
+        try:
+            c.close()
+        except Exception:
+            pass
+        raise
     return c
 
 
@@ -93,7 +101,15 @@ async def connect_async() -> AsyncRedisClient:
         health_check_interval=HEALTH_CHECK_INTERVAL,
         address_remap=_address_remap,
     )
-    await c.ping()
+    # Close on PING failure so retries don't leak ClusterNodes (AUTOGPT-SERVER-8V6/8V4/8V3).
+    try:
+        await c.ping()
+    except Exception:
+        try:
+            await c.close()
+        except Exception:
+            pass
+        raise
     return c
 
 
@@ -152,7 +168,14 @@ def connect_sharded_pubsub(channel: str) -> Redis:
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
     )
-    c.ping()
+    try:
+        c.ping()
+    except Exception:
+        try:
+            c.close()
+        except Exception:
+            pass
+        raise
     return c
 
 
@@ -171,5 +194,12 @@ async def connect_sharded_pubsub_async(channel: str) -> AsyncRedis:
         socket_keepalive=True,
         health_check_interval=HEALTH_CHECK_INTERVAL,
     )
-    await c.ping()
+    try:
+        await c.ping()
+    except Exception:
+        try:
+            await c.close()
+        except Exception:
+            pass
+        raise
     return c
