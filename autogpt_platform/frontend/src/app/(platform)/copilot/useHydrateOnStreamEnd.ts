@@ -54,7 +54,21 @@ function preservePromotedUserBubbles(
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
 
+// Survive remount on session re-entry: useRef would reset every time
+// CopilotPage's <Component key={sessionId}/> remounts the tree, causing
+// the "previous response was interrupted" toast to fire again on every
+// re-entry into an affected session. Module-scoped so it persists for
+// the page lifetime.
+const sessionsWithInterruptedToastShown = new Set<string>();
+
 interface Args {
+  /**
+   * Active session id. Used to key the "interrupted-toast already shown"
+   * ledger so the warning fires at most once per session per page load.
+   * ``null`` is allowed for the brief window before a session is bound;
+   * the toast simply won't be deduped during that window.
+   */
+  sessionId: string | null;
   status: ChatStatus;
   hydratedMessages: UIMessage[] | undefined;
   isReconnectScheduled: boolean;
@@ -69,6 +83,11 @@ interface Args {
   setMessages: (
     updater: UIMessage[] | ((prev: UIMessage[]) => UIMessage[]),
   ) => void;
+}
+
+/** Test hook: clear the per-session interrupted-toast ledger. */
+export function _resetInterruptedToastLedgerForTests() {
+  sessionsWithInterruptedToastShown.clear();
 }
 
 /**
@@ -96,6 +115,7 @@ interface Args {
  * the UI would otherwise render with permanent spinners.
  */
 export function useHydrateOnStreamEnd({
+  sessionId,
   status,
   hydratedMessages,
   isReconnectScheduled,
@@ -105,7 +125,6 @@ export function useHydrateOnStreamEnd({
   const prevStatusRef = useRef(status);
   const needsForceHydrateRef = useRef(false);
   const staleRefAtStreamEnd = useRef<typeof hydratedMessages | null>(null);
-  const hasShownInterruptedToastRef = useRef(false);
 
   // Arm the force-hydrate flag the moment the stream transitions to idle.
   useEffect(() => {
@@ -134,13 +153,15 @@ export function useHydrateOnStreamEnd({
       ? resolveInterruptedMessage(deduped)
       : deduped;
 
-    if (needsZombieRecovery && !hasShownInterruptedToastRef.current) {
-      hasShownInterruptedToastRef.current = true;
-      toast({
-        title: "Previous response was interrupted",
-        description:
-          "The chat disconnected before the last response finished. Resend to try again.",
-      });
+    if (needsZombieRecovery && sessionId) {
+      if (!sessionsWithInterruptedToastShown.has(sessionId)) {
+        sessionsWithInterruptedToastShown.add(sessionId);
+        toast({
+          title: "Previous response was interrupted",
+          description:
+            "The chat disconnected before the last response finished. Resend to try again.",
+        });
+      }
     }
 
     if (needsForceHydrateRef.current) {

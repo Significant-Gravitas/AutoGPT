@@ -7,7 +7,10 @@ vi.mock("@/components/molecules/Toast/use-toast", () => ({
   toast: (...args: unknown[]) => mockToast(...args),
 }));
 
-import { useHydrateOnStreamEnd } from "../useHydrateOnStreamEnd";
+import {
+  _resetInterruptedToastLedgerForTests,
+  useHydrateOnStreamEnd,
+} from "../useHydrateOnStreamEnd";
 
 /** Use distinct default text per id so the assistant dedup doesn't collapse them. */
 function msg(id: string, text?: string): UIMessage {
@@ -29,6 +32,7 @@ describe("useHydrateOnStreamEnd", () => {
     const setMessages = vi.fn();
     renderHook(() =>
       useHydrateOnStreamEnd({
+        sessionId: null,
         status: "streaming",
         hydratedMessages: [msg("a")],
         isReconnectScheduled: false,
@@ -43,6 +47,7 @@ describe("useHydrateOnStreamEnd", () => {
     const setMessages = vi.fn();
     renderHook(() =>
       useHydrateOnStreamEnd({
+        sessionId: null,
         status: "ready",
         hydratedMessages: [msg("a")],
         isReconnectScheduled: true,
@@ -60,6 +65,7 @@ describe("useHydrateOnStreamEnd", () => {
     const fresh = [msg("a"), msg("b"), msg("c")];
     renderHook(() =>
       useHydrateOnStreamEnd({
+        sessionId: null,
         status: "ready",
         hydratedMessages: fresh,
         isReconnectScheduled: false,
@@ -90,6 +96,7 @@ describe("useHydrateOnStreamEnd", () => {
         hydratedMessages: UIMessage[];
       }) =>
         useHydrateOnStreamEnd({
+          sessionId: null,
           status,
           hydratedMessages,
           isReconnectScheduled: false,
@@ -144,6 +151,7 @@ describe("useHydrateOnStreamEnd", () => {
         hydratedMessages: UIMessage[];
       }) =>
         useHydrateOnStreamEnd({
+          sessionId: null,
           status,
           hydratedMessages,
           isReconnectScheduled: false,
@@ -185,6 +193,7 @@ describe("useHydrateOnStreamEnd", () => {
         hydratedMessages: UIMessage[];
       }) =>
         useHydrateOnStreamEnd({
+          sessionId: null,
           status,
           hydratedMessages,
           isReconnectScheduled: false,
@@ -221,6 +230,7 @@ describe("useHydrateOnStreamEnd", () => {
     const setMessages = vi.fn();
     renderHook(() =>
       useHydrateOnStreamEnd({
+        sessionId: null,
         status: "ready",
         hydratedMessages: undefined,
         isReconnectScheduled: false,
@@ -248,6 +258,7 @@ describe("useHydrateOnStreamEnd", () => {
 
     renderHook(() =>
       useHydrateOnStreamEnd({
+        sessionId: "zombie-session",
         status: "ready",
         hydratedMessages: [zombie],
         isReconnectScheduled: false,
@@ -293,6 +304,7 @@ describe("useHydrateOnStreamEnd", () => {
 
     renderHook(() =>
       useHydrateOnStreamEnd({
+        sessionId: "active-session",
         status: "ready",
         hydratedMessages: [partial],
         isReconnectScheduled: false,
@@ -302,5 +314,64 @@ describe("useHydrateOnStreamEnd", () => {
     );
 
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("only fires the interrupted toast once per session across remounts", () => {
+    mockToast.mockClear();
+    _resetInterruptedToastLedgerForTests();
+
+    const setMessages = vi.fn();
+    const zombie: UIMessage = {
+      id: "a",
+      role: "assistant",
+      parts: [
+        {
+          type: "text" as const,
+          text: "half-written reply",
+          state: "streaming" as const,
+        },
+      ],
+    };
+
+    // Mount #1 — toast fires.
+    const first = renderHook(() =>
+      useHydrateOnStreamEnd({
+        sessionId: "sess-toast",
+        status: "ready",
+        hydratedMessages: [zombie],
+        isReconnectScheduled: false,
+        hasActiveStream: false,
+        setMessages,
+      }),
+    );
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    // Mount #2 — same sessionId, fresh ref-state but already-shown ledger.
+    // Reproduces "switch away then back" — useRef would reset and re-toast.
+    renderHook(() =>
+      useHydrateOnStreamEnd({
+        sessionId: "sess-toast",
+        status: "ready",
+        hydratedMessages: [zombie],
+        isReconnectScheduled: false,
+        hasActiveStream: false,
+        setMessages,
+      }),
+    );
+    expect(mockToast).toHaveBeenCalledTimes(1);
+
+    // Different session id → new toast is allowed.
+    renderHook(() =>
+      useHydrateOnStreamEnd({
+        sessionId: "sess-toast-other",
+        status: "ready",
+        hydratedMessages: [zombie],
+        isReconnectScheduled: false,
+        hasActiveStream: false,
+        setMessages,
+      }),
+    );
+    expect(mockToast).toHaveBeenCalledTimes(2);
   });
 });

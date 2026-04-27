@@ -390,6 +390,7 @@ export function useCopilotStream({
   // backend confirms no active stream. See useHydrateOnStreamEnd for the
   // timing dance.
   useHydrateOnStreamEnd({
+    sessionId,
     status,
     hydratedMessages,
     isReconnectScheduled,
