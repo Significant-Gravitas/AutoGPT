@@ -326,6 +326,104 @@ async def test_subscription_stop_swallows_sunsubscribe_errors() -> None:
         await sub.stop()
 
 
+@pytest.mark.asyncio
+async def test_subscription_pump_reconnects_on_connection_error() -> None:
+    """A shard-failover ConnectionError mid-listen must trigger reopen + resubscribe."""
+    # First pubsub: listen() raises ConnectionError on iteration.
+    pubsub_a = MagicMock()
+    pubsub_a.execute_command = AsyncMock()
+    pubsub_a.channels = {}
+    pubsub_a.aclose = AsyncMock()
+
+    async def _listen_a():
+        raise ConnectionError("Connection refused")
+        yield  # pragma: no cover — unreachable
+
+    pubsub_a.listen = _listen_a
+
+    # Second pubsub: listen() yields a real message after reconnect.
+    pubsub_b = MagicMock()
+    pubsub_b.execute_command = AsyncMock()
+    pubsub_b.channels = {}
+    pubsub_b.aclose = AsyncMock()
+
+    async def _listen_b():
+        yield {"type": "smessage", "data": b'{"payload":"after-reconnect"}'}
+
+    pubsub_b.listen = _listen_b
+
+    client_a = MagicMock()
+    client_a.pubsub = MagicMock(return_value=pubsub_a)
+    client_a.aclose = AsyncMock()
+
+    client_b = MagicMock()
+    client_b.pubsub = MagicMock(return_value=pubsub_b)
+    client_b.aclose = AsyncMock()
+
+    received: list = []
+
+    async def on_message(data) -> None:
+        received.append(data)
+
+    sub = _Subscription("{u/g}/exec/x")
+    # Drive backoff to ~zero so the test runs fast.
+    with (
+        patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            AsyncMock(side_effect=[client_a, client_b]),
+        ),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.001),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_MAX_S", 0.001),
+    ):
+        await sub.start(on_message)
+        # Give the pump enough event-loop turns to fail, reconnect, deliver.
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if received:
+                break
+        await sub.stop()
+
+    assert received == [b'{"payload":"after-reconnect"}']
+    # Both pubsubs got an SSUBSCRIBE — the reconnect re-issued the command.
+    pubsub_a.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
+    pubsub_b.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
+
+
+@pytest.mark.asyncio
+async def test_subscription_pump_gives_up_after_reconnect_deadline() -> None:
+    """If reconnects keep failing past the deadline, the pump must exit (not loop forever)."""
+    # Every listen() raises; every reopen also raises ConnectionError.
+    pubsub = MagicMock()
+    pubsub.execute_command = AsyncMock()
+    pubsub.channels = {}
+    pubsub.aclose = AsyncMock()
+
+    async def _listen():
+        raise ConnectionError("boom")
+        yield  # pragma: no cover
+
+    pubsub.listen = _listen
+
+    client = MagicMock()
+    client.pubsub = MagicMock(return_value=pubsub)
+    client.aclose = AsyncMock()
+
+    sub = _Subscription("{u/g}/exec/x")
+    with (
+        patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            AsyncMock(return_value=client),
+        ),
+        # Force the deadline to trip on the very first retry.
+        patch("backend.api.conn_manager._PUMP_RECONNECT_DEADLINE_S", 0.0),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.0),
+    ):
+        await sub.start(AsyncMock())
+        if sub._task is not None:
+            await asyncio.wait_for(sub._task, timeout=2.0)
+        await sub.stop()
+
+
 # ---------- ConnectionManager subscribe reuse / missing-meta handling ----------
 
 

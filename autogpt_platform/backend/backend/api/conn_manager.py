@@ -1,11 +1,13 @@
 import asyncio
 import json
 import logging
+import time
 from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
+from redis.exceptions import RedisError
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
@@ -56,6 +58,11 @@ def _notification_bus_channel(user_id: str) -> str:
 
 MessageHandler = Callable[[Optional[bytes | str]], Awaitable[None]]
 
+# Reconnect tunables for shard-failover during pubsub.listen().
+_PUMP_RECONNECT_DEADLINE_S = 60.0
+_PUMP_RECONNECT_BACKOFF_INITIAL_S = 0.5
+_PUMP_RECONNECT_BACKOFF_MAX_S = 8.0
+
 
 class _Subscription:
     """One SSUBSCRIBE lifecycle bound to a WebSocket, pinned to the owning shard."""
@@ -68,33 +75,89 @@ class _Subscription:
         self._task: asyncio.Task | None = None
 
     async def start(self, on_message: MessageHandler) -> None:
+        await self._open_pubsub()
+        self._task = asyncio.create_task(self._pump(on_message))
+
+    async def _open_pubsub(self) -> None:
+        """(Re)establish the sharded pubsub connection + SSUBSCRIBE."""
         self._client = await redis.connect_sharded_pubsub_async(self.full_channel)
         self._pubsub = self._client.pubsub()
         await self._pubsub.execute_command("SSUBSCRIBE", self.full_channel)
         # redis-py 6.x async PubSub.listen() exits when ``channels`` is
         # empty; raw SSUBSCRIBE doesn't populate it, so do it ourselves.
         self._pubsub.channels[self.full_channel] = None  # type: ignore[index]
-        self._task = asyncio.create_task(self._pump(on_message))
+
+    async def _close_pubsub_quietly(self) -> None:
+        """Best-effort teardown before reconnect — never raises."""
+        if self._pubsub is not None:
+            try:
+                await self._pubsub.aclose()
+            except Exception:
+                pass
+            self._pubsub = None
+        if self._client is not None:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = None
 
     async def _pump(self, on_message: MessageHandler) -> None:
-        pubsub = self._pubsub
-        if pubsub is None:
+        if self._pubsub is None:
             return
-        try:
-            async for message in pubsub.listen():
-                if message.get("type") not in ("smessage", "message", "pmessage"):
-                    continue
-                try:
-                    await on_message(message.get("data"))
-                except Exception:
+        backoff = _PUMP_RECONNECT_BACKOFF_INITIAL_S
+        deadline = time.monotonic() + _PUMP_RECONNECT_DEADLINE_S
+        while True:
+            pubsub = self._pubsub
+            if pubsub is None:
+                return
+            try:
+                async for message in pubsub.listen():
+                    if message.get("type") not in ("smessage", "message", "pmessage"):
+                        continue
+                    # Successful read resets the reconnect budget.
+                    backoff = _PUMP_RECONNECT_BACKOFF_INITIAL_S
+                    deadline = time.monotonic() + _PUMP_RECONNECT_DEADLINE_S
+                    try:
+                        await on_message(message.get("data"))
+                    except Exception:
+                        logger.exception(
+                            "Websocket message-handler failed for channel %s",
+                            self.full_channel,
+                        )
+                # listen() exited cleanly (channels emptied) — pump is done.
+                return
+            except asyncio.CancelledError:
+                raise
+            except (ConnectionError, RedisError) as exc:
+                if time.monotonic() > deadline:
                     logger.exception(
-                        "Websocket message-handler failed for channel %s",
+                        "Pubsub pump giving up after reconnect deadline for %s",
                         self.full_channel,
                     )
-        except asyncio.CancelledError:
-            raise
-        except Exception:
-            logger.exception("Pubsub pump crashed for %s", self.full_channel)
+                    return
+                logger.warning(
+                    "Pubsub pump reconnecting for %s after %s: %s",
+                    self.full_channel,
+                    type(exc).__name__,
+                    exc,
+                )
+                await self._close_pubsub_quietly()
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, _PUMP_RECONNECT_BACKOFF_MAX_S)
+                try:
+                    await self._open_pubsub()
+                except (ConnectionError, RedisError) as reopen_exc:
+                    logger.warning(
+                        "Pubsub pump reopen failed for %s: %s",
+                        self.full_channel,
+                        reopen_exc,
+                    )
+                    # Loop again — deadline check will eventually exit.
+                    continue
+            except Exception:
+                logger.exception("Pubsub pump crashed for %s", self.full_channel)
+                return
 
     async def stop(self) -> None:
         if self._task is not None:
