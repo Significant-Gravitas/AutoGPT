@@ -212,6 +212,103 @@ describe("SettingsPreferencesPage", () => {
     expect(flippedKey).toBeDefined();
   });
 
+  test("saving a timezone change posts the new value", async () => {
+    let submittedTimezone: string | undefined;
+
+    server.use(
+      getGetV1GetNotificationPreferencesMockHandler({
+        user_id: "user-1",
+        email: "user@example.com",
+        preferences: allFalsePreferences,
+        daily_limit: 0,
+        emails_sent_today: 0,
+        last_reset_date: baseDate,
+      }),
+      getGetV1GetUserTimezoneMockHandler({ timezone: "Asia/Kolkata" }),
+      getPostV1UpdateUserEmailMockHandler({}),
+      getPostV1UpdateNotificationPreferencesMockHandler({
+        user_id: "user-1",
+        email: "user@example.com",
+        preferences: {},
+        daily_limit: 0,
+        emails_sent_today: 0,
+        last_reset_date: baseDate,
+      }),
+      getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { timezone: string };
+        submittedTimezone = body.timezone;
+        return { timezone: body.timezone };
+      }),
+    );
+
+    render(<SettingsPreferencesPage />);
+
+    const select = await screen.findByRole("combobox", { name: "Timezone" });
+    fireEvent.click(select);
+
+    const option = await screen.findByRole("option", {
+      name: /London/i,
+    });
+    fireEvent.click(option);
+
+    const saveButton = screen.getByRole("button", { name: "Save changes" });
+
+    await waitFor(() => {
+      expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(submittedTimezone).toBe("Europe/London");
+    });
+  });
+
+  test("submitting a new email closes the dialog and calls the update endpoint", async () => {
+    const fetchMock = vi.fn(async () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    setupBaseHandlers();
+
+    render(<SettingsPreferencesPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit email" }),
+    );
+
+    const dialogInput = (await screen.findByLabelText(
+      "Email",
+    )) as HTMLInputElement;
+    fireEvent.change(dialogInput, { target: { value: "new@example.com" } });
+
+    const updateButton = screen.getByRole("button", { name: "Update email" });
+    await waitFor(() => {
+      expect((updateButton as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    fireEvent.click(updateButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/auth/user",
+        expect.objectContaining({ method: "PUT" }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Email")).toBeNull();
+    });
+
+    vi.unstubAllGlobals();
+  });
+
   test("Discard reverts unsaved notification toggles", async () => {
     setupBaseHandlers();
 
