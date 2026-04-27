@@ -105,15 +105,19 @@ export function useDeleteIntegration() {
           .join(", ");
         const more =
           out.failed.length > 3 ? ` +${out.failed.length - 3} more` : "";
+        // needsConfirmation items are pending a force-delete prompt, not
+        // failures and not successes — exclude them from the denominator
+        // so "X of Y could not be removed" doesn't imply the rest succeeded.
+        const attemptableCount = targets.length - out.needsConfirmation.length;
         const allFailedTitle =
-          targets.length === 1
+          attemptableCount === 1
             ? "Failed to remove integration"
-            : `Failed to remove ${targets.length} integrations`;
+            : `Failed to remove ${attemptableCount} integrations`;
         toast({
           title:
-            out.failed.length === targets.length
+            out.failed.length === attemptableCount
               ? allFailedTitle
-              : `${out.failed.length} of ${targets.length} could not be removed`,
+              : `${out.failed.length} of ${attemptableCount} could not be removed`,
           description: `${failedNames}${more}. Try again to retry the failed ones.`,
           variant: "destructive",
         });
