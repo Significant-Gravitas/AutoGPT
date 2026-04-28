@@ -15,6 +15,7 @@ from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _build_system_prompt_value,
+    _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
@@ -901,6 +902,53 @@ class TestSystemPromptPreset:
             thinking_advanced_model="anthropic/claude-opus-4-7",
         )
         assert cfg.claude_agent_cross_user_prompt_cache is False
+
+
+class TestStreamErrorCodePrefix:
+    """StreamError.to_sse auto-prefixes errorText with `[code:<id>]` when a
+    code is set, so the frontend can parse a machine-readable code out of
+    the AI-SDK's strict `{type, errorText}` schema."""
+
+    def test_auto_prefix_when_code_set(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="Boom", code="idle_timeout").to_sse()
+        assert '"errorText":"[code:idle_timeout] Boom"' in sse
+
+    def test_no_prefix_when_code_missing(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="Boom").to_sse()
+        assert '"errorText":"Boom"' in sse
+
+    def test_does_not_double_prefix(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="[code:x] Boom", code="x").to_sse()
+        assert "[code:x] [code:x]" not in sse
+        assert '"errorText":"[code:x] Boom"' in sse
+
+
+class TestHumaniseToolList:
+    """Tool-name formatter used to build the idle-timeout error message."""
+
+    def test_empty_returns_empty_string(self):
+        assert _humanise_tool_list([]) == ""
+
+    def test_single_tool_is_quoted(self):
+        assert _humanise_tool_list(["WebSearch"]) == "'WebSearch'"
+
+    def test_two_tools_are_joined_with_and(self):
+        assert (
+            _humanise_tool_list(["WebSearch", "run_block"])
+            == "'WebSearch' and 'run_block'"
+        )
+
+    def test_three_uses_singular_other(self):
+        assert _humanise_tool_list(["a", "b", "c"]) == "'a', 'b', and 1 other"
+
+    def test_four_plus_uses_plural_others(self):
+        assert _humanise_tool_list(["a", "b", "c", "d"]) == "'a', 'b', and 2 others"
 
 
 # ---------------------------------------------------------------------------

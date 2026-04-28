@@ -553,6 +553,26 @@ async def _reduce_context(
     return ReducedContext(TranscriptBuilder(), False, None, True, True, retry_target)
 
 
+def _humanise_tool_list(names: list[str]) -> str:
+    """Format a list of tool names for user-facing messages.
+
+    ``["WebSearch"]``              → ``"'WebSearch'"``
+    ``["WebSearch", "run_block"]`` → ``"'WebSearch' and 'run_block'"``
+    Three or more items collapse to ``"'A', 'B', and 1 other"`` so the
+    toast stays readable.
+    """
+    if not names:
+        return ""
+    quoted = [f"'{n}'" for n in names]
+    if len(quoted) == 1:
+        return quoted[0]
+    if len(quoted) == 2:
+        return f"{quoted[0]} and {quoted[1]}"
+    extras = len(quoted) - 2
+    suffix = "others" if extras > 1 else "other"
+    return f"{quoted[0]}, {quoted[1]}, and {extras} {suffix}"
+
+
 def _append_error_marker(
     session: ChatSession | None,
     display_msg: str,
@@ -2380,6 +2400,13 @@ async def _run_stream_attempt(
             for ev in ctx.compaction.emit_pre_query(ctx.session):
                 yield ev
 
+        # Narrate the silent gap between dispatching the query and the
+        # SDK's first real chunk — usually <1s but can stretch to several
+        # seconds on cold-starts or large contexts. The frontend prefers
+        # this over the generic "Thinking…" copy; fast turns replace it
+        # with content immediately.
+        yield StreamStatus(message="Contacting the model\u2026")
+
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
                 *ctx.attachments.image_blocks,
@@ -2418,18 +2445,37 @@ async def _run_stream_attempt(
                 idle_seconds = time.monotonic() - _last_real_msg_time
                 threshold = _idle_timeout_threshold(state.adapter)
                 if idle_seconds >= threshold:
+                    unresolved_tool_names = sorted(
+                        {
+                            info.get("name", "unknown")
+                            for tid, info in state.adapter.current_tool_calls.items()
+                            if tid not in state.adapter.resolved_tool_calls
+                        }
+                    )
                     logger.error(
                         "%s Idle timeout after %.0fs (threshold=%ds, "
-                        "tool_pending=%s) — aborting stream",
+                        "unresolved tools: %s) — aborting stream",
                         ctx.log_prefix,
                         idle_seconds,
                         threshold,
-                        state.adapter.has_unresolved_tool_calls,
+                        ", ".join(unresolved_tool_names) or "none",
+                    )
+                    # The retryable marker written to the session omits
+                    # the `[code:<id>]` prefix — the AI SDK serializer
+                    # (`StreamError.to_sse`) attaches that automatically
+                    # on the wire so the frontend can still parse a
+                    # machine-readable code out of the otherwise opaque
+                    # `{type, errorText}` schema.
+                    stream_error_code = "idle_timeout"
+                    tool_phrase = (
+                        f" while running {_humanise_tool_list(unresolved_tool_names)}"
+                        if unresolved_tool_names
+                        else ""
                     )
                     stream_error_msg = (
-                        "The session has been idle for too long. Please try again."
+                        f"AutoPilot stopped responding{tool_phrase}. "
+                        "This usually means a tool got stuck. Please try again."
                     )
-                    stream_error_code = "idle_timeout"
                     _append_error_marker(ctx.session, stream_error_msg, retryable=True)
                     yield StreamError(
                         errorText=stream_error_msg,
