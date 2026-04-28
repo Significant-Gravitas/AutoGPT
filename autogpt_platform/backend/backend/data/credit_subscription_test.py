@@ -1610,6 +1610,85 @@ async def test_get_active_subscription_period_end_swallows_stripe_errors():
 
 
 @pytest.mark.asyncio
+async def test_top_up_intent_uses_inline_product_data_when_flag_unset():
+    """When STRIPE_PRODUCT_ID_TOPUP flag is undefined (default), top-up Checkout
+    creates an ephemeral product per session via product_data."""
+    from backend.data.credit import UserCredit
+
+    mock_session = MagicMock()
+    mock_session.id = "cs_test_topup"
+    mock_session.url = "https://checkout.stripe.com/c/cs_test_topup"
+    create_mock = MagicMock(return_value=mock_session)
+    credit_system = UserCredit()
+    with (
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create",
+            new=create_mock,
+        ),
+        patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
+    ):
+        await credit_system.top_up_intent(user_id="user-1", amount=500)
+
+    price_data = create_mock.call_args.kwargs["line_items"][0]["price_data"]
+    assert price_data == {
+        "currency": "usd",
+        "unit_amount": 500,
+        "product_data": {"name": "AutoGPT Platform Credits"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_top_up_intent_references_product_id_when_flag_set():
+    """When STRIPE_PRODUCT_ID_TOPUP flag returns a string, top-up Checkout
+    references the canonical Product ID and keeps the per-session amount via
+    unit_amount."""
+    from backend.data.credit import UserCredit
+
+    mock_session = MagicMock()
+    mock_session.id = "cs_test_topup"
+    mock_session.url = "https://checkout.stripe.com/c/cs_test_topup"
+    create_mock = MagicMock(return_value=mock_session)
+    credit_system = UserCredit()
+    with (
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value="prod_abc123",
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create",
+            new=create_mock,
+        ),
+        patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
+    ):
+        await credit_system.top_up_intent(user_id="user-1", amount=2500)
+
+    price_data = create_mock.call_args.kwargs["line_items"][0]["price_data"]
+    assert price_data == {
+        "currency": "usd",
+        "unit_amount": 2500,
+        "product": "prod_abc123",
+    }
+    # No product_data — that path is mutually exclusive with product reference.
+    assert "product_data" not in price_data
+
+
+@pytest.mark.asyncio
 async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
     """modify_stripe_subscription_for_tier calls Subscription.modify and returns True."""
     mock_sub = stripe.Subscription.construct_from(

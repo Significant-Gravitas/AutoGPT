@@ -949,24 +949,27 @@ class UserCredit(UserCreditBase):
                 f"Top up amount must be at least 500 credits and multiple of 100 but is {amount}"
             )
 
+        # Resolve the Stripe Product ID from LD; when unset (default), keep the
+        # legacy inline product_data path (Stripe creates an ephemeral product
+        # per Checkout). When set, reference the canonical Product so all
+        # top-ups group under one entity in Stripe Dashboard reporting; the
+        # amount stays dynamic via unit_amount.
+        topup_product_id = await get_feature_flag_value(
+            Flag.STRIPE_PRODUCT_ID_TOPUP.value, user_id, default=None
+        )
+        price_data: dict = {"currency": "usd", "unit_amount": amount}
+        if isinstance(topup_product_id, str) and topup_product_id:
+            price_data["product"] = topup_product_id
+        else:
+            price_data["product_data"] = {"name": "AutoGPT Platform Credits"}
+
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
         # unit_amount param is always in the smallest currency unit (so cents for usd)
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            line_items=[
-                {
-                    "price_data": {
-                        "currency": "usd",
-                        "product_data": {
-                            "name": "AutoGPT Platform Credits",
-                        },
-                        "unit_amount": amount,
-                    },
-                    "quantity": 1,
-                }
-            ],
+            line_items=[{"price_data": price_data, "quantity": 1}],
             mode="payment",
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},

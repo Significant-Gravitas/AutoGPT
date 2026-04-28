@@ -46,6 +46,12 @@ class Flag(str, Enum):
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
+    # Stripe Product ID for top-up Checkout sessions. When unset (default),
+    # top_up_intent uses inline product_data (creates ephemeral Stripe products
+    # per Checkout). When set to a real Stripe Product ID, line items reference
+    # that Product so dashboard reporting groups all top-ups under one entity;
+    # the per-Checkout amount stays dynamic via price_data.unit_amount.
+    STRIPE_PRODUCT_ID_TOPUP = "stripe-product-id-topup"
 
     # Copilot model routing — JSON-valued, returns the per-(mode, tier)
     # model identifier (e.g. ``"anthropic/claude-sonnet-4-6"`` or
