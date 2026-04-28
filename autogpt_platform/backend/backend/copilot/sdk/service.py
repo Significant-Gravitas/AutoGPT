@@ -924,8 +924,8 @@ def _normalize_model_name(raw_model: str) -> str:
     Three transports (see ``ChatConfig.effective_transport``):
 
     1. **OpenRouter** — the canonical OpenRouter slug is
-       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4.6"``,
-       ``"moonshotai/kimi-k2.6"``).  Pass the prefixed name through
+       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4-6"``,
+       ``"moonshotai/kimi-k2-6"``).  Pass the prefixed name through
        unchanged so OpenRouter can route to the correct provider.  Anthropic
        names happen to also resolve when stripped, but non-Anthropic vendors
        (Moonshot, Google, etc.) do not — keeping the prefix is the only form
@@ -936,7 +936,7 @@ def _normalize_model_name(raw_model: str) -> str:
        (subscription mode) and the Anthropic Messages API both reject the
        prefix and dot-separated versions.  Raises ``ValueError`` when a
        non-Anthropic vendor slug is paired with these transports — silently
-       stripping ``moonshotai/`` would send ``kimi-k2.6`` to the Anthropic
+       stripping ``moonshotai/`` would send ``kimi-k2-6`` to the Anthropic
        API / CLI and produce an opaque ``model_not_found`` error far from
        the misconfiguration source.
 
@@ -944,7 +944,7 @@ def _normalize_model_name(raw_model: str) -> str:
     because subscription mode and OpenRouter config can coexist —
     ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` paired with a populated
     ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (left over from an earlier
-    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4.7``
+    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4-7``
     to the CLI subprocess, which the CLI rejects.
     """
     if config.effective_transport == "openrouter":

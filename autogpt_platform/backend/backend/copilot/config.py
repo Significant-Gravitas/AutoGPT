@@ -395,16 +395,17 @@ class ChatConfig(BaseSettings):
 
     @property
     def openrouter_active(self) -> bool:
-        """True when OpenRouter is enabled AND credentials are usable.
+        """True when OpenRouter config is shape-valid (flag + credentials).
 
-        Single source of truth for "will the SDK route through OpenRouter?".
-        Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
-        present — mirrors the fallback logic in ``build_sdk_env``.
+        Indicates whether OpenRouter settings are present and usable —
+        ``use_openrouter`` set, plus ``api_key`` + a valid ``base_url``,
+        mirroring the fallback logic in ``build_sdk_env``.
 
-        Note: this checks **config shape**.  When the actual transport
-        matters (e.g. picking a model-name format that the CLI subprocess
-        accepts), use ``effective_transport`` instead — subscription mode
-        bypasses OpenRouter entirely even when these fields are set.
+        Note: this is a **config-shape check only**.  Runtime SDK routing
+        is governed by ``effective_transport`` — subscription mode
+        bypasses OpenRouter entirely even when these fields are set, so
+        callers asking "will the SDK actually route through OpenRouter
+        for this turn?" should use ``effective_transport`` instead.
         """
         if not self.use_openrouter:
             return False
