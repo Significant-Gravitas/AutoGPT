@@ -652,6 +652,39 @@ async def test_create_subscription_checkout_returns_url():
 
 
 @pytest.mark.asyncio
+async def test_create_subscription_checkout_pins_card_only_payment_method():
+    """Regression: Stripe Link's email-auth gate breaks the subscription flow when
+    the customer email is registered with Link, so Checkout must be pinned to
+    card-only to bypass it."""
+    mock_session = MagicMock()
+    mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
+    create_mock = MagicMock(return_value=mock_session)
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_pro_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_stripe_customer_id",
+            new_callable=AsyncMock,
+            return_value="cus_123",
+        ),
+        patch(
+            "backend.data.credit.stripe.checkout.Session.create",
+            new=create_mock,
+        ),
+    ):
+        await create_subscription_checkout(
+            user_id="user-1",
+            tier=SubscriptionTier.PRO,
+            success_url="https://app.example.com/success",
+            cancel_url="https://app.example.com/cancel",
+        )
+    assert create_mock.call_args.kwargs["payment_method_types"] == ["card"]
+
+
+@pytest.mark.asyncio
 async def test_create_subscription_checkout_no_price_raises():
     with patch(
         "backend.data.credit.get_subscription_price_id",
