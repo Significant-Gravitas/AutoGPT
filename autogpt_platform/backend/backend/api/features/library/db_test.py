@@ -90,6 +90,42 @@ async def test_get_library_agents(mocker):
     assert result.pagination.page_size == 50
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "is_hidden_arg, expected_in_where",
+    [
+        (False, False),  # only non-hidden
+        (True, True),  # only hidden
+        (None, "absent"),  # all (no filter applied)
+    ],
+)
+async def test_list_library_agents_is_hidden_filter(
+    mocker, is_hidden_arg, expected_in_where
+):
+    """Verify the is_hidden tri-state correctly maps to the where clause:
+    True/False set isHidden to that value, None omits the key entirely."""
+    mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
+    mock_agent_graph.return_value.find_many = mocker.AsyncMock(return_value=[])
+
+    mock_find_many = mocker.AsyncMock(return_value=[])
+    mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
+    mock_library_agent.return_value.find_many = mock_find_many
+    mock_library_agent.return_value.count = mocker.AsyncMock(return_value=0)
+
+    mocker.patch(
+        "backend.api.features.library.db._fetch_execution_counts",
+        new=mocker.AsyncMock(return_value={}),
+    )
+
+    await db.list_library_agents("test-user", is_hidden=is_hidden_arg)
+
+    where = mock_find_many.call_args.kwargs["where"]
+    if expected_in_where == "absent":
+        assert "isHidden" not in where
+    else:
+        assert where["isHidden"] is expected_in_where
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     await connect()
@@ -361,6 +397,44 @@ async def test_create_library_agent_uses_upsert():
     # Verify update branch restores soft-deleted/archived agents
     assert data["update"]["isDeleted"] is False
     assert data["update"]["isArchived"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_hidden", [True, False])
+async def test_create_library_agent_preserves_is_hidden_in_upsert(is_hidden):
+    """When create_library_agent is called with is_hidden, both branches
+    of the upsert must persist that value — re-adding a soft-deleted
+    trigger agent should keep it hidden, and creating a fresh hidden
+    agent should land hidden in the DB."""
+    mock_graph = MagicMock()
+    mock_graph.id = "graph-1"
+    mock_graph.version = 1
+    mock_graph.user_id = "user-1"
+    mock_graph.nodes = []
+    mock_graph.sub_graphs = []
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    with (
+        patch("backend.api.features.library.db.transaction", fake_tx),
+        patch("prisma.models.LibraryAgent.prisma") as mock_prisma,
+        patch(
+            "backend.api.features.library.db.add_generated_agent_image",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.api.features.library.model.LibraryAgent.from_db",
+            return_value=MagicMock(),
+        ),
+    ):
+        mock_prisma.return_value.upsert = AsyncMock(return_value=MagicMock())
+        await db.create_library_agent(mock_graph, "user-1", is_hidden=is_hidden)
+
+    data = mock_prisma.return_value.upsert.call_args.kwargs["data"]
+    assert data["create"]["isHidden"] is is_hidden
+    assert data["update"]["isHidden"] is is_hidden
 
 
 @pytest.mark.asyncio
