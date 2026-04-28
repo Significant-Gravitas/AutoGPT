@@ -29,7 +29,7 @@ from typing import Any, cast
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import capped_rpush
+from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +155,47 @@ async def push_pending_message(
 
     logger.info(
         "pending_messages: pushed message to session=%s (buffer_len=%d)",
+        session_id,
+        new_length,
+    )
+    return new_length
+
+
+async def push_pending_message_if_session_running(
+    session_id: str,
+    message: PendingMessage,
+    *,
+    session_meta_key: str,
+) -> int | None:
+    """Append a pending message only while the stream meta is still running."""
+    redis = await get_redis_async()
+    key = _buffer_key(session_id)
+    payload = message.model_dump_json()
+
+    new_length = await capped_rpush_if_hash_field(
+        redis,
+        hash_key=session_meta_key,
+        hash_field="status",
+        expected="running",
+        list_key=key,
+        value=payload,
+        max_len=MAX_PENDING_MESSAGES,
+        ttl_seconds=_PENDING_TTL_SECONDS,
+    )
+    if new_length is None:
+        logger.info(
+            "pending_messages: skipped push to session=%s because no running turn exists",
+            session_id,
+        )
+        return None
+
+    try:
+        await redis.publish(_notify_channel(session_id), _NOTIFY_PAYLOAD)
+    except Exception as e:  # pragma: no cover
+        logger.warning("pending_messages: publish failed for %s: %s", session_id, e)
+
+    logger.info(
+        "pending_messages: pushed message to running session=%s (buffer_len=%d)",
         session_id,
         new_length,
     )

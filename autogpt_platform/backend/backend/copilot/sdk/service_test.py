@@ -12,8 +12,11 @@ import pytest
 from backend.copilot import config as cfg_mod
 
 from .service import (
+    _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _build_system_prompt_value,
+    _humanise_tool_list,
+    _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
@@ -323,27 +326,11 @@ class TestCleanupSdkToolResults:
 
 
 # ---------------------------------------------------------------------------
-# Env vars that ChatConfig validators read — must be cleared so explicit
-# constructor values are used.
+# Env-cleanup fixture is shared via ``conftest._clean_config_env``.  This
+# file exposes a re-export for callers that don't rely on conftest discovery
+# (kept for backwards compatibility — pytest finds the conftest fixture
+# automatically without an explicit import).
 # ---------------------------------------------------------------------------
-_CONFIG_ENV_VARS = (
-    "CHAT_USE_OPENROUTER",
-    "CHAT_API_KEY",
-    "OPEN_ROUTER_API_KEY",
-    "OPENAI_API_KEY",
-    "CHAT_BASE_URL",
-    "OPENROUTER_BASE_URL",
-    "OPENAI_BASE_URL",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_USE_CLAUDE_AGENT_SDK",
-    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
-)
-
-
-@pytest.fixture()
-def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in _CONFIG_ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
 
 
 class TestNormalizeModelName:
@@ -614,10 +601,16 @@ class TestResolveSdkModelForRequestLdFallback:
         self, monkeypatch, _clean_config_env
     ):
         """Bug reported in local test: subscription mode + LD serving Kimi
-        on ``copilot-thinking-standard-model`` returned ``None`` (CLI
-        picked subscription default Opus), silently ignoring the LD
-        override.  An LD value different from the config default is an
-        explicit admin decision and must win."""
+        on ``copilot-model-routing[thinking][standard]`` returned
+        ``None`` (CLI picked subscription default Opus), silently
+        ignoring the LD override.  An LD value different from the
+        config default is an explicit admin decision and must win.
+
+        Subscription transport rejects non-Anthropic vendors (the CLI
+        subprocess can't talk to Moonshot), so the resolver fails soft
+        to the tier default normalised for the subscription transport
+        (``claude-sonnet-4-6``) — not ``None``, which would silently
+        re-introduce the old subscription-default bypass."""
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             claude_agent_model=None,
@@ -635,8 +628,9 @@ class TestResolveSdkModelForRequestLdFallback:
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-sub", user_id="user-1"
             )
-        # Expect LD-served Kimi, NOT None (the old subscription-default bypass)
-        assert resolved == "moonshotai/kimi-k2.6"
+        # Kimi can't be served by the subscription CLI; fail-soft to
+        # the tier default normalised for the active transport.
+        assert resolved == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_standard_subscription_survives_trailing_whitespace_in_env(
@@ -703,7 +697,10 @@ class TestResolveSdkModelForRequestLdFallback:
         """Subscription mode bypasses LD only on the standard tier —
         the advanced tier always consults LD because the user explicitly
         asked for the premium path.  A subscription + advanced request
-        with LD-served Opus must return Opus (not ``None``)."""
+        with LD-served Opus must return Opus normalised for the
+        subscription CLI (``claude-opus-4-7``), not the OpenRouter slug
+        ``anthropic/claude-opus-4.7`` which the CLI subprocess rejects
+        even when ``CHAT_BASE_URL`` is set to the OpenRouter proxy."""
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4.7",
@@ -722,7 +719,7 @@ class TestResolveSdkModelForRequestLdFallback:
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv-sub", user_id="user-1"
             )
-        assert resolved == "anthropic/claude-opus-4.7"
+        assert resolved == "claude-opus-4-7"
 
 
 # ---------------------------------------------------------------------------
@@ -907,14 +904,51 @@ class TestSystemPromptPreset:
         assert cfg.claude_agent_cross_user_prompt_cache is False
 
 
-class TestIdleTimeoutConstant:
-    """SECRT-2247: long-running work now uses async start+poll pattern
-    (run_sub_session / run_agent), so no single MCP tool call ever blocks
-    the stream close to the idle limit. The plain 10-min cap from the
-    original code is restored."""
+class TestStreamErrorCodePrefix:
+    """StreamError.to_sse auto-prefixes errorText with `[code:<id>]` when a
+    code is set, so the frontend can parse a machine-readable code out of
+    the AI-SDK's strict `{type, errorText}` schema."""
 
-    def test_idle_timeout_is_10_min(self):
-        assert _IDLE_TIMEOUT_SECONDS == 10 * 60
+    def test_auto_prefix_when_code_set(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="Boom", code="idle_timeout").to_sse()
+        assert '"errorText":"[code:idle_timeout] Boom"' in sse
+
+    def test_no_prefix_when_code_missing(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="Boom").to_sse()
+        assert '"errorText":"Boom"' in sse
+
+    def test_does_not_double_prefix(self):
+        from backend.copilot.response_model import StreamError
+
+        sse = StreamError(errorText="[code:x] Boom", code="x").to_sse()
+        assert "[code:x] [code:x]" not in sse
+        assert '"errorText":"[code:x] Boom"' in sse
+
+
+class TestHumaniseToolList:
+    """Tool-name formatter used to build the idle-timeout error message."""
+
+    def test_empty_returns_empty_string(self):
+        assert _humanise_tool_list([]) == ""
+
+    def test_single_tool_is_quoted(self):
+        assert _humanise_tool_list(["WebSearch"]) == "'WebSearch'"
+
+    def test_two_tools_are_joined_with_and(self):
+        assert (
+            _humanise_tool_list(["WebSearch", "run_block"])
+            == "'WebSearch' and 'run_block'"
+        )
+
+    def test_three_uses_singular_other(self):
+        assert _humanise_tool_list(["a", "b", "c"]) == "'a', 'b', and 1 other"
+
+    def test_four_plus_uses_plural_others(self):
+        assert _humanise_tool_list(["a", "b", "c", "d"]) == "'a', 'b', and 2 others"
 
 
 # ---------------------------------------------------------------------------
@@ -1137,3 +1171,61 @@ class TestMoonshotHelperReexports:
         from .service import _override_cost_for_moonshot
 
         assert _override_cost_for_moonshot is canonical
+
+
+class TestIdleTimeoutThreshold:
+    """SECRT-2247: stream uses two idle thresholds. The shorter 30-min threshold
+    fires when the SDK is idle with no tool pending. The longer 2-hour cap
+    applies while any tool call is pending so a 45-min sub-AutoPilot isn't
+    killed, but a truly hung tool still eventually frees session resources."""
+
+    def _make_adapter(self, current: dict, resolved: set):
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+
+        adapter = SDKResponseAdapter(session_id="test")
+        adapter.current_tool_calls = current
+        adapter.resolved_tool_calls = resolved
+        return adapter
+
+    def test_threshold_uses_long_cap_with_unresolved_tool_call(self):
+        adapter = self._make_adapter(
+            current={"t1": {"name": "run_block"}},
+            resolved=set(),
+        )
+        assert _idle_timeout_threshold(adapter) == _HUNG_TOOL_CAP_SECONDS
+
+    def test_threshold_uses_short_cap_when_all_tools_resolved(self):
+        adapter = self._make_adapter(
+            current={"t1": {"name": "find_agent"}},
+            resolved={"t1"},
+        )
+        assert _idle_timeout_threshold(adapter) == _IDLE_TIMEOUT_SECONDS
+
+    def test_threshold_uses_short_cap_with_no_tool_calls(self):
+        adapter = self._make_adapter(current={}, resolved=set())
+        assert _idle_timeout_threshold(adapter) == _IDLE_TIMEOUT_SECONDS
+
+    def test_threshold_uses_long_cap_with_mixed_resolved_and_pending(self):
+        adapter = self._make_adapter(
+            current={
+                "t1": {"name": "find_agent"},
+                "t2": {"name": "run_block"},
+            },
+            resolved={"t1"},
+        )
+        assert _idle_timeout_threshold(adapter) == _HUNG_TOOL_CAP_SECONDS
+
+    def test_idle_timeout_is_30_min_not_the_old_10(self):
+        # Regression guard: the old 10-min value killed long tool calls
+        # (SECRT-2247). New idle-without-tools cap is 30 min.
+        assert _IDLE_TIMEOUT_SECONDS == 30 * 60
+
+    def test_hung_tool_cap_is_2_hours(self):
+        # Hard cap protects against a hung tool leaking resources forever.
+        # 2 hours is plenty for any legitimate sub-AutoPilot or graph run.
+        assert _HUNG_TOOL_CAP_SECONDS == 2 * 60 * 60
+
+    def test_long_cap_is_strictly_longer_than_short_cap(self):
+        # The whole point of the two-regime design: pending tools get more
+        # patience than pure idle.
+        assert _HUNG_TOOL_CAP_SECONDS > _IDLE_TIMEOUT_SECONDS

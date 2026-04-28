@@ -1,4 +1,5 @@
 from datetime import datetime
+from unittest.mock import AsyncMock
 
 import prisma.enums
 import prisma.errors
@@ -50,8 +51,8 @@ async def test_get_store_agents(mocker):
 
     # Mock prisma calls
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
-    mock_store_agent.return_value.find_many = mocker.AsyncMock(return_value=mock_agents)
-    mock_store_agent.return_value.count = mocker.AsyncMock(return_value=1)
+    mock_store_agent.return_value.find_many = AsyncMock(return_value=mock_agents)
+    mock_store_agent.return_value.count = AsyncMock(return_value=1)
 
     # Call function
     result = await db.get_store_agents()
@@ -94,7 +95,7 @@ async def test_get_store_agent_details(mocker):
 
     # Mock StoreAgent prisma call
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
-    mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
+    mock_store_agent.return_value.find_first = AsyncMock(return_value=mock_agent)
 
     # Call function
     result = await db.get_store_agent_details("creator", "test-agent")
@@ -133,7 +134,7 @@ async def test_get_store_creator(mocker):
 
     # Mock prisma call
     mock_creator = mocker.patch("prisma.models.Creator.prisma")
-    mock_creator.return_value.find_unique = mocker.AsyncMock()
+    mock_creator.return_value.find_unique = AsyncMock()
     # Configure the mock to return values that will pass validation
     mock_creator.return_value.find_unique.return_value = mock_creator_data
 
@@ -189,7 +190,7 @@ async def test_create_store_submission(mocker):
         notifyOnAgentApproved=True,
         notifyOnAgentRejected=True,
         timezone="Europe/Delft",
-        subscriptionTier=prisma.enums.SubscriptionTier.FREE,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
+        subscriptionTier=prisma.enums.SubscriptionTier.BASIC,  # type: ignore[reportCallIssue,reportAttributeAccessIssue]
     )
     mock_agent = prisma.models.AgentGraph(
         id="agent-id",
@@ -236,23 +237,23 @@ async def test_create_store_submission(mocker):
 
     # Mock prisma calls
     mock_agent_graph = mocker.patch("prisma.models.AgentGraph.prisma")
-    mock_agent_graph.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
+    mock_agent_graph.return_value.find_first = AsyncMock(return_value=mock_agent)
 
     # Mock transaction context manager
     mock_tx = mocker.MagicMock()
     mocker.patch(
         "backend.api.features.store.db.transaction",
-        return_value=mocker.AsyncMock(
-            __aenter__=mocker.AsyncMock(return_value=mock_tx),
-            __aexit__=mocker.AsyncMock(return_value=False),
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_tx),
+            __aexit__=AsyncMock(return_value=False),
         ),
     )
 
     mock_sl = mocker.patch("prisma.models.StoreListing.prisma")
-    mock_sl.return_value.find_unique = mocker.AsyncMock(return_value=None)
+    mock_sl.return_value.find_unique = AsyncMock(return_value=None)
 
     mock_slv = mocker.patch("prisma.models.StoreListingVersion.prisma")
-    mock_slv.return_value.create = mocker.AsyncMock(return_value=mock_version)
+    mock_slv.return_value.create = AsyncMock(return_value=mock_version)
 
     # Call function
     result = await db.create_store_submission(
@@ -292,10 +293,8 @@ async def test_update_profile(mocker):
 
     # Mock prisma calls
     mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
-    mock_profile_db.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_profile
-    )
-    mock_profile_db.return_value.update = mocker.AsyncMock(return_value=mock_profile)
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=mock_profile)
+    mock_profile_db.return_value.update = AsyncMock(return_value=mock_profile)
 
     # Test data
     profile = Profile(
@@ -336,9 +335,7 @@ async def test_get_user_profile(mocker):
 
     # Mock prisma calls
     mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
-    mock_profile_db.return_value.find_first = mocker.AsyncMock(
-        return_value=mock_profile
-    )
+    mock_profile_db.return_value.find_first = AsyncMock(return_value=mock_profile)
 
     # Call function
     result = await db.get_user_profile("user-id")
@@ -396,3 +393,38 @@ async def test_get_store_agents_search_category_array_injection():
     # Verify the query executed without error
     # Category should be parameterized, preventing SQL injection
     assert isinstance(result.agents, list)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_creators_only_returns_approved(mocker):
+    mock_creators = [
+        prisma.models.Creator(
+            name="Creator One",
+            username="creator1",
+            description="desc",
+            links=["link1"],
+            avatar_url="avatar.jpg",
+            num_agents=1,
+            agent_rating=4.5,
+            agent_runs=10,
+            top_categories=["test"],
+            is_featured=False,
+        )
+    ]
+
+    mock_creator = mocker.patch("prisma.models.Creator.prisma")
+    mock_creator.return_value.find_many = AsyncMock(return_value=mock_creators)
+    mock_creator.return_value.count = AsyncMock(return_value=1)
+
+    result = await db.get_store_creators()
+
+    assert len(result.creators) == 1
+    assert result.creators[0].username == "creator1"
+
+    mock_creator.return_value.find_many.assert_called_once()
+    mock_creator.return_value.count.assert_called_once()
+
+    _, find_kwargs = mock_creator.return_value.find_many.call_args
+    _, count_kwargs = mock_creator.return_value.count.call_args
+    assert find_kwargs["where"]["num_agents"] == {"gt": 0}
+    assert count_kwargs["where"]["num_agents"] == {"gt": 0}

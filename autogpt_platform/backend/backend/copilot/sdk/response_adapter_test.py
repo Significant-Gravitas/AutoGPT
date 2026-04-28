@@ -25,6 +25,7 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -193,13 +194,15 @@ def test_tool_result_emits_output_and_finish_step():
         content=[ToolResultBlock(tool_use_id="t1", content="found 3 agents")]
     )
     results = adapter.convert_message(result_msg)
-    assert len(results) == 2
+    assert len(results) == 3
     assert isinstance(results[0], StreamToolOutputAvailable)
     assert results[0].toolCallId == "t1"
     assert results[0].toolName == "find_agent"  # prefix stripped
     assert results[0].output == "found 3 agents"
     assert results[0].success is True
     assert isinstance(results[1], StreamFinishStep)
+    assert isinstance(results[2], StreamStatus)
+    assert results[2].message == "Analyzing result…"
 
 
 def test_tool_result_error():
@@ -565,6 +568,105 @@ def test_result_success_does_not_synthesize_when_no_tools_ran():
     assert text_deltas == []
 
 
+def test_result_empty_success_emits_error_and_finish():
+    """SECRT-2252: a ``subtype="success"`` ResultMessage with empty ``result``,
+    no produced content, and ``output_tokens == 0`` is the SDK's ghost-finish
+    bug. The adapter surfaces it as a ``StreamError`` *paired with*
+    ``StreamFinish`` so the service-layer post-stream flow flips
+    ``acc.stream_completed`` and skips the ``STOPPED_BY_USER_MARKER``
+    branch. ``SystemMessage(subtype="init")`` opened a step, so the
+    empty-completion branch must close it before emitting the error."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result=None,
+        usage={"input_tokens": 5, "output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinishStep" in types
+    assert "StreamError" in types
+    assert "StreamFinish" in types
+    # Open step must be closed before the error, and the error must
+    # precede StreamFinish on the wire.
+    assert types.index("StreamFinishStep") < types.index("StreamError")
+    assert types.index("StreamError") < types.index("StreamFinish")
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+
+
+def test_result_empty_success_with_empty_string_result_treated_as_empty():
+    """An empty string (not just None) for ``result`` is also empty."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+    assert any(isinstance(r, StreamFinish) for r in results)
+
+
+def test_result_success_with_text_emits_finish_not_error():
+    """Non-empty success (text was produced) keeps the existing
+    ``StreamFinish`` behaviour — no spurious error."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="hello",
+        usage={"output_tokens": 5},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
+def test_result_success_with_nonzero_output_tokens_not_empty():
+    """If ``output_tokens > 0`` but ``result`` is empty, don't classify as
+    empty — fall through to the existing success path. No prior
+    AssistantMessage so the `output_tokens` guard is the only thing
+    keeping `_is_empty_completion()` from firing."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
 def test_result_error_emits_error_and_finish():
     adapter = _adapter()
     msg = ResultMessage(
@@ -686,6 +788,7 @@ def test_full_conversation_flow():
         "StreamToolInputAvailable",
         "StreamToolOutputAvailable",  # tool result
         "StreamFinishStep",  # step 1 closed after tool result
+        "StreamStatus",  # user-facing status while continuation is generated
         "StreamStartStep",  # step 2: continuation text
         "StreamTextStart",  # new block after tool
         "StreamTextDelta",  # "I found 2"

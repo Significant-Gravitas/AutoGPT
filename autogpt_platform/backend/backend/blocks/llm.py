@@ -142,6 +142,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_4_5_SONNET = "claude-sonnet-4-5-20250929"
     CLAUDE_4_5_HAIKU = "claude-haiku-4-5-20251001"
     CLAUDE_4_6_OPUS = "claude-opus-4-6"
+    CLAUDE_4_7_OPUS = "claude-opus-4-7"
     CLAUDE_4_6_SONNET = "claude-sonnet-4-6"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
     # AI/ML API models
@@ -206,6 +207,10 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GROK_4_20_MULTI_AGENT = "x-ai/grok-4.20-multi-agent"
     GROK_CODE_FAST_1 = "x-ai/grok-code-fast-1"
     KIMI_K2 = "moonshotai/kimi-k2"
+    KIMI_K2_0905 = "moonshotai/kimi-k2-0905"
+    KIMI_K2_5 = "moonshotai/kimi-k2.5"
+    KIMI_K2_6 = "moonshotai/kimi-k2.6"
+    KIMI_K2_THINKING = "moonshotai/kimi-k2-thinking"
     QWEN3_235B_A22B_THINKING = "qwen/qwen3-235b-a22b-thinking-2507"
     QWEN3_CODER = "qwen/qwen3-coder"
     # Z.ai (Zhipu) models
@@ -327,6 +332,9 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_4_6_OPUS: ModelMetadata(
         "anthropic", 200000, 128000, "Claude Opus 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-opus-4-6
+    LlmModel.CLAUDE_4_7_OPUS: ModelMetadata(
+        "anthropic", 200000, 128000, "Claude Opus 4.7", "Anthropic", "Anthropic", 3
+    ),  # claude-opus-4-7
     LlmModel.CLAUDE_4_6_SONNET: ModelMetadata(
         "anthropic", 200000, 64000, "Claude Sonnet 4.6", "Anthropic", "Anthropic", 3
     ),  # claude-sonnet-4-6
@@ -645,6 +653,24 @@ MODEL_METADATA = {
     ),
     LlmModel.KIMI_K2: ModelMetadata(
         "open_router", 131000, 131000, "Kimi K2", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_0905: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2 0905", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_5: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2.5", "OpenRouter", "Moonshot AI", 1
+    ),
+    LlmModel.KIMI_K2_6: ModelMetadata(
+        "open_router", 262144, 262144, "Kimi K2.6", "OpenRouter", "Moonshot AI", 2
+    ),
+    LlmModel.KIMI_K2_THINKING: ModelMetadata(
+        "open_router",
+        262144,
+        262144,
+        "Kimi K2 Thinking",
+        "OpenRouter",
+        "Moonshot AI",
+        2,
     ),
     LlmModel.QWEN3_235B_A22B_THINKING: ModelMetadata(
         "open_router",
@@ -1602,6 +1628,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                                 llm_call_count=retry_count + 1,
                                 llm_retry_count=retry_count,
                                 provider_cost=total_provider_cost,
+                                provider_cost_type=(
+                                    "cost_usd"
+                                    if total_provider_cost is not None
+                                    else None
+                                ),
                             )
                         )
                         yield "response", response_obj
@@ -1623,6 +1654,9 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                             llm_call_count=retry_count + 1,
                             llm_retry_count=retry_count,
                             provider_cost=total_provider_cost,
+                            provider_cost_type=(
+                                "cost_usd" if total_provider_cost is not None else None
+                            ),
                         )
                     )
                     yield "response", {"response": response_text}
@@ -1657,7 +1691,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         # All retries exhausted or user-error break: persist accumulated cost so
         # the executor can still charge/report the spend even on failure.
         if total_provider_cost is not None:
-            self.merge_stats(NodeExecutionStats(provider_cost=total_provider_cost))
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=total_provider_cost,
+                    provider_cost_type="cost_usd",
+                )
+            )
         raise RuntimeError(error_feedback_message)
 
     def response_format_instructions(

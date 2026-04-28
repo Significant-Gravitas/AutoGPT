@@ -4,7 +4,6 @@ from typing import Optional
 from exa_py import AsyncExa
 from pydantic import BaseModel
 
-from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -24,6 +23,7 @@ from .helpers import (
     HighlightSettings,
     LivecrawlTypes,
     SummarySettings,
+    merge_exa_cost,
 )
 
 
@@ -224,6 +224,4 @@ class ExaContentsBlock(Block):
 
         if response.cost_dollars:
             yield "cost_dollars", response.cost_dollars
-            self.merge_stats(
-                NodeExecutionStats(provider_cost=response.cost_dollars.total)
-            )
+        merge_exa_cost(self, response)

@@ -121,8 +121,57 @@ logger = logging.getLogger(__name__)
 # Set to hold background tasks to prevent garbage collection
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-# Maximum number of tool-call rounds before forcing a text response.
-_MAX_TOOL_ROUNDS = 30
+# Hint appended on the last tool round so the model wraps up with a summary
+# instead of issuing another tool call that gets cut off cold. The shared
+# ``tool_call_loop`` drops ``tools`` on the last iteration (see util/tool_call_loop.py),
+# so the model is forced to produce text and always finishes naturally.
+_LAST_ITERATION_HINT = (
+    "You have reached the tool-call budget for this turn. Do not call any "
+    "more tools — produce a final text response summarizing what you did, "
+    "what remains, and how the user can continue the work in the next turn."
+)
+
+# Fallback surfaced when the tool-round budget is exhausted *and* the forced-
+# text last round left the user with zero visible response.
+_BUDGET_EXHAUSTED_FALLBACK_TEXT = (
+    "Reached the tool-call budget for this turn. "
+    "Send a follow-up message to continue from here."
+)
+
+
+def _budget_exhausted_notice_text(terminal_round_text: str) -> str | None:
+    """Return the fallback notice when a budget-exhausted turn produced no
+    visible text, or ``None`` when the model already summarised itself.
+
+    ``terminal_round_text`` is the text added by the *final* round only —
+    earlier-round chatter shouldn't mask a silent final round.
+    """
+    if terminal_round_text.strip():
+        return None
+    return _BUDGET_EXHAUSTED_FALLBACK_TEXT
+
+
+def _build_budget_exhausted_fallback_events(
+    terminal_round_text: str,
+) -> tuple[list[StreamBaseResponse], str]:
+    """Build the fallback stream events surfaced when a budget-exhausted
+    turn left the terminal round with no visible text.
+
+    Returns ``(events, text_to_append)``.  Empty list + empty string when
+    no fallback is needed.  Split out of the async generator so it's unit-
+    testable without the surrounding streaming machinery.
+    """
+    notice = _budget_exhausted_notice_text(terminal_round_text)
+    if notice is None:
+        return [], ""
+    block_id = str(uuid.uuid4())
+    events: list[StreamBaseResponse] = [
+        StreamTextStart(id=block_id),
+        StreamTextDelta(id=block_id, delta=notice),
+        StreamTextEnd(id=block_id),
+    ]
+    return events, notice
+
 
 # Max seconds to wait for transcript upload in the finally block before
 # letting it continue as a background task (tracked in _background_tasks).
@@ -1736,6 +1785,12 @@ async def stream_chat_completion_baseline(
     # UI for the whole window before flushing the backlog in one burst.
     loop_result_holder: list[Any] = [None]
     loop_task: asyncio.Task[None] | None = None
+    # Length of ``state.assistant_text`` at the end of the last non-final
+    # yield — used as an anchor by the budget-exhausted fallback to check
+    # whether the *terminal* round produced any visible text, not the whole
+    # turn. Without this, earlier-round chatter would suppress a fallback
+    # that should fire.
+    text_len_before_final_round: list[int] = [0]
 
     async def _run_tool_call_loop() -> None:
         # Read/write the current session via ``_session_holder`` so this
@@ -1744,13 +1799,15 @@ async def stream_chat_completion_baseline(
         # but the holder is typed non-optional after the preflight guard
         # above.
         try:
+            max_tool_rounds = config.agent_max_turns
             async for loop_result in tool_call_loop(
                 messages=openai_messages,
                 tools=tools,
                 llm_call=_bound_llm_caller,
                 execute_tool=_bound_tool_executor,
                 update_conversation=_bound_conversation_updater,
-                max_iterations=_MAX_TOOL_ROUNDS,
+                max_iterations=max_tool_rounds,
+                last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
                 # Inject any messages the user queued while the turn was
@@ -1771,10 +1828,15 @@ async def stream_chat_completion_baseline(
                 # get picked up at the start of the next turn.
                 is_final_yield = (
                     loop_result.finished_naturally
-                    or loop_result.iterations >= _MAX_TOOL_ROUNDS
+                    or loop_result.iterations >= max_tool_rounds
                 )
                 if is_final_yield:
                     continue
+                # Non-final yield: the next round may be the last one, so
+                # record where ``assistant_text`` ends now.  If that next
+                # round hits the budget without adding any text, the outer
+                # fallback uses this anchor to detect a silent finish.
+                text_len_before_final_round[0] = len(state.assistant_text)
                 try:
                     pending = await drain_pending_messages(session_id)
                 except Exception:
@@ -1893,16 +1955,33 @@ async def stream_chat_completion_baseline(
         # Sentinel received — surface any exception the inner task hit.
         await loop_task
         loop_result = loop_result_holder[0]
-        if loop_result and not loop_result.finished_naturally:
-            limit_msg = (
-                f"Exceeded {_MAX_TOOL_ROUNDS} tool-call rounds "
-                "without a final response."
+        # Budget was reached when iterations hit the configured cap. This
+        # covers both exit paths out of ``tool_call_loop``:
+        #   - ``finished_naturally=True``: the last iteration ran with
+        #     ``tools=[]`` and the model returned text (may be empty)
+        #   - ``finished_naturally=False``: a non-compliant model still
+        #     emitted tool calls despite the empty tool list, so the loop
+        #     fell through the ``while`` guard
+        # Either way, we check the terminal round's text contribution — an
+        # empty one means the user got no explanation and we need to emit
+        # the fallback notice.
+        budget_reached = bool(
+            loop_result and loop_result.iterations >= config.agent_max_turns
+        )
+        if budget_reached:
+            if loop_result and not loop_result.finished_naturally:
+                logger.warning(
+                    "[Baseline] Hit %d-round tool budget without natural finish; "
+                    "ending turn gracefully",
+                    loop_result.iterations,
+                )
+            terminal_round_text = state.assistant_text[text_len_before_final_round[0] :]
+            fallback_events, fallback_text = _build_budget_exhausted_fallback_events(
+                terminal_round_text
             )
-            logger.error("[Baseline] %s", limit_msg)
-            yield StreamError(
-                errorText=limit_msg,
-                code="baseline_tool_round_limit",
-            )
+            for evt in fallback_events:
+                yield evt
+            state.assistant_text += fallback_text
     except Exception as e:
         _stream_error = True
         error_msg = str(e) or type(e).__name__

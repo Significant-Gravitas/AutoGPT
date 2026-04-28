@@ -106,6 +106,14 @@ These define the agent's interface — what it accepts and what it produces.
 Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
 
+Specialized input subclasses (`AgentDropdownInputBlock`,
+`AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
+this requirement on their own — do NOT add a throwaway base
+`AgentInputBlock` alongside a specialized one. Each subclass carries its
+own usage guidance (when it is required, how to configure it, how to
+wire it to consumers, concrete link shape) in its block and field
+descriptions; read and follow those when `find_block` surfaces a match.
+
 ### Key Rules
 
 - **Name & description**: Include `name` and `description` in the agent JSON

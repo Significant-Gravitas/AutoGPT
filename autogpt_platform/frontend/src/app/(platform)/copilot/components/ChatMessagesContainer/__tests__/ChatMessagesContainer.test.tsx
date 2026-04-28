@@ -1,3 +1,4 @@
+import { act } from "@testing-library/react";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
@@ -71,7 +72,9 @@ vi.mock("../components/ReasoningCollapse", () => ({
   ReasoningCollapse: () => null,
 }));
 vi.mock("../components/ThinkingIndicator", () => ({
-  ThinkingIndicator: () => null,
+  ThinkingIndicator: ({ statusMessage }: { statusMessage?: string | null }) => (
+    <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
+  ),
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -204,6 +207,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
 
 describe("ChatMessagesContainer — loading", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mockScrollEl.scrollHeight = 100;
     mockScrollEl.scrollTop = 0;
     mockScrollEl.clientHeight = 500;
@@ -212,6 +216,7 @@ describe("ChatMessagesContainer — loading", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     vi.unstubAllGlobals();
   });
@@ -224,6 +229,78 @@ describe("ChatMessagesContainer — loading", () => {
   it("does not show spinner when not loading", () => {
     render(<ChatMessagesContainer {...baseProps} isLoading={false} />);
     expect(screen.queryByTestId("loading-spinner")).toBeNull();
+  });
+
+  it("shows the restore message instead of stale tail content during active-session resume", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("message-user")).toBeDefined();
+    expect(screen.getByText("Retrieving latest messages")).toBeDefined();
+  });
+
+  it("shows a reconnecting fallback after 6 seconds of restore", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        activeStreamStartedAt="2026-04-23T15:00:00.000Z"
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    expect(screen.getByText("Reconnecting to live stream...")).toBeDefined();
+    expect(
+      screen.getByText("Still syncing the latest progress."),
+    ).toBeDefined();
+  });
+
+  it("prefers the backend status message in the restore fallback", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        restoreStatusMessage="Analyzing result..."
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(screen.getByText("Analyzing result...")).toBeDefined();
   });
 });
 
@@ -262,5 +339,74 @@ describe("ChatMessagesContainer", () => {
     expect(
       screen.queryByRole("button", { name: /load older messages/i }),
     ).toBeNull();
+  });
+});
+
+// ── turnStats plumbing ────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — turnStats", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the local timestamp on a user message (hover reveal)", () => {
+    const userId = "user-1";
+    const turnStats = new Map([
+      [userId, { createdAt: "2026-04-23T08:32:09.000Z" }],
+    ]);
+    const messages = [
+      {
+        id: userId,
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={turnStats as any}
+      />,
+    );
+    // The timestamp is rendered in the MessageActions area alongside CopyButton;
+    // we just assert that SOMETHING containing the year is in the DOM.
+    const labels = screen.getAllByText(
+      (_, el) =>
+        !!el?.className.includes("tabular-nums") &&
+        /2026/.test(el?.textContent ?? ""),
+    );
+    expect(labels.length).toBeGreaterThan(0);
+  });
+
+  it("skips the user timestamp when turnStats has no entry for that message id", () => {
+    const messages = [
+      {
+        id: "user-unknown",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "hi", state: "done" }],
+      },
+    ];
+    render(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      <ChatMessagesContainer
+        {...(baseProps as any)}
+        messages={messages as any}
+        turnStats={new Map() as any}
+      />,
+    );
+    const labels = screen.queryAllByText((_, el) =>
+      /2026/.test(el?.textContent ?? ""),
+    );
+    expect(labels.length).toBe(0);
   });
 });
