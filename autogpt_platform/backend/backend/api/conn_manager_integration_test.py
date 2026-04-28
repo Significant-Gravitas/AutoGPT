@@ -14,9 +14,9 @@ from fastapi import WebSocket
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
     ConnectionManager,
+    _graph_execs_channel_key,
     event_bus_channel,
     graph_exec_channel_key,
-    _graph_execs_channel_key,
 )
 from backend.api.model import WSMethod
 from backend.data.execution import (

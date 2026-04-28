@@ -16,8 +16,8 @@ from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
     ExecutionEventType,
     exec_channel,
-    graph_all_channel,
     get_graph_execution_meta,
+    graph_all_channel,
 )
 from backend.data.notification_bus import NotificationEvent
 from backend.util.settings import Settings

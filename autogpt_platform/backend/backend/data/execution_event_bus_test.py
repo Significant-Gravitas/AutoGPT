@@ -19,9 +19,9 @@ from backend.data.execution import (
     GraphExecutionEvent,
     NodeExecutionEvent,
     RedisExecutionEventBus,
+    _graph_scope_tag,
     exec_channel,
     graph_all_channel,
-    _graph_scope_tag,
 )
 
 # ---------- Hash-tagged channel builders ----------

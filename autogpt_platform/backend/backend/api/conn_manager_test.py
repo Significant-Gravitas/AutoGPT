@@ -7,11 +7,11 @@ from fastapi import WebSocket
 
 from backend.api.conn_manager import (
     ConnectionManager,
-    event_bus_channel,
-    graph_exec_channel_key,
     _graph_execs_channel_key,
     _notification_bus_channel,
     _Subscription,
+    event_bus_channel,
+    graph_exec_channel_key,
 )
 from backend.api.model import WSMethod
 from backend.data.execution import GraphExecutionMeta
