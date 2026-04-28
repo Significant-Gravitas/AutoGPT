@@ -94,7 +94,7 @@ export function useSubscriptionTierSection() {
             ? "Your plan will be downgraded to Basic at the end of your current billing period; no further charges."
             : isDowngrade
               ? `Your plan will be downgraded to ${tier} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
-              : `Upgraded to ${tier}. Stripe will charge the prorated difference to your saved card on the next invoice; the corresponding credits land in your AutoGPT balance once the charge clears.`,
+              : `Upgraded to ${tier}. On the next invoice your saved card is charged for the upgrade proration plus the next month at the new rate; matching credits land in your AutoGPT balance once Stripe confirms the charge.`,
       });
     } catch (e: unknown) {
       const msg =

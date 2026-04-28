@@ -304,7 +304,7 @@ export function SubscriptionTierSection() {
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
             {subscription.has_active_stripe_subscription
-              ? `Your subscription will be upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. Stripe will charge the prorated difference to your saved card on your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, automatically deducting the unused portion of your current plan. The corresponding credits are added to your AutoGPT balance when Stripe collects the charge.`
+              ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted. Credits matching the paid amount are added to your AutoGPT balance once Stripe confirms the charge.`
               : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription. The first invoice's amount is added to your AutoGPT balance once Stripe confirms the charge.`}
           </p>
           <Dialog.Footer>
