@@ -957,11 +957,29 @@ class UserCredit(UserCreditBase):
         topup_product_id = await get_feature_flag_value(
             Flag.STRIPE_PRODUCT_ID_TOPUP.value, user_id, default=None
         )
-        price_data: dict = {"currency": "usd", "unit_amount": amount}
-        if isinstance(topup_product_id, str) and topup_product_id:
-            price_data["product"] = topup_product_id
-        else:
-            price_data["product_data"] = {"name": "AutoGPT Platform Credits"}
+        line_items: list[stripe.checkout.Session.CreateParamsLineItem] = (
+            [
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product": topup_product_id,
+                        "unit_amount": amount,
+                    },
+                    "quantity": 1,
+                }
+            ]
+            if isinstance(topup_product_id, str) and topup_product_id
+            else [
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {"name": "AutoGPT Platform Credits"},
+                        "unit_amount": amount,
+                    },
+                    "quantity": 1,
+                }
+            ]
+        )
 
         # Create checkout session
         # https://docs.stripe.com/checkout/quickstart?client=react
@@ -969,7 +987,7 @@ class UserCredit(UserCreditBase):
         # which is equal to amount of credits
         checkout_session = stripe.checkout.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            line_items=[{"price_data": price_data, "quantity": 1}],
+            line_items=line_items,
             mode="payment",
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
