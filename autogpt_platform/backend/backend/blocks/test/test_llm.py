@@ -1516,3 +1516,61 @@ class TestAnthropicCacheControl:
         assert (
             "system" not in captured_kwargs
         ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"
+
+
+class TestModelErrorGuidance:
+    """Test _get_model_error_guidance for model-unavailable detection."""
+
+    MODEL_GUIDANCE_MSG = (
+        "The configured model ID appears to be unavailable or deprecated. "
+        "Please check your provider's current model list and update your "
+        "model configuration to a supported model."
+    )
+
+    def test_anthropic_404_triggers_guidance(self):
+        """Anthropic 404 with model-not-found message should return guidance."""
+        error = anthropic.APIStatusError(
+            message="model not found: claude-haiku-4-5-20251001",
+            body={"error": {"message": "model not found"}},
+            response=MagicMock(status_code=404),
+        )
+        result = llm._get_model_error_guidance(error)
+        assert result == self.MODEL_GUIDANCE_MSG
+
+    def test_openai_400_invalid_model_triggers_guidance(self):
+        """OpenAI 400 with invalid model message should return guidance."""
+        error = openai.APIStatusError(
+            message="The model `gpt-4-old` does not exist",
+            body={},
+            response=MagicMock(status_code=400),
+        )
+        result = llm._get_model_error_guidance(error)
+        assert result == self.MODEL_GUIDANCE_MSG
+
+    def test_model_retired_pattern_triggers_guidance(self):
+        """Error message containing 'model retired' pattern triggers guidance."""
+        error = RuntimeError("The model has been retired and is no longer available.")
+        result = llm._get_model_error_guidance(error)
+        assert result == self.MODEL_GUIDANCE_MSG
+
+    def test_auth_error_does_not_trigger_guidance(self):
+        """401 auth errors should NOT trigger model guidance."""
+        error = anthropic.APIStatusError(
+            message="invalid x-api-key",
+            body={},
+            response=MagicMock(status_code=401),
+        )
+        result = llm._get_model_error_guidance(error)
+        assert result is None
+
+    def test_context_length_error_does_not_trigger_guidance(self):
+        """Context length errors should NOT trigger model guidance."""
+        error = RuntimeError("maximum context length exceeded")
+        result = llm._get_model_error_guidance(error)
+        assert result is None
+
+    def test_generic_runtime_error_does_not_trigger_guidance(self):
+        """Generic runtime errors should NOT trigger model guidance."""
+        error = RuntimeError("Something went wrong")
+        result = llm._get_model_error_guidance(error)
+        assert result is None

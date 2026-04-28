@@ -54,6 +54,44 @@ fmt = TextFormatter(autoescape=False)
 # HTTP status codes for user-caused errors that should not be reported to Sentry.
 USER_ERROR_STATUS_CODES = (401, 403, 429)
 
+# HTTP status codes and message patterns that indicate a model ID is unavailable or deprecated.
+_MODEL_UNAVAILABLE_STATUS_CODES = (400, 404)
+_MODEL_UNAVAILABLE_MESSAGE_PATTERNS = (
+    "model not found",
+    "model.*not.*available",
+    "model.*not.*supported",
+    "model.*deprecated",
+    "model.*retired",
+    "no.*such.*model",
+    "invalid.*model",
+    "does not exist",
+    "is not a valid model",
+)
+
+
+def _get_model_error_guidance(error: Exception) -> str | None:
+    """Return a human-readable guidance message if the error indicates an
+    unavailable or deprecated model ID, otherwise None."""
+    import re
+
+    is_api_error = isinstance(error, (anthropic.APIStatusError, openai.APIStatusError))
+    status_match = (
+        is_api_error
+        and getattr(error, "status_code", None) in _MODEL_UNAVAILABLE_STATUS_CODES
+    )
+    msg = str(error).lower()
+    pattern_match = any(
+        re.search(pattern, msg) for pattern in _MODEL_UNAVAILABLE_MESSAGE_PATTERNS
+    )
+
+    if status_match or pattern_match:
+        return (
+            "The configured model ID appears to be unavailable or deprecated. "
+            "Please check your provider's current model list and update your "
+            "model configuration to a supported model."
+        )
+    return None
+
 LLMProviderName = Literal[
     ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
@@ -1667,9 +1705,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     isinstance(e, (anthropic.APIStatusError, openai.APIStatusError))
                     and e.status_code in USER_ERROR_STATUS_CODES
                 )
-                if is_user_error:
+                model_guidance = _get_model_error_guidance(e)
+                if is_user_error or model_guidance:
                     logger.warning(f"Error calling LLM: {e}")
                     error_feedback_message = f"Error calling LLM: {e}"
+                    if model_guidance:
+                        error_feedback_message += f"\n\n{model_guidance}"
                     break
                 else:
                     logger.exception(f"Error calling LLM: {e}")
