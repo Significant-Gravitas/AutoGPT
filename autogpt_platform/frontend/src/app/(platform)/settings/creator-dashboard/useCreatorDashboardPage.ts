@@ -147,7 +147,7 @@ export function useCreatorDashboardPage() {
     filterState,
     setFilterState,
     resetFilters,
-    isLoading: !isSuccess && isLoading,
+    isLoading: !isSuccess,
     isReady: isSuccess,
     error,
     refetch,
