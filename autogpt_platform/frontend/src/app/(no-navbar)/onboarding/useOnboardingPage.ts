@@ -11,7 +11,7 @@ import { Step, useOnboardingWizardStore } from "./store";
 
 function parseStep(value: string | null): Step {
   const n = Number(value);
-  if (n >= 1 && n <= 4) return n as Step;
+  if (n >= 1 && n <= 5) return n as Step;
   return 1;
 }
 
@@ -63,9 +63,9 @@ export function useOnboardingPage() {
     checkCompletion();
   }, [isLoggedIn, router]);
 
-  // Submit profile when entering step 4
+  // Submit profile when entering step 5 (Preparing)
   useEffect(() => {
-    if (currentStep !== 4 || hasSubmitted.current) return;
+    if (currentStep !== 5 || hasSubmitted.current) return;
     hasSubmitted.current = true;
 
     const { name, role, otherRole, painPoints, otherPainPoint } =
