@@ -310,6 +310,10 @@ describe("SettingsPreferencesPage", () => {
     });
     expect(submittedTimezone).not.toBe("not-set");
     expect(submittedTimezone?.length ?? 0).toBeGreaterThan(0);
+
+    await waitFor(() => {
+      expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    });
   });
 
   test("submitting a new email closes the dialog and calls the update endpoint", async () => {
