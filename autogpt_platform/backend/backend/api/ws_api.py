@@ -38,14 +38,17 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        # Close the cluster client so asyncio's GC doesn't emit "Unclosed
-        # ClusterNode" warnings at interpreter shutdown. Wrapped so a close
-        # failure doesn't block db.disconnect.
+        # Each cleanup is wrapped so one failure doesn't block the rest. The
+        # Redis close silences asyncio's "Unclosed ClusterNode" GC warning at
+        # interpreter shutdown.
         try:
             await redis_client.disconnect_async()
         except Exception:
             logger.warning("redis_client.disconnect_async failed", exc_info=True)
-        await db.disconnect()
+        try:
+            await db.disconnect()
+        except Exception:
+            logger.warning("db.disconnect failed", exc_info=True)
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
