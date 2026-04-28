@@ -839,7 +839,11 @@ async def get_subscription_status(
 
     costs = await asyncio.gather(*[_cost(pid) for pid in price_ids])
 
-    tier_costs: dict[str, int] = {}
+    # BASIC is always included so users have a visible "Free / Cancel subscription"
+    # option even when stripe-price-id-basic is unset; downgrading to BASIC then
+    # routes to the legacy cancel-at-period-end path. Other paid tiers stay hidden
+    # when no price-id (admin-managed / not provisionable).
+    tier_costs: dict[str, int] = {SubscriptionTier.BASIC.value: 0}
     for t, pid, cost in zip(priceable_tiers, price_ids, costs):
         if pid:
             tier_costs[t.value] = cost

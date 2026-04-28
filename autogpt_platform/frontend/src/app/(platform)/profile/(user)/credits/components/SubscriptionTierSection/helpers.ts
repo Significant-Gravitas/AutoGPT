@@ -29,9 +29,8 @@ export const TIERS: TierInfo[] = [
 
 export const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
-export function formatCost(cents: number, tierKey: string): string {
-  if (cents === 0)
-    return tierKey === "BASIC" ? "Free" : "Pricing available soon";
+export function formatCost(cents: number, _tierKey: string): string {
+  if (cents === 0) return "Free";
   return `$${(cents / 100).toFixed(2)}/mo`;
 }
 
