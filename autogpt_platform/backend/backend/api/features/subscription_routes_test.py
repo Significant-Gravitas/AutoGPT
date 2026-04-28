@@ -249,9 +249,7 @@ def test_get_subscription_status_defaults_to_basic(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """When all LD price IDs are unset, tier_costs only contains BASIC=0 (the
-    free / cancel-subscription option that's always visible) and the caller sees
-    cost=0."""
+    """When all LD price IDs are unset, tier_costs is empty and the caller sees cost=0."""
     mock_user = Mock()
     mock_user.subscription_tier = None
 
@@ -277,7 +275,7 @@ def test_get_subscription_status_defaults_to_basic(
     data = response.json()
     assert data["tier"] == SubscriptionTier.BASIC.value
     assert data["monthly_cost"] == 0
-    assert data["tier_costs"] == {"BASIC": 0}
+    assert data["tier_costs"] == {}
     assert data["proration_credit_cents"] == 0
 
 
