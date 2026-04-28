@@ -204,16 +204,51 @@ self.addEventListener("notificationclick", function (event) {
   );
 });
 
+// Decodes a base64url-encoded string (no padding) into a Uint8Array.
+// Needed because PushManager.subscribe wants applicationServerKey as bytes
+// but the backend serves the VAPID key as a base64url string.
+function _base64UrlToUint8(value) {
+  var padded = value + "===".slice((value.length + 3) % 4);
+  var b64 = padded.replace(/-/g, "+").replace(/_/g, "/");
+  var raw = atob(b64);
+  var out = new Uint8Array(raw.length);
+  for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+function _resubscribeOptions(oldSubscription) {
+  if (oldSubscription && oldSubscription.options.applicationServerKey) {
+    return Promise.resolve({
+      userVisibleOnly: true,
+      applicationServerKey: oldSubscription.options.applicationServerKey,
+    });
+  }
+  // Firefox occasionally fires pushsubscriptionchange with no oldSubscription;
+  // without applicationServerKey the new sub can't be VAPID-authenticated and
+  // every push from the backend will fail. Pull the public key from the API.
+  return fetch("/api/proxy/api/push/vapid-key", { credentials: "include" })
+    .then(function (r) {
+      return r.ok ? r.json() : null;
+    })
+    .then(function (data) {
+      if (!data || !data.public_key) return { userVisibleOnly: true };
+      return {
+        userVisibleOnly: true,
+        applicationServerKey: _base64UrlToUint8(data.public_key),
+      };
+    })
+    .catch(function () {
+      return { userVisibleOnly: true };
+    });
+}
+
 self.addEventListener("pushsubscriptionchange", function (event) {
   event.waitUntil(
-    Promise.resolve(
-      event.newSubscription ||
-        self.registration.pushManager.subscribe(
-          event.oldSubscription
-            ? { userVisibleOnly: true, applicationServerKey: event.oldSubscription.options.applicationServerKey }
-            : { userVisibleOnly: true },
-        ),
-    )
+    (event.newSubscription
+      ? Promise.resolve(event.newSubscription)
+      : _resubscribeOptions(event.oldSubscription).then(function (opts) {
+          return self.registration.pushManager.subscribe(opts);
+        }))
       .then(function (newSub) {
         if (!newSub) return;
         // toJSON() returns base64url-encoded keys per the Web Push spec, which

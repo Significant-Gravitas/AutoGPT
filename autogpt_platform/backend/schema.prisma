@@ -444,7 +444,6 @@ model PushSubscription {
   lastFailedAt DateTime?
 
   @@unique([userId, endpoint])
-  @@index([userId])
 }
 
 // For the library page

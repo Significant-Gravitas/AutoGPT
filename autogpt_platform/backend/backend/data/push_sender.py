@@ -30,18 +30,11 @@ _FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")
 
 
 def _extract_status_code(e: WebPushException) -> int | None:
-    """Extract HTTP status code from a pywebpush exception.
-
-    pywebpush's ``response`` attribute shape varies across versions — sometimes
-    a ``requests.Response`` with ``status_code``, sometimes a different object.
-    Falls back to parsing ``"Push failed: 410 Gone"`` from the exception
-    message so 410/404 cleanup is reliable.
-    """
-    resp = getattr(e, "response", None)
-    status = getattr(resp, "status_code", None) if resp is not None else None
-    if status is not None:
-        return status
-    # Last resort: parse the message. Format is "Push failed: <code> <reason>".
+    """Extract HTTP status code from a pywebpush exception."""
+    if e.response is not None:
+        return e.response.status_code
+    # Fallback: parse "Push failed: <code> <reason>" out of the message in
+    # case a future pywebpush version raises without attaching the Response.
     match = re.search(r"Push failed:\s*(\d{3})\b", str(e))
     return int(match.group(1)) if match else None
 

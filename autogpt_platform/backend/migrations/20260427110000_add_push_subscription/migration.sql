@@ -15,9 +15,6 @@ CREATE TABLE "PushSubscription" (
 );
 
 -- CreateIndex
-CREATE INDEX "PushSubscription_userId_idx" ON "PushSubscription"("userId");
-
--- CreateIndex
 CREATE UNIQUE INDEX "PushSubscription_userId_endpoint_key" ON "PushSubscription"("userId", "endpoint");
 
 -- AddForeignKey
