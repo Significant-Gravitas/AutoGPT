@@ -222,18 +222,24 @@ export function useCopilotStream({
   //  1. The user sent a fresh message this mount — we own the turn, so no
   //     restore UI is appropriate even though status is briefly "submitted"
   //     before the first byte lands.
-  //  2. The stream has produced at least one visible assistant content part
-  //     (text / reasoning with non-empty text, or any tool part). Checking
-  //     actual content — instead of just the ``submitted`` / ``streaming``
-  //     status — keeps the restore indicator up while a GET-resume is in
-  //     flight with no bytes yet, which is the exact window the user would
-  //     otherwise see a misleading "Processing your request…" in.
+  //  2. The stream is in an active state AND has produced at least one
+  //     visible assistant content part (text / reasoning with non-empty
+  //     text, any tool part, or a backend status). The ``isStreamLive``
+  //     gate is what distinguishes "bytes from the live SSE" from "content
+  //     just hydrated from the DB on a fresh mount" — without it, a
+  //     mid-stream refresh that lands a partial assistant message in
+  //     ``hydratedMessages`` would flip the latch before the GET-resume
+  //     produced anything, suppressing the restore spinner and disabling
+  //     the restore-stall watchdog. Checking content (not just status)
+  //     still keeps the indicator up during the GET-resume-no-bytes window.
   const hasConnectedThisMountRef = useRef(false);
   if (!hasConnectedThisMountRef.current) {
+    const isStreamLive = status === "streaming" || status === "submitted";
     if (
       hasSentThisMountRef.current ||
-      hasVisibleAssistantContent(rawMessages) ||
-      getLatestAssistantStatusMessage(rawMessages) !== null
+      (isStreamLive &&
+        (hasVisibleAssistantContent(rawMessages) ||
+          getLatestAssistantStatusMessage(rawMessages) !== null))
     ) {
       hasConnectedThisMountRef.current = true;
     }

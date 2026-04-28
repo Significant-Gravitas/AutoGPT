@@ -308,6 +308,52 @@ describe("useCopilotStream — hydration/resume race (SECRT-2242)", () => {
     expect(result.current.isRestoringActiveSession).toBe(false);
   });
 
+  it("keeps the restore latch closed when hydration lands assistant content while status is still ready", () => {
+    // Repro for the premature-latch bug: the user reopens a session whose
+    // backend stream is still active, hydration lands a partial assistant
+    // message persisted mid-stream into rawMessages, but the live SSE
+    // GET-resume hasn't produced any bytes yet (status still ``ready``).
+    // The latch must NOT fire — otherwise the "Retrieving latest messages"
+    // UI is suppressed and the 6 s restore-stall watchdog can't run.
+    mockStatus = "ready";
+    mockMessages = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "Hi" }],
+      } as unknown as UIMessage,
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Partial response" }],
+      } as unknown as UIMessage,
+    ];
+
+    const { result, rerender } = renderHook(
+      (args: Args) => useCopilotStream(args),
+      {
+        initialProps: makeArgs({
+          hasActiveStream: true,
+          hydratedMessages: [],
+        }),
+      },
+    );
+
+    expect(result.current.isRestoringActiveSession).toBe(true);
+
+    // Once the live stream actually flips status to ``streaming`` (resume
+    // produced its first byte), the latch is allowed to fire.
+    mockStatus = "streaming";
+    rerender(
+      makeArgs({
+        hasActiveStream: true,
+        hydratedMessages: [],
+      }),
+    );
+
+    expect(result.current.isRestoringActiveSession).toBe(false);
+  });
+
   it("kicks the reconnect cascade when restore stays stuck for 6 seconds", async () => {
     mockHasActiveBackendStream.mockReturnValue(true);
     const refetchSession = vi.fn(async () => ({
