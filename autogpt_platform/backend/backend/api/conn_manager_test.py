@@ -390,6 +390,161 @@ async def test_subscription_pump_reconnects_on_connection_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_subscription_pump_reconnects_on_moved_error() -> None:
+    """A mid-stream cluster slot migration must trigger reopen + resubscribe."""
+    from redis.exceptions import MovedError
+
+    # First pubsub: listen() raises MovedError on iteration (slot migrated).
+    pubsub_a = MagicMock()
+    pubsub_a.execute_command = AsyncMock()
+    pubsub_a.channels = {}
+    pubsub_a.aclose = AsyncMock()
+
+    async def _listen_a():
+        raise MovedError("12182 127.0.0.1:7001")
+        yield  # pragma: no cover — unreachable
+
+    pubsub_a.listen = _listen_a
+
+    # Second pubsub: listen() yields a real message after reconnect.
+    pubsub_b = MagicMock()
+    pubsub_b.execute_command = AsyncMock()
+    pubsub_b.channels = {}
+    pubsub_b.aclose = AsyncMock()
+
+    async def _listen_b():
+        yield {"type": "smessage", "data": b'{"payload":"after-moved"}'}
+
+    pubsub_b.listen = _listen_b
+
+    client_a = MagicMock()
+    client_a.pubsub = MagicMock(return_value=pubsub_a)
+    client_a.aclose = AsyncMock()
+
+    client_b = MagicMock()
+    client_b.pubsub = MagicMock(return_value=pubsub_b)
+    client_b.aclose = AsyncMock()
+
+    received: list = []
+
+    async def on_message(data) -> None:
+        received.append(data)
+
+    sub = _Subscription("{u/g}/exec/x")
+
+    snapshot: dict = {}
+
+    async def on_message_snap(data) -> None:
+        snapshot["client"] = sub._client
+        snapshot["pubsub"] = sub._pubsub
+        received.append(data)
+
+    connect_mock = AsyncMock(side_effect=[client_a, client_b])
+    with (
+        patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            connect_mock,
+        ),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.001),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_MAX_S", 0.001),
+    ):
+        await sub.start(on_message_snap)
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if received:
+                break
+        await sub.stop()
+
+    # (a) reconnect happened — connect_sharded_pubsub_async called twice
+    assert connect_mock.await_count == 2
+    # (b) post-reconnect message reached the handler
+    assert received == [b'{"payload":"after-moved"}']
+    # (c) both pubsubs got SSUBSCRIBE — the second one re-resolved the shard
+    pubsub_a.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
+    pubsub_b.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
+    # subscription's _client / _pubsub pointed to the new connection at delivery time
+    assert snapshot["client"] is client_b
+    assert snapshot["pubsub"] is pubsub_b
+    # The pump must have closed the stale pubsub before reopening.
+    pubsub_a.aclose.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_subscription_pump_handles_server_sunsubscribe() -> None:
+    """A server-pushed sunsubscribe (slot ownership change) must trigger reopen."""
+    # First pubsub: listen() yields one server-side sunsubscribe, then closes.
+    pubsub_a = MagicMock()
+    pubsub_a.execute_command = AsyncMock()
+    pubsub_a.channels = {}
+    pubsub_a.aclose = AsyncMock()
+
+    async def _listen_a():
+        yield {"type": "sunsubscribe", "channel": b"{u/g}/exec/x", "data": 0}
+
+    pubsub_a.listen = _listen_a
+
+    # Second pubsub: listen() yields a real smessage after reconnect.
+    pubsub_b = MagicMock()
+    pubsub_b.execute_command = AsyncMock()
+    pubsub_b.channels = {}
+    pubsub_b.aclose = AsyncMock()
+
+    async def _listen_b():
+        yield {"type": "smessage", "data": b'{"payload":"after-sunsub"}'}
+
+    pubsub_b.listen = _listen_b
+
+    client_a = MagicMock()
+    client_a.pubsub = MagicMock(return_value=pubsub_a)
+    client_a.aclose = AsyncMock()
+    client_b = MagicMock()
+    client_b.pubsub = MagicMock(return_value=pubsub_b)
+    client_b.aclose = AsyncMock()
+
+    received: list = []
+
+    async def on_message(data) -> None:
+        received.append(data)
+
+    sub = _Subscription("{u/g}/exec/x")
+
+    snapshot: dict = {}
+
+    async def on_message_snap(data) -> None:
+        snapshot["client"] = sub._client
+        snapshot["pubsub"] = sub._pubsub
+        received.append(data)
+
+    connect_mock = AsyncMock(side_effect=[client_a, client_b])
+    with (
+        patch(
+            "backend.api.conn_manager.redis.connect_sharded_pubsub_async",
+            connect_mock,
+        ),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_INITIAL_S", 0.001),
+        patch("backend.api.conn_manager._PUMP_RECONNECT_BACKOFF_MAX_S", 0.001),
+    ):
+        await sub.start(on_message_snap)
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if received:
+                break
+        await sub.stop()
+
+    # (a) reconnect happened
+    assert connect_mock.await_count == 2
+    # (b) post-reconnect smessage reached the handler
+    assert received == [b'{"payload":"after-sunsub"}']
+    # (c) the new connection re-issued SSUBSCRIBE for the channel
+    pubsub_b.execute_command.assert_any_await("SSUBSCRIBE", "{u/g}/exec/x")
+    # subscription's _client / _pubsub pointed to the new connection at delivery time
+    assert snapshot["client"] is client_b
+    assert snapshot["pubsub"] is pubsub_b
+    # The stale pubsub got closed before reopen.
+    pubsub_a.aclose.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_subscription_pump_gives_up_after_reconnect_deadline() -> None:
     """If reconnects keep failing past the deadline, the pump must exit (not loop forever)."""
     # Every listen() raises; every reopen also raises ConnectionError.

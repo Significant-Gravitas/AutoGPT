@@ -7,7 +7,7 @@ from typing import Awaitable, Callable, Dict, Optional, Set
 from fastapi import WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis as AsyncRedis
 from redis.asyncio.client import PubSub as AsyncPubSub
-from redis.exceptions import RedisError
+from redis.exceptions import MovedError, RedisError, ResponseError
 from starlette.websockets import WebSocketState
 
 from backend.api.model import WSMessage, WSMethod
@@ -57,6 +57,16 @@ def _notification_bus_channel(user_id: str) -> str:
 
 
 MessageHandler = Callable[[Optional[bytes | str]], Awaitable[None]]
+
+
+def _is_moved_error(exc: BaseException) -> bool:
+    """A MOVED redirect — slot migration mid-stream; pump should reconnect."""
+    if isinstance(exc, MovedError):
+        return True
+    if isinstance(exc, ResponseError) and str(exc).startswith("MOVED "):
+        return True
+    return False
+
 
 # Reconnect tunables for shard-failover during pubsub.listen().
 _PUMP_RECONNECT_DEADLINE_S = 60.0
@@ -111,9 +121,17 @@ class _Subscription:
             pubsub = self._pubsub
             if pubsub is None:
                 return
+            needs_reconnect = False
             try:
                 async for message in pubsub.listen():
-                    if message.get("type") not in ("smessage", "message", "pmessage"):
+                    msg_type = message.get("type")
+                    # Server-pushed sunsubscribe: slot ownership changed and
+                    # Redis revoked our SSUBSCRIBE without dropping the TCP.
+                    # Treat as a reconnect trigger so we re-resolve the shard.
+                    if msg_type == "sunsubscribe":
+                        needs_reconnect = True
+                        break
+                    if msg_type not in ("smessage", "message", "pmessage"):
                         continue
                     # Successful read resets the reconnect budget.
                     backoff = _PUMP_RECONNECT_BACKOFF_INITIAL_S
@@ -125,11 +143,18 @@ class _Subscription:
                             "Websocket message-handler failed for channel %s",
                             self.full_channel,
                         )
-                # listen() exited cleanly (channels emptied) — pump is done.
-                return
+                if not needs_reconnect:
+                    # listen() exited cleanly (channels emptied) — pump is done.
+                    return
             except asyncio.CancelledError:
                 raise
             except (ConnectionError, RedisError) as exc:
+                if isinstance(exc, ResponseError) and not _is_moved_error(exc):
+                    logger.exception(
+                        "Pubsub pump crashed on non-retryable ResponseError for %s",
+                        self.full_channel,
+                    )
+                    return
                 if time.monotonic() > deadline:
                     logger.exception(
                         "Pubsub pump giving up after reconnect deadline for %s",
@@ -142,22 +167,26 @@ class _Subscription:
                     type(exc).__name__,
                     exc,
                 )
-                await self._close_pubsub_quietly()
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, _PUMP_RECONNECT_BACKOFF_MAX_S)
-                try:
-                    await self._open_pubsub()
-                except (ConnectionError, RedisError) as reopen_exc:
-                    logger.warning(
-                        "Pubsub pump reopen failed for %s: %s",
-                        self.full_channel,
-                        reopen_exc,
-                    )
-                    # Loop again — deadline check will eventually exit.
-                    continue
             except Exception:
                 logger.exception("Pubsub pump crashed for %s", self.full_channel)
                 return
+
+            # Either a retryable error was raised, or the server pushed a
+            # sunsubscribe — close the stale pubsub and reopen against the
+            # (possibly migrated) shard.
+            await self._close_pubsub_quietly()
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, _PUMP_RECONNECT_BACKOFF_MAX_S)
+            try:
+                await self._open_pubsub()
+            except (ConnectionError, RedisError) as reopen_exc:
+                logger.warning(
+                    "Pubsub pump reopen failed for %s: %s",
+                    self.full_channel,
+                    reopen_exc,
+                )
+                # Loop again — deadline check will eventually exit.
+                continue
 
     async def stop(self) -> None:
         if self._task is not None:
