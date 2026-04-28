@@ -478,6 +478,49 @@ describe("SettingsCreatorDashboardPage", () => {
     expect(screen.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
   });
 
+  test("mobile dropdown also exposes Delete and triggers the same delete endpoint", async () => {
+    let deletedId: string | null = null;
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-mobile",
+            name: "Mobile Agent",
+            status: SubmissionStatus.PENDING,
+          }),
+        ]),
+      ),
+      getDeleteV2DeleteStoreSubmissionMockHandler(async ({ params }) => {
+        deletedId = params.submissionId as string;
+        return true;
+      }),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect((await screen.findAllByText("Mobile Agent")).length).toBeGreaterThan(
+      1,
+    );
+
+    const actionButtons = screen.getAllByTestId("submission-actions");
+    expect(actionButtons.length).toBeGreaterThanOrEqual(2);
+    fireEvent.pointerDown(actionButtons[1], { button: 0 });
+
+    const deleteMenuItem = await screen.findByRole("menuitem", {
+      name: /delete/i,
+    });
+    fireEvent.click(deleteMenuItem);
+
+    const confirmButton = await screen.findByRole("button", {
+      name: /delete submission/i,
+    });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(deletedId).toBe("lv-mobile");
+    });
+  });
+
   test("selecting a pending submission shows the bulk selection bar", async () => {
     server.use(
       getGetV2ListMySubmissionsMockHandler(

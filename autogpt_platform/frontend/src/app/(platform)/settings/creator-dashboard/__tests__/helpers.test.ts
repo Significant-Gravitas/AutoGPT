@@ -301,6 +301,12 @@ describe("creator-dashboard helpers", () => {
       expect(result).toHaveLength(1);
       expect(result[0].listing_version_id).toBe("b");
     });
+
+    test("returns a copy on 'all' so callers can't mutate the input", () => {
+      const result = filterSubmissions(list, "all");
+      expect(result).not.toBe(list);
+      expect(result).toEqual(list);
+    });
   });
 
   describe("formatRuns", () => {
@@ -316,6 +322,11 @@ describe("creator-dashboard helpers", () => {
 
     test("formats millions with M suffix", () => {
       expect(formatRuns(1_500_000)).toBe("1.5M");
+    });
+
+    test("promotes near-million boundary into M (no '1000.0K')", () => {
+      expect(formatRuns(999_950)).toBe("1.0M");
+      expect(formatRuns(999_949)).toBe("999.9K");
     });
   });
 

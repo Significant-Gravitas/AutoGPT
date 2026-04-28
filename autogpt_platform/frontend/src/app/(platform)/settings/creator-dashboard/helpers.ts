@@ -181,12 +181,12 @@ export function filterSubmissions(
   submissions: StoreSubmission[],
   filter: StatusFilterValue,
 ): StoreSubmission[] {
-  if (filter === "all") return submissions;
+  if (filter === "all") return [...submissions];
   return submissions.filter((submission) => submission.status === filter);
 }
 
 export function formatRuns(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 999_950) return `${(value / 1_000_000).toFixed(1)}M`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
   return value.toLocaleString();
 }
