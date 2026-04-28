@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import stripe
 from prisma.enums import SubscriptionTier
+from prisma.errors import UniqueViolationError
 from prisma.models import User
 
 from backend.data.credit import (
@@ -1439,6 +1440,173 @@ async def test_handle_subscription_payment_success_skips_zero_amount():
     ):
         await handle_subscription_payment_success(invoice)
     add_tx_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_missing_customer():
+    """Invoices missing the customer field are dropped with a warning."""
+    invoice = {
+        "id": "in_abc",
+        "subscription": "sub_abc",
+        "amount_paid": 1000,
+    }
+    prisma_mock = MagicMock()
+    with patch("backend.data.credit.User.prisma", return_value=prisma_mock):
+        await handle_subscription_payment_success(invoice)
+    prisma_mock.find_first.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_unknown_user():
+    """Invoices for an unknown stripeCustomerId are dropped with a warning."""
+    invoice = {
+        "id": "in_abc",
+        "customer": "cus_unknown",
+        "subscription": "sub_abc",
+        "amount_paid": 1000,
+    }
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=None)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_enterprise():
+    """ENTERPRISE users don't get credit grants from Stripe invoices."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.ENTERPRISE)
+    invoice = {
+        "id": "in_abc",
+        "customer": "cus_123",
+        "subscription": "sub_abc",
+        "amount_paid": 5000,
+    }
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_idempotent_on_unique_violation():
+    """If the GRANT transaction key already exists (Stripe webhook retry),
+    UniqueViolationError is swallowed so the webhook returns 200 and Stripe
+    stops retrying."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_abc",
+        "customer": "cus_123",
+        "subscription": "sub_abc",
+        "amount_paid": 5000,
+    }
+    add_tx_mock = AsyncMock(side_effect=UniqueViolationError({"error": "dup"}))
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_get_active_subscription_period_end_returns_unix_timestamp():
+    """Happy path: returns int(current_period_end) for an active sub."""
+    mock_sub = stripe.Subscription.construct_from(
+        {"id": "sub_abc", "current_period_end": 1779340148}, "k"
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+    user = MagicMock(spec=User)
+    user.stripe_customer_id = "cus_abc"
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+    ):
+        from backend.data.credit import get_active_subscription_period_end
+
+        result = await get_active_subscription_period_end("user-1")
+    assert result == 1779340148
+
+
+@pytest.mark.asyncio
+async def test_get_active_subscription_period_end_returns_none_without_customer():
+    """Users without a Stripe customer ID return None — no Stripe API call."""
+    user = MagicMock(spec=User)
+    user.stripe_customer_id = None
+    list_mock = AsyncMock()
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new=list_mock,
+        ),
+    ):
+        from backend.data.credit import get_active_subscription_period_end
+
+        result = await get_active_subscription_period_end("user-1")
+    assert result is None
+    list_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_active_subscription_period_end_swallows_stripe_errors():
+    """A Stripe error during the lookup returns None instead of raising."""
+    user = MagicMock(spec=User)
+    user.stripe_customer_id = "cus_abc"
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            side_effect=stripe.StripeError("boom"),
+        ),
+    ):
+        from backend.data.credit import get_active_subscription_period_end
+
+        result = await get_active_subscription_period_end("user-1")
+    assert result is None
 
 
 @pytest.mark.asyncio
