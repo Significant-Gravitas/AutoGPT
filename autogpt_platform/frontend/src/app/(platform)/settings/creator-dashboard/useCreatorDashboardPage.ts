@@ -58,7 +58,6 @@ export function useCreatorDashboardPage() {
   const {
     data: response,
     isSuccess,
-    isLoading,
     error,
     refetch,
   } = useGetV2ListMySubmissions(undefined, {
