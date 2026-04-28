@@ -128,6 +128,14 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+"""Tool names accepted only for backwards compatibility with saved graphs.
+
+These names are intentionally absent from ``ToolName`` and
+``PLATFORM_TOOL_NAMES`` so they are not exposed in new block schemas or sent to
+the model as available tools.
+"""
+
 # SDK built-in tool names — tools provided by the Claude Code CLI that our
 # code does not implement directly.  ``TodoWrite`` is DELIBERATELY excluded:
 # baseline mode ships an MCP-wrapped platform version
@@ -304,7 +312,11 @@ def validate_tool_names(tools: list[str]) -> list[str]:
     Returns:
         List of invalid names (empty if all are valid).
     """
-    return [t for t in tools if t not in ALL_TOOL_NAMES]
+    return [
+        t
+        for t in tools
+        if t not in ALL_TOOL_NAMES and t not in DISABLED_LEGACY_TOOL_NAMES
+    ]
 
 
 _tool_names_checked = False

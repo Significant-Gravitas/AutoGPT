@@ -62,6 +62,14 @@ class TestBuildAndValidatePermissions:
         with pytest.raises(ValidationError, match="not_a_real_tool"):
             _make_input(tools=["not_a_real_tool"])
 
+    async def test_disabled_legacy_tool_is_accepted_and_removed(self):
+        inp = _make_input(tools=["ask_question", "run_block"])
+        result = await _build_and_validate_permissions(inp)
+
+        assert inp.tools == ["run_block"]
+        assert isinstance(result, CopilotPermissions)
+        assert result.tools == ["run_block"]
+
     async def test_valid_block_name_accepted(self):
         mock_block_cls = MagicMock()
         mock_block_cls.return_value.name = "HTTP Request"

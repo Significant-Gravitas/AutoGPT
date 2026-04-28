@@ -3,12 +3,13 @@ import { useEffect, useRef, useState } from "react";
 /**
  * Ticks once per second while `isRunning` is true.
  *
- * Pass `anchorIso` (a server-issued ISO timestamp, e.g. the last user /
- * tool message's `createdAt`) to count from that absolute wall-clock point
- * instead of from when this hook first saw `isRunning = true`. This is what
- * makes the "Considering Xs" counter survive a page refresh mid-turn — it
- * reflects actual elapsed time since the turn's last recorded activity, not
- * the moment the current browser tab mounted.
+ * Pass `anchorIso` (a server-issued ISO timestamp, e.g. the active stream's
+ * `started_at` or the last user/tool message's `createdAt`) to count from
+ * that absolute wall-clock point instead of from when this hook first saw
+ * `isRunning = true`. This is what makes the "Considering Xs" counter
+ * survive a page refresh mid-turn — it reflects actual elapsed time since
+ * the turn's last recorded activity, not the moment the current browser
+ * tab mounted.
  */
 export function useElapsedTimer(isRunning: boolean, anchorIso?: string | null) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);

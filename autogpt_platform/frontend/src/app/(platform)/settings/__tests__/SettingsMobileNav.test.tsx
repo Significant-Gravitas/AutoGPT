@@ -70,7 +70,7 @@ describe("SettingsMobileNav", () => {
       "Creator Dashboard",
       "Billing",
       "Integrations",
-      "Settings",
+      "Preferences",
       "AutoGPT API Keys",
       "OAuth Apps",
     ];
