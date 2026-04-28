@@ -41,7 +41,7 @@ export function applyFiltersAndSort(
   submissions: StoreSubmission[],
   state: FilterState,
 ): StoreSubmission[] {
-  let result = submissions;
+  let result: StoreSubmission[] = [...submissions];
 
   if (state.statuses.length > 0) {
     const set = new Set(state.statuses);
