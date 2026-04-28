@@ -1499,11 +1499,7 @@ async def get_active_subscription_period_end(user_id: str) -> int | None:
         return None
     if sub is None:
         return None
-    period_end = (
-        sub.get("current_period_end")
-        if isinstance(sub, dict)
-        else getattr(sub, "current_period_end", None)
-    )
+    period_end = sub.current_period_end
     return int(period_end) if period_end else None
 
 
@@ -2416,6 +2412,12 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
         )
         return
     if (user.subscriptionTier or SubscriptionTier.BASIC) == SubscriptionTier.ENTERPRISE:
+        logger.warning(
+            "handle_subscription_payment_success: skipping ENTERPRISE user %s"
+            " (customer %s) — tier is admin-managed",
+            user.id,
+            customer_id,
+        )
         return
 
     amount_paid: int = invoice.get("amount_paid", 0)
