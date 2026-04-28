@@ -396,12 +396,19 @@ def cached(
         def cache_clear(pattern: str | None = None) -> None:
             """Clear cache entries. If pattern provided, clear matching entries."""
             if shared_cache:
-                if pattern:
-                    # Clear entries matching pattern
-                    keys = list(_get_redis().scan_iter(f"cache:{func_name}:{pattern}"))
-                else:
-                    # Clear all cache keys
-                    keys = list(_get_redis().scan_iter(f"cache:{func_name}:*"))
+                # SCAN must fan out across every primary on a cluster — without
+                # target_nodes the scan only walks the shard the client is
+                # bound to, leaving stale keys on the other shards.
+                match_pattern = (
+                    f"cache:{func_name}:{pattern}"
+                    if pattern
+                    else f"cache:{func_name}:*"
+                )
+                keys = list(
+                    _get_redis().scan_iter(
+                        match_pattern, target_nodes=RedisCluster.PRIMARIES
+                    )
+                )
 
                 if keys:
                     pipeline = _get_redis().pipeline()
@@ -419,7 +426,12 @@ def cached(
 
         def cache_info() -> dict[str, int | None]:
             if shared_cache:
-                cache_keys = list(_get_redis().scan_iter(f"cache:{func_name}:*"))
+                cache_keys = list(
+                    _get_redis().scan_iter(
+                        f"cache:{func_name}:*",
+                        target_nodes=RedisCluster.PRIMARIES,
+                    )
+                )
                 return {
                     "size": len(cache_keys),
                     "maxsize": None,  # Redis manages its own size
