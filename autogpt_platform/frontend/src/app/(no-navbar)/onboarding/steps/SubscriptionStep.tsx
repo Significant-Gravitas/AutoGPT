@@ -213,12 +213,12 @@ function PlanCard({
     : null;
   const displayPrice = monthlyLocal
     ? isYearly
-      ? monthlyLocal * 0.8 * 12
+      ? monthlyLocal * 0.85 * 12
       : monthlyLocal
     : null;
   const perLabel = isYearly ? "/ year" : "/ month";
   const monthlyEquiv =
-    isYearly && monthlyLocal ? monthlyLocal * 0.8 : null;
+    isYearly && monthlyLocal ? monthlyLocal * 0.85 : null;
   const hl = plan.highlighted;
 
   return (
@@ -383,7 +383,7 @@ export function SubscriptionStep() {
                   <>
                     Yearly billing{" "}
                     <span className="ml-1.5 text-[11px] font-semibold text-purple-500">
-                      Save 20%
+                      Save 15%
                     </span>
                   </>
                 )}
