@@ -13,6 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
+from backend.copilot import config as cfg_mod
+from backend.copilot.config import ChatConfig
+
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
@@ -23,6 +26,7 @@ from .service import (
     _iter_sdk_messages,
     _normalize_model_name,
     _reduce_context,
+    _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
     _TokenUsage,
 )
@@ -357,33 +361,6 @@ class TestIsParallelContinuation:
 
 
 # ---------------------------------------------------------------------------
-# Env vars that ChatConfig validators read — must be cleared so explicit
-# constructor values are used (matches the list in service_test.py).
-# ---------------------------------------------------------------------------
-_CONFIG_ENV_VARS = (
-    "CHAT_USE_OPENROUTER",
-    "CHAT_API_KEY",
-    "OPEN_ROUTER_API_KEY",
-    "OPENAI_API_KEY",
-    "CHAT_BASE_URL",
-    "OPENROUTER_BASE_URL",
-    "OPENAI_BASE_URL",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_USE_CLAUDE_AGENT_SDK",
-    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
-    "CHAT_CLAUDE_AGENT_CLI_PATH",
-    "CLAUDE_AGENT_CLI_PATH",
-)
-
-
-@pytest.fixture()
-def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear env-backed CHAT_* settings so ChatConfig uses constructor values."""
-    for var in _CONFIG_ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
-
-
-# ---------------------------------------------------------------------------
 # _normalize_model_name — used by per-request model override
 # ---------------------------------------------------------------------------
 
@@ -409,8 +386,6 @@ class TestNormalizeModelName:
         ``_validate_sdk_model_vendor_compatibility`` model_validator
         permits ChatConfig construction.
         """
-        from backend.copilot import config as cfg_mod
-
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -426,8 +401,6 @@ class TestNormalizeModelName:
         self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
     ):
         """Force ``config.openrouter_active = True`` for slug-preservation tests."""
-        from backend.copilot import config as cfg_mod
-
         cfg = cfg_mod.ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -489,8 +462,6 @@ class TestNormalizeModelName:
         actual transport.  The CLI subprocess uses OAuth here and rejects
         the OpenRouter format.
         """
-        from backend.copilot import config as cfg_mod
-
         cfg = cfg_mod.ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -532,8 +503,6 @@ class TestEffectiveTransport:
     """
 
     def test_subscription_wins_over_openrouter_config(self, _clean_config_env):
-        from backend.copilot.config import ChatConfig
-
         cfg = ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -546,8 +515,6 @@ class TestEffectiveTransport:
         assert cfg.openrouter_active is True
 
     def test_openrouter_when_subscription_disabled(self, _clean_config_env):
-        from backend.copilot.config import ChatConfig
-
         cfg = ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -559,8 +526,6 @@ class TestEffectiveTransport:
     def test_direct_anthropic_when_no_openrouter_no_subscription(
         self, _clean_config_env
     ):
-        from backend.copilot.config import ChatConfig
-
         cfg = ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -572,8 +537,6 @@ class TestEffectiveTransport:
         assert cfg.effective_transport == "direct_anthropic"
 
     def test_subscription_alone_is_subscription(self, _clean_config_env):
-        from backend.copilot.config import ChatConfig
-
         cfg = ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -605,9 +568,6 @@ class TestResolveSdkModelForRequestTransportAware:
     async def test_subscription_advanced_override_normalised_for_cli(
         self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
     ):
-        from backend.copilot import config as cfg_mod
-        from backend.copilot.sdk.service import _resolve_sdk_model_for_request
-
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4.7",
@@ -636,9 +596,6 @@ class TestResolveSdkModelForRequestTransportAware:
         """When LD agrees with the config default, subscription mode still
         wins on the standard tier — returns ``None`` so the CLI picks the
         subscription default model."""
-        from backend.copilot import config as cfg_mod
-        from backend.copilot.sdk.service import _resolve_sdk_model_for_request
-
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             claude_agent_model=None,

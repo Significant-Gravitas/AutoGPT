@@ -325,27 +325,11 @@ class TestCleanupSdkToolResults:
 
 
 # ---------------------------------------------------------------------------
-# Env vars that ChatConfig validators read — must be cleared so explicit
-# constructor values are used.
+# Env-cleanup fixture is shared via ``conftest._clean_config_env``.  This
+# file exposes a re-export for callers that don't rely on conftest discovery
+# (kept for backwards compatibility — pytest finds the conftest fixture
+# automatically without an explicit import).
 # ---------------------------------------------------------------------------
-_CONFIG_ENV_VARS = (
-    "CHAT_USE_OPENROUTER",
-    "CHAT_API_KEY",
-    "OPEN_ROUTER_API_KEY",
-    "OPENAI_API_KEY",
-    "CHAT_BASE_URL",
-    "OPENROUTER_BASE_URL",
-    "OPENAI_BASE_URL",
-    "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION",
-    "CHAT_USE_CLAUDE_AGENT_SDK",
-    "CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE",
-)
-
-
-@pytest.fixture()
-def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in _CONFIG_ENV_VARS:
-        monkeypatch.delenv(var, raising=False)
 
 
 class TestNormalizeModelName:
