@@ -53,16 +53,13 @@ export function SelectedTriggerAgentView({
 
   if (error || schedulesError) {
     const queryError = error ?? schedulesError;
-    return (
-      <ErrorCard
-        responseError={{
-          message:
-            (queryError as unknown as { message?: string })?.message ||
-            "Failed to load trigger data",
-        }}
-        context="trigger agent"
-      />
-    );
+    const message =
+      queryError instanceof Error
+        ? queryError.message
+        : queryError != null
+          ? String(queryError)
+          : "Failed to load trigger data";
+    return <ErrorCard responseError={{ message }} context="trigger agent" />;
   }
 
   if (isLoading || !data) {
@@ -106,6 +103,17 @@ export function SelectedTriggerAgentView({
             {schedule && (
               <RunDetailCard title="Schedule">
                 <div className="flex flex-col gap-6">
+                  {schedule.graph_version !== triggerAgent.graph_version && (
+                    <Text
+                      variant="small"
+                      className="rounded-md bg-amber-50 px-3 py-2 !text-amber-800"
+                    >
+                      This schedule is running version {schedule.graph_version}{" "}
+                      of the trigger agent, but the latest version is{" "}
+                      {triggerAgent.graph_version}. Ask AutoPilot to recreate
+                      the schedule to pick up your latest edits.
+                    </Text>
+                  )}
                   <div className="flex flex-col gap-1.5">
                     <Text variant="large-medium">Recurrence</Text>
                     <Text variant="body" className="flex items-center gap-3">

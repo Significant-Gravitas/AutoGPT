@@ -1,6 +1,7 @@
 "use client";
 
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+import { Button } from "@/components/atoms/Button/Button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,13 +33,15 @@ export function TriggerAgentActionsDropdown({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
-            className="ml-auto shrink-0 rounded p-1 hover:bg-gray-100"
+          <Button
+            variant="icon"
+            size="icon"
             onClick={(e) => e.stopPropagation()}
             aria-label="More actions"
+            className="ml-auto min-w-fit shrink-0"
           >
-            <DotsThreeVerticalIcon className="h-5 w-5 text-gray-400" />
-          </button>
+            <DotsThreeVerticalIcon size={18} />
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem asChild>

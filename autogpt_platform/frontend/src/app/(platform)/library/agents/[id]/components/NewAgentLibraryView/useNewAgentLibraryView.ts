@@ -31,6 +31,11 @@ export function useNewAgentLibraryView() {
   const { id } = useParams();
   const agentId = id as string;
 
+  // TODO(#12740 / autogpt-pr-reviewer): when agent.is_hidden is true,
+  // surface a banner that this is a trigger agent and link to its parent.
+  // Needs a back-derivation path (parent has no FK to its triggers) —
+  // either a new endpoint or scanning AgentExecutorBlock constantInput
+  // across the user's library.
   const {
     data: agent,
     isSuccess,

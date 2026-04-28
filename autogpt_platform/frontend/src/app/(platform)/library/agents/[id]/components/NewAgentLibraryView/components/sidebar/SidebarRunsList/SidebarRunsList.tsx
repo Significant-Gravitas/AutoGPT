@@ -255,9 +255,13 @@ export function SidebarRunsList({
                 </div>
               )}
               {triggers.length === 0 && triggerAgents.length === 0 && (
-                <div className="flex min-h-[50vh] flex-col items-center justify-center">
+                <div className="flex min-h-[50vh] flex-col items-center justify-center gap-2 px-6 text-center">
                   <Text variant="large" className="text-zinc-700">
                     No triggers set up
+                  </Text>
+                  <Text variant="body" className="!text-zinc-500">
+                    Ask AutoPilot to set up a trigger for this agent (e.g.
+                    &ldquo;run this when a new email arrives&rdquo;).
                   </Text>
                 </div>
               )}
