@@ -969,11 +969,7 @@ async def update_subscription_tier(
             detail=f"Subscription not available for tier {tier.value}",
         )
 
-    # Try modifying an existing Stripe sub first. The function returns False when
-    # the user has no Stripe customer/active sub (admin-granted tier or first-time
-    # signup) — gating this on current_tier_price_id was the previous shape and
-    # silently broke admin-granted downgrades when a tier was pruned from the
-    # price-id flag (the price-id check then short-circuited the DB-flip below).
+    # Modify in place if there's a sub; else fall through to Checkout below.
     try:
         modified = await modify_stripe_subscription_for_tier(user_id, tier)
         if modified:

@@ -950,16 +950,6 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
-        return {
-            **_DEFAULT_TIER_PRICES,
-            SubscriptionTier.BUSINESS: "price_business",
-        }.get(tier)
-
-    mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
-        side_effect=price_id_with_business,
-    )
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,
@@ -988,7 +978,7 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
     response = client.post(
         "/credits/subscription",
         json={
-            "tier": "BUSINESS",
+            "tier": "MAX",
             "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
             "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
         },
@@ -996,7 +986,7 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
 
     assert response.status_code == 200
     assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_no_sub"
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
     # No DB-flip — payment must be collected via Checkout regardless of direction.
     set_tier_mock.assert_not_awaited()
     checkout_mock.assert_awaited_once()
