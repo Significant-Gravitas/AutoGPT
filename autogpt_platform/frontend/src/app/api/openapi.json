@@ -16033,6 +16033,17 @@
             "type": "integer",
             "title": "Proration Credit Cents"
           },
+          "has_active_stripe_subscription": {
+            "type": "boolean",
+            "title": "Has Active Stripe Subscription",
+            "description": "True when the user has an active/trialing Stripe subscription. The frontend uses this to branch upgrade UX: modify-in-place + saved-card auto-charge when True, redirect to Stripe Checkout when False.",
+            "default": false
+          },
+          "current_period_end": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Current Period End",
+            "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
+          },
           "pending_tier": {
             "anyOf": [
               { "type": "string", "enum": ["BASIC", "PRO", "MAX", "BUSINESS"] },
@@ -16052,17 +16063,6 @@
             "title": "Url",
             "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
             "default": ""
-          },
-          "has_active_stripe_subscription": {
-            "type": "boolean",
-            "title": "Has Active Stripe Subscription",
-            "description": "True when the user has an active/trialing Stripe subscription. The frontend uses this to branch upgrade UX: modify-in-place + saved-card auto-charge when True, redirect to Stripe Checkout when False.",
-            "default": false
-          },
-          "current_period_end": {
-            "anyOf": [{ "type": "integer" }, { "type": "null" }],
-            "title": "Current Period End",
-            "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
           }
         },
         "type": "object",
