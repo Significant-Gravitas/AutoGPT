@@ -1,17 +1,39 @@
+"use client";
+
+import { motion, useReducedMotion } from "framer-motion";
+
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 
 export function IntegrationsListSkeleton() {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <div
+    <motion.div
       className="flex flex-col gap-3"
       aria-busy="true"
       aria-label="Loading integrations"
+      initial="hidden"
+      animate="show"
+      variants={{
+        hidden: {},
+        show: {
+          transition: {
+            staggerChildren: reduceMotion ? 0 : 0.08,
+            delayChildren: reduceMotion ? 0 : 0.05,
+          },
+        },
+      }}
     >
       {[0, 1, 2].map((i) => (
-        <div
+        <motion.div
           key={i}
           data-testid="integration-skeleton-item"
           className="w-full overflow-hidden rounded-lg border border-[#DADADC] bg-white"
+          variants={{
+            hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 },
+            show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
+          }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
         >
           {/* Mirrors ProviderGroup accordion trigger row */}
           <div className="flex items-center justify-between px-3 py-3 pr-5">
@@ -36,8 +58,8 @@ export function IntegrationsListSkeleton() {
             </div>
             <Skeleton className="size-5 rounded" />
           </div>
-        </div>
+        </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 }

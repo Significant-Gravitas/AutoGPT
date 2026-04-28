@@ -128,18 +128,39 @@ export function IntegrationsList() {
       {isEmpty ? (
         <IntegrationsListEmpty query={query} />
       ) : (
-        <div className="flex flex-col gap-3 pb-4">
+        <motion.div
+          className="flex flex-col gap-3 pb-4"
+          initial="hidden"
+          animate="show"
+          variants={{
+            hidden: {},
+            show: {
+              transition: {
+                staggerChildren: reduceMotion ? 0 : 0.08,
+                delayChildren: reduceMotion ? 0 : 0.05,
+              },
+            },
+          }}
+        >
           {providers.map((provider) => (
-            <ProviderGroup
+            <motion.div
               key={provider.id}
-              provider={provider}
-              isSelected={selection.isSelected}
-              onToggleSelected={selection.toggle}
-              onDelete={(id) => askDelete([id])}
-              isDeletingId={isDeletingId}
-            />
+              variants={{
+                hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 },
+                show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
+              }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <ProviderGroup
+                provider={provider}
+                isSelected={selection.isSelected}
+                onToggleSelected={selection.toggle}
+                onDelete={(id) => askDelete([id])}
+                isDeletingId={isDeletingId}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       <DeleteConfirmDialog

@@ -77,17 +77,52 @@ export function APIKeyList() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white">
+      <motion.div
+        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
+        initial={reduceMotion ? false : "hidden"}
+        animate={reduceMotion ? undefined : "show"}
+        variants={
+          reduceMotion
+            ? undefined
+            : {
+                hidden: {},
+                show: {
+                  transition: {
+                    staggerChildren: 0.04,
+                    delayChildren: 0.04,
+                  },
+                },
+              }
+        }
+      >
         {keys.map((key) => (
-          <APIKeyRow
+          <motion.div
             key={key.id}
-            apiKey={key}
-            selected={selection.isSelected(key.id)}
-            onToggleSelected={() => selection.toggle(key.id)}
-            onDelete={() => requestDelete([key.id])}
-          />
+            variants={
+              reduceMotion
+                ? undefined
+                : {
+                    hidden: { opacity: 0, y: 6 },
+                    show: {
+                      opacity: 1,
+                      y: 0,
+                      transition: {
+                        duration: 0.28,
+                        ease: [0.16, 1, 0.3, 1],
+                      },
+                    },
+                  }
+            }
+          >
+            <APIKeyRow
+              apiKey={key}
+              selected={selection.isSelected(key.id)}
+              onToggleSelected={() => selection.toggle(key.id)}
+              onDelete={() => requestDelete([key.id])}
+            />
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       {deleteTarget && (
         <DeleteAPIKeyDialog
