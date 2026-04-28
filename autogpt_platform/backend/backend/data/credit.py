@@ -1479,6 +1479,34 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
     return None
 
 
+async def get_active_subscription_period_end(user_id: str) -> int | None:
+    """Return the Unix timestamp of the active sub's current_period_end, or None.
+
+    Used to surface "next invoice on {date}" in upgrade dialog UX. Returns None
+    for users without a Stripe customer or active sub. Stripe failures swallow
+    to None — UX falls back to generic copy if the lookup misfires.
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return None
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except stripe.StripeError:
+        logger.warning(
+            "get_active_subscription_period_end: Stripe lookup failed for user %s",
+            user_id,
+        )
+        return None
+    if sub is None:
+        return None
+    period_end = (
+        sub.get("current_period_end")
+        if isinstance(sub, dict)
+        else getattr(sub, "current_period_end", None)
+    )
+    return int(period_end) if period_end else None
+
+
 # Substrings Stripe uses in InvalidRequestError messages when the schedule is
 # already in a terminal state (released / completed / canceled) and therefore
 # cannot be released again. We only swallow the error when one of these appears;
@@ -2356,6 +2384,73 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             )
             return
         await set_subscription_tier(user.id, SubscriptionTier.BASIC)
+
+
+async def handle_subscription_payment_success(invoice: dict) -> None:
+    """Grant AutoGPT credits equal to the paid Stripe invoice amount.
+
+    Fires on every paid subscription invoice (initial signup, monthly renewal,
+    and prorated upgrade charges). Credits = ``invoice.amount_paid`` cents,
+    keyed by ``invoice_id`` for idempotency so Stripe retries don't double-grant.
+
+    Skipped:
+    - Non-subscription invoices (no ``subscription`` field).
+    - Zero-amount invoices (e.g. card-validation checks, $0 trials).
+    - ENTERPRISE users (admin-managed; they don't pay via self-service).
+    """
+    customer_id = invoice.get("customer")
+    if not customer_id:
+        logger.warning(
+            "handle_subscription_payment_success: missing customer in invoice; skipping"
+        )
+        return
+    sub_id: str = invoice.get("subscription") or ""
+    if not sub_id:
+        # Non-subscription invoices (one-off invoices, etc.) — no credit grant.
+        return
+    user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
+    if not user:
+        logger.warning(
+            "handle_subscription_payment_success: no user for customer %s",
+            customer_id,
+        )
+        return
+    if (user.subscriptionTier or SubscriptionTier.BASIC) == SubscriptionTier.ENTERPRISE:
+        return
+
+    amount_paid: int = invoice.get("amount_paid", 0)
+    invoice_id: str = invoice.get("id", "")
+    if amount_paid <= 0 or not invoice_id:
+        return
+
+    try:
+        await UserCredit()._add_transaction(
+            user_id=user.id,
+            amount=amount_paid,
+            transaction_type=CreditTransactionType.GRANT,
+            transaction_key=f"INVOICE-{invoice_id}",
+            metadata=SafeJson(
+                {
+                    "stripe_customer_id": customer_id,
+                    "stripe_subscription_id": sub_id,
+                    "stripe_invoice_id": invoice_id,
+                    "billing_reason": invoice.get("billing_reason", ""),
+                    "reason": "subscription_invoice_paid",
+                }
+            ),
+        )
+        logger.info(
+            "handle_subscription_payment_success: granted %d credits to user %s"
+            " for invoice %s (sub %s)",
+            amount_paid,
+            user.id,
+            invoice_id,
+            sub_id,
+        )
+    except UniqueViolationError:
+        # Idempotency key collision — Stripe retried this invoice's webhook and
+        # we already granted the credits. Safe to ignore.
+        return
 
 
 async def admin_get_user_history(

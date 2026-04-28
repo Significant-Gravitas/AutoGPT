@@ -235,8 +235,8 @@ export function SubscriptionTierSection() {
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
             {confirmDowngradeTo === "BASIC"
-              ? "Downgrading to Basic will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
-              : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect at the end of your current billing period. You keep your current plan until then.`}{" "}
+              ? `Downgrading to Basic schedules your subscription to cancel at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}. You keep your current plan and credits until then; no further charges to your card.`
+              : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}. You keep your current plan until then; from that date your saved card is billed at the new lower rate.`}{" "}
             Are you sure?
           </p>
           <Dialog.Footer>
@@ -303,13 +303,9 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {subscription &&
-              subscription.proration_credit_cents > 0 &&
-              `Your unused ${currentTier.charAt(0) + currentTier.slice(1).toLowerCase()} subscription ($${(subscription.proration_credit_cents / 100).toFixed(2)}) will be applied as a credit to your next Stripe invoice. `}
-            You will be redirected to Stripe to complete your upgrade to{" "}
-            {TIERS.find((t) => t.key === pendingUpgradeTier)?.label ??
-              pendingUpgradeTier}
-            .
+            {subscription.has_active_stripe_subscription
+              ? `Your subscription will be upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. Stripe will charge the prorated difference to your saved card on your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, automatically deducting the unused portion of your current plan. The corresponding credits are added to your AutoGPT balance when Stripe collects the charge.`
+              : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription. The first invoice's amount is added to your AutoGPT balance once Stripe confirms the charge.`}
           </p>
           <Dialog.Footer>
             <Button
@@ -319,7 +315,9 @@ export function SubscriptionTierSection() {
               Cancel
             </Button>
             <Button onClick={() => void confirmUpgrade()}>
-              Continue to Checkout
+              {subscription.has_active_stripe_subscription
+                ? "Confirm Upgrade"
+                : "Continue to Checkout"}
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

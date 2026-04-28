@@ -57,12 +57,14 @@ from backend.data.credit import (
     UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
+    get_active_subscription_period_end,
     get_auto_top_up,
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
     get_user_credit_model,
     handle_subscription_payment_failure,
+    handle_subscription_payment_success,
     modify_stripe_subscription_for_tier,
     release_pending_subscription_schedule,
     set_auto_top_up,
@@ -719,6 +721,22 @@ class SubscriptionStatusResponse(BaseModel):
         ),
     )
     proration_credit_cents: int  # unused portion of current sub to convert on upgrade
+    has_active_stripe_subscription: bool = Field(
+        default=False,
+        description=(
+            "True when the user has an active/trialing Stripe subscription. The"
+            " frontend uses this to branch upgrade UX: modify-in-place + saved-card"
+            " auto-charge when True, redirect to Stripe Checkout when False."
+        ),
+    )
+    current_period_end: Optional[int] = Field(
+        default=None,
+        description=(
+            "Unix timestamp of the active subscription's current_period_end. Used"
+            " to show the date Stripe will issue the next invoice (with prorated"
+            " upgrade charges, if any). None when no active sub."
+        ),
+    )
     pending_tier: Optional[Literal["BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
     url: str = Field(
@@ -839,7 +857,10 @@ async def get_subscription_status(
     }
 
     current_monthly_cost = tier_costs.get(tier.value, 0)
-    proration_credit = await get_proration_credit_cents(user_id, current_monthly_cost)
+    proration_credit, current_period_end = await asyncio.gather(
+        get_proration_credit_cents(user_id, current_monthly_cost),
+        get_active_subscription_period_end(user_id),
+    )
 
     try:
         pending = await get_pending_subscription_change(user_id)
@@ -861,6 +882,8 @@ async def get_subscription_status(
         tier_costs=tier_costs,
         tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
+        has_active_stripe_subscription=current_period_end is not None,
+        current_period_end=current_period_end,
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at = pending
@@ -1121,6 +1144,9 @@ async def stripe_webhook(request: Request):
         "subscription_schedule.completed",
     ):
         await sync_subscription_schedule_from_stripe(data_object)
+
+    if event_type == "invoice.payment_succeeded":
+        await handle_subscription_payment_success(data_object)
 
     if event_type == "invoice.payment_failed":
         await handle_subscription_payment_failure(data_object)

@@ -82,12 +82,19 @@ export function useSubscriptionTierSection() {
         return;
       }
       await refetch();
+      const currentIdx = subscription
+        ? TIER_ORDER.indexOf(subscription.tier)
+        : -1;
+      const targetIdx = TIER_ORDER.indexOf(tier);
+      const isDowngrade = targetIdx >= 0 && targetIdx < currentIdx;
       toast({
         title: "Subscription updated",
         description:
           tier === "BASIC"
-            ? "Your plan will be downgraded to Basic at the end of your current billing period."
-            : "Your subscription has been updated.",
+            ? "Your plan will be downgraded to Basic at the end of your current billing period; no further charges."
+            : isDowngrade
+              ? `Your plan will be downgraded to ${tier} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
+              : `Upgraded to ${tier}. Stripe will charge the prorated difference to your saved card on the next invoice; the corresponding credits land in your AutoGPT balance once the charge clears.`,
       });
     } catch (e: unknown) {
       const msg =

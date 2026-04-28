@@ -15,6 +15,7 @@ from backend.data.credit import (
     get_pending_subscription_change,
     get_proration_credit_cents,
     handle_subscription_payment_failure,
+    handle_subscription_payment_success,
     is_tier_downgrade,
     is_tier_upgrade,
     modify_stripe_subscription_for_tier,
@@ -1365,6 +1366,79 @@ async def test_handle_subscription_payment_failure_passes_invoice_id_as_transact
         mock_add_tx.assert_called_once()
         _, kwargs = mock_add_tx.call_args
         assert kwargs.get("transaction_key") == "in_idempotency_test"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_grants_credits():
+    """A paid subscription invoice grants credits = amount_paid, keyed by invoice_id."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_abc123",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "billing_reason": "subscription_cycle",
+    }
+
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+
+    add_tx_mock.assert_awaited_once()
+    kwargs = add_tx_mock.await_args.kwargs
+    assert kwargs["amount"] == 5000
+    assert kwargs["transaction_key"] == "INVOICE-in_abc123"
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_non_subscription_invoice():
+    """Invoices with no subscription field (one-off invoices) are no-ops."""
+    invoice = {
+        "id": "in_abc123",
+        "customer": "cus_123",
+        "amount_paid": 5000,
+        # No 'subscription' field
+    }
+
+    prisma_mock = MagicMock()
+    with patch("backend.data.credit.User.prisma", return_value=prisma_mock):
+        await handle_subscription_payment_success(invoice)
+    prisma_mock.find_first.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_zero_amount():
+    """Zero-amount invoices (card validation, $0 trials) are no-ops."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_abc123",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 0,
+    }
+
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
