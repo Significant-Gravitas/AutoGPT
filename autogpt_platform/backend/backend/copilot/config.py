@@ -567,12 +567,12 @@ class ChatConfig(BaseSettings):
 
         Skipped when ``use_claude_code_subscription=True`` because the
         subscription path normally resolves the static config to ``None``
-        (CLI default).  An LD-served override under subscription does
-        flow through ``_normalize_model_name``, but the runtime guard
-        there catches a non-Anthropic vendor and falls back to the tier
-        default — surfacing the misconfig in logs without 500-ing the
-        turn.  Empty fallback strings are also skipped (no fallback
-        configured).
+        (CLI default). An LD-served override under subscription does
+        flow through ``_normalize_model_name``; the runtime guard first
+        falls back to the tier default, and only avoids a request error
+        when that default is itself valid (otherwise the original LD
+        ValueError is re-raised — see ``_resolve_sdk_model_for_request``).
+        Empty fallback strings are also skipped (no fallback configured).
         """
         if self.use_claude_code_subscription:
             return self
