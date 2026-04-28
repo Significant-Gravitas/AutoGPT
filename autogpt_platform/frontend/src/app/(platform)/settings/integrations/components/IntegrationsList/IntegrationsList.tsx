@@ -152,9 +152,9 @@ export function IntegrationsList() {
       ) : (
         <motion.div
           className="flex flex-col gap-3 pb-4"
-          initial="hidden"
-          animate="show"
-          variants={LIST_CONTAINER_VARIANTS}
+          initial={reduceMotion ? false : "hidden"}
+          animate={reduceMotion ? undefined : "show"}
+          variants={reduceMotion ? undefined : LIST_CONTAINER_VARIANTS}
         >
           {providers.map((provider) => (
             <motion.div

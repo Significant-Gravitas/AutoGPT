@@ -34,9 +34,9 @@ export function IntegrationsListSkeleton() {
       className="flex flex-col gap-3"
       aria-busy="true"
       aria-label="Loading integrations"
-      initial="hidden"
-      animate="show"
-      variants={SKELETON_CONTAINER_VARIANTS}
+      initial={reduceMotion ? false : "hidden"}
+      animate={reduceMotion ? undefined : "show"}
+      variants={reduceMotion ? undefined : SKELETON_CONTAINER_VARIANTS}
     >
       {[0, 1, 2].map((i) => (
         <motion.div
