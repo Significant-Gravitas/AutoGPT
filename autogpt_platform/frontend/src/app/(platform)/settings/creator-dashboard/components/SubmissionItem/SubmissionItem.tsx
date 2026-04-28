@@ -25,11 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 
-import {
-  STATUS_VISUAL,
-  formatRuns,
-  formatSubmittedAt,
-} from "../../helpers";
+import { STATUS_VISUAL, formatRuns, formatSubmittedAt } from "../../helpers";
 import { useSubmissionItem } from "./useSubmissionItem";
 
 interface EditPayload extends StoreSubmissionEditRequest {
@@ -74,7 +70,7 @@ export function SubmissionItem({
       data-agent-id={submission.graph_id}
       data-submission-id={submission.listing_version_id}
       data-selected={selected}
-      className="border-b border-zinc-100 transition-colors duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] last:border-b-0 hover:bg-zinc-50/60 data-[selected=true]:bg-zinc-100"
+      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 data-[selected=true]:bg-zinc-100 hover:bg-zinc-50/60"
     >
       <td className="w-[48px] px-3 py-3 align-middle">
         {canModify ? (
@@ -124,7 +120,11 @@ export function SubmissionItem({
               >
                 {submission.name}
               </Text>
-              <Text variant="small" as="span" className="shrink-0 text-zinc-600">
+              <Text
+                variant="small"
+                as="span"
+                className="shrink-0 text-zinc-600"
+              >
                 v{submission.graph_version}
               </Text>
             </div>
@@ -174,7 +174,7 @@ export function SubmissionItem({
               type="button"
               aria-label="Submission actions"
               data-testid="submission-actions"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="ease-[cubic-bezier(0.16,1,0.3,1)] inline-flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 transition-[background-color,color,transform] duration-150 hover:bg-zinc-100 hover:text-zinc-900 active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <DotsThreeVerticalIcon size={18} weight="bold" />
             </button>
@@ -182,7 +182,7 @@ export function SubmissionItem({
           <DropdownMenuContent
             align="end"
             sideOffset={6}
-            className="min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=open]:duration-200 data-[state=closed]:duration-150 data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)] motion-reduce:!duration-100"
+            className="data-[state=open]:ease-[cubic-bezier(0.16,1,0.3,1)] data-[state=closed]:ease-[cubic-bezier(0.4,0,1,1)] min-w-[160px] origin-[var(--radix-dropdown-menu-content-transform-origin)] data-[state=closed]:duration-150 data-[state=open]:duration-200 motion-reduce:!duration-100"
           >
             {canModify ? (
               <DropdownMenuItem

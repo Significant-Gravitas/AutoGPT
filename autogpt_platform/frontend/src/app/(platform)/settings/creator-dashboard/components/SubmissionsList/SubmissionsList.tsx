@@ -148,7 +148,11 @@ export function SubmissionsList({
           <table className="w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-zinc-100 bg-zinc-50/60">
-                <th scope="col" className="w-[48px] px-3 py-3" aria-label="Select" />
+                <th
+                  scope="col"
+                  className="w-[48px] px-3 py-3"
+                  aria-label="Select"
+                />
                 <ColumnHeader label="Agent" />
                 <ColumnHeader
                   label="Status"
@@ -217,7 +221,9 @@ export function SubmissionsList({
                   <SubmissionItem
                     key={submission.listing_version_id}
                     submission={submission}
-                    selected={selection.isSelected(submission.listing_version_id)}
+                    selected={selection.isSelected(
+                      submission.listing_version_id,
+                    )}
                     onToggleSelected={() =>
                       selection.toggle(submission.listing_version_id)
                     }

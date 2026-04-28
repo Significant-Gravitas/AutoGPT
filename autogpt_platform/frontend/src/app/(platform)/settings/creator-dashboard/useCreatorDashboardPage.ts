@@ -52,9 +52,8 @@ export function useCreatorDashboardPage() {
     submission: null,
   });
 
-  const [filterState, setFilterState] = useState<FilterState>(
-    INITIAL_FILTER_STATE,
-  );
+  const [filterState, setFilterState] =
+    useState<FilterState>(INITIAL_FILTER_STATE);
 
   const {
     data: response,

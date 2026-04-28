@@ -42,7 +42,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   aria-pressed={checked}
                   className={cn(
                     "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left",
-                    "transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,transform] duration-150",
                     "active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100",
                     checked ? "bg-violet-50" : "hover:bg-zinc-100",
                   )}
@@ -55,7 +55,7 @@ export function StatusColumnFilter({ value, onChange }: Props) {
                   <span
                     className={cn(
                       "flex h-4 w-4 items-center justify-center rounded-[4px] border",
-                      "transition-[background-color,border-color,transform] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                      "ease-[cubic-bezier(0.16,1,0.3,1)] transition-[background-color,border-color,transform] duration-200",
                       checked
                         ? "scale-100 border-violet-600 bg-violet-600 text-white"
                         : "scale-95 border-zinc-300 bg-white text-transparent",

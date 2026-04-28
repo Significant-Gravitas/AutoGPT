@@ -12,7 +12,9 @@ import { EASE_OUT } from "../../helpers";
 interface PublishState {
   isOpen: boolean;
   step: "select" | "info" | "review";
-  submissionData: import("@/app/api/__generated__/models/storeSubmission").StoreSubmission | null;
+  submissionData:
+    | import("@/app/api/__generated__/models/storeSubmission").StoreSubmission
+    | null;
 }
 
 interface Props {
@@ -33,7 +35,7 @@ export function DashboardHeader({
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
       transition={reduceMotion ? undefined : { duration: 0.32, ease: EASE_OUT }}
-      className="flex flex-col gap-5 pl-4 pr-1 pb-2 md:flex-row md:items-end md:justify-between"
+      className="flex flex-col gap-5 pb-2 pl-4 pr-1 md:flex-row md:items-end md:justify-between"
     >
       <div className="flex min-w-0 flex-col">
         <Text variant="h4" as="h1" className="leading-[28px] text-textBlack">

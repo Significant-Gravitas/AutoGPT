@@ -25,11 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 
-import {
-  STATUS_VISUAL,
-  formatRuns,
-  formatSubmittedAt,
-} from "../../helpers";
+import { STATUS_VISUAL, formatRuns, formatSubmittedAt } from "../../helpers";
 import { useSubmissionItem } from "../SubmissionItem/useSubmissionItem";
 
 interface EditPayload extends StoreSubmissionEditRequest {
@@ -151,7 +147,11 @@ export function MobileSubmissionItem({
               <DotsThreeVerticalIcon size={18} weight="bold" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" sideOffset={6} className="min-w-[160px]">
+          <DropdownMenuContent
+            align="end"
+            sideOffset={6}
+            className="min-w-[160px]"
+          >
             {canModify ? (
               <DropdownMenuItem
                 onSelect={handleEdit}
@@ -195,13 +195,17 @@ export function MobileSubmissionItem({
         <span className="whitespace-nowrap text-xs text-zinc-500">
           {formatSubmittedAt(submission.submitted_at)}
         </span>
-        <span aria-hidden className="text-xs text-zinc-300">·</span>
+        <span aria-hidden className="text-xs text-zinc-300">
+          ·
+        </span>
         <span className="whitespace-nowrap text-xs tabular-nums text-zinc-500">
           {formatRuns(submission.run_count ?? 0)} runs
         </span>
         {hasRating ? (
           <>
-            <span aria-hidden className="text-xs text-zinc-300">·</span>
+            <span aria-hidden className="text-xs text-zinc-300">
+              ·
+            </span>
             <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-zinc-500">
               {submission.review_avg_rating!.toFixed(1)}
               <StarIcon size={10} weight="fill" className="text-amber-500" />
