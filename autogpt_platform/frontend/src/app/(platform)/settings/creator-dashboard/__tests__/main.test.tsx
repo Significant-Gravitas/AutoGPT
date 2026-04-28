@@ -192,7 +192,7 @@ describe("SettingsCreatorDashboardPage", () => {
     ).toBeGreaterThan(0);
   });
 
-  test("filters submissions by name via the dashboard hook state", async () => {
+  test("renders both pending and approved submissions in the list", async () => {
     server.use(
       getGetV2ListMySubmissionsMockHandler(
         makeResponse([

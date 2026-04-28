@@ -36,7 +36,8 @@ export function useSubmissionSelection(selectableIds: string[]) {
     selectedIds,
     selectedCount: selectedIds.size,
     allSelected:
-      selectableIds.length > 0 && selectedIds.size === selectableIds.length,
+      selectableIds.length > 0 &&
+      selectableIds.every((id) => selectedIds.has(id)),
     isSelected: (id: string) => selectedIds.has(id),
     toggle,
     selectAll,
