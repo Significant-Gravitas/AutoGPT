@@ -3,6 +3,7 @@ import { NetworkStatusMonitor } from "@/services/network-status/NetworkStatusMon
 import { ReactNode } from "react";
 import { AdminImpersonationBanner } from "./admin/components/AdminImpersonationBanner";
 import { AutoPilotBridgeProvider } from "@/contexts/AutoPilotBridgeContext";
+import { PaywallGate } from "./PaywallGate/PaywallGate";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
@@ -11,7 +12,9 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         <NetworkStatusMonitor />
         <Navbar />
         <AdminImpersonationBanner />
-        <section className="flex-1">{children}</section>
+        <section className="flex-1">
+          <PaywallGate>{children}</PaywallGate>
+        </section>
       </main>
     </AutoPilotBridgeProvider>
   );

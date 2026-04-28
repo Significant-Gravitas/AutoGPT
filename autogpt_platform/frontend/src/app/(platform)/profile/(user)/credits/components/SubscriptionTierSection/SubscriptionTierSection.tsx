@@ -120,9 +120,25 @@ export function SubscriptionTierSection() {
     handleTierChange(targetTierKey, currentTier, setConfirmDowngradeTo);
   }
 
+  const needsSubscription =
+    isPaymentEnabled && !subscription.has_active_stripe_subscription;
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">Subscription Plan</h3>
+
+      {needsSubscription && (
+        <div
+          role="alert"
+          className="rounded-md border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
+        >
+          <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
+          <p className="mt-1">
+            Your account doesn&apos;t have an active subscription. Choose a tier
+            below to unlock AutoPilot and start running agents.
+          </p>
+        </div>
+      )}
 
       {tierError && (
         <p
