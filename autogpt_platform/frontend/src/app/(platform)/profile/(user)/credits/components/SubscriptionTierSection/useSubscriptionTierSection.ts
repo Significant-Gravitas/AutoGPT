@@ -8,6 +8,7 @@ import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { getTierLabel } from "./helpers";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
@@ -93,8 +94,8 @@ export function useSubscriptionTierSection() {
           tier === "BASIC"
             ? "Your plan will be downgraded to Basic at the end of your current billing period; no further charges."
             : isDowngrade
-              ? `Your plan will be downgraded to ${tier} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
-              : `Upgraded to ${tier}. On the next invoice your saved card is charged for the upgrade proration plus the next month at the new rate; matching credits land in your AutoGPT balance once Stripe confirms the charge.`,
+              ? `Your plan will be downgraded to ${getTierLabel(tier)} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
+              : `Upgraded to ${getTierLabel(tier)}. On the next invoice your saved card is charged for the upgrade proration plus the next month at the new rate; matching credits land in your AutoGPT balance once Stripe confirms the charge.`,
       });
     } catch (e: unknown) {
       const msg =
