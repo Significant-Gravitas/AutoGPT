@@ -969,8 +969,8 @@ class UserCredit(UserCreditBase):
             ],
             mode="payment",
             ui_mode="hosted",
-            # Pin to card-only: matches create_subscription_checkout() — see the
-            # comment there for why Stripe Link's email-auth gate breaks the flow.
+            # Skip Stripe Link's email-auth gate that loops the customer back to
+            # /profile/credits without paying.
             payment_method_types=["card"],
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
@@ -1985,11 +1985,8 @@ async def create_subscription_checkout(
         stripe.checkout.Session.create,
         customer=customer_id,
         mode="subscription",
-        # Pin to card-only: when the customer's email is registered with Stripe Link,
-        # the default mix of payment methods makes Checkout open a Link auth gate
-        # ("Check your email for your login link") that diverts the user to Link's
-        # saved-method UI instead of completing the subscription, looping them back
-        # to /profile/credits without paying.
+        # Skip Stripe Link's email-auth gate that diverts to its saved-method UI
+        # instead of completing the subscription.
         payment_method_types=["card"],
         line_items=[{"price": price_id, "quantity": 1}],
         success_url=success_url,
