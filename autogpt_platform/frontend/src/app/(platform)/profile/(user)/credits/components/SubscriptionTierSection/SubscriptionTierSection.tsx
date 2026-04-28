@@ -120,8 +120,10 @@ export function SubscriptionTierSection() {
     handleTierChange(targetTierKey, currentTier, setConfirmDowngradeTo);
   }
 
-  const needsSubscription =
-    isPaymentEnabled && !subscription.has_active_stripe_subscription;
+  // Gate the "Pick a plan" banner on the DB tier rather than
+  // has_active_stripe_subscription so a transient Stripe outage doesn't show
+  // the banner to active subscribers. Same rationale as PaywallGate.
+  const needsSubscription = isPaymentEnabled && subscription.tier === "BASIC";
 
   return (
     <div className="space-y-4">

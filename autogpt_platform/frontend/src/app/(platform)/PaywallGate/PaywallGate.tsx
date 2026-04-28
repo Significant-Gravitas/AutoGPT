@@ -40,7 +40,12 @@ export function PaywallGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isPaymentEnabled || isLoading || isExempt) return;
     if (!subscription) return;
-    if (subscription.has_active_stripe_subscription) return;
+    // Gate on the DB tier rather than has_active_stripe_subscription so a
+    // transient Stripe outage (which would set the latter to False even for
+    // active subscribers) doesn't lock out paying users. The DB tier is set
+    // by Stripe webhooks and persists; only fresh users without any tier
+    // change land on BASIC.
+    if (subscription.tier !== "BASIC") return;
     router.replace(PAYWALL_PATH);
   }, [isPaymentEnabled, isLoading, isExempt, subscription, router]);
 
