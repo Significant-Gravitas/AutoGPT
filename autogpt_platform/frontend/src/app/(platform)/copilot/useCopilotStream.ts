@@ -23,7 +23,6 @@ import {
 import { useCopilotUIStore } from "./store";
 import type { CopilotLlmModel, CopilotMode } from "./store";
 import { useHydrateOnStreamEnd } from "./useHydrateOnStreamEnd";
-import { useStreamActivityWatchdog } from "./useStreamActivityWatchdog";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_ATTEMPTS = 3;
@@ -367,23 +366,6 @@ export function useCopilotStream({
     () => deduplicateMessages(rawMessages),
     [rawMessages],
   );
-
-  // SSE may sit open with no data events while the backend is silently wedged;
-  // route a long inactivity gap through the existing reconnect cascade.
-  const handleReconnectRef = useRef(handleReconnect);
-  handleReconnectRef.current = handleReconnect;
-  const activityToken = useMemo(() => {
-    const last = rawMessages[rawMessages.length - 1];
-    return `${rawMessages.length}:${last?.parts?.length ?? 0}`;
-  }, [rawMessages]);
-  useStreamActivityWatchdog({
-    sessionId,
-    status,
-    activityToken,
-    isReconnectScheduled,
-    isUserStoppingRef,
-    handleReconnectRef,
-  });
 
   // Wrap AI SDK's stop() to also cancel the backend executor task.
   // sdkStop() aborts the SSE fetch instantly (UI feedback), then we fire
