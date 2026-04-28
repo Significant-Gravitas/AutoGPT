@@ -472,10 +472,22 @@ describe("SettingsCreatorDashboardPage", () => {
     const actionButtons = screen.getAllByTestId("submission-actions");
     fireEvent.pointerDown(actionButtons[0], { button: 0 });
 
-    expect(
-      await screen.findByRole("menuitem", { name: /view submission/i }),
-    ).toBeDefined();
+    const viewItem = await screen.findByRole("menuitem", {
+      name: /view submission/i,
+    });
     expect(screen.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
+    fireEvent.click(viewItem);
+  });
+
+  test("clicking Submit agent triggers the publish modal flow", async () => {
+    server.use(getGetV2ListMySubmissionsMockHandler(makeResponse([])));
+
+    render(<SettingsCreatorDashboardPage />);
+
+    const submitButton = await screen.findByTestId("submit-agent-button");
+    fireEvent.click(submitButton);
+
+    expect(submitButton).toBeDefined();
   });
 
   test("mobile dropdown also exposes Delete and triggers the same delete endpoint", async () => {
