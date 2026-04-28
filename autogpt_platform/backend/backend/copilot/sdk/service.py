@@ -193,6 +193,14 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # idle of 2× that genuinely means the SDK itself is stuck.
 _IDLE_TIMEOUT_SECONDS = STREAM_IDLE_TIMEOUT_SECONDS
 
+# StreamError codes that should render as a retryable error in the UI (retry
+# button) rather than a terminal ErrorCard. Codes appended via
+# ``_append_error_marker`` directly already pass ``retryable=True``; this set
+# covers the codes that flow through the adapter -> ``_dispatch_response``.
+_RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
+    {"transient_api_error", "empty_completion"}
+)
+
 
 # Event types that are ephemeral / cosmetic and must NOT be counted toward
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
@@ -2026,7 +2034,7 @@ def _dispatch_response(
         _append_error_marker(
             ctx.session,
             response.errorText,
-            retryable=(response.code == "transient_api_error"),
+            retryable=response.code in _RETRYABLE_STREAM_ERROR_CODES,
         )
 
     if isinstance(response, StreamReasoningStart):
