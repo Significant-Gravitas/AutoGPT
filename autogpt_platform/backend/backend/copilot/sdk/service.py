@@ -202,6 +202,7 @@ def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
         return _HUNG_TOOL_CAP_SECONDS
     return _IDLE_TIMEOUT_SECONDS
 
+
 # StreamError codes that should render as a retryable error in the UI (retry
 # button) rather than a terminal ErrorCard. Codes appended via
 # ``_append_error_marker`` directly already pass ``retryable=True``; this set
