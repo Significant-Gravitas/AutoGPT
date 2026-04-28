@@ -197,7 +197,7 @@ describe("SubscriptionTierSection", () => {
     expect(screen.getByText("Free")).toBeDefined();
   });
 
-  it("shows 'Pricing available soon' when tier cost is 0 for a paid tier", () => {
+  it("shows 'Free' for any tier with cost = 0", () => {
     setupMocks({
       subscription: makeSubscription({
         tier: "BASIC",
@@ -205,8 +205,8 @@ describe("SubscriptionTierSection", () => {
       }),
     });
     render(<SubscriptionTierSection />);
-    // PRO and MAX with cost=0 should show "Pricing available soon"
-    expect(screen.getAllByText("Pricing available soon")).toHaveLength(2);
+    // BASIC, PRO, MAX all with cost=0 should each render "Free".
+    expect(screen.getAllByText("Free")).toHaveLength(3);
   });
 
   it("calls changeTier on upgrade click after confirmation dialog", async () => {
@@ -533,11 +533,12 @@ describe("SubscriptionTierSection", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toMatch(
-      /switching to pro will take effect at the end of your current billing period/i,
+      /switching to pro takes effect at the end of your current billing period/i,
     );
     expect(dialog.textContent).toMatch(
       /you keep your current plan until then/i,
     );
+    expect(dialog.textContent).toMatch(/no charge today/i);
     expect(dialog.textContent).not.toMatch(/take effect immediately/i);
   });
 

@@ -10,21 +10,15 @@ import {
 } from "./helpers";
 
 describe("formatCost", () => {
-  it("returns 'Free' only when BASIC actually costs $0", () => {
+  it("returns 'Free' for any tier with cost = 0", () => {
     expect(formatCost(0, "BASIC")).toBe("Free");
+    expect(formatCost(0, "PRO")).toBe("Free");
+    expect(formatCost(0, "MAX")).toBe("Free");
+    expect(formatCost(0, "BUSINESS")).toBe("Free");
   });
 
-  it("formats BASIC to a dollars-per-month string when LD sets a non-zero price", () => {
+  it("formats cents to a dollars-per-month string for any non-zero cost", () => {
     expect(formatCost(999, "BASIC")).toBe("$9.99/mo");
-  });
-
-  it("returns a placeholder when paid tier has no price yet", () => {
-    expect(formatCost(0, "PRO")).toBe("Pricing available soon");
-    expect(formatCost(0, "MAX")).toBe("Pricing available soon");
-    expect(formatCost(0, "BUSINESS")).toBe("Pricing available soon");
-  });
-
-  it("formats cents to a dollars-per-month string for paid tiers", () => {
     expect(formatCost(999, "PRO")).toBe("$9.99/mo");
     expect(formatCost(32000, "MAX")).toBe("$320.00/mo");
     expect(formatCost(4900, "BUSINESS")).toBe("$49.00/mo");
