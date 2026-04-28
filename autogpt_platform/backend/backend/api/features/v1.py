@@ -926,7 +926,6 @@ async def update_subscription_tier(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
-    current_tier = user.subscription_tier or SubscriptionTier.BASIC
     target_price_id = await get_subscription_price_id(tier)
 
     # Legacy cancel: target BASIC + stripe-price-id-basic unset. Schedule Stripe
@@ -992,13 +991,6 @@ async def update_subscription_tier(
                 "Please try again or contact support."
             ),
         )
-
-    # No active Stripe sub. Admin-granted paid tiers (PRO/BUSINESS without a Stripe
-    # record) flip in the DB — they aren't paying via Stripe so there's no charge
-    # to set up. BASIC users without a sub fall through to Checkout to set up payment.
-    if current_tier != SubscriptionTier.BASIC:
-        await set_subscription_tier(user_id, tier)
-        return await get_subscription_status(user_id)
 
     # No active Stripe subscription → create Stripe Checkout Session.
     if not request.success_url or not request.cancel_url:

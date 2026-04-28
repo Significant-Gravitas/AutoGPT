@@ -936,15 +936,16 @@ def test_update_subscription_tier_max_checkout(
     checkout_mock.assert_not_awaited()
 
 
-def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly(
+def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Admin-granted paid tier users are NOT sent to Stripe checkout for paid→paid changes.
+    """Any tier change from a user with no active Stripe sub goes through Checkout.
 
-    When modify_stripe_subscription_for_tier returns False (no Stripe subscription
-    found — admin-granted tier), the endpoint must update the DB tier directly and
-    return 200 with url="", rather than falling through to Checkout Session creation.
+    Admin-granted users (no Stripe sub yet) and never-paid users follow the
+    exact same path: modify returns False → Checkout to set up payment. The
+    endpoint has no admin-specific branch — admin tier grants happen out-of-band
+    via the admin portal, not this user-facing route.
     """
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
@@ -969,7 +970,6 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
         new_callable=AsyncMock,
         return_value=True,
     )
-    # Return False = no Stripe subscription (admin-granted tier)
     modify_mock = mocker.patch(
         "backend.api.features.v1.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -982,6 +982,7 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
     checkout_mock = mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
         new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_no_sub",
     )
 
     response = client.post(
@@ -994,68 +995,11 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
     )
 
     assert response.status_code == 200
-    assert response.json()["url"] == ""
+    assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_no_sub"
     modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
-    # DB tier updated directly — no Stripe Checkout Session created
-    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
-    checkout_mock.assert_not_awaited()
-
-
-def test_update_subscription_tier_admin_granted_unpriced_tier_downgrades_via_db_flip(
-    client: fastapi.testclient.TestClient,
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    """Regression: admin-granted user on a tier pruned from the price-id flag must
-    still downgrade via DB-flip, not via Checkout.
-
-    Repro: BUSINESS removed from stripe-price-ids LD flag. An admin-granted
-    BUSINESS user clicks "Downgrade to Pro". The previous shape gated the
-    modify-or-DB-flip block on `current_tier_price_id is not None`, so BUSINESS
-    (price=None) skipped the whole block and the request fell through to
-    Checkout — sending the user to a paid-signup flow when they were trying to
-    reduce their tier.
-    """
-    mock_user = Mock()
-    mock_user.subscription_tier = SubscriptionTier.BUSINESS
-
-    mocker.patch(
-        "backend.api.features.v1.get_user_by_id",
-        new_callable=AsyncMock,
-        return_value=mock_user,
-    )
-    mocker.patch(
-        "backend.api.features.v1.is_feature_enabled",
-        new_callable=AsyncMock,
-        return_value=True,
-    )
-    modify_mock = mocker.patch(
-        "backend.api.features.v1.modify_stripe_subscription_for_tier",
-        new_callable=AsyncMock,
-        return_value=False,
-    )
-    set_tier_mock = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
-        new_callable=AsyncMock,
-    )
-    checkout_mock = mocker.patch(
-        "backend.api.features.v1.create_subscription_checkout",
-        new_callable=AsyncMock,
-    )
-
-    response = client.post(
-        "/credits/subscription",
-        json={
-            "tier": "PRO",
-            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
-            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["url"] == ""
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
-    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
-    checkout_mock.assert_not_awaited()
+    # No DB-flip — payment must be collected via Checkout regardless of direction.
+    set_tier_mock.assert_not_awaited()
+    checkout_mock.assert_awaited_once()
 
 
 def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
