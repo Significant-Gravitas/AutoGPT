@@ -153,28 +153,15 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
-    def __init__(self):
-        self._pubsub: AsyncPubSub | None = None
-        self._pubsub_client: "AsyncRedis | None" = None
-
     async def close(self) -> None:
-        """Close the shard-pinned PubSub connection if one was opened."""
-        if self._pubsub is not None:
-            try:
-                await self._pubsub.aclose()
-            except Exception:
-                logger.warning("Failed to close PubSub connection", exc_info=True)
-            finally:
-                self._pubsub = None
-        if self._pubsub_client is not None:
-            try:
-                await self._pubsub_client.aclose()
-            except Exception:
-                logger.warning(
-                    "Failed to close shard-pinned Redis connection", exc_info=True
-                )
-            finally:
-                self._pubsub_client = None
+        """No-op kept for backward compatibility.
+
+        Earlier revisions of this class stored the per-listen pubsub on the
+        instance, requiring an external close. ``listen_events`` now owns its
+        own client/pubsub locally so concurrent calls on a singleton (e.g.
+        ``_webhook_event_bus``) cannot clobber each other's connection.
+        """
+        return None
 
     async def publish_event(self, event: M, channel_key: str):
         """Publish via SPUBLISH; swallow failures so Redis blips don't crash callers."""
@@ -192,11 +179,13 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         full_channel_name = self._build_channel_name(channel_key)
 
         # Sharded pub/sub only delivers on the keyslot-owning shard, so pin
-        # a plain AsyncRedis to that node.
-        client = await redis.connect_sharded_pubsub_async(full_channel_name)
-        self._pubsub_client = client
-        pubsub = client.pubsub()
-        self._pubsub = pubsub
+        # a plain AsyncRedis to that node. Both client and pubsub stay
+        # generator-local — concurrent listen_events on the same instance
+        # (e.g. the singleton _webhook_event_bus) must not share state.
+        client: "AsyncRedis" = await redis.connect_sharded_pubsub_async(
+            full_channel_name
+        )
+        pubsub: AsyncPubSub = client.pubsub()
         try:
             await pubsub.execute_command("SSUBSCRIBE", full_channel_name)
             # redis-py 6.x async PubSub.listen() exits when ``channels`` is
@@ -206,7 +195,16 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
                 if event := self._deserialize_message(message, channel_key):
                     yield event
         finally:
-            await self.close()
+            try:
+                await pubsub.aclose()
+            except Exception:
+                logger.warning("Failed to close PubSub connection", exc_info=True)
+            try:
+                await client.aclose()
+            except Exception:
+                logger.warning(
+                    "Failed to close shard-pinned Redis connection", exc_info=True
+                )
 
     async def wait_for_event(
         self, channel_key: str, timeout: Optional[float] = None

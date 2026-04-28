@@ -1,5 +1,6 @@
 """Tests for event_bus publish/listen paths."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -370,46 +371,106 @@ def test_sync_listen_events_teardown_swallows_sunsubscribe_errors():
 
 
 @pytest.mark.asyncio
-async def test_async_close_releases_pubsub_and_client():
-    """close() must aclose() both the pubsub AND the shard-pinned client."""
+async def test_async_close_is_noop():
+    """close() is a backward-compat no-op now that listen_events owns its own state."""
     bus = _BusUnderTest()
-    fake_pubsub = MagicMock()
-    fake_pubsub.aclose = AsyncMock()
-    fake_client = MagicMock()
-    fake_client.aclose = AsyncMock()
-    bus._pubsub = fake_pubsub
-    bus._pubsub_client = fake_client
-
+    # Repeated calls must not crash; pubsub/client are generator-locals.
+    await bus.close()
     await bus.close()
 
+
+@pytest.mark.asyncio
+async def test_async_listen_events_swallows_aclose_errors():
+    """Broken pubsub.aclose / client.aclose must not propagate to the caller."""
+    bus = _BusUnderTest()
+
+    fake_pubsub = MagicMock()
+    fake_pubsub.execute_command = AsyncMock()
+    fake_pubsub.channels = {}
+    fake_pubsub.aclose = AsyncMock(side_effect=RuntimeError("pubsub broke"))
+
+    async def _listen():
+        return
+        yield  # pragma: no cover — unreachable
+
+    fake_pubsub.listen = _listen
+
+    fake_client = MagicMock()
+    fake_client.pubsub = MagicMock(return_value=fake_pubsub)
+    fake_client.aclose = AsyncMock(side_effect=RuntimeError("client broke"))
+
+    with patch(
+        "backend.data.event_bus.redis.connect_sharded_pubsub_async",
+        AsyncMock(return_value=fake_client),
+    ):
+        async for _ in bus.listen_events("chan"):
+            pass  # pragma: no cover — never yields
+
+    # Both aclose attempts must have run despite raising.
     fake_pubsub.aclose.assert_awaited_once()
     fake_client.aclose.assert_awaited_once()
-    assert bus._pubsub is None
-    assert bus._pubsub_client is None
 
 
 @pytest.mark.asyncio
-async def test_async_close_swallows_pubsub_aclose_errors():
-    """A broken pubsub must still let the client aclose run (no leak)."""
+async def test_async_listen_events_concurrent_does_not_share_state():
+    """Two concurrent listens on the same bus must keep their pubsub/client local."""
     bus = _BusUnderTest()
-    fake_pubsub = MagicMock()
-    fake_pubsub.aclose = AsyncMock(side_effect=RuntimeError("pubsub broke"))
-    fake_client = MagicMock()
-    fake_client.aclose = AsyncMock(side_effect=RuntimeError("client broke"))
-    bus._pubsub = fake_pubsub
-    bus._pubsub_client = fake_client
 
-    # Must not raise.
-    await bus.close()
-    assert bus._pubsub is None
-    assert bus._pubsub_client is None
+    pubsubs: list[MagicMock] = []
+    clients: list[MagicMock] = []
+    started = asyncio.Event()
+    proceed = asyncio.Event()
 
+    def _make_pair() -> tuple[MagicMock, MagicMock]:
+        pubsub = MagicMock()
+        pubsub.execute_command = AsyncMock()
+        pubsub.channels = {}
+        pubsub.aclose = AsyncMock()
 
-@pytest.mark.asyncio
-async def test_async_close_noop_when_nothing_open():
-    """Idempotent close is safe to call on a never-listened bus."""
-    bus = _BusUnderTest()
-    await bus.close()  # must not crash
+        async def _listen():
+            started.set()
+            await proceed.wait()
+            return
+            yield  # pragma: no cover — unreachable
+
+        pubsub.listen = _listen
+
+        client = MagicMock()
+        client.pubsub = MagicMock(return_value=pubsub)
+        client.aclose = AsyncMock()
+        pubsubs.append(pubsub)
+        clients.append(client)
+        return pubsub, client
+
+    async def _factory(_chan: str):
+        _, client = _make_pair()
+        return client
+
+    with patch(
+        "backend.data.event_bus.redis.connect_sharded_pubsub_async",
+        AsyncMock(side_effect=_factory),
+    ):
+
+        async def _run():
+            async for _ in bus.listen_events("chan"):
+                pass  # pragma: no cover — never yields
+
+        task_a = asyncio.create_task(_run())
+        task_b = asyncio.create_task(_run())
+        # Wait for both pumps to be parked inside listen() before unblocking.
+        await started.wait()
+        # Yield once more so the second task also enters listen().
+        await asyncio.sleep(0)
+        proceed.set()
+        await asyncio.gather(task_a, task_b)
+
+    # Each listen must have closed its OWN pubsub/client exactly once. If
+    # either was closed twice or zero times, the singleton race is back.
+    assert len(pubsubs) == 2
+    for pubsub in pubsubs:
+        pubsub.aclose.assert_awaited_once()
+    for client in clients:
+        client.aclose.assert_awaited_once()
 
 
 @pytest.mark.asyncio
