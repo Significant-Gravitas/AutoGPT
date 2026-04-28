@@ -521,6 +521,140 @@ describe("SettingsCreatorDashboardPage", () => {
     });
   });
 
+  test("status column filter popover toggles a status and reflects active state", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-1",
+            name: "Pending One",
+            status: SubmissionStatus.PENDING,
+          }),
+          makeSubmission({
+            listing_version_id: "lv-2",
+            name: "Approved One",
+            status: SubmissionStatus.APPROVED,
+          }),
+        ]),
+      ),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect((await screen.findAllByText("Pending One")).length).toBeGreaterThan(
+      0,
+    );
+
+    const filterTriggers = screen.getAllByRole("button", {
+      name: /filter status/i,
+    });
+    fireEvent.click(filterTriggers[0]);
+
+    const inReview = await screen.findByRole("button", {
+      name: /in review/i,
+      pressed: false,
+    });
+    fireEvent.click(inReview);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /in review/i, pressed: true }),
+      ).toBeDefined();
+    });
+
+    const clearButton = await screen.findByRole("button", { name: /^clear$/i });
+    fireEvent.click(clearButton);
+  });
+
+  test("sort column filter applies and clears a sort direction", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-a",
+            name: "Alpha",
+            status: SubmissionStatus.APPROVED,
+            run_count: 100,
+          }),
+          makeSubmission({
+            listing_version_id: "lv-b",
+            name: "Beta",
+            status: SubmissionStatus.APPROVED,
+            run_count: 500,
+          }),
+        ]),
+      ),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect((await screen.findAllByText("Alpha")).length).toBeGreaterThan(0);
+
+    const sortTriggers = screen.getAllByRole("button", {
+      name: /filter sort/i,
+    });
+    fireEvent.click(sortTriggers[0]);
+
+    const newestFirst = await screen.findByRole("button", {
+      name: /newest first/i,
+    });
+    fireEvent.click(newestFirst);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", {
+          name: /newest first/i,
+          pressed: true,
+        }),
+      ).toBeDefined();
+    });
+
+    const clearButton = await screen.findByRole("button", { name: /^clear$/i });
+    fireEvent.click(clearButton);
+  });
+
+  test("selection bar exposes Select All and Deselect controls", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-p1",
+            name: "Pending One",
+            status: SubmissionStatus.PENDING,
+          }),
+          makeSubmission({
+            listing_version_id: "lv-p2",
+            name: "Pending Two",
+            status: SubmissionStatus.PENDING,
+          }),
+        ]),
+      ),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    const firstCheckboxes = await screen.findAllByRole("checkbox", {
+      name: /select pending one/i,
+    });
+    fireEvent.click(firstCheckboxes[0]);
+
+    const selectAll = await screen.findByRole("button", {
+      name: /select all/i,
+    });
+    fireEvent.click(selectAll);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /select all/i })).toBeNull();
+    });
+
+    const deselect = screen.getByRole("button", { name: /^deselect$/i });
+    fireEvent.click(deselect);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /^deselect$/i })).toBeNull();
+    });
+  });
+
   test("selecting a pending submission shows the bulk selection bar", async () => {
     server.use(
       getGetV2ListMySubmissionsMockHandler(
