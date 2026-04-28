@@ -334,6 +334,11 @@ export function SubscriptionStep() {
   const isYearly = billing === "yearly";
 
   function handlePlanSelect(planKey: string) {
+        // Team plan opens the enterprise intake form
+    if (planKey === "ENTERPRISE") {
+      window.open("https://tally.so/r/2Eb9zj", "_blank");
+      return;
+    }
     // TODO: integrate with Stripe checkout / backend subscription API
     // For now, advance to the preparing step
     nextStep();
