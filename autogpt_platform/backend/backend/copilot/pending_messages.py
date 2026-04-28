@@ -158,8 +158,12 @@ async def push_pending_message_if_session_running(
         )
         return None
 
+    # Match push_pending_message: SPUBLISH via execute_command so it works on
+    # both Redis and AsyncRedisCluster (the cluster client has no publish()).
     try:
-        await redis.publish(_notify_channel(session_id), _NOTIFY_PAYLOAD)
+        await redis.execute_command(
+            "SPUBLISH", _notify_channel(session_id), _NOTIFY_PAYLOAD
+        )
     except Exception as e:  # pragma: no cover
         logger.warning("pending_messages: publish failed for %s: %s", session_id, e)
 
