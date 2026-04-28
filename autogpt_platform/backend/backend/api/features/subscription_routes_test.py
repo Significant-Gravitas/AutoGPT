@@ -404,6 +404,11 @@ def test_update_subscription_tier_paid_requires_urls(
         "backend.api.features.v1.is_feature_enabled",
         side_effect=mock_feature_enabled,
     )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
 
     response = client.post("/credits/subscription", json={"tier": "PRO"})
 
@@ -429,6 +434,11 @@ def test_update_subscription_tier_creates_checkout(
     mocker.patch(
         "backend.api.features.v1.is_feature_enabled",
         side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
@@ -468,6 +478,11 @@ def test_update_subscription_tier_rejects_open_redirect(
     mocker.patch(
         "backend.api.features.v1.is_feature_enabled",
         side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     checkout_mock = mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
@@ -983,6 +998,63 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
     modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
     # DB tier updated directly — no Stripe Checkout Session created
     set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
+    checkout_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_admin_granted_unpriced_tier_downgrades_via_db_flip(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Regression: admin-granted user on a tier pruned from the price-id flag must
+    still downgrade via DB-flip, not via Checkout.
+
+    Repro: BUSINESS removed from stripe-price-ids LD flag. An admin-granted
+    BUSINESS user clicks "Downgrade to Pro". The previous shape gated the
+    modify-or-DB-flip block on `current_tier_price_id is not None`, so BUSINESS
+    (price=None) skipped the whole block and the request fell through to
+    Checkout — sending the user to a paid-signup flow when they were trying to
+    reduce their tier.
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BUSINESS
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    set_tier_mock = mocker.patch(
+        "backend.api.features.v1.set_subscription_tier",
+        new_callable=AsyncMock,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == ""
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
+    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
     checkout_mock.assert_not_awaited()
 
 

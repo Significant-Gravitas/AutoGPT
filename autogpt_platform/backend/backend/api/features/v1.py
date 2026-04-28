@@ -927,10 +927,7 @@ async def update_subscription_tier(
     )
 
     current_tier = user.subscription_tier or SubscriptionTier.BASIC
-    target_price_id, current_tier_price_id = await asyncio.gather(
-        get_subscription_price_id(tier),
-        get_subscription_price_id(current_tier),
-    )
+    target_price_id = await get_subscription_price_id(tier)
 
     # Legacy cancel: target BASIC + stripe-price-id-basic unset. Schedule Stripe
     # cancellation at period end; cancel_at_period_end=True lets the webhook flip
@@ -973,32 +970,35 @@ async def update_subscription_tier(
             detail=f"Subscription not available for tier {tier.value}",
         )
 
-    # User has an active Stripe subscription (current tier has an LD price):
-    # modify it in-place. modify_stripe_subscription_for_tier returns False when no
-    # active sub exists — that's only a "DB-only flip is OK" signal for admin-granted
-    # paid tiers (PRO/BUSINESS with no Stripe record). Priced-BASIC users without a
-    # sub must still go through Checkout so they set up payment.
-    if current_tier_price_id is not None:
-        try:
-            modified = await modify_stripe_subscription_for_tier(user_id, tier)
-            if modified:
-                return await get_subscription_status(user_id)
-            if current_tier != SubscriptionTier.BASIC:
-                await set_subscription_tier(user_id, tier)
-                return await get_subscription_status(user_id)
-        except ValueError as e:
-            raise HTTPException(status_code=422, detail=str(e))
-        except stripe.StripeError as e:
-            logger.exception(
-                "Stripe error modifying subscription for user %s: %s", user_id, e
-            )
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "Unable to update your subscription right now. "
-                    "Please try again or contact support."
-                ),
-            )
+    # Try modifying an existing Stripe sub first. The function returns False when
+    # the user has no Stripe customer/active sub (admin-granted tier or first-time
+    # signup) — gating this on current_tier_price_id was the previous shape and
+    # silently broke admin-granted downgrades when a tier was pruned from the
+    # price-id flag (the price-id check then short-circuited the DB-flip below).
+    try:
+        modified = await modify_stripe_subscription_for_tier(user_id, tier)
+        if modified:
+            return await get_subscription_status(user_id)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except stripe.StripeError as e:
+        logger.exception(
+            "Stripe error modifying subscription for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to update your subscription right now. "
+                "Please try again or contact support."
+            ),
+        )
+
+    # No active Stripe sub. Admin-granted paid tiers (PRO/BUSINESS without a Stripe
+    # record) flip in the DB — they aren't paying via Stripe so there's no charge
+    # to set up. BASIC users without a sub fall through to Checkout to set up payment.
+    if current_tier != SubscriptionTier.BASIC:
+        await set_subscription_tier(user_id, tier)
+        return await get_subscription_status(user_id)
 
     # No active Stripe subscription → create Stripe Checkout Session.
     if not request.success_url or not request.cancel_url:

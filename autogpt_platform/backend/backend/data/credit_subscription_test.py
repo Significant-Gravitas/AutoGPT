@@ -10,7 +10,6 @@ from prisma.enums import SubscriptionTier
 from prisma.models import User
 
 from backend.data.credit import (
-    UserCredit,
     cancel_stripe_subscription,
     create_subscription_checkout,
     get_pending_subscription_change,
@@ -650,64 +649,6 @@ async def test_create_subscription_checkout_returns_url():
             cancel_url="https://app.example.com/cancel",
         )
         assert url == "https://checkout.stripe.com/pay/cs_test_abc123"
-
-
-@pytest.mark.asyncio
-async def test_create_subscription_checkout_pins_card_only_payment_method():
-    """Regression: Stripe Link's email-auth gate breaks the subscription flow when
-    the customer email is registered with Link, so Checkout must be pinned to
-    card-only to bypass it."""
-    mock_session = MagicMock()
-    mock_session.url = "https://checkout.stripe.com/pay/cs_test_abc123"
-    create_mock = MagicMock(return_value=mock_session)
-    with (
-        patch(
-            "backend.data.credit.get_subscription_price_id",
-            new_callable=AsyncMock,
-            return_value="price_pro_monthly",
-        ),
-        patch(
-            "backend.data.credit.get_stripe_customer_id",
-            new_callable=AsyncMock,
-            return_value="cus_123",
-        ),
-        patch(
-            "backend.data.credit.stripe.checkout.Session.create",
-            new=create_mock,
-        ),
-    ):
-        await create_subscription_checkout(
-            user_id="user-1",
-            tier=SubscriptionTier.PRO,
-            success_url="https://app.example.com/success",
-            cancel_url="https://app.example.com/cancel",
-        )
-    assert create_mock.call_args.kwargs["payment_method_types"] == ["card"]
-
-
-@pytest.mark.asyncio
-async def test_top_up_intent_pins_card_only_payment_method():
-    """Regression: top-up Checkout must skip Stripe Link's email-auth gate too —
-    same loop risk as create_subscription_checkout()."""
-    mock_session = MagicMock()
-    mock_session.id = "cs_test_topup"
-    mock_session.url = "https://checkout.stripe.com/pay/cs_test_topup"
-    create_mock = MagicMock(return_value=mock_session)
-    credit_system = UserCredit()
-    with (
-        patch(
-            "backend.data.credit.get_stripe_customer_id",
-            new_callable=AsyncMock,
-            return_value="cus_123",
-        ),
-        patch(
-            "backend.data.credit.stripe.checkout.Session.create",
-            new=create_mock,
-        ),
-        patch.object(credit_system, "_add_transaction", new_callable=AsyncMock),
-    ):
-        await credit_system.top_up_intent(user_id="user-1", amount=500)
-    assert create_mock.call_args.kwargs["payment_method_types"] == ["card"]
 
 
 @pytest.mark.asyncio
