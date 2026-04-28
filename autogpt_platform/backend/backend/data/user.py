@@ -510,10 +510,13 @@ async def update_user_timezone(user_id: str, timezone: str) -> User:
             raise ValueError(f"User not found with ID: {user_id}")
 
         # Invalidate user caches so subsequent reads see the new timezone.
-        # get_user_by_id is keyed by user_id and can be deleted surgically;
-        # get_or_create_user is keyed by the JWT-payload dict so we can't
-        # delete a single entry — clear it entirely.
+        # get_user_by_id and get_user_by_email are keyed by a single value
+        # and can be deleted surgically; get_or_create_user is keyed by the
+        # JWT-payload dict so we can't delete a single entry — clear it
+        # entirely.
         get_user_by_id.cache_delete(user_id)
+        if user.email:
+            get_user_by_email.cache_delete(user.email)
         get_or_create_user.cache_clear()
 
         return User.from_db(user)

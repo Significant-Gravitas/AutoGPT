@@ -160,9 +160,7 @@ export function IntegrationsList() {
             <motion.div
               key={provider.id}
               variants={
-                reduceMotion
-                  ? REDUCED_MOTION_ITEM_VARIANTS
-                  : LIST_ITEM_VARIANTS
+                reduceMotion ? REDUCED_MOTION_ITEM_VARIANTS : LIST_ITEM_VARIANTS
               }
             >
               <ProviderGroup
