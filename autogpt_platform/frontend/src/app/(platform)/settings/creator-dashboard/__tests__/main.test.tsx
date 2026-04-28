@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
   getDeleteV2DeleteStoreSubmissionMockHandler,
+  getDeleteV2DeleteStoreSubmissionMockHandler422,
   getGetV2ListMySubmissionsMockHandler,
   getGetV2ListMySubmissionsMockHandler401,
 } from "@/app/api/__generated__/endpoints/store/store.msw";
@@ -31,9 +32,56 @@ vi.mock("@/components/contextual/PublishAgentModal/PublishAgentModal", () => ({
 }));
 
 vi.mock("@/components/contextual/EditAgentModal/EditAgentModal", () => ({
-  EditAgentModal: ({ isOpen }: { isOpen: boolean }) =>
-    isOpen ? <div data-testid="edit-agent-modal" /> : null,
+  EditAgentModal: ({
+    isOpen,
+    onSuccess,
+  }: {
+    isOpen: boolean;
+    onSuccess: (s: unknown) => void;
+  }) =>
+    isOpen ? (
+      <button
+        type="button"
+        data-testid="edit-modal-success"
+        onClick={() =>
+          onSuccess({
+            listing_id: "listing-base",
+            user_id: "user-1",
+            slug: "agent-slug",
+            listing_version_id: "lv-edited",
+            listing_version: 2,
+            graph_id: "graph-base",
+            graph_version: 2,
+            name: "Edited Agent",
+            sub_heading: "sub",
+            description: "desc",
+            instructions: null,
+            categories: [],
+            image_urls: [],
+            video_url: null,
+            agent_output_demo_url: null,
+            submitted_at: null,
+            changes_summary: null,
+            status: SubmissionStatus.PENDING,
+          })
+        }
+      >
+        success
+      </button>
+    ) : null,
 }));
+
+const toastSpy = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return {
+    ...actual,
+    toast: (...args: Parameters<typeof actual.toast>) => toastSpy(...args),
+  };
+});
 
 const testUser = {
   id: "user-1",
@@ -89,6 +137,7 @@ function makeResponse(
 
 describe("SettingsCreatorDashboardPage", () => {
   beforeEach(() => {
+    toastSpy.mockClear();
     mockUseSupabase.mockReturnValue({
       user: testUser,
       isLoggedIn: true,
@@ -284,6 +333,149 @@ describe("SettingsCreatorDashboardPage", () => {
     expect(
       screen.queryByRole("checkbox", { name: /select approved agent/i }),
     ).toBeNull();
+  });
+
+  test("delete failure shows a destructive toast and keeps the dialog open", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-fail",
+            name: "Doomed Agent",
+            status: SubmissionStatus.PENDING,
+          }),
+        ]),
+      ),
+      getDeleteV2DeleteStoreSubmissionMockHandler422(),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect((await screen.findAllByText("Doomed Agent")).length).toBeGreaterThan(
+      0,
+    );
+
+    const actionButtons = screen.getAllByTestId("submission-actions");
+    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+
+    const deleteMenuItem = await screen.findByRole("menuitem", {
+      name: /delete/i,
+    });
+    fireEvent.click(deleteMenuItem);
+
+    const confirmButton = await screen.findByRole("button", {
+      name: /delete submission/i,
+    });
+    fireEvent.click(confirmButton);
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't delete submission",
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
+  test("bulk delete failure shows a partial-success destructive toast", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-bulk",
+            name: "Bulk Agent",
+            status: SubmissionStatus.PENDING,
+          }),
+        ]),
+      ),
+      getDeleteV2DeleteStoreSubmissionMockHandler422(),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    const checkboxes = await screen.findAllByRole("checkbox", {
+      name: /select bulk agent/i,
+    });
+    fireEvent.click(checkboxes[0]);
+
+    const deleteSelected = await screen.findByRole("button", {
+      name: /delete selected/i,
+    });
+    fireEvent.click(deleteSelected);
+
+    const confirm = await screen.findAllByRole("button", {
+      name: /delete selected/i,
+    });
+    fireEvent.click(confirm[confirm.length - 1]);
+
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
+  test("editing a submission via the row dropdown opens and closes the edit modal on success", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-edit",
+            name: "Editable Agent",
+            status: SubmissionStatus.PENDING,
+          }),
+        ]),
+      ),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect(
+      (await screen.findAllByText("Editable Agent")).length,
+    ).toBeGreaterThan(0);
+
+    const actionButtons = screen.getAllByTestId("submission-actions");
+    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+    const editItem = await screen.findByRole("menuitem", { name: /edit/i });
+    fireEvent.click(editItem);
+
+    const successTriggers = await screen.findAllByTestId("edit-modal-success");
+    fireEvent.click(successTriggers[0]);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("edit-modal-success")).toBeNull();
+    });
+  });
+
+  test("approved row dropdown shows a 'View submission' action that calls onView", async () => {
+    server.use(
+      getGetV2ListMySubmissionsMockHandler(
+        makeResponse([
+          makeSubmission({
+            listing_version_id: "lv-view",
+            name: "Viewable Agent",
+            status: SubmissionStatus.APPROVED,
+          }),
+        ]),
+      ),
+    );
+
+    render(<SettingsCreatorDashboardPage />);
+
+    expect(
+      (await screen.findAllByText("Viewable Agent")).length,
+    ).toBeGreaterThan(0);
+
+    const actionButtons = screen.getAllByTestId("submission-actions");
+    fireEvent.pointerDown(actionButtons[0], { button: 0 });
+
+    expect(
+      await screen.findByRole("menuitem", { name: /view submission/i }),
+    ).toBeDefined();
+    expect(screen.queryByRole("menuitem", { name: /^delete$/i })).toBeNull();
   });
 
   test("selecting a pending submission shows the bulk selection bar", async () => {

@@ -70,7 +70,9 @@ function sortValue(submission: StoreSubmission, key: SortKey): number {
   if (key === "submitted") {
     const date = submission.submitted_at;
     if (!date) return 0;
-    return date instanceof Date ? date.getTime() : new Date(date).getTime();
+    const time =
+      date instanceof Date ? date.getTime() : new Date(date).getTime();
+    return Number.isNaN(time) ? 0 : time;
   }
   if (key === "runs") return submission.run_count ?? 0;
   return submission.review_avg_rating ?? 0;

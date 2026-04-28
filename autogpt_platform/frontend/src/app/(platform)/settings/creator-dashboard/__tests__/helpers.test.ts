@@ -9,6 +9,7 @@ import {
   filterSubmissions,
   formatRuns,
   formatSubmittedAt,
+  getStatusVisual,
   INITIAL_FILTER_STATE,
   isFiltered,
   STATUS_FILTERS,
@@ -182,6 +183,22 @@ describe("creator-dashboard helpers", () => {
       expect(result.map((s) => s.listing_version_id)).toEqual(["c", "b", "a"]);
     });
 
+    test("treats invalid submitted_at strings as 0 (NaN guard)", () => {
+      const withInvalid = [
+        ...items,
+        makeSubmission({
+          listing_version_id: "bad",
+          submitted_at: "not-a-date" as unknown as Date,
+        }),
+      ];
+      const result = applyFiltersAndSort(withInvalid, {
+        ...INITIAL_FILTER_STATE,
+        sortKey: "submitted",
+        sortDir: "asc",
+      });
+      expect(result[0].listing_version_id).toBe("bad");
+    });
+
     test("treats null submitted_at as 0 when sorting", () => {
       const withNull = [
         ...items,
@@ -342,6 +359,24 @@ describe("creator-dashboard helpers", () => {
         expect(STATUS_VISUAL[status]).toBeDefined();
         expect(STATUS_VISUAL[status].label.length).toBeGreaterThan(0);
       }
+    });
+  });
+
+  describe("getStatusVisual", () => {
+    test("returns the matching visual for a known status", () => {
+      expect(getStatusVisual(SubmissionStatus.APPROVED)).toBe(
+        STATUS_VISUAL[SubmissionStatus.APPROVED],
+      );
+      expect(getStatusVisual(SubmissionStatus.PENDING)).toBe(
+        STATUS_VISUAL[SubmissionStatus.PENDING],
+      );
+    });
+
+    test("falls back to DRAFT visual for an unknown status", () => {
+      const unknown = "ARCHIVED" as unknown as SubmissionStatus;
+      expect(getStatusVisual(unknown)).toBe(
+        STATUS_VISUAL[SubmissionStatus.DRAFT],
+      );
     });
   });
 });
