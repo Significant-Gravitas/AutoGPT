@@ -123,7 +123,7 @@ export function SubscriptionTierSection() {
   // Gate the "Pick a plan" banner on the DB tier rather than
   // has_active_stripe_subscription so a transient Stripe outage doesn't show
   // the banner to active subscribers. Same rationale as PaywallGate.
-  const needsSubscription = isPaymentEnabled && subscription.tier === "BASIC";
+  const needsSubscription = isPaymentEnabled && subscription.tier === "NO_TIER";
 
   return (
     <div className="space-y-4">
@@ -233,7 +233,7 @@ export function SubscriptionTierSection() {
         })}
       </div>
 
-      {currentTier !== "BASIC" && isPaymentEnabled && (
+      {currentTier !== "NO_TIER" && isPaymentEnabled && (
         <p className="text-sm text-neutral-500">
           Your subscription is managed through Stripe. Upgrades take effect
           immediately. Downgrades take effect at the end of your current billing
@@ -252,8 +252,8 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {confirmDowngradeTo === "BASIC"
-              ? `Downgrading to Basic schedules your subscription to cancel at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
+            {confirmDowngradeTo === "NO_TIER"
+              ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
               : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate, and matching credits are added to your AutoGPT balance with each paid invoice.`}{" "}
             Are you sure?
           </p>

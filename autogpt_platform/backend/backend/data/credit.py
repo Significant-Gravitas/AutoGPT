@@ -1463,6 +1463,7 @@ async def get_proration_credit_cents(user_id: str, monthly_cost_cents: int) -> i
 # (move right) from downgrades (move left); ENTERPRISE is admin-managed and
 # never reached via self-service flows.
 _TIER_ORDER: tuple[SubscriptionTier, ...] = (
+    SubscriptionTier.NO_TIER,
     SubscriptionTier.BASIC,
     SubscriptionTier.PRO,
     SubscriptionTier.MAX,
@@ -1715,7 +1716,7 @@ async def modify_stripe_subscription_for_tier(
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return False
-    current_tier = user.subscription_tier or SubscriptionTier.BASIC
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
 
     sub = await _get_active_subscription(user.stripe_customer_id)
     if sub is None:
@@ -1936,7 +1937,7 @@ async def get_pending_subscription_change(
         return None
     effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
     if sub.cancel_at_period_end:
-        return SubscriptionTier.BASIC, effective_at
+        return SubscriptionTier.NO_TIER, effective_at
     if not sub.schedule:
         return None
     schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
@@ -2116,7 +2117,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
     # ENTERPRISE user to a different tier — if a user on ENTERPRISE somehow has
     # a self-service Stripe sub, it's a data-consistency issue for an operator,
     # not something the webhook should automatically "fix".
-    current_tier = user.subscriptionTier or SubscriptionTier.BASIC
+    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "sync_subscription_from_stripe: refusing to overwrite ENTERPRISE tier"
@@ -2215,7 +2216,7 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
                 current_tier.value,
             )
             return
-        tier = SubscriptionTier.BASIC
+        tier = SubscriptionTier.NO_TIER
     # Idempotency: Stripe retries webhooks on delivery failure, and several event
     # types map to the same final tier. Skip the DB write + cache invalidation
     # when the tier is already correct to avoid redundant writes on replay.
@@ -2314,7 +2315,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
         return
 
-    current_tier = user.subscriptionTier or SubscriptionTier.BASIC
+    current_tier = user.subscriptionTier or SubscriptionTier.NO_TIER
     if current_tier == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "handle_subscription_payment_failure: skipping ENTERPRISE user %s"
@@ -2400,7 +2401,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 customer_id,
             )
             return
-        await set_subscription_tier(user.id, SubscriptionTier.BASIC)
+        await set_subscription_tier(user.id, SubscriptionTier.NO_TIER)
 
 
 async def handle_subscription_payment_success(invoice: dict) -> None:
@@ -2432,7 +2433,9 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             customer_id,
         )
         return
-    if (user.subscriptionTier or SubscriptionTier.BASIC) == SubscriptionTier.ENTERPRISE:
+    if (
+        user.subscriptionTier or SubscriptionTier.NO_TIER
+    ) == SubscriptionTier.ENTERPRISE:
         logger.warning(
             "handle_subscription_payment_success: skipping ENTERPRISE user %s"
             " (customer %s) — tier is admin-managed",

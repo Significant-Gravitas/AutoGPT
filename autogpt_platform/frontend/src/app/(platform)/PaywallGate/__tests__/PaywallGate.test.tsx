@@ -44,7 +44,7 @@ describe("PaywallGate", () => {
 
   it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
     mockIsPaymentEnabled = false;
-    mockSubscriptionResult = { data: { tier: "BASIC" }, isLoading: false };
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     render(
       <PaywallGate>
         <div>protected</div>
@@ -54,9 +54,9 @@ describe("PaywallGate", () => {
     expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
-  it("renders modal over children when paid cohort + tier is BASIC", () => {
+  it("renders modal over children when paid cohort + tier is NO_TIER", () => {
     mockIsPaymentEnabled = true;
-    mockSubscriptionResult = { data: { tier: "BASIC" }, isLoading: false };
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     render(
       <PaywallGate>
         <div>protected</div>
@@ -82,7 +82,7 @@ describe("PaywallGate", () => {
 
   it("does not render modal on exempt routes (/profile, /admin, /auth, /login, etc.)", () => {
     mockIsPaymentEnabled = true;
-    mockSubscriptionResult = { data: { tier: "BASIC" }, isLoading: false };
+    mockSubscriptionResult = { data: { tier: "NO_TIER" }, isLoading: false };
     for (const path of [
       "/profile/credits",
       "/profile/account",

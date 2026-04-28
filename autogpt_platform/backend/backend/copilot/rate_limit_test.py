@@ -359,6 +359,9 @@ class TestSubscriptionTier:
     def test_tier_multipliers(self):
         # Float-typed so LD-provided fractional multipliers compose naturally;
         # equality against int literals still holds for the whole defaults.
+        # NO_TIER is 0.0 — explicit "no active subscription" state;
+        # rate-limited routes refuse with 429 (backend half of the paywall).
+        assert TIER_MULTIPLIERS[SubscriptionTier.NO_TIER] == 0.0
         assert TIER_MULTIPLIERS[SubscriptionTier.BASIC] == 1.0
         assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5.0
         assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20.0
@@ -366,8 +369,8 @@ class TestSubscriptionTier:
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60.0
         assert TIER_MULTIPLIERS is _DEFAULT_TIER_MULTIPLIERS
 
-    def test_default_tier_is_basic(self):
-        assert DEFAULT_TIER == SubscriptionTier.BASIC
+    def test_default_tier_is_no_tier(self):
+        assert DEFAULT_TIER == SubscriptionTier.NO_TIER
 
     def test_usage_status_includes_tier(self):
         now = datetime.now(UTC)
@@ -375,7 +378,7 @@ class TestSubscriptionTier:
             daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
             weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
         )
-        assert status.tier == SubscriptionTier.BASIC
+        assert status.tier == SubscriptionTier.NO_TIER
 
     def test_usage_status_with_custom_tier(self):
         now = datetime.now(UTC)

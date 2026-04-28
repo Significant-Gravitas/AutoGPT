@@ -702,13 +702,13 @@ async def get_user_auto_top_up(
 
 
 class SubscriptionTierRequest(BaseModel):
-    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS"]
+    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
 
 
 class SubscriptionStatusResponse(BaseModel):
-    tier: Literal["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
+    tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
     tier_costs: dict[str, int]  # tier name -> amount in cents
     tier_multipliers: dict[str, float] = Field(
@@ -737,7 +737,7 @@ class SubscriptionStatusResponse(BaseModel):
             " upgrade charges, if any). None when no active sub."
         ),
     )
-    pending_tier: Optional[Literal["BASIC", "PRO", "MAX", "BUSINESS"]] = None
+    pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
     url: str = Field(
         default="",
@@ -822,8 +822,11 @@ async def get_subscription_status(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> SubscriptionStatusResponse:
     user = await get_user_by_id(user_id)
-    tier = user.subscription_tier or SubscriptionTier.BASIC
+    tier = user.subscription_tier or SubscriptionTier.NO_TIER
 
+    # Tiers that *can* have a Stripe price configured (and therefore appear
+    # in the tier picker if the LD flag exposes a price-id). NO_TIER is not
+    # priceable — it's the implicit "no active subscription" state.
     priceable_tiers = [
         SubscriptionTier.BASIC,
         SubscriptionTier.PRO,
@@ -888,6 +891,7 @@ async def get_subscription_status(
     if pending is not None:
         pending_tier_enum, pending_effective_at = pending
         if pending_tier_enum in (
+            SubscriptionTier.NO_TIER,
             SubscriptionTier.BASIC,
             SubscriptionTier.PRO,
             SubscriptionTier.MAX,
@@ -915,7 +919,7 @@ async def update_subscription_tier(
     # ENTERPRISE tier is admin-managed — block self-service changes from ENTERPRISE users.
     user = await get_user_by_id(user_id)
     if (
-        user.subscription_tier or SubscriptionTier.BASIC
+        user.subscription_tier or SubscriptionTier.NO_TIER
     ) == SubscriptionTier.ENTERPRISE:
         raise HTTPException(
             status_code=403,
@@ -927,7 +931,7 @@ async def update_subscription_tier(
     # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
     # route. Safe when no pending change exists: release_pending_subscription_schedule
     # returns False and we simply return the current status.
-    if (user.subscription_tier or SubscriptionTier.BASIC) == tier:
+    if (user.subscription_tier or SubscriptionTier.NO_TIER) == tier:
         try:
             await release_pending_subscription_schedule(user_id)
         except stripe.StripeError as e:
@@ -951,12 +955,12 @@ async def update_subscription_tier(
 
     target_price_id = await get_subscription_price_id(tier)
 
-    # Legacy cancel: target BASIC + stripe-price-id-basic unset. Schedule Stripe
-    # cancellation at period end; cancel_at_period_end=True lets the webhook flip
-    # the DB tier. No active sub (admin-granted) or payment disabled → DB flip.
-    # Once stripe-price-id-basic is configured, BASIC becomes a real sub and falls
-    # through to the modify/checkout flow below.
-    if tier == SubscriptionTier.BASIC and target_price_id is None:
+    # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
+    # cancel_at_period_end=True lets the webhook flip the DB tier. No active
+    # sub (admin-granted or never-paid) or payment disabled → DB flip.
+    # NO_TIER is never priceable, so this branch always fires for cancel
+    # requests regardless of LD config.
+    if tier == SubscriptionTier.NO_TIER:
         if payment_enabled:
             try:
                 had_subscription = await cancel_stripe_subscription(user_id)

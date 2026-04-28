@@ -12,7 +12,7 @@ import { getTierLabel } from "./helpers";
 
 export type SubscriptionStatus = SubscriptionStatusResponse;
 
-const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
+const TIER_ORDER = ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
 
 export function useSubscriptionTierSection() {
   const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
@@ -91,8 +91,8 @@ export function useSubscriptionTierSection() {
       toast({
         title: "Subscription updated",
         description:
-          tier === "BASIC"
-            ? "Your plan will be downgraded to Basic at the end of your current billing period; no further charges."
+          tier === "NO_TIER"
+            ? "Your subscription is cancelled at the end of your current billing period; no further charges."
             : isDowngrade
               ? `Your plan will be downgraded to ${getTierLabel(tier)} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
               : `Upgraded to ${getTierLabel(tier)}. On the next invoice your saved card is charged for the upgrade proration plus the next month at the new rate; matching credits land in your AutoGPT balance once Stripe confirms the charge.`,

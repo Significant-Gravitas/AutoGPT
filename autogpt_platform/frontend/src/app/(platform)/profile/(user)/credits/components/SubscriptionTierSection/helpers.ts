@@ -27,7 +27,14 @@ export const TIERS: TierInfo[] = [
   },
 ];
 
-export const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
+export const TIER_ORDER = [
+  "NO_TIER",
+  "BASIC",
+  "PRO",
+  "MAX",
+  "BUSINESS",
+  "ENTERPRISE",
+];
 
 export function formatCost(cents: number, _tierKey: string): string {
   if (cents === 0) return "Free";

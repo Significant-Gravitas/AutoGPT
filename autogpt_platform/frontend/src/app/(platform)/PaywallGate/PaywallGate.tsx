@@ -40,13 +40,13 @@ export function PaywallGate({ children }: { children: ReactNode }) {
   // transient Stripe outage (which would set the latter to False even for
   // active subscribers) doesn't lock out paying users. The DB tier is set
   // by Stripe webhooks and persists; only fresh users without any tier
-  // change land on BASIC.
+  // change land on NO_TIER (the explicit "no active subscription" state).
   const shouldGate =
     !!isPaymentEnabled &&
     !isLoading &&
     !isExempt &&
     !!subscription &&
-    subscription.tier === "BASIC";
+    subscription.tier === "NO_TIER";
 
   return (
     <>
