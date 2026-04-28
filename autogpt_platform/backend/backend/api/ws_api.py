@@ -307,9 +307,13 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        await manager.disconnect_socket(websocket, user_id=user_id)
         logger.debug("WebSocket client disconnected")
+    except Exception:
+        logger.exception(f"Unexpected error in websocket_router for user #{user_id}")
     finally:
+        # Always release subscription pumps + Redis connections, regardless of how
+        # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
+        await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
 
 
