@@ -1,8 +1,30 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
+import type { Variants } from "framer-motion";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+
+const SKELETON_CONTAINER_VARIANTS: Variants = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
+  },
+};
+
+const SKELETON_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+  },
+};
+
+const REDUCED_MOTION_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1 },
+};
 
 export function IntegrationsListSkeleton() {
   const reduceMotion = useReducedMotion();
@@ -14,26 +36,16 @@ export function IntegrationsListSkeleton() {
       aria-label="Loading integrations"
       initial="hidden"
       animate="show"
-      variants={{
-        hidden: {},
-        show: {
-          transition: {
-            staggerChildren: reduceMotion ? 0 : 0.08,
-            delayChildren: reduceMotion ? 0 : 0.05,
-          },
-        },
-      }}
+      variants={SKELETON_CONTAINER_VARIANTS}
     >
       {[0, 1, 2].map((i) => (
         <motion.div
           key={i}
           data-testid="integration-skeleton-item"
           className="w-full overflow-hidden rounded-lg border border-[#DADADC] bg-white"
-          variants={{
-            hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 },
-            show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
-          }}
-          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          variants={
+            reduceMotion ? REDUCED_MOTION_ITEM_VARIANTS : SKELETON_ITEM_VARIANTS
+          }
         >
           {/* Mirrors ProviderGroup accordion trigger row */}
           <div className="flex items-center justify-between px-3 py-3 pr-5">

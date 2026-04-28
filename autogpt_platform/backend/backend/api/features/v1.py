@@ -201,10 +201,10 @@ async def update_user_email_route(
     dependencies=[Security(requires_user)],
 )
 async def get_user_timezone_route(
-    user_id: Annotated[str, Security(get_user_id)],
+    user_data: dict = Security(get_jwt_payload),
 ) -> TimezoneResponse:
     """Get user timezone setting."""
-    user = await get_user_by_id(user_id)
+    user = await get_or_create_user(user_data)
     return TimezoneResponse(timezone=user.timezone)
 
 

@@ -264,6 +264,54 @@ describe("SettingsPreferencesPage", () => {
     });
   });
 
+  test("Save is enabled on first paint when server timezone is not-set, and saves the detected browser tz", async () => {
+    let submittedTimezone: string | undefined;
+
+    server.use(
+      getGetV1GetNotificationPreferencesMockHandler({
+        user_id: "user-1",
+        email: "user@example.com",
+        preferences: allFalsePreferences,
+        daily_limit: 0,
+        emails_sent_today: 0,
+        last_reset_date: baseDate,
+      }),
+      getGetV1GetUserTimezoneMockHandler({ timezone: "not-set" }),
+      getPostV1UpdateUserEmailMockHandler({}),
+      getPostV1UpdateNotificationPreferencesMockHandler({
+        user_id: "user-1",
+        email: "user@example.com",
+        preferences: {},
+        daily_limit: 0,
+        emails_sent_today: 0,
+        last_reset_date: baseDate,
+      }),
+      getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { timezone: string };
+        submittedTimezone = body.timezone;
+        return { timezone: body.timezone };
+      }),
+    );
+
+    render(<SettingsPreferencesPage />);
+
+    const saveButton = await screen.findByRole("button", {
+      name: "Save changes",
+    });
+
+    await waitFor(() => {
+      expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(submittedTimezone).toBeDefined();
+    });
+    expect(submittedTimezone).not.toBe("not-set");
+    expect(submittedTimezone?.length ?? 0).toBeGreaterThan(0);
+  });
+
   test("submitting a new email closes the dialog and calls the update endpoint", async () => {
     const fetchMock = vi.fn(async () =>
       Promise.resolve(

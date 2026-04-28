@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import type { Variants } from "framer-motion";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
@@ -12,6 +13,27 @@ import { IntegrationsSelectionBar } from "../IntegrationsSelectionBar/Integratio
 import { ProviderGroup } from "../ProviderGroup/ProviderGroup";
 import { IntegrationsListSkeleton } from "./IntegrationsListSkeleton";
 import { useIntegrationsList } from "./useIntegrationsList";
+
+const LIST_CONTAINER_VARIANTS: Variants = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
+  },
+};
+
+const LIST_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+  },
+};
+
+const REDUCED_MOTION_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1 },
+};
 
 export function IntegrationsList() {
   const {
@@ -132,24 +154,16 @@ export function IntegrationsList() {
           className="flex flex-col gap-3 pb-4"
           initial="hidden"
           animate="show"
-          variants={{
-            hidden: {},
-            show: {
-              transition: {
-                staggerChildren: reduceMotion ? 0 : 0.08,
-                delayChildren: reduceMotion ? 0 : 0.05,
-              },
-            },
-          }}
+          variants={LIST_CONTAINER_VARIANTS}
         >
           {providers.map((provider) => (
             <motion.div
               key={provider.id}
-              variants={{
-                hidden: reduceMotion ? { opacity: 0 } : { opacity: 0, y: 16 },
-                show: reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 },
-              }}
-              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              variants={
+                reduceMotion
+                  ? REDUCED_MOTION_ITEM_VARIANTS
+                  : LIST_ITEM_VARIANTS
+              }
             >
               <ProviderGroup
                 provider={provider}
