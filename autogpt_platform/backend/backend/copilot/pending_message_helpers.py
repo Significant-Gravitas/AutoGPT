@@ -21,8 +21,10 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_user_message,
     push_pending_message,
+    push_pending_message_if_session_running,
 )
 from backend.copilot.stream_registry import get_session as get_active_session_meta
+from backend.copilot.stream_registry import get_session_meta_key
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import incr_with_ttl
 from backend.data.workspace import resolve_workspace_files
@@ -44,8 +46,8 @@ _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
 async def is_turn_in_flight(session_id: str) -> bool:
     """Return ``True`` when a copilot turn is actively running for *session_id*.
 
-    Used by the unified POST /stream entry point and the autopilot block so
-    a second message arriving while an earlier turn is still executing gets
+    Used by the HTTP pending-message endpoint and the autopilot block so a
+    second message arriving while an earlier turn is still executing gets
     queued into the pending buffer instead of racing the in-flight turn on
     the cluster lock.
     """
@@ -54,15 +56,14 @@ async def is_turn_in_flight(session_id: str) -> bool:
 
 
 class QueuePendingMessageResponse(BaseModel):
-    """Response returned by ``POST /stream`` with status 202 when a message
-    is queued because the session already has a turn in flight.
+    """Response returned when a message is queued because the session already
+    has a turn in flight.
 
     - ``buffer_length``: how many messages are now in the session's
       pending buffer (after this push)
     - ``max_buffer_length``: the per-session cap (server-side constant)
     - ``turn_in_flight``: ``True`` if a copilot turn was running when
-      we checked — purely informational for UX feedback.  Always ``True``
-      for responses from ``POST /stream`` with status 202.
+      we checked — purely informational for UX feedback.
     """
 
     buffer_length: int
@@ -76,11 +77,12 @@ async def queue_user_message(
     message: str,
     context: PendingMessageContext | None = None,
     file_ids: list[str] | None = None,
+    require_turn_in_flight: bool = False,
 ) -> QueuePendingMessageResponse:
     """Push *message* into the per-session pending buffer.
 
     The shared primitive for "a message arrived while a turn is in flight" —
-    called from the unified POST /stream handler and the autopilot block.
+    called from the HTTP pending-message path and the autopilot block.
     Call-frequency rate limiting is the caller's responsibility (HTTP path
     enforces it; internal block callers skip it).
     """
@@ -89,6 +91,18 @@ async def queue_user_message(
         file_ids=file_ids or [],
         context=context,
     )
+    if require_turn_in_flight:
+        new_len = await push_pending_message_if_session_running(
+            session_id,
+            pending,
+            session_meta_key=get_session_meta_key(session_id),
+        )
+        return QueuePendingMessageResponse(
+            buffer_length=new_len or 0,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=new_len is not None,
+        )
+
     new_len = await push_pending_message(session_id, pending)
     return QueuePendingMessageResponse(
         buffer_length=new_len,
@@ -107,7 +121,7 @@ async def queue_pending_for_http(
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
-    Owns the HTTP-only concerns that sat inline in ``stream_chat_post``:
+    Owns the HTTP-only concerns for the pending-message route:
 
     1. Per-user call-rate cap (429 on overflow).
     2. File-ID sanitisation against the user's own workspace.
@@ -116,19 +130,8 @@ async def queue_pending_for_http(
 
     Raises :class:`HTTPException` with status 429 if the rate cap is hit;
     otherwise returns the ``QueuePendingMessageResponse`` the handler can
-    serialise 1:1 into the 202 body.
+    serialise 1:1.
     """
-    call_count = await check_pending_call_rate(user_id)
-    if call_count > PENDING_CALL_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail=(
-                f"Too many queued message requests this minute: limit is "
-                f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
-                "across all sessions"
-            ),
-        )
-
     sanitized_file_ids: list[str] | None = None
     if file_ids:
         files = await resolve_workspace_files(user_id, file_ids)
@@ -141,12 +144,41 @@ async def queue_pending_for_http(
     # typos, but the upstream ``StreamChatRequest.context: dict[str, str]``
     # is already schemaless, so the strict mode adds no real safety.
     queue_context = PendingMessageContext.model_validate(context) if context else None
-    return await queue_user_message(
+
+    # Push first via the Lua CAS gate.  Bumping the per-user call-rate
+    # counter BEFORE the push would charge a budget tick on every TOCTOU
+    # loss against turn completion (status flips running→completed between
+    # the FE's is_turn_in_flight check and our gate), which both this
+    # endpoint and the POST /stream queue-fall-through can hit.  Pushing
+    # first lets the gate own the no-op short-circuit.
+    response = await queue_user_message(
         session_id=session_id,
         message=message,
         context=queue_context,
         file_ids=sanitized_file_ids,
+        require_turn_in_flight=True,
     )
+    if not response.turn_in_flight:
+        raise HTTPException(
+            status_code=409,
+            detail="Session has no active turn. Start a new turn with POST /stream.",
+        )
+
+    # Push landed — now charge the rate counter.  If this tick crosses the
+    # limit we still keep the queued message (next drain will pick it up)
+    # but report 429 so the client backs off further pushes.
+    call_count = await check_pending_call_rate(user_id)
+    if call_count > PENDING_CALL_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Too many queued message requests this minute: limit is "
+                f"{PENDING_CALL_LIMIT} per {PENDING_CALL_WINDOW_SECONDS}s "
+                "across all sessions"
+            ),
+        )
+
+    return response
 
 
 async def check_pending_call_rate(user_id: str) -> int:
@@ -366,14 +398,35 @@ async def persist_pending_as_user_rows(
         transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
+        # ``push_pending_message`` uses the bounded ``capped_rpush`` (LTRIM
+        # to ``MAX_PENDING_MESSAGES``).  If ≥``MAX_PENDING_MESSAGES`` fresh
+        # follow-ups arrived between the original drain and this rollback
+        # (heavy typing across a tool boundary), the LTRIM drops oldest
+        # entries — which can include the ones we just re-pushed. The model
+        # already saw that content (mid-turn injection earlier in the
+        # turn), but no DB row lands so the user sees no UI bubble.
+        # Surface a warning so the bounded data-loss path is visible in
+        # prod (it is rare and would otherwise be observable only via the
+        # absence of a bubble).
+        rollback_buffer_at_cap = False
         for pm in pending:
             try:
-                await push_pending_message(session.session_id, pm)
+                new_length = await push_pending_message(session.session_id, pm)
+                if new_length >= MAX_PENDING_MESSAGES:
+                    rollback_buffer_at_cap = True
             except Exception:
                 logger.exception(
                     "%s Failed to re-queue mid-turn follow-up on rollback",
                     log_prefix,
                 )
+        if rollback_buffer_at_cap:
+            logger.warning(
+                "%s Rollback re-push hit pending-buffer cap (MAX=%d); a "
+                "previously queued follow-up may have been LTRIM-displaced "
+                "(silent UI-bubble drop). Investigate if observed.",
+                log_prefix,
+                MAX_PENDING_MESSAGES,
+            )
         return False
 
     logger.info(

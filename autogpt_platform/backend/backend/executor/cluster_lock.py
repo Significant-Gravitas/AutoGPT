@@ -7,16 +7,12 @@ import time
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from redis import Redis
-    from redis.asyncio import Redis as AsyncRedis
+    from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 logger = logging.getLogger(__name__)
 
-# Lua CAS release: only delete the key if the stored value still matches our
-# owner_id. Returns 1 on delete, 0 on no-op. This makes release() safe against
-# the race where an external caller (e.g. mark_session_completed's force-release)
-# deletes our key and a new owner acquires it before our release() fires — without
-# the CAS guard, release() would wipe the successor's valid lock.
+# CAS release: DEL only when the stored owner still matches — guards against
+# wiping a successor's lock after an external force-release.
 _RELEASE_LUA = (
     "if redis.call('get', KEYS[1]) == ARGV[1] then "
     "return redis.call('del', KEYS[1]) "
@@ -27,7 +23,9 @@ _RELEASE_LUA = (
 class ClusterLock:
     """Simple Redis-based distributed lock for preventing duplicate execution."""
 
-    def __init__(self, redis: "Redis", key: str, owner_id: str, timeout: int = 300):
+    def __init__(
+        self, redis: "RedisClient", key: str, owner_id: str, timeout: int = 300
+    ):
         self.redis = redis
         self.key = key
         self.owner_id = owner_id
@@ -150,7 +148,7 @@ class AsyncClusterLock:
     """Async Redis-based distributed lock for preventing duplicate execution."""
 
     def __init__(
-        self, redis: "AsyncRedis", key: str, owner_id: str, timeout: int = 300
+        self, redis: "AsyncRedisClient", key: str, owner_id: str, timeout: int = 300
     ):
         self.redis = redis
         self.key = key

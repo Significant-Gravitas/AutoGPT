@@ -164,6 +164,7 @@ addopts = "-p no:syrupy"
 markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
+    "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",

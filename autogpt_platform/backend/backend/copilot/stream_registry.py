@@ -48,6 +48,7 @@ from .response_model import (
     StreamReasoningStart,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -89,8 +90,19 @@ class ActiveSession:
 
 
 def _get_session_meta_key(session_id: str) -> str:
+    """Get Redis key for session metadata (keyed by session_id).
+
+    Hash-tag braces colocate this key with ``pending_messages._buffer_key``
+    on the same Redis Cluster slot — the gated-rpush Lua script touches both
+    keys atomically and would CROSSSLOT-fail if they hashed to different
+    shards.
+    """
+    return f"{config.session_meta_prefix}{{{session_id}}}"
+
+
+def get_session_meta_key(session_id: str) -> str:
     """Get Redis key for session metadata (keyed by session_id)."""
-    return f"{config.session_meta_prefix}{session_id}"
+    return _get_session_meta_key(session_id)
 
 
 def _get_turn_stream_key(turn_id: str) -> str:
@@ -1093,6 +1105,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.ERROR.value: StreamError,
         ResponseType.USAGE.value: StreamUsage,
         ResponseType.HEARTBEAT.value: StreamHeartbeat,
+        ResponseType.STATUS.value: StreamStatus,
     }
 
     chunk_type = chunk_data.get("type")

@@ -21,7 +21,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col overflow-hidden">
         <SettingsMobileNav />
         <main className="flex-1 overflow-hidden bg-[#F9F9FA]">
-          <ScrollArea showScrollToTop className="h-full">
+          <ScrollArea className="h-full">
             <motion.div
               key={pathname}
               initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}

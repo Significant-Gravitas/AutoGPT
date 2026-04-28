@@ -1,3 +1,4 @@
+import { act } from "@testing-library/react";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
@@ -71,7 +72,9 @@ vi.mock("../components/ReasoningCollapse", () => ({
   ReasoningCollapse: () => null,
 }));
 vi.mock("../components/ThinkingIndicator", () => ({
-  ThinkingIndicator: () => null,
+  ThinkingIndicator: ({ statusMessage }: { statusMessage?: string | null }) => (
+    <div data-testid="thinking-indicator">{statusMessage ?? "thinking"}</div>
+  ),
 }));
 vi.mock("../../JobStatsBar/TurnStatsBar", () => ({
   TurnStatsBar: () => null,
@@ -204,6 +207,7 @@ describe("ChatMessagesContainer — queuedMessages", () => {
 
 describe("ChatMessagesContainer — loading", () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     mockScrollEl.scrollHeight = 100;
     mockScrollEl.scrollTop = 0;
     mockScrollEl.clientHeight = 500;
@@ -212,6 +216,7 @@ describe("ChatMessagesContainer — loading", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     vi.unstubAllGlobals();
   });
@@ -224,6 +229,78 @@ describe("ChatMessagesContainer — loading", () => {
   it("does not show spinner when not loading", () => {
     render(<ChatMessagesContainer {...baseProps} isLoading={false} />);
     expect(screen.queryByTestId("loading-spinner")).toBeNull();
+  });
+
+  it("shows the restore message instead of stale tail content during active-session resume", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("message-user")).toBeDefined();
+    expect(screen.getByText("Retrieving latest messages")).toBeDefined();
+  });
+
+  it("shows a reconnecting fallback after 6 seconds of restore", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        activeStreamStartedAt="2026-04-23T15:00:00.000Z"
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(screen.getByTestId("thinking-indicator")).toBeDefined();
+    expect(screen.getByText("Reconnecting to live stream...")).toBeDefined();
+    expect(
+      screen.getByText("Still syncing the latest progress."),
+    ).toBeDefined();
+  });
+
+  it("prefers the backend status message in the restore fallback", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        isLoading={false}
+        isRestoringActiveSession
+        restoreStatusMessage="Analyzing result..."
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Investigate this" }],
+          },
+        ]}
+      />,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(6_000);
+    });
+
+    expect(screen.getByText("Analyzing result...")).toBeDefined();
   });
 });
 

@@ -13,6 +13,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import AssistantMessage, TextBlock, ToolUseBlock
 
+from backend.copilot import config as cfg_mod
+from backend.copilot.config import ChatConfig
+
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     _RETRY_TARGET_TOKENS,
@@ -23,6 +26,7 @@ from .service import (
     _iter_sdk_messages,
     _normalize_model_name,
     _reduce_context,
+    _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
     _TokenUsage,
 )
@@ -373,15 +377,15 @@ class TestNormalizeModelName:
     """
 
     @pytest.fixture
-    def _direct_anthropic_config(self, monkeypatch: pytest.MonkeyPatch):
+    def _direct_anthropic_config(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
         """Force ``config.openrouter_active = False`` for prefix-strip tests.
 
         Pins the SDK model fields to anthropic/* so the new
         ``_validate_sdk_model_vendor_compatibility`` model_validator
         permits ChatConfig construction.
         """
-        from backend.copilot import config as cfg_mod
-
         cfg = cfg_mod.ChatConfig(
             use_openrouter=False,
             api_key=None,
@@ -393,10 +397,10 @@ class TestNormalizeModelName:
         monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
 
     @pytest.fixture
-    def _openrouter_config(self, monkeypatch: pytest.MonkeyPatch):
+    def _openrouter_config(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
         """Force ``config.openrouter_active = True`` for slug-preservation tests."""
-        from backend.copilot import config as cfg_mod
-
         cfg = cfg_mod.ChatConfig(
             use_openrouter=True,
             api_key="or-key",
@@ -444,6 +448,172 @@ class TestNormalizeModelName:
     def test_openrouter_keeps_kimi_slug(self, _openrouter_config):
         """Non-Anthropic vendors (Moonshot) require the prefix to route."""
         assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
+
+    @pytest.fixture
+    def _subscription_with_openrouter_config(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
+        """Subscription mode with leftover OpenRouter base_url + api_key.
+
+        Reproduces the bug: ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` plus
+        a populated ``CHAT_BASE_URL`` (e.g. left over from an earlier
+        OpenRouter setup) used to incorrectly preserve the OpenRouter slug
+        because the gate checked config shape (``openrouter_active``) not
+        actual transport.  The CLI subprocess uses OAuth here and rejects
+        the OpenRouter format.
+        """
+        cfg = cfg_mod.ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+    def test_subscription_strips_anthropic_prefix_despite_openrouter_config(
+        self, _subscription_with_openrouter_config
+    ):
+        """Subscription transport must produce the CLI-friendly form even
+        when OpenRouter base_url + api_key are set — the CLI uses OAuth
+        and ignores those fields, so the OpenRouter slug would be rejected."""
+        assert _normalize_model_name("anthropic/claude-opus-4.7") == "claude-opus-4-7"
+
+    def test_subscription_rejects_non_anthropic_vendor(
+        self, _subscription_with_openrouter_config
+    ):
+        """The CLI subprocess can only talk to Anthropic models — Kimi via
+        Moonshot must raise so the resolver falls back to a tier default
+        instead of feeding an unroutable slug to the CLI."""
+        with pytest.raises(ValueError, match="requires an Anthropic model"):
+            _normalize_model_name("moonshotai/kimi-k2.6")
+
+
+# ---------------------------------------------------------------------------
+# ChatConfig.effective_transport — single source of truth for "which
+# transport will the SDK CLI actually use?"
+# ---------------------------------------------------------------------------
+
+
+class TestEffectiveTransport:
+    """Subscription mode wins over OpenRouter even when OpenRouter
+    base_url + api_key are set, because the CLI subprocess uses OAuth and
+    ignores ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (see ``build_sdk_env``
+    mode 1).  Picking the right transport here is what lets
+    ``_normalize_model_name`` produce the correct model-name format.
+    """
+
+    def test_subscription_wins_over_openrouter_config(self, _clean_config_env):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        assert cfg.effective_transport == "subscription"
+        # ``openrouter_active`` is still True (config-shape check) but
+        # the actual transport is subscription.
+        assert cfg.openrouter_active is True
+
+    def test_openrouter_when_subscription_disabled(self, _clean_config_env):
+        cfg = ChatConfig(
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=False,
+        )
+        assert cfg.effective_transport == "openrouter"
+
+    def test_direct_anthropic_when_no_openrouter_no_subscription(
+        self, _clean_config_env
+    ):
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=False,
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4-7",
+        )
+        assert cfg.effective_transport == "direct_anthropic"
+
+    def test_subscription_alone_is_subscription(self, _clean_config_env):
+        cfg = ChatConfig(
+            use_openrouter=False,
+            api_key=None,
+            base_url=None,
+            use_claude_code_subscription=True,
+        )
+        assert cfg.effective_transport == "subscription"
+
+
+# ---------------------------------------------------------------------------
+# _resolve_sdk_model_for_request — transport-aware LD-override normalisation
+# ---------------------------------------------------------------------------
+
+
+class TestResolveSdkModelForRequestTransportAware:
+    """When subscription mode is on but the deployment also has OpenRouter
+    config populated (e.g. ``CHAT_BASE_URL`` left over from a previous
+    setup), an LD-served override must be normalised for the **subscription
+    CLI**, not passed through as the OpenRouter slug.  The CLI subprocess
+    uses OAuth and rejects ``anthropic/claude-opus-4.7`` with the model
+    error reproduced in local debugging:
+
+        ``There's an issue with the selected model
+        (anthropic/claude-opus-4.7). It may not exist or you may not have
+        access to it.``
+    """
+
+    @pytest.mark.asyncio
+    async def test_subscription_advanced_override_normalised_for_cli(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            thinking_advanced_model="anthropic/claude-opus-4.7",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-opus-4.7"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="advanced", session_id="sess-adv", user_id="user-1"
+            )
+        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated form.
+        assert resolved == "claude-opus-4-7"
+
+    @pytest.mark.asyncio
+    async def test_subscription_standard_no_override_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
+    ):
+        """When LD agrees with the config default, subscription mode still
+        wins on the standard tier — returns ``None`` so the CLI picks the
+        subscription default model."""
+        cfg = cfg_mod.ChatConfig(
+            thinking_standard_model="anthropic/claude-sonnet-4-6",
+            claude_agent_model=None,
+            use_openrouter=True,
+            api_key="or-key",
+            base_url="https://openrouter.ai/api/v1",
+            use_claude_code_subscription=True,
+        )
+        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
+
+        with patch(
+            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
+            new=AsyncMock(return_value="anthropic/claude-sonnet-4-6"),
+        ):
+            resolved = await _resolve_sdk_model_for_request(
+                model="standard", session_id="sess-std", user_id="user-1"
+            )
+        assert resolved is None
 
 
 # ---------------------------------------------------------------------------

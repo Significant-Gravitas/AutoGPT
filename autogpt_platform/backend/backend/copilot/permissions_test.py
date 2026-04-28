@@ -257,6 +257,9 @@ class TestValidateToolNames:
     def test_valid_sdk_builtin(self):
         assert validate_tool_names(["Read", "Task", "WebSearch"]) == []
 
+    def test_disabled_legacy_tool_name_is_accepted(self):
+        assert validate_tool_names(["ask_question"]) == []
+
     def test_invalid_tool(self):
         result = validate_tool_names(["nonexistent_tool"])
         assert "nonexistent_tool" in result

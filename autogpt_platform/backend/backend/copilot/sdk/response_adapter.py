@@ -36,6 +36,7 @@ from backend.copilot.response_model import (
     StreamReasoningStart,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -374,8 +375,41 @@ class SDKResponseAdapter:
                 responses.append(StreamFinishStep())
                 self.step_open = False
 
+            # Narrate the gap between "tool returned" and "model emits its
+            # next chunk". Usually sub-second, but with large tool outputs
+            # or complex continuations it can stretch long enough for the
+            # generic "Thinking…" copy to feel dead. The frontend replaces
+            # it with actual content as soon as the next chunk lands.
+            if resolved_in_blocks:
+                responses.append(StreamStatus(message="Analyzing result\u2026"))
+
         elif isinstance(sdk_message, ResultMessage):
             self.flush_unresolved_tool_calls(responses)
+            # SECRT-2252: surface ghost-finished sessions as errors instead of silent finishes.
+            if sdk_message.subtype == "success" and self._is_empty_completion(
+                sdk_message
+            ):
+                if self.step_open:
+                    responses.append(StreamFinishStep())
+                    self.step_open = False
+                responses.append(
+                    StreamError(
+                        errorText="The model returned an empty response.",
+                        code="empty_completion",
+                    )
+                )
+                # Pair with StreamFinish so ``acc.stream_completed`` flips True
+                # in ``_dispatch_response`` — without it the service-layer
+                # post-stream branch mis-classifies the turn as "stopped by
+                # user" and appends a STOPPED_BY_USER_MARKER on top of the
+                # error marker.
+                responses.append(StreamFinish())
+                logger.warning(
+                    "[SDK] [%s] Empty-success ResultMessage detected — "
+                    "emitting stream error instead of silent finish",
+                    (self.session_id or "?")[:12],
+                )
+                return responses
             # Thinking-only final turn guard: when the model's last LLM
             # call after a tool result produced only a ``ThinkingBlock``
             # (no ``TextBlock``, no ``ToolUseBlock``) the UI has nothing
@@ -436,6 +470,25 @@ class SDKResponseAdapter:
             logger.debug(f"Unhandled SDK message type: {type(sdk_message).__name__}")
 
         return responses
+
+    def _is_empty_completion(self, msg: ResultMessage) -> bool:
+        """True when a success ResultMessage carries no content at all.
+
+        Detects the SDK's ghost-finished session: empty ``result``, zero
+        ``output_tokens``, and nothing emitted on the wire this turn (no
+        text, no reasoning, no tool calls).
+        """
+        if msg.result:
+            return False
+        if self.has_started_text or self.has_started_reasoning:
+            return False
+        if self.current_tool_calls:
+            return False
+        if self._any_tool_results_seen:
+            return False
+        usage = msg.usage or {}
+        output_tokens = usage.get("output_tokens") or 0
+        return output_tokens == 0
 
     def _ensure_text_started(self, responses: list[StreamBaseResponse]) -> None:
         """Start (or restart) a text block if needed."""

@@ -47,15 +47,14 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
 from backend.data.db_accessors import user_db
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
-# Redis key prefixes. Bumped from "copilot:usage" (token-based) to
-# "copilot:cost" on the token→cost migration so stale counters do not
-# get misinterpreted as microdollars (which would dramatically under-count).
+# "copilot:cost" (not the legacy "copilot:usage") so stale token-based
+# counters are not misread as microdollars.
 _USAGE_KEY_PREFIX = "copilot:cost"
 
 
@@ -447,25 +446,16 @@ async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
     try:
         redis = await get_redis_async()
 
-        # Use a MULTI/EXEC transaction so that DELETE (daily) and DECRBY
-        # (weekly) either both execute or neither does.  This prevents the
-        # scenario where the daily counter is cleared but the weekly
-        # counter is not decremented — which would let the caller refund
-        # credits even though the daily limit was already reset.
         d_key = _daily_key(user_id, now=now)
         w_key = _weekly_key(user_id, now=now) if daily_cost_limit > 0 else None
 
-        pipe = redis.pipeline(transaction=True)
-        pipe.delete(d_key)
+        # Daily and weekly keys hash to different cluster slots, so cross-key
+        # MULTI/EXEC is not available. Issue the writes sequentially — the
+        # failure mode (daily deleted, weekly not decremented) is a
+        # best-effort refund budget that the read path already tolerates.
+        await redis.delete(d_key)
         if w_key is not None:
-            pipe.decrby(w_key, daily_cost_limit)
-        results = await pipe.execute()
-
-        # Clamp negative weekly counter to 0 (best-effort; not critical).
-        if w_key is not None:
-            new_val = results[1]  # DECRBY result
-            if new_val < 0:
-                await redis.set(w_key, 0, keepttl=True)
+            await _decr_counter_floor_zero(redis, w_key, daily_cost_limit)
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
@@ -555,30 +545,18 @@ async def record_cost_usage(
     logger.info("Recording copilot spend: %d microdollars", cost_microdollars)
 
     now = datetime.now(UTC)
+    d_key = _daily_key(user_id, now=now)
+    w_key = _weekly_key(user_id, now=now)
+    daily_ttl = max(int((_daily_reset_time(now=now) - now).total_seconds()), 1)
+    weekly_ttl = max(int((_weekly_reset_time(now=now) - now).total_seconds()), 1)
     try:
         redis = await get_redis_async()
-        # Use MULTI/EXEC so each INCRBY/EXPIRE pair is atomic — guarantees
-        # the TTL is set even if the connection drops mid-pipeline, so
-        # counters can never survive past their date-based rotation window.
-        pipe = redis.pipeline(transaction=True)
-
-        # Daily counter (expires at next midnight UTC)
-        d_key = _daily_key(user_id, now=now)
-        pipe.incrby(d_key, cost_microdollars)
-        seconds_until_daily_reset = int(
-            (_daily_reset_time(now=now) - now).total_seconds()
-        )
-        pipe.expire(d_key, max(seconds_until_daily_reset, 1))
-
-        # Weekly counter (expires end of week)
-        w_key = _weekly_key(user_id, now=now)
-        pipe.incrby(w_key, cost_microdollars)
-        seconds_until_weekly_reset = int(
-            (_weekly_reset_time(now=now) - now).total_seconds()
-        )
-        pipe.expire(w_key, max(seconds_until_weekly_reset, 1))
-
-        await pipe.execute()
+        # Daily and weekly keys hash to different cluster slots — cross-slot
+        # MULTI/EXEC is not supported, so each counter gets its own
+        # single-key transaction. Per-counter INCRBY+EXPIRE atomicity is the
+        # invariant that matters; the two counters are independent budgets.
+        await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
+        await _incr_counter_atomic(redis, w_key, cost_microdollars, weekly_ttl)
     except (RedisError, ConnectionError, OSError):
         logger.warning(
             "Redis unavailable for recording cost usage (microdollars=%d)",
@@ -586,30 +564,56 @@ async def record_cost_usage(
         )
 
 
+async def _incr_counter_atomic(
+    redis: AsyncRedisClient, key: str, delta: int, ttl_seconds: int
+) -> None:
+    """INCRBY + EXPIRE on a single key inside a MULTI/EXEC transaction."""
+    pipe = redis.pipeline(transaction=True)
+    pipe.incrby(key, delta)
+    pipe.expire(key, ttl_seconds)
+    await pipe.execute()
+
+
+# Atomic DECRBY + floor-to-zero so a concurrent INCRBY from record_cost_usage
+# cannot be lost. DELETE on underflow also avoids leaving a zero-valued key
+# with no TTL, which the non-atomic set-with-keepttl variant could do.
+_DECR_FLOOR_ZERO_SCRIPT = """
+local value = redis.call("DECRBY", KEYS[1], ARGV[1])
+if value < 0 then
+    redis.call("DEL", KEYS[1])
+    return 0
+end
+return value
+"""
+
+
+async def _decr_counter_floor_zero(
+    redis: AsyncRedisClient, key: str, delta: int
+) -> None:
+    """Atomically DECRBY ``delta`` on ``key`` and DEL on underflow.
+
+    DEL on underflow avoids leaving a zero-valued key without a TTL, so the
+    next INCRBY in ``record_cost_usage`` re-seeds both the value and the
+    expiry in one shot.
+    """
+    await redis.eval(_DECR_FLOOR_ZERO_SCRIPT, 1, key, delta)
+
+
 class _UserNotFoundError(Exception):
     """Raised when a user record is missing or has no subscription tier.
 
-    Used internally by ``_fetch_user_tier`` to signal a cache-miss condition:
-    by raising instead of returning ``DEFAULT_TIER``, we prevent the ``@cached``
-    decorator from storing the fallback value.  This avoids a race condition
-    where a non-existent user's DEFAULT_TIER is cached, then the user is
-    created with a higher tier but receives the stale cached FREE tier for
-    up to 5 minutes.
+    Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
+    from persisting the fallback, which would otherwise keep serving FREE
+    for up to the TTL after the user's real tier is set.
     """
 
 
 @cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Fetch the user's rate-limit tier from the database (cached via Redis).
+    """Fetch the user's rate-limit tier, cached across pods.
 
-    Uses ``shared_cache=True`` so that tier changes propagate across all pods
-    immediately when the cache entry is invalidated (via ``cache_delete``).
-
-    Only successful DB lookups of existing users with a valid tier are cached.
-    Raises ``_UserNotFoundError`` when the user is missing or has no tier, so
-    the ``@cached`` decorator does **not** store a fallback value.  This
-    prevents a race condition where a non-existent user's ``DEFAULT_TIER`` is
-    cached and then persists after the user is created with a higher tier.
+    Only successful lookups are cached. Missing users raise
+    ``_UserNotFoundError`` so ``@cached`` never stores the fallback.
     """
     try:
         user = await user_db().get_user_by_id(user_id)
@@ -651,20 +655,10 @@ get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-
 async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
-    Invalidates every cache that keys off the user's subscription tier so the
-    change is visible immediately: this function's own ``get_user_tier``, the
-    shared ``get_user_by_id`` (which exposes ``user.subscription_tier``), and
-    ``get_pending_subscription_change`` (since an admin override can invalidate
-    a cached ``cancel_at_period_end`` or schedule-based pending state).
-
-    If the user has an active Stripe subscription whose current price does not
-    match ``tier``, Stripe will keep billing the old price and the next
-    ``customer.subscription.updated`` webhook will overwrite the DB tier back
-    to whatever Stripe has. Proper reconciliation (cancelling or modifying the
-    Stripe subscription when an admin overrides the tier) is out of scope for
-    this PR — it changes the admin contract and needs its own test coverage.
-    For now we emit a ``WARNING`` so drift surfaces via Sentry until that
-    follow-up lands.
+    Invalidates the caches that expose ``subscription_tier`` so the change
+    takes effect immediately. If the user has an active Stripe subscription
+    on a mismatched price, emits a WARNING; Stripe remains the billing
+    source of truth and the next webhook will reconcile the DB tier.
 
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
@@ -674,21 +668,13 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         data={"subscriptionTier": tier.value},
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local import required: backend.data.credit imports backend.copilot.rate_limit
-    # (via get_user_tier in credit.py's _invalidate_user_tier_caches), so a
-    # top-level ``from backend.data.credit import ...`` here would create a
-    # circular import at module-load time.
+    # Local import: backend.data.credit imports from this module.
     from backend.data.credit import get_pending_subscription_change
 
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
     get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
 
-    # The DB write above is already committed; the drift check is best-effort
-    # diagnostic logging. Fire-and-forget so admin bulk ops don't wait on a
-    # Stripe roundtrip. The inner helper wraps its body in a timeout + broad
-    # except so background task errors still surface via logs rather than as
-    # "task exception never retrieved" warnings. Cancellation on request
-    # shutdown is acceptable — the drift warning is non-load-bearing.
+    # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
 
 
@@ -711,8 +697,6 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
             tier.value,
         )
     except asyncio.CancelledError:
-        # Request may have completed and the event loop is cancelling tasks —
-        # the drift log is non-critical, so accept cancellation silently.
         raise
     except Exception:
         logger.exception(
@@ -726,19 +710,9 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
 async def _warn_if_stripe_subscription_drifts(
     user_id: str, new_tier: SubscriptionTier
 ) -> None:
-    """Emit a WARNING when an admin tier override leaves an active Stripe sub on a
-    mismatched price.
-
-    The warning is diagnostic only: Stripe remains the billing source of truth,
-    so the next ``customer.subscription.updated`` webhook will reset the DB
-    tier. Surfacing the drift here lets ops catch admin overrides that bypass
-    the intended Checkout / Portal cancel flows before users notice surprise
-    charges.
-    """
-    # Local imports: see note in ``set_user_tier`` about the credit <-> rate_limit
-    # circular. These helpers (``_get_active_subscription``,
-    # ``get_subscription_price_id``) live in credit.py alongside the rest of
-    # the Stripe billing code.
+    """Emit a WARNING when an admin tier override leaves an active Stripe
+    subscription on a mismatched price."""
+    # Local import: breaks a credit <-> rate_limit circular at module load.
     from backend.data.credit import _get_active_subscription, get_subscription_price_id
 
     try:
@@ -753,10 +727,8 @@ async def _warn_if_stripe_subscription_drifts(
             return
         price = items[0].price
         current_price_id = price if isinstance(price, str) else price.id
-        # The LaunchDarkly-backed price lookup must live inside this try/except:
-        # an LD SDK failure (network, token revoked) here would otherwise
-        # propagate past set_user_tier's already-committed DB write and turn a
-        # best-effort diagnostic into a 500 on admin tier writes.
+        # Inside the try/except: an LD SDK failure here must not turn a
+        # best-effort diagnostic into a 500 after the DB write committed.
         expected_price_id = await get_subscription_price_id(new_tier)
     except Exception:
         logger.debug(
@@ -838,12 +810,15 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
     the admin believing the counters were zeroed when they were not.
     """
     now = datetime.now(UTC)
-    keys_to_delete = [_daily_key(user_id, now=now)]
-    if reset_weekly:
-        keys_to_delete.append(_weekly_key(user_id, now=now))
+    d_key = _daily_key(user_id, now=now)
+    w_key = _weekly_key(user_id, now=now) if reset_weekly else None
     try:
         redis = await get_redis_async()
-        await redis.delete(*keys_to_delete)
+        # Daily and weekly keys hash to different cluster slots — multi-key
+        # DELETE would raise CROSSSLOT, so issue separate calls.
+        await redis.delete(d_key)
+        if w_key is not None:
+            await redis.delete(w_key)
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting user usage")
         raise
