@@ -14,8 +14,8 @@ from fastapi import WebSocket
 import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
     ConnectionManager,
-    _event_bus_channel,
-    _graph_exec_channel_key,
+    event_bus_channel,
+    graph_exec_channel_key,
     _graph_execs_channel_key,
 )
 from backend.api.model import WSMethod
@@ -24,8 +24,8 @@ from backend.data.execution import (
     GraphExecutionEvent,
     GraphExecutionMeta,
     NodeExecutionEvent,
-    _exec_channel,
-    _graph_all_channel,
+    exec_channel,
+    graph_all_channel,
 )
 
 
@@ -164,8 +164,8 @@ async def test_two_clients_get_independent_ssubscribes_on_right_shards(
         await asyncio.sleep(0.2)
 
         # Publish to each per-exec channel.
-        chan_a = _event_bus_channel(_exec_channel(user_id, graph_a, exec_a))
-        chan_b = _event_bus_channel(_exec_channel(user_id, graph_b, exec_b))
+        chan_a = event_bus_channel(exec_channel(user_id, graph_a, exec_a))
+        chan_b = event_bus_channel(exec_channel(user_id, graph_b, exec_b))
         cluster.spublish(
             chan_a,
             _node_event_payload(
@@ -190,12 +190,8 @@ async def test_two_clients_get_independent_ssubscribes_on_right_shards(
 
         msg_a = json.loads(sent_a[0])
         msg_b = json.loads(sent_b[0])
-        assert msg_a["channel"] == _graph_exec_channel_key(
-            user_id, graph_exec_id=exec_a
-        )
-        assert msg_b["channel"] == _graph_exec_channel_key(
-            user_id, graph_exec_id=exec_b
-        )
+        assert msg_a["channel"] == graph_exec_channel_key(user_id, graph_exec_id=exec_a)
+        assert msg_b["channel"] == graph_exec_channel_key(user_id, graph_exec_id=exec_b)
         assert msg_a["data"]["graph_exec_id"] == exec_a
         assert msg_b["data"]["graph_exec_id"] == exec_b
         # No cross-talk: each socket got exactly one message.
@@ -241,8 +237,8 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
         await asyncio.sleep(0.2)
 
         # The eventbus publishes the same event to both channels — replicate.
-        chan_per = _event_bus_channel(_exec_channel(user_id, graph_id, exec_id))
-        chan_all = _event_bus_channel(_graph_all_channel(user_id, graph_id))
+        chan_per = event_bus_channel(exec_channel(user_id, graph_id, exec_id))
+        chan_all = event_bus_channel(graph_all_channel(user_id, graph_id))
         payload = _graph_event_payload(
             user_id=user_id,
             graph_id=graph_id,
@@ -260,7 +256,7 @@ async def test_aggregate_channel_receives_per_exec_publishes(monkeypatch) -> Non
         assert agg_msg["channel"] == _graph_execs_channel_key(
             user_id, graph_id=graph_id
         )
-        assert per_msg["channel"] == _graph_exec_channel_key(
+        assert per_msg["channel"] == graph_exec_channel_key(
             user_id, graph_exec_id=exec_id
         )
         assert agg_msg["method"] == WSMethod.GRAPH_EXECUTION_EVENT.value
@@ -290,7 +286,7 @@ async def test_disconnect_unsubscribes_and_drops_future_publishes(monkeypatch) -
 
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
-    chan = _event_bus_channel(_exec_channel(user_id, graph_id, exec_id))
+    chan = event_bus_channel(exec_channel(user_id, graph_id, exec_id))
     payload = _node_event_payload(
         user_id=user_id, graph_id=graph_id, graph_exec_id=exec_id, marker="live"
     ).decode()
@@ -314,7 +310,7 @@ async def test_disconnect_unsubscribes_and_drops_future_publishes(monkeypatch) -
 
         # Channel bookkeeping must be gone.
         assert (
-            _graph_exec_channel_key(user_id, graph_exec_id=exec_id)
+            graph_exec_channel_key(user_id, graph_exec_id=exec_id)
             not in cm.subscriptions
         )
         assert ws not in cm._ws_subs
@@ -357,7 +353,7 @@ async def test_slow_consumer_receives_all_events_without_loss(monkeypatch) -> No
 
     redis_client.get_redis.cache_clear()
     cluster = redis_client.get_redis()
-    chan = _event_bus_channel(_exec_channel(user_id, graph_id, exec_id))
+    chan = event_bus_channel(exec_channel(user_id, graph_id, exec_id))
 
     try:
         await cm.subscribe_graph_exec(

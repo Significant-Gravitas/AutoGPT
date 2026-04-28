@@ -18,8 +18,8 @@ from backend.data.execution import (
     AsyncRedisExecutionEventBus,
     ExecutionStatus,
     NodeExecutionEvent,
-    _exec_channel,
-    _graph_all_channel,
+    exec_channel,
+    graph_all_channel,
 )
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
@@ -149,7 +149,7 @@ async def test_graph_execution_events_complete_under_ten_seconds() -> None:
 
     async def _consume() -> None:
         async for evt in subscriber.listen_events(
-            _exec_channel(user_id, graph_id, gex_id)
+            exec_channel(user_id, graph_id, gex_id)
         ):
             received.append(getattr(evt, "node_exec_id", "graph"))
             return
@@ -163,7 +163,7 @@ async def test_graph_execution_events_complete_under_ten_seconds() -> None:
             _make_node_event(
                 user_id=user_id, graph_id=graph_id, gex_id=gex_id, marker="m1"
             ),
-            _exec_channel(user_id, graph_id, gex_id),
+            exec_channel(user_id, graph_id, gex_id),
         )
         await asyncio.wait_for(task, timeout=10.0)
     finally:
@@ -200,10 +200,10 @@ async def test_two_concurrent_graphs_no_cross_talk() -> None:
     sink_a: list[str] = []
     sink_b: list[str] = []
     t_a = asyncio.create_task(
-        _listen_one(sub_a, _exec_channel(user_id, g1, e1), sink_a, want=3)
+        _listen_one(sub_a, exec_channel(user_id, g1, e1), sink_a, want=3)
     )
     t_b = asyncio.create_task(
-        _listen_one(sub_b, _exec_channel(user_id, g2, e2), sink_b, want=3)
+        _listen_one(sub_b, exec_channel(user_id, g2, e2), sink_b, want=3)
     )
     await asyncio.sleep(0.3)
 
@@ -213,13 +213,13 @@ async def test_two_concurrent_graphs_no_cross_talk() -> None:
                 _make_node_event(
                     user_id=user_id, graph_id=g1, gex_id=e1, marker=f"a{i}"
                 ),
-                _exec_channel(user_id, g1, e1),
+                exec_channel(user_id, g1, e1),
             )
             await publisher.publish_event(
                 _make_node_event(
                     user_id=user_id, graph_id=g2, gex_id=e2, marker=f"b{i}"
                 ),
-                _exec_channel(user_id, g2, e2),
+                exec_channel(user_id, g2, e2),
             )
 
         await asyncio.wait_for(asyncio.gather(t_a, t_b), timeout=10.0)
@@ -249,9 +249,7 @@ async def test_three_executions_land_on_aggregate_channel() -> None:
     received: list[str] = []
 
     async def _listen_all() -> None:
-        async for evt in subscriber.listen_events(
-            _graph_all_channel(user_id, graph_id)
-        ):
+        async for evt in subscriber.listen_events(graph_all_channel(user_id, graph_id)):
             received.append(getattr(evt, "graph_exec_id", "?"))
             if len(received) >= 3:
                 return
@@ -265,7 +263,7 @@ async def test_three_executions_land_on_aggregate_channel() -> None:
                 _make_node_event(
                     user_id=user_id, graph_id=graph_id, gex_id=ex, marker=ex
                 ),
-                _graph_all_channel(user_id, graph_id),
+                graph_all_channel(user_id, graph_id),
             )
 
         await asyncio.wait_for(task, timeout=10.0)

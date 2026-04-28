@@ -1345,11 +1345,11 @@ def _graph_scope_tag(user_id: str, graph_id: str) -> str:
     return "{" + f"{user_id}/{graph_id}" + "}"
 
 
-def _exec_channel(user_id: str, graph_id: str, graph_exec_id: str) -> str:
+def exec_channel(user_id: str, graph_id: str, graph_exec_id: str) -> str:
     return f"{_graph_scope_tag(user_id, graph_id)}/exec/{graph_exec_id}"
 
 
-def _graph_all_channel(user_id: str, graph_id: str) -> str:
+def graph_all_channel(user_id: str, graph_id: str) -> str:
     return f"{_graph_scope_tag(user_id, graph_id)}/all"
 
 
@@ -1391,23 +1391,21 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
             event.output_data = truncate(event.output_data, limit)
 
         # Publisher fans out: per-exec and per-graph watchers.
-        super().publish_event(event, _exec_channel(user_id, graph_id, graph_exec_id))
-        super().publish_event(event, _graph_all_channel(user_id, graph_id))
+        super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
+        super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> Generator[ExecutionEvent, None, None]:
         """Stream events for a specific graph execution."""
-        for event in self.listen_events(
-            _exec_channel(user_id, graph_id, graph_exec_id)
-        ):
+        for event in self.listen_events(exec_channel(user_id, graph_id, graph_exec_id)):
             yield event
 
     def listen_graph(
         self, user_id: str, graph_id: str
     ) -> Generator[ExecutionEvent, None, None]:
         """Stream every event for every execution of ``graph_id``."""
-        for event in self.listen_events(_graph_all_channel(user_id, graph_id)):
+        for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
 
@@ -1455,16 +1453,16 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
             event.output_data = truncate(event.output_data, limit)
 
         await super().publish_event(
-            event, _exec_channel(user_id, graph_id, graph_exec_id)
+            event, exec_channel(user_id, graph_id, graph_exec_id)
         )
-        await super().publish_event(event, _graph_all_channel(user_id, graph_id))
+        await super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     async def listen(
         self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
         """Stream events for a specific graph execution."""
         async for event in self.listen_events(
-            _exec_channel(user_id, graph_id, graph_exec_id)
+            exec_channel(user_id, graph_id, graph_exec_id)
         ):
             yield event
 
@@ -1472,7 +1470,7 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
         self, user_id: str, graph_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
         """Stream every event for every execution of ``graph_id``."""
-        async for event in self.listen_events(_graph_all_channel(user_id, graph_id)):
+        async for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
 

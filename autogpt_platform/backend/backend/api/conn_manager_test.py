@@ -7,8 +7,8 @@ from fastapi import WebSocket
 
 from backend.api.conn_manager import (
     ConnectionManager,
-    _event_bus_channel,
-    _graph_exec_channel_key,
+    event_bus_channel,
+    graph_exec_channel_key,
     _graph_execs_channel_key,
     _notification_bus_channel,
     _Subscription,
@@ -114,7 +114,7 @@ async def test_unsubscribe(
 
 def test_event_bus_channel_prefixes_settings_name() -> None:
     """Every SSUBSCRIBE must go through the bus-namespaced channel."""
-    full = _event_bus_channel("{u/g}/exec/x")
+    full = event_bus_channel("{u/g}/exec/x")
     # Must start with the configured bus name, then slash, then key.
     assert full.endswith("/{u/g}/exec/x")
     assert "/" in full
@@ -128,7 +128,7 @@ def test_notification_bus_channel_prefixes_settings_name() -> None:
 
 
 def test_graph_exec_channel_key_shape() -> None:
-    assert _graph_exec_channel_key("u", graph_exec_id="e") == "u|graph_exec#e"
+    assert graph_exec_channel_key("u", graph_exec_id="e") == "u|graph_exec#e"
 
 
 def test_graph_execs_channel_key_shape() -> None:

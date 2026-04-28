@@ -15,8 +15,8 @@ from backend.data import redis_client as redis
 from backend.data.event_bus import _assert_no_wildcard
 from backend.data.execution import (
     ExecutionEventType,
-    _exec_channel,
-    _graph_all_channel,
+    exec_channel,
+    graph_all_channel,
     get_graph_execution_meta,
 )
 from backend.data.notification_bus import NotificationEvent
@@ -46,7 +46,7 @@ _EVENT_TYPE_TO_METHOD_MAP: dict[ExecutionEventType, WSMethod] = {
 }
 
 
-def _event_bus_channel(channel_key: str) -> str:
+def event_bus_channel(channel_key: str) -> str:
     """Prefix a channel key with the execution event bus name."""
     return f"{_settings.config.execution_event_bus_name}/{channel_key}"
 
@@ -226,9 +226,9 @@ class ConnectionManager:
             raise ValueError(
                 f"graph_exec #{graph_exec_id} not found for user #{user_id}"
             )
-        channel_key = _graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id)
-        full_channel = _event_bus_channel(
-            _exec_channel(user_id, meta.graph_id, graph_exec_id)
+        channel_key = graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id)
+        full_channel = event_bus_channel(
+            exec_channel(user_id, meta.graph_id, graph_exec_id)
         )
         await self._open_subscription(websocket, channel_key, full_channel)
         return channel_key
@@ -237,14 +237,14 @@ class ConnectionManager:
         self, *, user_id: str, graph_id: str, websocket: WebSocket
     ) -> str:
         channel_key = _graph_execs_channel_key(user_id, graph_id=graph_id)
-        full_channel = _event_bus_channel(_graph_all_channel(user_id, graph_id))
+        full_channel = event_bus_channel(graph_all_channel(user_id, graph_id))
         await self._open_subscription(websocket, channel_key, full_channel)
         return channel_key
 
     async def unsubscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str | None:
-        channel_key = _graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id)
+        channel_key = graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id)
         return await self._close_subscription(websocket, channel_key)
 
     async def unsubscribe_graph_execs(
@@ -389,7 +389,7 @@ class ConnectionManager:
             )
 
 
-def _graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
+def graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
     return f"{user_id}|graph_exec#{graph_exec_id}"
 
 

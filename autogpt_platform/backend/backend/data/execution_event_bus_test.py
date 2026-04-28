@@ -19,8 +19,8 @@ from backend.data.execution import (
     GraphExecutionEvent,
     NodeExecutionEvent,
     RedisExecutionEventBus,
-    _exec_channel,
-    _graph_all_channel,
+    exec_channel,
+    graph_all_channel,
     _graph_scope_tag,
 )
 
@@ -35,20 +35,20 @@ def test_graph_scope_tag_uses_hash_tag_syntax():
 
 def test_exec_channel_nests_scope_tag():
     """Per-exec channel: ``{user/graph}/exec/<exec_id>``."""
-    assert _exec_channel("u", "g", "e") == "{u/g}/exec/e"
+    assert exec_channel("u", "g", "e") == "{u/g}/exec/e"
 
 
 def test_graph_all_channel_nests_scope_tag():
     """Aggregate channel: ``{user/graph}/all`` — keyslot-aligned with per-exec."""
-    assert _graph_all_channel("u", "g") == "{u/g}/all"
+    assert graph_all_channel("u", "g") == "{u/g}/all"
 
 
 def test_exec_and_graph_channels_share_hash_tag():
     """Invariant: both channels *must* share the ``{user/graph}`` prefix.
     If this breaks, SSUBSCRIBE for per-exec and aggregate routes to different
     shards and the per-graph listener loses some events."""
-    exec_ch = _exec_channel("u", "g", "e")
-    graph_ch = _graph_all_channel("u", "g")
+    exec_ch = exec_channel("u", "g", "e")
+    graph_ch = graph_all_channel("u", "g")
     assert exec_ch.startswith("{u/g}")
     assert graph_ch.startswith("{u/g}")
 
@@ -114,8 +114,8 @@ async def test_async_publish_node_sends_to_both_channels():
         await bus._publish_node_exec_update(_sample_node_event())
 
     assert sent_channels == [
-        _exec_channel("u", "g", "e"),
-        _graph_all_channel("u", "g"),
+        exec_channel("u", "g", "e"),
+        graph_all_channel("u", "g"),
     ]
 
 
@@ -133,8 +133,8 @@ async def test_async_publish_graph_sends_to_both_channels():
         await bus._publish_graph_exec_update(_sample_graph_event())
 
     assert sent_channels == [
-        _exec_channel("u", "g", "e"),
-        _graph_all_channel("u", "g"),
+        exec_channel("u", "g", "e"),
+        graph_all_channel("u", "g"),
     ]
 
 
@@ -189,7 +189,7 @@ async def test_async_listen_uses_exec_channel():
         async for _ in bus.listen("u", "g", "e"):
             break  # pragma: no cover — generator is empty
 
-    assert captured == [_exec_channel("u", "g", "e")]
+    assert captured == [exec_channel("u", "g", "e")]
 
 
 @pytest.mark.asyncio
@@ -208,7 +208,7 @@ async def test_async_listen_graph_uses_all_channel():
         async for _ in bus.listen_graph("u", "g"):
             break  # pragma: no cover — generator is empty
 
-    assert captured == [_graph_all_channel("u", "g")]
+    assert captured == [graph_all_channel("u", "g")]
 
 
 # ---------- Sync RedisExecutionEventBus (smaller surface; covers branching) ----------
@@ -226,7 +226,7 @@ def test_sync_listen_uses_exec_channel():
     with patch.object(RedisExecutionEventBus, "listen_events", _listen_events):
         list(bus.listen("u", "g", "e"))
 
-    assert captured == [_exec_channel("u", "g", "e")]
+    assert captured == [exec_channel("u", "g", "e")]
 
 
 def test_sync_listen_graph_uses_all_channel():
@@ -241,7 +241,7 @@ def test_sync_listen_graph_uses_all_channel():
     with patch.object(RedisExecutionEventBus, "listen_events", _listen_events):
         list(bus.listen_graph("u", "g"))
 
-    assert captured == [_graph_all_channel("u", "g")]
+    assert captured == [graph_all_channel("u", "g")]
 
 
 def test_sync_publish_node_sends_to_both_channels():
@@ -256,8 +256,8 @@ def test_sync_publish_node_sends_to_both_channels():
         bus._publish_node_exec_update(_sample_node_event().model_copy())
 
     assert sent == [
-        _exec_channel("u", "g", "e"),
-        _graph_all_channel("u", "g"),
+        exec_channel("u", "g", "e"),
+        graph_all_channel("u", "g"),
     ]
 
 
