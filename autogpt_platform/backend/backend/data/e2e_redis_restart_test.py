@@ -1,6 +1,6 @@
 """Sharded pubsub reconnect across a real `docker restart` of a shard,
 against a private 3-shard cluster on isolated host ports. Gated on
-`E2E_RESTART_ISOLATED=1` + `docker` on PATH, marked `pytest.mark.slow`."""
+`E2E_REDIS_CLUSTER_RESTART=1` + `docker` on PATH, marked `pytest.mark.slow`."""
 
 from __future__ import annotations
 
@@ -26,13 +26,13 @@ def _docker_available() -> bool:
 
 
 def _isolated_enabled() -> bool:
-    return os.getenv("E2E_RESTART_ISOLATED", "").lower() in ("1", "true", "yes")
+    return os.getenv("E2E_REDIS_CLUSTER_RESTART", "").lower() in ("1", "true", "yes")
 
 
 cluster_restart_only = pytest.mark.skipif(
     not (_docker_available() and _isolated_enabled()),
     reason=(
-        "isolated docker cluster restart e2e: requires docker + E2E_RESTART_ISOLATED=1"
+        "isolated docker cluster restart e2e: requires docker + E2E_REDIS_CLUSTER_RESTART=1"
     ),
 )
 

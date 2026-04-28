@@ -96,6 +96,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
     await backend.data.db.connect()
+    # Eager connect to fail-fast if Redis is unreachable.
+    await backend.data.redis_client.get_redis_async()
 
     # Configure thread pool for FastAPI sync operation performance
     # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
@@ -147,10 +149,13 @@ async def lifespan_context(app: fastapi.FastAPI):
     except Exception as e:
         logger.warning(f"Error shutting down workspace storage: {e}")
 
+    # Close the cluster client so asyncio's GC doesn't emit "Unclosed
+    # ClusterNode" warnings at interpreter shutdown. Wrapped so a wedged
+    # socket close doesn't block db.disconnect.
     try:
         await backend.data.redis_client.disconnect_async()
-    except Exception as e:
-        logger.debug(f"redis_client.disconnect_async failed: {e}")
+    except Exception:
+        logger.warning("redis_client.disconnect_async failed", exc_info=True)
 
     await backend.data.db.disconnect()
 

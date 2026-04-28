@@ -33,13 +33,18 @@ settings = Settings()
 async def lifespan(app: FastAPI):
     # Prisma is needed to resolve graph_id from graph_exec_id on subscribe.
     await db.connect()
+    # Eager connect to fail-fast if Redis is unreachable.
+    await redis_client.get_redis_async()
     try:
         yield
     finally:
+        # Close the cluster client so asyncio's GC doesn't emit "Unclosed
+        # ClusterNode" warnings at interpreter shutdown. Wrapped so a close
+        # failure doesn't block db.disconnect.
         try:
             await redis_client.disconnect_async()
-        except Exception as e:
-            logger.debug(f"redis_client.disconnect_async failed: {e}")
+        except Exception:
+            logger.warning("redis_client.disconnect_async failed", exc_info=True)
         await db.disconnect()
 
 
