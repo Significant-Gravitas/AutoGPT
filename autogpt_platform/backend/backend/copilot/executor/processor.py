@@ -35,11 +35,13 @@ SHUTDOWN_ERROR_MESSAGE = (
     "Copilot executor shut down before this turn finished. Please retry."
 )
 
-# Max time execute() blocks after calling future.cancel() / when draining a
-# soon-to-be-cancelled future. Gives _execute_async's own finally a chance to
-# publish the accurate terminal state over the Redis CAS; long enough to let
-# an in-flight Redis call settle, short enough that shutdown doesn't stall.
+# Max time execute() blocks after requesting async turn cancellation. The worker
+# waits for normal cleanup so late stream writes do not race the manager, but it
+# must still escape to the sync fail-close safety net if cleanup wedges.
 _CANCEL_GRACE_SECONDS = 5.0
+
+# How long to wait before logging again that a cancelled turn is still draining.
+_CANCEL_DRAIN_LOG_INTERVAL_SECONDS = 1.0
 
 # Max time the sync safety net itself spends on a single Redis CAS. Without
 # this bound the whole point of ``sync_fail_close_session`` is defeated —
@@ -92,9 +94,11 @@ def sync_fail_close_session(
             timeout=_FAIL_CLOSE_REDIS_TIMEOUT,
         )
 
+    coro = _bounded()
     try:
-        future = asyncio.run_coroutine_threadsafe(_bounded(), execution_loop)
+        future = asyncio.run_coroutine_threadsafe(coro, execution_loop)
     except RuntimeError as e:
+        coro.close()
         # execution_loop is closed — happens if cleanup() already ran the
         # per-worker teardown. Nothing we can do; let the stale-session
         # watchdog reap it.
@@ -336,8 +340,7 @@ class CoPilotProcessor:
 
         Thin wrapper around :meth:`_execute`. The ``try/finally`` here
         guarantees :func:`sync_fail_close_session` runs on every exit
-        path — normal completion, exception, or a wedged event loop
-        that escapes via :data:`_CANCEL_GRACE_SECONDS` timeout.
+        path — normal completion or exception.
         ``mark_session_completed`` is an atomic CAS on
         ``status == "running"``, so when the async path already wrote a
         terminal state the sync call is a cheap no-op.
@@ -370,40 +373,92 @@ class CoPilotProcessor:
         that lives in :func:`sync_fail_close_session` which the outer
         :meth:`execute` always invokes on exit.
         """
+        task_ready: concurrent.futures.Future[asyncio.Task] = (
+            concurrent.futures.Future()
+        )
+
+        async def run_async_turn():
+            task = asyncio.current_task()
+            if task is not None and not task_ready.done():
+                task_ready.set_result(task)
+            return await self._execute_async(entry, cancel, cluster_lock, log)
+
         future = asyncio.run_coroutine_threadsafe(
-            self._execute_async(entry, cancel, cluster_lock, log),
+            run_async_turn(),
             self.execution_loop,
         )
 
-        # Wait for completion, checking cancel periodically
-        while not future.done():
+        cancel_requested = False
+        cancel_started_at: float | None = None
+        last_cancel_log_at: float | None = None
+
+        def request_cancel() -> None:
+            nonlocal cancel_requested, cancel_started_at, last_cancel_log_at
+            log.info("Cancellation requested")
+            try:
+                task = task_ready.result(timeout=0)
+            except concurrent.futures.TimeoutError:
+                # Sub-millisecond race: ``run_coroutine_threadsafe`` returned
+                # before ``run_async_turn`` actually started, so
+                # ``task_ready.set_result`` has not run yet.  ``future.cancel``
+                # on a ``concurrent.futures.Future`` whose underlying task may
+                # already be picked up by the loop is best-effort — frequently
+                # a no-op.  The slow path is intentional: ``cancel.is_set()``
+                # is polled inside ``_execute_async`` and the bounded
+                # ``_CANCEL_GRACE_SECONDS`` drain below force-cancels and falls
+                # through to ``sync_fail_close_session``, so the worst-case
+                # observable behaviour is "cancel takes ~5s in this rare race"
+                # rather than a stuck session.
+                future.cancel()
+            else:
+                self.execution_loop.call_soon_threadsafe(task.cancel)
+            cancel_requested = True
+            cancel_started_at = time.monotonic()
+            last_cancel_log_at = cancel_started_at
+
+        def log_cancel_wait() -> None:
+            nonlocal last_cancel_log_at
+            if cancel_started_at is None or last_cancel_log_at is None:
+                return
+            now = time.monotonic()
+            if now - last_cancel_log_at < _CANCEL_DRAIN_LOG_INTERVAL_SECONDS:
+                return
+            elapsed = now - cancel_started_at
+            log.warning(f"Waiting for cancelled turn to drain ({elapsed:.1f}s elapsed)")
+            last_cancel_log_at = now
+
+        def cancel_drain_timed_out() -> bool:
+            if cancel_started_at is None:
+                return False
+            elapsed = time.monotonic() - cancel_started_at
+            if elapsed < _CANCEL_GRACE_SECONDS:
+                return False
+            log.warning(
+                f"Cancelled turn did not drain within {_CANCEL_GRACE_SECONDS:.1f}s; "
+                "falling through to sync fail-close"
+            )
+            future.cancel()
+            return True
+
+        # Wait for completion, checking cancel periodically. A cancellation
+        # request waits for normal async cleanup, but remains bounded so the
+        # worker does not refresh the per-session lock forever on a wedged turn.
+        while True:
             try:
                 future.result(timeout=1.0)
-            except asyncio.TimeoutError:
-                if cancel.is_set():
-                    log.info("Cancellation requested")
-                    future.cancel()
-                    # Give _execute_async's own finally a short window to
-                    # publish its accurate terminal state before the outer
-                    # sync safety net fires.
-                    try:
-                        future.result(timeout=_CANCEL_GRACE_SECONDS)
-                    except BaseException:
-                        pass
+                return
+            except concurrent.futures.CancelledError:
+                if cancel_requested or cancel.is_set():
                     return
-                cluster_lock.refresh()
-
-        if not future.cancelled():
-            # Bounded timeout so a wedged event loop can't trap us here —
-            # on timeout we escape to execute()'s finally and the sync
-            # safety net fires.
-            try:
-                future.result(timeout=_CANCEL_GRACE_SECONDS)
+                raise
             except concurrent.futures.TimeoutError:
-                log.warning(
-                    "Future did not complete within grace window; "
-                    "falling through to sync fail-close"
-                )
+                if cancel.is_set() and not cancel_requested:
+                    request_cancel()
+                elif cancel_requested and cancel_started_at is not None:
+                    if cancel_drain_timed_out():
+                        return
+                    log_cancel_wait()
+                cluster_lock.refresh()
 
     async def _execute_async(
         self,

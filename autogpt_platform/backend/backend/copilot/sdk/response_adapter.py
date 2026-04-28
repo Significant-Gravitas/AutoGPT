@@ -36,6 +36,7 @@ from backend.copilot.response_model import (
     StreamReasoningStart,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -373,6 +374,14 @@ class SDKResponseAdapter:
                 self._end_reasoning_if_open(responses)
                 responses.append(StreamFinishStep())
                 self.step_open = False
+
+            # Narrate the gap between "tool returned" and "model emits its
+            # next chunk". Usually sub-second, but with large tool outputs
+            # or complex continuations it can stretch long enough for the
+            # generic "Thinking…" copy to feel dead. The frontend replaces
+            # it with actual content as soon as the next chunk lands.
+            if resolved_in_blocks:
+                responses.append(StreamStatus(message="Analyzing result\u2026"))
 
         elif isinstance(sdk_message, ResultMessage):
             self.flush_unresolved_tool_calls(responses)

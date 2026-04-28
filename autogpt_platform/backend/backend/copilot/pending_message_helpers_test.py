@@ -4,17 +4,20 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from backend.copilot import pending_message_helpers as helpers_module
 from backend.copilot.pending_message_helpers import (
     PENDING_CALL_LIMIT,
+    QueuePendingMessageResponse,
     check_pending_call_rate,
     combine_pending_with_current,
     drain_pending_safe,
     insert_pending_before_last,
     persist_session_safe,
+    queue_pending_for_http,
 )
-from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.pending_messages import MAX_PENDING_MESSAGES, PendingMessage
 
 # ── check_pending_call_rate ────────────────────────────────────────────
 
@@ -44,6 +47,112 @@ async def test_check_pending_call_rate_fails_open_on_redis_error(
 
     result = await check_pending_call_rate("user-1")
     assert result == 0
+
+
+# ── queue_pending_for_http: gate-then-bump ordering ───────────────────
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_does_not_charge_rate_on_toctou_409(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the Lua gate refuses the push because the turn just completed,
+    the per-user call-rate counter must NOT have been incremented — bumping
+    it before the gate would charge a budget tick for every TOCTOU loss
+    against turn completion (race that both this endpoint and the POST
+    /stream queue-fall-through can trigger)."""
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(
+            return_value=QueuePendingMessageResponse(
+                buffer_length=0,
+                max_buffer_length=MAX_PENDING_MESSAGES,
+                turn_in_flight=False,
+            )
+        ),
+    )
+    rate_mock = AsyncMock(return_value=1)
+    monkeypatch.setattr(helpers_module, "check_pending_call_rate", rate_mock)
+    monkeypatch.setattr(
+        helpers_module, "resolve_workspace_files", AsyncMock(return_value=[])
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await queue_pending_for_http(
+            session_id="sess-1",
+            user_id="user-1",
+            message="hi",
+            context=None,
+            file_ids=None,
+        )
+    assert exc_info.value.status_code == 409
+    rate_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_charges_rate_only_after_successful_push(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = QueuePendingMessageResponse(
+        buffer_length=2,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
+    queue_mock = AsyncMock(return_value=response)
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    rate_mock = AsyncMock(return_value=PENDING_CALL_LIMIT)
+    monkeypatch.setattr(helpers_module, "check_pending_call_rate", rate_mock)
+    monkeypatch.setattr(
+        helpers_module, "resolve_workspace_files", AsyncMock(return_value=[])
+    )
+
+    result = await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=None,
+    )
+
+    assert result is response
+    queue_mock.assert_awaited_once()
+    rate_mock.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_429_after_push_when_limit_exceeded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the post-push rate counter crosses the limit, the message stays
+    in the buffer (next drain will pick it up) but the response is 429 so
+    the client backs off."""
+    response = QueuePendingMessageResponse(
+        buffer_length=3,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
+    queue_mock = AsyncMock(return_value=response)
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    monkeypatch.setattr(
+        helpers_module,
+        "check_pending_call_rate",
+        AsyncMock(return_value=PENDING_CALL_LIMIT + 1),
+    )
+    monkeypatch.setattr(
+        helpers_module, "resolve_workspace_files", AsyncMock(return_value=[])
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await queue_pending_for_http(
+            session_id="sess-1",
+            user_id="user-1",
+            message="hi",
+            context=None,
+            file_ids=None,
+        )
+    assert exc_info.value.status_code == 429
+    queue_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio

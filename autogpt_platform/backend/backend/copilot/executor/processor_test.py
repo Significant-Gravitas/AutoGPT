@@ -496,3 +496,108 @@ class TestExecuteSafetyNet:
         assert call_log == [
             "sync-ok"
         ], f"expected sync_fail_close_session to run once, got {call_log!r}"
+
+    def test_cancel_waits_for_async_task_to_finish(self, exec_loop) -> None:
+        """A cancel request must not let ``_execute`` return while the
+        underlying asyncio task is still cleaning up. Returning early would
+        make the manager release the session lock while late stream writes
+        are still possible."""
+        proc = CoPilotProcessor()
+        self._attach_exec_loop(proc, exec_loop)
+
+        started = threading.Event()
+        cancel_seen = threading.Event()
+        release_cleanup = threading.Event()
+        finished = threading.Event()
+
+        async def _stubborn_cancel(*_args, **_kwargs):
+            started.set()
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                cancel_seen.set()
+                while not release_cleanup.is_set():
+                    await asyncio.sleep(0.01)
+            finally:
+                finished.set()
+
+        proc._execute_async = _stubborn_cancel  # type: ignore[method-assign]
+
+        cancel = threading.Event()
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            fut = pool.submit(
+                proc._execute,
+                _make_entry(),
+                cancel,
+                MagicMock(),
+                _make_log(),
+            )
+            assert started.wait(timeout=5)
+
+            cancel.set()
+            assert cancel_seen.wait(timeout=5)
+            assert not fut.done()
+
+            release_cleanup.set()
+            fut.result(timeout=5)
+            assert finished.is_set()
+        finally:
+            pool.shutdown(wait=True)
+
+    def test_cancel_wait_has_bounded_escape_hatch(self, exec_loop) -> None:
+        """A wedged async cleanup must not keep the worker refreshing the
+        session lock forever; after the grace window, ``_execute`` returns
+        so ``execute`` can run the sync fail-close safety net."""
+        proc = CoPilotProcessor()
+        self._attach_exec_loop(proc, exec_loop)
+
+        started = threading.Event()
+        cancel_seen = threading.Event()
+        release_cleanup = threading.Event()
+        finished = threading.Event()
+
+        async def _wedged_cancel(*_args, **_kwargs):
+            started.set()
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                cancel_seen.set()
+                while not release_cleanup.is_set():
+                    try:
+                        await asyncio.sleep(0.01)
+                    except asyncio.CancelledError:
+                        pass
+            finally:
+                finished.set()
+
+        proc._execute_async = _wedged_cancel  # type: ignore[method-assign]
+
+        cancel = threading.Event()
+        cluster_lock = MagicMock()
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            with patch(
+                "backend.copilot.executor.processor._CANCEL_GRACE_SECONDS",
+                0.05,
+            ):
+                fut = pool.submit(
+                    proc._execute,
+                    _make_entry(),
+                    cancel,
+                    cluster_lock,
+                    _make_log(),
+                )
+                assert started.wait(timeout=5)
+
+                cancel.set()
+                assert cancel_seen.wait(timeout=5)
+                fut.result(timeout=5)
+
+            assert not finished.is_set()
+            assert cluster_lock.refresh.call_count < 10
+
+            release_cleanup.set()
+            assert finished.wait(timeout=5)
+        finally:
+            pool.shutdown(wait=True)

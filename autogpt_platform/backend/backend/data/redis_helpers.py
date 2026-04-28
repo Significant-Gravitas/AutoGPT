@@ -22,8 +22,7 @@ this module can cover.
 
 from typing import Any, cast
 
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
+from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 # ---------------------------------------------------------------------------
 # Lua scripts — registered centrally so there is exactly ONE authoritative
@@ -47,9 +46,30 @@ end
 return 0
 """
 
+# Push to a capped list only when a hash field currently matches the expected
+# value. Returns the new list length, or -1 when the guard fails.
+#
+#   KEYS[1]  hash key
+#   KEYS[2]  list key
+#   ARGV[1]  hash field
+#   ARGV[2]  expected current value
+#   ARGV[3]  list value
+#   ARGV[4]  max list length
+#   ARGV[5]  list TTL seconds
+_GATED_CAPPED_RPUSH_LUA = """
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if current ~= ARGV[2] then
+    return -1
+end
+redis.call('RPUSH', KEYS[2], ARGV[3])
+redis.call('LTRIM', KEYS[2], -tonumber(ARGV[4]), -1)
+redis.call('EXPIRE', KEYS[2], tonumber(ARGV[5]))
+return redis.call('LLEN', KEYS[2])
+"""
+
 
 async def incr_with_ttl(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     ttl_seconds: int,
     *,
@@ -85,7 +105,7 @@ async def incr_with_ttl(
 
 
 def incr_with_ttl_sync(
-    redis: Redis,
+    redis: RedisClient,
     key: str,
     ttl_seconds: int,
     *,
@@ -103,7 +123,7 @@ def incr_with_ttl_sync(
 
 
 async def capped_rpush(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     value: str,
     *,
@@ -129,8 +149,42 @@ async def capped_rpush(
     return int(results[-1])
 
 
+async def capped_rpush_if_hash_field(
+    redis: AsyncRedisClient,
+    *,
+    hash_key: str,
+    hash_field: str,
+    expected: str,
+    list_key: str,
+    value: str,
+    max_len: int,
+    ttl_seconds: int,
+) -> int | None:
+    """Atomically RPUSH to a bounded list iff a hash field matches.
+
+    Returns the new list length when the push happens, or ``None`` when the
+    hash field does not currently match ``expected``.
+    """
+    result = await cast(
+        "Any",
+        redis.eval(
+            _GATED_CAPPED_RPUSH_LUA,
+            2,
+            hash_key,
+            list_key,
+            hash_field,
+            expected,
+            value,
+            str(max_len),
+            str(ttl_seconds),
+        ),
+    )
+    length = int(result)
+    return None if length < 0 else length
+
+
 async def hash_compare_and_set(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     field: str,
     *,

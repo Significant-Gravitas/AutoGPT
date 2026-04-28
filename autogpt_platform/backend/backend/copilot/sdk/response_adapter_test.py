@@ -25,6 +25,7 @@ from backend.copilot.response_model import (
     StreamReasoningEnd,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -193,13 +194,15 @@ def test_tool_result_emits_output_and_finish_step():
         content=[ToolResultBlock(tool_use_id="t1", content="found 3 agents")]
     )
     results = adapter.convert_message(result_msg)
-    assert len(results) == 2
+    assert len(results) == 3
     assert isinstance(results[0], StreamToolOutputAvailable)
     assert results[0].toolCallId == "t1"
     assert results[0].toolName == "find_agent"  # prefix stripped
     assert results[0].output == "found 3 agents"
     assert results[0].success is True
     assert isinstance(results[1], StreamFinishStep)
+    assert isinstance(results[2], StreamStatus)
+    assert results[2].message == "Analyzing result…"
 
 
 def test_tool_result_error():
@@ -785,6 +788,7 @@ def test_full_conversation_flow():
         "StreamToolInputAvailable",
         "StreamToolOutputAvailable",  # tool result
         "StreamFinishStep",  # step 1 closed after tool result
+        "StreamStatus",  # user-facing status while continuation is generated
         "StreamStartStep",  # step 2: continuation text
         "StreamTextStart",  # new block after tool
         "StreamTextDelta",  # "I found 2"

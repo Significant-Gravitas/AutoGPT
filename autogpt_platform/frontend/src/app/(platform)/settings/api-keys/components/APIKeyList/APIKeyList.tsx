@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import type { Variants } from "framer-motion";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
@@ -10,6 +11,22 @@ import { APIKeyRow } from "../APIKeyRow/APIKeyRow";
 import { APIKeySelectionBar } from "../APIKeySelectionBar/APIKeySelectionBar";
 import { DeleteAPIKeyDialog } from "../DeleteAPIKeyDialog/DeleteAPIKeyDialog";
 import { useAPIKeyListView } from "./useAPIKeyListView";
+
+const LIST_CONTAINER_VARIANTS: Variants = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.04, delayChildren: 0.04 },
+  },
+};
+
+const LIST_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 6 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] },
+  },
+};
 
 export function APIKeyList() {
   const {
@@ -77,17 +94,26 @@ export function APIKeyList() {
         )}
       </AnimatePresence>
 
-      <div className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white">
+      <motion.div
+        className="flex flex-col divide-y divide-zinc-200 overflow-hidden rounded-[8px] border border-zinc-200 bg-white"
+        initial={reduceMotion ? false : "hidden"}
+        animate={reduceMotion ? undefined : "show"}
+        variants={reduceMotion ? undefined : LIST_CONTAINER_VARIANTS}
+      >
         {keys.map((key) => (
-          <APIKeyRow
+          <motion.div
             key={key.id}
-            apiKey={key}
-            selected={selection.isSelected(key.id)}
-            onToggleSelected={() => selection.toggle(key.id)}
-            onDelete={() => requestDelete([key.id])}
-          />
+            variants={reduceMotion ? undefined : LIST_ITEM_VARIANTS}
+          >
+            <APIKeyRow
+              apiKey={key}
+              selected={selection.isSelected(key.id)}
+              onToggleSelected={() => selection.toggle(key.id)}
+              onDelete={() => requestDelete([key.id])}
+            />
+          </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       {deleteTarget && (
         <DeleteAPIKeyDialog

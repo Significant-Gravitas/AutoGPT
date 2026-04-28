@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import type { Variants } from "framer-motion";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
@@ -12,6 +13,27 @@ import { IntegrationsSelectionBar } from "../IntegrationsSelectionBar/Integratio
 import { ProviderGroup } from "../ProviderGroup/ProviderGroup";
 import { IntegrationsListSkeleton } from "./IntegrationsListSkeleton";
 import { useIntegrationsList } from "./useIntegrationsList";
+
+const LIST_CONTAINER_VARIANTS: Variants = {
+  hidden: {},
+  show: {
+    transition: { staggerChildren: 0.08, delayChildren: 0.05 },
+  },
+};
+
+const LIST_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0, y: 16 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] },
+  },
+};
+
+const REDUCED_MOTION_ITEM_VARIANTS: Variants = {
+  hidden: { opacity: 0 },
+  show: { opacity: 1 },
+};
 
 export function IntegrationsList() {
   const {
@@ -128,18 +150,29 @@ export function IntegrationsList() {
       {isEmpty ? (
         <IntegrationsListEmpty query={query} />
       ) : (
-        <div className="flex flex-col gap-3 pb-4">
+        <motion.div
+          className="flex flex-col gap-3 pb-4"
+          initial={reduceMotion ? false : "hidden"}
+          animate={reduceMotion ? undefined : "show"}
+          variants={reduceMotion ? undefined : LIST_CONTAINER_VARIANTS}
+        >
           {providers.map((provider) => (
-            <ProviderGroup
+            <motion.div
               key={provider.id}
-              provider={provider}
-              isSelected={selection.isSelected}
-              onToggleSelected={selection.toggle}
-              onDelete={(id) => askDelete([id])}
-              isDeletingId={isDeletingId}
-            />
+              variants={
+                reduceMotion ? REDUCED_MOTION_ITEM_VARIANTS : LIST_ITEM_VARIANTS
+              }
+            >
+              <ProviderGroup
+                provider={provider}
+                isSelected={selection.isSelected}
+                onToggleSelected={selection.toggle}
+                onDelete={(id) => askDelete([id])}
+                isDeletingId={isDeletingId}
+              />
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       )}
 
       <DeleteConfirmDialog

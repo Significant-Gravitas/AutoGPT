@@ -71,7 +71,9 @@ COPILOT_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-COPILOT_EXECUTION_QUEUE_NAME = "copilot_execution_queue"
+# ``_v2`` suffix marks the classic→quorum rollover; old-image consumers
+# drain the unsuffixed queue. Orphans cleaned up in a follow-up PR.
+COPILOT_EXECUTION_QUEUE_NAME = "copilot_execution_queue_v2"
 COPILOT_EXECUTION_ROUTING_KEY = "copilot.run"
 
 COPILOT_CANCEL_EXCHANGE = Exchange(
@@ -80,7 +82,7 @@ COPILOT_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
-COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue"
+COPILOT_CANCEL_QUEUE_NAME = "copilot_cancel_queue_v2"
 
 
 def get_session_lock_key(session_id: str) -> str:
@@ -118,6 +120,9 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         durable=True,
         auto_delete=False,
         arguments={
+            # Quorum (not classic mirrored) for leader election + stronger
+            # replication across RabbitMQ 4.x cluster nodes.
+            "x-queue-type": "quorum",
             # Consumer timeout matches the pod graceful-shutdown window so a
             # rolling deploy never forces redelivery of a turn that the pod
             # is still legitimately finishing.
@@ -131,7 +136,7 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             # limit), apply a policy:
             #
             #     rabbitmqctl set_policy copilot-consumer-timeout \
-            #       "^copilot_execution_queue$" \
+            #       "^copilot_execution_queue_v2$" \
             #       '{"consumer-timeout": 21600000}' \
             #       --apply-to queues
             #
@@ -139,8 +144,7 @@ def create_copilot_queue_config() -> RabbitMQConfig:
             # to match the code's value the policy is redundant for new
             # pods and can be removed after a stable deploy if desired —
             # but it's harmless to leave in place.
-            "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS
-            * 1000,
+            "x-consumer-timeout": COPILOT_CONSUMER_TIMEOUT_SECONDS * 1000,
         },
     )
     cancel_queue = Queue(
@@ -149,6 +153,7 @@ def create_copilot_queue_config() -> RabbitMQConfig:
         routing_key="",  # not used for FANOUT
         durable=True,
         auto_delete=False,
+        arguments={"x-queue-type": "quorum"},
     )
     return RabbitMQConfig(
         vhost="/",

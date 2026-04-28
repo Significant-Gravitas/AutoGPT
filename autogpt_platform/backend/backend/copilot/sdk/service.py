@@ -553,6 +553,26 @@ async def _reduce_context(
     return ReducedContext(TranscriptBuilder(), False, None, True, True, retry_target)
 
 
+def _humanise_tool_list(names: list[str]) -> str:
+    """Format a list of tool names for user-facing messages.
+
+    ``["WebSearch"]``              → ``"'WebSearch'"``
+    ``["WebSearch", "run_block"]`` → ``"'WebSearch' and 'run_block'"``
+    Three or more items collapse to ``"'A', 'B', and 1 other"`` so the
+    toast stays readable.
+    """
+    if not names:
+        return ""
+    quoted = [f"'{n}'" for n in names]
+    if len(quoted) == 1:
+        return quoted[0]
+    if len(quoted) == 2:
+        return f"{quoted[0]} and {quoted[1]}"
+    extras = len(quoted) - 2
+    suffix = "others" if extras > 1 else "other"
+    return f"{quoted[0]}, {quoted[1]}, and {extras} {suffix}"
+
+
 def _append_error_marker(
     session: ChatSession | None,
     display_msg: str,
@@ -919,38 +939,46 @@ async def _iter_sdk_messages(
 
 
 def _normalize_model_name(raw_model: str) -> str:
-    """Normalize a model name for the current routing configuration.
+    """Normalize a model name for the **actual** SDK CLI transport.
 
-    Two routing modes:
+    Three transports (see ``ChatConfig.effective_transport``):
 
-    1. **OpenRouter active** — the canonical OpenRouter slug is
-       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4.6"``,
-       ``"moonshotai/kimi-k2.6"``).  Pass the prefixed name through
+    1. **OpenRouter** — the canonical OpenRouter slug is
+       ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4-6"``,
+       ``"moonshotai/kimi-k2-6"``).  Pass the prefixed name through
        unchanged so OpenRouter can route to the correct provider.  Anthropic
        names happen to also resolve when stripped, but non-Anthropic vendors
        (Moonshot, Google, etc.) do not — keeping the prefix is the only form
        that works for every model in the catalog.
-    2. **Direct Anthropic** — strip the OpenRouter ``anthropic/`` prefix
-       and convert dots to hyphens (``"claude-opus-4.6"`` →
-       ``"claude-opus-4-6"``) since the Anthropic Messages API rejects
-       both the prefix and dot-separated versions.  Raises ``ValueError``
-       when a non-Anthropic vendor slug is paired with direct-Anthropic
-       mode — silently stripping ``moonshotai/`` would send ``kimi-k2.6``
-       to the Anthropic API and produce an opaque ``model_not_found``
-       error far from the misconfiguration source.
+    2. **Subscription / Direct Anthropic** — strip the OpenRouter
+       ``anthropic/`` prefix and convert dots to hyphens
+       (``"claude-opus-4.6"`` → ``"claude-opus-4-6"``).  The CLI subprocess
+       (subscription mode) and the Anthropic Messages API both reject the
+       prefix and dot-separated versions.  Raises ``ValueError`` when a
+       non-Anthropic vendor slug is paired with these transports — silently
+       stripping ``moonshotai/`` would send ``kimi-k2-6`` to the Anthropic
+       API / CLI and produce an opaque ``model_not_found`` error far from
+       the misconfiguration source.
+
+    Gating on the **actual transport** (not just config shape) matters
+    because subscription mode and OpenRouter config can coexist —
+    ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` paired with a populated
+    ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (left over from an earlier
+    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4-7``
+    to the CLI subprocess, which the CLI rejects.
     """
-    if config.openrouter_active:
+    if config.effective_transport == "openrouter":
         return raw_model
     model = raw_model
     if "/" in model:
         vendor, model = model.split("/", 1)
         if vendor != "anthropic":
             raise ValueError(
-                f"Direct-Anthropic mode (use_openrouter=False or missing "
-                f"OpenRouter credentials) requires an Anthropic model, got "
-                f"vendor={vendor!r} from model={raw_model!r}. Set "
-                f"CHAT_THINKING_STANDARD_MODEL/CHAT_THINKING_ADVANCED_MODEL "
-                f"to an anthropic/* slug, or enable OpenRouter."
+                f"{config.effective_transport!r} transport requires an "
+                f"Anthropic model, got vendor={vendor!r} from "
+                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
+                f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* slug, or "
+                f"enable OpenRouter."
             )
     return model.replace(".", "-")
 
@@ -2372,6 +2400,13 @@ async def _run_stream_attempt(
             for ev in ctx.compaction.emit_pre_query(ctx.session):
                 yield ev
 
+        # Narrate the silent gap between dispatching the query and the
+        # SDK's first real chunk — usually <1s but can stretch to several
+        # seconds on cold-starts or large contexts. The frontend prefers
+        # this over the generic "Thinking…" copy; fast turns replace it
+        # with content immediately.
+        yield StreamStatus(message="Contacting the model\u2026")
+
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
                 *ctx.attachments.image_blocks,
@@ -2410,18 +2445,37 @@ async def _run_stream_attempt(
                 idle_seconds = time.monotonic() - _last_real_msg_time
                 threshold = _idle_timeout_threshold(state.adapter)
                 if idle_seconds >= threshold:
+                    unresolved_tool_names = sorted(
+                        {
+                            info.get("name", "unknown")
+                            for tid, info in state.adapter.current_tool_calls.items()
+                            if tid not in state.adapter.resolved_tool_calls
+                        }
+                    )
                     logger.error(
                         "%s Idle timeout after %.0fs (threshold=%ds, "
-                        "tool_pending=%s) — aborting stream",
+                        "unresolved tools: %s) — aborting stream",
                         ctx.log_prefix,
                         idle_seconds,
                         threshold,
-                        state.adapter.has_unresolved_tool_calls,
+                        ", ".join(unresolved_tool_names) or "none",
+                    )
+                    # The retryable marker written to the session omits
+                    # the `[code:<id>]` prefix — the AI SDK serializer
+                    # (`StreamError.to_sse`) attaches that automatically
+                    # on the wire so the frontend can still parse a
+                    # machine-readable code out of the otherwise opaque
+                    # `{type, errorText}` schema.
+                    stream_error_code = "idle_timeout"
+                    tool_phrase = (
+                        f" while running {_humanise_tool_list(unresolved_tool_names)}"
+                        if unresolved_tool_names
+                        else ""
                     )
                     stream_error_msg = (
-                        "The session has been idle for too long. Please try again."
+                        f"AutoPilot stopped responding{tool_phrase}. "
+                        "This usually means a tool got stuck. Please try again."
                     )
-                    stream_error_code = "idle_timeout"
                     _append_error_marker(ctx.session, stream_error_msg, retryable=True)
                     yield StreamError(
                         errorText=stream_error_msg,
