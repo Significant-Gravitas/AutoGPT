@@ -176,7 +176,7 @@ async def test_sync_subscription_from_stripe_enterprise_not_overwritten():
 
 @pytest.mark.asyncio
 async def test_sync_subscription_from_stripe_cancelled():
-    """When the only active sub is cancelled, the user is downgraded to BASIC."""
+    """When the only active sub is cancelled, the user is downgraded to NO_TIER."""
     mock_user = _make_user(tier=SubscriptionTier.PRO)
     stripe_sub = {
         "id": "sub_old",
@@ -201,7 +201,7 @@ async def test_sync_subscription_from_stripe_cancelled():
         ) as mock_set,
     ):
         await sync_subscription_from_stripe(stripe_sub)
-        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.BASIC)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.NO_TIER)
 
 
 @pytest.mark.asyncio
@@ -2166,7 +2166,7 @@ async def test_release_pending_subscription_schedule_no_stripe_customer_returns_
 
 @pytest.mark.asyncio
 async def test_get_pending_subscription_change_cancel_at_period_end():
-    """cancel_at_period_end=True maps to pending BASIC at current_period_end."""
+    """cancel_at_period_end=True maps to pending NO_TIER at current_period_end."""
     import time as time_mod
 
     get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
@@ -2215,7 +2215,7 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
 
     assert result is not None
     pending_tier, effective_at = result
-    assert pending_tier == SubscriptionTier.BASIC
+    assert pending_tier == SubscriptionTier.NO_TIER
     assert int(effective_at.timestamp()) == period_end
 
 
