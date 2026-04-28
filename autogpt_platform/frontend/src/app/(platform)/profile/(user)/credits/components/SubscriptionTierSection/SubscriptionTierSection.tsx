@@ -235,8 +235,8 @@ export function SubscriptionTierSection() {
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
             {confirmDowngradeTo === "BASIC"
-              ? `Downgrading to Basic schedules your subscription to cancel at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}. You keep your current plan and credits until then; no further charges to your card.`
-              : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}. You keep your current plan until then; from that date your saved card is billed at the new lower rate.`}{" "}
+              ? `Downgrading to Basic schedules your subscription to cancel at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
+              : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate, and matching credits are added to your AutoGPT balance with each paid invoice.`}{" "}
             Are you sure?
           </p>
           <Dialog.Footer>
