@@ -150,7 +150,7 @@ export function usePreferencesPage() {
 
     if (partsAtSubmit.timezone) {
       try {
-        await updateTimezone.mutateAsync({
+        const result = await updateTimezone.mutateAsync({
           data: {
             timezone: snapshot.timezone as UpdateTimezoneRequestTimezone,
           },
@@ -158,7 +158,9 @@ export function usePreferencesPage() {
         await queryClient.invalidateQueries({
           queryKey: getGetV1GetUserTimezoneQueryKey(),
         });
-        setSavedState((prev) => ({ ...prev, timezone: snapshot.timezone }));
+        const persistedTimezone =
+          (result.status === 200 && result.data?.timezone) || snapshot.timezone;
+        setSavedState((prev) => ({ ...prev, timezone: persistedTimezone }));
         timezoneSaved = true;
       } catch (err) {
         failures.push(
