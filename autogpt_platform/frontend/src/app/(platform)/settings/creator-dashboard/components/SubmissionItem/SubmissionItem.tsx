@@ -25,7 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 
-import { STATUS_VISUAL, formatRuns, formatSubmittedAt } from "../../helpers";
+import { formatRuns, formatSubmittedAt, getStatusVisual } from "../../helpers";
 import { useSubmissionItem } from "./useSubmissionItem";
 
 interface EditPayload extends StoreSubmissionEditRequest {
@@ -60,7 +60,7 @@ export function SubmissionItem({
     handleConfirmDelete,
   } = useSubmissionItem({ submission, onView, onEdit, onDelete });
 
-  const visual = STATUS_VISUAL[submission.status];
+  const visual = getStatusVisual(submission.status);
   const StatusIcon = visual.Icon;
   const thumbnail = submission.image_urls?.[0];
 

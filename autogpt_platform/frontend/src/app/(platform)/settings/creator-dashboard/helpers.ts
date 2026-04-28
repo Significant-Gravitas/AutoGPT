@@ -91,6 +91,10 @@ export interface StatusVisual {
   dotClass: string;
 }
 
+export function getStatusVisual(status: SubmissionStatus): StatusVisual {
+  return STATUS_VISUAL[status] ?? STATUS_VISUAL[SubmissionStatus.DRAFT];
+}
+
 export const STATUS_VISUAL: Record<SubmissionStatus, StatusVisual> = {
   [SubmissionStatus.DRAFT]: {
     label: "Draft",
