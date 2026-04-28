@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
@@ -9,6 +10,7 @@ import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatu
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 import {
   EASE_OUT,
@@ -74,10 +76,20 @@ export function MobileSubmissionsList({
 
   async function handleBulkDelete() {
     setIsBulkDeleting(true);
+    const ids = [...selection.selectedIds];
     try {
-      const ids = [...selection.selectedIds];
-      for (const id of ids) {
-        await onDelete(id);
+      const results = await Promise.allSettled(ids.map((id) => onDelete(id)));
+      const failed = results.filter((r) => r.status === "rejected").length;
+      const succeeded = ids.length - failed;
+      if (failed > 0) {
+        for (const r of results) {
+          if (r.status === "rejected") Sentry.captureException(r.reason);
+        }
+        toast({
+          title: `Deleted ${succeeded} of ${ids.length} submissions`,
+          description: `${failed} failed to delete. Please try again.`,
+          variant: "destructive",
+        });
       }
       selection.clear();
       setBulkDeleteOpen(false);

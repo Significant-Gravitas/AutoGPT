@@ -1,8 +1,10 @@
 import { useState } from "react";
+import * as Sentry from "@sentry/nextjs";
 
 import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string | undefined;
@@ -50,6 +52,13 @@ export function useSubmissionItem({
     try {
       await onDelete(submission.listing_version_id);
       setConfirmDeleteOpen(false);
+    } catch (err) {
+      Sentry.captureException(err);
+      toast({
+        title: "Couldn't delete submission",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
     } finally {
       setIsDeleting(false);
     }

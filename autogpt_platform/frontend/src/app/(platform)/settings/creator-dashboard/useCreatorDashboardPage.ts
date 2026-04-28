@@ -128,6 +128,9 @@ export function useCreatorDashboardPage() {
         return;
       }
       setEditState({ isOpen: false, submission: null });
+      await queryClient.invalidateQueries({
+        queryKey: getGetV2ListMySubmissionsQueryKey(),
+      });
     } catch (err) {
       Sentry.captureException(err);
     }
