@@ -150,7 +150,7 @@ async def capped_rpush(
 
 
 async def capped_rpush_if_hash_field(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     *,
     hash_key: str,
     hash_field: str,

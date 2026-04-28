@@ -90,8 +90,14 @@ class ActiveSession:
 
 
 def _get_session_meta_key(session_id: str) -> str:
-    """Get Redis key for session metadata (keyed by session_id)."""
-    return f"{config.session_meta_prefix}{session_id}"
+    """Get Redis key for session metadata (keyed by session_id).
+
+    Hash-tag braces colocate this key with ``pending_messages._buffer_key``
+    on the same Redis Cluster slot — the gated-rpush Lua script touches both
+    keys atomically and would CROSSSLOT-fail if they hashed to different
+    shards.
+    """
+    return f"{config.session_meta_prefix}{{{session_id}}}"
 
 
 def get_session_meta_key(session_id: str) -> str:

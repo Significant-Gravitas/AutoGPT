@@ -74,7 +74,10 @@ class PendingMessage(BaseModel):
 
 
 def _buffer_key(session_id: str) -> str:
-    return f"{_PENDING_KEY_PREFIX}{session_id}"
+    # Hash-tag braces colocate this key with stream_registry's session-meta key
+    # on the same Redis Cluster slot, which the gated-rpush Lua script needs
+    # (multi-key scripts return CROSSSLOT when KEYS hash to different slots).
+    return f"{_PENDING_KEY_PREFIX}{{{session_id}}}"
 
 
 def _notify_channel(session_id: str) -> str:
