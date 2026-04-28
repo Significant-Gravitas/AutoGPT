@@ -1,12 +1,11 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-// Mock next/navigation — usePathname/useRouter aren't available in jsdom.
-const mockReplace = vi.fn();
+// Mock next/navigation — usePathname isn't available in jsdom.
 let mockPathname = "/build";
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
-  useRouter: () => ({ replace: mockReplace }),
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 
 // Mock the LD flag hook — toggle paid-cohort vs beta-cohort per test.
@@ -26,17 +25,24 @@ vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
   useGetSubscriptionStatus: () => mockSubscriptionResult,
 }));
 
+// Mock PaywallModal — actual rendering depends on Radix portals + the full
+// SubscriptionTierSection, neither of which behave well under jsdom. Stand-in
+// placeholder lets us assert the gate-vs-no-gate decision without booting the
+// real modal.
+vi.mock("../PaywallModal", () => ({
+  PaywallModal: () => <div data-testid="paywall-modal">paywall</div>,
+}));
+
 import { PaywallGate } from "../PaywallGate";
 
 describe("PaywallGate", () => {
   beforeEach(() => {
-    mockReplace.mockClear();
     mockPathname = "/build";
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: null, isLoading: false };
   });
 
-  it("renders children without redirecting when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
+  it("renders children without modal when ENABLE_PLATFORM_PAYMENT flag is off (beta cohort)", () => {
     mockIsPaymentEnabled = false;
     mockSubscriptionResult = { data: { tier: "BASIC" }, isLoading: false };
     render(
@@ -45,10 +51,10 @@ describe("PaywallGate", () => {
       </PaywallGate>,
     );
     expect(screen.getByText("protected")).toBeDefined();
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 
-  it("redirects to /profile/credits when paid cohort + tier is BASIC", () => {
+  it("renders modal over children when paid cohort + tier is BASIC", () => {
     mockIsPaymentEnabled = true;
     mockSubscriptionResult = { data: { tier: "BASIC" }, isLoading: false };
     render(
@@ -56,24 +62,25 @@ describe("PaywallGate", () => {
         <div>protected</div>
       </PaywallGate>,
     );
-    expect(mockReplace).toHaveBeenCalledWith("/profile/credits");
+    expect(screen.getByText("protected")).toBeDefined();
+    expect(screen.getByTestId("paywall-modal")).toBeDefined();
   });
 
-  it("does not redirect when paid cohort + tier is PRO/MAX/BUSINESS", () => {
+  it("does not render modal when paid cohort + tier is PRO/MAX/BUSINESS", () => {
     mockIsPaymentEnabled = true;
     for (const tier of ["PRO", "MAX", "BUSINESS"]) {
-      mockReplace.mockClear();
       mockSubscriptionResult = { data: { tier }, isLoading: false };
-      render(
+      const { unmount } = render(
         <PaywallGate>
           <div>protected</div>
         </PaywallGate>,
       );
-      expect(mockReplace).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("paywall-modal")).toBeNull();
+      unmount();
     }
   });
 
-  it("does not redirect on exempt routes (/profile, /admin, /auth, /login, etc.)", () => {
+  it("does not render modal on exempt routes (/profile, /admin, /auth, /login, etc.)", () => {
     mockIsPaymentEnabled = true;
     mockSubscriptionResult = { data: { tier: "BASIC" }, isLoading: false };
     for (const path of [
@@ -88,18 +95,18 @@ describe("PaywallGate", () => {
       "/unauthorized",
       "/health",
     ]) {
-      mockReplace.mockClear();
       mockPathname = path;
-      render(
+      const { unmount } = render(
         <PaywallGate>
           <div>protected</div>
         </PaywallGate>,
       );
-      expect(mockReplace).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("paywall-modal")).toBeNull();
+      unmount();
     }
   });
 
-  it("does not redirect while subscription status is still loading", () => {
+  it("does not render modal while subscription status is still loading", () => {
     mockIsPaymentEnabled = true;
     mockSubscriptionResult = { data: undefined, isLoading: true };
     render(
@@ -107,6 +114,6 @@ describe("PaywallGate", () => {
         <div>protected</div>
       </PaywallGate>,
     );
-    expect(mockReplace).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("paywall-modal")).toBeNull();
   });
 });
