@@ -919,38 +919,46 @@ async def _iter_sdk_messages(
 
 
 def _normalize_model_name(raw_model: str) -> str:
-    """Normalize a model name for the current routing configuration.
+    """Normalize a model name for the **actual** SDK CLI transport.
 
-    Two routing modes:
+    Three transports (see ``ChatConfig.effective_transport``):
 
-    1. **OpenRouter active** — the canonical OpenRouter slug is
+    1. **OpenRouter** — the canonical OpenRouter slug is
        ``"<vendor>/<model>"`` (e.g. ``"anthropic/claude-opus-4.6"``,
        ``"moonshotai/kimi-k2.6"``).  Pass the prefixed name through
        unchanged so OpenRouter can route to the correct provider.  Anthropic
        names happen to also resolve when stripped, but non-Anthropic vendors
        (Moonshot, Google, etc.) do not — keeping the prefix is the only form
        that works for every model in the catalog.
-    2. **Direct Anthropic** — strip the OpenRouter ``anthropic/`` prefix
-       and convert dots to hyphens (``"claude-opus-4.6"`` →
-       ``"claude-opus-4-6"``) since the Anthropic Messages API rejects
-       both the prefix and dot-separated versions.  Raises ``ValueError``
-       when a non-Anthropic vendor slug is paired with direct-Anthropic
-       mode — silently stripping ``moonshotai/`` would send ``kimi-k2.6``
-       to the Anthropic API and produce an opaque ``model_not_found``
-       error far from the misconfiguration source.
+    2. **Subscription / Direct Anthropic** — strip the OpenRouter
+       ``anthropic/`` prefix and convert dots to hyphens
+       (``"claude-opus-4.6"`` → ``"claude-opus-4-6"``).  The CLI subprocess
+       (subscription mode) and the Anthropic Messages API both reject the
+       prefix and dot-separated versions.  Raises ``ValueError`` when a
+       non-Anthropic vendor slug is paired with these transports — silently
+       stripping ``moonshotai/`` would send ``kimi-k2.6`` to the Anthropic
+       API / CLI and produce an opaque ``model_not_found`` error far from
+       the misconfiguration source.
+
+    Gating on the **actual transport** (not just config shape) matters
+    because subscription mode and OpenRouter config can coexist —
+    ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` paired with a populated
+    ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (left over from an earlier
+    OpenRouter setup) used to incorrectly pass ``anthropic/claude-opus-4.7``
+    to the CLI subprocess, which the CLI rejects.
     """
-    if config.openrouter_active:
+    if config.effective_transport == "openrouter":
         return raw_model
     model = raw_model
     if "/" in model:
         vendor, model = model.split("/", 1)
         if vendor != "anthropic":
             raise ValueError(
-                f"Direct-Anthropic mode (use_openrouter=False or missing "
-                f"OpenRouter credentials) requires an Anthropic model, got "
-                f"vendor={vendor!r} from model={raw_model!r}. Set "
-                f"CHAT_THINKING_STANDARD_MODEL/CHAT_THINKING_ADVANCED_MODEL "
-                f"to an anthropic/* slug, or enable OpenRouter."
+                f"{config.effective_transport!r} transport requires an "
+                f"Anthropic model, got vendor={vendor!r} from "
+                f"model={raw_model!r}. Set CHAT_THINKING_STANDARD_MODEL/"
+                f"CHAT_THINKING_ADVANCED_MODEL to an anthropic/* slug, or "
+                f"enable OpenRouter."
             )
     return model.replace(".", "-")
 

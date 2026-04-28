@@ -400,6 +400,11 @@ class ChatConfig(BaseSettings):
         Single source of truth for "will the SDK route through OpenRouter?".
         Checks the flag *and* that ``api_key`` + a valid ``base_url`` are
         present — mirrors the fallback logic in ``build_sdk_env``.
+
+        Note: this checks **config shape**.  When the actual transport
+        matters (e.g. picking a model-name format that the CLI subprocess
+        accepts), use ``effective_transport`` instead — subscription mode
+        bypasses OpenRouter entirely even when these fields are set.
         """
         if not self.use_openrouter:
             return False
@@ -407,6 +412,34 @@ class ChatConfig(BaseSettings):
         if base.endswith("/v1"):
             base = base[:-3]
         return bool(self.api_key and base and base.startswith("http"))
+
+    @property
+    def effective_transport(
+        self,
+    ) -> Literal["subscription", "openrouter", "direct_anthropic"]:
+        """The transport the SDK CLI subprocess actually uses for this turn.
+
+        Detection order:
+
+        1. ``subscription`` — when ``use_claude_code_subscription`` is True
+           the CLI uses OAuth from the keychain or
+           ``CLAUDE_CODE_OAUTH_TOKEN`` and ignores ``CHAT_BASE_URL`` /
+           ``CHAT_API_KEY`` entirely (see ``build_sdk_env`` mode 1).
+        2. ``openrouter`` — when ``openrouter_active`` (use_openrouter +
+           api_key + a valid base_url).
+        3. ``direct_anthropic`` — fallback (CLI talks to api.anthropic.com
+           with ``ANTHROPIC_API_KEY`` from parent env).
+
+        Use this when the question is "which model-name format will the
+        CLI accept?" — the OpenRouter slug ``anthropic/claude-opus-4.7``
+        works through the proxy but is rejected by the subscription /
+        direct-Anthropic transports.
+        """
+        if self.use_claude_code_subscription:
+            return "subscription"
+        if self.openrouter_active:
+            return "openrouter"
+        return "direct_anthropic"
 
     @property
     def e2b_active(self) -> bool:
@@ -532,9 +565,13 @@ class ChatConfig(BaseSettings):
         (``claude_agent_fallback_model`` via ``_resolve_fallback_model``).
 
         Skipped when ``use_claude_code_subscription=True`` because the
-        subscription path resolves the model to ``None`` (CLI default)
-        and never calls ``_normalize_model_name``.  Empty fallback strings
-        are also skipped (no fallback configured).
+        subscription path normally resolves the static config to ``None``
+        (CLI default).  An LD-served override under subscription does
+        flow through ``_normalize_model_name``, but the runtime guard
+        there catches a non-Anthropic vendor and falls back to the tier
+        default — surfacing the misconfig in logs without 500-ing the
+        turn.  Empty fallback strings are also skipped (no fallback
+        configured).
         """
         if self.use_claude_code_subscription:
             return self

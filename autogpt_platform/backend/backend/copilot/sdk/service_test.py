@@ -619,7 +619,13 @@ class TestResolveSdkModelForRequestLdFallback:
         on ``copilot-model-routing[thinking][standard]`` returned
         ``None`` (CLI picked subscription default Opus), silently
         ignoring the LD override.  An LD value different from the
-        config default is an explicit admin decision and must win."""
+        config default is an explicit admin decision and must win.
+
+        Subscription transport rejects non-Anthropic vendors (the CLI
+        subprocess can't talk to Moonshot), so the resolver fails soft
+        to the tier default normalised for the subscription transport
+        (``claude-sonnet-4-6``) — not ``None``, which would silently
+        re-introduce the old subscription-default bypass."""
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             claude_agent_model=None,
@@ -637,8 +643,9 @@ class TestResolveSdkModelForRequestLdFallback:
             resolved = await _resolve_sdk_model_for_request(
                 model="standard", session_id="sess-std-sub", user_id="user-1"
             )
-        # Expect LD-served Kimi, NOT None (the old subscription-default bypass)
-        assert resolved == "moonshotai/kimi-k2.6"
+        # Kimi can't be served by the subscription CLI; fail-soft to
+        # the tier default normalised for the active transport.
+        assert resolved == "claude-sonnet-4-6"
 
     @pytest.mark.asyncio
     async def test_standard_subscription_survives_trailing_whitespace_in_env(
@@ -705,7 +712,10 @@ class TestResolveSdkModelForRequestLdFallback:
         """Subscription mode bypasses LD only on the standard tier —
         the advanced tier always consults LD because the user explicitly
         asked for the premium path.  A subscription + advanced request
-        with LD-served Opus must return Opus (not ``None``)."""
+        with LD-served Opus must return Opus normalised for the
+        subscription CLI (``claude-opus-4-7``), not the OpenRouter slug
+        ``anthropic/claude-opus-4.7`` which the CLI subprocess rejects
+        even when ``CHAT_BASE_URL`` is set to the OpenRouter proxy."""
         cfg = cfg_mod.ChatConfig(
             thinking_standard_model="anthropic/claude-sonnet-4-6",
             thinking_advanced_model="anthropic/claude-opus-4.7",
@@ -724,7 +734,7 @@ class TestResolveSdkModelForRequestLdFallback:
             resolved = await _resolve_sdk_model_for_request(
                 model="advanced", session_id="sess-adv-sub", user_id="user-1"
             )
-        assert resolved == "anthropic/claude-opus-4.7"
+        assert resolved == "claude-opus-4-7"
 
 
 # ---------------------------------------------------------------------------
