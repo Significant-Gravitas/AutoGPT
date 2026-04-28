@@ -671,9 +671,9 @@ def test_buffer_and_session_meta_keys_share_cluster_slot() -> None:
         buf = pm_module._buffer_key(session_id)
         meta = _get_session_meta_key(session_id)
         assert "{" in buf and "}" in buf, f"_buffer_key missing hash tag: {buf!r}"
-        assert "{" in meta and "}" in meta, (
-            f"_get_session_meta_key missing hash tag: {meta!r}"
-        )
+        assert (
+            "{" in meta and "}" in meta
+        ), f"_get_session_meta_key missing hash tag: {meta!r}"
         assert _redis_keyslot(buf) == _redis_keyslot(meta), (
             f"CROSSSLOT regression: {buf!r} (slot {_redis_keyslot(buf)}) "
             f"!= {meta!r} (slot {_redis_keyslot(meta)})"

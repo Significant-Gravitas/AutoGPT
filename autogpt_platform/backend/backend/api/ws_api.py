@@ -283,6 +283,21 @@ async def websocket_router(
                     ).model_dump_json()
                 )
                 continue
+            except ValueError as e:
+                logger.warning(
+                    "Subscription rejected for user #%s on '%s': %s",
+                    user_id,
+                    message.method.value,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=str(e),
+                    ).model_dump_json()
+                )
+                continue
             except Exception as e:
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
