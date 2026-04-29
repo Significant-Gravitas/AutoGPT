@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from openai import AsyncOpenAI
     from supabase import AClient, Client
 
+    from backend.copilot.bot.app import CoPilotChatBridgeClient
     from backend.data.db_manager import (
         DatabaseManagerAsyncClient,
         DatabaseManagerClient,
@@ -75,6 +76,15 @@ def get_platform_linking_manager_client() -> "PlatformLinkingManagerClient":
     from backend.util.service import get_service_client
 
     return get_service_client(PlatformLinkingManagerClient)
+
+
+@thread_cached
+def get_copilot_chat_bridge_client() -> "CoPilotChatBridgeClient":
+    """Get a thread-cached CoPilotChatBridgeClient."""
+    from backend.copilot.bot.app import CoPilotChatBridgeClient
+    from backend.util.service import get_service_client
+
+    return get_service_client(CoPilotChatBridgeClient)
 
 
 # ============ Execution Event Bus Helpers ============ #
