@@ -17,6 +17,14 @@ const PLAN_LABEL: Record<string, string> = {
   ENTERPRISE: "Enterprise",
 };
 
+const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"] as const;
+
+function getNextTier(current: string): string | null {
+  const idx = TIER_ORDER.indexOf(current as (typeof TIER_ORDER)[number]);
+  if (idx === -1 || idx === TIER_ORDER.length - 1) return null;
+  return TIER_ORDER[idx + 1];
+}
+
 export function useYourPlanCard() {
   const subscription = useGetSubscriptionStatus({
     query: {
@@ -46,6 +54,7 @@ export function useYourPlanCard() {
         label: PLAN_LABEL[subscription.data.tier] ?? subscription.data.tier,
         monthlyCostCents: subscription.data.monthly_cost,
         isPaidPlan: subscription.data.tier !== "BASIC",
+        nextTier: getNextTier(subscription.data.tier),
       }
     : undefined;
 
@@ -69,7 +78,10 @@ export function useYourPlanCard() {
     isLoading: subscription.isLoading,
     isUpdatingTier,
     canManagePortal: Boolean(paymentPortal.data),
-    onUpgrade: () => void changeTier("PRO"),
+    canUpgrade: Boolean(plan?.nextTier),
+    onUpgrade: () => {
+      if (plan?.nextTier) void changeTier(plan.nextTier);
+    },
     onCancel: () => void changeTier("BASIC"),
     onManage: () => {
       if (paymentPortal.data) window.location.href = paymentPortal.data;

@@ -1,10 +1,10 @@
 "use client";
 
-// Until `pnpm generate:api` is re-run against the backend that ships the
-// new `GET /credits/invoices` endpoint, render the Invoices list from the
-// existing credit history (TOP_UP transactions). After regeneration, swap
-// the implementation below for `useGetV1ListInvoices` — see
-// `useInvoicesCard.next.ts` for the ready-to-paste version.
+// TODO: switch to the generated `useGetV1ListInvoices` hook once
+// `pnpm generate:api` is re-run on this branch (the openapi.json change
+// in this PR adds the `/credits/invoices` operation, but the regenerated
+// client lives outside the diff). Until then, derive the invoice list
+// from credit history TOP_UP transactions so the UI is still populated.
 import { useGetV1GetCreditHistory } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { TransactionHistory } from "@/app/api/__generated__/models/transactionHistory";
 
@@ -33,8 +33,8 @@ export function useInvoicesCard() {
 
   const invoices: InvoiceRow[] = (data?.transactions ?? [])
     .filter((tx) => tx.transaction_type === "TOP_UP")
-    .map((tx) => ({
-      id: tx.transaction_key ?? `${tx.transaction_time?.toString() ?? ""}`,
+    .map((tx, idx) => ({
+      id: tx.transaction_key ?? `top-up-${idx}`,
       number: tx.transaction_key ?? "—",
       date: formatShortDate(tx.transaction_time),
       description: tx.description ?? "Top up",

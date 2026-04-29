@@ -122,7 +122,11 @@ export function InvoicesCard({ index = 0 }: Props) {
                       disabled={!invoice.pdfUrl}
                       onClick={() => {
                         if (invoice.pdfUrl) {
-                          window.open(invoice.pdfUrl, "_blank", "noopener");
+                          window.open(
+                            invoice.pdfUrl,
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
                         }
                       }}
                     >

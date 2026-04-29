@@ -21,6 +21,7 @@ export function YourPlanCard({ index = 0 }: Props) {
     isLoading,
     isUpdatingTier,
     canManagePortal,
+    canUpgrade,
     onUpgrade,
     onCancel,
     onManage,
@@ -85,14 +86,16 @@ export function YourPlanCard({ index = 0 }: Props) {
           >
             Manage subscription
           </Button>
-          <Button
-            variant="primary"
-            size="small"
-            onClick={onUpgrade}
-            disabled={isUpdatingTier}
-          >
-            Upgrade plan
-          </Button>
+          {canUpgrade ? (
+            <Button
+              variant="primary"
+              size="small"
+              onClick={onUpgrade}
+              disabled={isUpdatingTier}
+            >
+              Upgrade plan
+            </Button>
+          ) : null}
         </div>
       </div>
     </motion.section>

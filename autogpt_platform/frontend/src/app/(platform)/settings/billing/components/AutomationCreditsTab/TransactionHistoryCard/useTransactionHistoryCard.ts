@@ -25,12 +25,14 @@ export function useTransactionHistoryCard() {
   );
 
   const transactions: TransactionRow[] = (data?.transactions ?? []).map(
-    (tx) => {
+    (tx, idx) => {
       const amountCents = tx.amount ?? 0;
       return {
         id:
           tx.transaction_key ??
-          `${tx.transaction_time?.toString() ?? Math.random()}`,
+          (tx.transaction_time
+            ? `${tx.transaction_time.toString()}-${idx}`
+            : `tx-${idx}`),
         date: tx.transaction_time
           ? new Date(tx.transaction_time).toLocaleDateString(undefined, {
               month: "short",

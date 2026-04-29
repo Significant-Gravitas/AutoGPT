@@ -1163,14 +1163,26 @@ class UserCredit(UserCreditBase):
     async def list_invoices(
         self, user_id: str, limit: int = 24
     ) -> list[InvoiceListItem]:
+        # Skip the Stripe call entirely for users that have never been
+        # provisioned a customer — listing invoices must NOT have the side
+        # effect of creating a Stripe Customer record (would orphan billable
+        # customers for every beta user that opens the billing page).
+        user = await get_user_by_id(user_id)
+        if not user.stripe_customer_id:
+            return []
+
         # Bound limit to Stripe's per-page maximum (100) and at least 1
         limit = max(1, min(limit, 100))
-        customer_id = await get_stripe_customer_id(user_id)
-        invoices = await run_in_threadpool(
-            stripe.Invoice.list,
-            customer=customer_id,
-            limit=limit,
-        )
+
+        try:
+            invoices = await run_in_threadpool(
+                stripe.Invoice.list,
+                customer=user.stripe_customer_id,
+                limit=limit,
+            )
+        except stripe.StripeError:
+            logger.exception("Stripe invoice list failed for user %s", user_id)
+            return []
 
         return [
             InvoiceListItem(
