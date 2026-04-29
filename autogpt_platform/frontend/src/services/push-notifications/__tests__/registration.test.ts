@@ -4,7 +4,7 @@ import {
   registerServiceWorker,
   subscribeToPush,
   unsubscribeFromPush,
-} from "./registration";
+} from "../registration";
 
 describe("isPushSupported", () => {
   const savedNavigator = globalThis.navigator;

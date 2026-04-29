@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setupPushSubscription, teardownPushSubscription } from "./helpers";
+import { setupPushSubscription, teardownPushSubscription } from "../helpers";
 
 const mockIsPushSupported = vi.fn(() => true);
 const mockRegisterServiceWorker = vi.fn();
 const mockSubscribeToPush = vi.fn();
 const mockUnsubscribeFromPush = vi.fn();
 
-vi.mock("./registration", () => ({
+vi.mock("../registration", () => ({
   isPushSupported: () => mockIsPushSupported(),
   registerServiceWorker: () => mockRegisterServiceWorker(),
   subscribeToPush: (...args: [unknown, unknown]) =>
@@ -18,7 +18,7 @@ const mockFetchVapidPublicKey = vi.fn();
 const mockSendSubscriptionToServer = vi.fn();
 const mockRemoveSubscriptionFromServer = vi.fn();
 
-vi.mock("./api", () => ({
+vi.mock("../api", () => ({
   fetchVapidPublicKey: () => mockFetchVapidPublicKey(),
   sendSubscriptionToServer: (sub: unknown) => mockSendSubscriptionToServer(sub),
   removeSubscriptionFromServer: (endpoint: string) =>

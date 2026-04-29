@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
  */
 function loadServiceWorkerHelpers() {
   const here = dirname(fileURLToPath(import.meta.url));
-  const swPath = resolve(here, "../../../public/push-sw.js");
+  const swPath = resolve(here, "../../../../public/push-sw.js");
   const source = readFileSync(swPath, "utf8");
 
   const sandbox: Record<string, unknown> = {

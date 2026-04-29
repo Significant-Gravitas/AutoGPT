@@ -1,6 +1,6 @@
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useReportNotificationsEnabled } from "./useReportNotificationsEnabled";
+import { useReportNotificationsEnabled } from "../useReportNotificationsEnabled";
 
 const mockGetState = vi.fn(() => true);
 vi.mock("@/app/(platform)/copilot/store", () => ({

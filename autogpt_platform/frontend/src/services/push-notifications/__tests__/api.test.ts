@@ -3,7 +3,7 @@ import {
   fetchVapidPublicKey,
   removeSubscriptionFromServer,
   sendSubscriptionToServer,
-} from "./api";
+} from "../api";
 
 describe("fetchVapidPublicKey", () => {
   beforeEach(() => {

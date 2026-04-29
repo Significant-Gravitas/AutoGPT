@@ -1,6 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useReportClientUrl } from "./useReportClientUrl";
+import { useReportClientUrl } from "../useReportClientUrl";
 
 const mockPathname = vi.fn(() => "/copilot");
 const mockSearchParams = vi.fn(() => new URLSearchParams("sessionId=A"));
