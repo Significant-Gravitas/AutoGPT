@@ -71,7 +71,12 @@ export function useYourPlanCard() {
         },
       });
       const url = (result?.data as { url?: string } | undefined)?.url;
-      if (url) window.location.href = url;
+      if (url) {
+        // Navigating away — don't refetch (would set state on an
+        // unmounting component while Stripe Checkout takes over).
+        window.location.href = url;
+        return;
+      }
       await subscription.refetch();
     } catch (error) {
       toast({
