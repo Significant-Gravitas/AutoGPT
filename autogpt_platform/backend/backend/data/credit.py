@@ -260,7 +260,9 @@ class UserCreditBase(ABC):
         )
         return session.url
 
-    async def list_invoices(self, user_id: str, limit: int = 24) -> list["InvoiceListItem"]:
+    async def list_invoices(
+        self, user_id: str, limit: int = 24
+    ) -> list["InvoiceListItem"]:
         """List recent Stripe invoices for the given user.
 
         Defaults to the most-recent ``limit`` invoices. Concrete subclasses
