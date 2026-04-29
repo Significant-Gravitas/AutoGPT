@@ -26,9 +26,7 @@ const TIER_ORDER = [
   "ENTERPRISE",
 ] as const satisfies readonly SubscriptionTierRequestTier[];
 
-function getNextTier(
-  current: string,
-): SubscriptionTierRequestTier | null {
+function getNextTier(current: string): SubscriptionTierRequestTier | null {
   const idx = TIER_ORDER.indexOf(current as (typeof TIER_ORDER)[number]);
   if (idx === -1 || idx === TIER_ORDER.length - 1) return null;
   return TIER_ORDER[idx + 1];

@@ -36,7 +36,9 @@ export function useAutoRefillCard() {
 
   useEffect(() => {
     if (open) {
-      setThreshold(config?.threshold ? (config.threshold / 100).toString() : "");
+      setThreshold(
+        config?.threshold ? (config.threshold / 100).toString() : "",
+      );
       setRefillAmount(config?.amount ? (config.amount / 100).toString() : "");
     }
   }, [open, config]);

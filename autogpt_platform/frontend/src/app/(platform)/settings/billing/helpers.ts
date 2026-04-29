@@ -5,9 +5,10 @@ export function formatCents(cents: number): string {
   return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
 }
 
-export function formatRelativeReset(
-  target: Date | string | undefined | null,
-): { prefix: string; value: string } {
+export function formatRelativeReset(target: Date | string | undefined | null): {
+  prefix: string;
+  value: string;
+} {
   if (!target) return { prefix: "Resets", value: "—" };
   const date = target instanceof Date ? target : new Date(target);
   if (Number.isNaN(date.getTime())) return { prefix: "Resets", value: "—" };

@@ -81,8 +81,7 @@ function UsageBar({ window }: { window: UsageWindowView }) {
         </Text>
       </div>
       <Text variant="body" as="span" className="text-zinc-500">
-        {window.prefix}{" "}
-        <span className="text-zinc-800">{window.value}</span>
+        {window.prefix} <span className="text-zinc-800">{window.value}</span>
       </Text>
     </div>
   );
