@@ -73,7 +73,8 @@ function CountryList({ selected, onSelect }: ListProps) {
   const filtered = COUNTRIES.map((c, idx) => ({ c, idx })).filter(
     ({ c }) =>
       c.name.toLowerCase().includes(query) ||
-      c.code.toLowerCase().includes(query),
+      c.countryCode.toLowerCase().includes(query) ||
+      c.currencyCode.toLowerCase().includes(query),
   );
 
   return (
@@ -104,7 +105,7 @@ function CountryList({ selected, onSelect }: ListProps) {
         )}
         {filtered.map(({ c, idx }) => (
           <button
-            key={c.code}
+            key={c.countryCode}
             type="button"
             onClick={() => onSelect(idx)}
             className={cn(
@@ -115,7 +116,7 @@ function CountryList({ selected, onSelect }: ListProps) {
             <span>
               {c.flag}&nbsp;&nbsp;{c.name}
             </span>
-            <span className="text-[10px] text-white/35">{c.code}</span>
+            <span className="text-[10px] text-white/35">{c.currencyCode}</span>
           </button>
         ))}
       </div>

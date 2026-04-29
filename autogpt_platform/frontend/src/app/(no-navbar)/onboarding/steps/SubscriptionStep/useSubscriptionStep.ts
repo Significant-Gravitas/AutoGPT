@@ -18,7 +18,7 @@ export function useSubscriptionStep() {
 
   const countryIdx = Math.max(
     0,
-    COUNTRIES.findIndex((c) => c.code === selectedCountryCode),
+    COUNTRIES.findIndex((c) => c.countryCode === selectedCountryCode),
   );
   const country = COUNTRIES[countryIdx];
   const isYearly = billing === "yearly";
@@ -26,7 +26,7 @@ export function useSubscriptionStep() {
   function setCountryIdx(idx: number) {
     const next = COUNTRIES[idx];
     if (!next) return;
-    setSelectedCountryCode(next.code);
+    setSelectedCountryCode(next.countryCode);
   }
 
   function handlePlanSelect(planKey: PlanKey) {

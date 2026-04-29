@@ -99,12 +99,21 @@ export function PlanCard({
                     hl ? "text-[32px]" : "text-[26px]",
                   )}
                 >
-                  {formatPrice(displayPrice, country.code, country.symbol)}
+                  {formatPrice(
+                    displayPrice,
+                    country.currencyCode,
+                    country.symbol,
+                  )}
                 </span>
                 <span className="text-xs text-zinc-400">{perLabel}</span>
                 {monthlyEquiv !== null && (
                   <span className="text-xs text-zinc-800">
-                    ({formatPrice(monthlyEquiv, country.code, country.symbol)}
+                    (
+                    {formatPrice(
+                      monthlyEquiv,
+                      country.currencyCode,
+                      country.symbol,
+                    )}
                     /month)
                   </span>
                 )}

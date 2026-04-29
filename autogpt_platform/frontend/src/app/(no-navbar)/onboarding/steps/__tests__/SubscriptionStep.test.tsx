@@ -76,6 +76,6 @@ describe("SubscriptionStep", () => {
     render(<SubscriptionStep />);
     fireEvent.click(screen.getByRole("button", { name: /United States/i }));
     fireEvent.click(screen.getByRole("button", { name: /European Union/i }));
-    expect(useOnboardingWizardStore.getState().selectedCountryCode).toBe("EUR");
+    expect(useOnboardingWizardStore.getState().selectedCountryCode).toBe("EU");
   });
 });

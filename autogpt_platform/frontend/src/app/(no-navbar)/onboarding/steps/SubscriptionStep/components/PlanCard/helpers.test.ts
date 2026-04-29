@@ -6,7 +6,8 @@ import { computePlanPricing } from "./helpers";
 const usdCountry: Country = {
   name: "United States",
   flag: "🇺🇸",
-  code: "USD",
+  countryCode: "US",
+  currencyCode: "USD",
   symbol: "$",
   rate: 1,
 };
@@ -14,7 +15,8 @@ const usdCountry: Country = {
 const brlCountry: Country = {
   name: "Brazil",
   flag: "🇧🇷",
-  code: "BRL",
+  countryCode: "BR",
+  currencyCode: "BRL",
   symbol: "R$",
   rate: 5,
 };
