@@ -18,11 +18,12 @@ export default function OnboardingPage() {
 
   if (isLoading) return null;
 
-  const totalSteps = 5;
-  const showDots = currentStep <= 4;
-  const showBack = currentStep > 1 && currentStep <= 4;
-
-  const showProgressBar = currentStep <= 4;
+  // ProgressBar + StepIndicator track only the user-interactive steps (1-4).
+  // Step 5 (PreparingStep) is a transition view that hides both indicators.
+  const totalSteps = 4;
+  const showDots = currentStep <= totalSteps;
+  const showBack = currentStep > 1 && currentStep <= totalSteps;
+  const showProgressBar = currentStep <= totalSteps;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
@@ -53,7 +54,7 @@ export default function OnboardingPage() {
 
       {showDots && (
         <div className="pb-8">
-          <StepIndicator totalSteps={4} currentStep={currentStep} />
+          <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
       )}
     </div>

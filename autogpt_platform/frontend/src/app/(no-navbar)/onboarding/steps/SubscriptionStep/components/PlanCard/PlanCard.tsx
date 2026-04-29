@@ -3,7 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Check, Info } from "@phosphor-icons/react";
+import { Check, Info, Star } from "@phosphor-icons/react";
 import { type Country, formatPrice } from "../../countries";
 import { type PlanDef, type PlanKey } from "../../helpers";
 import { computePlanPricing } from "./helpers";
@@ -47,7 +47,12 @@ export function PlanCard({
             className="absolute -inset-[150%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_0deg,#a855f7,#7c3aed,#4f46e5,#1e40af,#4f46e5,#7c3aed,#a855f7)]"
           />
           <span className="relative inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-600 via-blue-600 to-blue-500 px-2.5 py-1 text-[10px] font-semibold text-white">
-            <span aria-hidden>⭐</span>
+            <Star
+              size={10}
+              weight="fill"
+              aria-hidden="true"
+              className="text-yellow-300"
+            />
             {plan.badge}
           </span>
         </span>
