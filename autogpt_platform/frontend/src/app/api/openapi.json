@@ -12361,10 +12361,7 @@
             "format": "date-time",
             "title": "Created At"
           },
-          "total_cents": {
-            "type": "integer",
-            "title": "Total Cents"
-          },
+          "total_cents": { "type": "integer", "title": "Total Cents" },
           "amount_paid_cents": {
             "type": "integer",
             "title": "Amount Paid Cents"

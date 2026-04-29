@@ -15,7 +15,6 @@ const PLAN_LABEL: Record<string, string> = {
   PRO: "Pro",
   MAX: "Max",
   BUSINESS: "Business",
-  ENTERPRISE: "Enterprise",
 };
 
 const TIER_ORDER = [
@@ -23,7 +22,6 @@ const TIER_ORDER = [
   "PRO",
   "MAX",
   "BUSINESS",
-  "ENTERPRISE",
 ] as const satisfies readonly SubscriptionTierRequestTier[];
 
 function getNextTier(current: string): SubscriptionTierRequestTier | null {
