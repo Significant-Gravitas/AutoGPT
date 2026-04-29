@@ -1286,7 +1286,10 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
 
 @pytest.mark.asyncio
 async def test_handle_subscription_payment_failure_balance_covers_pays_invoice():
-    """When balance covers the invoice, Stripe Invoice.pay is called to stop retries."""
+    """When balance covers the invoice, Stripe Invoice.pay is called with
+    paid_out_of_band=True so the card isn't double-charged on top of the
+    balance debit (the card already failed; retrying it would let the
+    success-handler webhook reverse the debit via the credit grant)."""
     mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
     invoice = {
         "id": "in_abc123",
@@ -1307,7 +1310,7 @@ async def test_handle_subscription_payment_failure_balance_covers_pays_invoice()
         patch("backend.data.credit.stripe.Invoice.pay") as mock_pay,
     ):
         await handle_subscription_payment_failure(invoice)
-        mock_pay.assert_called_once_with("in_abc123")
+        mock_pay.assert_called_once_with("in_abc123", paid_out_of_band=True)
 
 
 @pytest.mark.asyncio
@@ -1414,6 +1417,37 @@ async def test_handle_subscription_payment_success_skips_non_subscription_invoic
     with patch("backend.data.credit.User.prisma", return_value=prisma_mock):
         await handle_subscription_payment_success(invoice)
     prisma_mock.find_first.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_subscription_payment_success_skips_paid_out_of_band():
+    """When the failure handler covered the invoice from the user's balance and
+    marked it ``paid_out_of_band=True``, the success-handler webhook that
+    follows must NOT grant credits — doing so would reverse the balance debit
+    and effectively give the user a free billing period."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.PRO)
+    invoice = {
+        "id": "in_oob_123",
+        "customer": "cus_123",
+        "subscription": "sub_abc123",
+        "amount_paid": 5000,
+        "billing_reason": "subscription_cycle",
+        "paid_out_of_band": True,
+    }
+
+    add_tx_mock = AsyncMock()
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new=add_tx_mock,
+        ),
+    ):
+        await handle_subscription_payment_success(invoice)
+    add_tx_mock.assert_not_called()
 
 
 @pytest.mark.asyncio
