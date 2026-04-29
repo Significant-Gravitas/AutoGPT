@@ -2032,6 +2032,7 @@ async def create_subscription_checkout(
         success_url=success_url,
         cancel_url=cancel_url,
         subscription_data={"metadata": {"user_id": user_id, "tier": tier.value}},
+        allow_promotion_codes=True,
     )
     if not session.url:
         # An empty checkout URL for a paid upgrade is always an error; surfacing it
