@@ -4,7 +4,14 @@ import re
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    PrivateAttr,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
@@ -257,6 +264,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for the platform_linking manager daemon to run on",
     )
 
+    copilot_chat_bridge_port: int = Field(
+        default=8010,
+        description="The port for the CoPilot chat bridge (multi-platform bot) "
+        "service daemon to run on",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -302,14 +315,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    # Prefer the cluster env var so the new image can co-exist with old-image
+    # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
         default="localhost",
         description="The host for the RabbitMQ server",
+        validation_alias=AliasChoices("RABBITMQ_CLUSTER_HOST", "RABBITMQ_HOST"),
     )
 
     rabbitmq_port: int = Field(
         default=5672,
         description="The port for the RabbitMQ server",
+        validation_alias=AliasChoices("RABBITMQ_CLUSTER_PORT", "RABBITMQ_PORT"),
     )
 
     rabbitmq_vhost: str = Field(
@@ -317,14 +334,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The vhost for the RabbitMQ server",
     )
 
+    # Same rollover pattern as rabbitmq_host; REDIS_CLUSTER_HOST must win so
+    # cache.py's RedisCluster client reaches the sharded cluster, not the
+    # pre-migration standalone Redis.
     redis_host: str = Field(
         default="localhost",
         description="The host for the Redis server",
+        validation_alias=AliasChoices("REDIS_CLUSTER_HOST", "REDIS_HOST"),
     )
 
     redis_port: int = Field(
         default=6379,
         description="The port for the Redis server",
+        validation_alias=AliasChoices("REDIS_CLUSTER_PORT", "REDIS_PORT"),
     )
 
     redis_password: str = Field(
@@ -652,6 +674,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     did_api_key: str = Field(default="", description="D-ID API Key")
     revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
+    autopilot_bot_discord_token: str = Field(
+        default="",
+        description="Discord bot token for the CoPilot chat bridge. When set, "
+        "the bridge enables its Discord adapter.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")

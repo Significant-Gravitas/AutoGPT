@@ -10,6 +10,7 @@ from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
     GraphExecutionEvent,
+    exec_channel,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,7 +82,7 @@ async def wait_for_execution(
     )
 
     event_bus = AsyncRedisExecutionEventBus()
-    channel_key = f"{user_id}/{graph_id}/{execution_id}"
+    channel_key = exec_channel(user_id, graph_id, execution_id)
 
     # Mutable container so _subscribe_and_wait can surface the task even if
     # asyncio.wait_for cancels the coroutine before it returns.

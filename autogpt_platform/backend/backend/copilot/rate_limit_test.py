@@ -1243,18 +1243,9 @@ class TestTierLimitsRespected:
 
 
 class TestResetDailyUsage:
-    @staticmethod
-    def _make_pipeline_mock(decrby_result: int = 0) -> MagicMock:
-        """Create a pipeline mock that returns [delete_result, decrby_result]."""
-        pipe = MagicMock()
-        pipe.execute = AsyncMock(return_value=[1, decrby_result])
-        return pipe
-
     @pytest.mark.asyncio
     async def test_deletes_daily_key(self):
-        mock_pipe = self._make_pipeline_mock(decrby_result=0)
         mock_redis = AsyncMock()
-        mock_redis.pipeline = lambda **_kw: mock_pipe
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -1263,14 +1254,12 @@ class TestResetDailyUsage:
             result = await reset_daily_usage(_USER, daily_cost_limit=10000)
 
         assert result is True
-        mock_pipe.delete.assert_called_once()
+        mock_redis.delete.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_reduces_weekly_usage_via_decrby(self):
-        """Weekly counter should be reduced via DECRBY in the pipeline."""
-        mock_pipe = self._make_pipeline_mock(decrby_result=35000)
+    async def test_reduces_weekly_usage_via_eval(self):
+        """Weekly counter should be decremented via the atomic Lua script."""
         mock_redis = AsyncMock()
-        mock_redis.pipeline = lambda **_kw: mock_pipe
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -1278,32 +1267,22 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_cost_limit=10000)
 
-        mock_pipe.decrby.assert_called_once()
-        mock_redis.set.assert_not_called()  # 35000 > 0, no clamp needed
-
-    @pytest.mark.asyncio
-    async def test_clamps_negative_weekly_to_zero(self):
-        """If DECRBY goes negative, SET to 0 (outside the pipeline)."""
-        mock_pipe = self._make_pipeline_mock(decrby_result=-5000)
-        mock_redis = AsyncMock()
-        mock_redis.pipeline = lambda **_kw: mock_pipe
-
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
-        ):
-            await reset_daily_usage(_USER, daily_cost_limit=10000)
-
-        mock_pipe.decrby.assert_called_once()
-        mock_redis.set.assert_called_once()
+        # The Lua script handles both decrement and floor-to-zero in a single
+        # call — no separate SET is expected for the clamp branch any more.
+        # Pin the call shape so a regression that targets the wrong key or
+        # delta (e.g. the daily key, or a sign-flip) fails loudly.
+        mock_redis.eval.assert_called_once()
+        eval_args = mock_redis.eval.call_args.args
+        # eval(script, numkeys, KEYS[1], ARGV[1])
+        assert eval_args[1] == 1
+        assert eval_args[2] == _weekly_key(_USER)
+        assert int(eval_args[3]) == 10000
+        mock_redis.set.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_no_weekly_reduction_when_daily_limit_zero(self):
         """When daily_cost_limit is 0, weekly counter should not be touched."""
-        mock_pipe = self._make_pipeline_mock()
-        mock_pipe.execute = AsyncMock(return_value=[1])  # only delete result
         mock_redis = AsyncMock()
-        mock_redis.pipeline = lambda **_kw: mock_pipe
 
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
@@ -1311,8 +1290,8 @@ class TestResetDailyUsage:
         ):
             await reset_daily_usage(_USER, daily_cost_limit=0)
 
-        mock_pipe.delete.assert_called_once()
-        mock_pipe.decrby.assert_not_called()
+        mock_redis.delete.assert_called_once()
+        mock_redis.eval.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_returns_false_when_redis_unavailable(self):
@@ -1323,6 +1302,23 @@ class TestResetDailyUsage:
             result = await reset_daily_usage(_USER, daily_cost_limit=10000)
 
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_decr_counter_floor_zero_invokes_lua_script(self):
+        """The atomic DECRBY+floor helper routes through redis.eval with the
+        expected single-key, single-arg call shape."""
+        from backend.copilot.rate_limit import (
+            _DECR_FLOOR_ZERO_SCRIPT,
+            _decr_counter_floor_zero,
+        )
+
+        mock_redis = AsyncMock()
+
+        await _decr_counter_floor_zero(mock_redis, "weekly:user1", 42)
+
+        mock_redis.eval.assert_called_once_with(
+            _DECR_FLOOR_ZERO_SCRIPT, 1, "weekly:user1", 42
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1781,8 +1777,9 @@ class TestResetUserUsage:
             "backend.copilot.rate_limit.get_redis_async", return_value=mock_redis
         ):
             await reset_user_usage("user-1", reset_weekly=True)
-        args = mock_redis.delete.call_args[0]
-        assert len(args) == 2  # both daily and weekly keys
+        # Daily and weekly keys hash to different cluster slots, so they are
+        # deleted via two separate DELETE calls (not a single multi-key one).
+        assert mock_redis.delete.call_count == 2
 
     @pytest.mark.asyncio
     async def test_raises_on_redis_failure(self):

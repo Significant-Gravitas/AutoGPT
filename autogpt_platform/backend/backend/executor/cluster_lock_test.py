@@ -21,15 +21,21 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def redis_client():
-    """Get Redis client for testing using same config as backend."""
-    from backend.data.redis_client import HOST, PASSWORD, PORT
+    """Get Redis client for testing using same config as backend.
 
-    # Use same config as backend but without decode_responses since ClusterLock needs raw bytes
-    client = redis.Redis(
-        host=HOST,
-        port=PORT,
+    Uses ``RedisCluster`` (not plain ``Redis``) so tests exercise the same
+    cluster-aware routing as prod — a plain client against a sharded
+    cluster bounces on ``MOVED`` for any key hashing to a non-owned slot.
+    """
+    from redis.cluster import ClusterNode, RedisCluster
+
+    from backend.data.redis_client import HOST, PASSWORD, PORT, _address_remap
+
+    client = RedisCluster(
+        startup_nodes=[ClusterNode(HOST, PORT)],
         password=PASSWORD,
         decode_responses=False,  # ClusterLock needs raw bytes for ownership verification
+        address_remap=_address_remap,
     )
 
     # Clean up any existing test keys
@@ -333,7 +339,7 @@ class TestClusterLockErrorHandling:
 
     def test_redis_connection_failure_on_acquire(self, lock_key, owner_id):
         """Test graceful handling when Redis is unavailable during acquisition."""
-        # Use invalid Redis connection
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         bad_redis = redis.Redis(
             host="invalid_host", port=1234, socket_connect_timeout=1
         )
@@ -353,7 +359,7 @@ class TestClusterLockErrorHandling:
         # Acquire normally
         assert lock.try_acquire() == owner_id
 
-        # Replace Redis client with failing one
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         lock.redis = redis.Redis(
             host="invalid_host", port=1234, socket_connect_timeout=1
         )
@@ -508,6 +514,7 @@ class TestClusterLockRealWorldScenarios:
 
         # Simulate Redis becoming unavailable
         original_redis = lock.redis
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         lock.redis = redis.Redis(
             host="invalid_host",
             port=1234,

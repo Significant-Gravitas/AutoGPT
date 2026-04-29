@@ -570,7 +570,7 @@ async def get_graph_executions(
     # Build properly typed order clause
     # Prisma wants specific typed dicts for each field, so we construct them explicitly
     order_clause: AgentGraphExecutionOrderByInput
-    match (order_by):
+    match order_by:
         case "startedAt":
             order_clause = {
                 "startedAt": order_direction,
@@ -1337,6 +1337,22 @@ ExecutionEvent = Annotated[
 ]
 
 
+# Hash-tagged channels keep per-exec and per-graph keys on the same shard,
+# so one SSUBSCRIBE connection can watch both.
+
+
+def _graph_scope_tag(user_id: str, graph_id: str) -> str:
+    return "{" + f"{user_id}/{graph_id}" + "}"
+
+
+def exec_channel(user_id: str, graph_id: str, graph_exec_id: str) -> str:
+    return f"{_graph_scope_tag(user_id, graph_id)}/exec/{graph_exec_id}"
+
+
+def graph_all_channel(user_id: str, graph_id: str) -> str:
+    return f"{_graph_scope_tag(user_id, graph_id)}/all"
+
+
 class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
     Model = ExecutionEvent  # type: ignore
 
@@ -1352,16 +1368,20 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
+        self._publish(event, res.user_id, res.graph_id, res.graph_exec_id)
 
     def _publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
-        self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        self._publish(event, res.user_id, res.graph_id, res.id)
 
-    def _publish(self, event: ExecutionEvent, channel: str):
-        """
-        truncate inputs and outputs to avoid large payloads
-        """
+    def _publish(
+        self,
+        event: ExecutionEvent,
+        user_id: str,
+        graph_id: str,
+        graph_exec_id: str,
+    ):
+        """Truncate oversized payloads, then publish to per-exec + per-graph channels."""
         limit = config.max_message_size_limit // 2
         if isinstance(event, GraphExecutionEvent):
             event.inputs = truncate(event.inputs, limit)
@@ -1370,12 +1390,22 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
             event.input_data = truncate(event.input_data, limit)
             event.output_data = truncate(event.output_data, limit)
 
-        super().publish_event(event, channel)
+        # Publisher fans out: per-exec and per-graph watchers.
+        super().publish_event(event, exec_channel(user_id, graph_id, graph_exec_id))
+        super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     def listen(
-        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> Generator[ExecutionEvent, None, None]:
-        for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
+        """Stream events for a specific graph execution."""
+        for event in self.listen_events(exec_channel(user_id, graph_id, graph_exec_id)):
+            yield event
+
+    def listen_graph(
+        self, user_id: str, graph_id: str
+    ) -> Generator[ExecutionEvent, None, None]:
+        """Stream every event for every execution of ``graph_id``."""
+        for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
 
@@ -1395,7 +1425,7 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
 
     async def _publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
+        await self._publish(event, res.user_id, res.graph_id, res.graph_exec_id)
 
     async def _publish_graph_exec_update(self, res: GraphExecutionMeta):
         # GraphExecutionEvent requires inputs and outputs fields that GraphExecutionMeta doesn't have
@@ -1404,12 +1434,16 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
         event_data.setdefault("inputs", {})
         event_data.setdefault("outputs", {})
         event = GraphExecutionEvent.model_validate(event_data)
-        await self._publish(event, f"{res.user_id}/{res.graph_id}/{res.id}")
+        await self._publish(event, res.user_id, res.graph_id, res.id)
 
-    async def _publish(self, event: ExecutionEvent, channel: str):
-        """
-        truncate inputs and outputs to avoid large payloads
-        """
+    async def _publish(
+        self,
+        event: ExecutionEvent,
+        user_id: str,
+        graph_id: str,
+        graph_exec_id: str,
+    ):
+        """Truncate oversized payloads, then publish to per-exec + per-graph channels."""
         limit = config.max_message_size_limit // 2
         if isinstance(event, GraphExecutionEvent):
             event.inputs = truncate(event.inputs, limit)
@@ -1418,12 +1452,25 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
             event.input_data = truncate(event.input_data, limit)
             event.output_data = truncate(event.output_data, limit)
 
-        await super().publish_event(event, channel)
+        await super().publish_event(
+            event, exec_channel(user_id, graph_id, graph_exec_id)
+        )
+        await super().publish_event(event, graph_all_channel(user_id, graph_id))
 
     async def listen(
-        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str, graph_exec_id: str
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        async for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
+        """Stream events for a specific graph execution."""
+        async for event in self.listen_events(
+            exec_channel(user_id, graph_id, graph_exec_id)
+        ):
+            yield event
+
+    async def listen_graph(
+        self, user_id: str, graph_id: str
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        """Stream every event for every execution of ``graph_id``."""
+        async for event in self.listen_events(graph_all_channel(user_id, graph_id)):
             yield event
 
 
@@ -1682,11 +1729,11 @@ async def create_shared_execution_files(
             created += 1
         except UniqueViolationError:
             logger.debug(
-                f"Skipping shared file record for {file_id}: " f"record already exists"
+                f"Skipping shared file record for {file_id}: record already exists"
             )
         except ForeignKeyViolationError:
             logger.debug(
-                f"Skipping shared file record for {file_id}: " f"file does not exist"
+                f"Skipping shared file record for {file_id}: file does not exist"
             )
     return created
 

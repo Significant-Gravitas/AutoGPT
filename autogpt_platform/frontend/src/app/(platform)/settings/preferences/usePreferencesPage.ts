@@ -64,15 +64,18 @@ export function usePreferencesPage() {
     timezoneQuery.isLoading ||
     !preferencesQuery.data;
 
-  const initialTimezone =
-    timezoneQuery.data && timezoneQuery.data !== "not-set"
-      ? timezoneQuery.data
-      : detectBrowserTimezone();
+  const serverTimezone = timezoneQuery.data ?? "not-set";
+  const formTimezone =
+    serverTimezone !== "not-set" ? serverTimezone : detectBrowserTimezone();
   const initialFlags = preferencesQuery.data
     ? preferencesToFlags(preferencesQuery.data)
     : EMPTY_FLAGS;
-  const initialState: PreferencesFormState = {
-    timezone: initialTimezone,
+  const initialFormState: PreferencesFormState = {
+    timezone: formTimezone,
+    notifications: initialFlags,
+  };
+  const initialSavedState: PreferencesFormState = {
+    timezone: serverTimezone,
     notifications: initialFlags,
   };
 
@@ -92,11 +95,16 @@ export function usePreferencesPage() {
       if (hasInitializedFormState.current) return;
       if (!preferencesQuery.isSuccess) return;
       if (!timezoneQuery.isSuccess) return;
-      setFormState(initialState);
-      setSavedState(initialState);
+      setFormState(initialFormState);
+      setSavedState(initialSavedState);
       hasInitializedFormState.current = true;
     },
-    [initialState, preferencesQuery.isSuccess, timezoneQuery.isSuccess],
+    [
+      initialFormState,
+      initialSavedState,
+      preferencesQuery.isSuccess,
+      timezoneQuery.isSuccess,
+    ],
   );
 
   const dirty = isFormDirty(savedState, formState);
@@ -142,28 +150,17 @@ export function usePreferencesPage() {
 
     if (partsAtSubmit.timezone) {
       try {
-        await updateTimezone.mutateAsync({
+        const result = await updateTimezone.mutateAsync({
           data: {
             timezone: snapshot.timezone as UpdateTimezoneRequestTimezone,
           },
         });
-        queryClient.setQueryData(
-          getGetV1GetUserTimezoneQueryKey(),
-          (prev: unknown) => {
-            if (
-              prev &&
-              typeof prev === "object" &&
-              "data" in (prev as Record<string, unknown>)
-            ) {
-              return {
-                ...(prev as Record<string, unknown>),
-                data: { timezone: snapshot.timezone },
-              };
-            }
-            return { status: 200, data: { timezone: snapshot.timezone } };
-          },
-        );
-        setSavedState((prev) => ({ ...prev, timezone: snapshot.timezone }));
+        await queryClient.invalidateQueries({
+          queryKey: getGetV1GetUserTimezoneQueryKey(),
+        });
+        const persistedTimezone =
+          (result.status === 200 && result.data?.timezone) || snapshot.timezone;
+        setSavedState((prev) => ({ ...prev, timezone: persistedTimezone }));
         timezoneSaved = true;
       } catch (err) {
         failures.push(
