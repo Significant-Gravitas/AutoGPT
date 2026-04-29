@@ -45,7 +45,7 @@ export async function skipOnboardingIfPresent(
 }
 
 /**
- * Walk through the full 4-step onboarding wizard in the browser.
+ * Walk through the full 5-step onboarding wizard in the browser.
  * Returns the data that was entered so tests can verify it was submitted.
  */
 export async function completeOnboardingWizard(
@@ -54,11 +54,13 @@ export async function completeOnboardingWizard(
     name?: string;
     role?: string;
     painPoints?: string[];
+    plan?: "pro" | "max";
   },
 ) {
   const name = options?.name ?? "TestUser";
   const role = options?.role ?? "Engineering";
   const painPoints = options?.painPoints ?? ["Research", "Reports & data"];
+  const plan = options?.plan ?? "pro";
 
   // Step 1: Welcome — enter name
   await expect(page.getByText("Welcome to AutoGPT")).toBeVisible({
@@ -80,9 +82,17 @@ export async function completeOnboardingWizard(
   for (const point of painPoints) {
     await page.getByText(point, { exact: true }).click();
   }
-  await page.getByRole("button", { name: "Launch Autopilot" }).click();
+  await page.getByRole("button", { name: "Continue" }).click();
 
-  // Step 4: Preparing — require the real transition state to appear first,
+  // Step 4: Subscription — pick a plan to advance.
+  // (The "Team" CTA opens an external intake form and does not advance.)
+  await expect(page.getByText(/choose the plan that.s right/i)).toBeVisible({
+    timeout: 5000,
+  });
+  const planCta = plan === "max" ? "Upgrade to Max" : "Get Pro";
+  await page.getByRole("button", { name: planCta }).click();
+
+  // Step 5: Preparing — require the real transition state to appear first,
   // then wait for the app shell on /copilot rather than racing the redirect.
   await expect(
     page.getByText("Preparing your workspace...", { exact: false }),
@@ -92,5 +102,5 @@ export async function completeOnboardingWizard(
     timeout: 15000,
   });
 
-  return { name, role, painPoints };
+  return { name, role, painPoints, plan };
 }
