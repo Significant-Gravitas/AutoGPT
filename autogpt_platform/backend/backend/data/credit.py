@@ -66,6 +66,24 @@ class UsageTransactionMetadata(BaseModel):
     reason: str | None = None
 
 
+class InvoiceListItem(BaseModel):
+    """A single invoice surfaced from Stripe for the billing UI.
+
+    Mirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``
+    opens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.
+    """
+
+    id: str
+    number: str | None = None
+    created_at: datetime
+    amount_paid_cents: int
+    currency: str = "usd"
+    status: str
+    description: str | None = None
+    hosted_invoice_url: str | None = None
+    invoice_pdf_url: str | None = None
+
+
 class UserCreditBase(ABC):
     @abstractmethod
     async def get_credits(self, user_id: str) -> int:
@@ -235,6 +253,16 @@ class UserCreditBase(ABC):
             return_url=base_url + "/profile/credits",
         )
         return session.url
+
+    async def list_invoices(self, user_id: str, limit: int = 24) -> list["InvoiceListItem"]:
+        """List recent Stripe invoices for the given user.
+
+        Defaults to the most-recent ``limit`` invoices. Concrete subclasses
+        override this with the actual Stripe call; ``DisabledUserCredit``
+        returns an empty list so the UI degrades gracefully when credits
+        are disabled.
+        """
+        return []
 
     @staticmethod
     def time_now() -> datetime:
@@ -1130,6 +1158,35 @@ class UserCredit(UserCreditBase):
                 order={"createdAt": "desc"},
                 take=limit,
             )
+        ]
+
+    async def list_invoices(
+        self, user_id: str, limit: int = 24
+    ) -> list[InvoiceListItem]:
+        # Bound limit to Stripe's per-page maximum (100) and at least 1
+        limit = max(1, min(limit, 100))
+        customer_id = await get_stripe_customer_id(user_id)
+        invoices = await run_in_threadpool(
+            stripe.Invoice.list,
+            customer=customer_id,
+            limit=limit,
+        )
+
+        return [
+            InvoiceListItem(
+                id=invoice.id or "",
+                number=invoice.number,
+                created_at=datetime.fromtimestamp(
+                    invoice.created or 0, tz=timezone.utc
+                ),
+                amount_paid_cents=invoice.amount_paid or 0,
+                currency=(invoice.currency or "usd").lower(),
+                status=invoice.status or "open",
+                description=invoice.description,
+                hosted_invoice_url=invoice.hosted_invoice_url,
+                invoice_pdf_url=invoice.invoice_pdf,
+            )
+            for invoice in invoices.data
         ]
 
 
