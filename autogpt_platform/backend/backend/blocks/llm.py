@@ -72,8 +72,6 @@ _MODEL_UNAVAILABLE_MESSAGE_PATTERNS = (
 def _get_model_error_guidance(error: Exception) -> str | None:
     """Return a human-readable guidance message if the error indicates an
     unavailable or deprecated model ID, otherwise None."""
-    import re
-
     is_api_error = isinstance(error, (anthropic.APIStatusError, openai.APIStatusError))
     status_match = (
         is_api_error
@@ -84,7 +82,8 @@ def _get_model_error_guidance(error: Exception) -> str | None:
         re.search(pattern, msg) for pattern in _MODEL_UNAVAILABLE_MESSAGE_PATTERNS
     )
 
-    if status_match or pattern_match:
+    # Require message evidence to avoid classifying every 400/404 as model-unavailable.
+    if pattern_match and (status_match or not is_api_error):
         return (
             "The configured model ID appears to be unavailable or deprecated. "
             "Please check your provider's current model list and update your "

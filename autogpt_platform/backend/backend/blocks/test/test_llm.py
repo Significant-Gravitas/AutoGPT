@@ -1569,6 +1569,16 @@ class TestModelErrorGuidance:
         result = llm._get_model_error_guidance(error)
         assert result is None
 
+    def test_non_model_400_api_error_does_not_trigger_guidance(self):
+        """APIStatusError 400 with non-model message should NOT trigger model guidance."""
+        error = anthropic.APIStatusError(
+            message="maximum context length exceeded",
+            body={},
+            response=MagicMock(status_code=400),
+        )
+        result = llm._get_model_error_guidance(error)
+        assert result is None
+
     def test_generic_runtime_error_does_not_trigger_guidance(self):
         """Generic runtime errors should NOT trigger model guidance."""
         error = RuntimeError("Something went wrong")
