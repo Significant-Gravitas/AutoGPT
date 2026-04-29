@@ -8,7 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useState } from "react";
-import { COUNTRIES } from "../../../countries";
+import { COUNTRIES } from "../../countries";
 
 interface Props {
   selected: number;

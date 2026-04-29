@@ -1,4 +1,4 @@
-import { type Country } from "../../../countries";
+import { type Country } from "../../countries";
 import { type PlanDef, YEARLY_DISCOUNT } from "../../helpers";
 
 interface PriceComputationArgs {

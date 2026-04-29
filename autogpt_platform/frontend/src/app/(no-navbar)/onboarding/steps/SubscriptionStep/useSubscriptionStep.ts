@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useOnboardingWizardStore } from "../../store";
-import { COUNTRIES } from "../countries";
+import { COUNTRIES } from "./countries";
 import { TEAM_INTAKE_FORM_URL } from "./helpers";
 
 export function useSubscriptionStep() {
