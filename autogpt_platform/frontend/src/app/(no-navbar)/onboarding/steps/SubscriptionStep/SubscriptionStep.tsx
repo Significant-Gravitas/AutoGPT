@@ -6,7 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CountrySelector } from "./components/CountrySelector/CountrySelector";
 import { PlanCard } from "./components/PlanCard/PlanCard";
-import { PLANS } from "./helpers";
+import { PLAN_KEYS, PLANS } from "./helpers";
 import { useSubscriptionStep } from "./useSubscriptionStep";
 
 export function SubscriptionStep() {
@@ -82,9 +82,9 @@ export function SubscriptionStep() {
               isYearly={isYearly}
               onSelect={handlePlanSelect}
               className={cn(
-                plan.key === "BUSINESS" && "order-1 md:order-none",
-                plan.key === "PRO" && "order-2 md:order-none",
-                plan.key === "ENTERPRISE" && "order-3 md:order-none",
+                plan.key === PLAN_KEYS.MAX && "order-1 md:order-none",
+                plan.key === PLAN_KEYS.PRO && "order-2 md:order-none",
+                plan.key === PLAN_KEYS.TEAM && "order-3 md:order-none",
               )}
             />
           ))}

@@ -1,5 +1,5 @@
 import { type Country } from "../../countries";
-import { type PlanDef, YEARLY_DISCOUNT } from "../../helpers";
+import { type PlanDef, YEARLY_PRICE_FACTOR } from "../../helpers";
 
 interface PriceComputationArgs {
   plan: PlanDef;
@@ -14,13 +14,16 @@ export function computePlanPricing({
 }: PriceComputationArgs) {
   const monthlyLocal =
     plan.usdMonthly !== null ? plan.usdMonthly * country.rate : null;
-  const displayPrice = monthlyLocal
-    ? isYearly
-      ? monthlyLocal * YEARLY_DISCOUNT * 12
-      : monthlyLocal
-    : null;
+  const displayPrice =
+    monthlyLocal !== null
+      ? isYearly
+        ? monthlyLocal * YEARLY_PRICE_FACTOR * 12
+        : monthlyLocal
+      : null;
   const monthlyEquiv =
-    isYearly && monthlyLocal ? monthlyLocal * YEARLY_DISCOUNT : null;
+    isYearly && monthlyLocal !== null
+      ? monthlyLocal * YEARLY_PRICE_FACTOR
+      : null;
   const perLabel = isYearly ? "/ year" : "/ month";
 
   return { displayPrice, monthlyEquiv, perLabel };

@@ -1,10 +1,18 @@
 export const PRO_USD_MONTHLY = 50;
 export const MAX_USD_MONTHLY = 320;
-export const YEARLY_DISCOUNT = 0.85;
+// Fraction of the full monthly price paid when billed yearly. 0.85 = 15% off.
+export const YEARLY_PRICE_FACTOR = 0.85;
 export const TEAM_INTAKE_FORM_URL = "https://tally.so/r/2Eb9zj";
 
+export const PLAN_KEYS = {
+  PRO: "PRO",
+  MAX: "MAX",
+  TEAM: "TEAM",
+} as const;
+export type PlanKey = (typeof PLAN_KEYS)[keyof typeof PLAN_KEYS];
+
 export interface PlanDef {
-  key: string;
+  key: PlanKey;
   name: string;
   usage: string | null;
   usdMonthly: number | null;
@@ -18,7 +26,7 @@ export interface PlanDef {
 
 export const PLANS: PlanDef[] = [
   {
-    key: "PRO",
+    key: PLAN_KEYS.PRO,
     name: "Pro",
     usage: "1x",
     usdMonthly: PRO_USD_MONTHLY,
@@ -37,7 +45,7 @@ export const PLANS: PlanDef[] = [
     buttonVariant: "secondary",
   },
   {
-    key: "BUSINESS",
+    key: PLAN_KEYS.MAX,
     name: "Max",
     usage: "7x",
     usdMonthly: MAX_USD_MONTHLY,
@@ -58,7 +66,7 @@ export const PLANS: PlanDef[] = [
     buttonVariant: "primary",
   },
   {
-    key: "ENTERPRISE",
+    key: PLAN_KEYS.TEAM,
     name: "Team",
     usage: null,
     usdMonthly: null,

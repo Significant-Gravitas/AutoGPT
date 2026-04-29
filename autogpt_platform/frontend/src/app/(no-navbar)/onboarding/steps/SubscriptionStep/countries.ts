@@ -74,11 +74,9 @@ export const COUNTRIES: Country[] = [
 
 const ZERO_DECIMAL_CODES = new Set(["JPY", "KRW", "HUF", "CLP"]);
 
-/**
- * Format a price value for display with the correct symbol and decimal handling.
- * Zero-decimal currencies (JPY, KRW, HUF, CLP) show no decimals.
- * Values >= 100 are rounded to integers for cleaner display.
- */
+// Zero-decimal currencies show no decimals (Stripe convention).
+// All other currencies always show two decimals so cents aren't dropped on
+// large amounts (e.g. yearly Max in BRL).
 export function formatPrice(
   value: number,
   code: string,
@@ -87,8 +85,11 @@ export function formatPrice(
   if (ZERO_DECIMAL_CODES.has(code)) {
     return symbol + Math.round(value).toLocaleString("en-US");
   }
-  if (value >= 100) {
-    return symbol + Math.round(value).toLocaleString("en-US");
-  }
-  return symbol + value.toFixed(2);
+  return (
+    symbol +
+    value.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+  );
 }

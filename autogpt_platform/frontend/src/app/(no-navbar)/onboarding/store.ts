@@ -12,6 +12,7 @@ interface OnboardingWizardState {
   otherPainPoint: string;
   selectedPlan: string | null;
   selectedBilling: "monthly" | "yearly";
+  selectedCountryCode: string;
   setName(name: string): void;
   setRole(role: string): void;
   setOtherRole(otherRole: string): void;
@@ -19,6 +20,7 @@ interface OnboardingWizardState {
   setOtherPainPoint(otherPainPoint: string): void;
   setSelectedPlan(plan: string): void;
   setSelectedBilling(billing: "monthly" | "yearly"): void;
+  setSelectedCountryCode(code: string): void;
   nextStep(): void;
   prevStep(): void;
   goToStep(step: Step): void;
@@ -35,6 +37,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     otherPainPoint: "",
     selectedPlan: null,
     selectedBilling: "monthly",
+    selectedCountryCode: "USD",
     setName(name) {
       set({ name });
     },
@@ -65,6 +68,9 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     setSelectedBilling(billing) {
       set({ selectedBilling: billing });
     },
+    setSelectedCountryCode(code) {
+      set({ selectedCountryCode: code });
+    },
     nextStep() {
       set((state) => ({
         currentStep: Math.min(5, state.currentStep + 1) as Step,
@@ -88,6 +94,7 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
         otherPainPoint: "",
         selectedPlan: null,
         selectedBilling: "monthly",
+        selectedCountryCode: "USD",
       });
     },
   }),

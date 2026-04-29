@@ -5,14 +5,14 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { Check, Info } from "@phosphor-icons/react";
 import { type Country, formatPrice } from "../../countries";
-import { type PlanDef } from "../../helpers";
+import { type PlanDef, type PlanKey } from "../../helpers";
 import { computePlanPricing } from "./helpers";
 
 interface Props {
   plan: PlanDef;
   country: Country;
   isYearly: boolean;
-  onSelect: (key: string) => void;
+  onSelect: (key: PlanKey) => void;
   className?: string;
 }
 
