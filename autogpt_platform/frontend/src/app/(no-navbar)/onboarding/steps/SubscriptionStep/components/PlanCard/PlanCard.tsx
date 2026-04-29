@@ -140,7 +140,10 @@ export function PlanCard({
             {plan.features.map((f) => (
               <div key={f} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-purple-50">
+                  <span
+                    aria-hidden="true"
+                    className="flex h-4 w-4 items-center justify-center rounded-full bg-purple-50"
+                  >
                     <Check
                       size={10}
                       weight="bold"
@@ -149,7 +152,7 @@ export function PlanCard({
                   </span>
                   <span className="text-[13px] text-zinc-800">{f}</span>
                 </div>
-                <Info size={13} className="text-zinc-300" />
+                <Info size={13} className="text-zinc-300" aria-hidden="true" />
               </div>
             ))}
           </div>
