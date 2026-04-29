@@ -18,9 +18,17 @@ const PLAN_LABEL: Record<string, string> = {
   ENTERPRISE: "Enterprise",
 };
 
-const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"] as const;
+const TIER_ORDER = [
+  "BASIC",
+  "PRO",
+  "MAX",
+  "BUSINESS",
+  "ENTERPRISE",
+] as const satisfies readonly SubscriptionTierRequestTier[];
 
-function getNextTier(current: string): string | null {
+function getNextTier(
+  current: string,
+): SubscriptionTierRequestTier | null {
   const idx = TIER_ORDER.indexOf(current as (typeof TIER_ORDER)[number]);
   if (idx === -1 || idx === TIER_ORDER.length - 1) return null;
   return TIER_ORDER[idx + 1];
@@ -59,13 +67,13 @@ export function useYourPlanCard() {
       }
     : undefined;
 
-  async function changeTier(tier: string) {
+  async function changeTier(tier: SubscriptionTierRequestTier) {
     const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
     const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
     try {
       const result = await updateTier({
         data: {
-          tier: tier as SubscriptionTierRequestTier,
+          tier,
           success_url: successUrl,
           cancel_url: cancelUrl,
         },
