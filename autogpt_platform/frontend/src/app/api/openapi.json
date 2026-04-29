@@ -7375,6 +7375,87 @@
         }
       }
     },
+    "/api/push/subscribe": {
+      "post": {
+        "tags": ["push"],
+        "summary": "Register a push subscription for the current user",
+        "operationId": "postPushRegister a push subscription for the current user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PushSubscribeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/push/unsubscribe": {
+      "post": {
+        "tags": ["push"],
+        "summary": "Remove a push subscription",
+        "operationId": "postPushRemove a push subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushUnsubscribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/push/vapid-key": {
+      "get": {
+        "tags": ["push"],
+        "summary": "Get VAPID public key for push subscription",
+        "operationId": "getPushGet vapid public key for push subscription",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VapidPublicKeyResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/review/action": {
       "post": {
         "tags": ["v2", "executions", "review", "v2", "executions", "review"],
@@ -14559,6 +14640,59 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "PushSubscribeRequest": {
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint"
+          },
+          "keys": { "$ref": "#/components/schemas/PushSubscriptionKeys" },
+          "user_agent": {
+            "anyOf": [
+              { "type": "string", "maxLength": 512 },
+              { "type": "null" }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "type": "object",
+        "required": ["endpoint", "keys"],
+        "title": "PushSubscribeRequest"
+      },
+      "PushSubscriptionKeys": {
+        "properties": {
+          "p256dh": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "P256Dh"
+          },
+          "auth": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Auth"
+          }
+        },
+        "type": "object",
+        "required": ["p256dh", "auth"],
+        "title": "PushSubscriptionKeys"
+      },
+      "PushUnsubscribeRequest": {
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint"
+          }
+        },
+        "type": "object",
+        "required": ["endpoint"],
+        "title": "PushUnsubscribeRequest"
+      },
       "QueuePendingMessageRequest": {
         "properties": {
           "message": {
@@ -18241,6 +18375,14 @@
         "type": "object",
         "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      },
+      "VapidPublicKeyResponse": {
+        "properties": {
+          "public_key": { "type": "string", "title": "Public Key" }
+        },
+        "type": "object",
+        "required": ["public_key"],
+        "title": "VapidPublicKeyResponse"
       },
       "Webhook": {
         "properties": {

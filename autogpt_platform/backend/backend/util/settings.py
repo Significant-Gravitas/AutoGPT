@@ -420,6 +420,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between OAuth token cleanup runs (1-24 hours)",
     )
 
+    push_subscription_cleanup_interval_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours between failed push subscription cleanup runs (1-168 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -619,6 +626,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     unsubscribe_secret_key: str = Field(
         default="",
         description="The secret key to use for the unsubscribe user by token",
+    )
+
+    vapid_private_key: str = Field(
+        default="", description="VAPID private key for Web Push"
+    )
+    vapid_public_key: str = Field(
+        default="", description="VAPID public key for Web Push (base64url)"
+    )
+    vapid_claim_email: str = Field(
+        default="mailto:push@agpt.co", description="VAPID contact email"
     )
 
     # OAuth server credentials for integrations

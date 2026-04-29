@@ -70,3 +70,51 @@ def test_event_bus_name_is_configured() -> None:
     so WS exec channels and notification channels never collide."""
     bus = AsyncRedisNotificationEventBus()
     assert bus.event_bus_name  # non-empty, configured via Settings
+
+
+@pytest.mark.asyncio
+async def test_publish_fans_out_to_web_push():
+    """publish() must also kick off web-push fanout for the user."""
+    bus = AsyncRedisNotificationEventBus()
+    event = NotificationEvent(
+        user_id="user-42", payload=NotificationPayload(type="info", event="hi")
+    )
+
+    with (
+        patch.object(AsyncRedisNotificationEventBus, "publish_event", AsyncMock()),
+        patch(
+            "backend.data.notification_bus.send_push_for_user",
+            new_callable=AsyncMock,
+        ) as mock_push,
+    ):
+        await bus.publish(event)
+        # create_task is fire-and-forget — let the event loop drain the task.
+        import asyncio
+
+        for _ in range(3):
+            await asyncio.sleep(0)
+
+    mock_push.assert_awaited_once_with("user-42", event.payload)
+
+
+@pytest.mark.asyncio
+async def test_publish_swallows_push_errors():
+    """A failing push must not propagate or fail the publish."""
+    bus = AsyncRedisNotificationEventBus()
+    event = NotificationEvent(
+        user_id="user-42", payload=NotificationPayload(type="info", event="hi")
+    )
+
+    with (
+        patch.object(AsyncRedisNotificationEventBus, "publish_event", AsyncMock()),
+        patch(
+            "backend.data.notification_bus.send_push_for_user",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("push backend down"),
+        ),
+    ):
+        await bus.publish(event)  # must not raise
+        import asyncio
+
+        for _ in range(3):
+            await asyncio.sleep(0)

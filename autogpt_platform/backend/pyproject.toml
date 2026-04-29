@@ -60,6 +60,7 @@ psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
 pydantic = { extras = ["email"], version = "^2.12.5" }
 pydantic-settings = "^2.12.0"
+pywebpush = "^2.3"
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
