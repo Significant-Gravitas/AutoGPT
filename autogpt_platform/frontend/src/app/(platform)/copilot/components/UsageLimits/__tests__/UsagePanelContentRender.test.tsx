@@ -246,9 +246,7 @@ describe("UsagePanelContent", () => {
   });
 
   it("hides header when showHeader is false", () => {
-    render(
-      <UsagePanelContent usage={makeUsage()} showHeader={false} />,
-    );
+    render(<UsagePanelContent usage={makeUsage()} showHeader={false} />);
     expect(screen.queryByText("Usage limits")).toBeNull();
   });
 });

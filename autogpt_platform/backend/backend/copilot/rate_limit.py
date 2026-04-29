@@ -288,9 +288,9 @@ async def _fetch_workspace_storage_limits_flag() -> dict[SubscriptionTier, int] 
                 value,
             )
             continue
-        if value < 0:
+        if value <= 0:
             logger.warning(
-                "Negative LD value for copilot-tier-workspace-storage-limits[%s]: %r",
+                "Non-positive LD value for copilot-tier-workspace-storage-limits[%s]: %r",
                 key,
                 value,
             )
