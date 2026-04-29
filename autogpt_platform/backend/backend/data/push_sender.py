@@ -70,6 +70,16 @@ async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None
     if not vapid_private or not vapid_public or not vapid_claim_email:
         logger.debug("VAPID keys not fully configured, skipping push")
         return
+    # py_vapid rejects unprefixed strings deep in webpush(), where they'd
+    # surface once per subscription as an "Unexpected error". Catch the
+    # misconfiguration here and skip cleanly.
+    if not vapid_claim_email.startswith(("mailto:", "https://")):
+        logger.warning(
+            "VAPID_CLAIM_EMAIL must start with 'mailto:' or 'https://', got %r — "
+            "skipping push",
+            vapid_claim_email[:40],
+        )
+        return
 
     if user_id in _user_last_push:
         logger.debug("Debouncing push for user %s", user_id)
