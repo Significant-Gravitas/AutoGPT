@@ -7,6 +7,7 @@ import { Input } from "@/components/atoms/Input/Input";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 import { EASE_OUT, formatCents } from "../../../helpers";
@@ -24,6 +25,8 @@ export function BalanceCard({ index = 0 }: Props) {
   const {
     balanceCents,
     isLoading,
+    isError,
+    refetch,
     open,
     setOpen,
     amount,
@@ -35,6 +38,16 @@ export function BalanceCard({ index = 0 }: Props) {
 
   if (isLoading) {
     return <Skeleton className="h-[120px] rounded-[18px]" />;
+  }
+
+  if (isError || balanceCents === null) {
+    return (
+      <ErrorCard
+        context="balance"
+        hint="We couldn't load your credit balance."
+        onRetry={() => void refetch()}
+      />
+    );
   }
 
   return (
@@ -76,10 +89,10 @@ export function BalanceCard({ index = 0 }: Props) {
               </Text>
               <Input
                 id="addcredits-amount"
-                label="Amount (USD, minimum $5)"
+                label="Amount (USD, whole dollars only, minimum $5)"
                 type="amount"
                 amountPrefix="$"
-                decimalCount={2}
+                decimalCount={0}
                 placeholder="Amount"
                 value={amount}
                 onChange={(event) => setAmount(event.target.value)}

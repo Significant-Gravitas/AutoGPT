@@ -7,6 +7,7 @@ import {
   usePostV1ConfigureAutoTopUp,
 } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { AutoTopUpConfig } from "@/app/api/__generated__/models/autoTopUpConfig";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 export function useAutoRefillCard() {
   const {
@@ -46,24 +47,48 @@ export function useAutoRefillCard() {
     Number.isFinite(thresholdValue) &&
     thresholdValue >= 5 &&
     Number.isFinite(refillValue) &&
-    refillValue >= 5;
+    refillValue >= 5 &&
+    // Backend rejects refill < threshold with 422 — gate it client-side too.
+    refillValue >= thresholdValue;
 
   async function save() {
     if (!isValid) return;
-    await configureAutoTopUp({
-      data: {
-        amount: Math.round(refillValue * 100),
-        threshold: Math.round(thresholdValue * 100),
-      },
-    });
-    await refetch();
-    setOpen(false);
+    try {
+      await configureAutoTopUp({
+        data: {
+          amount: Math.round(refillValue * 100),
+          threshold: Math.round(thresholdValue * 100),
+        },
+      });
+      await refetch();
+      setOpen(false);
+    } catch (error) {
+      toast({
+        title: "Couldn't save auto top-up",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Auto top-up settings weren't saved. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   async function disable() {
-    await configureAutoTopUp({ data: { amount: 0, threshold: 0 } });
-    await refetch();
-    setOpen(false);
+    try {
+      await configureAutoTopUp({ data: { amount: 0, threshold: 0 } });
+      await refetch();
+      setOpen(false);
+    } catch (error) {
+      toast({
+        title: "Couldn't disable auto top-up",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Auto top-up couldn't be disabled. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   return {

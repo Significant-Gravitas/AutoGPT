@@ -71,11 +71,17 @@ class InvoiceListItem(BaseModel):
 
     Mirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``
     opens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.
+
+    ``total_cents`` is the invoice total (what the user owes / will be charged); use it
+    for the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled
+    so far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to
+    show outstanding balances separately.
     """
 
     id: str
     number: str | None = None
     created_at: datetime
+    total_cents: int
     amount_paid_cents: int
     currency: str = "usd"
     status: str
@@ -1191,6 +1197,7 @@ class UserCredit(UserCreditBase):
                 created_at=datetime.fromtimestamp(
                     invoice.created or 0, tz=timezone.utc
                 ),
+                total_cents=invoice.total or 0,
                 amount_paid_cents=invoice.amount_paid or 0,
                 currency=(invoice.currency or "usd").lower(),
                 status=invoice.status or "open",

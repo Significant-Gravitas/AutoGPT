@@ -16,7 +16,7 @@ interface Props {
 }
 
 const USAGE_EXPLAINER =
-  "Each Autopilot request consumes a share of your plan's allowance based on the work performed. Simple requests use little; complex workflows use more. No surprise overages. [Learn more about usage](#)";
+  "Each Autopilot request consumes a share of your plan's allowance based on the work performed. Simple requests use little; complex workflows use more. No surprise overages.";
 
 export function AutopilotUsageCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();

@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion";
 
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { EASE_OUT } from "../../../helpers";
 import { useTransactionHistoryCard } from "./useTransactionHistoryCard";
@@ -14,10 +15,21 @@ interface Props {
 
 export function TransactionHistoryCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const { transactions, isLoading } = useTransactionHistoryCard();
+  const { transactions, isLoading, isError, refetch } =
+    useTransactionHistoryCard();
 
   if (isLoading) {
     return <Skeleton className="h-[200px] rounded-[18px]" />;
+  }
+
+  if (isError) {
+    return (
+      <ErrorCard
+        context="transaction history"
+        hint="We couldn't load your recent transactions."
+        onRetry={() => void refetch()}
+      />
+    );
   }
 
   return (

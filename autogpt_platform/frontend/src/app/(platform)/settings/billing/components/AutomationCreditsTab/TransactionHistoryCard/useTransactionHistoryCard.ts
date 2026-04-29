@@ -15,7 +15,7 @@ export interface TransactionRow {
 }
 
 export function useTransactionHistoryCard() {
-  const { data, isLoading } = useGetV1GetCreditHistory(
+  const { data, isLoading, isError, refetch } = useGetV1GetCreditHistory(
     { transaction_count_limit: 50 },
     {
       query: {
@@ -48,5 +48,5 @@ export function useTransactionHistoryCard() {
     },
   );
 
-  return { transactions, isLoading };
+  return { transactions, isLoading, isError, refetch };
 }

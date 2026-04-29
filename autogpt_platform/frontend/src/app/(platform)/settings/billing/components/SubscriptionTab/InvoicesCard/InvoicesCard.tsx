@@ -64,7 +64,9 @@ export function InvoicesCard({ index = 0 }: Props) {
                 <Th>Description</Th>
                 <Th align="right">Amount</Th>
                 <Th>Status</Th>
-                <th className="w-12 px-4 py-3" />
+                <th className="w-12 px-4 py-3">
+                  <span className="sr-only">Download</span>
+                </th>
               </tr>
             </thead>
             <tbody>

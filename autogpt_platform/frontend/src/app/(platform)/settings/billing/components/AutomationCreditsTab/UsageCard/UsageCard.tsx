@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 
+import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Tooltip,
@@ -19,9 +20,11 @@ interface Props {
 
 export function UsageCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const { usage, hasUsage } = useUsageCard();
+  const { usage, isLoading } = useUsageCard();
 
-  if (!hasUsage) return null;
+  if (isLoading) {
+    return <Skeleton className="h-[260px] rounded-[18px]" />;
+  }
 
   const max = Math.max(...usage.map((d) => d.amount), 0.01);
   const totalSpent = usage.reduce((sum, d) => sum + d.amount, 0);
@@ -113,7 +116,11 @@ function UsageBar({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="group flex h-full flex-1 flex-col justify-end">
+        <button
+          type="button"
+          aria-label={`${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`}
+          className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
+        >
           <motion.div
             initial={
               reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
@@ -130,7 +137,7 @@ function UsageBar({
             }
             className="w-full cursor-help rounded-[3px] bg-zinc-200 transition-colors group-hover:bg-zinc-300"
           />
-        </div>
+        </button>
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">

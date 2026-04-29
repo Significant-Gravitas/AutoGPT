@@ -8,6 +8,7 @@ import {
 import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/models/getV1ManagePaymentMethods200";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 const PLAN_LABEL: Record<string, string> = {
   BASIC: "Basic",
@@ -61,16 +62,27 @@ export function useYourPlanCard() {
   async function changeTier(tier: string) {
     const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
     const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
-    const result = await updateTier({
-      data: {
-        tier: tier as SubscriptionTierRequestTier,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
-      },
-    });
-    const url = (result?.data as { url?: string } | undefined)?.url;
-    if (url) window.location.href = url;
-    await subscription.refetch();
+    try {
+      const result = await updateTier({
+        data: {
+          tier: tier as SubscriptionTierRequestTier,
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+        },
+      });
+      const url = (result?.data as { url?: string } | undefined)?.url;
+      if (url) window.location.href = url;
+      await subscription.refetch();
+    } catch (error) {
+      toast({
+        title: "Couldn't update your plan",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Stripe didn't accept the change. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   return {
