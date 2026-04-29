@@ -118,13 +118,12 @@ export function TransactionHistoryCard({ index = 0 }: Props) {
   );
 }
 
-function Th({
-  children,
-  align = "left",
-}: {
+interface ThProps {
   children: React.ReactNode;
   align?: "left" | "right";
-}) {
+}
+
+function Th({ children, align = "left" }: ThProps) {
   return (
     <th
       className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}

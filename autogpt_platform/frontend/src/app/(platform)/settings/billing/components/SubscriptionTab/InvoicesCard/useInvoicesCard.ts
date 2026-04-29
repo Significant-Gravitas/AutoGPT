@@ -22,7 +22,7 @@ export interface InvoiceRow {
 }
 
 export function useInvoicesCard() {
-  const { data, isLoading } = useGetV1GetCreditHistory(
+  const { data, isLoading, isError, refetch } = useGetV1GetCreditHistory(
     { transaction_count_limit: 50 },
     {
       query: {
@@ -44,5 +44,5 @@ export function useInvoicesCard() {
       pdfUrl: null,
     }));
 
-  return { invoices, isLoading };
+  return { invoices, isLoading, isError, refetch };
 }

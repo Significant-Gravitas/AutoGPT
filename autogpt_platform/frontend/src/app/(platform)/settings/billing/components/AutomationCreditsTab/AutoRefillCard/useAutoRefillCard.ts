@@ -46,9 +46,9 @@ export function useAutoRefillCard() {
   const thresholdValue = Number.parseFloat(threshold);
   const refillValue = Number.parseFloat(refillAmount);
   const isValid =
-    Number.isFinite(thresholdValue) &&
+    Number.isInteger(thresholdValue) &&
     thresholdValue >= 5 &&
-    Number.isFinite(refillValue) &&
+    Number.isInteger(refillValue) &&
     refillValue >= 5 &&
     // Backend rejects refill < threshold with 422 — gate it client-side too.
     refillValue >= thresholdValue;

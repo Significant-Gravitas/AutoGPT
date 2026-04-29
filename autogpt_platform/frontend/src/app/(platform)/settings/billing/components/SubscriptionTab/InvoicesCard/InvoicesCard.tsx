@@ -7,6 +7,7 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { EASE_OUT } from "../../../helpers";
 import { useInvoicesCard } from "./useInvoicesCard";
@@ -25,10 +26,20 @@ const STATUS_VARIANT: Record<string, "success" | "info" | "error"> = {
 
 export function InvoicesCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const { invoices, isLoading } = useInvoicesCard();
+  const { invoices, isLoading, isError, refetch } = useInvoicesCard();
 
   if (isLoading) {
     return <Skeleton className="h-[200px] rounded-[18px]" />;
+  }
+
+  if (isError) {
+    return (
+      <ErrorCard
+        context="invoices"
+        hint="We couldn't load your invoices."
+        onRetry={() => void refetch()}
+      />
+    );
   }
 
   return (
@@ -145,13 +156,12 @@ export function InvoicesCard({ index = 0 }: Props) {
   );
 }
 
-function Th({
-  children,
-  align = "left",
-}: {
+interface ThProps {
   children: React.ReactNode;
   align?: "left" | "right";
-}) {
+}
+
+function Th({ children, align = "left" }: ThProps) {
   return (
     <th
       className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}
