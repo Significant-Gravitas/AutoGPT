@@ -73,14 +73,11 @@ def test_event_bus_name_is_configured() -> None:
 
 
 @pytest.mark.asyncio
-async def test_publish_fans_out_to_web_push_for_allowlisted_type():
-    """publish() must kick off web-push fanout for opted-in payload types."""
+async def test_publish_fans_out_to_web_push():
+    """publish() must also kick off web-push fanout for the user."""
     bus = AsyncRedisNotificationEventBus()
     event = NotificationEvent(
-        user_id="user-42",
-        payload=NotificationPayload(
-            type="copilot_completion", event="session_completed"
-        ),
+        user_id="user-42", payload=NotificationPayload(type="info", event="hi")
     )
 
     with (
@@ -101,8 +98,8 @@ async def test_publish_fans_out_to_web_push_for_allowlisted_type():
 
 
 @pytest.mark.asyncio
-async def test_publish_skips_web_push_for_non_allowlisted_type():
-    """In-page-only payload types (e.g. onboarding) must NOT trigger OS push."""
+async def test_publish_skips_web_push_for_onboarding():
+    """Onboarding step toasts are in-page only and must NOT trigger OS push."""
     bus = AsyncRedisNotificationEventBus()
     event = NotificationEvent(
         user_id="user-42",
@@ -130,10 +127,7 @@ async def test_publish_swallows_push_errors():
     """A failing push must not propagate or fail the publish."""
     bus = AsyncRedisNotificationEventBus()
     event = NotificationEvent(
-        user_id="user-42",
-        payload=NotificationPayload(
-            type="copilot_completion", event="session_completed"
-        ),
+        user_id="user-42", payload=NotificationPayload(type="info", event="hi")
     )
 
     with (
