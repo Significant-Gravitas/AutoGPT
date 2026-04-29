@@ -60,7 +60,9 @@ class TestListInvoices:
         user_credit = UserCredit()
         with (
             patch.object(
-                credit_module, "get_user_by_id", AsyncMock(return_value=_make_user(None))
+                credit_module,
+                "get_user_by_id",
+                AsyncMock(return_value=_make_user(None)),
             ),
             patch.object(credit_module.stripe.Invoice, "list") as mock_list,
         ):
