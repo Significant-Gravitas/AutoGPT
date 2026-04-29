@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
@@ -11,22 +10,18 @@ from starlette.middleware.cors import CORSMiddleware
 
 from backend.api.conn_manager import ConnectionManager
 from backend.api.model import (
-    NotificationPayload,
     WSMessage,
     WSMethod,
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
 from backend.api.utils.cors import build_cors_params
-from backend.data.execution import AsyncRedisExecutionEventBus
-from backend.data.notification_bus import AsyncRedisNotificationEventBus
-from backend.data.push_sender import send_push_for_user
+from backend.data import db, redis_client
 from backend.data.user import DEFAULT_USER_ID
 from backend.monitoring.instrumentation import (
     instrument_fastapi,
     update_websocket_connections,
 )
-from backend.util.retry import continuous_retry
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -36,10 +31,24 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    manager = get_connection_manager()
-    fut = asyncio.create_task(event_broadcaster(manager))
-    fut.add_done_callback(lambda _: logger.info("Event broadcaster stopped"))
-    yield
+    # Prisma is needed to resolve graph_id from graph_exec_id on subscribe.
+    await db.connect()
+    # Eager connect to fail-fast if Redis is unreachable.
+    await redis_client.get_redis_async()
+    try:
+        yield
+    finally:
+        # Each cleanup is wrapped so one failure doesn't block the rest. The
+        # Redis close silences asyncio's "Unclosed ClusterNode" GC warning at
+        # interpreter shutdown.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.warning("redis_client.disconnect_async failed", exc_info=True)
+        try:
+            await db.disconnect()
+        except Exception:
+            logger.warning("db.disconnect failed", exc_info=True)
 
 
 docs_url = "/docs" if settings.config.app_env == AppEnvironment.LOCAL else None
@@ -61,48 +70,6 @@ def get_connection_manager():
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
     return _connection_manager
-
-
-@continuous_retry()
-async def event_broadcaster(manager: ConnectionManager):
-    execution_bus = AsyncRedisExecutionEventBus()
-    notification_bus = AsyncRedisNotificationEventBus()
-
-    try:
-
-        async def execution_worker():
-            async for event in execution_bus.listen("*"):
-                await manager.send_execution_update(event)
-
-        _push_tasks: set[asyncio.Task] = set()
-
-        async def notification_worker():
-            async for notification in notification_bus.listen("*"):
-                await manager.send_notification(
-                    user_id=notification.user_id,
-                    payload=notification.payload,
-                )
-                # Hold a strong reference: asyncio only keeps weak refs to
-                # tasks, so a fire-and-forget create_task can be GC'd mid-run.
-                task = asyncio.create_task(
-                    _safe_send_push(notification.user_id, notification.payload)
-                )
-                _push_tasks.add(task)
-                task.add_done_callback(_push_tasks.discard)
-
-        await asyncio.gather(execution_worker(), notification_worker())
-    finally:
-        # Ensure PubSub connections are closed on any exit to prevent leaks
-        await execution_bus.close()
-        await notification_bus.close()
-
-
-async def _safe_send_push(user_id: str, payload: NotificationPayload) -> None:
-    """Send push notification, swallowing errors to not disrupt WS flow."""
-    try:
-        await send_push_for_user(user_id, payload)
-    except Exception:
-        logger.exception("Failed to send web push for user %s", user_id)
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
@@ -316,6 +283,21 @@ async def websocket_router(
                     ).model_dump_json()
                 )
                 continue
+            except ValueError as e:
+                logger.warning(
+                    "Subscription rejected for user #%s on '%s': %s",
+                    user_id,
+                    message.method.value,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=str(e),
+                    ).model_dump_json()
+                )
+                continue
             except Exception as e:
                 logger.error(
                     f"Error while handling '{message.method.value}' message "
@@ -340,9 +322,13 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect_socket(websocket, user_id=user_id)
         logger.debug("WebSocket client disconnected")
+    except Exception:
+        logger.exception(f"Unexpected error in websocket_router for user #{user_id}")
     finally:
+        # Always release subscription pumps + Redis connections, regardless of how
+        # the loop exited — otherwise non-WebSocketDisconnect failures leak both.
+        await manager.disconnect_socket(websocket, user_id=user_id)
         update_websocket_connections(user_id, -1)
 
 

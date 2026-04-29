@@ -55,6 +55,21 @@ _AMQP_KEYWORDS = [
 
 _AMQP_INDICATORS = ["aio_pika", "aiormq", "amqp", "pika", "rabbitmq"]
 
+# Pika reconnect noise: `conn_retry` already handles these. Drop only the
+# four known signatures so genuine pika ERRORs (auth, declare failures) still
+# reach Sentry. (AUTOGPT-SERVER-6JC/6JD/6JE/6JF.)
+_PIKA_RECONNECT_LOGGERS = {
+    "pika.adapters.utils.io_services_utils",
+    "pika.adapters.blocking_connection",
+    "pika.adapters.base_connection",
+}
+_PIKA_RECONNECT_SIGNATURES = (
+    "streamlosterror",
+    "transport indicated eof",
+    "socket eof",
+    "connection_lost",
+)
+
 
 def _before_send(event, hint):
     """Filter out expected/transient errors from Sentry to reduce noise."""
@@ -94,11 +109,7 @@ def _before_send(event, hint):
         ):
             return None
 
-        # Prisma UniqueViolationError — always caught and handled in our codebase.
-        # These arise from concurrent create operations racing on unique constraints
-        # (workspace files, credits, library folders, store listings, chat messages).
-        # Every call site has an except handler; the global FastAPI handler also
-        # catches them and returns 400.  Safe to drop unconditionally.
+        # Prisma UniqueViolationError is always handled (FastAPI returns 400).
         if exc_type and exc_type.__name__ == "UniqueViolationError":
             return None
 
@@ -119,7 +130,11 @@ def _before_send(event, hint):
     log_msg = (
         logentry.get("formatted") or logentry.get("message") or event.get("message")
     )
-    if event.get("logger") and log_msg:
+    logger_name = event.get("logger")
+    if logger_name in _PIKA_RECONNECT_LOGGERS and log_msg:
+        if any(sig in log_msg.lower() for sig in _PIKA_RECONNECT_SIGNATURES):
+            return None
+    if logger_name and log_msg:
         msg = log_msg.lower()
         noisy_log_patterns = [
             "amqpconnection",

@@ -33,6 +33,7 @@ from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
+from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
@@ -408,9 +409,23 @@ class AppService(BaseAppService, ABC):
                 await db.disconnect()
         ```
         """
-        # Startup - this runs before Uvicorn starts accepting connections
+        # Startup - this runs before Uvicorn starts accepting connections.
+        # Eager connect so we fail-fast if Redis is unreachable, mirroring
+        # the db.connect()/db.disconnect() pattern subclasses use below.
+        await redis_client.get_redis_async()
 
         yield
+
+        # Close the cluster client so asyncio's GC doesn't emit "Unclosed
+        # ClusterNode" warnings at interpreter shutdown. Wrapped so a wedged
+        # socket close doesn't block subclass-level db.disconnect calls.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.warning(
+                f"[{self.service_name}] redis_client.disconnect_async failed",
+                exc_info=True,
+            )
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
