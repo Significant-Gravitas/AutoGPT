@@ -320,8 +320,11 @@ async def list_sessions(
             redis = await get_redis_async()
             pipe = redis.pipeline(transaction=False)
             for session in sessions:
+                # Use the canonical helper so the hash-tag braces match every
+                # other writer; building the key inline drops the braces and
+                # silently misses every running session on cluster mode.
                 pipe.hget(
-                    f"{config.session_meta_prefix}{session.session_id}",
+                    stream_registry.get_session_meta_key(session.session_id),
                     "status",
                 )
             statuses = await pipe.execute()

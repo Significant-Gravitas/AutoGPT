@@ -52,55 +52,67 @@ NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 EXCHANGES = [NOTIFICATION_EXCHANGE, DEAD_LETTER_EXCHANGE]
 
+# ``_v2`` suffix marks the classic→quorum rollover: old classic queues keep
+# draining via old-image consumers; orphans are cleaned up by a follow-up PR.
+IMMEDIATE_NOTIFICATIONS_QUEUE = "immediate_notifications_v2"
+ADMIN_NOTIFICATIONS_QUEUE = "admin_notifications_v2"
+SUMMARY_NOTIFICATIONS_QUEUE = "summary_notifications_v2"
+BATCH_NOTIFICATIONS_QUEUE = "batch_notifications_v2"
+FAILED_NOTIFICATIONS_QUEUE = "failed_notifications_v2"
+
 
 def create_notification_config() -> RabbitMQConfig:
     """Create RabbitMQ configuration for notifications"""
-
     queues = [
         # Main notification queues
         Queue(
-            name="immediate_notifications",
+            name=IMMEDIATE_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.immediate.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.immediate",
             },
         ),
         Queue(
-            name="admin_notifications",
+            name=ADMIN_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.admin.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.admin",
             },
         ),
         # Summary notification queues
         Queue(
-            name="summary_notifications",
+            name=SUMMARY_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.summary.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.summary",
             },
         ),
         # Batch Queue
         Queue(
-            name="batch_notifications",
+            name=BATCH_NOTIFICATIONS_QUEUE,
             exchange=NOTIFICATION_EXCHANGE,
             routing_key="notification.batch.#",
             arguments={
+                "x-queue-type": "quorum",
                 "x-dead-letter-exchange": DEAD_LETTER_EXCHANGE.name,
                 "x-dead-letter-routing-key": "failed.batch",
             },
         ),
-        # Failed notifications queue
+        # DLQ destination — quorum so dead letters survive a broker restart.
         Queue(
-            name="failed_notifications",
+            name=FAILED_NOTIFICATIONS_QUEUE,
             exchange=DEAD_LETTER_EXCHANGE,
             routing_key="failed.#",
+            arguments={"x-queue-type": "quorum"},
         ),
     ]
 
@@ -715,14 +727,15 @@ class NotificationManager(AppService):
                     try:
                         # Try to render the email to check its size
                         template = self.email_sender._get_template(event.type)
-                        _, test_message = (
-                            await self.email_sender.formatter.format_email(
-                                base_template=template.base_template,
-                                subject_template=template.subject_template,
-                                content_template=template.body_template,
-                                data={"notifications": chunk},
-                                unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
-                            )
+                        (
+                            _,
+                            test_message,
+                        ) = await self.email_sender.formatter.format_email(
+                            base_template=template.base_template,
+                            subject_template=template.subject_template,
+                            content_template=template.body_template,
+                            data={"notifications": chunk},
+                            unsubscribe_link=f"{self.email_sender.formatter.env.globals.get('base_url', '')}/profile/settings",
                         )
 
                         if len(test_message) < MAX_EMAIL_SIZE:
@@ -1049,10 +1062,10 @@ class NotificationManager(AppService):
         # Set prefetch to prevent overwhelming the service
         await channel.set_qos(prefetch_count=10)
 
-        immediate_queue = await channel.get_queue("immediate_notifications")
-        batch_queue = await channel.get_queue("batch_notifications")
-        admin_queue = await channel.get_queue("admin_notifications")
-        summary_queue = await channel.get_queue("summary_notifications")
+        immediate_queue = await channel.get_queue(IMMEDIATE_NOTIFICATIONS_QUEUE)
+        batch_queue = await channel.get_queue(BATCH_NOTIFICATIONS_QUEUE)
+        admin_queue = await channel.get_queue(ADMIN_NOTIFICATIONS_QUEUE)
+        summary_queue = await channel.get_queue(SUMMARY_NOTIFICATIONS_QUEUE)
 
         # Create consumer tasks for each queue - running in parallel
         consumer_tasks = [
@@ -1060,28 +1073,28 @@ class NotificationManager(AppService):
                 self._consume_queue(
                     queue=immediate_queue,
                     process_func=self._process_immediate,
-                    queue_name="immediate_notifications",
+                    queue_name=IMMEDIATE_NOTIFICATIONS_QUEUE,
                 )
             ),
             asyncio.create_task(
                 self._consume_queue(
                     queue=admin_queue,
                     process_func=self._process_admin_message,
-                    queue_name="admin_notifications",
+                    queue_name=ADMIN_NOTIFICATIONS_QUEUE,
                 )
             ),
             asyncio.create_task(
                 self._consume_queue(
                     queue=batch_queue,
                     process_func=self._process_batch,
-                    queue_name="batch_notifications",
+                    queue_name=BATCH_NOTIFICATIONS_QUEUE,
                 )
             ),
             asyncio.create_task(
                 self._consume_queue(
                     queue=summary_queue,
                     process_func=self._process_summary,
-                    queue_name="summary_notifications",
+                    queue_name=SUMMARY_NOTIFICATIONS_QUEUE,
                 )
             ),
         ]

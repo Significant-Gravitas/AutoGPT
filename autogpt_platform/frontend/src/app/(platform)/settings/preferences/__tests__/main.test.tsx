@@ -264,6 +264,67 @@ describe("SettingsPreferencesPage", () => {
     });
   });
 
+  test("Save is enabled on first paint when server timezone is not-set, and saves the detected browser tz", async () => {
+    const STUBBED_BROWSER_TZ = "America/New_York";
+    const resolvedOptionsSpy = vi
+      .spyOn(Intl.DateTimeFormat.prototype, "resolvedOptions")
+      .mockReturnValue({
+        timeZone: STUBBED_BROWSER_TZ,
+      } as Intl.ResolvedDateTimeFormatOptions);
+
+    let submittedTimezone: string | undefined;
+
+    server.use(
+      getGetV1GetNotificationPreferencesMockHandler({
+        user_id: "user-1",
+        email: "user@example.com",
+        preferences: allFalsePreferences,
+        daily_limit: 0,
+        emails_sent_today: 0,
+        last_reset_date: baseDate,
+      }),
+      getGetV1GetUserTimezoneMockHandler({ timezone: "not-set" }),
+      getPostV1UpdateUserEmailMockHandler({}),
+      getPostV1UpdateNotificationPreferencesMockHandler({
+        user_id: "user-1",
+        email: "user@example.com",
+        preferences: {},
+        daily_limit: 0,
+        emails_sent_today: 0,
+        last_reset_date: baseDate,
+      }),
+      getPostV1UpdateUserTimezoneMockHandler(async ({ request }) => {
+        const body = (await request.json()) as { timezone: string };
+        submittedTimezone = body.timezone;
+        return { timezone: body.timezone };
+      }),
+    );
+
+    try {
+      render(<SettingsPreferencesPage />);
+
+      const saveButton = await screen.findByRole("button", {
+        name: "Save changes",
+      });
+
+      await waitFor(() => {
+        expect((saveButton as HTMLButtonElement).disabled).toBe(false);
+      });
+
+      fireEvent.click(saveButton);
+
+      await waitFor(() => {
+        expect(submittedTimezone).toBe(STUBBED_BROWSER_TZ);
+      });
+
+      await waitFor(() => {
+        expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+      });
+    } finally {
+      resolvedOptionsSpy.mockRestore();
+    }
+  });
+
   test("submitting a new email closes the dialog and calls the update endpoint", async () => {
     const fetchMock = vi.fn(async () =>
       Promise.resolve(

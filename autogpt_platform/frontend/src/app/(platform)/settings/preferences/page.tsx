@@ -24,7 +24,6 @@ export default function SettingsPreferencesPage() {
     error,
     refetch,
     formState,
-    savedState,
     dirty,
     isSaving,
     setTimezone,
@@ -59,7 +58,6 @@ export default function SettingsPreferencesPage() {
 
       <TimezoneCard
         value={formState.timezone}
-        initialValue={savedState.timezone}
         onChange={setTimezone}
         index={1}
       />

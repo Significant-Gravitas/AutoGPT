@@ -41,6 +41,7 @@ import backend.api.features.workspace.routes as workspace_routes
 import backend.data.block
 import backend.data.db
 import backend.data.graph
+import backend.data.redis_client
 import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
@@ -95,6 +96,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     verify_auth_settings()
 
     await backend.data.db.connect()
+    # Eager connect to fail-fast if Redis is unreachable.
+    await backend.data.redis_client.get_redis_async()
 
     # Configure thread pool for FastAPI sync operation performance
     # CRITICAL: FastAPI automatically runs ALL sync functions in this thread pool:
@@ -146,7 +149,18 @@ async def lifespan_context(app: fastapi.FastAPI):
     except Exception as e:
         logger.warning(f"Error shutting down workspace storage: {e}")
 
-    await backend.data.db.disconnect()
+    # Each cleanup is wrapped so one failure doesn't block the rest. The
+    # Redis close in particular silences asyncio's "Unclosed ClusterNode"
+    # GC warning at interpreter shutdown.
+    try:
+        await backend.data.redis_client.disconnect_async()
+    except Exception:
+        logger.warning("redis_client.disconnect_async failed", exc_info=True)
+
+    try:
+        await backend.data.db.disconnect()
+    except Exception:
+        logger.warning("db.disconnect failed", exc_info=True)
 
 
 def custom_generate_unique_id(route: APIRoute):

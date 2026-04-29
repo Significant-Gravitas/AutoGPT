@@ -22,8 +22,7 @@ this module can cover.
 
 from typing import Any, cast
 
-from redis import Redis
-from redis.asyncio import Redis as AsyncRedis
+from backend.data.redis_client import AsyncRedisClient, RedisClient
 
 # ---------------------------------------------------------------------------
 # Lua scripts — registered centrally so there is exactly ONE authoritative
@@ -70,7 +69,7 @@ return redis.call('LLEN', KEYS[2])
 
 
 async def incr_with_ttl(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     ttl_seconds: int,
     *,
@@ -106,7 +105,7 @@ async def incr_with_ttl(
 
 
 def incr_with_ttl_sync(
-    redis: Redis,
+    redis: RedisClient,
     key: str,
     ttl_seconds: int,
     *,
@@ -124,7 +123,7 @@ def incr_with_ttl_sync(
 
 
 async def capped_rpush(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     value: str,
     *,
@@ -151,7 +150,7 @@ async def capped_rpush(
 
 
 async def capped_rpush_if_hash_field(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     *,
     hash_key: str,
     hash_field: str,
@@ -185,7 +184,7 @@ async def capped_rpush_if_hash_field(
 
 
 async def hash_compare_and_set(
-    redis: AsyncRedis,
+    redis: AsyncRedisClient,
     key: str,
     field: str,
     *,

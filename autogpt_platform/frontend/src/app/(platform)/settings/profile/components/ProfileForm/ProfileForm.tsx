@@ -255,7 +255,7 @@ export function ProfileForm({ formState, errors, onChange }: Props) {
           value={formState.description}
           error={errors.description}
           onChange={(e) => onChange("description", e.target.value)}
-          className="!rounded-3xl"
+          className="!rounded-3xl !rounded-tr-md scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 hover:scrollbar-thumb-zinc-300"
         />
       )}
     </motion.div>
