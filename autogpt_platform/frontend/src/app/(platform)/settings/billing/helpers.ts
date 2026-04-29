@@ -1,8 +1,14 @@
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
+const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 export function formatCents(cents: number): string {
-  const sign = cents < 0 ? "-" : "";
-  return `${sign}$${(Math.abs(cents) / 100).toFixed(2)}`;
+  return CURRENCY_FORMATTER.format(cents / 100);
 }
 
 export function formatRelativeReset(target: Date | string | undefined | null): {

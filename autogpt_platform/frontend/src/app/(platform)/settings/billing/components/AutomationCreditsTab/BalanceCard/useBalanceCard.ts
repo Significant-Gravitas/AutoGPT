@@ -42,7 +42,11 @@ export function useBalanceCard() {
       });
       const url = (result?.data as { checkout_url?: string } | undefined)
         ?.checkout_url;
-      if (url) window.location.href = url;
+      if (url) {
+        // Navigating away — don't touch React state on the unmounting tree.
+        window.location.href = url;
+        return;
+      }
       setOpen(false);
     } catch (error) {
       toast({
