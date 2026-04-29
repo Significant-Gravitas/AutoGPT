@@ -105,7 +105,10 @@ export function useYourPlanCard() {
     onUpgrade: () => {
       if (plan?.nextTier) void changeTier(plan.nextTier);
     },
-    onCancel: () => void changeTier("BASIC"),
+    onCancel: () => {
+      if (!plan || plan.tierKey === "BASIC") return;
+      void changeTier("BASIC");
+    },
     onManage: () => {
       if (paymentPortal.data) window.location.href = paymentPortal.data;
     },
