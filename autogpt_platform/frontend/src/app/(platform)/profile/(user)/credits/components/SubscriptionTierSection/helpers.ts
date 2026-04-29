@@ -42,6 +42,7 @@ export function formatCost(cents: number, _tierKey: string): string {
 }
 
 export function getTierLabel(tierKey: string): string {
+  if (tierKey === "NO_TIER") return "No subscription";
   return (
     TIERS.find((t) => t.key === tierKey)?.label ??
     tierKey.charAt(0) + tierKey.slice(1).toLowerCase()
