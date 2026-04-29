@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, type JsonBodyType } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { server } from "@/mocks/mock-server";
@@ -28,7 +28,7 @@ const COPILOT_USAGE_RESPONSE = {
 
 const INVOICES_RESPONSE: never[] = [];
 
-function jsonHandler(method: "get" | "post", path: string, body: unknown) {
+function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
 
