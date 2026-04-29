@@ -126,6 +126,7 @@ interface ThProps {
 function Th({ children, align = "left" }: ThProps) {
   return (
     <th
+      scope="col"
       className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}
     >
       <Text

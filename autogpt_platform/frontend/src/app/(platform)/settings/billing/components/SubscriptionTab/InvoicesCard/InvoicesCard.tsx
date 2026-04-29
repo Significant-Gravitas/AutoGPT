@@ -75,7 +75,7 @@ export function InvoicesCard({ index = 0 }: Props) {
                 <Th>Description</Th>
                 <Th align="right">Amount</Th>
                 <Th>Status</Th>
-                <th className="w-12 px-4 py-3">
+                <th scope="col" className="w-12 px-4 py-3">
                   <span className="sr-only">Download</span>
                 </th>
               </tr>
@@ -164,6 +164,7 @@ interface ThProps {
 function Th({ children, align = "left" }: ThProps) {
   return (
     <th
+      scope="col"
       className={`px-4 py-3 ${align === "right" ? "text-right" : "text-left"}`}
     >
       <Text

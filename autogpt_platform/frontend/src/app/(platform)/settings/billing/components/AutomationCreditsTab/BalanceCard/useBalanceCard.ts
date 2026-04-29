@@ -47,7 +47,11 @@ export function useBalanceCard() {
         window.location.href = url;
         return;
       }
-      setOpen(false);
+      // No checkout_url is a server-side failure mode — surface it instead
+      // of silently closing the modal.
+      throw new Error(
+        "Stripe didn't return a checkout URL. Please try again in a moment.",
+      );
     } catch (error) {
       toast({
         title: "Couldn't start checkout",
