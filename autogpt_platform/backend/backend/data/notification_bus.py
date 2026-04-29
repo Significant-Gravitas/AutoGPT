@@ -18,6 +18,12 @@ _settings = Settings()
 # to tasks, so a fire-and-forget create_task can be GC'd mid-run.
 _push_tasks: set[asyncio.Task] = set()
 
+# Allowlist of payload types that should trigger an OS-level web push.
+# The notification bus is also used by in-page-only producers (e.g. onboarding
+# step toasts) that we don't want surfacing as system notifications. Add new
+# types here only when they're meant to reach users with the tab closed.
+_PUSH_ENABLED_TYPES: frozenset[str] = frozenset({"copilot_completion"})
+
 
 class NotificationEvent(BaseModel):
     """Generic notification event destined for websocket delivery."""
@@ -48,9 +54,14 @@ class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):
 
     async def publish(self, event: NotificationEvent) -> None:
         await self.publish_event(event, event.user_id)
-        # Fan out to web push subscriptions in parallel. Fire-and-forget so
-        # publishers never wait on the push service; held in _push_tasks so
-        # the task survives until completion.
+        # Fan out to web push only for payload types we've opted in. The bus
+        # also carries in-page-only events (onboarding step toasts, etc.) that
+        # shouldn't surface as OS notifications. Fire-and-forget so publishers
+        # never wait on the push service; held in _push_tasks so the task
+        # survives until completion.
+        payload_type = event.payload.model_dump().get("type")
+        if payload_type not in _PUSH_ENABLED_TYPES:
+            return
         task = asyncio.create_task(_safe_send_push(event.user_id, event.payload))
         _push_tasks.add(task)
         task.add_done_callback(_push_tasks.discard)
