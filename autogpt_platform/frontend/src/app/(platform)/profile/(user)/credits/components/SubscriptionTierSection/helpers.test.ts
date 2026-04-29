@@ -39,6 +39,14 @@ describe("getTierLabel", () => {
     expect(getTierLabel("ENTERPRISE")).toBe("Enterprise");
     expect(getTierLabel("CUSTOM_TIER")).toBe("Custom_tier");
   });
+
+  it("renders NO_TIER as 'No subscription' (not the title-case fallback)", () => {
+    // The fallback would produce "No_tier" — surfaced in the pending-change
+    // banner during cancel-at-period-end as "Scheduled to downgrade to
+    // No_tier on …". Special-cased here so the user-facing copy matches the
+    // semantic of the value.
+    expect(getTierLabel("NO_TIER")).toBe("No subscription");
+  });
 });
 
 describe("formatPendingDate", () => {

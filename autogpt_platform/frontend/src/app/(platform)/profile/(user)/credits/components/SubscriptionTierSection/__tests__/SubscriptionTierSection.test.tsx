@@ -677,6 +677,65 @@ describe("SubscriptionTierSection", () => {
     expect(mutateFn).not.toHaveBeenCalled();
   });
 
+  it("renders Cancel subscription button for paid users with no pending change", () => {
+    setupMocks({ subscription: makeSubscription({ tier: "PRO" }) });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.getByRole("button", { name: /cancel subscription/i }),
+    ).toBeDefined();
+  });
+
+  it("hides Cancel subscription button for NO_TIER users (already cancelled)", () => {
+    setupMocks({ subscription: makeSubscription({ tier: "NO_TIER" }) });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.queryByRole("button", { name: /cancel subscription/i }),
+    ).toBeNull();
+  });
+
+  it("hides Cancel subscription button when payment flag is disabled", () => {
+    mockPaymentEnabled = false;
+    setupMocks({ subscription: makeSubscription({ tier: "PRO" }) });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.queryByRole("button", { name: /cancel subscription/i }),
+    ).toBeNull();
+  });
+
+  it("hides Cancel subscription button when a pending change is already scheduled", () => {
+    // Avoid double-cancelling: PendingChangeBanner exposes the cancel-pending
+    // path; an extra Cancel button here would be redundant and confusing.
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "PRO",
+        pendingTier: "NO_TIER",
+        pendingTierEffectiveAt: new Date("2026-05-15T12:00:00Z"),
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.queryByRole("button", { name: /cancel subscription/i }),
+    ).toBeNull();
+  });
+
+  it("opens the cancel-confirm dialog with NO_TIER copy when Cancel subscription is clicked", () => {
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "PRO",
+        // No current_period_end so the date suffix is absent — keeps the
+        // matcher simple and exercises the optional-period branch.
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /cancel subscription/i }),
+    );
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(
+      screen.getByText(/cancelling your subscription schedules it to end/i),
+    ).toBeDefined();
+  });
+
   it("renders BASIC cancellation copy in banner when pending_tier is BASIC", () => {
     setupMocks({
       subscription: makeSubscription({

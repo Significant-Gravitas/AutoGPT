@@ -234,11 +234,23 @@ export function SubscriptionTierSection() {
       </div>
 
       {currentTier !== "NO_TIER" && isPaymentEnabled && (
-        <p className="text-sm text-neutral-500">
-          Your subscription is managed through Stripe. Upgrades take effect
-          immediately. Downgrades take effect at the end of your current billing
-          period.
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-neutral-500">
+            Your subscription is managed through Stripe. Upgrades take effect
+            immediately. Downgrades take effect at the end of your current
+            billing period.
+          </p>
+          {!hasPendingChange && (
+            <Button
+              variant="ghost"
+              className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
+              disabled={isPending}
+              onClick={() => setConfirmDowngradeTo("NO_TIER")}
+            >
+              Cancel subscription
+            </Button>
+          )}
+        </div>
       )}
 
       <Dialog
