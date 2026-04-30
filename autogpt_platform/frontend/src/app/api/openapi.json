@@ -3189,6 +3189,54 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/invoices": {
+      "get": {
+        "tags": ["v1", "credits"],
+        "summary": "List Stripe invoices",
+        "description": "Recent Stripe invoices for the current user.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the user has no Stripe customer yet.",
+        "operationId": "getV1List stripe invoices",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 24,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/InvoiceListItem" },
+                  "title": "Response Getv1List Stripe Invoices"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/credits/manage": {
       "get": {
         "tags": ["v1", "credits"],
@@ -12381,6 +12429,53 @@
         "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
+      },
+      "InvoiceListItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "number": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Number"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "total_cents": { "type": "integer", "title": "Total Cents" },
+          "amount_paid_cents": {
+            "type": "integer",
+            "title": "Amount Paid Cents"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "usd"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "hosted_invoice_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Hosted Invoice Url"
+          },
+          "invoice_pdf_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Invoice Pdf Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "total_cents",
+          "amount_paid_cents",
+          "status"
+        ],
+        "title": "InvoiceListItem",
+        "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
       },
       "LibraryAgent": {
         "properties": {

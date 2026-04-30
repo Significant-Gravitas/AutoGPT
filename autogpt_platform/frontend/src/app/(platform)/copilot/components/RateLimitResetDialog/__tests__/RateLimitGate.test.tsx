@@ -23,9 +23,10 @@ vi.mock("@/hooks/useCredits", () => ({
   default: () => ({ credits: 1000, fetchCredits: vi.fn() }),
 }));
 
+const mockUseGetFlag = vi.fn(() => true);
 vi.mock("@/services/feature-flags/use-get-flag", () => ({
   Flag: { ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT" },
-  useGetFlag: () => false,
+  useGetFlag: () => mockUseGetFlag(),
 }));
 
 // Capture props the dialog was rendered with so we can assert on them.
@@ -44,6 +45,8 @@ afterEach(() => {
   mockToast.mockReset();
   mockUseGetV2GetCopilotUsage.mockReset();
   dialogSpy.mockReset();
+  mockUseGetFlag.mockReset();
+  mockUseGetFlag.mockReturnValue(true);
 });
 
 describe("RateLimitGate", () => {
@@ -144,6 +147,25 @@ describe("RateLimitGate", () => {
     expect(mockToast).toHaveBeenCalledTimes(1);
     expect(onDismiss).toHaveBeenCalledTimes(1);
 
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.isOpen).toBe(false);
+  });
+
+  it("falls back to a toast when ENABLE_PLATFORM_PAYMENT is off, even with a positive reset cost", () => {
+    mockUseGetFlag.mockReturnValue(false);
+    const onDismiss = vi.fn();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { reset_cost: 50, weekly: { percent_used: 10 } },
+      isSuccess: true,
+      isError: false,
+    });
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={onDismiss} />,
+    );
+
+    expect(mockToast).toHaveBeenCalledTimes(1);
+    expect(onDismiss).toHaveBeenCalledTimes(1);
     const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
     expect(lastProps.isOpen).toBe(false);
   });
