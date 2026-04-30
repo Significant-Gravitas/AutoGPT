@@ -166,7 +166,7 @@ The `fetch_check_runs(PR)` step above must use `--json`, not the default text ou
 
 ```bash
 # Reliable: use --json so columns are unambiguous.
-ci_json=$(gh pr checks $PR --repo $REPO --json name,state,bucket)
+ci_json=$(gh pr checks $PR --repo Significant-Gravitas/AutoGPT --json name,state,bucket)
 pending=$(echo "$ci_json" | jq '[.[] | select(.bucket == "pending")] | length')
 failed=$(echo "$ci_json" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
 
