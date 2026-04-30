@@ -40,17 +40,33 @@ export function useBalanceCard() {
       const result = await requestTopUp({
         data: { credit_amount: Math.round(numericAmount * 100) },
       });
-      const url = (result?.data as { checkout_url?: string } | undefined)
-        ?.checkout_url;
+      const status = (result as { status?: number } | undefined)?.status;
+      const body = result?.data as
+        | { checkout_url?: string; detail?: string | { msg?: string } }
+        | undefined;
+
+      if (status && status >= 400) {
+        // Surface backend error detail (FastAPI conventionally returns
+        // ``{"detail": "..."}``) instead of the generic "no URL" message —
+        // the actual failure is almost always a Stripe-side error
+        // (stale customer ID, missing product, invalid API key) that the
+        // user / their team needs to see to fix.
+        const detail =
+          typeof body?.detail === "string"
+            ? body.detail
+            : body?.detail?.msg ?? `Server returned ${status}.`;
+        throw new Error(detail);
+      }
+
+      const url = body?.checkout_url;
       if (url) {
         // Navigating away — don't touch React state on the unmounting tree.
         window.location.href = url;
         return;
       }
-      // No checkout_url is a server-side failure mode — surface it instead
-      // of silently closing the modal.
+
       throw new Error(
-        "Stripe didn't return a checkout URL. Please try again in a moment.",
+        "Stripe didn't return a checkout URL. Check backend logs for the underlying Stripe error.",
       );
     } catch (error) {
       toast({

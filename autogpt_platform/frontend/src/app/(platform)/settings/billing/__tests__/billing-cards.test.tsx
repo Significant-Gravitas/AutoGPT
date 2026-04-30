@@ -50,13 +50,15 @@ describe("YourPlanCard", () => {
 
     expect(await screen.findByText("Pro")).toBeDefined();
     expect(screen.getByText(/\$50\.00 \/ month/)).toBeDefined();
-    expect(screen.getByRole("button", { name: /upgrade plan/i })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /upgrade to max/i }),
+    ).toBeDefined();
     expect(
       screen.getByRole("button", { name: /manage subscription/i }),
     ).toBeDefined();
   });
 
-  it("hides the Upgrade button on the top tier (BUSINESS)", async () => {
+  it("hides the Upgrade button on the top tier (BUSINESS / Team) and exposes Downgrade to Max", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "BUSINESS",
@@ -70,7 +72,76 @@ describe("YourPlanCard", () => {
     render(<YourPlanCard />);
 
     expect(await screen.findByText("Team")).toBeDefined();
-    expect(screen.queryByRole("button", { name: /upgrade plan/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /upgrade to/i }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /talk to sales/i }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /downgrade to max/i }),
+    ).toBeDefined();
+  });
+
+  it("MAX subscriber sees Downgrade-to-Pro, Manage, and Talk-to-sales for Team", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Max")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /downgrade to pro/i }),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /manage subscription/i }),
+    ).toBeDefined();
+    // Team is contact-sales — button exists, but as a "Talk to sales" link
+    // rather than a Stripe Checkout / API upgrade trigger.
+    expect(
+      screen.getByRole("button", { name: /talk to sales/i }),
+    ).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: /upgrade to team/i }),
+    ).toBeNull();
+  });
+
+  it("shows 'Downgrade scheduled' badge + 'Switches to Pro on …' when pending downgrade is set", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "PRO",
+        pending_tier_effective_at: "2026-05-30T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Downgrade scheduled")).toBeDefined();
+    expect(screen.getByText(/Switches to Pro on/i)).toBeDefined();
+    // Downgrade button hidden while a downgrade is already pending; the
+    // "Cancel downgrade" CTA takes its place.
+    expect(
+      screen.queryByRole("button", { name: /^downgrade to/i }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /cancel downgrade/i }),
+    ).toBeDefined();
   });
 
   it("renders the 'no active subscription' state for NO_TIER users", async () => {
@@ -87,7 +158,7 @@ describe("YourPlanCard", () => {
     render(<YourPlanCard />);
 
     expect(await screen.findByText("No active subscription")).toBeDefined();
-    expect(screen.getByRole("button", { name: /choose a plan/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /get pro/i })).toBeDefined();
     expect(screen.queryByRole("button", { name: /cancel plan/i })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /manage subscription/i }),
@@ -443,27 +514,7 @@ describe("Card mutation flows", () => {
     expect(screen.getByRole("button", { name: /^disable$/i })).toBeDefined();
   });
 
-  it("YourPlanCard: shows 'Cancel plan' on a paid plan", async () => {
-    server.use(
-      jsonHandler("get", "/api/credits/subscription", {
-        tier: "PRO",
-        monthly_cost: 5000,
-        has_active_stripe_subscription: true,
-        status: "active",
-      }),
-      jsonHandler("get", "/api/credits/manage", {
-        url: "https://billing.stripe.com/p/test",
-      }),
-    );
-
-    render(<YourPlanCard />);
-
-    expect(
-      await screen.findByRole("button", { name: /cancel plan/i }),
-    ).toBeDefined();
-  });
-
-  it("YourPlanCard: hides 'Cancel plan' for users without an active subscription", async () => {
+  it("YourPlanCard: hides users without an active subscription from Manage controls", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "NO_TIER",
@@ -477,6 +528,10 @@ describe("Card mutation flows", () => {
     render(<YourPlanCard />);
 
     expect(await screen.findByText("No active subscription")).toBeDefined();
+    // Cancellation now lives in the Stripe portal — no in-app Cancel button.
     expect(screen.queryByRole("button", { name: /cancel plan/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /manage subscription/i }),
+    ).toBeNull();
   });
 });

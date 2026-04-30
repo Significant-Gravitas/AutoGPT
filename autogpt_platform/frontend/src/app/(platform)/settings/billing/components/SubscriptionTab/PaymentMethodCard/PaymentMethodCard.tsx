@@ -15,7 +15,7 @@ interface Props {
 
 export function PaymentMethodCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const { canManage, onManage } = usePaymentMethodCard();
+  const { canManage, isOpening, onManage } = usePaymentMethodCard();
 
   return (
     <motion.section
@@ -54,6 +54,7 @@ export function PaymentMethodCard({ index = 0 }: Props) {
           size="small"
           onClick={onManage}
           disabled={!canManage}
+          loading={isOpening}
         >
           Open portal
           <ArrowSquareOutIcon size={14} />
