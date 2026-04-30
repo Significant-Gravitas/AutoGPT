@@ -59,7 +59,7 @@ describe("useBalanceCard", () => {
     expect(result.current.balanceCents).toBeNull();
   });
 
-  it("isValid rejects amounts below $5 and accepts >= 5 (decimals allowed)", async () => {
+  it("isValid requires whole-dollar amounts >= $5 (backend rejects decimals)", async () => {
     server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
 
     const { result } = renderHook(() => useBalanceCard(), {
@@ -68,10 +68,11 @@ describe("useBalanceCard", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // Decimals are valid — backend stores integer cents and the hook
-    // rounds on submit, so $5.25 must not be rejected client-side.
+    // Backend `top_up_intent` rejects `amount % 100 != 0`, so decimals
+    // like $5.25 must be blocked client-side instead of failing at
+    // checkout time.
     act(() => result.current.setAmount("5.25"));
-    expect(result.current.isValid).toBe(true);
+    expect(result.current.isValid).toBe(false);
 
     act(() => result.current.setAmount("4"));
     expect(result.current.isValid).toBe(false);
