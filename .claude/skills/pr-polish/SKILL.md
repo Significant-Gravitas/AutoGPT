@@ -160,6 +160,24 @@ while clean_polls < required_clean:
 
 Only after `clean_polls == 2` do you report `ORCHESTRATOR:DONE`.
 
+### Concrete CI fetch (don't parse `gh pr checks` text columns)
+
+The `fetch_check_runs(PR)` step above must use `--json`, not the default text output. Job names can contain spaces and parentheses (e.g. `test (3.11)`, `Analyze (python)`), so `gh pr checks $PR | awk '{print $2}'` extracts `(3.11)` instead of the status — leading to a clean-poll firing while jobs are still pending.
+
+```bash
+# Reliable: use --json so columns are unambiguous.
+ci_json=$(gh pr checks $PR --repo $REPO --json name,state,bucket)
+pending=$(echo "$ci_json" | jq '[.[] | select(.bucket == "pending")] | length')
+failed=$(echo "$ci_json" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length')
+
+# Buckets are: pass | fail | pending | cancel | skipping
+# (NOTE: gh pr checks does NOT expose `conclusion` as a JSON field —
+# only `bucket`. Don't confuse with the GitHub REST API's check_runs
+# endpoint, which DOES use conclusion.)
+```
+
+Map back to the pseudocode above: `bucket == "pending"` is `ci.conclusion is None (still in_progress)`; `bucket in {"fail", "cancel"}` is `ci.conclusion in NON_SUCCESS_TERMINAL`; `bucket in {"pass", "skipping"}` is clean.
+
 ### Why 2 clean polls, not 1
 
 A single green snapshot can be misleading — the final CI check often completes ~30s before a bot posts its delayed review. One quiet cycle does not prove the PR is stable; two consecutive cycles with no new threads, reviews, or issue comments arriving gives high confidence nothing else is incoming.
