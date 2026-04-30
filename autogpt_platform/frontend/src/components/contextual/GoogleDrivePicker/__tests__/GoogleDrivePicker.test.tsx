@@ -18,7 +18,9 @@ vi.mock("@/app/api/__generated__/endpoints/integrations/integrations", () => ({
   postV1GetPickerToken: vi.fn(),
 }));
 vi.mock("@/app/api/helpers", () => ({
-  okData: vi.fn((resp: any) => (resp?.status === 200 ? resp.data : undefined)),
+  okData: vi.fn((resp: { status?: number; data?: unknown } | undefined) =>
+    resp?.status === 200 ? resp.data : undefined,
+  ),
 }));
 vi.mock("@/components/contextual/CredentialsInput/CredentialsInput", () => ({
   CredentialsInput: () => <div data-testid="credentials-input" />,
@@ -68,42 +70,46 @@ function setupGoogleGlobals() {
   const build = vi.fn().mockReturnValue({ setVisible: vi.fn() });
 
   class MockPickerBuilder {
-    setOAuthToken = (...args: any[]) => {
+    setOAuthToken = (...args: unknown[]) => {
       setOAuthToken(...args);
       return this;
     };
-    setDeveloperKey = (...args: any[]) => {
+    setDeveloperKey = (...args: unknown[]) => {
       setDeveloperKey(...args);
       return this;
     };
-    setAppId = (...args: any[]) => {
+    setAppId = (...args: unknown[]) => {
       setAppId(...args);
       return this;
     };
-    setCallback = (...args: any[]) => {
+    setCallback = (...args: unknown[]) => {
       setCallback(...args);
       return this;
     };
-    enableFeature = (...args: any[]) => {
+    enableFeature = (...args: unknown[]) => {
       enableFeature(...args);
       return this;
     };
-    addView = (...args: any[]) => {
+    addView = (...args: unknown[]) => {
       addView(...args);
       return this;
     };
-    build = (...args: any[]) => build(...args);
+    build = (...args: unknown[]) => build(...args);
   }
 
   class MockDocsView {
     setMode = vi.fn();
-    constructor(_viewId?: any) {}
+    constructor(_viewId?: unknown) {}
   }
 
-  (window as any).gapi = {
+  const mockedWindow = window as unknown as {
+    gapi?: unknown;
+    google?: unknown;
+  };
+  mockedWindow.gapi = {
     load: (_name: string, opts: { callback: () => void }) => opts.callback(),
   };
-  (window as any).google = {
+  mockedWindow.google = {
     accounts: {
       oauth2: {
         initTokenClient: vi.fn().mockReturnValue({
@@ -144,8 +150,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  delete (window as any).gapi;
-  delete (window as any).google;
+  const mockedWindow = window as unknown as {
+    gapi?: unknown;
+    google?: unknown;
+  };
+  delete mockedWindow.gapi;
+  delete mockedWindow.google;
 });
 
 function renderPicker(

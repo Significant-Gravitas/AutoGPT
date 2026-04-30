@@ -309,7 +309,11 @@ describe("PushNotificationProvider", () => {
 
       render(<PushNotificationProvider />);
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Wait for the provider's mount-time side effects (URL reporter + SW
+      // listener registration) to flush before asserting absence of teardown.
+      await waitFor(() => {
+        expect(mockPostMessage).toHaveBeenCalled();
+      });
       expect(mockRemoveSubscriptionFromServer).not.toHaveBeenCalled();
       expect(mockUnsubscribeFromPush).not.toHaveBeenCalled();
     });
