@@ -43,15 +43,7 @@ export function usePlatformLinkingPage() {
     isError: isInfoError,
   } = useGetPlatformLinkingGetDisplayInfoForALinkToken(token ?? "", {
     query: {
-      // Endpoint requires auth — gate the query on a logged-in user so we
-      // don't fire a guaranteed-401 request before the user signs in.
       enabled: Boolean(token) && Boolean(user),
-      // Narrow the discriminated response union so `info` is typed as the
-      // success payload (LinkTokenInfoResponse) rather than the 200 ∪ 401 ∪
-      // 422 union. The literal `=== 200` check is what lets TS narrow the
-      // discriminated union — `okData` doesn't distribute correctly across
-      // multiple error-shape variants, and a 2xx range check (`>=200 && <300`)
-      // wouldn't narrow at all. GET-only success here is 200.
       select: (res) => (res && res.status === 200 ? res.data : undefined),
       retry: false,
     },
@@ -82,10 +74,6 @@ export function usePlatformLinkingPage() {
 
   function handleLink() {
     if (!token || !info) return;
-    // Fire-and-forget: React Query surfaces the outcome via
-    // `mutation.isPending | isSuccess | isError`, which `resolveStatus`
-    // consumes. Using `mutate` over `mutateAsync` avoids the unhandled
-    // promise rejection that would otherwise fire on API failure.
     mutation.mutate({ token });
   }
 
@@ -190,7 +178,22 @@ const DEFAULT_MUTATION_ERROR =
 
 function extractDetail(error: unknown): string | undefined {
   if (!error || typeof error !== "object") return undefined;
-  const maybeData = (error as { data?: { detail?: unknown } }).data;
-  const detail = maybeData?.detail;
+  const responseDetail = extractDetailFromPayload(
+    (error as { response?: unknown }).response,
+  );
+  if (responseDetail) return responseDetail;
+
+  const dataDetail = extractDetailFromPayload(
+    (error as { data?: unknown }).data,
+  );
+  if (dataDetail) return dataDetail;
+
+  const message = (error as { message?: unknown }).message;
+  return typeof message === "string" ? message : undefined;
+}
+
+function extractDetailFromPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const detail = (payload as { detail?: unknown }).detail;
   return typeof detail === "string" ? detail : undefined;
 }
