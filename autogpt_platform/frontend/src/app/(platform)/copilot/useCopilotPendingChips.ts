@@ -35,6 +35,18 @@ interface Args {
  * chip array, but the eventual state mutation drops chips by id rather
  * than by array slice, so a chip the user enqueues during the in-flight
  * poll cannot be silently overwritten.
+ *
+ * State machine:
+ *
+ *   ┌────────┐  user queues  ┌────────────┐  backend turn-start drain
+ *   │ empty  │ ───────────▶  │  showing   │ ─────────────────────────┐
+ *   └────────┘               │   chips    │                          │
+ *        ▲                   └────────────┘                          │
+ *        │                                                           │
+ *        │            ┌──────────────────────────────────────────────┘
+ *        │            │ 1. auto-continue chain: promote one bubble per chip
+ *        │            │ 2. mid-turn poll sees count drop: promote drained chips
+ *        └────────────┘ 3. stream ends, hydration takes over
  */
 export function useCopilotPendingChips({
   sessionId,

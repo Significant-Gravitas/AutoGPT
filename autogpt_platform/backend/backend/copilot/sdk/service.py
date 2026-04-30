@@ -1325,14 +1325,14 @@ def delete_stale_cli_session_file(
         return False
     try:
         Path(real_path).unlink()
-        logger.debug(
+        logger.info(
             "%s Removed stale local CLI session file at %s",
             log_prefix,
             os.path.basename(real_path),
         )
         return True
     except OSError as unlink_err:
-        logger.debug(
+        logger.warning(
             "%s Failed to remove stale local CLI session file: %s",
             log_prefix,
             unlink_err,
