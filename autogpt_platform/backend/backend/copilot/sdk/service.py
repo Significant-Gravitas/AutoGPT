@@ -1320,6 +1320,17 @@ def delete_stale_cli_session_file(
     """
     real_path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
     if not real_path.startswith(projects_base() + os.sep):
+        # Mirror ``_write_cli_session_to_disk``'s defense-in-depth: log
+        # rather than fail silently when the resolved path escapes the
+        # projects base.  In normal operation this is unreachable
+        # (session_id is a server-generated UUID and ``cli_session_path``
+        # is deterministic), so a hit indicates a config or tampering
+        # issue that's worth surfacing.
+        logger.warning(
+            "%s CLI session delete path outside projects base: %s",
+            log_prefix,
+            os.path.basename(real_path),
+        )
         return False
     # Direct unlink — no exists() check (avoids TOCTOU with the file being
     # deleted by another process between check and unlink).
