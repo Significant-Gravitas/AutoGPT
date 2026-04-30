@@ -86,13 +86,13 @@ export function useYourPlanCard() {
   const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
 
   const pendingTier = subscription.data?.pending_tier ?? null;
-  const pendingEffectiveAt = subscription.data?.pending_tier_effective_at ?? null;
+  const pendingEffectiveAt =
+    subscription.data?.pending_tier_effective_at ?? null;
   // Cancellation = pending change to the "no active subscription" state.
   const isPendingCancel = pendingTier === "NO_TIER";
   // Paid→paid downgrade scheduled in Stripe (e.g. MAX → PRO at period end).
   // Initiated from the Stripe billing portal — there's no in-app trigger.
-  const isPendingDowngrade =
-    pendingTier !== null && pendingTier !== "NO_TIER";
+  const isPendingDowngrade = pendingTier !== null && pendingTier !== "NO_TIER";
 
   const plan = subscription.data
     ? {
@@ -103,7 +103,9 @@ export function useYourPlanCard() {
         monthlyCostCents: isPaid ? subscription.data.monthly_cost : 0,
         isPaidPlan: isPaid,
         nextTier: nextTierKey,
-        nextTierLabel: nextTierKey ? (PLAN_LABEL[nextTierKey] ?? nextTierKey) : null,
+        nextTierLabel: nextTierKey
+          ? (PLAN_LABEL[nextTierKey] ?? nextTierKey)
+          : null,
         // Team (BUSINESS) is contact-sales, not a self-serve Checkout. The
         // upgrade button for MAX users opens the marketing/sales page rather
         // than POSTing to /credits/subscription.
@@ -186,9 +188,7 @@ export function useYourPlanCard() {
     ) {
       return;
     }
-    const ok = await changeTier(
-      plan.tierKey as SubscriptionTierRequestTier,
-    );
+    const ok = await changeTier(plan.tierKey as SubscriptionTierRequestTier);
     if (!ok) return;
     toast({
       title: plan.isPendingCancel
@@ -203,7 +203,11 @@ export function useYourPlanCard() {
     isLoading: subscription.isLoading,
     isUpdatingTier,
     canManagePortal: Boolean(paymentPortal.data),
-    canUpgrade: Boolean(plan?.nextTier),
+    // Don't offer upgrade alongside Resume — pending cancel/downgrade should
+    // be released first via resumeSubscription, not stacked with a new tier.
+    canUpgrade: Boolean(
+      plan?.nextTier && !plan?.isPendingCancel && !plan?.isPendingDowngrade,
+    ),
     // Downgrade only when an active paid sub has a tier below it AND no
     // pending change is already in flight — avoids stacking schedules.
     canDowngrade: Boolean(

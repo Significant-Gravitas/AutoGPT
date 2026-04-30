@@ -45,10 +45,13 @@ export function useAutoRefillCard() {
 
   const thresholdValue = Number.parseFloat(threshold);
   const refillValue = Number.parseFloat(refillAmount);
+  // Use Number.isFinite (not Number.isInteger) so legacy non-whole-dollar
+  // values (e.g. $7.50 stored as 750 cents) don't permanently disable save.
+  // Math.round(value * 100) below converts back to integer cents.
   const isValid =
-    Number.isInteger(thresholdValue) &&
+    Number.isFinite(thresholdValue) &&
     thresholdValue >= 5 &&
-    Number.isInteger(refillValue) &&
+    Number.isFinite(refillValue) &&
     refillValue >= 5 &&
     // Backend rejects refill < threshold with 422 — gate it client-side too.
     refillValue >= thresholdValue;

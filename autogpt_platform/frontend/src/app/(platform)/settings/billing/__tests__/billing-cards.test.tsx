@@ -72,12 +72,8 @@ describe("YourPlanCard", () => {
     render(<YourPlanCard />);
 
     expect(await screen.findByText("Team")).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: /upgrade to/i }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /talk to sales/i }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /upgrade to/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /talk to sales/i })).toBeNull();
     expect(
       screen.getByRole("button", { name: /downgrade to max/i }),
     ).toBeDefined();
@@ -136,9 +132,7 @@ describe("YourPlanCard", () => {
     expect(screen.getByText(/Switches to Pro on/i)).toBeDefined();
     // Downgrade button hidden while a downgrade is already pending; the
     // "Cancel downgrade" CTA takes its place.
-    expect(
-      screen.queryByRole("button", { name: /^downgrade to/i }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^downgrade to/i })).toBeNull();
     expect(
       screen.getByRole("button", { name: /cancel downgrade/i }),
     ).toBeDefined();

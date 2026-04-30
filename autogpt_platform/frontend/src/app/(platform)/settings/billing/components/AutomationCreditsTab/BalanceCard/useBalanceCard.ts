@@ -54,7 +54,7 @@ export function useBalanceCard() {
         const detail =
           typeof body?.detail === "string"
             ? body.detail
-            : body?.detail?.msg ?? `Server returned ${status}.`;
+            : (body?.detail?.msg ?? `Server returned ${status}.`);
         throw new Error(detail);
       }
 

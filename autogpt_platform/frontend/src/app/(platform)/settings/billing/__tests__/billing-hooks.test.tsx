@@ -473,9 +473,7 @@ describe("useYourPlanCard", () => {
       }),
     );
 
-    const openSpy = vi
-      .spyOn(window, "open")
-      .mockImplementation(() => null);
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
 
     const { result } = renderHook(() => useYourPlanCard(), {
       wrapper: makeWrapper(),
