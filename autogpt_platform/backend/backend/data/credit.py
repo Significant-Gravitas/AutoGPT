@@ -1089,12 +1089,11 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.TOP_UP,
             transaction_key=checkout_session.id,
             is_active=False,
-            metadata=SafeJson(
-                {
-                    "reason": "User-initiated Stripe checkout",
-                    "checkout_session": checkout_session,
-                }
-            ),
+            # Just the reason — same flat shape as every other writer (GRANT,
+            # USAGE, etc.).  The full Stripe Session is re-fetched on demand
+            # via stripe.checkout.Session.retrieve(transaction_key) anywhere
+            # we need its details, so storing a snapshot here is bloat.
+            metadata=SafeJson({"reason": "User-initiated Stripe checkout"}),
         )
 
         return checkout_session.url or ""
@@ -1159,7 +1158,6 @@ class UserCredit(UserCreditBase):
                         "reason": existing_metadata.get(
                             "reason", "User-initiated Stripe checkout"
                         ),
-                        "checkout_session": checkout_session,
                     }
                 ),
             )
