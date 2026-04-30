@@ -32,17 +32,12 @@ function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
 }
 
-const TIER_COSTS = { PRO: 5000, MAX: 32000, BUSINESS: 0 } as const;
-const TIER_MULTIPLIERS = { PRO: 1, MAX: 8.5, BUSINESS: 25 } as const;
-
 describe("YourPlanCard", () => {
-  it("renders all three tier cards with PRO marked Current and Max upgrade CTA", async () => {
+  it("renders the current tier label, monthly cost, and Upgrade CTA", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
-        tier_costs: TIER_COSTS,
-        tier_multipliers: TIER_MULTIPLIERS,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -53,40 +48,21 @@ describe("YourPlanCard", () => {
 
     render(<YourPlanCard />);
 
-    // Three tier cards visible
     expect(await screen.findByText("Pro")).toBeDefined();
-    expect(screen.getByText("Max")).toBeDefined();
-    expect(screen.getByText("Team")).toBeDefined();
-
-    // Current tier highlighted
-    expect(screen.getByText("Current")).toBeDefined();
-
-    // Upgrade-to-Max button visible (PRO → MAX = upgrade)
+    expect(screen.getByText(/\$50\.00 \/ month/)).toBeDefined();
     expect(
       screen.getByRole("button", { name: /upgrade to max/i }),
     ).toBeDefined();
-
-    // Talk-to-sales button on Team card
-    expect(
-      screen.getByRole("button", { name: /talk to sales/i }),
-    ).toBeDefined();
-
-    // Bottom-row controls
     expect(
       screen.getByRole("button", { name: /manage subscription/i }),
     ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: /cancel subscription/i }),
-    ).toBeDefined();
   });
 
-  it("BUSINESS subscriber: Pro and Max are downgrade targets, no Team button", async () => {
+  it("hides the Upgrade button on the top tier (BUSINESS / Team) and exposes Downgrade to Max", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "BUSINESS",
-        monthly_cost: 0,
-        tier_costs: TIER_COSTS,
-        tier_multipliers: TIER_MULTIPLIERS,
+        monthly_cost: 50000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -97,24 +73,21 @@ describe("YourPlanCard", () => {
 
     expect(await screen.findByText("Team")).toBeDefined();
     expect(
-      screen.getByRole("button", { name: /downgrade to pro/i }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("button", { name: /downgrade to max/i }),
-    ).toBeDefined();
-    // Team card is the current tier — no action button.
+      screen.queryByRole("button", { name: /upgrade to/i }),
+    ).toBeNull();
     expect(
       screen.queryByRole("button", { name: /talk to sales/i }),
     ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /downgrade to max/i }),
+    ).toBeDefined();
   });
 
-  it("MAX subscriber sees Downgrade-to-Pro and Talk-to-sales for Team", async () => {
+  it("MAX subscriber sees Downgrade-to-Pro, Manage, and Talk-to-sales for Team", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
-        tier_costs: TIER_COSTS,
-        tier_multipliers: TIER_MULTIPLIERS,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -130,6 +103,11 @@ describe("YourPlanCard", () => {
       screen.getByRole("button", { name: /downgrade to pro/i }),
     ).toBeDefined();
     expect(
+      screen.getByRole("button", { name: /manage subscription/i }),
+    ).toBeDefined();
+    // Team is contact-sales — button exists, but as a "Talk to sales" link
+    // rather than a Stripe Checkout / API upgrade trigger.
+    expect(
       screen.getByRole("button", { name: /talk to sales/i }),
     ).toBeDefined();
     expect(
@@ -137,13 +115,11 @@ describe("YourPlanCard", () => {
     ).toBeNull();
   });
 
-  it("shows the pending-change banner when a portal-initiated downgrade is scheduled", async () => {
+  it("shows 'Downgrade scheduled' badge + 'Switches to Pro on …' when pending downgrade is set", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
-        tier_costs: TIER_COSTS,
-        tier_multipliers: TIER_MULTIPLIERS,
         has_active_stripe_subscription: true,
         status: "active",
         pending_tier: "PRO",
@@ -156,25 +132,23 @@ describe("YourPlanCard", () => {
 
     render(<YourPlanCard />);
 
-    // Banner copy describes the scheduled switch + offers Cancel downgrade.
+    expect(await screen.findByText("Downgrade scheduled")).toBeDefined();
+    expect(screen.getByText(/Switches to Pro on/i)).toBeDefined();
+    // Downgrade button hidden while a downgrade is already pending; the
+    // "Cancel downgrade" CTA takes its place.
     expect(
-      await screen.findByText(/Switching from Max to Pro/i),
-    ).toBeDefined();
+      screen.queryByRole("button", { name: /^downgrade to/i }),
+    ).toBeNull();
     expect(
       screen.getByRole("button", { name: /cancel downgrade/i }),
     ).toBeDefined();
-    // The PRO card itself shows "Scheduled" instead of an upgrade/downgrade
-    // CTA so the user can't double-schedule.
-    expect(screen.getByRole("button", { name: /scheduled/i })).toBeDefined();
   });
 
-  it("renders the 'Pick a plan' banner for users without an active subscription", async () => {
+  it("renders the 'no active subscription' state for NO_TIER users", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "NO_TIER",
         monthly_cost: 0,
-        tier_costs: TIER_COSTS,
-        tier_multipliers: TIER_MULTIPLIERS,
         has_active_stripe_subscription: false,
         status: "inactive",
       }),
@@ -183,20 +157,11 @@ describe("YourPlanCard", () => {
 
     render(<YourPlanCard />);
 
-    expect(
-      await screen.findByText(/Pick a plan to continue using AutoGPT/i),
-    ).toBeDefined();
-    // Pro and Max both reachable via "Switch to" buttons (NO_TIER is not in
-    // the picker but is treated as a baseline below all paid tiers).
-    expect(
-      screen.getByRole("button", { name: /upgrade to pro/i }),
-    ).toBeDefined();
-    // No Manage / Cancel links until the user has an active sub.
+    expect(await screen.findByText("No active subscription")).toBeDefined();
+    expect(screen.getByRole("button", { name: /get pro/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /cancel plan/i })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /manage subscription/i }),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: /cancel subscription/i }),
     ).toBeNull();
   });
 });

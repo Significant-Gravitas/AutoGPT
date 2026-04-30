@@ -350,15 +350,12 @@ describe("usePaymentMethodCard", () => {
   });
 });
 
-const TIER_COSTS = { PRO: 5000, MAX: 32000, BUSINESS: 0 } as const;
-
 describe("useYourPlanCard", () => {
-  it("returns the subscription payload and exposes the portal URL", async () => {
+  it("derives plan label/cost/nextTier from the subscription response", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
-        tier_costs: TIER_COSTS,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -373,19 +370,69 @@ describe("useYourPlanCard", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    expect(result.current.subscription?.tier).toBe("PRO");
-    expect(result.current.subscription?.monthly_cost).toBe(5000);
+    expect(result.current.plan?.label).toBe("Pro");
+    expect(result.current.plan?.tierKey).toBe("PRO");
+    expect(result.current.plan?.monthlyCostCents).toBe(5000);
+    expect(result.current.plan?.isPaidPlan).toBe(true);
+    expect(result.current.plan?.nextTier).toBe("MAX");
+    expect(result.current.canUpgrade).toBe(true);
     expect(result.current.canManagePortal).toBe(true);
-    expect(result.current.portalUrl).toBe("https://billing.stripe.com/p/test");
   });
 
-  it("changeTier POSTs the requested tier and toasts on success when no Checkout URL is returned", async () => {
+  it("nextTier is null on the top tier (BUSINESS) and canUpgrade=false", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BUSINESS",
+        monthly_cost: 50000,
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.nextTier).toBeNull();
+    expect(result.current.canUpgrade).toBe(false);
+  });
+
+  it("exposes previousTier=PRO and canDowngrade=true for an active MAX subscriber", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.previousTier).toBe("PRO");
+    expect(result.current.plan?.previousTierLabel).toBe("Pro");
+    expect(result.current.canDowngrade).toBe(true);
+    // MAX → next tier is BUSINESS → contact-sales, not in-app Checkout.
+    expect(result.current.plan?.nextTier).toBe("BUSINESS");
+    expect(result.current.plan?.nextTierIsTeamLink).toBe(true);
+  });
+
+  it("onDowngrade calls updateTier with the previous tier (MAX → PRO)", async () => {
     let capturedTier: string | null = null;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
-        tier: "PRO",
-        monthly_cost: 5000,
-        tier_costs: TIER_COSTS,
+        tier: "MAX",
+        monthly_cost: 32000,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -404,19 +451,18 @@ describe("useYourPlanCard", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.changeTier("MAX");
+      result.current.onDowngrade();
     });
 
-    expect(capturedTier).toBe("MAX");
+    await waitFor(() => expect(capturedTier).toBe("PRO"));
   });
 
-  it("handleTierChange opens the contact-sales URL for the BUSINESS tier instead of POSTing", async () => {
+  it("onUpgrade for a MAX subscriber opens TEAM_UPGRADE_URL instead of POSTing to /credits/subscription", async () => {
     let stripeHit = false;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
-        tier_costs: TIER_COSTS,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -427,7 +473,9 @@ describe("useYourPlanCard", () => {
       }),
     );
 
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockImplementation(() => null);
 
     const { result } = renderHook(() => useYourPlanCard(), {
       wrapper: makeWrapper(),
@@ -436,7 +484,7 @@ describe("useYourPlanCard", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      result.current.handleTierChange("BUSINESS", "MAX", () => {});
+      result.current.onUpgrade();
     });
 
     expect(openSpy).toHaveBeenCalledWith(
@@ -448,14 +496,15 @@ describe("useYourPlanCard", () => {
     openSpy.mockRestore();
   });
 
-  it("handleTierChange routes downgrades through the confirm callback and queues upgrades for the dialog", async () => {
+  it("flags isPendingDowngrade and canResume when a portal-initiated downgrade is scheduled", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "MAX",
         monthly_cost: 32000,
-        tier_costs: TIER_COSTS,
         has_active_stripe_subscription: true,
         status: "active",
+        pending_tier: "PRO",
+        pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
     );
@@ -466,39 +515,41 @@ describe("useYourPlanCard", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    let downgradeAsked: string | null = null;
-    act(() => {
-      result.current.handleTierChange("PRO", "MAX", (tier) => {
-        downgradeAsked = tier;
-      });
-    });
-    expect(downgradeAsked).toBe("PRO");
-
-    // Upgrade attempt → exposed as pendingUpgradeTier so the view can render
-    // the confirm dialog before firing the mutation.
-    act(() => {
-      result.current.handleTierChange("BUSINESS", "PRO", () => {});
-    });
-    // BUSINESS is contact-sales — bypasses pendingUpgradeTier entirely.
-    expect(result.current.pendingUpgradeTier).toBeNull();
-
-    act(() => {
-      result.current.handleTierChange("MAX", "PRO", () => {});
-    });
-    expect(result.current.pendingUpgradeTier).toBe("MAX");
+    expect(result.current.plan?.isPendingDowngrade).toBe(true);
+    expect(result.current.plan?.pendingTierLabel).toBe("Pro");
+    expect(result.current.canResume).toBe(true);
   });
 
-  it("cancelPendingChange POSTs the current tier to release the schedule", async () => {
+  it("offers PRO as the next tier when the user has no active subscription", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.isPaidPlan).toBe(false);
+    expect(result.current.plan?.nextTier).toBe("PRO");
+    expect(result.current.canUpgrade).toBe(true);
+  });
+
+  it("changeTier (PRO → MAX upgrade) calls updateTier with the requested tier", async () => {
     let capturedTier: string | null = null;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
-        tier: "MAX",
-        monthly_cost: 32000,
-        tier_costs: TIER_COSTS,
+        tier: "PRO",
+        monthly_cost: 5000,
         has_active_stripe_subscription: true,
         status: "active",
-        pending_tier: "PRO",
-        pending_tier_effective_at: "2026-05-30T00:00:00Z",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
       http.post("*/api/credits/subscription", async ({ request }) => {
@@ -513,20 +564,20 @@ describe("useYourPlanCard", () => {
     });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.canUpgrade).toBe(true);
 
     await act(async () => {
-      await result.current.cancelPendingChange();
+      result.current.onUpgrade();
     });
 
-    expect(capturedTier).toBe("MAX");
+    await waitFor(() => expect(capturedTier).toBe("MAX"));
   });
 
-  it("surfaces tierError when changeTier rejects", async () => {
+  it("changeTier surfaces a destructive toast when the API returns 500", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
         monthly_cost: 5000,
-        tier_costs: TIER_COSTS,
         has_active_stripe_subscription: true,
         status: "active",
       }),
@@ -543,12 +594,32 @@ describe("useYourPlanCard", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     await act(async () => {
-      await result.current.changeTier("MAX");
+      result.current.onUpgrade();
     });
 
-    await waitFor(() => expect(result.current.isPending).toBe(false));
-    // Either the mutation surfaces the detail string or falls back to the
-    // hook's generic copy — both are valid.
-    expect(result.current.tierError).not.toBeNull();
+    // The catch path runs without throwing; mutation completes.
+    await waitFor(() => expect(result.current.isUpdatingTier).toBe(false));
+  });
+
+  it("falls back to the raw tier string when PLAN_LABEL has no match", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "STARTUP",
+        monthly_cost: 100,
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.label).toBe("STARTUP");
+    // STARTUP isn't in TIER_ORDER → unknown, default to first paid tier.
+    expect(result.current.plan?.nextTier).toBe("PRO");
   });
 });

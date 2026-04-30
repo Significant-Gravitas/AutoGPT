@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-
 import {
   useGetSubscriptionStatus,
   useGetV1ManagePaymentMethods,
@@ -12,33 +9,45 @@ import type { GetV1ManagePaymentMethods200 } from "@/app/api/__generated__/model
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
-import { TIER_ORDER, getTierLabel } from "../../../helpers";
+import { formatShortDate } from "../../../helpers";
+
+const PLAN_LABEL: Record<string, string> = {
+  NO_TIER: "No active subscription",
+  PRO: "Pro",
+  MAX: "Max",
+  BUSINESS: "Team",
+};
 
 // Team upgrade is contact-sales — open this page rather than firing a
-// Stripe Checkout from the BUSINESS tier card. Replace once marketing
-// publishes the canonical sales URL.
+// Stripe Checkout from the BUSINESS tier. Replace once marketing publishes
+// the canonical sales URL.
 export const TEAM_UPGRADE_URL = "https://agpt.co/contact-sales";
 
+// User-visible paid plans only. NO_TIER is the "no active subscription" state
+// (gates the platform via PaywallGate); BASIC + ENTERPRISE are reserved
+// internal slots and never offered as upgrade targets in the settings UI.
+const TIER_ORDER = [
+  "PRO",
+  "MAX",
+  "BUSINESS",
+] as const satisfies readonly SubscriptionTierRequestTier[];
+
+function getNextTier(current: string): SubscriptionTierRequestTier | null {
+  const idx = TIER_ORDER.indexOf(current as (typeof TIER_ORDER)[number]);
+  if (idx === -1) return TIER_ORDER[0];
+  if (idx === TIER_ORDER.length - 1) return null;
+  return TIER_ORDER[idx + 1];
+}
+
+function getPreviousTier(current: string): SubscriptionTierRequestTier | null {
+  const idx = TIER_ORDER.indexOf(current as (typeof TIER_ORDER)[number]);
+  if (idx <= 0) return null;
+  return TIER_ORDER[idx - 1];
+}
+
 export function useYourPlanCard() {
-  const isPaymentEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const searchParams = useSearchParams();
-  const subscriptionStatus = searchParams.get("subscription");
-  const router = useRouter();
-  const pathname = usePathname();
-
-  const [tierError, setTierError] = useState<string | null>(null);
-  const [pendingUpgradeTier, setPendingUpgradeTier] = useState<string | null>(
-    null,
-  );
-
-  const {
-    data: subscription,
-    isLoading,
-    error: queryError,
-    refetch,
-  } = useGetSubscriptionStatus({
+  const subscription = useGetSubscriptionStatus({
     query: {
       select: (res) =>
         res.status === 200
@@ -57,170 +66,171 @@ export function useYourPlanCard() {
     },
   });
 
-  const fetchError = queryError ? "Failed to load subscription info." : null;
+  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+    useUpdateSubscriptionTier();
 
-  const {
-    mutateAsync: doUpdateTier,
-    isPending,
-    variables,
-  } = useUpdateSubscriptionTier();
+  // Backend defaults new users' subscription_tier to PRO at the DB level
+  // (see schema.prisma comment — intentional for the beta-period rate
+  // limits). For UI purposes, treat anyone without an active Stripe sub
+  // as NO_TIER regardless of the DB tier — otherwise we'd show "Pro" +
+  // "No active subscription" simultaneously, and offer "Upgrade to Max"
+  // before the user has paid for Pro at all.
+  const isPaid = Boolean(subscription.data?.has_active_stripe_subscription);
+  const effectiveTier = subscription.data
+    ? isPaid
+      ? subscription.data.tier
+      : "NO_TIER"
+    : null;
 
-  // Mirror the old SubscriptionTierSection: surface ?subscription=success|cancelled
-  // as a toast and strip the param so a refresh doesn't re-trigger the toast.
-  useEffect(
-    function handleStripeReturn() {
-      if (subscriptionStatus === "success") {
-        void refetch();
-        toast({
-          title: "Subscription upgraded",
-          description:
-            "Your plan has been updated. It may take a moment to reflect.",
-        });
+  const nextTierKey = effectiveTier ? getNextTier(effectiveTier) : null;
+  const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
+
+  const pendingTier = subscription.data?.pending_tier ?? null;
+  const pendingEffectiveAt = subscription.data?.pending_tier_effective_at ?? null;
+  // Cancellation = pending change to the "no active subscription" state.
+  const isPendingCancel = pendingTier === "NO_TIER";
+  // Paid→paid downgrade scheduled in Stripe (e.g. MAX → PRO at period end).
+  // Initiated from the Stripe billing portal — there's no in-app trigger.
+  const isPendingDowngrade =
+    pendingTier !== null && pendingTier !== "NO_TIER";
+
+  const plan = subscription.data
+    ? {
+        tierKey: effectiveTier ?? subscription.data.tier,
+        label:
+          PLAN_LABEL[effectiveTier ?? subscription.data.tier] ??
+          subscription.data.tier,
+        monthlyCostCents: isPaid ? subscription.data.monthly_cost : 0,
+        isPaidPlan: isPaid,
+        nextTier: nextTierKey,
+        nextTierLabel: nextTierKey ? (PLAN_LABEL[nextTierKey] ?? nextTierKey) : null,
+        // Team (BUSINESS) is contact-sales, not a self-serve Checkout. The
+        // upgrade button for MAX users opens the marketing/sales page rather
+        // than POSTing to /credits/subscription.
+        nextTierIsTeamLink: nextTierKey === "BUSINESS",
+        previousTier: previousTierKey,
+        previousTierLabel: previousTierKey
+          ? (PLAN_LABEL[previousTierKey] ?? previousTierKey)
+          : null,
+        currentPeriodEnd: subscription.data.current_period_end ?? null,
+        pendingTier,
+        pendingTierLabel: pendingTier
+          ? (PLAN_LABEL[pendingTier] ?? pendingTier)
+          : null,
+        pendingEffectiveAt,
+        isPendingCancel,
+        isPendingDowngrade,
       }
-      if (
-        subscriptionStatus === "success" ||
-        subscriptionStatus === "cancelled"
-      ) {
-        router.replace(pathname);
-      }
-    },
-    // refetch + router are stable React Query / Next.js handles; including
-    // them keeps the deps lint rule happy without re-running on every render.
-    [subscriptionStatus, refetch, router, pathname],
-  );
+    : undefined;
 
-  async function changeTier(tier: string) {
-    setTierError(null);
+  async function changeTier(tier: SubscriptionTierRequestTier) {
+    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
+    const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
     try {
-      const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success`;
-      const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
-      const result = await doUpdateTier({
+      const result = await updateTier({
         data: {
-          tier: tier as SubscriptionTierRequestTier,
+          tier,
           success_url: successUrl,
           cancel_url: cancelUrl,
         },
       });
-
-      if (result.status === 200) {
-        const data = result.data as { url?: string } | undefined;
-        if (data?.url) {
-          window.location.href = data.url;
-          return;
-        }
+      const url = (result?.data as { url?: string } | undefined)?.url;
+      if (url) {
+        // Navigating away — don't refetch (would set state on an
+        // unmounting component while Stripe Checkout takes over).
+        window.location.href = url;
+        return;
       }
-
-      await refetch();
-
-      const currentIdx = subscription
-        ? TIER_ORDER.indexOf(subscription.tier as (typeof TIER_ORDER)[number])
-        : -1;
-      const targetIdx = TIER_ORDER.indexOf(
-        tier as (typeof TIER_ORDER)[number],
-      );
-      const isDowngrade = targetIdx >= 0 && targetIdx < currentIdx;
-
+      await subscription.refetch();
+      return true;
+    } catch (error) {
       toast({
-        title: "Subscription updated",
+        title: "Couldn't update your plan",
         description:
-          tier === "NO_TIER"
-            ? "Your subscription is cancelled at the end of your current billing period; no further charges."
-            : isDowngrade
-              ? `Your plan will be downgraded to ${getTierLabel(tier)} at the end of your current billing period; from then your saved card is billed at the new lower rate.`
-              : `Upgraded to ${getTierLabel(tier)}. On the next invoice your saved card is charged for the upgrade proration plus the next month at the new rate; matching credits land in your AutoGPT balance once Stripe confirms the charge.`,
-      });
-    } catch (e: unknown) {
-      const msg =
-        e instanceof Error ? e.message : "Failed to change subscription tier.";
-      setTierError(msg);
-    }
-  }
-
-  function handleTierChange(
-    targetTierKey: string,
-    currentTier: string,
-    onConfirmDowngrade: (tier: string) => void,
-  ) {
-    if (targetTierKey === "BUSINESS") {
-      // Team upgrade is contact-sales — sidestep Stripe entirely.
-      window.open(TEAM_UPGRADE_URL, "_blank", "noopener,noreferrer");
-      return;
-    }
-    const currentIdx = TIER_ORDER.indexOf(
-      currentTier as (typeof TIER_ORDER)[number],
-    );
-    const targetIdx = TIER_ORDER.indexOf(
-      targetTierKey as (typeof TIER_ORDER)[number],
-    );
-    if (targetIdx < currentIdx) {
-      onConfirmDowngrade(targetTierKey);
-      return;
-    }
-    setPendingUpgradeTier(targetTierKey);
-  }
-
-  async function confirmUpgrade() {
-    if (!pendingUpgradeTier) return;
-    const tier = pendingUpgradeTier;
-    setPendingUpgradeTier(null);
-    await changeTier(tier);
-  }
-
-  async function cancelPendingChange() {
-    if (!subscription) return;
-    setTierError(null);
-    try {
-      await doUpdateTier({
-        data: {
-          tier: subscription.tier as SubscriptionTierRequestTier,
-          success_url: `${window.location.origin}${window.location.pathname}`,
-          cancel_url: `${window.location.origin}${window.location.pathname}`,
-        },
-      });
-      await refetch();
-      toast({ title: "Pending subscription change cancelled." });
-    } catch (e: unknown) {
-      const msg =
-        e instanceof Error
-          ? e.message
-          : "Failed to cancel pending subscription change.";
-      setTierError(msg);
-      toast({
-        title: "Failed to cancel pending change",
-        description: msg,
+          error instanceof Error
+            ? error.message
+            : "Stripe didn't accept the change. Please try again.",
         variant: "destructive",
       });
-      try {
-        await refetch();
-      } catch {
-        // intentionally swallowed — primary error already surfaced.
-      }
+      return false;
     }
   }
 
-  // Mirrors the old hook's pendingTier — used to flag the *button* the user
-  // just clicked (vs the subscription's pending_tier from the backend).
-  const pendingTierOnButton =
-    isPending && variables?.data?.tier ? variables.data.tier : null;
+  async function downgradeSubscription() {
+    // End-of-period downgrade: backend's modify_stripe_subscription_for_tier
+    // schedules a phase change at current_period_end. No proration today —
+    // user keeps higher tier until period end, then drops to lower price.
+    if (!plan?.isPaidPlan || !plan?.previousTier) return;
+    const targetLabel = plan.previousTierLabel ?? plan.previousTier;
+    const ok = await changeTier(plan.previousTier);
+    if (!ok) return;
+    const periodEnd = plan.currentPeriodEnd
+      ? formatShortDate(plan.currentPeriodEnd * 1000)
+      : null;
+    toast({
+      title: "Downgrade scheduled",
+      description: periodEnd
+        ? `You keep ${plan.label} until ${periodEnd}, then switch to ${targetLabel}. No charge today.`
+        : `Your plan will switch to ${targetLabel} at the close of the current billing period. No charge today.`,
+    });
+  }
+
+  async function resumeSubscription() {
+    // POSTing the current tier back to the backend releases any pending
+    // schedule — both cancel_at_period_end (NO_TIER pending) and paid→paid
+    // downgrade phases. See release_pending_subscription_schedule + the
+    // same-tier branch of update_subscription_tier.
+    if (
+      !plan?.isPaidPlan ||
+      (!plan?.isPendingCancel && !plan?.isPendingDowngrade)
+    ) {
+      return;
+    }
+    const ok = await changeTier(
+      plan.tierKey as SubscriptionTierRequestTier,
+    );
+    if (!ok) return;
+    toast({
+      title: plan.isPendingCancel
+        ? "Subscription resumed"
+        : "Downgrade cancelled",
+      description: `Your ${plan.label} plan will continue to renew as normal.`,
+    });
+  }
 
   return {
-    subscription: subscription ?? null,
-    isLoading,
-    error: fetchError,
-    tierError,
-    isPending,
-    pendingTierOnButton,
-    pendingUpgradeTier,
-    setPendingUpgradeTier,
-    confirmUpgrade,
-    isPaymentEnabled,
-    portalUrl: paymentPortal.data ?? null,
+    plan,
+    isLoading: subscription.isLoading,
+    isUpdatingTier,
     canManagePortal: Boolean(paymentPortal.data),
+    canUpgrade: Boolean(plan?.nextTier),
+    // Downgrade only when an active paid sub has a tier below it AND no
+    // pending change is already in flight — avoids stacking schedules.
+    canDowngrade: Boolean(
+      plan?.isPaidPlan &&
+        plan?.previousTier &&
+        !plan?.isPendingCancel &&
+        !plan?.isPendingDowngrade,
+    ),
+    canResume: Boolean(plan?.isPendingCancel || plan?.isPendingDowngrade),
+    onUpgrade: () => {
+      if (!plan?.nextTier) return;
+      // Team (BUSINESS) tier is contact-sales — divert to marketing page
+      // instead of POSTing a Checkout the user can't self-serve.
+      if (plan.nextTierIsTeamLink) {
+        window.open(TEAM_UPGRADE_URL, "_blank", "noopener,noreferrer");
+        return;
+      }
+      void changeTier(plan.nextTier);
+    },
+    onDowngrade: () => {
+      void downgradeSubscription();
+    },
+    onResume: () => {
+      void resumeSubscription();
+    },
     onManage: () => {
       if (paymentPortal.data) window.location.href = paymentPortal.data;
     },
-    changeTier,
-    handleTierChange,
-    cancelPendingChange,
   };
 }
