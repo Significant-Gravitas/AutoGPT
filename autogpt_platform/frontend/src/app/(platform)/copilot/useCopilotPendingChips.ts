@@ -62,7 +62,7 @@ export function useCopilotPendingChips({
     [queue],
   );
 
-  usePeekOnBoundary({ sessionId, status, setQueue });
+  usePeekOnBoundary({ sessionId, status, setMessages, setQueue });
 
   useAutoContinuePromotion({
     sessionId,
@@ -97,10 +97,12 @@ export function useCopilotPendingChips({
 function usePeekOnBoundary({
   sessionId,
   status,
+  setMessages,
   setQueue,
 }: {
   sessionId: string | null;
   status: ChatStatus;
+  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setQueue: (updater: QueueUpdater) => void;
 }) {
   const prevSessionIdRef = useRef<string | null>(sessionId);
@@ -156,15 +158,27 @@ function usePeekOnBoundary({
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (res.status !== 200) return;
       const inFlightIds = inFlightSnapshotIdsRef.current;
-      // Turn-start drain path: only clear entries that were in-flight at
-      // GET time when the backend really emptied the buffer.  Entries
-      // appended after the GET fired (during the React render between
-      // turn-start and the GET resolving) survive.
+      // Turn-start drain path: when the backend has drained everything
+      // it had at GET time, promote those drained entries to user
+      // bubbles BEFORE removing them from local state.  Without the
+      // promote step, the chips disappear from the chip-strip but the
+      // bubble for each drained entry only shows up later via
+      // hydration once the turn fully ends — leaving the user staring
+      // at a streaming assistant that's responding to text they can no
+      // longer see typed in the chat.  Entries appended after the GET
+      // fired (during the React render between turn-start and the GET
+      // resolving) survive untouched.
       if (turnStarting && !sessionChanged) {
         if (res.data.count === 0) {
-          setQueue((current) =>
-            current.filter((entry) => !inFlightIds.has(entry.id)),
-          );
+          setQueue((current) => {
+            const drained = current.filter((entry) =>
+              inFlightIds.has(entry.id),
+            );
+            if (drained.length > 0) {
+              promoteChipsToTrailingBubbles(setMessages, drained);
+            }
+            return current.filter((entry) => !inFlightIds.has(entry.id));
+          });
         }
         return;
       }
@@ -260,6 +274,37 @@ function useAutoContinuePromotion({
       current.filter((entry) => !promotedIds.has(entry.id)),
     );
   }, [messages, status, sessionId, queue, setMessages, setQueue]);
+}
+
+/**
+ * Splice promoted user bubbles for *drained* in just before the trailing
+ * streaming assistant message — same insertion shape as the mid-turn poll
+ * promotion so AI SDK's streaming continues into the right slot.
+ *
+ * Used by the turn-start drain path in ``usePeekOnBoundary``: when the
+ * backend has already drained chips before the frontend's first peek
+ * resolves, we'd otherwise just remove them from local state and the
+ * bubble would only appear via hydration after the turn ends.  This
+ * helper makes the bubble visible immediately so the user can see what
+ * the model is responding to.
+ */
+function promoteChipsToTrailingBubbles(
+  setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
+  drained: QueuedMessage[],
+): void {
+  setMessages((prev) => {
+    const newBubbles = drained
+      .map((entry) =>
+        makePromotedUserBubble(entry.text, "midturn", bubbleIdFor(entry)),
+      )
+      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
+    if (newBubbles.length === 0) return prev;
+    const lastIdx = prev.length - 1;
+    if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
+      return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
+    }
+    return [...prev, ...newBubbles];
+  });
 }
 
 // One stable bubble id per queued message, shared between auto-continue
