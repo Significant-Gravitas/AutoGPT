@@ -206,14 +206,21 @@ describe("PushNotificationProvider", () => {
       });
     });
 
+    // Skip-path tests use `mockPostMessage` as a deterministic "mount effects
+    // flushed" anchor before asserting that the push-registration helpers were
+    // NOT called. The URL reporter posts on mount regardless of push-support /
+    // permission / auth / VAPID state, so it gives a reliable signal that the
+    // provider's effects have run — without it, `expect(...).not.toHaveBeenCalled()`
+    // can pass before the effect that would have called the mock fires.
     it("skips when push is not supported", async () => {
       mockIsPushSupported.mockReturnValue(false);
 
       render(<PushNotificationProvider />);
 
       await waitFor(() => {
-        expect(mockRegisterServiceWorker).not.toHaveBeenCalled();
+        expect(mockPostMessage).toHaveBeenCalled();
       });
+      expect(mockRegisterServiceWorker).not.toHaveBeenCalled();
     });
 
     it("skips when Notification permission is not granted", async () => {
@@ -226,8 +233,9 @@ describe("PushNotificationProvider", () => {
       render(<PushNotificationProvider />);
 
       await waitFor(() => {
-        expect(mockRegisterServiceWorker).not.toHaveBeenCalled();
+        expect(mockPostMessage).toHaveBeenCalled();
       });
+      expect(mockRegisterServiceWorker).not.toHaveBeenCalled();
     });
 
     it("skips when no user is authenticated", async () => {
@@ -239,8 +247,9 @@ describe("PushNotificationProvider", () => {
       render(<PushNotificationProvider />);
 
       await waitFor(() => {
-        expect(mockIsPushSupported).not.toHaveBeenCalled();
+        expect(mockPostMessage).toHaveBeenCalled();
       });
+      expect(mockIsPushSupported).not.toHaveBeenCalled();
     });
 
     it("skips when service worker registration fails", async () => {
@@ -249,8 +258,9 @@ describe("PushNotificationProvider", () => {
       render(<PushNotificationProvider />);
 
       await waitFor(() => {
-        expect(mockSubscribeToPush).not.toHaveBeenCalled();
+        expect(mockRegisterServiceWorker).toHaveBeenCalled();
       });
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
     });
 
     it("skips when VAPID key is not available", async () => {
@@ -260,8 +270,9 @@ describe("PushNotificationProvider", () => {
       render(<PushNotificationProvider />);
 
       await waitFor(() => {
-        expect(mockSubscribeToPush).not.toHaveBeenCalled();
+        expect(mockFetchVapidPublicKey).toHaveBeenCalled();
       });
+      expect(mockSubscribeToPush).not.toHaveBeenCalled();
     });
 
     it("skips when push subscription fails", async () => {
@@ -270,8 +281,9 @@ describe("PushNotificationProvider", () => {
       render(<PushNotificationProvider />);
 
       await waitFor(() => {
-        expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
+        expect(mockSubscribeToPush).toHaveBeenCalled();
       });
+      expect(mockSendSubscriptionToServer).not.toHaveBeenCalled();
     });
 
     it("registers a service-worker message listener so PUSH_SUBSCRIPTION_CHANGED can renew", () => {
