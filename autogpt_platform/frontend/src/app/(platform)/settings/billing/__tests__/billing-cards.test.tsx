@@ -442,7 +442,7 @@ describe("Card mutation flows", () => {
     ).toBeDefined();
   });
 
-  it("BalanceCard: invalid amounts (5.25, 4) keep the checkout button disabled", async () => {
+  it("BalanceCard: invalid amount (4) keeps the checkout button disabled until a valid amount is entered", async () => {
     server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
 
     render(<BalanceCard />);
@@ -455,6 +455,22 @@ describe("Card mutation flows", () => {
       name: /continue to checkout/i,
     });
     expect(continueButton.hasAttribute("disabled")).toBe(true);
+
+    // Typing a valid amount enables the button — exercises the input
+    // onChange handler that wasn't covered before.
+    const amountInput = screen.getByPlaceholderText(/amount/i);
+    fireEvent.change(amountInput, { target: { value: "20" } });
+    await waitFor(() =>
+      expect(continueButton.hasAttribute("disabled")).toBe(false),
+    );
+
+    // Cancel closes the dialog — covers the Cancel button's onClick handler.
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /continue to checkout/i }),
+      ).toBeNull(),
+    );
   });
 
   it("AutoRefillDialog: renders 'Enable Auto-Refill' affordances when not yet enabled", async () => {

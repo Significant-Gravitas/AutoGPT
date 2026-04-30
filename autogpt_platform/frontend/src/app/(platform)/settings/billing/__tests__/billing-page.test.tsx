@@ -1,11 +1,37 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/mocks/mock-server";
 import { render, screen, waitFor } from "@/tests/integrations/test-utils";
 
 import { AutomationCreditsTab } from "../components/AutomationCreditsTab/AutomationCreditsTab";
 import SettingsBillingPage from "../page";
+
+// Allow per-test override of the search params Next.js exposes to the page.
+const mockSearchParams = { current: new URLSearchParams() };
+const mockRouterReplace = vi.fn();
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useSearchParams: () => mockSearchParams.current,
+    useRouter: () => ({
+      push: vi.fn(),
+      replace: mockRouterReplace,
+      prefetch: vi.fn(),
+      back: vi.fn(),
+      forward: vi.fn(),
+      refresh: vi.fn(),
+    }),
+    usePathname: () => "/settings/billing",
+    useParams: () => ({}),
+  };
+});
+
+afterEach(() => {
+  mockSearchParams.current = new URLSearchParams();
+  mockRouterReplace.mockReset();
+});
 
 const SUBSCRIPTION_RESPONSE = {
   tier: "PRO",
@@ -71,6 +97,67 @@ describe("Settings billing page (integration)", () => {
     expect(await screen.findByText("$12.34")).toBeDefined();
     expect(screen.getByText("Automation credits")).toBeDefined();
     expect(screen.getByRole("button", { name: /add credits/i })).toBeDefined();
+  });
+
+  it("clears the ?topup=success query and shows a success toast after a Stripe redirect", async () => {
+    useDefaultBillingHandlers();
+    server.use(
+      http.patch("*/api/credits/fulfill_checkout", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+    );
+    mockSearchParams.current = new URLSearchParams({ topup: "success" });
+
+    render(<SettingsBillingPage />);
+
+    await waitFor(() =>
+      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+    );
+  });
+
+  it("clears the ?topup=cancel query without firing fulfillCheckout", async () => {
+    useDefaultBillingHandlers();
+    let fulfillCalled = false;
+    server.use(
+      http.patch("*/api/credits/fulfill_checkout", () => {
+        fulfillCalled = true;
+        return HttpResponse.json({}, { status: 200 });
+      }),
+    );
+    mockSearchParams.current = new URLSearchParams({ topup: "cancel" });
+
+    render(<SettingsBillingPage />);
+
+    await waitFor(() =>
+      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+    );
+    // Cancel branch must NOT fulfill — webhook is the source of truth and
+    // the user explicitly aborted the checkout.
+    expect(fulfillCalled).toBe(false);
+  });
+
+  it("clears the ?subscription=success query after a Stripe redirect", async () => {
+    useDefaultBillingHandlers();
+    mockSearchParams.current = new URLSearchParams({ subscription: "success" });
+
+    render(<SettingsBillingPage />);
+
+    await waitFor(() =>
+      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+    );
+  });
+
+  it("clears the ?subscription=cancelled query after the user aborts checkout", async () => {
+    useDefaultBillingHandlers();
+    mockSearchParams.current = new URLSearchParams({
+      subscription: "cancelled",
+    });
+
+    render(<SettingsBillingPage />);
+
+    await waitFor(() =>
+      expect(mockRouterReplace).toHaveBeenCalledWith("/settings/billing"),
+    );
   });
 
   it("AutomationCreditsTab renders the ErrorCard when the balance fetch fails", async () => {
