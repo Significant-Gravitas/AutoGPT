@@ -6,6 +6,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getV2ExportCopilotWeeklyUsageVsRateLimit } from "@/app/api/__generated__/endpoints/admin/admin";
+import { okData } from "@/app/api/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import {
   buildCopilotUsageCsv,
@@ -53,7 +54,15 @@ export function ExportCopilotUsageButton() {
         start: startIso as unknown as Date,
         end: endIso as unknown as Date,
       });
-      const data = response.data;
+      const data = okData(response);
+      if (!data) {
+        toast({
+          title: "Export failed",
+          description: "Unexpected response shape from the export endpoint.",
+          variant: "destructive",
+        });
+        return;
+      }
       const csv = buildCopilotUsageCsv(data.rows);
       downloadCsv(csv, `copilot_weekly_usage_${start}_${end}.csv`);
       toast({

@@ -13,6 +13,7 @@ import {
 } from "@/components/__legacy__/ui/select";
 import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getV2ExportCreditTransactions } from "@/app/api/__generated__/endpoints/admin/admin";
+import { okData } from "@/app/api/helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { CreditTransactionType } from "@/app/api/__generated__/models/creditTransactionType";
 import {
@@ -80,7 +81,15 @@ export function ExportCreditTransactionsButton() {
             : (typeFilter as CreditTransactionType),
         user_id: userId.trim() || undefined,
       });
-      const data = response.data;
+      const data = okData(response);
+      if (!data) {
+        toast({
+          title: "Export failed",
+          description: "Unexpected response shape from the export endpoint.",
+          variant: "destructive",
+        });
+        return;
+      }
       const csv = buildCreditTransactionsCsv(data.transactions);
       downloadCsv(csv, `credit_transactions_${start}_${end}.csv`);
       toast({
