@@ -59,7 +59,7 @@ describe("useBalanceCard", () => {
     expect(result.current.balanceCents).toBeNull();
   });
 
-  it("isValid rejects fractional dollars (5.25) and accepts integer >= 5", async () => {
+  it("isValid rejects amounts below $5 and accepts >= 5 (decimals allowed)", async () => {
     server.use(jsonHandler("get", "/api/credits", { credits: 1000 }));
 
     const { result } = renderHook(() => useBalanceCard(), {
@@ -68,8 +68,10 @@ describe("useBalanceCard", () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
+    // Decimals are valid — backend stores integer cents and the hook
+    // rounds on submit, so $5.25 must not be rejected client-side.
     act(() => result.current.setAmount("5.25"));
-    expect(result.current.isValid).toBe(false);
+    expect(result.current.isValid).toBe(true);
 
     act(() => result.current.setAmount("4"));
     expect(result.current.isValid).toBe(false);

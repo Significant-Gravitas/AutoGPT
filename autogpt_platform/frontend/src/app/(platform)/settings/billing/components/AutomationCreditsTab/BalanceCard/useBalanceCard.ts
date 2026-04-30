@@ -29,10 +29,10 @@ export function useBalanceCard() {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const numericAmount = Number.parseFloat(amount);
-  const isValid =
-    Number.isFinite(numericAmount) &&
-    Number.isInteger(numericAmount) &&
-    numericAmount >= 5;
+  // Backend stores credits in integer cents and Math.round below converts
+  // any decimal dollars cleanly — accept fractional values (e.g. $5.50)
+  // for parity with useAutoRefillCard.
+  const isValid = Number.isFinite(numericAmount) && numericAmount >= 5;
 
   async function handleSubmit() {
     if (!isValid) return;
