@@ -1009,6 +1009,14 @@ async def stream_chat_post(
     # the original turn's SSE instead of starting a parallel one.  Distinct
     # user clicks (even with identical text) MUST use distinct keys; the
     # frontend's per-click UUID generation guarantees that.
+    #
+    # Gated on ``turn_id`` (truthy ⇔ no other turn currently in flight): a
+    # duplicate POST landing while the previous turn is still streaming
+    # already takes the in-flight path below (``turn_id == ""`` skips
+    # ``enqueue_copilot_turn`` and the response just subscribes to the
+    # running turn's SSE), so claiming a key for that case would be a
+    # no-op — and worse, would write a claim against an empty ``turn_id``
+    # that the executor's ``sync_get_claimed_turn_id`` could not match.
     is_idempotency_dup = False
     if request.is_user_message and request.idempotency_key and turn_id:
         existing_turn = await claim_stream_idempotency_key(
