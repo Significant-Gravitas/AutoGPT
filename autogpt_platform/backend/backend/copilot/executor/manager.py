@@ -85,7 +85,7 @@ class CoPilotExecutor(AppProcess):
         self._run_client = None
 
         self._task_locks: dict[str, ClusterLock] = {}
-        self._active_tasks_lock = threading.Lock()
+        self._active_tasks_lock_obj: threading.Lock | None = None
 
     # ============ Main Entry Points (AppProcess interface) ============ #
 
@@ -501,6 +501,12 @@ class CoPilotExecutor(AppProcess):
             logger.error(f"{prefix} Error disconnecting client: {e}")
 
     # ============ Lazy-initialized Properties ============ #
+
+    @property
+    def _active_tasks_lock(self) -> threading.Lock:
+        if self._active_tasks_lock_obj is None:
+            self._active_tasks_lock_obj = threading.Lock()
+        return self._active_tasks_lock_obj
 
     @property
     def cancel_thread(self) -> threading.Thread:
