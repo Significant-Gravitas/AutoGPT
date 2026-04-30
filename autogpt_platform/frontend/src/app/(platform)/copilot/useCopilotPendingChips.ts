@@ -125,7 +125,13 @@ function usePeekOnBoundary({
     // auto-continue effect's duplicate turn-start peek.
     if (!sessionChanged && !isIdle && !turnStarting) return;
 
+    // Capture the sessionId at request time so a response that resolves
+    // after the user switched sessions can't bleed old-session chips into
+    // the new session.  Without this guard, a slow peek for session A
+    // could overwrite chips just restored for session B.
+    const requestSessionId = sessionId;
     void getV2GetPendingMessages(sessionId).then((res) => {
+      if (prevSessionIdRef.current !== requestSessionId) return;
       if (res.status !== 200) return;
       // Turn-start drain path: only clear if the backend really emptied
       // the buffer.  A non-zero count means our chips survived the drain
@@ -219,6 +225,14 @@ function useAutoContinuePromotion({
   }, [messages, status, sessionId, chips, setMessages, setChips]);
 }
 
+// One stable bubble id per chip, shared between auto-continue and mid-turn
+// promotion paths.  Without this, a poll resolving after auto-continue
+// already promoted the same chip would render the chip twice (different
+// ids → dedup misses).
+function bubbleIdFor(chip: Chip): string {
+  return `pending-chip-${chip.id}`;
+}
+
 function promoteBeforeAssistant(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   assistantId: string,
@@ -228,17 +242,11 @@ function promoteBeforeAssistant(
     const idx = prev.findIndex((m) => m.id === assistantId);
     const insertAt = idx === -1 ? prev.length : idx;
     const newBubbles = chips
-      .map((chip) => ({
-        chip,
-        bubble: makePromotedUserBubble(
-          chip.text,
-          "auto-continue",
-          `${assistantId}-${chip.id}`,
-        ),
-      }))
+      .map((chip) =>
+        makePromotedUserBubble(chip.text, "auto-continue", bubbleIdFor(chip)),
+      )
       // Skip bubbles that are already in the array (effect re-run safety).
-      .filter(({ bubble }) => !prev.some((m) => m.id === bubble.id))
-      .map(({ bubble }) => bubble);
+      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
     if (newBubbles.length === 0) return prev;
     return [...prev.slice(0, insertAt), ...newBubbles, ...prev.slice(insertAt)];
   });
@@ -318,7 +326,9 @@ async function pollBackendAndPromote(
   // bubbles snap to the correct position.
   setMessages((prev) => {
     const newBubbles = drained
-      .map((chip) => makePromotedUserBubble(chip.text, "midturn", chip.id))
+      .map((chip) =>
+        makePromotedUserBubble(chip.text, "midturn", bubbleIdFor(chip)),
+      )
       // Skip bubbles that are already there (effect re-run safety).
       .filter((bubble) => !prev.some((m) => m.id === bubble.id));
     if (newBubbles.length === 0) return prev;

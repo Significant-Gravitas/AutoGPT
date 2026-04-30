@@ -1321,8 +1321,8 @@ def delete_stale_cli_session_file(
     real_path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
     if not real_path.startswith(projects_base() + os.sep):
         return False
-    if not Path(real_path).exists():
-        return False
+    # Direct unlink — no exists() check (avoids TOCTOU with the file being
+    # deleted by another process between check and unlink).
     try:
         Path(real_path).unlink()
         logger.info(
@@ -1331,11 +1331,16 @@ def delete_stale_cli_session_file(
             os.path.basename(real_path),
         )
         return True
+    except FileNotFoundError:
+        return False
     except OSError as unlink_err:
+        # Sanitise log: basename + strerror only (no full path / no raw
+        # exception which can echo absolute paths back in some libc errors).
         logger.warning(
-            "%s Failed to remove stale local CLI session file: %s",
+            "%s Failed to remove stale local CLI session file %s: %s",
             log_prefix,
-            unlink_err,
+            os.path.basename(real_path),
+            unlink_err.strerror or type(unlink_err).__name__,
         )
         return False
 
