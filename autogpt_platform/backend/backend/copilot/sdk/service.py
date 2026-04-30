@@ -3870,7 +3870,25 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 log_prefix,
                 len(pending_messages),
             )
-            # Chronological combine: items typed BEFORE this request
+            # Persist each pending message as its own user row in the DB —
+            # one bubble per click in the UI — appended after the
+            # routes.py-saved current user row.  ``TranscriptBuilder`` is
+            # intentionally left untouched here: the model still sees the
+            # combined ``current_message`` below as a single user turn,
+            # which gets written to transcript at turn-end via
+            # ``append_user(current_message)``.  Adding each pending to
+            # the transcript here would triple-count them in the next
+            # turn's ``--resume`` context.
+            await persist_pending_as_user_rows(
+                session,
+                None,  # transcript_builder=None: see persist_pending_as_user_rows docstring
+                pending_messages,
+                log_prefix=log_prefix,
+            )
+            # Combine for the model's current-turn query: the SDK CLI
+            # sees a single user input that includes both the original
+            # send AND any pending chips drained at turn-start.
+            # Chronological order: items typed BEFORE this request
             # arrived go ahead of ``current_message``; items typed AFTER
             # (race path, queued while /stream was still processing) go
             # after.
@@ -3878,28 +3896,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 pending_messages,
                 current_message,
                 request_arrival_at=request_arrival_at,
-            )
-            # Update the in-memory content of the already-saved user message
-            # and persist that update to the DB by sequence number.  This
-            # avoids inserting an extra row — the user message was already
-            # written at its sequence by append_and_save_message in routes.py.
-            last_user_msg = next(
-                (m for m in reversed(session.messages) if m.role == "user"), None
-            )
-            if last_user_msg is None or last_user_msg.sequence is None:
-                # Defensive: routes.py always pre-saves the user message with
-                # a sequence before dispatch, so this is unreachable under
-                # normal flow. Raising instead of a warning-and-continue
-                # avoids silent data loss (in-memory diverges from DB row,
-                # so the queued chip would disappear from the UI after
-                # refresh without a corresponding bubble).
-                raise RuntimeError(
-                    f"{log_prefix} Cannot persist turn-start pending injection: "
-                    f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
-                )
-            last_user_msg.content = current_message
-            await chat_db().update_message_content_by_sequence(
-                session_id, last_user_msg.sequence, current_message
             )
 
         if not current_message.strip():

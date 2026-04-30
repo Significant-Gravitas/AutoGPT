@@ -1396,34 +1396,27 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        # Chronological combine: pending typed BEFORE this /stream
-        # request's arrival go ahead of ``message``; race-path follow-ups
-        # typed AFTER (queued while /stream was still processing) go
-        # after.  See ``combine_pending_with_current`` for details.
+        # Persist each pending message as its own user row in the DB so
+        # the UI renders distinct bubbles (one per click).  The combined
+        # text below remains the model's current-turn user input — the
+        # transcript captures it as a single entry at turn-end, so we
+        # MUST NOT also append each pending to the transcript here (that
+        # would triple-count them in the next turn's resume context).
+        await persist_pending_as_user_rows(
+            session,
+            None,  # transcript_builder=None: see persist_pending_as_user_rows docstring
+            drained_at_start_pending,
+            log_prefix="[Baseline]",
+        )
+        # Chronological combine for the model's current-turn input:
+        # pending typed BEFORE this /stream request's arrival go ahead of
+        # ``message``; race-path follow-ups typed AFTER (queued while
+        # /stream was still processing) go after.  See
+        # ``combine_pending_with_current`` for details.
         message = combine_pending_with_current(
             drained_at_start_pending,
             message,
             request_arrival_at=request_arrival_at,
-        )
-        # Update the in-memory content of the already-saved user message
-        # and persist that update by sequence number.
-        last_user_msg = next(
-            (m for m in reversed(session.messages) if m.role == "user"), None
-        )
-        if last_user_msg is None or last_user_msg.sequence is None:
-            # Defensive: routes.py always pre-saves the user message with a
-            # sequence before dispatch, so this is unreachable under normal
-            # flow. Raising instead of a warning-and-continue avoids silent
-            # data loss (in-memory message diverges from the DB row, so the
-            # queued chip would disappear from the UI after refresh without
-            # a corresponding bubble).
-            raise RuntimeError(
-                f"[Baseline] Cannot persist turn-start pending injection: "
-                f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
-            )
-        last_user_msg.content = message
-        await chat_db().update_message_content_by_sequence(
-            session_id, last_user_msg.sequence, message
         )
 
     # Select model based on the per-request tier toggle (standard / advanced).

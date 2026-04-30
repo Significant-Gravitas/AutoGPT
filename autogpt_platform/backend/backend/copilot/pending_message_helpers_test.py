@@ -445,6 +445,36 @@ async def test_persist_pending_happy_path_appends_and_returns_true(
 
 
 @pytest.mark.asyncio
+async def test_persist_pending_no_transcript_path_skips_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Turn-start drain: passing ``transcript_builder=None`` MUST NOT touch
+    the transcript — it would triple-count pending entries in the next
+    turn's ``--resume`` context (the combined ``current_message`` is what
+    gets written to transcript at turn-end)."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+
+    async def _fake_upsert(sess: Any) -> Any:
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+
+    pending = [PM(content="chip-1"), PM(content="chip-2")]
+    ok = await persist_pending_as_user_rows(session, None, pending, log_prefix="[T]")
+    assert ok is True
+    assert [m.content for m in session.messages] == ["chip-1", "chip-2"]
+    assert [m.sequence for m in session.messages] == [0, 1]
+
+
+@pytest.mark.asyncio
 async def test_persist_pending_rollback_when_sequence_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
