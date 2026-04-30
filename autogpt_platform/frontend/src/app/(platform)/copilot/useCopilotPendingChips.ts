@@ -1,12 +1,19 @@
 import { getV2GetPendingMessages } from "@/app/api/__generated__/endpoints/chat/chat";
 import type { UIMessage } from "ai";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { makePromotedUserBubble } from "./helpers/makePromotedBubble";
 
 const MID_TURN_POLL_MS = 2_000;
 
 type ChatStatus = "submitted" | "streaming" | "ready" | "error";
+
+interface Chip {
+  id: string;
+  text: string;
+}
+
+type ChipUpdater = (prev: Chip[]) => Chip[];
 
 interface Args {
   sessionId: string | null;
@@ -23,17 +30,11 @@ interface Args {
  * mid-turn via the MCP wrapper), and surface the list + queue op to the
  * chat input.
  *
- * State machine:
- *
- *   ┌────────┐  user queues  ┌────────────┐  backend turn-start drain
- *   │ empty  │ ───────────▶  │  showing   │ ─────────────────────────┐
- *   └────────┘               │   chips    │                          │
- *        ▲                   └────────────┘                          │
- *        │                                                           │
- *        │            ┌──────────────────────────────────────────────┘
- *        │            │ 1. auto-continue chain: promote combined bubble
- *        │            │ 2. mid-turn poll sees count drop: promote partial
- *        └────────────┘ 3. stream ends, hydration takes over
+ * Each chip carries a frontend-only ``id`` so concurrent draining and
+ * appending stays race-safe — the poll captures a stale snapshot of the
+ * chip array, but the eventual state mutation drops chips by id rather
+ * than by array slice, so a chip the user enqueues during the in-flight
+ * poll cannot be silently overwritten.
  */
 export function useCopilotPendingChips({
   sessionId,
@@ -41,29 +42,32 @@ export function useCopilotPendingChips({
   messages,
   setMessages,
 }: Args) {
-  const [queuedMessages, setQueuedMessages] = useState<string[]>([]);
+  const [chips, setChips] = useState<Chip[]>([]);
+  // Stable string view for consumers that only need the texts. Memoised so
+  // downstream components don't re-render on identity churn alone.
+  const queuedMessages = useMemo(() => chips.map((c) => c.text), [chips]);
 
-  usePeekOnBoundary({ sessionId, status, setQueuedMessages });
+  usePeekOnBoundary({ sessionId, status, setChips });
 
   useAutoContinuePromotion({
     sessionId,
     status,
     messages,
-    queuedMessages,
+    chips,
     setMessages,
-    setQueuedMessages,
+    setChips,
   });
 
   useMidTurnDrainPromotion({
     sessionId,
     status,
-    queuedMessages,
+    chips,
     setMessages,
-    setQueuedMessages,
+    setChips,
   });
 
   const appendChip = useCallback((text: string) => {
-    setQueuedMessages((prev) => [...prev, text]);
+    setChips((prev) => [...prev, { id: crypto.randomUUID(), text }]);
   }, []);
 
   return { queuedMessages, appendChip };
@@ -78,11 +82,11 @@ export function useCopilotPendingChips({
 function usePeekOnBoundary({
   sessionId,
   status,
-  setQueuedMessages,
+  setChips,
 }: {
   sessionId: string | null;
   status: ChatStatus;
-  setQueuedMessages: (v: string[]) => void;
+  setChips: (updater: ChipUpdater) => void;
 }) {
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
@@ -96,7 +100,7 @@ function usePeekOnBoundary({
     // Clear any stale chips from the previous session before the peek
     // resolves — otherwise the new session briefly shows the old session's
     // chips against its own messages.
-    if (sessionChanged) setQueuedMessages([]);
+    if (sessionChanged) setChips(() => []);
 
     if (!sessionId) return;
 
@@ -115,19 +119,26 @@ function usePeekOnBoundary({
       // the buffer.  A non-zero count means our chips survived the drain
       // (e.g. the turn is still consuming them mid-round) — keep them.
       if (turnStarting && !sessionChanged) {
-        if (res.data.count === 0) setQueuedMessages([]);
+        if (res.data.count === 0) setChips(() => []);
         return;
       }
       // Session-load or idle-after-turn: replace with server truth.
-      setQueuedMessages(res.data.count > 0 ? res.data.messages : []);
+      setChips(() =>
+        res.data.count > 0
+          ? res.data.messages.map((text) => ({
+              id: crypto.randomUUID(),
+              text,
+            }))
+          : [],
+      );
     });
-  }, [sessionId, status, setQueuedMessages]);
+  }, [sessionId, status, setChips]);
 }
 
 // ── 2. Auto-continue promotion ─────────────────────────────────────────
 // When the backend auto-continues (a SECOND new assistant ID appears in
-// the same stream chain), combine chips into one user bubble and insert
-// it just before that assistant — matching the DB's chronological order.
+// the same stream chain), promote drained chips into user bubbles before
+// that assistant — matching the DB's chronological order.
 //
 // Tracking model: remember the FIRST assistant id seen after
 // `submitted → streaming` (that's Turn 1's opener).  Any later new
@@ -138,16 +149,16 @@ function useAutoContinuePromotion({
   sessionId,
   status,
   messages,
-  queuedMessages,
+  chips,
   setMessages,
-  setQueuedMessages,
+  setChips,
 }: {
   sessionId: string | null;
   status: ChatStatus;
   messages: UIMessage[];
-  queuedMessages: string[];
+  chips: Chip[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
-  setQueuedMessages: (v: string[]) => void;
+  setChips: (updater: ChipUpdater) => void;
 }) {
   const prevStatusRef = useRef(status);
   // The opener is the first assistant id observed after a turn starts.
@@ -186,32 +197,38 @@ function useAutoContinuePromotion({
     // Same id as opener — no new assistant yet, wait.
     if (latest === openerAssistantIdRef.current) return;
     // A different id means the backend auto-continued.
-    if (queuedMessages.length === 0) return;
+    if (chips.length === 0) return;
 
-    promoteBeforeAssistant(setMessages, latest, queuedMessages);
-    setQueuedMessages([]);
-  }, [
-    messages,
-    status,
-    sessionId,
-    queuedMessages,
-    setMessages,
-    setQueuedMessages,
-  ]);
+    const promotedIds = new Set(chips.map((c) => c.id));
+    promoteBeforeAssistant(setMessages, latest, chips);
+    // Drop only the chips we promoted; chips appended after the snapshot
+    // (during the React commit) survive.
+    setChips((current) => current.filter((c) => !promotedIds.has(c.id)));
+  }, [messages, status, sessionId, chips, setMessages, setChips]);
 }
 
 function promoteBeforeAssistant(
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   assistantId: string,
-  texts: string[],
+  chips: Chip[],
 ): void {
   setMessages((prev) => {
-    const bubbleId = `promoted-auto-continue-${assistantId}`;
-    if (prev.some((m) => m.id === bubbleId)) return prev;
-    const bubble = makePromotedUserBubble(texts, "auto-continue", assistantId);
     const idx = prev.findIndex((m) => m.id === assistantId);
     const insertAt = idx === -1 ? prev.length : idx;
-    return [...prev.slice(0, insertAt), bubble, ...prev.slice(insertAt)];
+    const newBubbles = chips
+      .map((chip) => ({
+        chip,
+        bubble: makePromotedUserBubble(
+          chip.text,
+          "auto-continue",
+          `${assistantId}-${chip.id}`,
+        ),
+      }))
+      // Skip bubbles that are already in the array (effect re-run safety).
+      .filter(({ bubble }) => !prev.some((m) => m.id === bubble.id))
+      .map(({ bubble }) => bubble);
+    if (newBubbles.length === 0) return prev;
+    return [...prev.slice(0, insertAt), ...newBubbles, ...prev.slice(insertAt)];
   });
 }
 
@@ -229,38 +246,33 @@ function promoteBeforeAssistant(
 function useMidTurnDrainPromotion({
   sessionId,
   status,
-  queuedMessages,
+  chips,
   setMessages,
-  setQueuedMessages,
+  setChips,
 }: {
   sessionId: string | null;
   status: ChatStatus;
-  queuedMessages: string[];
+  chips: Chip[];
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
-  setQueuedMessages: (v: string[]) => void;
+  setChips: (updater: ChipUpdater) => void;
 }) {
   useEffect(() => {
     if (!sessionId) return;
     const isActive = status === "streaming" || status === "submitted";
-    if (!isActive || queuedMessages.length === 0) return;
+    if (!isActive || chips.length === 0) return;
 
     const interval = setInterval(() => {
-      void pollBackendAndPromote(
-        sessionId,
-        queuedMessages,
-        setMessages,
-        setQueuedMessages,
-      );
+      void pollBackendAndPromote(sessionId, chips, setMessages, setChips);
     }, MID_TURN_POLL_MS);
     return () => clearInterval(interval);
-  }, [sessionId, status, queuedMessages, setMessages, setQueuedMessages]);
+  }, [sessionId, status, chips, setMessages, setChips]);
 }
 
 async function pollBackendAndPromote(
   sessionId: string,
-  localChips: string[],
+  snapshotChips: Chip[],
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
-  setQueuedMessages: (v: string[]) => void,
+  setChips: (updater: ChipUpdater) => void,
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -270,12 +282,12 @@ async function pollBackendAndPromote(
   } catch {
     return; // harmless; next tick or hydration will reconcile
   }
-  if (localChips.length === 0) return;
-  if (backendCount >= localChips.length) return;
+  if (snapshotChips.length === 0) return;
+  if (backendCount >= snapshotChips.length) return;
 
-  const drainedCount = localChips.length - backendCount;
-  const drained = localChips.slice(0, drainedCount);
-  const remaining = localChips.slice(drainedCount);
+  const drainedCount = snapshotChips.length - backendCount;
+  const drained = snapshotChips.slice(0, drainedCount);
+  const drainedIds = new Set(drained.map((c) => c.id));
 
   // Splice the promoted bubble at ``len-1`` so the trailing streaming
   // assistant stays at ``messages[-1]``.  AI SDK's ``useChat`` streams
@@ -284,25 +296,27 @@ async function pollBackendAndPromote(
   // subsequent chunk lands in the wrong slot (silently) until a page
   // refresh.  Inserting before the assistant keeps the stream flowing.
   //
-  // The one tradeoff: during streaming the promoted bubble clusters
+  // The one tradeoff: during streaming the promoted bubbles cluster
   // just above the current streaming assistant — which is earlier in
   // the chronological order than the DB-canonical spot (between the
-  // tool result it rode in on and the continuing assistant).  AI SDK's
+  // tool result they rode in on and the continuing assistant).  AI SDK's
   // single-message-per-turn model can't represent that mid-turn split
   // client-side.  ``useHydrateOnStreamEnd`` replaces the in-memory
   // messages with the DB-canonical order once the stream ends, so the
-  // bubble snaps to the correct position.
+  // bubbles snap to the correct position.
   setMessages((prev) => {
-    const bubble = makePromotedUserBubble(
-      drained,
-      "midturn",
-      crypto.randomUUID(),
-    );
+    const newBubbles = drained
+      .map((chip) => makePromotedUserBubble(chip.text, "midturn", chip.id))
+      // Skip bubbles that are already there (effect re-run safety).
+      .filter((bubble) => !prev.some((m) => m.id === bubble.id));
+    if (newBubbles.length === 0) return prev;
     const lastIdx = prev.length - 1;
     if (lastIdx >= 0 && prev[lastIdx].role === "assistant") {
-      return [...prev.slice(0, lastIdx), bubble, prev[lastIdx]];
+      return [...prev.slice(0, lastIdx), ...newBubbles, prev[lastIdx]];
     }
-    return [...prev, bubble];
+    return [...prev, ...newBubbles];
   });
-  setQueuedMessages(remaining);
+  // Drop only the drained chips by id; chips appended after the snapshot
+  // survive the in-flight poll race.
+  setChips((current) => current.filter((c) => !drainedIds.has(c.id)));
 }

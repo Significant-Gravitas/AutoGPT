@@ -736,17 +736,20 @@ def _build_retry_sdk_options(
     ctx_resume_file: str | None,
     session_id: str,
 ) -> dict:
-    """Mirror the retry branch in stream_chat_completion_sdk."""
+    """Mirror the retry branch in stream_chat_completion_sdk.
+
+    Production-side companion: ``delete_stale_cli_session_file`` is invoked
+    on every non-resume retry path so the CLI doesn't trip "Session ID
+    already in use" when we re-attach ``session_id``.  This helper only
+    mirrors the kwarg shape (file-system side effect is tested separately).
+    """
     retry: dict = dict(initial_kwargs)
     if ctx_use_resume and ctx_resume_file:
         retry["resume"] = ctx_resume_file
         retry.pop("session_id", None)
-    elif "session_id" in initial_kwargs:
-        retry.pop("resume", None)
-        retry["session_id"] = session_id
     else:
         retry.pop("resume", None)
-        retry.pop("session_id", None)
+        retry["session_id"] = session_id
     return retry
 
 
@@ -818,12 +821,21 @@ class TestSdkSessionIdSelection:
         assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
 
-    def test_retry_removes_session_id_for_t2_plus(self):
-        """Retry for T2+ (initial used --resume) removes session_id to avoid conflict."""
+    def test_retry_keeps_session_id_for_t2_plus(self):
+        """Retry for T2+ now keeps session_id so the recovery turn writes to
+        the predictable ``cli_session_path`` and gets uploaded.  Production
+        clears the stale local file via ``delete_stale_cli_session_file``
+        before this branch runs to dodge "Session ID already in use".
+
+        Regression guard for SENTRY-1207: previously this branch dropped
+        session_id, the CLI wrote to a random path, and the post-turn
+        upload silently grabbed the stale pre-failure file — so GCS stayed
+        bloated and every subsequent turn re-tripped prompt-too-long.
+        """
         initial = _build_sdk_options(True, self.SESSION_ID, self.SESSION_ID)
         # T2+ retry where context reduction dropped --resume
         retry = _build_retry_sdk_options(initial, False, None, self.SESSION_ID)
-        assert "session_id" not in retry
+        assert retry.get("session_id") == self.SESSION_ID
         assert "resume" not in retry
 
     def test_retry_t2_with_resume_sets_resume(self):
@@ -1297,3 +1309,78 @@ class TestCompactionTargetTokens:
 
         # Target derived from the RUNTIME model, not the compactor model.
         assert captured["target_tokens"] == 12345
+
+
+# ---------------------------------------------------------------------------
+# delete_stale_cli_session_file — clears a leftover local session file so a
+# subsequent --session-id (no --resume) invocation doesn't trip "Session ID
+# already in use".  Critical for the prompt-too-long retry path.
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteStaleCliSessionFile:
+    def test_deletes_file_when_present(self, tmp_path) -> None:
+        from backend.copilot.sdk.service import delete_stale_cli_session_file
+
+        sdk_cwd = str(tmp_path / "cwd")
+        session_id = "sess-deadbeef"
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.cli_session_path",
+                return_value=str(tmp_path / "session.jsonl"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=str(tmp_path),
+            ),
+        ):
+            target = tmp_path / "session.jsonl"
+            target.write_text("{}\n")
+
+            removed = delete_stale_cli_session_file(sdk_cwd, session_id, "[t]")
+
+            assert removed is True
+            assert not target.exists()
+
+    def test_returns_false_when_file_missing(self, tmp_path) -> None:
+        from backend.copilot.sdk.service import delete_stale_cli_session_file
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.cli_session_path",
+                return_value=str(tmp_path / "missing.jsonl"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=str(tmp_path),
+            ),
+        ):
+            removed = delete_stale_cli_session_file("/cwd", "sess", "[t]")
+
+        assert removed is False
+
+    def test_path_traversal_guard_rejects_outside_projects_base(self, tmp_path) -> None:
+        """Refuse to delete files outside the projects base, even if they exist."""
+        from backend.copilot.sdk.service import delete_stale_cli_session_file
+
+        outside = tmp_path / "outside.jsonl"
+        outside.write_text("data")
+        projects = tmp_path / "projects"
+        projects.mkdir()
+
+        with (
+            patch(
+                "backend.copilot.sdk.service.cli_session_path",
+                return_value=str(outside),
+            ),
+            patch(
+                "backend.copilot.sdk.service.projects_base",
+                return_value=str(projects),
+            ),
+        ):
+            removed = delete_stale_cli_session_file("/cwd", "sess", "[t]")
+
+        # File was outside projects base — guard rejected, file untouched.
+        assert removed is False
+        assert outside.exists()

@@ -1304,6 +1304,42 @@ def _write_cli_session_to_disk(
         return False
 
 
+def delete_stale_cli_session_file(
+    sdk_cwd: str,
+    session_id: str,
+    log_prefix: str,
+) -> bool:
+    """Delete the local CLI session file at the predictable path.
+
+    Used so a subsequent CLI invocation with ``--session-id`` (no ``--resume``)
+    doesn't trip ``"Session ID already in use"``.  Path-traversal guard:
+    rejects paths outside the CLI projects base.
+
+    Returns True if a file was deleted, False otherwise (missing, traversal,
+    or unlink failure).
+    """
+    real_path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
+    if not real_path.startswith(projects_base() + os.sep):
+        return False
+    if not Path(real_path).exists():
+        return False
+    try:
+        Path(real_path).unlink()
+        logger.debug(
+            "%s Removed stale local CLI session file at %s",
+            log_prefix,
+            os.path.basename(real_path),
+        )
+        return True
+    except OSError as unlink_err:
+        logger.debug(
+            "%s Failed to remove stale local CLI session file: %s",
+            log_prefix,
+            unlink_err,
+        )
+        return False
+
+
 def read_cli_session_from_disk(
     sdk_cwd: str,
     session_id: str,
@@ -3155,22 +3191,7 @@ async def _restore_cli_session_for_turn(
         # session_id with "Session ID already in use".  T1 may have
         # left a valid file at this path; we clear it so the fallback
         # path (session_id= without --resume) can create a new session.
-        _stale_path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
-        if Path(_stale_path).exists() and _stale_path.startswith(
-            projects_base() + os.sep
-        ):
-            try:
-                Path(_stale_path).unlink()
-                logger.debug(
-                    "%s Removed stale local CLI session file for clean fallback",
-                    log_prefix,
-                )
-            except OSError as _unlink_err:
-                logger.debug(
-                    "%s Failed to remove stale local session file: %s",
-                    log_prefix,
-                    _unlink_err,
-                )
+        delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
 
     if cli_restore is not None:
         result.transcript_content = stripped
@@ -4016,21 +4037,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
                     sdk_options_kwargs_retry.pop("session_id", None)
-                elif "session_id" in sdk_options_kwargs:
-                    # Initial invocation used session_id (T1 or mode-switch
-                    # T1): keep it so the CLI writes the session file to the
-                    # predictable path for upload_transcript().  Storage is
-                    # ephemeral per invocation, so no "Session ID already in
-                    # use" conflict occurs — no prior file was restored.
+                else:
+                    # No --resume on this retry. Whether we entered with
+                    # ``session_id`` (T1, mode-switch) or with ``--resume`` (T2+),
+                    # we want the recovery turn's CLI write to land on the
+                    # predictable ``cli_session_path(.., session_id)`` so the
+                    # post-turn ``upload_transcript`` actually picks up the
+                    # rescued (compacted) content.  Without this, a T2+ retry
+                    # would drop session_id to dodge "Session ID already in use",
+                    # write to a random path, and the upload would silently grab
+                    # the stale pre-failure file — leaving GCS bloated and
+                    # guaranteeing the next turn re-trips prompt-too-long.
+                    if sdk_cwd:
+                        delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry["session_id"] = session_id
-                else:
-                    # T2+ retry without --resume: initial invocation used
-                    # --resume, which restored the T1 session file to local
-                    # storage.  Re-using session_id without --resume would
-                    # fail with "Session ID already in use".
-                    sdk_options_kwargs_retry.pop("resume", None)
-                    sdk_options_kwargs_retry.pop("session_id", None)
                 # Recompute system_prompt for retry — the preset is safe on
                 # every turn (requires CLI ≥ 2.1.98, installed in the Docker
                 # image and configured via CHAT_CLAUDE_AGENT_CLI_PATH).
