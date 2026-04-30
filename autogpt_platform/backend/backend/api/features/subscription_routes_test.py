@@ -245,11 +245,12 @@ def test_get_subscription_status_tier_multipliers_ld_override(
     assert "BUSINESS" not in data["tier_multipliers"]
 
 
-def test_get_subscription_status_defaults_to_basic(
+def test_get_subscription_status_defaults_to_no_tier(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """When all LD price IDs are unset, tier_costs is empty and the caller sees cost=0."""
+    """When user has no subscription_tier, defaults to NO_TIER (the explicit
+    no-active-subscription state)."""
     mock_user = Mock()
     mock_user.subscription_tier = None
 
@@ -273,7 +274,7 @@ def test_get_subscription_status_defaults_to_basic(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["tier"] == SubscriptionTier.BASIC.value
+    assert data["tier"] == SubscriptionTier.NO_TIER.value
     assert data["monthly_cost"] == 0
     assert data["tier_costs"] == {}
     assert data["proration_credit_cents"] == 0
@@ -326,11 +327,11 @@ def test_get_subscription_status_stripe_error_falls_back_to_zero(
     assert data["tier_costs"]["PRO"] == 0
 
 
-def test_update_subscription_tier_basic_no_payment(
+def test_update_subscription_tier_no_tier_no_payment(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """POST /credits/subscription to BASIC tier when payment disabled skips Stripe."""
+    """POST /credits/subscription to NO_TIER (cancel) when payment disabled skips Stripe."""
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
@@ -351,7 +352,7 @@ def test_update_subscription_tier_basic_no_payment(
         new_callable=AsyncMock,
     )
 
-    response = client.post("/credits/subscription", json={"tier": "BASIC"})
+    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
     assert response.status_code == 200
     assert response.json()["url"] == ""
@@ -404,6 +405,11 @@ def test_update_subscription_tier_paid_requires_urls(
         "backend.api.features.v1.is_feature_enabled",
         side_effect=mock_feature_enabled,
     )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
 
     response = client.post("/credits/subscription", json={"tier": "PRO"})
 
@@ -429,6 +435,11 @@ def test_update_subscription_tier_creates_checkout(
     mocker.patch(
         "backend.api.features.v1.is_feature_enabled",
         side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
@@ -468,6 +479,11 @@ def test_update_subscription_tier_rejects_open_redirect(
     mocker.patch(
         "backend.api.features.v1.is_feature_enabled",
         side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
     )
     checkout_mock = mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
@@ -649,14 +665,14 @@ def test_update_subscription_tier_same_tier_stripe_error_returns_502(
     assert "contact support" in response.json()["detail"].lower()
 
 
-def test_update_subscription_tier_basic_with_payment_schedules_cancel_and_does_not_update_db(
+def test_update_subscription_tier_no_tier_with_payment_schedules_cancel_and_does_not_update_db(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Downgrading to BASIC schedules Stripe cancellation at period end.
+    """Cancelling to NO_TIER schedules Stripe cancellation at period end.
 
     The DB tier must NOT be updated immediately — the customer.subscription.deleted
-    webhook fires at period end and downgrades to BASIC then.
+    webhook fires at period end and downgrades to NO_TIER then.
     """
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
@@ -682,18 +698,18 @@ def test_update_subscription_tier_basic_with_payment_schedules_cancel_and_does_n
         side_effect=mock_feature_enabled,
     )
 
-    response = client.post("/credits/subscription", json={"tier": "BASIC"})
+    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
     assert response.status_code == 200
     mock_cancel.assert_awaited_once()
     mock_set_tier.assert_not_awaited()
 
 
-def test_update_subscription_tier_basic_cancel_failure_returns_502(
+def test_update_subscription_tier_no_tier_cancel_failure_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Downgrading to BASIC returns 502 with a generic error (no Stripe detail leakage)."""
+    """Cancelling to NO_TIER returns 502 with a generic error (no Stripe detail leakage)."""
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
@@ -716,7 +732,7 @@ def test_update_subscription_tier_basic_cancel_failure_returns_502(
         side_effect=mock_feature_enabled,
     )
 
-    response = client.post("/credits/subscription", json={"tier": "BASIC"})
+    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
     assert response.status_code == 502
     detail = response.json()["detail"]
@@ -921,29 +937,20 @@ def test_update_subscription_tier_max_checkout(
     checkout_mock.assert_not_awaited()
 
 
-def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly(
+def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Admin-granted paid tier users are NOT sent to Stripe checkout for paid→paid changes.
+    """Any tier change from a user with no active Stripe sub goes through Checkout.
 
-    When modify_stripe_subscription_for_tier returns False (no Stripe subscription
-    found — admin-granted tier), the endpoint must update the DB tier directly and
-    return 200 with url="", rather than falling through to Checkout Session creation.
+    Admin-granted users (no Stripe sub yet) and never-paid users follow the
+    exact same path: modify returns False → Checkout to set up payment. The
+    endpoint has no admin-specific branch — admin tier grants happen out-of-band
+    via the admin portal, not this user-facing route.
     """
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
-        return {
-            **_DEFAULT_TIER_PRICES,
-            SubscriptionTier.BUSINESS: "price_business",
-        }.get(tier)
-
-    mocker.patch(
-        "backend.api.features.v1.get_subscription_price_id",
-        side_effect=price_id_with_business,
-    )
     mocker.patch(
         "backend.api.features.v1.get_user_by_id",
         new_callable=AsyncMock,
@@ -954,7 +961,6 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
         new_callable=AsyncMock,
         return_value=True,
     )
-    # Return False = no Stripe subscription (admin-granted tier)
     modify_mock = mocker.patch(
         "backend.api.features.v1.modify_stripe_subscription_for_tier",
         new_callable=AsyncMock,
@@ -967,23 +973,24 @@ def test_update_subscription_tier_admin_granted_paid_to_paid_updates_db_directly
     checkout_mock = mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
         new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_no_sub",
     )
 
     response = client.post(
         "/credits/subscription",
         json={
-            "tier": "BUSINESS",
+            "tier": "MAX",
             "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
             "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
         },
     )
 
     assert response.status_code == 200
-    assert response.json()["url"] == ""
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
-    # DB tier updated directly — no Stripe Checkout Session created
-    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
-    checkout_mock.assert_not_awaited()
+    assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_no_sub"
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
+    # No DB-flip — payment must be collected via Checkout regardless of direction.
+    set_tier_mock.assert_not_awaited()
+    checkout_mock.assert_awaited_once()
 
 
 def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
@@ -1154,14 +1161,14 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     assert response.status_code == 502
 
 
-def test_update_subscription_tier_basic_no_stripe_subscription(
+def test_update_subscription_tier_no_tier_no_stripe_subscription(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Downgrading to BASIC when no Stripe subscription exists updates DB tier directly.
+    """Cancelling to NO_TIER when no Stripe subscription exists updates DB tier directly.
 
     Admin-granted paid tiers have no associated Stripe subscription.  When such a
-    user requests a self-service downgrade, cancel_stripe_subscription returns False
+    user requests a self-service cancel, cancel_stripe_subscription returns False
     (nothing to cancel), so the endpoint must immediately call set_subscription_tier
     rather than waiting for a webhook that will never arrive.
     """
@@ -1189,13 +1196,13 @@ def test_update_subscription_tier_basic_no_stripe_subscription(
         new_callable=AsyncMock,
     )
 
-    response = client.post("/credits/subscription", json={"tier": "BASIC"})
+    response = client.post("/credits/subscription", json={"tier": "NO_TIER"})
 
     assert response.status_code == 200
     assert response.json()["url"] == ""
     cancel_mock.assert_awaited_once_with(TEST_USER_ID)
     # DB tier must be updated immediately — no webhook will fire for a missing sub
-    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BASIC)
+    set_tier_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.NO_TIER)
 
 
 def test_get_subscription_status_includes_pending_tier(

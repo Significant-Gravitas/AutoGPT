@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 
 # Cache decorator alias for consistent user lookup caching
-cache_user_lookup = cached(maxsize=1000, ttl_seconds=300)
+cache_user_lookup = cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 
 
 @cache_user_lookup

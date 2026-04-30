@@ -72,6 +72,7 @@ class SubscriptionTier(str, Enum):
         from prisma.enums import SubscriptionTier
     """
 
+    NO_TIER = "NO_TIER"
     BASIC = "BASIC"
     PRO = "PRO"
     MAX = "MAX"
@@ -87,6 +88,14 @@ class SubscriptionTier(str, Enum):
 # eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
 # downstream microdollar math integer.
 _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
+    # NO_TIER is the explicit "no active Stripe subscription" state —
+    # multiplier 0.0 collapses the per-period limit to int(base * 0) = 0, so
+    # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
+    # before any business logic runs. This is the backend half of the
+    # paywall (the frontend modal nudges UI users; this gate enforces
+    # server-side regardless of client). BASIC stays as a future paid-tier
+    # option; for now it falls back to the same baseline as paid tiers.
+    SubscriptionTier.NO_TIER: 0.0,
     SubscriptionTier.BASIC: 1.0,
     SubscriptionTier.PRO: 5.0,
     SubscriptionTier.MAX: 20.0,
@@ -99,7 +108,7 @@ _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
 # ``get_tier_multipliers`` so LD overrides are honoured.
 TIER_MULTIPLIERS = _DEFAULT_TIER_MULTIPLIERS
 
-DEFAULT_TIER = SubscriptionTier.BASIC
+DEFAULT_TIER = SubscriptionTier.NO_TIER
 
 
 @cached(ttl_seconds=60, maxsize=1, cache_none=False)
@@ -788,6 +797,16 @@ async def get_global_rate_limits(
     tier = await get_user_tier(user_id)
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
+    # NO_TIER's 0.0 multiplier is the backend half of the paywall — it
+    # collapses limits to zero so unsubscribed users can't run the chat.
+    # Only enforce that gate when the platform-payment flag is on for this
+    # user; in the beta cohort (flag off) NO_TIER falls back to BASIC's
+    # baseline so the e2e suite and beta testers retain access.
+    if tier == SubscriptionTier.NO_TIER:
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
+            multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract
         # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the

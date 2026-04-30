@@ -106,10 +106,10 @@ describe("useOnboardingWizardStore", () => {
       expect(useOnboardingWizardStore.getState().currentStep).toBe(2);
     });
 
-    it("clamps at step 4", () => {
-      useOnboardingWizardStore.getState().goToStep(4);
+    it("clamps at step 5", () => {
+      useOnboardingWizardStore.getState().goToStep(5);
       useOnboardingWizardStore.getState().nextStep();
-      expect(useOnboardingWizardStore.getState().currentStep).toBe(4);
+      expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
     });
   });
 

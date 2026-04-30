@@ -23,6 +23,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    overload,
 )
 
 import httpx
@@ -850,15 +851,28 @@ def endpoint_to_sync(
     return cast(Callable[Concatenate[Any, P], R], _stub)
 
 
+@overload
+def endpoint_to_async(
+    func: Callable[Concatenate[Any, P], Coroutine[Any, Any, R]],
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+@overload
 def endpoint_to_async(
     func: Callable[Concatenate[Any, P], R],
-) -> Callable[Concatenate[Any, P], Awaitable[R]]:
-    """
-    The async mirror of `to_sync`.
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+def endpoint_to_async(func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+    """Typed async stub for a service endpoint.
+
+    The first overload unwraps `Coroutine[Any, Any, R]` (for `async def`
+    service methods); the second keeps sync server methods returning `R`.
+    Both resolve to `Awaitable[R]` on the client.
     """
 
-    async def _stub(*args: P.args, **kwargs: P.kwargs) -> R:  # pragma: no cover
+    async def _stub(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise RuntimeError("should be intercepted by __getattr__")
 
     update_wrapper(_stub, func)
-    return cast(Callable[Concatenate[Any, P], Awaitable[R]], _stub)
+    return _stub

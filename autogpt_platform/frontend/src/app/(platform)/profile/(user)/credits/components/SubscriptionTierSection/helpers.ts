@@ -27,15 +27,22 @@ export const TIERS: TierInfo[] = [
   },
 ];
 
-export const TIER_ORDER = ["BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"];
+export const TIER_ORDER = [
+  "NO_TIER",
+  "BASIC",
+  "PRO",
+  "MAX",
+  "BUSINESS",
+  "ENTERPRISE",
+];
 
-export function formatCost(cents: number, tierKey: string): string {
-  if (cents === 0)
-    return tierKey === "BASIC" ? "Free" : "Pricing available soon";
+export function formatCost(cents: number, _tierKey: string): string {
+  if (cents === 0) return "Free";
   return `$${(cents / 100).toFixed(2)}/mo`;
 }
 
 export function getTierLabel(tierKey: string): string {
+  if (tierKey === "NO_TIER") return "No subscription";
   return (
     TIERS.find((t) => t.key === tierKey)?.label ??
     tierKey.charAt(0) + tierKey.slice(1).toLowerCase()
