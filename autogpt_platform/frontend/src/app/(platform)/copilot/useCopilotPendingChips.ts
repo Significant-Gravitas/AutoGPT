@@ -125,10 +125,13 @@ function usePeekOnBoundary({
     // auto-continue effect's duplicate turn-start peek.
     if (!sessionChanged && !isIdle && !turnStarting) return;
 
-    // Capture the sessionId at request time so a response that resolves
-    // after the user switched sessions can't bleed old-session chips into
-    // the new session.  Without this guard, a slow peek for session A
-    // could overwrite chips just restored for session B.
+    // Capture sessionId at request time and compare to the live ref on
+    // resolve.  Without this, a peek that resolves after the user
+    // switched sessions could bleed old-session chips into the new
+    // session.  We deliberately don't use a per-effect cancelled flag
+    // here because this effect re-runs on every status change too, and
+    // we don't want chip-appends in another effect to invalidate this
+    // peek's result.
     const requestSessionId = sessionId;
     void getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
@@ -276,13 +279,32 @@ function useMidTurnDrainPromotion({
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void;
   setChips: (updater: ChipUpdater) => void;
 }) {
+  // Live ref tracks the latest sessionId so a poll captured at request
+  // time can detect a session switch on resolve.  A cancellation flag
+  // would also fire on chip-append (this effect re-runs on every chip
+  // change), wrongly aborting an in-flight poll for the same session —
+  // the sessionId comparison only invalidates on actual session changes.
+  const latestSessionIdRef = useRef<string | null>(sessionId);
+  useEffect(() => {
+    latestSessionIdRef.current = sessionId;
+  }, [sessionId]);
+
   useEffect(() => {
     if (!sessionId) return;
     const isActive = status === "streaming" || status === "submitted";
     if (!isActive || chips.length === 0) return;
 
+    const requestSessionId = sessionId;
+    const isCurrentSession = () =>
+      latestSessionIdRef.current === requestSessionId;
     const interval = setInterval(() => {
-      void pollBackendAndPromote(sessionId, chips, setMessages, setChips);
+      void pollBackendAndPromote(
+        sessionId,
+        chips,
+        setMessages,
+        setChips,
+        isCurrentSession,
+      );
     }, MID_TURN_POLL_MS);
     return () => clearInterval(interval);
   }, [sessionId, status, chips, setMessages, setChips]);
@@ -293,6 +315,7 @@ async function pollBackendAndPromote(
   snapshotChips: Chip[],
   setMessages: (updater: (prev: UIMessage[]) => UIMessage[]) => void,
   setChips: (updater: ChipUpdater) => void,
+  isCurrentSession: () => boolean,
 ): Promise<void> {
   let backendCount: number;
   try {
@@ -302,6 +325,10 @@ async function pollBackendAndPromote(
   } catch {
     return; // harmless; next tick or hydration will reconcile
   }
+  // Bail if the user switched sessions while the GET was in flight —
+  // promoting these chips to messages for a different session would
+  // leak old-session bubbles into the new session.
+  if (!isCurrentSession()) return;
   if (snapshotChips.length === 0) return;
   if (backendCount >= snapshotChips.length) return;
 

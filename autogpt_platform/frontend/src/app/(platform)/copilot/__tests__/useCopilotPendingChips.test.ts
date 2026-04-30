@@ -357,6 +357,65 @@ describe("useCopilotPendingChips", () => {
     expect(result.current.queuedMessages).toEqual([]);
   });
 
+  it("mid-turn poll: a peek that resolves after the user switches sessions does not promote into the new session", async () => {
+    vi.useFakeTimers();
+    const setMessagesA = vi.fn();
+    const setMessagesB = vi.fn();
+    type Props = { sessionId: string; setMessages: typeof setMessagesA };
+    const { result, rerender } = renderHook<
+      ReturnType<typeof useCopilotPendingChips>,
+      Props
+    >(
+      ({ sessionId, setMessages }) =>
+        useCopilotPendingChips({
+          sessionId,
+          status: "streaming",
+          messages: [user("u1"), assistant("a1")],
+          setMessages,
+        }),
+      {
+        initialProps: { sessionId: "sess-A", setMessages: setMessagesA },
+      },
+    );
+
+    act(() => {
+      result.current.appendChip("chipA");
+    });
+
+    // Poll fires for sess-A but resolves AFTER we've switched to sess-B.
+    let resolvePeek!: (value: unknown) => void;
+    peekMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePeek = resolve;
+        }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+
+    // User switches sessions.
+    rerender({ sessionId: "sess-B", setMessages: setMessagesB });
+
+    // Old poll resolves now — backend says count=0 — but we've already
+    // moved on to sess-B.  The session-id guard must short-circuit so
+    // setMessagesA is never called for the promotion path.
+    setMessagesA.mockClear();
+    await act(async () => {
+      resolvePeek({ status: 200, data: { count: 0, messages: [] } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const promotedCallA = setMessagesA.mock.calls.find(([arg]) => {
+      if (typeof arg !== "function") return false;
+      const updated = (arg as (p: UIMessage[]) => UIMessage[])([]);
+      return updated.some((m) => m.id.startsWith("promoted-"));
+    });
+    expect(promotedCallA).toBeUndefined();
+  });
+
   it("mid-turn poll: chip appended during in-flight poll survives the drain", async () => {
     vi.useFakeTimers();
     const setMessages = vi.fn();
