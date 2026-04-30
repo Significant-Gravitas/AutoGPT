@@ -331,9 +331,29 @@ export function convertChatSessionMessagesToUiMessages(
 
     // Merge consecutive assistant messages (including reasoning rows) into a
     // single UIMessage to avoid split bubbles on page reload.
+    //
+    // The merged bubble's ``id`` advances to the LAST DB sequence in the
+    // group (i.e. the row we are currently appending) so
+    // ``concatWithAssistantMerge`` can read the correct adjacency from the
+    // id alone — without that, a merged bubble holding seq=5+6 would still
+    // be keyed ``-seq-5``, and a cross-page assistant at seq=7 would fail
+    // the ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into two
+    // bubbles instead of joining the ongoing turn.
     const prevUI = uiMessages[uiMessages.length - 1];
     if (uiRole === "assistant" && prevUI && prevUI.role === "assistant") {
       prevUI.parts.push(...parts);
+      const oldId = prevUI.id;
+      const newId =
+        msg.sequence != null
+          ? `${sessionId}-seq-${msg.sequence}`
+          : `${sessionId}-idx-${idx}`;
+      if (newId !== oldId) {
+        // Migrate stats over to the new id and let the old key go.
+        const existingStats = stats.get(oldId);
+        stats.delete(oldId);
+        if (existingStats) stats.set(newId, existingStats);
+        prevUI.id = newId;
+      }
       // Capture duration on merged message (last assistant msg wins)
       if (msg.duration_ms != null) {
         patchStats(prevUI.id, { durationMs: msg.duration_ms });

@@ -347,6 +347,28 @@ describe("concatWithAssistantMerge", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("merges a single-row page B onto a multi-row merged bubble in page A using the LAST seq of the bubble", () => {
+    // Sentry: pre-fix, a merged bubble holding seq=5+6 was keyed
+    // ``-seq-5``, and a cross-page assistant at seq=7 failed the
+    // ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into
+    // two bubbles.  The in-page merge now advances the id to the last
+    // seq, so the adjacency check sees ``7 === 6+1`` and merges.
+    const pageA = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "reasoning", content: "thinking", sequence: 5 },
+        { role: "assistant", content: "first part", sequence: 6 },
+      ],
+      { isComplete: true },
+    ).messages;
+    expect(pageA).toHaveLength(1);
+    expect(pageA[0].id).toBe(`${SESSION_ID}-seq-6`);
+    const pageB = [uiAssistant(SESSION_ID, 7, "continued")];
+    const result = concatWithAssistantMerge(pageA, pageB);
+    expect(result).toHaveLength(1);
+    expect(result[0].parts.length).toBeGreaterThan(1);
+  });
+
   it("does NOT merge across hydrated → streaming boundary (streaming ids fail seq-extraction)", () => {
     const a = [uiAssistant(SESSION_ID, 5, "from db")];
     const b: UIMessage<unknown, UIDataTypes, UITools>[] = [
