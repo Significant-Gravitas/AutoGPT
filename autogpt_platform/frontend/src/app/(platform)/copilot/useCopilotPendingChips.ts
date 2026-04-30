@@ -102,6 +102,13 @@ function usePeekOnBoundary({
 }) {
   const prevSessionIdRef = useRef<string | null>(sessionId);
   const prevStatusRef = useRef<ChatStatus>(status);
+  // Snapshot of chip ids known to be in-flight to the server at the
+  // moment a peek GET is issued.  Anything NOT in this set when the GET
+  // resolves was appended after the request — preserve it so a
+  // concurrently-queued chip isn't wiped by the server's now-stale
+  // truth.  Set inside the effect (closes over the current chips
+  // value), read inside the ``.then`` handler.
+  const inFlightSnapshotIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -133,25 +140,43 @@ function usePeekOnBoundary({
     // we don't want chip-appends in another effect to invalidate this
     // peek's result.
     const requestSessionId = sessionId;
+    // Capture the id-set of chips currently in local state so the
+    // resolve handler can preserve any chip the user queues during the
+    // GET window.
+    setChips((current) => {
+      inFlightSnapshotIdsRef.current = new Set(current.map((c) => c.id));
+      return current;
+    });
     void getV2GetPendingMessages(sessionId).then((res) => {
       if (prevSessionIdRef.current !== requestSessionId) return;
       if (res.status !== 200) return;
-      // Turn-start drain path: only clear if the backend really emptied
-      // the buffer.  A non-zero count means our chips survived the drain
-      // (e.g. the turn is still consuming them mid-round) — keep them.
+      const inFlightIds = inFlightSnapshotIdsRef.current;
+      // Turn-start drain path: only clear chips that were in-flight at
+      // GET time when the backend really emptied the buffer.  Chips
+      // appended after the GET fired (during the React render between
+      // turn-start and the GET resolving) survive.
       if (turnStarting && !sessionChanged) {
-        if (res.data.count === 0) setChips(() => []);
+        if (res.data.count === 0) {
+          setChips((current) => current.filter((c) => !inFlightIds.has(c.id)));
+        }
         return;
       }
-      // Session-load or idle-after-turn: replace with server truth.
-      setChips(() =>
-        res.data.count > 0
-          ? res.data.messages.map((text) => ({
-              id: crypto.randomUUID(),
-              text,
-            }))
-          : [],
-      );
+      // Session-load or idle-after-turn: rebase to server truth, then
+      // re-attach any chips the user queued during the GET window
+      // (they're not in inFlightIds because the snapshot was taken at
+      // GET fire time).  Without this re-attach, a chip queued after
+      // an "idle" transition but before the peek resolves silently
+      // disappears.
+      setChips((current) => {
+        const fromServer = res.data.messages.map((text) => ({
+          id: crypto.randomUUID(),
+          text,
+        }));
+        const queuedDuringWindow = current.filter(
+          (c) => !inFlightIds.has(c.id),
+        );
+        return [...fromServer, ...queuedDuringWindow];
+      });
     });
   }, [sessionId, status, setChips]);
 }
