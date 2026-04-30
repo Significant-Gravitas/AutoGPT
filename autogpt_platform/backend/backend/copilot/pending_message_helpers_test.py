@@ -532,7 +532,13 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     async def _fake_upsert(sess: Any) -> Any:
         # Simulate DB sequence back-fill on the rows that don't have one.
-        next_seq = max((m.sequence for m in sess.messages if m.sequence is not None), default=-1) + 1
+        next_seq = (
+            max(
+                (m.sequence for m in sess.messages if m.sequence is not None),
+                default=-1,
+            )
+            + 1
+        )
         for m in sess.messages:
             if m.sequence is None:
                 m.sequence = next_seq
@@ -546,9 +552,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     # Step 1: combine for the model's prompt.  Result is what the SDK CLI
     # sees as the current-turn user input.
-    combined = combine_pending_with_current(
-        pending, original, request_arrival_at=0.0
-    )
+    combined = combine_pending_with_current(pending, original, request_arrival_at=0.0)
     assert "can you sleep for 2 seconds then 3 seconds" in combined
     assert "oh sleep 4 secs in between" in combined
 
@@ -571,9 +575,9 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     # Invariant 3: pending row is raw chip text only.
     chip_row = session.messages[1]
-    assert chip_row.content == "oh sleep 4 secs in between", (
-        f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
-    )
+    assert (
+        chip_row.content == "oh sleep 4 secs in between"
+    ), f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
     assert "<memory_context>" not in chip_row.content
     assert "can you sleep" not in chip_row.content, (
         "regression: chip row absorbed original text — "
