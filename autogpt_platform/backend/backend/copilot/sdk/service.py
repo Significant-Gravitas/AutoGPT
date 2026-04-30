@@ -3941,17 +3941,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Adding each pending to the transcript here would triple-count
         # them in the next turn's ``--resume`` context.
         if pending_messages:
-            current_message = combine_pending_with_current(
-                pending_messages,
-                current_message,
-                request_arrival_at=request_arrival_at,
-            )
-            await persist_pending_as_user_rows(
+            # Persist FIRST.  Only fold pending into the model's prompt
+            # when persistence succeeded — if the helper rolled back and
+            # re-queued the pending into Redis, leaving ``current_message``
+            # untouched ensures the NEXT turn's drain doesn't double-
+            # combine (re-queued pending + combined-from-this-turn) into
+            # the model's context.
+            persisted_ok = await persist_pending_as_user_rows(
                 session,
                 None,
                 pending_messages,
                 log_prefix=log_prefix,
             )
+            if persisted_ok:
+                current_message = combine_pending_with_current(
+                    pending_messages,
+                    current_message,
+                    request_arrival_at=request_arrival_at,
+                )
 
         query_message, was_compacted = await _build_query_message(
             current_message,
