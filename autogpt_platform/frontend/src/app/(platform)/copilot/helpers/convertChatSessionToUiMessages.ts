@@ -119,13 +119,33 @@ function toToolInput(rawArguments: unknown): unknown {
   return {};
 }
 
+// Capture trailing sequence number from a hydrated UIMessage id of the
+// shape ``<sessionId>-seq-<N>``.  Streaming-path ids (AI SDK uuids) and
+// idx-based fallback ids (``-idx-<N>``) don't match — return null so the
+// caller refuses the merge in those cases (the safer default).
+const HYDRATED_ID_SEQ_RE = /-seq-(\d+)$/;
+
+function extractDbSequence(uiMessage: UIMessage): number | null {
+  if (typeof uiMessage.id !== "string") return null;
+  const match = HYDRATED_ID_SEQ_RE.exec(uiMessage.id);
+  return match ? Number(match[1]) : null;
+}
+
 /**
  * Concatenate two UIMessage arrays, merging consecutive assistant messages
  * at the join point so that reasoning + response parts stay in a single bubble.
  *
  * Within each page, `convertChatSessionMessagesToUiMessages` already merges
- * consecutive assistant DB rows. This handles the boundary between pages
+ * consecutive assistant DB rows.  This handles the boundary between pages
  * (or between older-pages and the current/streaming page).
+ *
+ * The merge is gated on **DB-sequence adjacency**: extract the trailing
+ * ``-seq-N`` from each id and only merge when ``firstSeq === lastSeq + 1``.
+ * Without that check, a hydration-race window (where a user/reasoning row
+ * exists in the DB but has not yet been hydrated into either page) would
+ * silently swallow the missing row by stitching the two surrounding
+ * assistant bubbles into one — matching the chip-disappearing /
+ * "merged as previous chat" report.
  */
 export function concatWithAssistantMerge(
   a: UIMessage<unknown, UIDataTypes, UITools>[],
@@ -135,14 +155,24 @@ export function concatWithAssistantMerge(
   if (b.length === 0) return a;
   const last = a[a.length - 1];
   const first = b[0];
-  if (last.role === "assistant" && first.role === "assistant") {
-    return [
-      ...a.slice(0, -1),
-      { ...last, parts: [...last.parts, ...first.parts] },
-      ...b.slice(1),
-    ];
+  if (last.role !== "assistant" || first.role !== "assistant") {
+    return [...a, ...b];
   }
-  return [...a, ...b];
+  // Both sides assistant — only merge when the underlying DB sequences are
+  // strictly adjacent (no skipped user / reasoning row between them that a
+  // hydration race could be hiding).  Streaming-path ids fail extraction and
+  // refuse the merge, which is fine: the streaming consumer handles its own
+  // assistant continuity inside the active turn.
+  const lastSeq = extractDbSequence(last);
+  const firstSeq = extractDbSequence(first);
+  if (lastSeq === null || firstSeq === null || firstSeq !== lastSeq + 1) {
+    return [...a, ...b];
+  }
+  return [
+    ...a.slice(0, -1),
+    { ...last, parts: [...last.parts, ...first.parts] },
+    ...b.slice(1),
+  ];
 }
 
 /**
