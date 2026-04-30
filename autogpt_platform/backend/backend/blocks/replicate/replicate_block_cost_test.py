@@ -40,7 +40,7 @@ def test_hardware_rate_constant_in_range():
     under-billing single-GPU community models, without going so high that
     cheap-hardware users are over-billed by an order of magnitude.
     """
-    assert 0.0015 <= _REPLICATE_USD_PER_SEC <= 0.0025
+    assert 0.001875 <= _REPLICATE_USD_PER_SEC <= 0.0025
 
 
 def _make_fake_prediction(output, predict_time=None, status="succeeded", error=None):
