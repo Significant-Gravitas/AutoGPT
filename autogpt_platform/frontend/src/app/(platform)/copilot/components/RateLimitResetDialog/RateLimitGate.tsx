@@ -40,20 +40,32 @@ export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
   const hasInsufficientCredits =
     credits !== null && resetCost != null && credits < resetCost;
 
-  // When the credit-based reset is unavailable (feature disabled or the query
-  // failed), fall back to a toast so the user still gets feedback.
+  // Fall back to a toast when the credit-based reset isn't a real option:
+  // billing is off (no way to top up), the usage query failed, or reset_cost
+  // is non-positive. Without billing the dialog's "Add credits" CTA is dead,
+  // so showing it would just dangle a useless reset offer.
   useEffect(() => {
     if (!rateLimitMessage) return;
-    if (!usageError && !(hasUsage && (resetCost ?? 0) <= 0)) return;
+    const creditResetUnavailable =
+      !isBillingEnabled || usageError || (hasUsage && (resetCost ?? 0) <= 0);
+    if (!creditResetUnavailable) return;
     toast({
       title: "Usage limit reached",
       description: rateLimitMessage,
       variant: "destructive",
     });
     onDismiss();
-  }, [rateLimitMessage, resetCost, hasUsage, usageError, onDismiss]);
+  }, [
+    rateLimitMessage,
+    resetCost,
+    hasUsage,
+    usageError,
+    onDismiss,
+    isBillingEnabled,
+  ]);
 
-  const canShowDialog = !!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0;
+  const canShowDialog =
+    isBillingEnabled && !!rateLimitMessage && hasUsage && (resetCost ?? 0) > 0;
 
   return (
     <RateLimitResetDialog
