@@ -117,6 +117,9 @@ describe("ChatSidebar — delete flow", () => {
     renderSidebar();
 
     await openDeleteDialogFor("Other chat");
+    expect(
+      await screen.findByRole("heading", { name: /delete chat/i }),
+    ).toBeDefined();
     const confirmButton = await screen.findByRole("button", {
       name: /^delete$/i,
     });
@@ -124,6 +127,11 @@ describe("ChatSidebar — delete flow", () => {
 
     await vi.waitFor(() => {
       expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
+    });
+    await vi.waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: /delete chat/i }),
+      ).toBeNull();
     });
     expect(toastMock).not.toHaveBeenCalled();
   });

@@ -1,5 +1,13 @@
 import { render, waitFor } from "@/tests/integrations/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { PushNotificationProvider } from "../PushNotificationProvider";
 
 const { pathnameMock, searchParamsMock } = vi.hoisted(() => ({
@@ -108,6 +116,28 @@ function uninstallServiceWorker() {
   delete (navigator as unknown as { serviceWorker?: unknown }).serviceWorker;
 }
 
+const originalNotificationDescriptor = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "Notification",
+);
+const originalServiceWorkerDescriptor = Object.getOwnPropertyDescriptor(
+  navigator,
+  "serviceWorker",
+);
+const originalVapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+function restoreProperty(
+  target: object,
+  key: string,
+  descriptor: PropertyDescriptor | undefined,
+) {
+  if (descriptor) {
+    Object.defineProperty(target, key, descriptor);
+    return;
+  }
+  delete (target as Record<string, unknown>)[key];
+}
+
 describe("PushNotificationProvider", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -144,6 +174,25 @@ describe("PushNotificationProvider", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterAll(() => {
+    // Tests in this file mutate three module-scoped globals — `Notification`,
+    // `navigator.serviceWorker`, and `process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY`.
+    // beforeEach re-stubs them between tests inside this file, but without an
+    // afterAll the mutations leak to any other test file scheduled into the
+    // same Vitest worker.
+    restoreProperty(globalThis, "Notification", originalNotificationDescriptor);
+    restoreProperty(
+      navigator,
+      "serviceWorker",
+      originalServiceWorkerDescriptor,
+    );
+    if (originalVapidPublicKey === undefined) {
+      delete process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    } else {
+      process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = originalVapidPublicKey;
+    }
   });
 
   describe("push subscription registration", () => {

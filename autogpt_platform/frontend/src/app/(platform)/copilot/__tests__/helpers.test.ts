@@ -464,9 +464,10 @@ describe("deduplicateMessages", () => {
   });
 
   it("does not collapse structurally different no-text parts to the same fingerprint", () => {
-    // Parts lacking both 'text' and 'toolCallId' (e.g. step-start) previously
-    // all mapped to "" causing false-positive deduplication. Now JSON.stringify(p)
-    // is used as the fallback so distinct part shapes produce distinct fingerprints.
+    // Parts lacking both 'text' and 'toolCallId' (e.g. step-start, step-end)
+    // previously all mapped to "" causing false-positive deduplication. Now
+    // JSON.stringify(p) is the fallback so distinct part shapes produce
+    // distinct fingerprints — and identically-shaped no-text parts still dedupe.
     const msgs: UIMessage[] = [
       makeMsgWithId("u1", "user", "hello"),
       {
@@ -477,11 +478,18 @@ describe("deduplicateMessages", () => {
       {
         id: "a2",
         role: "assistant",
+        parts: [{ type: "step-end" } as unknown as UIMessage["parts"][number]],
+      },
+      {
+        id: "a3",
+        role: "assistant",
         parts: [{ type: "step-start" }],
       },
     ];
     const result = deduplicateMessages(msgs);
-    expect(result).toHaveLength(2); // duplicate step-start messages are deduped
+    // user + step-start + step-end kept; the second step-start dedupes against a1.
+    expect(result).toHaveLength(3);
+    expect(result.map((m) => m.id)).toEqual(["u1", "a1", "a2"]);
   });
 });
 

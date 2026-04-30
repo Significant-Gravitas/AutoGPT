@@ -46,7 +46,10 @@ const baseSchema: BlockIOCredentialsSubSchema = {
   credentials_scopes: ["drive.file", "drive.metadata"],
 } as BlockIOCredentialsSubSchema;
 
-function makeCredentialsReturn(overrides: Record<string, any> = {}) {
+type CredentialsReturn = ReturnType<typeof useCredentials>;
+type BackendAPI = ReturnType<typeof useBackendAPI>;
+
+function makeCredentialsReturn(overrides: Partial<CredentialsReturn> = {}) {
   return {
     provider: "google",
     providerName: "Google",
@@ -76,7 +79,7 @@ function makeCredentialsReturn(overrides: Record<string, any> = {}) {
   };
 }
 
-function makeBackendAPI(overrides: Record<string, any> = {}) {
+function makeBackendAPI(overrides: Partial<BackendAPI> = {}) {
   return {
     oAuthLogin: vi.fn().mockResolvedValue({
       login_url: "https://accounts.google.com/o/oauth2/auth",

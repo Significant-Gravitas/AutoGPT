@@ -176,6 +176,7 @@ afterEach(() => {
   mockCancel.mockReset();
   mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
+  mockFlagValue = false;
 });
 
 describe("ChatInput mode toggle", () => {
