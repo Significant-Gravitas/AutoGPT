@@ -999,13 +999,6 @@ async def stream_chat_post(
         sanitized_file_ids = [wf.id for wf in files] or None
         request.message += build_files_block(files)
 
-    # Pre-generate the turn_id so we can register the stream registry +
-    # enqueue the executor task with a stable id.  Empty string when an
-    # earlier turn is still in flight — the response then takes the
-    # subscribe-only path (no enqueue) and bridges the SSE to the
-    # existing turn.
-    turn_id = "" if (await is_turn_in_flight(session_id)) else str(uuid4())
-
     # Atomically append user message to session BEFORE creating task to avoid
     # race condition where GET_SESSION sees task as "running" but message isn't
     # saved yet.  append_and_save_message returns None when a duplicate is
@@ -1014,6 +1007,12 @@ async def stream_chat_post(
     # → Postgres unique constraint) feed into that signal.  In either
     # case we skip enqueue and let the SSE generator subscribe to any
     # existing in-flight turn for this session.
+    #
+    # Note: the in-flight branch is handled at the top of this handler
+    # via ``queue_pending_for_http`` (see ``is_turn_in_flight`` check
+    # near the start) — that path returns early.  Any request that
+    # reaches this point is starting a fresh turn, so we always mint a
+    # ``turn_id`` unless ``append_and_save_message`` reports a duplicate.
     is_duplicate_message = False
     if request.message:
         message = ChatMessage(
@@ -1037,8 +1036,7 @@ async def stream_chat_post(
     # For duplicate messages, skip create_session entirely so the infra-retry
     # client subscribes to the *existing* turn's Redis stream and receives the
     # in-progress executor output rather than an empty stream.
-    if is_duplicate_message:
-        turn_id = ""
+    turn_id = "" if is_duplicate_message else str(uuid4())
     if turn_id:
         log_meta["turn_id"] = turn_id
         session_create_start = time.perf_counter()

@@ -18,6 +18,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, PrivateAttr
@@ -802,20 +803,22 @@ async def append_and_save_message(
 
         try:
             await _save_session_to_db(session, existing_message_count)
+        except UniqueViolationError as e:
+            # Atomic-claim path: another writer (different pod / earlier
+            # retry) already persisted this exact id, so the Postgres PK
+            # constraint fires.  Strip the message we optimistically
+            # appended and signal "duplicate" up.  The unrelated
+            # ``(sessionId, sequence)`` race is retried inside
+            # ``add_chat_messages_batch`` itself, so any
+            # ``UniqueViolationError`` that escapes here is by definition
+            # a PK collision.
+            if "ChatMessage_pkey" not in str(e):
+                raise DatabaseError(
+                    f"Failed to persist message to session {session_id}"
+                ) from e
+            session.messages.pop()
+            return None
         except Exception as e:
-            # Avoid a hard import of ``backend.copilot.db`` here — that would
-            # introduce a model.py ↔ db.py cycle.  The local-DB path
-            # propagates ``UniqueViolationError`` we can detect by name +
-            # constraint string; the RPC path raises a wrapped subclass that
-            # carries the same message.
-            if type(e).__name__ == "UniqueViolationError" and "ChatMessage_pkey" in str(
-                e
-            ):
-                # Atomic-claim path: another writer (different pod / earlier
-                # retry) already persisted this exact id.  Strip the message
-                # we optimistically appended and signal "duplicate" up.
-                session.messages.pop()
-                return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
             ) from e

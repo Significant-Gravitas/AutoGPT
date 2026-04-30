@@ -67,7 +67,10 @@ describe("useSendMessage", () => {
   it("dispatches a plain text message immediately when a session exists", async () => {
     const { result, sendMessage } = setupHook({ sessionId: "s1" });
     await result.current.onSend("hello");
-    expect(sendMessage).toHaveBeenCalledWith({ text: "hello" });
+    expect(sendMessage).toHaveBeenCalledWith({
+      text: "hello",
+      messageId: expect.any(String),
+    });
   });
 
   it("flips isUserStoppingRef back to false on each send", async () => {
@@ -166,6 +169,7 @@ describe("useSendMessage", () => {
     expect(sendMessage).toHaveBeenCalledWith({
       text: "see attached",
       files: [expect.objectContaining({ type: "file", filename: "img.png" })],
+      messageId: expect.any(String),
     });
     // Pre-built parts are consumed once.
     expect(useCopilotStreamStore.getState().pendingFileParts).toEqual([]);
@@ -222,7 +226,10 @@ describe("useSendMessage", () => {
     });
     const { rerender, sendMessage } = setupHook({ sessionId: null });
     rerender({ sessionId: "now-active" });
-    expect(sendMessage).toHaveBeenCalledWith({ text: "queued" });
+    expect(sendMessage).toHaveBeenCalledWith({
+      text: "queued",
+      messageId: expect.any(String),
+    });
   });
 
   it("setPendingFileParts forwards to the store", () => {
