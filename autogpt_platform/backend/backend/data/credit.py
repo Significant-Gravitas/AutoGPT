@@ -941,11 +941,15 @@ class UserCredit(UserCreditBase):
         if not metadata.get("reason"):
             match top_up_type:
                 case TopUpType.MANUAL:
-                    metadata["reason"] = f"Top up credits for {user_id}"
+                    metadata["reason"] = {"reason": f"Top up credits for {user_id}"}
                 case TopUpType.AUTO:
-                    metadata["reason"] = f"Auto top up credits for {user_id}"
+                    metadata["reason"] = {
+                        "reason": f"Auto top up credits for {user_id}"
+                    }
                 case _:
-                    metadata["reason"] = f"Top up reason unknown for {user_id}"
+                    metadata["reason"] = {
+                        "reason": f"Top up reason unknown for {user_id}"
+                    }
 
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
@@ -1089,11 +1093,7 @@ class UserCredit(UserCreditBase):
             transaction_type=CreditTransactionType.TOP_UP,
             transaction_key=checkout_session.id,
             is_active=False,
-            # Just the reason — same flat shape as every other writer (GRANT,
-            # USAGE, etc.).  The full Stripe Session is re-fetched on demand
-            # via stripe.checkout.Session.retrieve(transaction_key) anywhere
-            # we need its details, so storing a snapshot here is bloat.
-            metadata=SafeJson({"reason": "User-initiated Stripe checkout"}),
+            metadata=SafeJson(checkout_session),
         )
 
         return checkout_session.url or ""
@@ -1145,21 +1145,11 @@ class UserCredit(UserCreditBase):
             else:
                 new_transaction_key = None
 
-            # Preserve the original reason recorded at top_up_intent() time so
-            # the dashboard can still distinguish user-initiated checkouts from
-            # GRANT-based refunds after fulfillment overwrites the row metadata.
-            existing_metadata: dict = cast(dict, credit_transaction.metadata) or {}
             await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
                 new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
-                metadata=SafeJson(
-                    {
-                        "reason": existing_metadata.get(
-                            "reason", "User-initiated Stripe checkout"
-                        ),
-                    }
-                ),
+                metadata=SafeJson(checkout_session),
             )
 
     async def get_credits(self, user_id: str) -> int:
