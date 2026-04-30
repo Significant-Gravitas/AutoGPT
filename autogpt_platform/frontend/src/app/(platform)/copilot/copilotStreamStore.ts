@@ -157,10 +157,14 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
       // of the session-creation remount and would be confusing if persisted.
       name: "copilot-stream-store",
       version: 1,
+      // SSR-safe storage adapter: ``window.sessionStorage`` in the browser,
+      // a no-op stub during Next.js SSR / vitest where ``window`` is
+      // undefined.  Returning ``undefined`` from the factory would make
+      // zustand throw on its first ``getItem`` call.
       storage: createJSONStorage(() =>
         typeof window !== "undefined" && window.sessionStorage
           ? window.sessionStorage
-          : undefined!,
+          : { getItem: () => null, setItem: () => {}, removeItem: () => {} },
       ),
       partialize: (state) => ({ sessions: state.sessions }),
     },
