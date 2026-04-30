@@ -2,10 +2,36 @@ import React from "react";
 import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatContainer } from "../ChatContainer";
+import { useCopilotUIStore } from "../../../store";
 
 const mockIsUsageLimitReached = vi.fn();
 const mockArtifactsEnabled = vi.fn(() => false);
-const mockArtifactPanelOpen = vi.fn(() => false);
+
+const ARTIFACT_A_ID = "11111111-0000-0000-0000-000000000000";
+const ARTIFACT_B_ID = "22222222-0000-0000-0000-000000000000";
+
+function makeArtifact(id: string, title = `${id}.txt`) {
+  return {
+    id,
+    title,
+    mimeType: "text/plain",
+    sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
+    origin: "agent" as const,
+  };
+}
+
+function resetCopilotStore() {
+  useCopilotUIStore.setState({
+    artifactPanel: {
+      isOpen: false,
+      isMinimized: false,
+      isMaximized: false,
+      width: 600,
+      activeArtifact: null,
+      history: [],
+    },
+  });
+}
 
 vi.mock("framer-motion", () => ({
   LayoutGroup: ({ children }: { children: React.ReactNode }) => <>{children}</>,
@@ -59,19 +85,6 @@ vi.mock("@/services/feature-flags/use-get-flag", () => ({
     ARTIFACTS: "ARTIFACTS",
   },
   useGetFlag: () => mockArtifactsEnabled(),
-}));
-
-vi.mock("../../../store", () => ({
-  useCopilotUIStore: (
-    selector?: (state: { artifactPanel: { isOpen: boolean } }) => unknown,
-  ) => {
-    const state = { artifactPanel: { isOpen: mockArtifactPanelOpen() } };
-    return typeof selector === "function" ? selector(state) : state;
-  },
-}));
-
-vi.mock("../useAutoOpenArtifacts", () => ({
-  useAutoOpenArtifacts: vi.fn(),
 }));
 
 vi.mock("../../ChatMessagesContainer/ChatMessagesContainer", () => ({
@@ -140,12 +153,13 @@ describe("ChatContainer", () => {
   beforeEach(() => {
     mockIsUsageLimitReached.mockReturnValue(false);
     mockArtifactsEnabled.mockReturnValue(false);
-    mockArtifactPanelOpen.mockReturnValue(false);
+    resetCopilotStore();
     vi.stubGlobal("ResizeObserver", MockResizeObserver);
   });
 
   afterEach(() => {
     cleanup();
+    resetCopilotStore();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
   });
@@ -168,5 +182,121 @@ describe("ChatContainer", () => {
 
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  describe("auto-open artifact panel behavior", () => {
+    it("does not auto-open the artifact panel on initial render", () => {
+      mockArtifactsEnabled.mockReturnValue(true);
+
+      render(<ChatContainer {...baseProps} />);
+
+      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+      const wrapper = screen.getByTestId(
+        "chat-messages-container",
+      ).parentElement;
+      expect(wrapper?.className).toContain("max-w-3xl");
+    });
+
+    it("does not auto-open when rerendering within the same session", () => {
+      mockArtifactsEnabled.mockReturnValue(true);
+
+      const { rerender } = render(<ChatContainer {...baseProps} />);
+      rerender(<ChatContainer {...baseProps} />);
+
+      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+      const wrapper = screen.getByTestId(
+        "chat-messages-container",
+      ).parentElement;
+      expect(wrapper?.className).toContain("max-w-3xl");
+    });
+
+    it("resets the panel state when sessionId changes", () => {
+      mockArtifactsEnabled.mockReturnValue(true);
+      useCopilotUIStore
+        .getState()
+        .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
+      useCopilotUIStore
+        .getState()
+        .openArtifact(makeArtifact(ARTIFACT_B_ID, "b.txt"));
+
+      const { rerender } = render(
+        <ChatContainer {...baseProps} sessionId="s1" />,
+      );
+
+      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+      rerender(<ChatContainer {...baseProps} sessionId="s2" />);
+
+      const panel = useCopilotUIStore.getState().artifactPanel;
+      expect(panel.isOpen).toBe(false);
+      expect(panel.activeArtifact).toBeNull();
+      expect(panel.history).toEqual([]);
+      const wrapper = screen.getByTestId(
+        "chat-messages-container",
+      ).parentElement;
+      expect(wrapper?.className).toContain("max-w-3xl");
+    });
+
+    it("does not carry a stale back stack into the next session", () => {
+      mockArtifactsEnabled.mockReturnValue(true);
+      useCopilotUIStore
+        .getState()
+        .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
+      useCopilotUIStore
+        .getState()
+        .openArtifact(makeArtifact(ARTIFACT_B_ID, "b.txt"));
+
+      const { rerender } = render(
+        <ChatContainer {...baseProps} sessionId="s1" />,
+      );
+      rerender(<ChatContainer {...baseProps} sessionId="s2" />);
+
+      useCopilotUIStore.getState().openArtifact(makeArtifact("c", "c.txt"));
+
+      const panel = useCopilotUIStore.getState().artifactPanel;
+      expect(panel.activeArtifact?.id).toBe("c");
+      expect(panel.history).toEqual([]);
+    });
+
+    it("closes the panel on unmount so nav-away cannot resurrect it (SECRT-2254)", () => {
+      mockArtifactsEnabled.mockReturnValue(true);
+      useCopilotUIStore
+        .getState()
+        .openArtifact(makeArtifact(ARTIFACT_A_ID, "a.txt"));
+      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+      const { unmount } = render(<ChatContainer {...baseProps} />);
+      unmount();
+
+      const panel = useCopilotUIStore.getState().artifactPanel;
+      expect(panel.isOpen).toBe(false);
+      expect(panel.activeArtifact).toBeNull();
+      expect(panel.history).toEqual([]);
+    });
+
+    it("does not re-open a panel whose store state is stale on fresh mount (SECRT-2220)", () => {
+      mockArtifactsEnabled.mockReturnValue(true);
+      useCopilotUIStore.setState({
+        artifactPanel: {
+          isOpen: true,
+          isMinimized: false,
+          isMaximized: false,
+          width: 600,
+          activeArtifact: makeArtifact(ARTIFACT_A_ID, "stale.txt"),
+          history: [],
+        },
+      });
+
+      const { unmount } = render(<ChatContainer {...baseProps} />);
+      unmount();
+
+      render(<ChatContainer {...baseProps} />);
+
+      expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+      const wrapper = screen.getByTestId(
+        "chat-messages-container",
+      ).parentElement;
+      expect(wrapper?.className).toContain("max-w-3xl");
+    });
   });
 });
