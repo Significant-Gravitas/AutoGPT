@@ -442,7 +442,7 @@ class _StreamContext:
 # compress_context applies progressively more aggressive reduction:
 #   LLM summarize → content truncate → middle-out delete → first/last trim.
 # Index 0 = first retry, 1 = second retry; last value applies beyond that.
-_RETRY_TARGET_TOKENS: tuple[int, ...] = (50_000, 15_000)
+_RETRY_TARGET_TOKENS: tuple[int, ...] = (50_000, 5_000)
 
 # Below this token budget the model context is so tight that injecting any
 # conversation history would likely exceed the limit regardless of content.
@@ -1623,11 +1623,22 @@ async def _compress_messages(
             target_tokens=target_tokens,
         )
     except Exception as exc:
-        # Guard against timeouts or unexpected errors in compression —
-        # return the original messages so the caller can proceed without
-        # compaction rather than propagating the error to the retry loop.
-        logger.warning("[SDK] _compress_messages failed, returning originals: %s", exc)
-        return messages, False
+        # Both the LLM summarize path AND the truncation fallback inside
+        # ``_run_compression`` failed (timeouts, tokenization error, etc.).
+        # Returning the originals here would silently feed the same
+        # too-long payload back into the retry loop, guaranteeing another
+        # ``Prompt is too long`` and burning the retry budget for no
+        # progress.  Drop history entirely instead — the caller will fall
+        # back to the bare current message, which is the tightest
+        # compression we can offer without an LLM, and is the only thing
+        # that can definitively recover a session whose stored history
+        # exceeds the model's context window.
+        logger.warning(
+            "[SDK] _compress_messages failed — dropping history to bare"
+            " message to guarantee retry progress: %s",
+            exc,
+        )
+        return [], True
 
     if result.was_compacted:
         logger.info(
