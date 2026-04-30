@@ -1396,20 +1396,10 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        # Chronological combine for the model's current-turn input:
-        # pending typed BEFORE this /stream request's arrival go ahead of
-        # ``message``; race-path follow-ups typed AFTER (queued while
-        # /stream was still processing) go after.  See
-        # ``combine_pending_with_current`` for details.
-        #
-        # Per-row DB persistence happens *after* ``inject_user_context``
-        # below — see the comment near that call for the ordering
-        # rationale.
-        message = combine_pending_with_current(
-            drained_at_start_pending,
-            message,
-            request_arrival_at=request_arrival_at,
-        )
+        # NOTE: combine + per-row persist both happen *after*
+        # ``inject_user_context`` below — see the comment near that
+        # call for the ordering rationale.  At this point ``message``
+        # is still the original turn-starting send.
 
     # Select model based on the per-request tier toggle (standard / advanced).
     # The path (fast vs extended_thinking) is already decided — we're in the
@@ -1584,11 +1574,28 @@ async def stream_chat_completion_baseline(
         else:
             logger.warning("[Baseline] No user message found for context injection")
 
-    # Persist drained pending as their OWN user rows AFTER inject_user_context
-    # has rewritten the current turn's user row with envelopes — see the
-    # combine block above for the ordering rationale.  ``transcript_builder=None``
-    # because the model already sees the combined text as one user turn.
+    # Now that ``inject_user_context`` has wrapped + persisted the
+    # original turn-starting send into its row, fold pending into the
+    # model's current-turn input AND persist each pending message as
+    # its own raw-text user row.  Three things to keep in sync:
+    #
+    #  1. ``openai_messages`` (what the model sees this round) — append
+    #     each pending as a separate user entry, matching the mid-turn
+    #     drain pattern below.
+    #  2. ``message`` (used for transcript/title fallbacks) — combine.
+    #  3. ``session.messages`` + DB — one raw row per pending via
+    #     ``persist_pending_as_user_rows(transcript_builder=None)``.
+    #
+    # Order matters: persist must run after inject so inject targets
+    # the routes.py-saved row, not a pending row.
     if drained_at_start_pending:
+        message = combine_pending_with_current(
+            drained_at_start_pending,
+            message,
+            request_arrival_at=request_arrival_at,
+        )
+        for pm in drained_at_start_pending:
+            openai_messages.append(format_pending_as_user_message(pm))
         await persist_pending_as_user_rows(
             session,
             None,

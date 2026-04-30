@@ -3870,22 +3870,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 log_prefix,
                 len(pending_messages),
             )
-            # Combine for the model's current-turn query: the SDK CLI
-            # sees a single user input that includes both the original
-            # send AND any pending chips drained at turn-start.
-            # Chronological order: items typed BEFORE this request
-            # arrived go ahead of ``current_message``; items typed AFTER
-            # (race path, queued while /stream was still processing) go
-            # after.
-            #
-            # Per-row DB persistence happens *after* ``inject_user_context``
-            # below — see the comment near that call for the ordering
-            # rationale.
-            current_message = combine_pending_with_current(
-                pending_messages,
-                current_message,
-                request_arrival_at=request_arrival_at,
-            )
+            # NOTE: combining and per-row persistence both happen *after*
+            # ``inject_user_context`` below — see the comment near that
+            # call.  At this point ``current_message`` is still the
+            # original turn-starting send (no pending text yet).
 
         if not current_message.strip():
             yield StreamError(
@@ -3932,19 +3920,32 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             if prefixed_message is not None:
                 current_message = prefixed_message
 
-        # Pending messages drained at turn start are persisted as their
-        # OWN user rows in the DB *after* ``inject_user_context`` runs —
-        # that helper walks ``session.messages`` in reverse to find the
-        # current turn's user message (the routes.py-saved row at this
-        # point) and rewrites its content with the wrapped envelopes.
-        # If we appended pending rows before inject, inject would target
-        # the last pending row instead, scrambling per-bubble content
-        # so each pending bubble would render the entire combined+wrapped
-        # block.  ``transcript_builder=None`` because the model already
-        # sees the combined ``current_message`` as one user turn — the
-        # transcript captures it as one entry at turn-end via
-        # ``append_user(current_message)``.
+        # Now that ``inject_user_context`` has wrapped + persisted the
+        # ORIGINAL turn-starting send into its row, fold any pending
+        # chips into the prompt the model sees AND persist each pending
+        # message as its own raw-text user row in the DB.  Order matters
+        # because:
+        #
+        #   - inject targets the last user row (= routes.py-saved row at
+        #     this point) and writes envelopes + the value passed in.
+        #     If we'd combined first, the wrapped row would carry the
+        #     chip text too, and persisting the chip as a separate row
+        #     below would make the chip appear twice in the UI.
+        #   - inject targets the last user row.  If we'd persisted
+        #     pending rows first, inject would land on a pending row
+        #     instead of the original send.
+        #
+        # ``transcript_builder=None``: the model still sees the combined
+        # text below as a single user turn that gets written to the
+        # transcript at turn-end via ``append_user(current_message)``.
+        # Adding each pending to the transcript here would triple-count
+        # them in the next turn's ``--resume`` context.
         if pending_messages:
+            current_message = combine_pending_with_current(
+                pending_messages,
+                current_message,
+                request_arrival_at=request_arrival_at,
+            )
             await persist_pending_as_user_rows(
                 session,
                 None,
