@@ -1017,8 +1017,9 @@ async def update_subscription_tier(
                 status_code=422,
                 detail=(
                     "Tier change unavailable for your current billing currency."
-                    " Cancel your subscription and re-subscribe at the target"
-                    " tier, or contact support."
+                    " Please contact support — the target tier needs to be"
+                    " configured for your currency in Stripe before this"
+                    " change can go through."
                 ),
             )
         logger.exception(

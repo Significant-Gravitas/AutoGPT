@@ -461,6 +461,7 @@ def test_update_subscription_tier_currency_mismatch_returns_422(
     assert response.status_code == 422
     detail = response.json()["detail"]
     assert "billing currency" in detail.lower()
+    assert "contact support" in detail.lower()
 
 
 def test_update_subscription_tier_creates_checkout(
