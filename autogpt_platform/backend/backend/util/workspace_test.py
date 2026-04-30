@@ -240,41 +240,6 @@ async def test_write_file_rejects_upload_when_usage_already_exceeds_downgraded_l
 
 
 @pytest.mark.asyncio
-async def test_write_file_80pct_warning_logged(manager, mock_storage, mock_db, caplog):
-    """write_file logs a warning when workspace usage crosses 80%."""
-    created_file = _make_workspace_file()
-    mock_db.get_workspace_file_by_path.return_value = None
-    mock_db.create_workspace_file.return_value = created_file
-
-    limit_bytes = 100  # 100 bytes total limit
-    current_usage = 75  # 75 bytes used → 75% before write
-    content = b"123456"  # 6 bytes → 81% after write
-
-    with (
-        patch(
-            "backend.util.workspace.get_workspace_storage",
-            return_value=mock_storage,
-        ),
-        patch("backend.util.workspace.workspace_db", return_value=mock_db),
-        patch("backend.util.workspace.scan_content_safe", new_callable=AsyncMock),
-        patch(
-            "backend.util.workspace.get_workspace_storage_limit_bytes",
-            return_value=limit_bytes,
-        ),
-        patch(
-            "backend.util.workspace.get_workspace_total_size",
-            return_value=current_usage,
-        ),
-    ):
-        import logging
-
-        with caplog.at_level(logging.WARNING, logger="backend.util.workspace"):
-            await manager.write_file(filename="test.txt", content=content)
-
-    assert any("workspace storage at" in record.message for record in caplog.records)
-
-
-@pytest.mark.asyncio
 async def test_write_file_overwrite_not_double_counted(manager, mock_storage, mock_db):
     """Overwriting a file subtracts the old file size from usage check."""
     existing_file = _make_workspace_file(size_bytes=50)

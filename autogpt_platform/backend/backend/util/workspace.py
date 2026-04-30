@@ -192,7 +192,15 @@ class WorkspaceManager:
             Created WorkspaceFile instance
 
         Raises:
-            ValueError: If file exceeds size limit or path already exists
+            ValueError: If file exceeds size limit, exceeds the user's
+                tier-based storage quota, or path already exists.
+            VirusDetectedError: If the virus scanner flagged the content as
+                malicious. Callers that want a generic failure should still
+                catch ``Exception``, but a specific handler lets you log this
+                as a security event rather than a generic write failure.
+            VirusScanError: If the virus scanner is unreachable or otherwise
+                fails. Distinct from ``VirusDetectedError`` — typically maps
+                to a 5xx response (infrastructure issue, retry-able).
         """
         # Enforce file size limit
         max_file_size = Config().max_file_size_mb * 1024 * 1024
@@ -231,12 +239,6 @@ class WorkspaceManager:
                 f"You've used {format_bytes(current_usage)} of your "
                 f"{format_bytes(storage_limit)} quota. "
                 f"Delete some files or upgrade your plan for more storage."
-            )
-        if storage_limit > 0 and projected_usage / storage_limit >= 0.8:
-            logger.warning(
-                f"User {self.user_id} workspace storage at "
-                f"{projected_usage / storage_limit * 100:.1f}% "
-                f"({projected_usage} / {storage_limit} bytes)"
             )
 
         # Check if file exists at path (only error for non-overwrite case).
