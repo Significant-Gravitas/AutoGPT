@@ -121,7 +121,7 @@ async def export_credit_transactions(
     ),
     admin_user_id: str = Security(get_user_id),
 ) -> CreditTransactionsExportResponse:
-    """Export CreditTransaction rows in [start, end] for finance reporting.
+    """Export CreditTransaction rows in [start, end].
 
     Capped at CREDIT_EXPORT_MAX_DAYS days and CREDIT_EXPORT_MAX_ROWS rows;
     over-cap requests fail fast with 400 so callers narrow the window

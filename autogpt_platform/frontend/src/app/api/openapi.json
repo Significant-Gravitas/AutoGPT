@@ -3131,7 +3131,7 @@
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
         "summary": "Export Credit Transactions",
-        "description": "Export CreditTransaction rows in [start, end] for finance reporting.\n\nCapped at CREDIT_EXPORT_MAX_DAYS days and CREDIT_EXPORT_MAX_ROWS rows;\nover-cap requests fail fast with 400 so callers narrow the window\ninstead of receiving silently truncated data.",
+        "description": "Export CreditTransaction rows in [start, end].\n\nCapped at CREDIT_EXPORT_MAX_DAYS days and CREDIT_EXPORT_MAX_ROWS rows;\nover-cap requests fail fast with 400 so callers narrow the window\ninstead of receiving silently truncated data.",
         "operationId": "getV2Export credit transactions",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [

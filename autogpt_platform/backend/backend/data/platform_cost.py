@@ -818,11 +818,17 @@ async def get_copilot_weekly_usage_for_export(
 
     out: list[CopilotWeeklyUsageRow] = []
     for r in rows:
-        week_start: datetime = r["week_start"]
+        # Prisma's query_raw returns timestamptz columns as ISO strings, not
+        # datetimes — parse defensively so either shape works.
+        raw_week_start = r["week_start"]
+        if isinstance(raw_week_start, str):
+            week_start = datetime.fromisoformat(raw_week_start.replace("Z", "+00:00"))
+        else:
+            week_start = raw_week_start
         if week_start.tzinfo is None:
             week_start = week_start.replace(tzinfo=timezone.utc)
-        # Inclusive end-of-week (Sunday 23:59:59.999999 UTC) — matches finance
-        # conventions where "the week" is Mon–Sun, not Mon–next Mon.
+        # Inclusive end-of-week (Sunday 23:59:59.999999 UTC); "the week" is
+        # Mon–Sun, not Mon–next Mon.
         week_end = week_start + timedelta(days=7, microseconds=-1)
         cost = int(r.get("cost_microdollars") or 0)
         tier_str = r.get("tier") or DEFAULT_TIER.value
