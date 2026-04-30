@@ -80,7 +80,6 @@ from backend.data.onboarding import (
     OnboardingStep,
     UserOnboardingUpdate,
     complete_onboarding_step,
-    complete_re_run_agent,
     format_onboarding_for_extraction,
     get_recommended_agents,
     get_user_onboarding,
@@ -1310,9 +1309,6 @@ async def create_new_graph(
     await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
 
-    if create_graph.source == "builder":
-        await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
-
     return activated_graph
 
 
@@ -1491,7 +1487,6 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
-        await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(
                 user_id, OnboardingStep.MARKETPLACE_RUN_AGENT
