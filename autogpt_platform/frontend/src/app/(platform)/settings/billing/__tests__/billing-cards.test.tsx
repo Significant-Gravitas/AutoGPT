@@ -37,7 +37,8 @@ describe("YourPlanCard", () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
-        monthly_cost: 2000,
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", {
@@ -48,7 +49,7 @@ describe("YourPlanCard", () => {
     render(<YourPlanCard />);
 
     expect(await screen.findByText("Pro")).toBeDefined();
-    expect(screen.getByText("$20.00 / month")).toBeDefined();
+    expect(screen.getByText(/\$50\.00 \/ month/)).toBeDefined();
     expect(screen.getByRole("button", { name: /upgrade plan/i })).toBeDefined();
     expect(
       screen.getByRole("button", { name: /manage subscription/i }),
@@ -60,6 +61,7 @@ describe("YourPlanCard", () => {
       jsonHandler("get", "/api/credits/subscription", {
         tier: "BUSINESS",
         monthly_cost: 50000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
@@ -67,8 +69,29 @@ describe("YourPlanCard", () => {
 
     render(<YourPlanCard />);
 
-    expect(await screen.findByText("Business")).toBeDefined();
+    expect(await screen.findByText("Team")).toBeDefined();
     expect(screen.queryByRole("button", { name: /upgrade plan/i })).toBeNull();
+  });
+
+  it("renders the 'no active subscription' state for NO_TIER users", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("No active subscription")).toBeDefined();
+    expect(screen.getByRole("button", { name: /choose a plan/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /cancel plan/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /manage subscription/i }),
+    ).toBeNull();
   });
 });
 
@@ -424,7 +447,8 @@ describe("Card mutation flows", () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
-        monthly_cost: 2000,
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", {
@@ -439,19 +463,20 @@ describe("Card mutation flows", () => {
     ).toBeDefined();
   });
 
-  it("YourPlanCard: hides 'Cancel plan' on the BASIC tier", async () => {
+  it("YourPlanCard: hides 'Cancel plan' for users without an active subscription", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
-        tier: "BASIC",
+        tier: "NO_TIER",
         monthly_cost: 0,
-        status: "active",
+        has_active_stripe_subscription: false,
+        status: "inactive",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
     );
 
     render(<YourPlanCard />);
 
-    expect(await screen.findByText("Basic")).toBeDefined();
+    expect(await screen.findByText("No active subscription")).toBeDefined();
     expect(screen.queryByRole("button", { name: /cancel plan/i })).toBeNull();
   });
 });

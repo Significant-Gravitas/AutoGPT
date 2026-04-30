@@ -9,7 +9,8 @@ import SettingsBillingPage from "../page";
 
 const SUBSCRIPTION_RESPONSE = {
   tier: "PRO",
-  monthly_cost: 2000,
+  monthly_cost: 5000,
+  has_active_stripe_subscription: true,
   status: "active",
 };
 
@@ -56,7 +57,7 @@ describe("Settings billing page (integration)", () => {
 
     expect(await screen.findByText("Your plan")).toBeDefined();
     expect(await screen.findByText("Pro")).toBeDefined();
-    expect(screen.getByText("$20.00 / month")).toBeDefined();
+    expect(screen.getByText(/\$50\.00 \/ month/)).toBeDefined();
 
     // Invoices card empty-state copy (no invoices fixture above).
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();

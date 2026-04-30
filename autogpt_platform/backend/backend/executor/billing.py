@@ -420,7 +420,7 @@ def handle_insufficient_funds_notif(
             type=NotificationType.ZERO_BALANCE,
             data=ZeroBalanceData(
                 current_balance=e.balance,
-                billing_page_link=f"{base_url}/profile/credits",
+                billing_page_link=f"{base_url}/settings/billing",
                 shortfall=shortfall,
                 agent_name=metadata.name if metadata else "Unknown Agent",
             ),
@@ -472,7 +472,7 @@ def handle_low_balance(
                 type=NotificationType.LOW_BALANCE,
                 data=LowBalanceData(
                     current_balance=current_balance,
-                    billing_page_link=f"{base_url}/profile/credits",
+                    billing_page_link=f"{base_url}/settings/billing",
                 ),
             )
         )

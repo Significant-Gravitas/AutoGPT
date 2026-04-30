@@ -355,7 +355,8 @@ describe("useYourPlanCard", () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
-        monthly_cost: 2000,
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", {
@@ -371,7 +372,7 @@ describe("useYourPlanCard", () => {
 
     expect(result.current.plan?.label).toBe("Pro");
     expect(result.current.plan?.tierKey).toBe("PRO");
-    expect(result.current.plan?.monthlyCostCents).toBe(2000);
+    expect(result.current.plan?.monthlyCostCents).toBe(5000);
     expect(result.current.plan?.isPaidPlan).toBe(true);
     expect(result.current.plan?.nextTier).toBe("MAX");
     expect(result.current.canUpgrade).toBe(true);
@@ -383,6 +384,7 @@ describe("useYourPlanCard", () => {
       jsonHandler("get", "/api/credits/subscription", {
         tier: "BUSINESS",
         monthly_cost: 50000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
@@ -398,12 +400,13 @@ describe("useYourPlanCard", () => {
     expect(result.current.canUpgrade).toBe(false);
   });
 
-  it("onCancel no-ops on the BASIC tier (no redundant downgrade request)", async () => {
+  it("onCancel no-ops for users without an active subscription", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
-        tier: "BASIC",
+        tier: "NO_TIER",
         monthly_cost: 0,
-        status: "active",
+        has_active_stripe_subscription: false,
+        status: "inactive",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
     );
@@ -419,12 +422,35 @@ describe("useYourPlanCard", () => {
     expect(result.current.isUpdatingTier).toBe(false);
   });
 
-  it("changeTier (BUSINESS upgrade attempt) calls updateTier with the requested tier", async () => {
+  it("offers PRO as the next tier when the user has no active subscription", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    const { result } = renderHook(() => useYourPlanCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.plan?.isPaidPlan).toBe(false);
+    expect(result.current.plan?.nextTier).toBe("PRO");
+    expect(result.current.canUpgrade).toBe(true);
+  });
+
+  it("changeTier (PRO → MAX upgrade) calls updateTier with the requested tier", async () => {
     let capturedTier: string | null = null;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
-        monthly_cost: 2000,
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
@@ -453,7 +479,8 @@ describe("useYourPlanCard", () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
         tier: "PRO",
-        monthly_cost: 2000,
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
@@ -481,6 +508,7 @@ describe("useYourPlanCard", () => {
       jsonHandler("get", "/api/credits/subscription", {
         tier: "STARTUP",
         monthly_cost: 100,
+        has_active_stripe_subscription: true,
         status: "active",
       }),
       jsonHandler("get", "/api/credits/manage", { url: null }),
@@ -493,6 +521,7 @@ describe("useYourPlanCard", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.plan?.label).toBe("STARTUP");
-    expect(result.current.plan?.nextTier).toBeNull();
+    // STARTUP isn't in TIER_ORDER → unknown, default to first paid tier.
+    expect(result.current.plan?.nextTier).toBe("PRO");
   });
 });

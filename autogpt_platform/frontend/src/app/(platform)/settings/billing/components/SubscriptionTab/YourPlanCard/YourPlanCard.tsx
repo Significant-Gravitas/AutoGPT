@@ -7,7 +7,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 
-import { EASE_OUT, formatCents } from "../../../helpers";
+import { EASE_OUT, formatCents, formatShortDate } from "../../../helpers";
 import { useYourPlanCard } from "./useYourPlanCard";
 
 interface Props {
@@ -59,12 +59,21 @@ export function YourPlanCard({ index = 0 }: Props) {
               size="small"
               className="bg-violet-100 text-violet-800"
             >
-              Active
+              {plan.isPaidPlan ? "Active" : "No active subscription"}
             </Badge>
           </div>
-          <Text variant="body" as="span" className="text-zinc-700">
-            {formatCents(plan.monthlyCostCents)} / month
-          </Text>
+          {plan.isPaidPlan ? (
+            <Text variant="body" as="span" className="text-zinc-700">
+              {formatCents(plan.monthlyCostCents)} / month
+              {plan.currentPeriodEnd
+                ? ` · Renews on ${formatShortDate(plan.currentPeriodEnd * 1000)}`
+                : null}
+            </Text>
+          ) : (
+            <Text variant="body" as="span" className="text-zinc-700">
+              Pick a plan to continue using AutoGPT.
+            </Text>
+          )}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -73,19 +82,21 @@ export function YourPlanCard({ index = 0 }: Props) {
               variant="ghost"
               size="small"
               onClick={onCancel}
-              disabled={isUpdatingTier}
+              disabled={isUpdatingTier || !canManagePortal}
             >
               Cancel plan
             </Button>
           ) : null}
-          <Button
-            variant="secondary"
-            size="small"
-            onClick={onManage}
-            disabled={!canManagePortal}
-          >
-            Manage subscription
-          </Button>
+          {plan.isPaidPlan ? (
+            <Button
+              variant="secondary"
+              size="small"
+              onClick={onManage}
+              disabled={!canManagePortal}
+            >
+              Manage subscription
+            </Button>
+          ) : null}
           {canUpgrade ? (
             <Button
               variant="primary"
@@ -93,7 +104,7 @@ export function YourPlanCard({ index = 0 }: Props) {
               onClick={onUpgrade}
               disabled={isUpdatingTier}
             >
-              Upgrade plan
+              {plan.isPaidPlan ? "Upgrade plan" : "Choose a plan"}
             </Button>
           ) : null}
         </div>

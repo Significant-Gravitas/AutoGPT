@@ -256,7 +256,7 @@ class UserCreditBase(ABC):
     async def create_billing_portal_session(user_id: str) -> str:
         session = stripe.billing_portal.Session.create(
             customer=await get_stripe_customer_id(user_id),
-            return_url=base_url + "/profile/credits",
+            return_url=base_url + "/settings/billing",
         )
         return session.url
 
@@ -1028,8 +1028,8 @@ class UserCredit(UserCreditBase):
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=base_url + "/profile/credits?topup=success",
-            cancel_url=base_url + "/profile/credits?topup=cancel",
+            success_url=base_url + "/settings/billing?topup=success",
+            cancel_url=base_url + "/settings/billing?topup=cancel",
             allow_promotion_codes=True,
         )
 

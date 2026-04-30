@@ -11,14 +11,16 @@ import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 const PLAN_LABEL: Record<string, string> = {
-  BASIC: "Basic",
+  NO_TIER: "No active subscription",
   PRO: "Pro",
   MAX: "Max",
-  BUSINESS: "Business",
+  BUSINESS: "Team",
 };
 
+// User-visible paid plans only. NO_TIER is the "no active subscription" state
+// (gates the platform via PaywallGate); BASIC + ENTERPRISE are reserved
+// internal slots and never offered as upgrade targets in the settings UI.
 const TIER_ORDER = [
-  "BASIC",
   "PRO",
   "MAX",
   "BUSINESS",
@@ -26,7 +28,8 @@ const TIER_ORDER = [
 
 function getNextTier(current: string): SubscriptionTierRequestTier | null {
   const idx = TIER_ORDER.indexOf(current as (typeof TIER_ORDER)[number]);
-  if (idx === -1 || idx === TIER_ORDER.length - 1) return null;
+  if (idx === -1) return TIER_ORDER[0];
+  if (idx === TIER_ORDER.length - 1) return null;
   return TIER_ORDER[idx + 1];
 }
 
@@ -58,8 +61,9 @@ export function useYourPlanCard() {
         tierKey: subscription.data.tier,
         label: PLAN_LABEL[subscription.data.tier] ?? subscription.data.tier,
         monthlyCostCents: subscription.data.monthly_cost,
-        isPaidPlan: subscription.data.tier !== "BASIC",
+        isPaidPlan: Boolean(subscription.data.has_active_stripe_subscription),
         nextTier: getNextTier(subscription.data.tier),
+        currentPeriodEnd: subscription.data.current_period_end ?? null,
       }
     : undefined;
 
@@ -104,8 +108,11 @@ export function useYourPlanCard() {
       if (plan?.nextTier) void changeTier(plan.nextTier);
     },
     onCancel: () => {
-      if (!plan || plan.tierKey === "BASIC") return;
-      void changeTier("BASIC");
+      // No free plan exists — cancellation must go through Stripe billing
+      // portal so the user manages it on Stripe; at period end the webhook
+      // flips the DB tier to NO_TIER and PaywallGate takes over.
+      if (!plan?.isPaidPlan) return;
+      if (paymentPortal.data) window.location.href = paymentPortal.data;
     },
     onManage: () => {
       if (paymentPortal.data) window.location.href = paymentPortal.data;
