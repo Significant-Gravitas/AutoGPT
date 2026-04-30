@@ -81,11 +81,11 @@ export function useCopilotPendingChips({
     setQueue,
   });
 
-  const appendChip = useCallback((text: string) => {
+  const queueMessage = useCallback((text: string) => {
     setQueue((prev) => [...prev, { id: crypto.randomUUID(), text }]);
   }, []);
 
-  return { queuedMessages, appendChip };
+  return { queuedMessages, queueMessage };
 }
 
 // ── 1. Peek sync ───────────────────────────────────────────────────────

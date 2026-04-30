@@ -106,7 +106,7 @@ describe("useCopilotPendingChips", () => {
     });
   });
 
-  it("appendChip adds a chip locally without hitting backend", () => {
+  it("queueMessage adds a chip locally without hitting backend", () => {
     const setMessages = vi.fn();
     const { result } = renderHook(() =>
       useCopilotPendingChips({
@@ -118,7 +118,7 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("hello");
+      result.current.queueMessage("hello");
     });
     expect(result.current.queuedMessages).toEqual(["hello"]);
   });
@@ -144,8 +144,8 @@ describe("useCopilotPendingChips", () => {
 
     // User queues two distinct chips while turn 1 is still streaming.
     act(() => {
-      result.current.appendChip("followup-a");
-      result.current.appendChip("followup-b");
+      result.current.queueMessage("followup-a");
+      result.current.queueMessage("followup-b");
     });
 
     setMessages.mockClear();
@@ -280,7 +280,7 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("survives");
+      result.current.queueMessage("survives");
     });
 
     peekMock.mockRejectedValue(new Error("network blip"));
@@ -313,8 +313,8 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("chipA");
-      result.current.appendChip("chipB");
+      result.current.queueMessage("chipA");
+      result.current.queueMessage("chipB");
     });
 
     peekMock.mockResolvedValue({
@@ -379,7 +379,7 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("chipA");
+      result.current.queueMessage("chipA");
     });
 
     // Poll fires for sess-A but resolves AFTER we've switched to sess-B.
@@ -429,7 +429,7 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("chipA");
+      result.current.queueMessage("chipA");
     });
 
     // Backend has drained chipA (count=0). The poll's GET resolves, but
@@ -448,7 +448,7 @@ describe("useCopilotPendingChips", () => {
 
     // While the GET is still pending, append a second chip.
     act(() => {
-      result.current.appendChip("chipB");
+      result.current.queueMessage("chipB");
     });
 
     // Now resolve the in-flight peek.
