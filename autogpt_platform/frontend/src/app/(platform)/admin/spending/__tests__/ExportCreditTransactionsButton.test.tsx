@@ -115,4 +115,40 @@ describe("ExportCreditTransactionsButton", () => {
     revokeUrl.mockRestore();
     click.mockRestore();
   });
+
+  test("falls back to a generic toast when the API throws a non-ApiError", async () => {
+    exportSpy.mockRejectedValue(new Error("network blip"));
+    render(<ExportCreditTransactionsButton />);
+    fireEvent.click(screen.getByRole("button", { name: /Export CSV/i }));
+    await waitFor(() => screen.getByLabelText(/Start date/i));
+    fireEvent.click(screen.getByRole("button", { name: /Download CSV/i }));
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Export failed",
+          description: "network blip",
+          variant: "destructive",
+        }),
+      ),
+    );
+  });
+
+  test("warns when the response is missing the expected success shape", async () => {
+    // Simulate an unexpected non-200 that didn't throw — okData() returns
+    // undefined and the operator should see a clear error instead of a crash.
+    exportSpy.mockResolvedValue({ status: 204, data: null });
+    render(<ExportCreditTransactionsButton />);
+    fireEvent.click(screen.getByRole("button", { name: /Export CSV/i }));
+    await waitFor(() => screen.getByLabelText(/Start date/i));
+    fireEvent.click(screen.getByRole("button", { name: /Download CSV/i }));
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Export failed",
+          variant: "destructive",
+        }),
+      ),
+    );
+  });
 });

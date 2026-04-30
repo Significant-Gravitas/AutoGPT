@@ -114,4 +114,38 @@ describe("ExportCopilotUsageButton", () => {
       ),
     );
   });
+
+  test("falls back to a generic toast when the API throws a non-ApiError", async () => {
+    exportSpy.mockRejectedValue(new Error("network blip"));
+    render(<ExportCopilotUsageButton />);
+    fireEvent.click(screen.getByRole("button", { name: /Copilot Usage CSV/i }));
+    await waitFor(() => screen.getByLabelText(/Start date/i));
+    fireEvent.click(screen.getByRole("button", { name: /Download CSV/i }));
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Export failed",
+          description: "network blip",
+          variant: "destructive",
+        }),
+      ),
+    );
+  });
+
+  test("warns when the response is missing the expected success shape", async () => {
+    exportSpy.mockResolvedValue({ status: 204, data: null });
+    render(<ExportCopilotUsageButton />);
+    fireEvent.click(screen.getByRole("button", { name: /Copilot Usage CSV/i }));
+    await waitFor(() => screen.getByLabelText(/Start date/i));
+    fireEvent.click(screen.getByRole("button", { name: /Download CSV/i }));
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Export failed",
+          variant: "destructive",
+        }),
+      ),
+    );
+  });
 });
