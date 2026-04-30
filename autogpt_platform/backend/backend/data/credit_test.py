@@ -1,31 +1,26 @@
-from datetime import datetime, timedelta, timezone
-
 import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction, UserBalance
 
 from backend.blocks import get_block
 from backend.blocks.llm import AITextGeneratorBlock
-from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
+from backend.data.credit import UsageTransactionMetadata, UserCredit
 from backend.data.execution import ExecutionContext, NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
 from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
-REFILL_VALUE = 1000
-user_credit = BetaUserCredit(REFILL_VALUE)
+user_credit = UserCredit()
 
 
 async def disable_test_user_transactions():
     await CreditTransaction.prisma().delete_many(where={"userId": DEFAULT_USER_ID})
-    # Also reset the balance to 0 and set updatedAt to old date to trigger monthly refill
-    old_date = datetime.now(timezone.utc) - timedelta(days=35)  # More than a month ago
     await UserBalance.prisma().upsert(
         where={"userId": DEFAULT_USER_ID},
         data={
             "create": {"userId": DEFAULT_USER_ID, "balance": 0},
-            "update": {"balance": 0, "updatedAt": old_date},
+            "update": {"balance": 0},
         },
     )
 
@@ -119,112 +114,3 @@ async def test_block_credit_top_up(server: SpinTestServer):
 
     new_credit = await user_credit.get_credits(DEFAULT_USER_ID)
     assert new_credit == current_credit + 100
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_block_credit_reset(server: SpinTestServer):
-    """Test that BetaUserCredit provides monthly refills correctly."""
-    await disable_test_user_transactions()
-
-    # Save original time_now function for restoration
-    original_time_now = user_credit.time_now
-
-    try:
-        # Test month 1 behavior
-        month1 = datetime.now(timezone.utc).replace(month=1, day=1)
-        user_credit.time_now = lambda: month1
-
-        # IMPORTANT: Set updatedAt to December of previous year to ensure it's
-        # in a different month than month1 (January). This fixes a timing bug
-        # where if the test runs in early February, 35 days ago would be January,
-        # matching the mocked month1 and preventing the refill from triggering.
-        dec_previous_year = month1.replace(year=month1.year - 1, month=12, day=15)
-        await UserBalance.prisma().update(
-            where={"userId": DEFAULT_USER_ID},
-            data={"updatedAt": dec_previous_year},
-        )
-
-        # First call in month 1 should trigger refill
-        balance = await user_credit.get_credits(DEFAULT_USER_ID)
-        assert balance == REFILL_VALUE  # Should get 1000 credits
-
-        # Manually create a transaction with month 1 timestamp to establish history
-        await CreditTransaction.prisma().create(
-            data={
-                "userId": DEFAULT_USER_ID,
-                "amount": 100,
-                "type": CreditTransactionType.TOP_UP,
-                "runningBalance": 1100,
-                "isActive": True,
-                "createdAt": month1,  # Set specific timestamp
-            }
-        )
-
-        # Update user balance to match
-        await UserBalance.prisma().upsert(
-            where={"userId": DEFAULT_USER_ID},
-            data={
-                "create": {"userId": DEFAULT_USER_ID, "balance": 1100},
-                "update": {"balance": 1100},
-            },
-        )
-
-        # Now test month 2 behavior
-        month2 = datetime.now(timezone.utc).replace(month=2, day=1)
-        user_credit.time_now = lambda: month2
-
-        # In month 2, since balance (1100) > refill (1000), no refill should happen
-        month2_balance = await user_credit.get_credits(DEFAULT_USER_ID)
-        assert month2_balance == 1100  # Balance persists, no reset
-
-        # Now test the refill behavior when balance is low
-        # Set balance below refill threshold and backdate updatedAt to month2 so
-        # the month3 refill check sees a different (month2 → month3) transition.
-        # Without the explicit updatedAt, Prisma sets it to real-world NOW which
-        # may share the same calendar month as the mocked month3, suppressing refill.
-        await UserBalance.prisma().update(
-            where={"userId": DEFAULT_USER_ID},
-            data={"balance": 400, "updatedAt": month2},
-        )
-
-        # Create a month 2 transaction to update the last transaction time
-        await CreditTransaction.prisma().create(
-            data={
-                "userId": DEFAULT_USER_ID,
-                "amount": -700,  # Spent 700 to get to 400
-                "type": CreditTransactionType.USAGE,
-                "runningBalance": 400,
-                "isActive": True,
-                "createdAt": month2,
-            }
-        )
-
-        # Move to month 3
-        month3 = datetime.now(timezone.utc).replace(month=3, day=1)
-        user_credit.time_now = lambda: month3
-
-        # Should get refilled since balance (400) < refill value (1000)
-        month3_balance = await user_credit.get_credits(DEFAULT_USER_ID)
-        assert month3_balance == REFILL_VALUE  # Should be refilled to 1000
-
-        # Verify the refill transaction was created
-        refill_tx = await CreditTransaction.prisma().find_first(
-            where={
-                "userId": DEFAULT_USER_ID,
-                "type": CreditTransactionType.GRANT,
-                "transactionKey": {"contains": "MONTHLY-CREDIT-TOP-UP"},
-            },
-            order={"createdAt": "desc"},
-        )
-        assert refill_tx is not None, "Monthly refill transaction should be created"
-        assert refill_tx.amount == 600, "Refill should be 600 (1000 - 400)"
-    finally:
-        # Restore original time_now function
-        user_credit.time_now = original_time_now
-
-
-@pytest.mark.asyncio(loop_scope="session")
-async def test_credit_refill(server: SpinTestServer):
-    await disable_test_user_transactions()
-    balance = await user_credit.get_credits(DEFAULT_USER_ID)
-    assert balance == REFILL_VALUE
