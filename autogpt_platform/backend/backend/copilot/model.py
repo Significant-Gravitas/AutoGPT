@@ -803,22 +803,20 @@ async def append_and_save_message(
 
         try:
             await _save_session_to_db(session, existing_message_count)
-        except UniqueViolationError as e:
-            # Atomic-claim path: another writer (different pod / earlier
-            # retry) already persisted this exact id, so the Postgres PK
-            # constraint fires.  Strip the message we optimistically
-            # appended and signal "duplicate" up.  The unrelated
-            # ``(sessionId, sequence)`` race is retried inside
-            # ``add_chat_messages_batch`` itself, so any
-            # ``UniqueViolationError`` that escapes here is by definition
-            # a PK collision.
-            if "ChatMessage_pkey" not in str(e):
-                raise DatabaseError(
-                    f"Failed to persist message to session {session_id}"
-                ) from e
-            session.messages.pop()
-            return None
         except Exception as e:
+            # Any save failure rolls back the optimistic append so the
+            # in-memory ``session.messages`` stays consistent with what's
+            # persisted (the function-scoped session is fresh per call,
+            # but the cache write below would otherwise persist the
+            # phantom row).
+            session.messages.pop()
+            # PK collision is the dedup signal — caller short-circuits to
+            # subscribe-only.  Other ``UniqueViolationError`` (e.g. a
+            # ``(sessionId, sequence)`` race that exhausted the retry
+            # loop in ``add_chat_messages_batch``) and unrelated
+            # exceptions surface as ``DatabaseError``.
+            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+                return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
             ) from e
