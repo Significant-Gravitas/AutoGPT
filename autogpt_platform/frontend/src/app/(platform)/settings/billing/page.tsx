@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
 import {
@@ -11,7 +12,10 @@ import {
   TabsLineTrigger,
 } from "@/components/molecules/TabsLine/TabsLine";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { usePatchV1FulfillCheckoutSession } from "@/app/api/__generated__/endpoints/credits/credits";
+import {
+  getGetSubscriptionStatusQueryKey,
+  usePatchV1FulfillCheckoutSession,
+} from "@/app/api/__generated__/endpoints/credits/credits";
 
 import { AutomationCreditsTab } from "./components/AutomationCreditsTab/AutomationCreditsTab";
 import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
@@ -19,9 +23,12 @@ import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 export default function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const topupStatus = searchParams.get("topup");
+  const subscriptionStatus = searchParams.get("subscription");
   const { mutateAsync: fulfillCheckout } = usePatchV1FulfillCheckoutSession();
   const handledTopupRef = useRef<string | null>(null);
+  const handledSubscriptionRef = useRef<string | null>(null);
 
   useEffect(function setBillingDocumentTitle() {
     document.title = "Billing – AutoGPT Platform";
@@ -56,6 +63,34 @@ export default function SettingsBillingPage() {
       router.replace("/settings/billing");
     },
     [topupStatus, fulfillCheckout, router],
+  );
+
+  useEffect(
+    function handleSubscriptionRedirect() {
+      if (!subscriptionStatus) return;
+      if (handledSubscriptionRef.current === subscriptionStatus) return;
+      handledSubscriptionRef.current = subscriptionStatus;
+
+      if (subscriptionStatus === "success") {
+        toast({
+          title: "Subscription updated",
+          description:
+            "Your new plan is being applied. It may take a moment to reflect.",
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetSubscriptionStatusQueryKey(),
+        });
+      } else if (subscriptionStatus === "cancelled") {
+        toast({
+          title: "Checkout cancelled",
+          description: "Your plan was not changed.",
+          variant: "destructive",
+        });
+      }
+
+      router.replace("/settings/billing");
+    },
+    [subscriptionStatus, queryClient, router],
   );
 
   return (

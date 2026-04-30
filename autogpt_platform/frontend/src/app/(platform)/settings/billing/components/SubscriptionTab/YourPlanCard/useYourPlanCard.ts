@@ -69,18 +69,8 @@ export function useYourPlanCard() {
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
 
-  // Backend defaults new users' subscription_tier to PRO at the DB level
-  // (see schema.prisma comment — intentional for the beta-period rate
-  // limits). For UI purposes, treat anyone without an active Stripe sub
-  // as NO_TIER regardless of the DB tier — otherwise we'd show "Pro" +
-  // "No active subscription" simultaneously, and offer "Upgrade to Max"
-  // before the user has paid for Pro at all.
-  const isPaid = Boolean(subscription.data?.has_active_stripe_subscription);
-  const effectiveTier = subscription.data
-    ? isPaid
-      ? subscription.data.tier
-      : "NO_TIER"
-    : null;
+  const effectiveTier = subscription.data?.tier ?? null;
+  const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
 
   const nextTierKey = effectiveTier ? getNextTier(effectiveTier) : null;
   const previousTierKey = effectiveTier ? getPreviousTier(effectiveTier) : null;
@@ -100,7 +90,7 @@ export function useYourPlanCard() {
         label:
           PLAN_LABEL[effectiveTier ?? subscription.data.tier] ??
           subscription.data.tier,
-        monthlyCostCents: isPaid ? subscription.data.monthly_cost : 0,
+        monthlyCostCents: subscription.data.monthly_cost,
         isPaidPlan: isPaid,
         nextTier: nextTierKey,
         nextTierLabel: nextTierKey
