@@ -97,18 +97,20 @@ export function useSendMessage({
     files: File[],
     prebuiltParts: FileUIPart[],
   ) {
-    // Per-click UUID becomes ``ChatMessage.id`` on the backend — Postgres'
-    // PK uniqueness then catches retransmits / RMQ-redeliveries / browser
-    // auto-retries as the atomic dedup primitive.  AI SDK preserves the
-    // ``messageId`` across SDK-internal retries so any retransmit within
-    // a single ``sendMessage`` call carries the same id.
-    const messageId = crypto.randomUUID();
+    // The per-click UUID that becomes the backend's ``ChatMessage.id``
+    // is generated inside the transport's ``prepareSendMessagesRequest``
+    // (one call per ``sendMessages``, stable across SDK-internal
+    // retries) — NOT here.  AI SDK's ``messageId`` arg means
+    // "replace-existing-message" (edit mode), not "id of a new
+    // message", so passing it would put the SDK into edit-mode with no
+    // target and break the optimistic-render path that pushes the user
+    // bubble into ``messages`` synchronously.
     if (prebuiltParts.length > 0) {
-      sendMessage({ text, files: prebuiltParts, messageId });
+      sendMessage({ text, files: prebuiltParts });
       return;
     }
     if (files.length === 0) {
-      sendMessage({ text, messageId });
+      sendMessage({ text });
       return;
     }
     setIsUploadingFiles(true);
@@ -126,7 +128,6 @@ export function useSendMessage({
       sendMessage({
         text,
         files: fileParts.length > 0 ? fileParts : undefined,
-        messageId,
       });
     } finally {
       setIsUploadingFiles(false);
