@@ -1003,6 +1003,35 @@ async def update_subscription_tier(
             return await get_subscription_status(user_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except stripe.InvalidRequestError as e:
+        # Stripe rejects schedule modify when phases mix currencies, e.g. the
+        # active sub was checked out in GBP but the target tier's Price is
+        # USD-only. 502 reads as outage; surface a 422 with a specific message
+        # so the user/admin can see what to fix in Stripe.
+        msg = str(e)
+        if "currency" in msg.lower():
+            logger.warning(
+                "Currency mismatch on tier change for user %s: %s", user_id, msg
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Tier change unavailable for your current billing currency."
+                    " Please contact support — the target tier needs to be"
+                    " configured for your currency in Stripe before this"
+                    " change can go through."
+                ),
+            )
+        logger.exception(
+            "Stripe error modifying subscription for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to update your subscription right now. "
+                "Please try again or contact support."
+            ),
+        )
     except stripe.StripeError as e:
         logger.exception(
             "Stripe error modifying subscription for user %s: %s", user_id, e
