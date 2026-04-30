@@ -416,6 +416,53 @@ def test_update_subscription_tier_paid_requires_urls(
     assert response.status_code == 422
 
 
+def test_update_subscription_tier_currency_mismatch_returns_422(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Stripe rejects a SubscriptionSchedule whose phases mix currencies (e.g.
+    GBP-checkout sub trying to schedule a USD-only target Price). The handler
+    must convert that into a specific 422 instead of the generic 502 so the
+    caller can tell the difference between a currency-config bug and a Stripe
+    outage."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.MAX
+
+    async def mock_feature_enabled(*args, **kwargs):
+        return True
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        side_effect=stripe.InvalidRequestError(
+            "The price specified only supports `usd`. This doesn't match the"
+            " expected currency: `gbp`.",
+            param="phases",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "billing currency" in detail.lower()
+
+
 def test_update_subscription_tier_creates_checkout(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
