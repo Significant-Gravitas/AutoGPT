@@ -519,6 +519,26 @@ def test_all_same_role_messages():
     assert is_message_duplicate(msgs, "user", "new") is False
 
 
+def test_chatmessage_id_field_round_trips():
+    """``ChatMessage.id`` round-trips through ``model_dump``/``model_validate``
+    so the route layer can serialise it to the DB INSERT and the cache can
+    rebuild the in-memory list with stable PKs."""
+    msg = ChatMessage(
+        id="00000000-0000-4000-8000-000000000001", role="user", content="hi"
+    )
+    dumped = msg.model_dump()
+    assert dumped["id"] == "00000000-0000-4000-8000-000000000001"
+    rebuilt = ChatMessage.model_validate(dumped)
+    assert rebuilt.id == msg.id
+
+
+def test_chatmessage_id_defaults_to_none():
+    """Old code paths that don't set id stay null so Prisma's
+    ``@default(uuid())`` generator fires server-side as before."""
+    msg = ChatMessage(role="assistant", content="hi")
+    assert msg.id is None
+
+
 # --------------------------------------------------------------------------- #
 #  maybe_append_user_message                                                   #
 # --------------------------------------------------------------------------- #

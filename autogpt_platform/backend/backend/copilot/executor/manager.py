@@ -386,24 +386,6 @@ class CoPilotExecutor(AppProcess):
 
         session_id = entry.session_id
 
-        # Idempotency-key dedup for RMQ redeliveries. The HTTP layer claimed
-        # ``(session_id, idempotency_key) -> turn_id`` in Redis before this
-        # task was enqueued; if a different turn_id is bound to the same key
-        # now, this consumer is processing a redelivered task whose original
-        # turn is still in flight (or has finished). Drop without requeue.
-        if entry.idempotency_key and entry.turn_id:
-            from backend.copilot.idempotency import sync_get_claimed_turn_id
-
-            claimed = sync_get_claimed_turn_id(session_id, entry.idempotency_key)
-            if claimed is not None and claimed != entry.turn_id:
-                logger.warning(
-                    f"Dropping redelivered task for session {session_id}: "
-                    f"idempotency_key bound to turn={claimed}, "
-                    f"this task carries turn={entry.turn_id}"
-                )
-                ack_message(reject=True, requeue=False)
-                return
-
         # Check for local duplicate - session is already running on this executor
         if session_id in self.active_tasks:
             logger.warning(
