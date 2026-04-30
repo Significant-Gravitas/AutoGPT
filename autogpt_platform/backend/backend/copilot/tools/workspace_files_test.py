@@ -655,13 +655,17 @@ class TestWriteWorkspaceFileToolErrorHandling:
             )
 
     async def test_quota_exceeded_returns_error_response(self, setup_test_data):
-        """Quota exceeded (ValueError) → ErrorResponse with storage message."""
+        """Quota exceeded (ValueError) → ErrorResponse with storage message + recovery hint."""
         result = await self._execute_write(
             ValueError("Storage limit exceeded: 250 MB used of 250 MB (100.0%)"),
             setup_test_data,
         )
         assert isinstance(result, ErrorResponse)
         assert "Storage limit exceeded" in result.message
+        # The agent needs an actionable hint so it can offer to clean up rather
+        # than just relaying the error to the user.
+        assert "delete_workspace_file" in result.message
+        assert "list_workspace_files" in result.message
 
     async def test_virus_detected_returns_error_response(self, setup_test_data):
         """VirusDetectedError → ErrorResponse with virus message."""

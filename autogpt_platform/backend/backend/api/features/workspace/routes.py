@@ -24,7 +24,6 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     get_workspace_total_size,
-    soft_delete_workspace_file,
 )
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager, format_bytes
@@ -276,10 +275,12 @@ async def upload_file(
     new_total = await get_workspace_total_size(workspace.id)
     if storage_limit_bytes and new_total > storage_limit_bytes:
         try:
-            await soft_delete_workspace_file(workspace_file.id, workspace.id)
+            # Route through WorkspaceManager so the storage backend blob is
+            # removed too — soft_delete_workspace_file alone leaks the blob.
+            await manager.delete_file(workspace_file.id)
         except Exception as e:
             logger.warning(
-                f"Failed to soft-delete over-quota file {workspace_file.id} "
+                f"Failed to delete over-quota file {workspace_file.id} "
                 f"in workspace {workspace.id}: {e}"
             )
         raise fastapi.HTTPException(

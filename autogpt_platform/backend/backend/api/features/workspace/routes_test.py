@@ -282,7 +282,7 @@ def test_upload_storage_quota_exceeded(mocker):
 
 
 def test_upload_post_write_quota_race(mocker):
-    """Concurrent upload tipping over limit after write should soft-delete + 413."""
+    """Concurrent upload tipping over limit after write should delete + 413."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
@@ -298,18 +298,17 @@ def test_upload_post_write_quota_race(mocker):
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mock_manager.delete_file = mocker.AsyncMock(return_value=True)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
     )
-    mock_delete = mocker.patch(
-        "backend.api.features.workspace.routes.soft_delete_workspace_file",
-        return_value=None,
-    )
 
     response = _upload()
     assert response.status_code == 413
-    mock_delete.assert_called_once_with("file-aaa-bbb", "ws-001")
+    # Rollback must go through manager.delete_file so the storage blob is removed,
+    # not just soft_delete_workspace_file (which would orphan the blob).
+    mock_manager.delete_file.assert_awaited_once_with("file-aaa-bbb")
 
 
 def test_upload_any_extension(mocker):

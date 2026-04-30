@@ -901,7 +901,14 @@ class WriteWorkspaceFileTool(BaseTool):
             logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
             return ErrorResponse(message=str(e), session_id=session_id)
         except ValueError as e:
-            return ErrorResponse(message=str(e), session_id=session_id)
+            msg = str(e)
+            if msg.startswith("Storage limit exceeded"):
+                msg += (
+                    " Use list_workspace_files to find candidates, then "
+                    "delete_workspace_file to free space and retry — or ask "
+                    "the user to upgrade their plan."
+                )
+            return ErrorResponse(message=msg, session_id=session_id)
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
