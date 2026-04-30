@@ -212,6 +212,15 @@ class CoPilotExecutionEntry(BaseModel):
     queue messages written before this field existed (they sort as "all
     pending before current" — the pre-fix behaviour)."""
 
+    idempotency_key: str | None = None
+    """Per-click UUID forwarded from ``POST /stream``.  When set, the
+    executor confirms the key is still claimed by **this** turn_id in
+    Redis before processing — any RMQ redelivery (the original consumer
+    crashed mid-turn, RMQ re-queued the task) lands on a second consumer
+    that finds the key bound to a different / no turn_id and short-
+    circuits, avoiding a duplicate LLM turn for the same logical send.
+    None = legacy clients without idempotency support."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -235,6 +244,7 @@ async def enqueue_copilot_turn(
     model: CopilotLlmModel | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    idempotency_key: str | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -265,6 +275,7 @@ async def enqueue_copilot_turn(
         model=model,
         permissions=permissions,
         request_arrival_at=request_arrival_at,
+        idempotency_key=idempotency_key,
     )
 
     queue_client = await get_async_copilot_queue()

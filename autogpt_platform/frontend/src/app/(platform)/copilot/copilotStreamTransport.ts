@@ -54,6 +54,14 @@ export function createCopilotTransport({
           return match?.[1];
         })
         .filter(Boolean) as string[] | undefined;
+      // Idempotency key = AI SDK's stable per-message id. AI SDK auto-
+      // generates this once per ``sendMessage`` call and preserves it
+      // across retries (network-level retry inside a single sendMessages
+      // call, AbortError + manual resume, RMQ redelivery on the backend).
+      // A second user click of identical text gets a *different* message
+      // and therefore a different id — that's the desired behaviour, the
+      // backend dedups distinct sends only via the duplicate-trail check
+      // in ``append_and_save_message``.
       return {
         body: {
           message: (
@@ -64,6 +72,7 @@ export function createCopilotTransport({
           file_ids: fileIds && fileIds.length > 0 ? fileIds : null,
           mode: copilotModeRef.current ?? null,
           model: copilotModelRef.current ?? null,
+          idempotency_key: last.id,
         },
         headers: await getCopilotAuthHeaders(),
       };

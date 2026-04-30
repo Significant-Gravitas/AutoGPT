@@ -112,59 +112,6 @@ def is_message_duplicate(
     return False
 
 
-# Window for the cross-turn identical-send guard.  A duplicate POST /stream
-# with text equal to the most recent same-role message and created within
-# this many seconds is treated as a re-submission (page refresh, double-
-# click, network retry) rather than a legitimate "user repeats themselves".
-# 60s is wide enough to catch refresh-then-retype on a slow turn and tight
-# enough that a deliberate "send the same thing later" still goes through.
-_RECENT_DUPLICATE_WINDOW_SECONDS = 60
-
-
-def is_recent_duplicate_send(
-    messages: list[ChatMessage],
-    role: str,
-    content: str,
-    *,
-    window_seconds: int = _RECENT_DUPLICATE_WINDOW_SECONDS,
-    now: datetime | None = None,
-) -> bool:
-    """True if *content* matches the **last** same-role message within the
-    recent-window, regardless of intervening other-role messages.
-
-    Complements :func:`is_message_duplicate` which only catches duplicates
-    inside the current pending turn.  This guard targets the cross-turn
-    re-submit case (refresh + retype, double-send, frontend dedup-cache
-    cleared) where the chat history already contains an assistant turn
-    between the two identical user posts — so the same-role-trailing check
-    can't see them as duplicates.
-
-    Returns False when the matching message has no ``created_at`` (e.g.
-    in-memory-only entries or session loaded without timestamps): we'd
-    rather let through a possibly-legit send than block ambiguously.
-    """
-    if not content:
-        return False
-    now = now or datetime.now(UTC)
-    for m in reversed(messages):
-        if m.role != role:
-            continue
-        # First same-role hit is the "most recent same-role message".  If
-        # its content doesn't match we know there's no recent dup, since
-        # any earlier same-role match would be older still.
-        if m.content != content:
-            return False
-        if m.created_at is None:
-            return False
-        # ``ChatMessage.created_at`` may be naive (in-memory entries) or
-        # tz-aware (DB-loaded).  Coerce to UTC so the subtraction is
-        # always defined.
-        ref = m.created_at if m.created_at.tzinfo else m.created_at.replace(tzinfo=UTC)
-        delta = (now - ref).total_seconds()
-        return 0 <= delta <= window_seconds
-    return False
-
-
 def maybe_append_user_message(
     session: "ChatSession",
     message: str | None,
@@ -819,26 +766,6 @@ async def append_and_save_message(
         if message.content is not None and is_message_duplicate(
             session.messages, message.role, message.content
         ):
-            return None  # duplicate — caller should skip enqueue
-
-        # Cross-turn re-submit guard (frontend dedup state was lost on
-        # refresh / new tab; user retyped the same text).  ``is_message_
-        # duplicate`` above only catches duplicates in the current pending
-        # turn — once the assistant has replied, an identical re-post would
-        # otherwise sail through and start a brand-new turn that the user
-        # did not intend.  Compares the candidate to the **last** same-role
-        # message and rejects only when both match within a small window
-        # (default 60s); legitimate "send the same prompt later" is left
-        # unaffected.
-        if message.content is not None and is_recent_duplicate_send(
-            session.messages, message.role, message.content
-        ):
-            logger.info(
-                "Rejecting recent-duplicate send for session=%s role=%s "
-                "(content matches last same-role message within window)",
-                session_id,
-                message.role,
-            )
             return None  # duplicate — caller should skip enqueue
 
         session.messages.append(message)
