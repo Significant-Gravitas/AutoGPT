@@ -4,6 +4,7 @@
 
 import asyncio
 import base64
+import functools
 import json
 import logging
 import os
@@ -139,6 +140,7 @@ from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
+    MCP_TOOL_PREFIX,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
@@ -2309,6 +2311,29 @@ class _EmptyToolBreakResult:
     error_code: str | None  # Error code (if tripped)
 
 
+@functools.cache
+def _no_arg_tool_names() -> frozenset[str]:
+    """Tool names whose schema declares zero arguments (required + properties).
+
+    A ``ToolUseBlock`` with ``input == {}`` for one of these is a *legitimate*
+    invocation of a no-arg tool, NOT the model-saturation failure mode the
+    empty-tool-call breaker targets (sessions where the model emits ``{}`` for
+    EVERY arg-needing tool because context-saturation broke argument
+    serialization). Cached because the registry is module-level and immutable
+    after import. Includes both bare and MCP-prefixed names because
+    ``ToolUseBlock.name`` carries the MCP prefix when the tool is registered
+    through the copilot MCP server.
+    """
+    from backend.copilot.tools import TOOL_REGISTRY
+
+    bare = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if not (tool.parameters.get("required") or tool.parameters.get("properties"))
+    }
+    return frozenset(bare | {f"{MCP_TOOL_PREFIX}{name}" for name in bare})
+
+
 def _check_empty_tool_breaker(
     sdk_msg: object,
     consecutive: int,
@@ -2323,12 +2348,17 @@ def _check_empty_tool_breaker(
     if not isinstance(sdk_msg, AssistantMessage):
         return _EmptyToolBreakResult(consecutive, False, None, None, None)
 
+    no_arg = _no_arg_tool_names()
     empty_tools = [
-        b.name for b in sdk_msg.content if isinstance(b, ToolUseBlock) and not b.input
+        b.name
+        for b in sdk_msg.content
+        if isinstance(b, ToolUseBlock) and not b.input and b.name not in no_arg
     ]
     if not empty_tools:
         # Reset on any non-empty-tool AssistantMessage (including text-only
-        # messages — any() over empty content is False).
+        # messages — any() over empty content is False).  Legitimate no-arg
+        # tools (e.g. ``get_agent_building_guide``) also reset the counter
+        # since they're a normal model action, not the saturation failure.
         return _EmptyToolBreakResult(0, False, None, None, None)
 
     consecutive += 1

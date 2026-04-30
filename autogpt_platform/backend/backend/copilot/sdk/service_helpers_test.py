@@ -1384,3 +1384,59 @@ class TestDeleteStaleCliSessionFile:
         # File was outside projects base — guard rejected, file untouched.
         assert removed is False
         assert outside.exists()
+
+
+# ---------------------------------------------------------------------------
+# Empty-tool-call circuit breaker — must NOT false-positive on no-arg tools
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyToolCallNoArgException:
+    """No-arg copilot tools (e.g. ``get_agent_building_guide``) legitimately
+    invoke with ``input == {}``. The breaker must NOT count them as the
+    saturation-failure mode it targets — that would be a false positive
+    every time the model calls such a tool, polluting Sentry and (after 5
+    consecutive) aborting the stream wrongly.
+    """
+
+    def test_no_arg_tool_names_includes_mcp_prefixed_form(self) -> None:
+        from backend.copilot.sdk.service import _no_arg_tool_names
+
+        names = _no_arg_tool_names()
+        # Both bare and MCP-prefixed forms — the SDK's ToolUseBlock.name
+        # carries the MCP prefix when registered through the copilot
+        # MCP server.
+        assert "get_agent_building_guide" in names
+        assert "mcp__copilot__get_agent_building_guide" in names
+
+    def test_no_arg_tool_with_empty_input_does_not_trip_counter(self) -> None:
+        """Regression guard: a single empty-input call to a registered
+        no-arg tool must reset the consecutive counter (returning 0),
+        same as a non-empty AssistantMessage. This proves
+        ``get_agent_building_guide`` mid-session won't trip the
+        circuit-breaker after 5 invocations across a long session."""
+        from claude_agent_sdk import AssistantMessage, ToolUseBlock
+
+        from backend.copilot.sdk.service import _check_empty_tool_breaker
+
+        msg = AssistantMessage(
+            content=[
+                ToolUseBlock(
+                    id="tu_1",
+                    name="mcp__copilot__get_agent_building_guide",
+                    input={},
+                )
+            ],
+            model="anthropic/claude-sonnet-4-6",
+        )
+        # ctx + state aren't read on the no-arg fast-path — pass MagicMocks.
+        ctx = MagicMock()
+        ctx.log_prefix = "[t]"
+        state = MagicMock()
+
+        result = _check_empty_tool_breaker(msg, consecutive=4, ctx=ctx, state=state)
+
+        # Consecutive counter MUST reset (no-arg tool is a normal action,
+        # not the saturation failure).
+        assert result.count == 0
+        assert result.tripped is False
