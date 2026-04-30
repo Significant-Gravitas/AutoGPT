@@ -7,7 +7,7 @@ import { PendingChangeBanner } from "../PendingChangeBanner";
 describe("PendingChangeBanner", () => {
   const baseProps = {
     currentTier: "PRO",
-    pendingTier: "BASIC",
+    pendingTier: "NO_TIER",
     // Use noon UTC so the formatted local date lands on the same day
     // regardless of the host timezone (important for CI runners).
     pendingEffectiveAt: "2026-05-01T12:00:00Z",
@@ -25,7 +25,7 @@ describe("PendingChangeBanner", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows cancellation copy when pending tier is BASIC", () => {
+  it("shows cancellation copy when pending tier is NO_TIER", () => {
     render(<PendingChangeBanner {...baseProps} />);
     expect(screen.getByText(/cancel your subscription on/i)).toBeDefined();
     expect(screen.getByText("May 1, 2026")).toBeDefined();
