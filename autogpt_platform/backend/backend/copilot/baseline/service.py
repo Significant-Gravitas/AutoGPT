@@ -1594,13 +1594,25 @@ async def stream_chat_completion_baseline(
             message,
             request_arrival_at=request_arrival_at,
         )
+        # Mirror the mid-turn drain pattern: track an ``openai_messages``
+        # anchor before appending so ``on_rollback`` can trim cleanly if
+        # ``persist_pending_as_user_rows`` re-queues the pending into
+        # Redis.  Without the callback, a failed persist would leave the
+        # entries in ``openai_messages`` for THIS turn AND queued for the
+        # next, duplicating them in the model's context.
+        _turn_start_openai_anchor = len(openai_messages)
         for pm in drained_at_start_pending:
             openai_messages.append(format_pending_as_user_message(pm))
+
+        def _trim_openai_on_turn_start_rollback(_session_anchor: int) -> None:
+            del openai_messages[_turn_start_openai_anchor:]
+
         await persist_pending_as_user_rows(
             session,
             None,
             drained_at_start_pending,
             log_prefix="[Baseline]",
+            on_rollback=_trim_openai_on_turn_start_rollback,
         )
 
     # Inject Graphiti warm context into the current turn's user message (not
