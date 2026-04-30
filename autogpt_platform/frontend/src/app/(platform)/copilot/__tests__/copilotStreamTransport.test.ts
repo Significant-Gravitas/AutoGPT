@@ -50,48 +50,54 @@ describe("copilotStreamTransport.prepareSendMessagesRequest", () => {
     expect(body1.body.message_id).toMatch(UUID_RE);
   });
 
-  it("emits a different message_id per call so distinct user clicks dedupe " +
-    "as distinct sends server-side", async () => {
-    const transport = createCopilotTransport({
-      sessionId: "sess-1",
-      ...makeRefs(),
-    });
-    const prep = (
-      transport as unknown as {
-        prepareSendMessagesRequest: (args: {
-          messages: ReturnType<typeof lastMessage>;
-        }) => Promise<{ body: { message_id?: string } }>;
-      }
-    ).prepareSendMessagesRequest;
+  it(
+    "emits a different message_id per call so distinct user clicks dedupe " +
+      "as distinct sends server-side",
+    async () => {
+      const transport = createCopilotTransport({
+        sessionId: "sess-1",
+        ...makeRefs(),
+      });
+      const prep = (
+        transport as unknown as {
+          prepareSendMessagesRequest: (args: {
+            messages: ReturnType<typeof lastMessage>;
+          }) => Promise<{ body: { message_id?: string } }>;
+        }
+      ).prepareSendMessagesRequest;
 
-    const a = await prep({ messages: lastMessage("hi") });
-    const b = await prep({ messages: lastMessage("hi") });
-    expect(a.body.message_id).not.toBe(b.body.message_id);
-  });
+      const a = await prep({ messages: lastMessage("hi") });
+      const b = await prep({ messages: lastMessage("hi") });
+      expect(a.body.message_id).not.toBe(b.body.message_id);
+    },
+  );
 
-  it("does NOT pass message_id via AI SDK messageId on sendMessage — " +
-    "messageId is replace-mode and would break optimistic render", async () => {
-    // This is a contract check: the transport reads ``last.id`` (AI SDK's
-    // auto-generated id) but must NOT use it as the dedup key, because
-    // AI SDK's optimistic-render path treats ``messageId`` on
-    // ``sendMessage`` as "edit the existing message with that id".  Since
-    // useSendMessage no longer threads a custom messageId, ``last.id`` is
-    // an SDK-internal nanoid that's unrelated to our dedup UUID.
-    const transport = createCopilotTransport({
-      sessionId: "sess-1",
-      ...makeRefs(),
-    });
-    const prep = (
-      transport as unknown as {
-        prepareSendMessagesRequest: (args: {
-          messages: ReturnType<typeof lastMessage>;
-        }) => Promise<{ body: { message_id?: string } }>;
-      }
-    ).prepareSendMessagesRequest;
+  it(
+    "does NOT pass message_id via AI SDK messageId on sendMessage — " +
+      "messageId is replace-mode and would break optimistic render",
+    async () => {
+      // This is a contract check: the transport reads ``last.id`` (AI SDK's
+      // auto-generated id) but must NOT use it as the dedup key, because
+      // AI SDK's optimistic-render path treats ``messageId`` on
+      // ``sendMessage`` as "edit the existing message with that id".  Since
+      // useSendMessage no longer threads a custom messageId, ``last.id`` is
+      // an SDK-internal nanoid that's unrelated to our dedup UUID.
+      const transport = createCopilotTransport({
+        sessionId: "sess-1",
+        ...makeRefs(),
+      });
+      const prep = (
+        transport as unknown as {
+          prepareSendMessagesRequest: (args: {
+            messages: ReturnType<typeof lastMessage>;
+          }) => Promise<{ body: { message_id?: string } }>;
+        }
+      ).prepareSendMessagesRequest;
 
-    const out = await prep({ messages: lastMessage("hi") });
-    expect(out.body.message_id).toMatch(UUID_RE);
-    // ``last.id`` is "ai-sdk-generated-id" — must NOT be used as message_id.
-    expect(out.body.message_id).not.toBe("ai-sdk-generated-id");
-  });
+      const out = await prep({ messages: lastMessage("hi") });
+      expect(out.body.message_id).toMatch(UUID_RE);
+      // ``last.id`` is "ai-sdk-generated-id" — must NOT be used as message_id.
+      expect(out.body.message_id).not.toBe("ai-sdk-generated-id");
+    },
+  );
 });
