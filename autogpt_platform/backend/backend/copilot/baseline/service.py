@@ -1396,23 +1396,15 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        # Persist each pending message as its own user row in the DB so
-        # the UI renders distinct bubbles (one per click).  The combined
-        # text below remains the model's current-turn user input — the
-        # transcript captures it as a single entry at turn-end, so we
-        # MUST NOT also append each pending to the transcript here (that
-        # would triple-count them in the next turn's resume context).
-        await persist_pending_as_user_rows(
-            session,
-            None,  # transcript_builder=None: see persist_pending_as_user_rows docstring
-            drained_at_start_pending,
-            log_prefix="[Baseline]",
-        )
         # Chronological combine for the model's current-turn input:
         # pending typed BEFORE this /stream request's arrival go ahead of
         # ``message``; race-path follow-ups typed AFTER (queued while
         # /stream was still processing) go after.  See
         # ``combine_pending_with_current`` for details.
+        #
+        # Per-row DB persistence happens *after* ``inject_user_context``
+        # below — see the comment near that call for the ordering
+        # rationale.
         message = combine_pending_with_current(
             drained_at_start_pending,
             message,
@@ -1591,6 +1583,18 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # Persist drained pending as their OWN user rows AFTER inject_user_context
+    # has rewritten the current turn's user row with envelopes — see the
+    # combine block above for the ordering rationale.  ``transcript_builder=None``
+    # because the model already sees the combined text as one user turn.
+    if drained_at_start_pending:
+        await persist_pending_as_user_rows(
+            session,
+            None,
+            drained_at_start_pending,
+            log_prefix="[Baseline]",
+        )
 
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.
