@@ -82,7 +82,7 @@ export function YourPlanCard({ index = 0 }: Props) {
               }
             >
               {!plan.isPaidPlan
-                ? "No active subscription"
+                ? "Inactive"
                 : plan.isPendingCancel
                   ? "Cancellation scheduled"
                   : plan.isPendingDowngrade

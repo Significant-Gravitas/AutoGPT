@@ -177,14 +177,15 @@ describe("useAutoRefillCard", () => {
     });
     expect(result.current.isValid).toBe(false);
 
-    // Fractional rejected.
+    // Fractional values are accepted — backend stores integer cents, so
+    // legacy non-whole-dollar amounts (e.g. $7.50) must remain editable.
     act(() => {
       result.current.setThreshold("5");
       result.current.setRefillAmount("5.5");
     });
-    expect(result.current.isValid).toBe(false);
+    expect(result.current.isValid).toBe(true);
 
-    // Valid: both integers >= 5, refill >= threshold.
+    // Valid: both >= 5, refill >= threshold.
     act(() => {
       result.current.setThreshold("5");
       result.current.setRefillAmount("20");
