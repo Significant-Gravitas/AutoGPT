@@ -10,6 +10,8 @@ import SettingsBillingPage from "../page";
 const SUBSCRIPTION_RESPONSE = {
   tier: "PRO",
   monthly_cost: 5000,
+  tier_costs: { PRO: 5000, MAX: 32000, BUSINESS: 0 },
+  tier_multipliers: { PRO: 1, MAX: 8.5, BUSINESS: 25 },
   has_active_stripe_subscription: true,
   status: "active",
 };
@@ -57,7 +59,10 @@ describe("Settings billing page (integration)", () => {
 
     expect(await screen.findByText("Your plan")).toBeDefined();
     expect(await screen.findByText("Pro")).toBeDefined();
-    expect(screen.getByText(/\$50\.00 \/ month/)).toBeDefined();
+    // Tier picker renders "$50/mo" on the PRO card (no decimals in the
+    // grid layout — see formatTierCost in billing/helpers.ts).
+    expect(screen.getByText(/\$50\/mo/i)).toBeDefined();
+    expect(screen.getByText("Current")).toBeDefined();
 
     // Invoices card empty-state copy (no invoices fixture above).
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();

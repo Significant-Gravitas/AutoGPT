@@ -48,3 +48,74 @@ export function formatShortDate(
     year: "numeric",
   });
 }
+
+// Tier picker config — three user-visible plans matching the launch doc
+// (Pro $50, Max $320, Team contact-sales). BASIC + ENTERPRISE are reserved
+// internal slots and never offered as picker cards. Order is low → high so
+// the grid reads left-to-right as upgrade direction.
+export interface TierInfo {
+  key: "PRO" | "MAX" | "BUSINESS";
+  label: string;
+  description: string;
+  contactSales?: boolean;
+}
+
+export const PLAN_TIERS: TierInfo[] = [
+  {
+    key: "PRO",
+    label: "Pro",
+    description: "Base AutoPilot capacity — solopreneurs, freelancers, power users.",
+  },
+  {
+    key: "MAX",
+    label: "Max",
+    description: "~8.5x Pro headroom — heavier workflows, agencies, small teams.",
+  },
+  {
+    key: "BUSINESS",
+    label: "Team",
+    description: "Custom allowances, seats, and support. Talk to sales.",
+    contactSales: true,
+  },
+];
+
+// Same ordering used to compare two tiers for upgrade vs downgrade direction.
+// Includes NO_TIER + ENTERPRISE so comparisons against admin-granted users
+// resolve correctly even though those tiers aren't picker-rendered.
+export const TIER_ORDER = [
+  "NO_TIER",
+  "BASIC",
+  "PRO",
+  "MAX",
+  "BUSINESS",
+  "ENTERPRISE",
+] as const;
+
+export function getTierLabel(tierKey: string): string {
+  if (tierKey === "NO_TIER") return "No active subscription";
+  if (tierKey === "ENTERPRISE") return "Enterprise";
+  return PLAN_TIERS.find((t) => t.key === tierKey)?.label ?? tierKey;
+}
+
+export function formatTierCost(cents: number, contactSales?: boolean): string {
+  if (contactSales) return "Contact us";
+  if (cents === 0) return "Free";
+  return `$${(cents / 100).toFixed(0)}/mo`;
+}
+
+// Render a tier's rate-limit badge relative to the lowest visible tier so the
+// UI doesn't have to hard-code backend multiplier defaults. Returns null for
+// the lowest tier (it's the baseline) and for tiers absent from the payload.
+export function formatRelativeMultiplier(
+  tierKey: string,
+  tierMultipliers: Record<string, number>,
+): string | null {
+  const mine = tierMultipliers[tierKey];
+  if (mine === undefined || mine <= 0) return null;
+  const visible = Object.values(tierMultipliers).filter((v) => v > 0);
+  if (visible.length === 0) return null;
+  const min = Math.min(...visible);
+  const label = (mine / min).toFixed(1);
+  if (label === "1.0") return null;
+  return `${label}x rate limits`;
+}
