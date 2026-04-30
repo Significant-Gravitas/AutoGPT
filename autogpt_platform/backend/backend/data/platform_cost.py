@@ -818,7 +818,14 @@ async def get_copilot_weekly_usage_for_export(
 
     out: list[CopilotWeeklyUsageRow] = []
     for r in rows:
-        week_start: datetime = r["week_start"]
+        # query_raw_with_schema returns timestamptz columns as ISO strings on
+        # some Prisma builds, so coerce defensively before stamping UTC.
+        raw_week_start = r["week_start"]
+        week_start: datetime = (
+            datetime.fromisoformat(raw_week_start)
+            if isinstance(raw_week_start, str)
+            else raw_week_start
+        )
         if week_start.tzinfo is None:
             week_start = week_start.replace(tzinfo=timezone.utc)
         # Inclusive end-of-week (Sunday 23:59:59.999999 UTC) — matches finance
