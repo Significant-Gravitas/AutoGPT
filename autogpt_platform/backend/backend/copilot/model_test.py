@@ -520,6 +520,105 @@ def test_all_same_role_messages():
 
 
 # --------------------------------------------------------------------------- #
+#  is_recent_duplicate_send                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_recent_duplicate_blocks_cross_turn_resubmit():
+    """The cross-turn guard catches the refresh-and-retype case the legacy
+    ``is_message_duplicate`` deliberately allowed: identical user content
+    after an assistant reply, within the recent window."""
+    from datetime import UTC, datetime, timedelta
+
+    from backend.copilot.model import is_recent_duplicate_send
+
+    now = datetime.now(UTC)
+    msgs = [
+        ChatMessage(
+            role="user", content="ping", created_at=now - timedelta(seconds=10)
+        ),
+        ChatMessage(
+            role="assistant", content="pong", created_at=now - timedelta(seconds=5)
+        ),
+    ]
+    assert is_recent_duplicate_send(msgs, "user", "ping", now=now) is True
+    # Original same-turn dedup correctly says NO here (assistant reply between).
+    assert is_message_duplicate(msgs, "user", "ping") is False
+
+
+def test_recent_duplicate_allows_outside_window():
+    """Beyond the time window, an identical re-send is treated as legitimate
+    (e.g., user genuinely repeats themselves later)."""
+    from datetime import UTC, datetime, timedelta
+
+    from backend.copilot.model import is_recent_duplicate_send
+
+    now = datetime.now(UTC)
+    msgs = [
+        ChatMessage(
+            role="user", content="ping", created_at=now - timedelta(seconds=120)
+        ),
+        ChatMessage(
+            role="assistant", content="pong", created_at=now - timedelta(seconds=110)
+        ),
+    ]
+    assert (
+        is_recent_duplicate_send(msgs, "user", "ping", window_seconds=60, now=now)
+        is False
+    )
+
+
+def test_recent_duplicate_passes_when_content_differs():
+    from datetime import UTC, datetime, timedelta
+
+    from backend.copilot.model import is_recent_duplicate_send
+
+    now = datetime.now(UTC)
+    msgs = [
+        ChatMessage(role="user", content="ping", created_at=now - timedelta(seconds=5)),
+    ]
+    assert is_recent_duplicate_send(msgs, "user", "different", now=now) is False
+
+
+def test_recent_duplicate_returns_false_when_no_created_at():
+    """Ambiguous (no timestamp) → don't block; the trailing-same-role
+    legacy check is the safer-side-of-cautious fallback."""
+    from backend.copilot.model import is_recent_duplicate_send
+
+    msgs = [
+        ChatMessage(role="user", content="ping", created_at=None),
+    ]
+    assert is_recent_duplicate_send(msgs, "user", "ping") is False
+
+
+def test_recent_duplicate_only_compares_last_same_role():
+    """Older same-role hits don't count — a 'ping' from 10 minutes ago
+    shouldn't prevent a 'ping' send today just because the user said it
+    once before."""
+    from datetime import UTC, datetime, timedelta
+
+    from backend.copilot.model import is_recent_duplicate_send
+
+    now = datetime.now(UTC)
+    msgs = [
+        ChatMessage(
+            role="user", content="ping", created_at=now - timedelta(minutes=10)
+        ),
+        ChatMessage(
+            role="assistant", content="pong", created_at=now - timedelta(minutes=9)
+        ),
+        ChatMessage(
+            role="user", content="other", created_at=now - timedelta(minutes=2)
+        ),
+        ChatMessage(
+            role="assistant", content="ok", created_at=now - timedelta(minutes=1)
+        ),
+    ]
+    # Last user message is "other", not "ping", so "ping" is NOT a recent dup.
+    assert is_recent_duplicate_send(msgs, "user", "ping", now=now) is False
+
+
+# --------------------------------------------------------------------------- #
 #  maybe_append_user_message                                                   #
 # --------------------------------------------------------------------------- #
 
