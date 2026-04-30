@@ -53,8 +53,8 @@ def main(**kwargs):
         WebsocketServer(),
         AgentServer(),
         ExecutionManager(),
-        CoPilotExecutor(),
         CoPilotChatBridge(),
+        CoPilotExecutor(),
         **kwargs,
     )
 

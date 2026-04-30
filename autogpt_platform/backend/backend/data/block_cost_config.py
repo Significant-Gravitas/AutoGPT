@@ -680,13 +680,11 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     # ReplicateModelBlock is a generic wrapper — users pass ANY Replicate
-    # model ref. A flat 10 cr/run was:
-    #   - 20x over-billing cheap models (~$0.005 SDXL tiny runs)
-    #   - 10-500x under-billing long video/LLM runs ($1-$50+)
-    # Block now reads prediction.metrics.predict_time after completion
-    # and bills that × $0.0014/s (Nvidia L40S mid-tier) via COST_USD
-    # 150 cr/$. Heavy LLMs on A100 under-bill slightly, cheap L4 runs
-    # over-bill slightly, but the catastrophic under-bill is gone.
+    # model ref. The block reads prediction.metrics.predict_time after
+    # completion and bills predict_time × $/sec via COST_USD 150 cr/$.
+    # Replicate's API doesn't expose hardware tier per prediction, so the
+    # block uses a single $/sec rate sized to cover up to A100-80GB
+    # without under-billing; cheaper hardware is over-billed slightly.
     ReplicateModelBlock: [
         BlockCost(
             cost_amount=150,
