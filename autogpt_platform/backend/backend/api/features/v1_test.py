@@ -342,6 +342,80 @@ def test_configure_auto_top_up_validation_errors(
     assert response.status_code == 200  # Should succeed
 
 
+def test_list_invoices_returns_mapped_payload(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The /credits/invoices route should return whatever the credit model
+    yields, serialised through the InvoiceListItem schema."""
+    from backend.data.credit import InvoiceListItem
+
+    invoice = InvoiceListItem(
+        id="in_1",
+        number="INV-001",
+        created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        total_cents=2500,
+        amount_paid_cents=0,
+        currency="usd",
+        status="open",
+        description="Subscription",
+        hosted_invoice_url="https://invoice.stripe.com/i/test",
+        invoice_pdf_url="https://invoice.stripe.com/i/test/pdf",
+    )
+
+    mock_credit_model = Mock()
+    mock_credit_model.list_invoices = AsyncMock(return_value=[invoice])
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.get("/credits/invoices?limit=24")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    row = payload[0]
+    assert row["id"] == "in_1"
+    assert row["total_cents"] == 2500
+    assert row["amount_paid_cents"] == 0
+    assert row["status"] == "open"
+    assert row["hosted_invoice_url"] == "https://invoice.stripe.com/i/test"
+    mock_credit_model.list_invoices.assert_awaited_once()
+    # Ensure the limit query param is forwarded.
+    assert mock_credit_model.list_invoices.await_args.kwargs == {"limit": 24}
+
+
+def test_list_invoices_clamps_limit(mocker: pytest_mock.MockFixture) -> None:
+    """FastAPI's Query(le=100) should reject limit > 100."""
+    mock_credit_model = Mock()
+    mock_credit_model.list_invoices = AsyncMock(return_value=[])
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.get("/credits/invoices?limit=500")
+
+    assert response.status_code == 422  # Validation error
+    mock_credit_model.list_invoices.assert_not_awaited()
+
+
+def test_list_invoices_default_limit(mocker: pytest_mock.MockFixture) -> None:
+    """Omitting ?limit should default to 24."""
+    mock_credit_model = Mock()
+    mock_credit_model.list_invoices = AsyncMock(return_value=[])
+    mocker.patch(
+        "backend.api.features.v1.get_user_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.get("/credits/invoices")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert mock_credit_model.list_invoices.await_args.kwargs == {"limit": 24}
+
+
 # Graphs endpoints tests
 def test_get_graphs(
     mocker: pytest_mock.MockFixture,

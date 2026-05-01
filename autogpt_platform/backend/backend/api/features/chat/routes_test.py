@@ -1368,6 +1368,7 @@ def _mock_reset_internals(
     mock_credit_model = MagicMock()
     mock_credit_model.spend_credits = AsyncMock(return_value=remaining_balance)
     mock_credit_model.top_up_credits = AsyncMock(return_value=None)
+    mock_credit_model.grant_credits = AsyncMock(return_value=remaining_balance)
     mocker.patch(
         "backend.api.features.chat.routes.get_user_credit_model",
         new_callable=AsyncMock,
@@ -1586,8 +1587,10 @@ def test_reset_usage_refunds_on_redis_failure(
     response = client.post("/usage/reset")
 
     assert response.status_code == 503
-    # Credits should be refunded via top_up_credits
-    mock_credit.top_up_credits.assert_called_once()
+    # Credits should be refunded via grant_credits (GRANT, not TOP_UP), and
+    # the Stripe-charging top_up_credits path must not be hit.
+    mock_credit.grant_credits.assert_called_once()
+    mock_credit.top_up_credits.assert_not_called()
 
 
 # ─── resume_session_stream ───────────────────────────────────────────

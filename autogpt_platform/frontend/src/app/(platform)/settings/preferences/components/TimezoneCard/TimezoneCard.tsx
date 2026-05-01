@@ -1,7 +1,7 @@
 "use client";
 
-import { ClockIcon, GlobeIcon, InfoIcon } from "@phosphor-icons/react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { Select } from "@/components/atoms/Select/Select";
 import { Text } from "@/components/atoms/Text/Text";
@@ -14,30 +14,19 @@ import {
 import {
   EASE_OUT,
   TIMEZONES,
-  detectBrowserTimezone,
   findTimezoneLabel,
   formatGmtOffset,
 } from "../../helpers";
 
 interface Props {
   value: string;
-  initialValue: string;
   onChange: (timezone: string) => void;
   index?: number;
 }
 
-export function TimezoneCard({
-  value,
-  initialValue,
-  onChange,
-  index = 0,
-}: Props) {
+export function TimezoneCard({ value, onChange, index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const browserTz = detectBrowserTimezone();
   const offset = formatGmtOffset(value);
-  const browserLabel = findTimezoneLabel(browserTz);
-
-  const showAutoDetect = initialValue !== browserTz && value !== browserTz;
 
   const options = TIMEZONES.some((t) => t.value === value)
     ? TIMEZONES
@@ -106,31 +95,6 @@ export function TimezoneCard({
             ) : null}
           </div>
         </div>
-
-        <AnimatePresence initial={false}>
-          {showAutoDetect ? (
-            <motion.button
-              key="autodetect"
-              type="button"
-              onClick={() => onChange(browserTz)}
-              initial={reduceMotion ? false : { opacity: 0, y: -4, height: 0 }}
-              animate={
-                reduceMotion ? undefined : { opacity: 1, y: 0, height: "auto" }
-              }
-              exit={reduceMotion ? undefined : { opacity: 0, y: -4, height: 0 }}
-              transition={
-                reduceMotion ? undefined : { duration: 0.22, ease: EASE_OUT }
-              }
-              className="flex w-fit items-center gap-2 self-end overflow-hidden rounded-full border border-violet-300 bg-violet-50/60 px-3 py-1.5 text-left text-violet-800 transition-colors duration-150 ease-out hover:bg-violet-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
-            >
-              <GlobeIcon size={16} weight="duotone" />
-              <Text variant="small" as="span" className="text-violet-800">
-                Looks like you&apos;re in{" "}
-                <span className="font-medium">{browserLabel}</span>. Use that?
-              </Text>
-            </motion.button>
-          ) : null}
-        </AnimatePresence>
       </div>
     </motion.section>
   );

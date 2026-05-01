@@ -264,6 +264,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for the platform_linking manager daemon to run on",
     )
 
+    copilot_chat_bridge_port: int = Field(
+        default=8010,
+        description="The port for the CoPilot chat bridge (multi-platform bot) "
+        "service daemon to run on",
+    )
+
     otto_api_url: str = Field(
         default="",
         description="The URL for the Otto API service",
@@ -414,6 +420,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between OAuth token cleanup runs (1-24 hours)",
     )
 
+    push_subscription_cleanup_interval_hours: int = Field(
+        default=24,
+        ge=1,
+        le=168,
+        description="Hours between failed push subscription cleanup runs (1-168 hours)",
+    )
+
     upload_file_size_limit_mb: int = Field(
         default=256,
         ge=1,
@@ -426,13 +439,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for workspace files (1-1024 MB)",
-    )
-
-    max_workspace_storage_mb: int = Field(
-        default=500,
-        ge=1,
-        le=10240,
-        description="Maximum total workspace storage per user in MB.",
     )
 
     # AutoMod configuration
@@ -615,6 +621,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    vapid_private_key: str = Field(
+        default="", description="VAPID private key for Web Push"
+    )
+    vapid_public_key: str = Field(
+        default="", description="VAPID public key for Web Push (base64url)"
+    )
+    vapid_claim_email: str = Field(
+        default="mailto:push@agpt.co", description="VAPID contact email"
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -668,6 +684,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     did_api_key: str = Field(default="", description="D-ID API Key")
     revid_api_key: str = Field(default="", description="revid.ai API key")
     discord_bot_token: str = Field(default="", description="Discord bot token")
+    autopilot_bot_discord_token: str = Field(
+        default="",
+        description="Discord bot token for the CoPilot chat bridge. When set, "
+        "the bridge enables its Discord adapter.",
+    )
 
     smtp_server: str = Field(default="", description="SMTP server IP")
     smtp_port: str = Field(default="", description="SMTP server port")

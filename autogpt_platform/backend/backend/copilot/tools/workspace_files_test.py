@@ -623,3 +623,77 @@ async def test_read_workspace_file_no_fallback_when_resolve_succeeds(setup_test_
     # Normal workspace path must have produced a content response.
     assert isinstance(result, WorkspaceFileContentResponse)
     assert base64.b64decode(result.content_base64) == fake_content
+
+
+# ---------------------------------------------------------------------------
+# WriteWorkspaceFileTool exception handling (quota, virus, scan errors)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestWriteWorkspaceFileToolErrorHandling:
+    """Verify WriteWorkspaceFileTool returns proper ErrorResponse for exceptions."""
+
+    async def _execute_write(self, side_effect, setup_test_data):
+        """Helper: run WriteWorkspaceFileTool with mocked write_file."""
+        user = setup_test_data["user"]
+        session = make_session(user.id)
+
+        mock_manager = AsyncMock()
+        mock_manager.write_file = AsyncMock(side_effect=side_effect)
+
+        with patch(
+            "backend.copilot.tools.workspace_files.get_workspace_manager",
+            AsyncMock(return_value=mock_manager),
+        ):
+            tool = WriteWorkspaceFileTool()
+            return await tool._execute(
+                user_id=user.id,
+                session=session,
+                filename="test.txt",
+                content="hello",
+            )
+
+    async def test_quota_exceeded_returns_error_response(self, setup_test_data):
+        """Quota exceeded (ValueError) → ErrorResponse with storage message + recovery hint."""
+        result = await self._execute_write(
+            ValueError("Storage limit exceeded: 250 MB used of 250 MB (100.0%)"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "Storage limit exceeded" in result.message
+        # The agent needs an actionable hint so it can offer to clean up rather
+        # than just relaying the error to the user.
+        assert "delete_workspace_file" in result.message
+        assert "list_workspace_files" in result.message
+
+    async def test_virus_detected_returns_error_response(self, setup_test_data):
+        """VirusDetectedError → ErrorResponse with virus message."""
+        from backend.api.features.store.exceptions import VirusDetectedError
+
+        result = await self._execute_write(
+            VirusDetectedError("Eicar-Test-Signature"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "Virus detected" in result.message
+
+    async def test_virus_scan_error_returns_error_response(self, setup_test_data):
+        """VirusScanError (infra failure) → ErrorResponse with scan message."""
+        from backend.api.features.store.exceptions import VirusScanError
+
+        result = await self._execute_write(
+            VirusScanError("ClamAV connection refused"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "ClamAV" in result.message
+
+    async def test_file_conflict_returns_error_response(self, setup_test_data):
+        """File path conflict (ValueError) → ErrorResponse."""
+        result = await self._execute_write(
+            ValueError("File already exists at path: /sessions/abc/test.txt"),
+            setup_test_data,
+        )
+        assert isinstance(result, ErrorResponse)
+        assert "already exists" in result.message

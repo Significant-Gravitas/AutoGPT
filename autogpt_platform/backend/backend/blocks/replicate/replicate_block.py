@@ -27,12 +27,12 @@ from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 logger = logging.getLogger(__name__)
 
-# Replicate hardware tier cost — most popular public models (Flux, SDXL,
-# Llama 70B etc.) run on Nvidia L40S at $0.001400/sec. Using a single
-# conservative mid-tier estimate is much better than a flat RUN charge,
-# which under-bills long-running models by 10-500×. Heavier models run
-# on A100 at $0.001400/sec; cheaper ones on L4 at $0.000275/sec.
-_REPLICATE_USD_PER_SEC = 0.001400
+# Replicate $/sec varies by hardware tier (CPU $0.000100 → 8×H100 $0.005600).
+# The API doesn't return which tier ran the prediction, so we pick a single
+# rate that covers up to A100-80GB ($0.001875/sec) without under-billing.
+# Cheaper hardware (L40S/L4/T4) is over-billed slightly; multi-GPU configs
+# are still under-billed but are rare in user-facing community models.
+_REPLICATE_USD_PER_SEC = 0.002000
 
 
 class ReplicateModelBlock(Block):

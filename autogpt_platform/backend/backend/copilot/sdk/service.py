@@ -4,6 +4,7 @@
 
 import asyncio
 import base64
+import functools
 import json
 import logging
 import os
@@ -139,6 +140,7 @@ from .openrouter_cost import record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
+    MCP_TOOL_PREFIX,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
@@ -442,7 +444,7 @@ class _StreamContext:
 # compress_context applies progressively more aggressive reduction:
 #   LLM summarize → content truncate → middle-out delete → first/last trim.
 # Index 0 = first retry, 1 = second retry; last value applies beyond that.
-_RETRY_TARGET_TOKENS: tuple[int, ...] = (50_000, 15_000)
+_RETRY_TARGET_TOKENS: tuple[int, ...] = (50_000, 5_000)
 
 # Below this token budget the model context is so tight that injecting any
 # conversation history would likely exceed the limit regardless of content.
@@ -1304,6 +1306,58 @@ def _write_cli_session_to_disk(
         return False
 
 
+def delete_stale_cli_session_file(
+    sdk_cwd: str,
+    session_id: str,
+    log_prefix: str,
+) -> bool:
+    """Delete the local CLI session file at the predictable path.
+
+    Used so a subsequent CLI invocation with ``--session-id`` (no ``--resume``)
+    doesn't trip ``"Session ID already in use"``.  Path-traversal guard:
+    rejects paths outside the CLI projects base.
+
+    Returns True if a file was deleted, False otherwise (missing, traversal,
+    or unlink failure).
+    """
+    real_path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
+    if not real_path.startswith(projects_base() + os.sep):
+        # Mirror ``_write_cli_session_to_disk``'s defense-in-depth: log
+        # rather than fail silently when the resolved path escapes the
+        # projects base.  In normal operation this is unreachable
+        # (session_id is a server-generated UUID and ``cli_session_path``
+        # is deterministic), so a hit indicates a config or tampering
+        # issue that's worth surfacing.
+        logger.warning(
+            "%s CLI session delete path outside projects base: %s",
+            log_prefix,
+            os.path.basename(real_path),
+        )
+        return False
+    # Direct unlink — no exists() check (avoids TOCTOU with the file being
+    # deleted by another process between check and unlink).
+    try:
+        Path(real_path).unlink()
+        logger.info(
+            "%s Removed stale local CLI session file at %s",
+            log_prefix,
+            os.path.basename(real_path),
+        )
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError as unlink_err:
+        # Sanitise log: basename + strerror only (no full path / no raw
+        # exception which can echo absolute paths back in some libc errors).
+        logger.warning(
+            "%s Failed to remove stale local CLI session file %s: %s",
+            log_prefix,
+            os.path.basename(real_path),
+            unlink_err.strerror or type(unlink_err).__name__,
+        )
+        return False
+
+
 def read_cli_session_from_disk(
     sdk_cwd: str,
     session_id: str,
@@ -1571,11 +1625,22 @@ async def _compress_messages(
             target_tokens=target_tokens,
         )
     except Exception as exc:
-        # Guard against timeouts or unexpected errors in compression —
-        # return the original messages so the caller can proceed without
-        # compaction rather than propagating the error to the retry loop.
-        logger.warning("[SDK] _compress_messages failed, returning originals: %s", exc)
-        return messages, False
+        # Both the LLM summarize path AND the truncation fallback inside
+        # ``_run_compression`` failed (timeouts, tokenization error, etc.).
+        # Returning the originals here would silently feed the same
+        # too-long payload back into the retry loop, guaranteeing another
+        # ``Prompt is too long`` and burning the retry budget for no
+        # progress.  Drop history entirely instead — the caller will fall
+        # back to the bare current message, which is the tightest
+        # compression we can offer without an LLM, and is the only thing
+        # that can definitively recover a session whose stored history
+        # exceeds the model's context window.
+        logger.warning(
+            "[SDK] _compress_messages failed — dropping history to bare"
+            " message to guarantee retry progress: %s",
+            exc,
+        )
+        return [], True
 
     if result.was_compacted:
         logger.info(
@@ -2246,6 +2311,29 @@ class _EmptyToolBreakResult:
     error_code: str | None  # Error code (if tripped)
 
 
+@functools.cache
+def _no_arg_tool_names() -> frozenset[str]:
+    """Tool names whose schema declares zero arguments (required + properties).
+
+    A ``ToolUseBlock`` with ``input == {}`` for one of these is a *legitimate*
+    invocation of a no-arg tool, NOT the model-saturation failure mode the
+    empty-tool-call breaker targets (sessions where the model emits ``{}`` for
+    EVERY arg-needing tool because context-saturation broke argument
+    serialization). Cached because the registry is module-level and immutable
+    after import. Includes both bare and MCP-prefixed names because
+    ``ToolUseBlock.name`` carries the MCP prefix when the tool is registered
+    through the copilot MCP server.
+    """
+    from backend.copilot.tools import TOOL_REGISTRY
+
+    bare = {
+        name
+        for name, tool in TOOL_REGISTRY.items()
+        if not (tool.parameters.get("required") or tool.parameters.get("properties"))
+    }
+    return frozenset(bare | {f"{MCP_TOOL_PREFIX}{name}" for name in bare})
+
+
 def _check_empty_tool_breaker(
     sdk_msg: object,
     consecutive: int,
@@ -2260,12 +2348,17 @@ def _check_empty_tool_breaker(
     if not isinstance(sdk_msg, AssistantMessage):
         return _EmptyToolBreakResult(consecutive, False, None, None, None)
 
+    no_arg = _no_arg_tool_names()
     empty_tools = [
-        b.name for b in sdk_msg.content if isinstance(b, ToolUseBlock) and not b.input
+        b.name
+        for b in sdk_msg.content
+        if isinstance(b, ToolUseBlock) and not b.input and b.name not in no_arg
     ]
     if not empty_tools:
         # Reset on any non-empty-tool AssistantMessage (including text-only
-        # messages — any() over empty content is False).
+        # messages — any() over empty content is False).  Legitimate no-arg
+        # tools (e.g. ``get_agent_building_guide``) also reset the counter
+        # since they're a normal model action, not the saturation failure.
         return _EmptyToolBreakResult(0, False, None, None, None)
 
     consecutive += 1
@@ -3155,22 +3248,7 @@ async def _restore_cli_session_for_turn(
         # session_id with "Session ID already in use".  T1 may have
         # left a valid file at this path; we clear it so the fallback
         # path (session_id= without --resume) can create a new session.
-        _stale_path = os.path.realpath(cli_session_path(sdk_cwd, session_id))
-        if Path(_stale_path).exists() and _stale_path.startswith(
-            projects_base() + os.sep
-        ):
-            try:
-                Path(_stale_path).unlink()
-                logger.debug(
-                    "%s Removed stale local CLI session file for clean fallback",
-                    log_prefix,
-                )
-            except OSError as _unlink_err:
-                logger.debug(
-                    "%s Failed to remove stale local session file: %s",
-                    log_prefix,
-                    _unlink_err,
-                )
+        delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
 
     if cli_restore is not None:
         result.transcript_content = stripped
@@ -3792,37 +3870,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 log_prefix,
                 len(pending_messages),
             )
-            # Chronological combine: items typed BEFORE this request
-            # arrived go ahead of ``current_message``; items typed AFTER
-            # (race path, queued while /stream was still processing) go
-            # after.
-            current_message = combine_pending_with_current(
-                pending_messages,
-                current_message,
-                request_arrival_at=request_arrival_at,
-            )
-            # Update the in-memory content of the already-saved user message
-            # and persist that update to the DB by sequence number.  This
-            # avoids inserting an extra row — the user message was already
-            # written at its sequence by append_and_save_message in routes.py.
-            last_user_msg = next(
-                (m for m in reversed(session.messages) if m.role == "user"), None
-            )
-            if last_user_msg is None or last_user_msg.sequence is None:
-                # Defensive: routes.py always pre-saves the user message with
-                # a sequence before dispatch, so this is unreachable under
-                # normal flow. Raising instead of a warning-and-continue
-                # avoids silent data loss (in-memory diverges from DB row,
-                # so the queued chip would disappear from the UI after
-                # refresh without a corresponding bubble).
-                raise RuntimeError(
-                    f"{log_prefix} Cannot persist turn-start pending injection: "
-                    f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
-                )
-            last_user_msg.content = current_message
-            await chat_db().update_message_content_by_sequence(
-                session_id, last_user_msg.sequence, current_message
-            )
+            # NOTE: combining and per-row persistence both happen *after*
+            # ``inject_user_context`` below — see the comment near that
+            # call.  At this point ``current_message`` is still the
+            # original turn-starting send (no pending text yet).
 
         if not current_message.strip():
             yield StreamError(
@@ -3868,6 +3919,46 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
+
+        # Now that ``inject_user_context`` has wrapped + persisted the
+        # ORIGINAL turn-starting send into its row, fold any pending
+        # chips into the prompt the model sees AND persist each pending
+        # message as its own raw-text user row in the DB.  Order matters
+        # because:
+        #
+        #   - inject targets the last user row (= routes.py-saved row at
+        #     this point) and writes envelopes + the value passed in.
+        #     If we'd combined first, the wrapped row would carry the
+        #     chip text too, and persisting the chip as a separate row
+        #     below would make the chip appear twice in the UI.
+        #   - inject targets the last user row.  If we'd persisted
+        #     pending rows first, inject would land on a pending row
+        #     instead of the original send.
+        #
+        # ``transcript_builder=None``: the model still sees the combined
+        # text below as a single user turn that gets written to the
+        # transcript at turn-end via ``append_user(current_message)``.
+        # Adding each pending to the transcript here would triple-count
+        # them in the next turn's ``--resume`` context.
+        if pending_messages:
+            # Persist FIRST.  Only fold pending into the model's prompt
+            # when persistence succeeded — if the helper rolled back and
+            # re-queued the pending into Redis, leaving ``current_message``
+            # untouched ensures the NEXT turn's drain doesn't double-
+            # combine (re-queued pending + combined-from-this-turn) into
+            # the model's context.
+            persisted_ok = await persist_pending_as_user_rows(
+                session,
+                None,
+                pending_messages,
+                log_prefix=log_prefix,
+            )
+            if persisted_ok:
+                current_message = combine_pending_with_current(
+                    pending_messages,
+                    current_message,
+                    request_arrival_at=request_arrival_at,
+                )
 
         query_message, was_compacted = await _build_query_message(
             current_message,
@@ -4016,21 +4107,21 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if ctx.use_resume and ctx.resume_file:
                     sdk_options_kwargs_retry["resume"] = ctx.resume_file
                     sdk_options_kwargs_retry.pop("session_id", None)
-                elif "session_id" in sdk_options_kwargs:
-                    # Initial invocation used session_id (T1 or mode-switch
-                    # T1): keep it so the CLI writes the session file to the
-                    # predictable path for upload_transcript().  Storage is
-                    # ephemeral per invocation, so no "Session ID already in
-                    # use" conflict occurs — no prior file was restored.
+                else:
+                    # No --resume on this retry. Whether we entered with
+                    # ``session_id`` (T1, mode-switch) or with ``--resume`` (T2+),
+                    # we want the recovery turn's CLI write to land on the
+                    # predictable ``cli_session_path(.., session_id)`` so the
+                    # post-turn ``upload_transcript`` actually picks up the
+                    # rescued (compacted) content.  Without this, a T2+ retry
+                    # would drop session_id to dodge "Session ID already in use",
+                    # write to a random path, and the upload would silently grab
+                    # the stale pre-failure file — leaving GCS bloated and
+                    # guaranteeing the next turn re-trips prompt-too-long.
+                    if sdk_cwd:
+                        delete_stale_cli_session_file(sdk_cwd, session_id, log_prefix)
                     sdk_options_kwargs_retry.pop("resume", None)
                     sdk_options_kwargs_retry["session_id"] = session_id
-                else:
-                    # T2+ retry without --resume: initial invocation used
-                    # --resume, which restored the T1 session file to local
-                    # storage.  Re-using session_id without --resume would
-                    # fail with "Session ID already in use".
-                    sdk_options_kwargs_retry.pop("resume", None)
-                    sdk_options_kwargs_retry.pop("session_id", None)
                 # Recompute system_prompt for retry — the preset is safe on
                 # every turn (requires CLI ≥ 2.1.98, installed in the Docker
                 # image and configured via CHAT_CLAUDE_AGENT_CLI_PATH).

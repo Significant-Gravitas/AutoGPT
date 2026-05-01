@@ -18,6 +18,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from pydantic import BaseModel, PrivateAttr
@@ -63,6 +64,14 @@ class ChatSessionMetadata(BaseModel):
 
 
 class ChatMessage(BaseModel):
+    id: str | None = None
+    """Stable per-send id.  When supplied by the caller (e.g. AI SDK's
+    ``messageId`` plumbed from the frontend's ``crypto.randomUUID()`` per
+    user click), it becomes the Prisma row's ``id`` — the PK uniqueness
+    constraint then makes the INSERT itself the atomic dedup primitive
+    for retransmits / RMQ redeliveries / browser auto-retries.  ``None``
+    leaves Prisma to generate via ``@default(uuid())``."""
+
     role: str
     content: str | None = None
     name: str | None = None
@@ -78,6 +87,7 @@ class ChatMessage(BaseModel):
     def from_db(prisma_message: PrismaChatMessage) -> "ChatMessage":
         """Convert a Prisma ChatMessage to a Pydantic ChatMessage."""
         return ChatMessage(
+            id=prisma_message.id,
             role=prisma_message.role,
             content=prisma_message.content,
             name=prisma_message.name,
@@ -697,6 +707,13 @@ async def _save_session_to_db(
         for msg in new_messages:
             messages_data.append(
                 {
+                    # ``id`` is optional — when the caller supplies one
+                    # (frontend-provided per-click UUID) it becomes the
+                    # Prisma row's PK and a duplicate POST raises
+                    # ``UniqueViolationError`` we catch as the dedup
+                    # signal.  When None, Prisma generates via
+                    # ``@default(uuid())`` (existing behaviour).
+                    "id": msg.id,
                     "role": msg.role,
                     "content": msg.content,
                     "name": msg.name,
@@ -747,22 +764,35 @@ async def append_and_save_message(
         if session is None:
             raise ValueError(f"Session {session_id} not found")
 
-        # Idempotency: skip if the trailing block of same-role messages already
-        # contains this content. Uses is_message_duplicate which checks all
+        # Idempotency layer 1: caller-supplied id collision.  The frontend
+        # sends a per-click UUID as ``message.id``; AI SDK / network / RMQ
+        # retransmits of the *same* logical send carry the same id.  Catch
+        # the dup before the DB round-trip when we already see it cached
+        # in-memory.  The DB INSERT below is the authoritative atomic
+        # check (PK uniqueness on ``ChatMessage.id``) — this is just the
+        # fast path.
+        if message.id is not None and any(
+            existing.id == message.id for existing in session.messages
+        ):
+            return None  # duplicate — caller should skip enqueue
+
+        # Idempotency layer 2: trailing same-role-and-content collapse.
+        # Catches retransmits from older clients that don't supply
+        # ``message.id``, plus mid-turn re-sends of identical text from
+        # the same role.  Uses is_message_duplicate which checks all
         # consecutive trailing messages of the same role, not just [-1].
         #
-        # This collapses infra/nginx retries whether they land on the same pod
-        # (serialised by the Redis lock) or a different pod.
+        # Legit same-text messages across turns are distinguished by the
+        # intervening assistant reply: if the user said "yes", got a
+        # response, and says "yes" again, ``messages[-1]`` is the
+        # assistant reply, so the role check fails and the second
+        # message goes through normally.
         #
-        # Legit same-text messages are distinguished by the assistant turn
-        # between them: if the user said "yes", got a response, and says
-        # "yes" again, session.messages[-1] is the assistant reply, so the
-        # role check fails and the second message goes through normally.
-        #
-        # Edge case: if a turn dies without writing any assistant message,
-        # the user's next send of the same text is blocked here permanently.
-        # The fix is to ensure failed turns always write an error/timeout
-        # assistant message so the session always ends on an assistant turn.
+        # Edge case: if a turn dies without writing any assistant
+        # message, the user's next send of the same text is blocked here
+        # permanently.  The fix is to ensure failed turns always write
+        # an error/timeout assistant message so the session always ends
+        # on an assistant turn.
         if message.content is not None and is_message_duplicate(
             session.messages, message.role, message.content
         ):
@@ -774,6 +804,19 @@ async def append_and_save_message(
         try:
             await _save_session_to_db(session, existing_message_count)
         except Exception as e:
+            # Any save failure rolls back the optimistic append so the
+            # in-memory ``session.messages`` stays consistent with what's
+            # persisted (the function-scoped session is fresh per call,
+            # but the cache write below would otherwise persist the
+            # phantom row).
+            session.messages.pop()
+            # PK collision is the dedup signal — caller short-circuits to
+            # subscribe-only.  Other ``UniqueViolationError`` (e.g. a
+            # ``(sessionId, sequence)`` race that exhausted the retry
+            # loop in ``add_chat_messages_batch``) and unrelated
+            # exceptions surface as ``DatabaseError``.
+            if isinstance(e, UniqueViolationError) and "ChatMessage_pkey" in str(e):
+                return None
             raise DatabaseError(
                 f"Failed to persist message to session {session_id}"
             ) from e

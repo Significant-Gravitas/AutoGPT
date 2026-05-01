@@ -1396,35 +1396,10 @@ async def stream_chat_completion_baseline(
             len(drained_at_start_pending),
             session_id,
         )
-        # Chronological combine: pending typed BEFORE this /stream
-        # request's arrival go ahead of ``message``; race-path follow-ups
-        # typed AFTER (queued while /stream was still processing) go
-        # after.  See ``combine_pending_with_current`` for details.
-        message = combine_pending_with_current(
-            drained_at_start_pending,
-            message,
-            request_arrival_at=request_arrival_at,
-        )
-        # Update the in-memory content of the already-saved user message
-        # and persist that update by sequence number.
-        last_user_msg = next(
-            (m for m in reversed(session.messages) if m.role == "user"), None
-        )
-        if last_user_msg is None or last_user_msg.sequence is None:
-            # Defensive: routes.py always pre-saves the user message with a
-            # sequence before dispatch, so this is unreachable under normal
-            # flow. Raising instead of a warning-and-continue avoids silent
-            # data loss (in-memory message diverges from the DB row, so the
-            # queued chip would disappear from the UI after refresh without
-            # a corresponding bubble).
-            raise RuntimeError(
-                f"[Baseline] Cannot persist turn-start pending injection: "
-                f"last_user_msg={'missing' if last_user_msg is None else 'has no sequence'}"
-            )
-        last_user_msg.content = message
-        await chat_db().update_message_content_by_sequence(
-            session_id, last_user_msg.sequence, message
-        )
+        # NOTE: combine + per-row persist both happen *after*
+        # ``inject_user_context`` below — see the comment near that
+        # call for the ordering rationale.  At this point ``message``
+        # is still the original turn-starting send.
 
     # Select model based on the per-request tier toggle (standard / advanced).
     # The path (fast vs extended_thinking) is already decided — we're in the
@@ -1598,6 +1573,43 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
+
+    # Now that ``inject_user_context`` has wrapped + persisted the
+    # original turn-starting send into its row, fold pending into the
+    # model's current-turn input AND persist each pending message as
+    # its own raw-text user row.  Three things to keep in sync:
+    #
+    #  1. ``openai_messages`` (what the model sees this round) — append
+    #     each pending as a separate user entry, matching the mid-turn
+    #     drain pattern below.
+    #  2. ``message`` (used for transcript/title fallbacks) — combine.
+    #  3. ``session.messages`` + DB — one raw row per pending via
+    #     ``persist_pending_as_user_rows(transcript_builder=None)``.
+    #
+    # Order matters: persist must run after inject so inject targets
+    # the routes.py-saved row, not a pending row.
+    if drained_at_start_pending:
+        # Persist FIRST.  Only fold pending into the model's prompt
+        # (``message`` for transcript fallback + ``openai_messages`` for
+        # the live LLM call) when persistence succeeded — if the helper
+        # rolled back and re-queued the pending into Redis, leaving
+        # those untouched ensures the NEXT turn's drain doesn't
+        # double-combine (re-queued pending + combined-from-this-turn)
+        # into the model's context.
+        persisted_ok = await persist_pending_as_user_rows(
+            session,
+            None,
+            drained_at_start_pending,
+            log_prefix="[Baseline]",
+        )
+        if persisted_ok:
+            message = combine_pending_with_current(
+                drained_at_start_pending,
+                message,
+                request_arrival_at=request_arrival_at,
+            )
+            for pm in drained_at_start_pending:
+                openai_messages.append(format_pending_as_user_message(pm))
 
     # Inject Graphiti warm context into the current turn's user message (not
     # the system prompt) so the system prompt stays static and cacheable.

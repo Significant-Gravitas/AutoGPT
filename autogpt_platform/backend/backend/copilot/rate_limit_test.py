@@ -8,6 +8,7 @@ from redis.exceptions import RedisError
 
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
+    _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
     DEFAULT_TIER,
     TIER_MULTIPLIERS,
     CoPilotUsageStatus,
@@ -18,6 +19,7 @@ from .rate_limit import (
     _daily_reset_time,
     _fetch_cost_limits_flag,
     _fetch_tier_multipliers_flag,
+    _fetch_workspace_storage_limits_flag,
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
@@ -27,6 +29,8 @@ from .rate_limit import (
     get_tier_multipliers,
     get_usage_status,
     get_user_tier,
+    get_workspace_storage_limit_bytes,
+    get_workspace_storage_limits_mb,
     increment_daily_reset_count,
     record_cost_usage,
     release_reset_lock,
@@ -359,6 +363,9 @@ class TestSubscriptionTier:
     def test_tier_multipliers(self):
         # Float-typed so LD-provided fractional multipliers compose naturally;
         # equality against int literals still holds for the whole defaults.
+        # NO_TIER is 0.0 — explicit "no active subscription" state;
+        # rate-limited routes refuse with 429 (backend half of the paywall).
+        assert TIER_MULTIPLIERS[SubscriptionTier.NO_TIER] == 0.0
         assert TIER_MULTIPLIERS[SubscriptionTier.BASIC] == 1.0
         assert TIER_MULTIPLIERS[SubscriptionTier.PRO] == 5.0
         assert TIER_MULTIPLIERS[SubscriptionTier.MAX] == 20.0
@@ -366,8 +373,8 @@ class TestSubscriptionTier:
         assert TIER_MULTIPLIERS[SubscriptionTier.ENTERPRISE] == 60.0
         assert TIER_MULTIPLIERS is _DEFAULT_TIER_MULTIPLIERS
 
-    def test_default_tier_is_basic(self):
-        assert DEFAULT_TIER == SubscriptionTier.BASIC
+    def test_default_tier_is_no_tier(self):
+        assert DEFAULT_TIER == SubscriptionTier.NO_TIER
 
     def test_usage_status_includes_tier(self):
         now = datetime.now(UTC)
@@ -375,7 +382,7 @@ class TestSubscriptionTier:
             daily=UsageWindow(used=0, limit=100, resets_at=now + timedelta(hours=1)),
             weekly=UsageWindow(used=0, limit=500, resets_at=now + timedelta(days=1)),
         )
-        assert status.tier == SubscriptionTier.BASIC
+        assert status.tier == SubscriptionTier.NO_TIER
 
     def test_usage_status_with_custom_tier(self):
         now = datetime.now(UTC)
@@ -466,6 +473,85 @@ class TestGetTierMultipliers:
         ):
             result = await get_tier_multipliers()
         assert result == {t.value: m for t, m in _DEFAULT_TIER_MULTIPLIERS.items()}
+
+
+class TestGetWorkspaceStorageLimits:
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        """Clear the LD flag cache between tests so patches don't leak."""
+        _fetch_workspace_storage_limits_flag.cache_clear()  # type: ignore[attr-defined]
+
+    @pytest.mark.asyncio
+    async def test_defaults_when_flag_unset(self):
+        """With no LD override, the resolver returns the default map."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await get_workspace_storage_limits_mb()
+        assert result == {
+            t.value: mb for t, mb in _DEFAULT_TIER_WORKSPACE_STORAGE_MB.items()
+        }
+
+    @pytest.mark.asyncio
+    async def test_ld_override(self):
+        """LD override populates targeted tiers; others inherit defaults."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value={"NO_TIER": 300, "PRO": 2048},
+        ):
+            result = await get_workspace_storage_limits_mb()
+        assert result["NO_TIER"] == 300
+        assert result["PRO"] == 2048
+        assert (
+            result["BASIC"]
+            == _DEFAULT_TIER_WORKSPACE_STORAGE_MB[SubscriptionTier.BASIC]
+        )
+        assert result["MAX"] == _DEFAULT_TIER_WORKSPACE_STORAGE_MB[SubscriptionTier.MAX]
+
+    @pytest.mark.asyncio
+    async def test_invalid_json_falls_back(self):
+        """A non-object LD value falls back to defaults."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value="broken",
+        ):
+            result = await get_workspace_storage_limits_mb()
+        assert result == {
+            t.value: mb for t, mb in _DEFAULT_TIER_WORKSPACE_STORAGE_MB.items()
+        }
+
+    @pytest.mark.asyncio
+    async def test_unknown_tier_key_and_invalid_values_skipped(self):
+        """Unknown tiers and invalid values degrade to defaults per key."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            return_value={"NO_TIER": 300, "BOGUS": 999, "MAX": -1, "BUSINESS": "nope"},
+        ):
+            result = await get_workspace_storage_limits_mb()
+        assert result["NO_TIER"] == 300
+        assert result["MAX"] == _DEFAULT_TIER_WORKSPACE_STORAGE_MB[SubscriptionTier.MAX]
+        assert (
+            result["BUSINESS"]
+            == _DEFAULT_TIER_WORKSPACE_STORAGE_MB[SubscriptionTier.BUSINESS]
+        )
+
+    @pytest.mark.asyncio
+    async def test_ld_failure_falls_back(self):
+        """LD lookup raising propagates to defaults, not up the call stack."""
+        with patch(
+            "backend.util.feature_flag.get_feature_flag_value",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("LD SDK not initialized"),
+        ):
+            result = await get_workspace_storage_limits_mb()
+        assert result == {
+            t.value: mb for t, mb in _DEFAULT_TIER_WORKSPACE_STORAGE_MB.items()
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -1789,3 +1875,83 @@ class TestResetUserUsage:
         ):
             with pytest.raises(RedisError):
                 await reset_user_usage("user-1")
+
+
+class TestWorkspaceStorageLimits:
+    """Tests for tier-based workspace storage limits."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_flag_cache(self):
+        _fetch_workspace_storage_limits_flag.cache_clear()  # type: ignore[attr-defined]
+
+    def test_every_subscription_tier_has_storage_limit(self):
+        """Adding a new SubscriptionTier without a storage limit should fail."""
+        for tier in SubscriptionTier:
+            assert tier in _DEFAULT_TIER_WORKSPACE_STORAGE_MB, (
+                f"SubscriptionTier.{tier.name} has no entry in "
+                f"_DEFAULT_TIER_WORKSPACE_STORAGE_MB — add one"
+            )
+            assert _DEFAULT_TIER_WORKSPACE_STORAGE_MB[tier] > 0
+
+    def test_every_subscription_tier_has_rate_limit_multiplier(self):
+        """Adding a new SubscriptionTier without a rate limit multiplier should fail."""
+        for tier in SubscriptionTier:
+            assert tier in _DEFAULT_TIER_MULTIPLIERS, (
+                f"SubscriptionTier.{tier.name} has no entry in "
+                f"_DEFAULT_TIER_MULTIPLIERS — add one"
+            )
+            if tier == SubscriptionTier.NO_TIER:
+                assert _DEFAULT_TIER_MULTIPLIERS[tier] == 0.0
+            else:
+                assert _DEFAULT_TIER_MULTIPLIERS[tier] > 0
+
+    @pytest.mark.parametrize(
+        "tier,expected_mb",
+        [
+            (SubscriptionTier.NO_TIER, 250),
+            (SubscriptionTier.BASIC, 250),
+            (SubscriptionTier.PRO, 1024),
+            (SubscriptionTier.MAX, 5 * 1024),
+            (SubscriptionTier.BUSINESS, 15 * 1024),
+            (SubscriptionTier.ENTERPRISE, 15 * 1024),
+        ],
+    )
+    def test_tier_workspace_storage_mapping_covers_all_tiers(self, tier, expected_mb):
+        """Every tier has an explicit storage limit in the mapping."""
+        assert tier in _DEFAULT_TIER_WORKSPACE_STORAGE_MB
+        assert _DEFAULT_TIER_WORKSPACE_STORAGE_MB[tier] == expected_mb
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "tier,expected_bytes",
+        [
+            (SubscriptionTier.NO_TIER, 250 * 1024 * 1024),
+            (SubscriptionTier.BASIC, 250 * 1024 * 1024),
+            (SubscriptionTier.PRO, 1024 * 1024 * 1024),
+            (SubscriptionTier.MAX, 5 * 1024 * 1024 * 1024),
+            (SubscriptionTier.BUSINESS, 15 * 1024 * 1024 * 1024),
+            (SubscriptionTier.ENTERPRISE, 15 * 1024 * 1024 * 1024),
+        ],
+    )
+    async def test_get_workspace_storage_limit_bytes_per_tier(
+        self, tier, expected_bytes
+    ):
+        """get_workspace_storage_limit_bytes returns correct bytes for each tier."""
+        with patch(
+            "backend.copilot.rate_limit.get_user_tier",
+            return_value=tier,
+        ):
+            result = await get_workspace_storage_limit_bytes("user-1")
+        assert result == expected_bytes
+
+    @pytest.mark.asyncio
+    async def test_get_workspace_storage_limit_bytes_defaults_to_default_tier_on_unknown(
+        self,
+    ):
+        """Unknown tier falls back to the default tier limit."""
+        with patch(
+            "backend.copilot.rate_limit.get_user_tier",
+            return_value="UNKNOWN_TIER",
+        ):
+            result = await get_workspace_storage_limit_bytes("user-1")
+        assert result == 250 * 1024 * 1024

@@ -445,6 +445,147 @@ async def test_persist_pending_happy_path_appends_and_returns_true(
 
 
 @pytest.mark.asyncio
+async def test_persist_pending_no_transcript_path_skips_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Turn-start drain: passing ``transcript_builder=None`` MUST NOT touch
+    the transcript — it would triple-count pending entries in the next
+    turn's ``--resume`` context (the combined ``current_message`` is what
+    gets written to transcript at turn-end)."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+
+    async def _fake_upsert(sess: Any) -> Any:
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+
+    pending = [PM(content="chip-1"), PM(content="chip-2")]
+    ok = await persist_pending_as_user_rows(session, None, pending, log_prefix="[T]")
+    assert ok is True
+    assert [m.content for m in session.messages] == ["chip-1", "chip-2"]
+    assert [m.sequence for m in session.messages] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_turn_start_drain_invariants_one_bubble_per_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Locks the chip-queue invariant that's broken five different ways
+    in this PR's history.
+
+    After a turn-start drain in the SDK / baseline service, the on-disk
+    ``session.messages`` MUST satisfy all of:
+
+      1. **N+1 user rows total** (1 routes.py-saved row + N pending).
+      2. **Original row carries the wrapped envelopes** but NOT any
+         pending text — the bubble in the UI shows just the original
+         send (markdown strips the trusted ``<memory_context>`` /
+         ``<user_context>`` blocks for display).
+      3. **Each pending row carries its raw chip text alone** — no
+         envelopes, no neighbours' texts joined with ``\\n\\n``.
+      4. The COMBINED ``current_message`` is what the model sees this
+         turn (and lands in the transcript at turn-end via
+         ``append_user``) — separate from the per-row DB state.
+
+    Past regressions this test would have caught:
+
+      a. Persisting pending BEFORE ``inject_user_context`` (pending row
+         received the full wrapped+combined string from inject's
+         reverse-walk → bubble showed everything twice).
+      b. Wrapping the COMBINED text in ``inject_user_context`` (original
+         row carried both texts → chip text duplicated across two
+         bubbles).
+      c. Pre-PR behaviour: combining everything into the existing row
+         (one bubble with ``"send\\n\\nchip"`` joined, chip's
+         cardinality lost).
+    """
+    from backend.copilot.pending_message_helpers import (
+        combine_pending_with_current,
+        persist_pending_as_user_rows,
+    )
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    # Routes.py pre-saved the original send at seq=0.  inject_user_context
+    # then wrapped its content with envelopes (simulated here).
+    session.messages = [
+        MagicMock(
+            role="user",
+            content=(
+                "<memory_context>\nfacts\n</memory_context>\n\n"
+                "<user_context>\nbio\n</user_context>\n\n"
+                "can you sleep for 2 seconds then 3 seconds"
+            ),
+            sequence=0,
+        )
+    ]
+
+    async def _fake_upsert(sess: Any) -> Any:
+        # Simulate DB sequence back-fill on the rows that don't have one.
+        next_seq = (
+            max(
+                (m.sequence for m in sess.messages if m.sequence is not None),
+                default=-1,
+            )
+            + 1
+        )
+        for m in sess.messages:
+            if m.sequence is None:
+                m.sequence = next_seq
+                next_seq += 1
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+
+    pending = [PM(content="oh sleep 4 secs in between", enqueued_at=0.0)]
+    original = "can you sleep for 2 seconds then 3 seconds"
+
+    # Step 1: combine for the model's prompt.  Result is what the SDK CLI
+    # sees as the current-turn user input.
+    combined = combine_pending_with_current(pending, original, request_arrival_at=0.0)
+    assert "can you sleep for 2 seconds then 3 seconds" in combined
+    assert "oh sleep 4 secs in between" in combined
+
+    # Step 2: persist pending as separate user rows; transcript untouched.
+    ok = await persist_pending_as_user_rows(session, None, pending, log_prefix="[T]")
+    assert ok is True
+
+    # Invariant 1: N+1 user rows.
+    assert len(session.messages) == 2
+
+    # Invariant 2: original row keeps wrapped envelopes; no pending text.
+    original_row = session.messages[0]
+    assert "<memory_context>" in original_row.content
+    assert "<user_context>" in original_row.content
+    assert "can you sleep" in original_row.content
+    assert "oh sleep 4 secs" not in original_row.content, (
+        "regression: original row absorbed pending text — "
+        "inject ran on the combined string instead of the original send"
+    )
+
+    # Invariant 3: pending row is raw chip text only.
+    chip_row = session.messages[1]
+    assert (
+        chip_row.content == "oh sleep 4 secs in between"
+    ), f"regression: chip row content drifted from raw text — got {chip_row.content!r}"
+    assert "<memory_context>" not in chip_row.content
+    assert "can you sleep" not in chip_row.content, (
+        "regression: chip row absorbed original text — "
+        "persist ran before inject, or the chip was joined with `\\n\\n`"
+    )
+
+
+@pytest.mark.asyncio
 async def test_persist_pending_rollback_when_sequence_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

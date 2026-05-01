@@ -72,6 +72,7 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
   PlatformCostLogs PlatformCostLog[]
@@ -88,6 +89,7 @@ model User {
 }
 
 enum SubscriptionTier {
+  NO_TIER
   BASIC
   PRO
   MAX
@@ -424,6 +426,25 @@ model UserNotificationBatch {
 
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String
+  p256dh   String
+  auth     String
+
+  userAgent    String?
+  failCount    Int       @default(0)
+  lastFailedAt DateTime?
+
+  @@unique([userId, endpoint])
 }
 
 // For the library page

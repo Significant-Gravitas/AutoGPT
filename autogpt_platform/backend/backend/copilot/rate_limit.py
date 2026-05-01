@@ -72,6 +72,7 @@ class SubscriptionTier(str, Enum):
         from prisma.enums import SubscriptionTier
     """
 
+    NO_TIER = "NO_TIER"
     BASIC = "BASIC"
     PRO = "PRO"
     MAX = "MAX"
@@ -87,6 +88,14 @@ class SubscriptionTier(str, Enum):
 # eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
 # downstream microdollar math integer.
 _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
+    # NO_TIER is the explicit "no active Stripe subscription" state —
+    # multiplier 0.0 collapses the per-period limit to int(base * 0) = 0, so
+    # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
+    # before any business logic runs. This is the backend half of the
+    # paywall (the frontend modal nudges UI users; this gate enforces
+    # server-side regardless of client). BASIC stays as a future paid-tier
+    # option; for now it falls back to the same baseline as paid tiers.
+    SubscriptionTier.NO_TIER: 0.0,
     SubscriptionTier.BASIC: 1.0,
     SubscriptionTier.PRO: 5.0,
     SubscriptionTier.MAX: 20.0,
@@ -99,7 +108,20 @@ _DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
 # ``get_tier_multipliers`` so LD overrides are honoured.
 TIER_MULTIPLIERS = _DEFAULT_TIER_MULTIPLIERS
 
-DEFAULT_TIER = SubscriptionTier.BASIC
+DEFAULT_TIER = SubscriptionTier.NO_TIER
+
+
+# Per-tier workspace storage caps in MB. NO_TIER keeps the same baseline as
+# BASIC so users who cancel retain a small quota and see a real overage cap,
+# while LaunchDarkly can still tune tiers without a deploy.
+_DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
+    SubscriptionTier.NO_TIER: 250,  # 250 MB
+    SubscriptionTier.BASIC: 250,  # 250 MB
+    SubscriptionTier.PRO: 1024,  # 1 GB
+    SubscriptionTier.MAX: 5 * 1024,  # 5 GB
+    SubscriptionTier.BUSINESS: 15 * 1024,  # 15 GB
+    SubscriptionTier.ENTERPRISE: 15 * 1024,  # 15 GB
+}
 
 
 @cached(ttl_seconds=60, maxsize=1, cache_none=False)
@@ -221,6 +243,81 @@ async def get_tier_multipliers() -> dict[str, float]:
     if override:
         merged.update(override)
     return {tier.value: multiplier for tier, multiplier in merged.items()}
+
+
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_workspace_storage_limits_flag() -> dict[SubscriptionTier, int] | None:
+    """Fetch the ``copilot-tier-workspace-storage-limits`` LD flag and parse it.
+
+    Returns a sparse ``{tier: megabytes}`` map built from whichever keys are
+    valid in the flag payload, or ``None`` when the flag is unset / invalid /
+    LD is unavailable. Callers merge whatever survives into
+    :data:`_DEFAULT_TIER_WORKSPACE_STORAGE_MB`.
+
+    The LD value is expected to be a JSON object keyed by tier enum name
+    (``{"NO_TIER": 250, "PRO": 1024, "BUSINESS": 15360}``). Non-int or
+    negative values are skipped so a broken key degrades to the code default
+    instead of wiping out the limit.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(
+        Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value, "system", None
+    )
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-tier-workspace-storage-limits "
+            "(expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[SubscriptionTier, int] = {}
+    for key, value in raw.items():
+        try:
+            tier = SubscriptionTier(key)
+        except ValueError:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
+            logger.warning(
+                "Invalid LD value for copilot-tier-workspace-storage-limits[%s]: %r",
+                key,
+                value,
+            )
+            continue
+        if value <= 0:
+            logger.warning(
+                "Non-positive LD value for copilot-tier-workspace-storage-limits[%s]: %r",
+                key,
+                value,
+            )
+            continue
+        parsed[tier] = value
+    return parsed or None
+
+
+async def get_workspace_storage_limits_mb() -> dict[str, int]:
+    """Return the effective ``{tier_value: megabytes}`` workspace limit map.
+
+    Honours the ``copilot-tier-workspace-storage-limits`` LD flag when set;
+    missing tiers inherit :data:`_DEFAULT_TIER_WORKSPACE_STORAGE_MB`.
+    Unparseable flag values or LD fetch failures fall back to the defaults.
+    """
+    try:
+        override = await _fetch_workspace_storage_limits_flag()
+    except Exception:
+        logger.warning(
+            "get_workspace_storage_limits_mb: LD lookup failed", exc_info=True
+        )
+        override = None
+
+    merged: dict[SubscriptionTier, int] = dict(_DEFAULT_TIER_WORKSPACE_STORAGE_MB)
+    if override:
+        merged.update(override)
+    return {tier.value: megabytes for tier, megabytes in merged.items()}
 
 
 class UsageWindow(BaseModel):
@@ -652,6 +749,19 @@ get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-de
 get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
 
 
+async def get_workspace_storage_limit_bytes(user_id: str) -> int:
+    """Return the workspace storage cap in bytes for the user's subscription tier."""
+    tier = await get_user_tier(user_id)
+    limits_mb = await get_workspace_storage_limits_mb()
+    tier_key = getattr(tier, "value", str(tier))
+    fallback_mb = limits_mb.get(
+        DEFAULT_TIER.value,
+        _DEFAULT_TIER_WORKSPACE_STORAGE_MB[DEFAULT_TIER],
+    )
+    mb = limits_mb.get(tier_key, fallback_mb)
+    return mb * 1024 * 1024
+
+
 async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
@@ -788,6 +898,16 @@ async def get_global_rate_limits(
     tier = await get_user_tier(user_id)
     multipliers = await get_tier_multipliers()
     multiplier = multipliers.get(tier.value, 1.0)
+    # NO_TIER's 0.0 multiplier is the backend half of the paywall — it
+    # collapses limits to zero so unsubscribed users can't run the chat.
+    # Only enforce that gate when the platform-payment flag is on for this
+    # user; in the beta cohort (flag off) NO_TIER falls back to BASIC's
+    # baseline so the e2e suite and beta testers retain access.
+    if tier == SubscriptionTier.NO_TIER:
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
+            multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
     if multiplier != 1.0:
         # Cast back to int to preserve the microdollar integer contract
         # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the

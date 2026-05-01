@@ -370,7 +370,7 @@ describe("useCopilotPage — onSend queue-in-flight path", () => {
       "sess-1",
       "follow-up",
     );
-    // appendChip should have been called, bringing the chip into queuedMessages.
+    // queueMessage should have been called, bringing the entry into queuedMessages.
     await waitFor(() => {
       expect(result.current.queuedMessages).toContain("follow-up");
     });
