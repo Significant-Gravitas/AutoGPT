@@ -15,8 +15,6 @@ import {
 } from "../../../helpers";
 import { useYourPlanCard } from "./useYourPlanCard";
 
-const PRICING_PAGE_URL = "https://agpt.co/pricing";
-
 interface Props {
   index?: number;
 }
@@ -53,18 +51,6 @@ export function YourPlanCard({ index = 0 }: Props) {
         <Text variant="body-medium" as="span" className="text-textBlack">
           Your plan
         </Text>
-        <a
-          href={PRICING_PAGE_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="Compare plans on the AutoGPT pricing page"
-          className="inline-flex items-center gap-1 text-zinc-500 hover:text-violet-700"
-        >
-          <Text variant="small" as="span">
-            Compare plans
-          </Text>
-          <ArrowSquareOutIcon size={14} aria-hidden="true" />
-        </a>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
