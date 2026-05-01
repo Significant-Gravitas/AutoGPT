@@ -14,6 +14,10 @@ const PLAN_TO_TIER: Record<
   MAX: "MAX",
 };
 
+interface CheckoutResponse {
+  url?: string;
+}
+
 export function useSubscriptionStep() {
   const billing = useOnboardingWizardStore((s) => s.selectedBilling);
   const setSelectedBilling = useOnboardingWizardStore(
@@ -88,7 +92,7 @@ export function useSubscriptionStep() {
           cancel_url: `${baseUrl}?step=4&subscription=cancelled`,
         },
       });
-      const url = (result?.data as { url?: string } | undefined)?.url;
+      const url = (result?.data as CheckoutResponse | undefined)?.url;
       if (url) {
         // Navigating away — don't refetch (would set state on an
         // unmounting component while Stripe Checkout takes over).
