@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretLeft, SignOutIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
 import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
@@ -44,7 +44,7 @@ export default function OnboardingPage() {
           onClick={prevStep}
           className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <CaretLeft size={16} />
+          <CaretLeftIcon size={16} />
           Back
         </button>
       )}
