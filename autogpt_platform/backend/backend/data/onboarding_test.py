@@ -37,6 +37,7 @@ def test_format_onboarding_for_extraction_with_other():
 @pytest.mark.parametrize(
     "step,expected_reward",
     [
+        (OnboardingStep.VISIT_COPILOT, 300),
         (OnboardingStep.AGENT_NEW_RUN, 300),
         (OnboardingStep.MARKETPLACE_ADD_AGENT, 100),
         (OnboardingStep.MARKETPLACE_RUN_AGENT, 100),

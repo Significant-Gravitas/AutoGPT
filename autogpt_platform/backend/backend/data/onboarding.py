@@ -121,9 +121,10 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
     reward = 0
     match step:
-        # Reward user when they clicked New Run during onboarding
-        # This is because they need credits before scheduling a run (next step)
-        # This is seen as a reward for the GET_RESULTS step in the wallet
+        # The wizard fires VISIT_COPILOT on completion; this is the grant
+        # backing the wallet's "Complete onboarding" task ($3).
+        case OnboardingStep.VISIT_COPILOT:
+            reward = 300
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
