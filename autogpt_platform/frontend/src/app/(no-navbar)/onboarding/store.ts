@@ -116,13 +116,17 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>()(
       // currentStep is intentionally excluded — the URL is the source of
       // truth for which step the user is on, and the page hook syncs the
       // store from the URL on mount.
+      // selectedPlan is also excluded — it's only meaningful while a
+      // Stripe Checkout request is in flight (gated by isUpdatingTier in
+      // SubscriptionStep). The full-page Stripe redirect doesn't survive
+      // in-memory state anyway, so persisting it serves no purpose and
+      // would resurface a stale "selected" plan after cancel-and-return.
       partialize: (state) => ({
         name: state.name,
         role: state.role,
         otherRole: state.otherRole,
         painPoints: state.painPoints,
         otherPainPoint: state.otherPainPoint,
-        selectedPlan: state.selectedPlan,
         selectedBilling: state.selectedBilling,
         selectedCountryCode: state.selectedCountryCode,
       }),
