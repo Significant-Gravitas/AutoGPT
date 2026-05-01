@@ -40,7 +40,7 @@ export function RateLimitGate({ rateLimitMessage, onDismiss }: Props) {
     onDismiss();
   }, [rateLimitMessage, usageError, onDismiss]);
 
-  const isOpen = !!rateLimitMessage && (hasUsage || !usageError);
+  const isOpen = !!rateLimitMessage && hasUsage;
 
   return (
     <RateLimitResetDialog
