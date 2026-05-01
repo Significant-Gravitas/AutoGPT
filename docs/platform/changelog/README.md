@@ -10,6 +10,7 @@ AutoPilot was previously called CoPilot. References to CoPilot in older entries 
 
 | Date | Highlights |
 | ---- | ---------- |
+| [April 10 – May 1](april-10-may-1-2026.md) | Artifacts panel, agent briefings, AI chat in builder |
 | [March 23 – April 9](march-23-april-9-2026.md) | Themed prompt categories, live timer stats, redesigned onboarding, copy your prompts |
 | [March 20 – March 25](march-20-march-25-2026.md) | Import workflows from other tools, marketplace UI polish, dry-run mode, parallel AutoPilot actions |
 | [March 13 – March 20](march-13-march-20-2026.md) | Refreshed marketplace, usage monitor, feedback button, personalized prompts |
