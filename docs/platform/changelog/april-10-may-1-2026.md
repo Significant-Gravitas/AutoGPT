@@ -32,11 +32,7 @@ A new AI chat panel is now embedded directly in the flow builder. Ask questions 
 - **Multi-question ask** — The `ask_question` block can now present multiple questions in a single prompt, reducing back-and-forth interruptions. (v0.6.55)
 - **Standard / Advanced model toggle** — Easily switch between standard and advanced AI models per agent run. (v0.6.55)
 - **xAI Grok models** — Grok models from xAI are now available in the model selector. (v0.6.57)
-- **Stripe subscription billing** — Subscription management is now handled via Stripe, enabling more flexible billing plans. (v0.6.57)
-- **Claude Opus 4.7** — Anthropic's latest flagship model is now available on the platform. ([#12826](https://github.com/Significant-Gravitas/AutoGPT/pull/12826)) (v0.6.58)
 - **Web Push notifications** — Opt in to browser push notifications so you never miss an agent completion or action request. ([#12723](https://github.com/Significant-Gravitas/AutoGPT/pull/12723)) (v0.6.58)
-- **Subscription plan in onboarding** — New users can now select a subscription plan during the onboarding flow. ([#12935](https://github.com/Significant-Gravitas/AutoGPT/pull/12935)) (v0.6.58)
-- **Settings v2** — The settings pages have been rebuilt with a cleaner layout and expanded controls. (v0.6.58)
 
 </details>
 
