@@ -60,13 +60,6 @@ export function Wallet() {
             details: "",
           },
           {
-            id: "MARKETPLACE_VISIT",
-            name: "Go to Marketplace",
-            amount: 1,
-            details: "Click Marketplace in the top navigation",
-            video: "/onboarding/marketplace-visit.mp4",
-          },
-          {
             id: "MARKETPLACE_ADD_AGENT",
             name: "Get an agent from the marketplace",
             amount: 1,
@@ -81,14 +74,6 @@ export function Wallet() {
             details: "Go to the Library, open an agent you want, and run it",
             video: "/onboarding/marketplace-run.mp4",
           },
-          {
-            id: "BUILDER_SAVE_AGENT",
-            name: "Place your first blocks and save your agent",
-            amount: 1,
-            details:
-              "Open block library on the left and add a block to the canvas then save your agent",
-            video: "/onboarding/builder-save.mp4",
-          },
         ],
       },
       {
@@ -96,26 +81,10 @@ export function Wallet() {
         details: "Build your rhythm and make agents part of your routine.",
         tasks: [
           {
-            id: "RE_RUN_AGENT",
-            name: "Re-run an agent",
-            amount: 1,
-            details: "Re-run an agent from the Library",
-          },
-          {
             id: "SCHEDULE_AGENT",
             name: "Schedule your first agent",
             amount: 1,
             details: "Schedule an agent to run on a recurring basis",
-          },
-          {
-            id: "RUN_AGENTS",
-            name: "Run 10 agents",
-            amount: 3,
-            details: "Run agents from Library or Builder 10 times",
-            progress: {
-              current: state?.agentRuns || 0,
-              target: 10,
-            },
           },
           {
             id: "RUN_3_DAYS",

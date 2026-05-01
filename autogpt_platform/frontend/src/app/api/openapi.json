@@ -6970,7 +6970,6 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
               "type": "string",
