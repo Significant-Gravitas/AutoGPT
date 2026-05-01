@@ -614,15 +614,24 @@ async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
     cheaper than five separate counts/sums and immune to the pagination
     undercount that client-side aggregation suffers from.
     """
+    # average_rating is weighted by review_count so a submission with 1,000
+    # reviews counts proportionally more than one with a single review;
+    # straight AVG would over-represent low-volume submissions.
     sql = """
         SELECT
             COUNT(*)::int                                          AS total,
             COUNT(*) FILTER (WHERE status = 'APPROVED')::int       AS approved,
             COUNT(*) FILTER (WHERE status = 'PENDING')::int        AS pending,
             COALESCE(SUM(run_count), 0)::bigint                    AS total_runs,
-            CAST(
-                AVG(review_avg_rating) FILTER (WHERE review_avg_rating > 0)
-                AS double precision
+            (
+                SUM(review_avg_rating * review_count)
+                FILTER (WHERE review_count > 0 AND review_avg_rating > 0)
+            )::double precision
+            / NULLIF(
+                SUM(review_count) FILTER (
+                    WHERE review_count > 0 AND review_avg_rating > 0
+                ),
+                0
             )                                                      AS average_rating
         FROM {schema_prefix}"StoreSubmission"
         WHERE user_id = $1 AND is_deleted = false

@@ -34,9 +34,9 @@ export function McpConnectPanel({ onSuccess }: Props) {
 
   const trimmedUrl = serverUrl.trim();
   const trimmedToken = token.trim();
-  const canConnect = trimmedUrl.length > 0 && !isSubmitting;
-  const canSubmitToken =
-    trimmedUrl.length > 0 && trimmedToken.length > 0 && !isSubmitting;
+  const isUrlValid = isValidHttpUrl(trimmedUrl);
+  const canConnect = isUrlValid && !isSubmitting;
+  const canSubmitToken = isUrlValid && trimmedToken.length > 0 && !isSubmitting;
 
   async function invalidateCredentials() {
     await queryClient.invalidateQueries({
@@ -154,7 +154,11 @@ export function McpConnectPanel({ onSuccess }: Props) {
       ) : null}
 
       {error ? (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {error}
         </div>
       ) : null}
@@ -213,4 +217,14 @@ function getErrorStatus(error: unknown): number | null {
     if (typeof status === "number") return status;
   }
   return null;
+}
+
+function isValidHttpUrl(value: string): boolean {
+  if (!value) return false;
+  try {
+    const u = new URL(value);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

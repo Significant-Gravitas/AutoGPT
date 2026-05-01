@@ -13,7 +13,7 @@ import { postV2ExchangeOauthCodeForMcpTokens } from "@/app/api/__generated__/end
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { toDisplayName } from "@/providers/agent-credentials/helper";
-import { useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useEffect, useState } from "react";
 
 type APIKeyCredentialsCreatable = Omit<
@@ -371,14 +371,21 @@ export default function CredentialsProvider({
   // invalidates the credentials list query (e.g. settings v2 create/delete
   // flows using generated hooks) will trigger a reload here, so the builder
   // never sees stale credentials without callers having to opt in.
+  //
+  // Match by `queryHash` (computed via the public `hashKey` helper) instead
+  // of comparing `queryKey[0]` so any future parameterisation of the key
+  // still works. Listen for both `invalidate` (set isInvalidated=true) and
+  // `success` (refetch landed) actions so we cover active and inactive
+  // queries — for active queries the refetch following invalidate produces
+  // the `success` event with fresh data; for inactive queries only the
+  // `invalidate` action fires.
   useEffect(() => {
-    const targetKey = getGetV1ListCredentialsQueryKey();
+    const targetHash = hashKey(getGetV1ListCredentialsQueryKey());
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
-      if (
-        event.type === "updated" &&
-        event.action.type === "invalidate" &&
-        event.query.queryKey[0] === targetKey[0]
-      ) {
+      if (event.query.queryHash !== targetHash) return;
+      if (event.type !== "updated") return;
+      const actionType = event.action.type;
+      if (actionType === "invalidate" || actionType === "success") {
         loadCredentials();
       }
     });
