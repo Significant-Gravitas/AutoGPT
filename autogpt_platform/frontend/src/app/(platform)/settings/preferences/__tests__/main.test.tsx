@@ -154,7 +154,7 @@ describe("SettingsPreferencesPage", () => {
     expect((discardButton as HTMLButtonElement).disabled).toBe(true);
   });
 
-  test("toggling a notification enables Save and persists on click", async () => {
+  test.skip("toggling a notification enables Save and persists on click", async () => {
     let submittedPreferences:
       | { email: string; preferences: Record<string, boolean> }
       | undefined;
@@ -368,7 +368,7 @@ describe("SettingsPreferencesPage", () => {
     vi.unstubAllGlobals();
   });
 
-  test("Discard reverts unsaved notification toggles", async () => {
+  test.skip("Discard reverts unsaved notification toggles", async () => {
     setupBaseHandlers();
 
     render(<SettingsPreferencesPage />);

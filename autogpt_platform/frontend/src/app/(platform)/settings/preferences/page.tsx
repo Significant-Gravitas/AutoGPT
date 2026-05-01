@@ -5,7 +5,6 @@ import { useEffect } from "react";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 
 import { AccountCard } from "./components/AccountCard/AccountCard";
-import { NotificationsCard } from "./components/NotificationsCard/NotificationsCard";
 import { PreferencesHeader } from "./components/PreferencesHeader/PreferencesHeader";
 import { PreferencesSkeleton } from "./components/PreferencesSkeleton/PreferencesSkeleton";
 import { SaveBar } from "./components/SaveBar/SaveBar";
@@ -14,7 +13,7 @@ import { usePreferencesPage } from "./usePreferencesPage";
 
 export default function SettingsPreferencesPage() {
   useEffect(() => {
-    document.title = "Preferences – AutoGPT Platform";
+    document.title = "Account – AutoGPT Platform";
   }, []);
 
   const {
@@ -27,7 +26,6 @@ export default function SettingsPreferencesPage() {
     dirty,
     isSaving,
     setTimezone,
-    toggleNotification,
     discardChanges,
     savePreferences,
   } = usePreferencesPage();
@@ -60,12 +58,6 @@ export default function SettingsPreferencesPage() {
         value={formState.timezone}
         onChange={setTimezone}
         index={1}
-      />
-
-      <NotificationsCard
-        values={formState.notifications}
-        onToggle={toggleNotification}
-        index={2}
       />
 
       <SaveBar

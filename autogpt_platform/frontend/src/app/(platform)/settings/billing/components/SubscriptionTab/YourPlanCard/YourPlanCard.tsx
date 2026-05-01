@@ -8,7 +8,11 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 
-import { EASE_OUT, formatCents, formatShortDate } from "../../../helpers";
+import {
+  formatCents,
+  formatShortDate,
+  getSectionMotionProps,
+} from "../../../helpers";
 import { useYourPlanCard } from "./useYourPlanCard";
 
 const PRICING_PAGE_URL = "https://agpt.co/pricing";
@@ -33,19 +37,19 @@ export function YourPlanCard({ index = 0 }: Props) {
     onManage,
   } = useYourPlanCard();
 
+  const sectionMotion = getSectionMotionProps(index, Boolean(reduceMotion));
+
   if (isLoading || !plan) {
-    return <Skeleton className="h-[100px] rounded-[18px]" />;
+    return (
+      <motion.div {...sectionMotion}>
+        <Skeleton className="h-[100px] rounded-[18px]" />
+      </motion.div>
+    );
   }
 
   return (
     <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={
-        reduceMotion
-          ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
-      }
+      {...sectionMotion}
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center gap-2 px-4">

@@ -5,7 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Text } from "@/components/atoms/Text/Text";
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
-import { EASE_OUT } from "../../../helpers";
+import { EASE_OUT, getSectionMotionProps } from "../../../helpers";
 import {
   useAutopilotUsageCard,
   type UsageWindowView,
@@ -26,13 +26,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
 
   return (
     <motion.section
-      initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
-      transition={
-        reduceMotion
-          ? undefined
-          : { duration: 0.32, ease: EASE_OUT, delay: 0.04 + index * 0.05 }
-      }
+      {...getSectionMotionProps(index, Boolean(reduceMotion))}
       className="flex w-full flex-col gap-2"
     >
       <div className="flex items-center gap-1 px-4">

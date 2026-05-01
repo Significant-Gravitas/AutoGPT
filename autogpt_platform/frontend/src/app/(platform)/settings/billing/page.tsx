@@ -94,13 +94,13 @@ export default function SettingsBillingPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6 pb-8">
+    <div className="flex flex-col gap-4 pb-8 sm:gap-6">
       <Text variant="h4" as="h1" className="pl-4 leading-[28px] text-textBlack">
         Billing
       </Text>
 
       <TabsLine defaultValue="subscription">
-        <TabsLineList flush className="ml-4">
+        <TabsLineList flush className="ml-4 overflow-x-auto">
           <TabsLineTrigger value="subscription">Subscription</TabsLineTrigger>
           <TabsLineTrigger value="automation-credits">
             Automation Credits

@@ -42,7 +42,7 @@ interface Props {
   index?: number;
 }
 
-const COLUMN_COUNT = 7;
+const COLUMN_COUNT = 6;
 
 export function SubmissionsList({
   submissions,
@@ -197,21 +197,6 @@ export function SubmissionsList({
                   filter={
                     <SortColumnFilter
                       sortKey="runs"
-                      activeKey={filterState.sortKey}
-                      activeDir={filterState.sortDir}
-                      onChange={setSort}
-                      ascLabel="Lowest first"
-                      descLabel="Highest first"
-                    />
-                  }
-                />
-                <ColumnHeader
-                  label="Rating"
-                  align="right"
-                  width="110px"
-                  filter={
-                    <SortColumnFilter
-                      sortKey="rating"
                       activeKey={filterState.sortKey}
                       activeDir={filterState.sortDir}
                       onChange={setSort}

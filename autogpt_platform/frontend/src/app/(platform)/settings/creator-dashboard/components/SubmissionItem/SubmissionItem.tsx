@@ -8,7 +8,6 @@ import {
   ImageBrokenIcon,
   PencilSimpleIcon,
   SquareIcon,
-  StarIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
 
@@ -154,17 +153,6 @@ export function SubmissionItem({
 
       <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm tabular-nums text-zinc-700">
         {formatRuns(submission.run_count ?? 0)}
-      </td>
-
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-sm text-zinc-700">
-        {submission.review_avg_rating && submission.review_avg_rating > 0 ? (
-          <span className="inline-flex items-center justify-end gap-1 tabular-nums">
-            {submission.review_avg_rating.toFixed(1)}
-            <StarIcon size={12} weight="fill" className="text-amber-500" />
-          </span>
-        ) : (
-          <span className="text-zinc-400">—</span>
-        )}
       </td>
 
       <td className="px-2 py-3 text-right align-middle">
