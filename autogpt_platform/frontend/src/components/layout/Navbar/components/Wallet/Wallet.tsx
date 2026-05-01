@@ -113,7 +113,7 @@ export function Wallet() {
           {
             id: "RUN_14_DAYS",
             name: "Run agents 14 days in a row",
-            amount: 3,
+            amount: 1,
             details:
               "Run any agents from the Library or Builder for 10 days in a row",
             progress: {
@@ -124,7 +124,7 @@ export function Wallet() {
           {
             id: "RUN_AGENTS_100",
             name: "Complete 100 agent runs",
-            amount: 3,
+            amount: 1,
             details: "Let your agents run and complete 100 tasks in total",
             progress: {
               current: state?.agentRuns || 0,

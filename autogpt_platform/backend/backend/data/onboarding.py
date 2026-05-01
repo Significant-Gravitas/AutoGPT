@@ -137,9 +137,9 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
         case OnboardingStep.TRIGGER_WEBHOOK:
             reward = 100
         case OnboardingStep.RUN_14_DAYS:
-            reward = 300
+            reward = 100
         case OnboardingStep.RUN_AGENTS_100:
-            reward = 300
+            reward = 100
 
     if reward == 0:
         return
