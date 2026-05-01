@@ -3,6 +3,7 @@ import { postV1SubmitOnboardingProfile } from "@/app/api/__generated__/endpoints
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useState } from "react";
+import { normalizeOnboardingProfile } from "../../helpers";
 import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "./countries";
 import { PLAN_KEYS, type PlanKey, TEAM_INTAKE_FORM_URL } from "./helpers";
@@ -69,16 +70,9 @@ export function useSubscriptionStep() {
     // Profile data lives in an in-memory zustand store, so persist it before
     // Stripe takes the user off-page — otherwise the user's name/role/pain
     // points are lost on the post-checkout redirect.
-    const { name, role, otherRole, painPoints, otherPainPoint } =
-      useOnboardingWizardStore.getState();
-    const resolvedRole = role === "Other" ? otherRole : role;
-    const resolvedPainPoints = painPoints
-      .filter((p) => p !== "Something else")
-      .concat(
-        painPoints.includes("Something else") && otherPainPoint.trim()
-          ? [otherPainPoint.trim()]
-          : [],
-      );
+    const { name, role, painPoints } = normalizeOnboardingProfile(
+      useOnboardingWizardStore.getState(),
+    );
 
     try {
       // Profile must be persisted before Stripe takes over — the zustand
@@ -87,8 +81,8 @@ export function useSubscriptionStep() {
       // name / role / pain points.
       await postV1SubmitOnboardingProfile({
         user_name: name,
-        user_role: resolvedRole,
-        pain_points: resolvedPainPoints,
+        user_role: role,
+        pain_points: painPoints,
       });
 
       const baseUrl = `${window.location.origin}/onboarding`;

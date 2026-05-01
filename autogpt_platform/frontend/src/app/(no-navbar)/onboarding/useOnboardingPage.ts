@@ -10,6 +10,7 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useLDClient } from "launchdarkly-react-client-sdk";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { normalizeOnboardingProfile } from "./helpers";
 import { Step, useOnboardingWizardStore } from "./store";
 
 const LD_INIT_TIMEOUT_SECONDS = 5;
@@ -153,8 +154,9 @@ export function useOnboardingPage() {
     if (currentStep !== preparingStep || hasSubmitted.current) return;
     hasSubmitted.current = true;
 
-    const { name, role, otherRole, painPoints, otherPainPoint } =
-      useOnboardingWizardStore.getState();
+    const { name, role, painPoints } = normalizeOnboardingProfile(
+      useOnboardingWizardStore.getState(),
+    );
 
     // Profile is submitted before the Stripe Checkout redirect (the wizard
     // store is in-memory and doesn't survive the round-trip). Skip the
@@ -164,19 +166,10 @@ export function useOnboardingPage() {
     // upstream proxy normalising URLs), we don't blank the saved profile.
     if (searchParams.get("subscription") === "success" || !name.trim()) return;
 
-    const resolvedRole = role === "Other" ? otherRole : role;
-    const resolvedPainPoints = painPoints
-      .filter((p) => p !== "Something else")
-      .concat(
-        painPoints.includes("Something else") && otherPainPoint.trim()
-          ? [otherPainPoint.trim()]
-          : [],
-      );
-
     postV1SubmitOnboardingProfile({
       user_name: name,
-      user_role: resolvedRole,
-      pain_points: resolvedPainPoints,
+      user_role: role,
+      pain_points: painPoints,
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
