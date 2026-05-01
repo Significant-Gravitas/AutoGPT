@@ -285,8 +285,13 @@ export class MarketplacePage extends BasePage {
       }
 
       await this.page.reload();
-      await expect(this.page).toHaveURL(/\/profile\/dashboard/);
-      await expect(this.page.getByText("Agent dashboard")).toBeVisible();
+      await expect(this.page).toHaveURL(/\/settings\/creator-dashboard/);
+      await expect(
+        this.page.getByRole("heading", {
+          name: "Creator dashboard",
+          level: 1,
+        }),
+      ).toBeVisible();
     }
 
     throw new Error(`Submission row for "${agentTitle}" did not appear`);
