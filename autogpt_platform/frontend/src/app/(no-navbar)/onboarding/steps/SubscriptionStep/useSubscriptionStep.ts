@@ -63,6 +63,7 @@ export function useSubscriptionStep() {
       return;
     }
     if (isProcessing) return;
+    setIsSubmitting(true);
 
     // Local dev: backend has no Stripe wiring, so skip the checkout
     // round-trip and advance straight to Preparing. The profile still
@@ -72,8 +73,6 @@ export function useSubscriptionStep() {
       nextStep();
       return;
     }
-
-    setIsSubmitting(true);
 
     setSelectedPlan(planKey);
     const tier = PLAN_TO_TIER[planKey];
