@@ -160,6 +160,72 @@ describe("McpConnectPanel", () => {
     });
   });
 
+  it("lets the user switch from manual-token back to OAuth", async () => {
+    const { postV2InitiateOauthLoginForAnMcpServer } = await import(
+      "@/app/api/__generated__/endpoints/mcp/mcp"
+    );
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
+      makeApiError(400, "OAuth not supported"),
+    );
+
+    render(<McpConnectPanel onSuccess={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+    });
+
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "stale-token" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /try oauth/i }));
+
+    expect(screen.queryByPlaceholderText(/paste api token/i)).toBeNull();
+    expect(screen.getByRole("button", { name: /connect/i })).toBeDefined();
+  });
+
+  it("surfaces an error when bearer-token submission fails", async () => {
+    const {
+      postV2InitiateOauthLoginForAnMcpServer,
+      postV2StoreABearerTokenForAnMcpServer,
+    } = await import("@/app/api/__generated__/endpoints/mcp/mcp");
+
+    vi.mocked(postV2InitiateOauthLoginForAnMcpServer).mockRejectedValueOnce(
+      makeApiError(400, "OAuth not supported"),
+    );
+
+    const onSuccess = vi.fn();
+    render(<McpConnectPanel onSuccess={onSuccess} />);
+
+    fireEvent.change(screen.getByLabelText(/server url/i), {
+      target: { value: "https://mcp.example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /connect/i }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/paste api token/i)).toBeDefined();
+    });
+
+    vi.mocked(postV2StoreABearerTokenForAnMcpServer).mockRejectedValueOnce(
+      makeApiError(401, "invalid token"),
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/paste api token/i), {
+      target: { value: "wrong-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save token/i }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("invalid token");
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
   it("renders an aria-live error region when a non-400 error occurs", async () => {
     const { postV2InitiateOauthLoginForAnMcpServer } = await import(
       "@/app/api/__generated__/endpoints/mcp/mcp"
