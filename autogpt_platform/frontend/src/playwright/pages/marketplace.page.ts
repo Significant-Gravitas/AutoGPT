@@ -274,12 +274,10 @@ export class MarketplacePage extends BasePage {
   async waitForDashboardSubmission(agentTitle: string) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       const submissionRow = this.page
-        .getByTestId("agent-table-row")
+        .getByTestId("submission-row")
         .filter({ hasText: agentTitle })
         .first();
 
-      // Row may not appear immediately after redirect — allow a short render
-      // window before deciding the submission is absent on this attempt.
       if (await submissionRow.isVisible({ timeout: 5000 }).catch(() => false)) {
         return submissionRow;
       }
