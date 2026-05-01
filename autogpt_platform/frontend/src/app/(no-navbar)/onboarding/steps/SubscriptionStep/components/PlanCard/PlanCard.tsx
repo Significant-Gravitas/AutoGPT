@@ -14,6 +14,8 @@ interface Props {
   isYearly: boolean;
   onSelect: (key: PlanKey) => void;
   className?: string;
+  loading?: boolean;
+  disabled?: boolean;
 }
 
 export function PlanCard({
@@ -22,6 +24,8 @@ export function PlanCard({
   isYearly,
   onSelect,
   className,
+  loading = false,
+  disabled = false,
 }: Props) {
   const { displayPrice, monthlyEquiv, perLabel } = computePlanPricing({
     plan,
@@ -167,6 +171,8 @@ export function PlanCard({
             size={hl ? "large" : "small"}
             onClick={() => onSelect(plan.key)}
             className="w-full"
+            loading={loading}
+            disabled={disabled}
           >
             {plan.cta}
           </Button>

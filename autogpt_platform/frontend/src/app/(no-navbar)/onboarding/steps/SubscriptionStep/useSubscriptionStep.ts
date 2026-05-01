@@ -1,6 +1,18 @@
+import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/credits/credits";
+import { postV1SubmitOnboardingProfile } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
+import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "./countries";
 import { PLAN_KEYS, type PlanKey, TEAM_INTAKE_FORM_URL } from "./helpers";
+
+const PLAN_TO_TIER: Record<
+  Exclude<PlanKey, typeof PLAN_KEYS.TEAM>,
+  SubscriptionTierRequestTier
+> = {
+  PRO: "PRO",
+  MAX: "MAX",
+};
 
 export function useSubscriptionStep() {
   const billing = useOnboardingWizardStore((s) => s.selectedBilling);
@@ -15,6 +27,10 @@ export function useSubscriptionStep() {
   );
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
+  const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
+
+  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+    useUpdateSubscriptionTier();
 
   const countryIdx = Math.max(
     0,
@@ -29,13 +45,65 @@ export function useSubscriptionStep() {
     setSelectedCountryCode(next.countryCode);
   }
 
-  function handlePlanSelect(planKey: PlanKey) {
+  async function handlePlanSelect(planKey: PlanKey) {
     if (planKey === PLAN_KEYS.TEAM) {
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
       return;
     }
+    if (isUpdatingTier) return;
+
     setSelectedPlan(planKey);
-    nextStep();
+    const tier = PLAN_TO_TIER[planKey];
+
+    // Profile data lives in an in-memory zustand store, so persist it before
+    // Stripe takes the user off-page — otherwise the user's name/role/pain
+    // points are lost on the post-checkout redirect.
+    const { name, role, otherRole, painPoints, otherPainPoint } =
+      useOnboardingWizardStore.getState();
+    const resolvedRole = role === "Other" ? otherRole : role;
+    const resolvedPainPoints = painPoints
+      .filter((p) => p !== "Something else")
+      .concat(
+        painPoints.includes("Something else") && otherPainPoint.trim()
+          ? [otherPainPoint.trim()]
+          : [],
+      );
+
+    try {
+      await postV1SubmitOnboardingProfile({
+        user_name: name,
+        user_role: resolvedRole,
+        pain_points: resolvedPainPoints,
+      }).catch(() => undefined);
+
+      const baseUrl = `${window.location.origin}/onboarding`;
+      const result = await updateTier({
+        data: {
+          tier,
+          success_url: `${baseUrl}?step=5&subscription=success`,
+          cancel_url: `${baseUrl}?step=4&subscription=cancelled`,
+        },
+      });
+      const url = (result?.data as { url?: string } | undefined)?.url;
+      if (url) {
+        // Navigating away — don't refetch (would set state on an
+        // unmounting component while Stripe Checkout takes over).
+        window.location.href = url;
+        return;
+      }
+      // Backend modified the subscription in place (no Checkout URL) —
+      // proceed to the preparing step as if the user had clicked through.
+      nextStep();
+    } catch (error) {
+      toast({
+        title: "Couldn't start checkout",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Stripe didn't accept the request. Please try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   return {
@@ -46,5 +114,7 @@ export function useSubscriptionStep() {
     country,
     isYearly,
     handlePlanSelect,
+    isUpdatingTier,
+    selectedPlan,
   };
 }

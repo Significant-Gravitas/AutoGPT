@@ -113,6 +113,11 @@ export function useOnboardingPage() {
     if (currentStep !== preparingStep || hasSubmitted.current) return;
     hasSubmitted.current = true;
 
+    // Profile is submitted before the Stripe Checkout redirect (the wizard
+    // store is in-memory and doesn't survive the round-trip). Skip the
+    // resubmit on return to avoid overwriting saved data with empties.
+    if (searchParams.get("subscription") === "success") return;
+
     const { name, role, otherRole, painPoints, otherPainPoint } =
       useOnboardingWizardStore.getState();
     const resolvedRole = role === "Other" ? otherRole : role;
@@ -131,7 +136,7 @@ export function useOnboardingPage() {
     }).catch(() => {
       // Best effort — profile data is non-critical for accessing copilot
     });
-  }, [currentStep, preparingStep]);
+  }, [currentStep, preparingStep, searchParams]);
 
   async function handlePreparingComplete() {
     for (let attempt = 0; attempt < 3; attempt++) {
