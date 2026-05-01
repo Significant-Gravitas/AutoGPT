@@ -55,13 +55,13 @@ export function Wallet() {
         tasks: [
           {
             id: "GET_RESULTS",
-            name: "Complete onboarding and see your first agent's results",
+            name: "Complete onboarding",
             amount: 3,
             details: "",
           },
           {
             id: "MARKETPLACE_ADD_AGENT",
-            name: "Find and add an agent",
+            name: "Get an agent from the marketplace",
             amount: 1,
             details:
               "Search for an agent in the Marketplace and add it to your Library",
