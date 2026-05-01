@@ -11,7 +11,6 @@ from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
-from backend.data import execution as execution_db
 from backend.data.credit import get_user_credit_model
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
@@ -42,7 +41,6 @@ FrontendOnboardingStep = Literal[
     OnboardingStep.AGENT_INPUT,
     OnboardingStep.CONGRATS,
     OnboardingStep.VISIT_COPILOT,
-    OnboardingStep.MARKETPLACE_VISIT,
     OnboardingStep.BUILDER_OPEN,
 ]
 
@@ -131,20 +129,12 @@ async def _reward_user(user_id: str, onboarding: UserOnboarding, step: Onboardin
         # This is seen as a reward for the GET_RESULTS step in the wallet
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 300
-        case OnboardingStep.MARKETPLACE_VISIT:
-            reward = 100
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 100
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
             reward = 100
-        case OnboardingStep.BUILDER_SAVE_AGENT:
-            reward = 100
-        case OnboardingStep.RE_RUN_AGENT:
-            reward = 100
         case OnboardingStep.SCHEDULE_AGENT:
             reward = 100
-        case OnboardingStep.RUN_AGENTS:
-            reward = 300
         case OnboardingStep.RUN_3_DAYS:
             reward = 100
         case OnboardingStep.TRIGGER_WEBHOOK:
@@ -201,23 +191,6 @@ async def _send_onboarding_notification(
     await AsyncRedisNotificationEventBus().publish(
         NotificationEvent(user_id=user_id, payload=payload)
     )
-
-
-async def complete_re_run_agent(user_id: str, graph_id: str) -> None:
-    """
-    Complete RE_RUN_AGENT step when a user runs a graph they've run before.
-    Keeps overhead low by only counting executions if the step is still pending.
-    """
-    onboarding = await get_user_onboarding(user_id)
-    if OnboardingStep.RE_RUN_AGENT in onboarding.completedSteps:
-        return
-
-    # Includes current execution, so count > 1 means there was at least one prior run.
-    previous_exec_count = await execution_db.get_graph_executions_count(
-        user_id=user_id, graph_id=graph_id
-    )
-    if previous_exec_count > 1:
-        await complete_onboarding_step(user_id, OnboardingStep.RE_RUN_AGENT)
 
 
 def _clean_and_split(text: str) -> list[str]:
@@ -325,8 +298,6 @@ def _get_run_milestone_steps(
     new_run_count: int, consecutive_days: int
 ) -> list[OnboardingStep]:
     milestones: list[OnboardingStep] = []
-    if new_run_count >= 10:
-        milestones.append(OnboardingStep.RUN_AGENTS)
     if new_run_count >= 100:
         milestones.append(OnboardingStep.RUN_AGENTS_100)
     if consecutive_days >= 3:
