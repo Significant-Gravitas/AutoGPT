@@ -48,10 +48,7 @@ export function YourPlanCard({ index = 0 }: Props) {
   }
 
   return (
-    <motion.section
-      {...sectionMotion}
-      className="flex w-full flex-col gap-2"
-    >
+    <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
       <div className="flex items-center gap-2 px-4">
         <Text variant="body-medium" as="span" className="text-textBlack">
           Your plan

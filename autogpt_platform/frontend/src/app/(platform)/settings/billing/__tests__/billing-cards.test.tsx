@@ -189,48 +189,35 @@ describe("PaymentMethodCard", () => {
 });
 
 describe("InvoicesCard", () => {
-  it("renders a no-invoices empty state when the credit history is empty", async () => {
-    server.use(
-      jsonHandler("get", "/api/credits/transactions", {
-        transactions: [],
-        next_transaction_time: null,
-      }),
-    );
+  it("renders a no-invoices empty state when Stripe returns no invoices", async () => {
+    server.use(jsonHandler("get", "/api/credits/invoices", []));
 
     render(<InvoicesCard />);
 
     expect(await screen.findByText(/No invoices yet/i)).toBeDefined();
   });
 
-  it("renders an invoice row per TOP_UP transaction (current fallback)", async () => {
+  it("renders an invoice row per Stripe invoice", async () => {
     server.use(
-      jsonHandler("get", "/api/credits/transactions", {
-        transactions: [
-          {
-            transaction_key: "TXN-1",
-            transaction_time: "2026-04-01T00:00:00Z",
-            transaction_type: "TOP_UP",
-            amount: 2000,
-            description: "Top up",
-            running_balance: 2000,
-          },
-          {
-            transaction_key: "TXN-2",
-            transaction_time: "2026-04-02T00:00:00Z",
-            transaction_type: "USAGE",
-            amount: -50,
-            description: "Agent run",
-            running_balance: 1950,
-          },
-        ],
-        next_transaction_time: null,
-      }),
+      jsonHandler("get", "/api/credits/invoices", [
+        {
+          id: "in_001",
+          number: "INV-001",
+          created_at: "2026-04-01T00:00:00Z",
+          total_cents: 2000,
+          amount_paid_cents: 2000,
+          currency: "usd",
+          status: "paid",
+          description: "Top up",
+          hosted_invoice_url: "https://stripe.com/i/001",
+          invoice_pdf_url: "https://stripe.com/i/001.pdf",
+        },
+      ]),
     );
 
     render(<InvoicesCard />);
 
-    expect(await screen.findByText("TXN-1")).toBeDefined();
-    expect(screen.queryByText("TXN-2")).toBeNull();
+    expect(await screen.findByText("INV-001")).toBeDefined();
   });
 });
 
