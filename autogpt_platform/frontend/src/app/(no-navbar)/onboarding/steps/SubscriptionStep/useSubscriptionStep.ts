@@ -2,6 +2,7 @@ import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/cre
 import { postV1SubmitOnboardingProfile } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { useState } from "react";
 import { useOnboardingWizardStore } from "../../store";
 import { COUNTRIES } from "./countries";
 import { PLAN_KEYS, type PlanKey, TEAM_INTAKE_FORM_URL } from "./helpers";
@@ -35,6 +36,11 @@ export function useSubscriptionStep() {
 
   const { mutateAsync: updateTier, isPending: isUpdatingTier } =
     useUpdateSubscriptionTier();
+  // Local guard that flips synchronously on first click so the profile-save
+  // phase (which runs before `isUpdatingTier` becomes true) can't be
+  // re-entered by a fast double-click queueing duplicate POSTs.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isProcessing = isUpdatingTier || isSubmitting;
 
   const countryIdx = Math.max(
     0,
@@ -54,7 +60,8 @@ export function useSubscriptionStep() {
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
       return;
     }
-    if (isUpdatingTier) return;
+    if (isProcessing) return;
+    setIsSubmitting(true);
 
     setSelectedPlan(planKey);
     const tier = PLAN_TO_TIER[planKey];
@@ -111,6 +118,8 @@ export function useSubscriptionStep() {
             : "Stripe didn't accept the request. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -122,7 +131,7 @@ export function useSubscriptionStep() {
     country,
     isYearly,
     handlePlanSelect,
-    isUpdatingTier,
+    isUpdatingTier: isProcessing,
     selectedPlan,
   };
 }
