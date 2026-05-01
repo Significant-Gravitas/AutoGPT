@@ -6,8 +6,6 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { useRouter } from "next/navigation";
 import { formatResetTime } from "../usageHelpers";
 
-export { formatCents } from "../usageHelpers";
-
 interface Props {
   isOpen: boolean;
   onClose: () => void;
