@@ -69,7 +69,7 @@ export function UsageLimitReachedCard() {
             </Badge>
           )}
         </div>
-        <Link href="/profile/credits" className="shrink-0 hover:underline">
+        <Link href="/settings/billing" className="shrink-0 hover:underline">
           <Text as="span" variant="small" className="text-blue-600">
             Learn more about usage limits
           </Text>

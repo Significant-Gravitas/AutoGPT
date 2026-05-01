@@ -139,7 +139,7 @@ describe("UsagePanelContent", () => {
     expect(mockResetUsage).toHaveBeenCalled();
   });
 
-  it("renders 'Add credits' link when insufficient credits", () => {
+  it("renders 'Go to billing' link when insufficient credits", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
@@ -147,7 +147,7 @@ describe("UsagePanelContent", () => {
         isBillingEnabled={true}
       />,
     );
-    expect(screen.getByText("Add credits to reset")).toBeDefined();
+    expect(screen.getByText("Go to billing")).toBeDefined();
   });
 
   it("renders percent used in the usage bar", () => {
