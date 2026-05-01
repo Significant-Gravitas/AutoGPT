@@ -19,10 +19,9 @@ const PLAN_LABEL: Record<string, string> = {
   BUSINESS: "Team",
 };
 
-// Team upgrade is contact-sales — open this page rather than firing a
-// Stripe Checkout from the BUSINESS tier. Replace once marketing publishes
-// the canonical sales URL.
-export const TEAM_UPGRADE_URL = "https://agpt.co/contact-sales";
+// Team upgrade is contact-sales — open the Tally intake form rather than
+// firing a Stripe Checkout from the BUSINESS tier.
+export const TEAM_UPGRADE_URL = "https://tally.so/r/2Eb9zj";
 
 // User-visible paid plans only. NO_TIER is the "no active subscription" state
 // (gates the platform via PaywallGate); BASIC + ENTERPRISE are reserved

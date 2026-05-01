@@ -59,7 +59,7 @@ export function AgentReviewStep({
   reviewComments,
 }: Props) {
   const pathname = usePathname();
-  const isDashboardPage = pathname.includes("/profile/dashboard");
+  const isDashboardPage = pathname.includes("/settings/creator-dashboard");
   const headerContent = getStepHeaderContent(status, isDashboardPage);
 
   return (

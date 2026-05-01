@@ -124,6 +124,9 @@ function makeSubmission(
 function makeResponse(
   submissions: StoreSubmission[],
 ): StoreSubmissionsResponse {
+  const ratings = submissions
+    .map((s) => s.review_avg_rating ?? 0)
+    .filter((r) => r > 0);
   return {
     submissions,
     pagination: {
@@ -131,6 +134,19 @@ function makeResponse(
       total_pages: 1,
       current_page: 1,
       page_size: submissions.length || 20,
+    },
+    stats: {
+      total: submissions.length,
+      approved: submissions.filter(
+        (s) => s.status === SubmissionStatus.APPROVED,
+      ).length,
+      pending: submissions.filter((s) => s.status === SubmissionStatus.PENDING)
+        .length,
+      total_runs: submissions.reduce((sum, s) => sum + (s.run_count ?? 0), 0),
+      average_rating:
+        ratings.length > 0
+          ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+          : null,
     },
   };
 }
@@ -311,30 +327,6 @@ describe("SettingsCreatorDashboardPage", () => {
     });
   });
 
-  test("approved submissions cannot be selected (no checkbox rendered)", async () => {
-    server.use(
-      getGetV2ListMySubmissionsMockHandler(
-        makeResponse([
-          makeSubmission({
-            listing_version_id: "lv-approved",
-            name: "Approved Agent",
-            status: SubmissionStatus.APPROVED,
-          }),
-        ]),
-      ),
-    );
-
-    render(<SettingsCreatorDashboardPage />);
-
-    expect(
-      (await screen.findAllByText("Approved Agent")).length,
-    ).toBeGreaterThan(0);
-
-    expect(
-      screen.queryByRole("checkbox", { name: /select approved agent/i }),
-    ).toBeNull();
-  });
-
   test("delete failure shows a destructive toast and keeps the dialog open", async () => {
     server.use(
       getGetV2ListMySubmissionsMockHandler(
@@ -372,46 +364,6 @@ describe("SettingsCreatorDashboardPage", () => {
       expect(toastSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Couldn't delete submission",
-          variant: "destructive",
-        }),
-      );
-    });
-  });
-
-  test("bulk delete failure shows a partial-success destructive toast", async () => {
-    server.use(
-      getGetV2ListMySubmissionsMockHandler(
-        makeResponse([
-          makeSubmission({
-            listing_version_id: "lv-bulk",
-            name: "Bulk Agent",
-            status: SubmissionStatus.PENDING,
-          }),
-        ]),
-      ),
-      getDeleteV2DeleteStoreSubmissionMockHandler422(),
-    );
-
-    render(<SettingsCreatorDashboardPage />);
-
-    const checkboxes = await screen.findAllByRole("checkbox", {
-      name: /select bulk agent/i,
-    });
-    fireEvent.click(checkboxes[0]);
-
-    const deleteSelected = await screen.findByRole("button", {
-      name: /delete selected/i,
-    });
-    fireEvent.click(deleteSelected);
-
-    const confirm = await screen.findAllByRole("button", {
-      name: /delete selected/i,
-    });
-    fireEvent.click(confirm[confirm.length - 1]);
-
-    await waitFor(() => {
-      expect(toastSpy).toHaveBeenCalledWith(
-        expect.objectContaining({
           variant: "destructive",
         }),
       );
@@ -623,72 +575,5 @@ describe("SettingsCreatorDashboardPage", () => {
 
     const clearButton = await screen.findByRole("button", { name: /^clear$/i });
     fireEvent.click(clearButton);
-  });
-
-  test("selection bar exposes Select All and Deselect controls", async () => {
-    server.use(
-      getGetV2ListMySubmissionsMockHandler(
-        makeResponse([
-          makeSubmission({
-            listing_version_id: "lv-p1",
-            name: "Pending One",
-            status: SubmissionStatus.PENDING,
-          }),
-          makeSubmission({
-            listing_version_id: "lv-p2",
-            name: "Pending Two",
-            status: SubmissionStatus.PENDING,
-          }),
-        ]),
-      ),
-    );
-
-    render(<SettingsCreatorDashboardPage />);
-
-    const firstCheckboxes = await screen.findAllByRole("checkbox", {
-      name: /select pending one/i,
-    });
-    fireEvent.click(firstCheckboxes[0]);
-
-    const selectAll = await screen.findByRole("button", {
-      name: /select all/i,
-    });
-    fireEvent.click(selectAll);
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /select all/i })).toBeNull();
-    });
-
-    const deselect = screen.getByRole("button", { name: /^deselect$/i });
-    fireEvent.click(deselect);
-
-    await waitFor(() => {
-      expect(screen.queryByRole("button", { name: /^deselect$/i })).toBeNull();
-    });
-  });
-
-  test("selecting a pending submission shows the bulk selection bar", async () => {
-    server.use(
-      getGetV2ListMySubmissionsMockHandler(
-        makeResponse([
-          makeSubmission({
-            listing_version_id: "lv-pending",
-            name: "Pending Agent",
-            status: SubmissionStatus.PENDING,
-          }),
-        ]),
-      ),
-    );
-
-    render(<SettingsCreatorDashboardPage />);
-
-    const checkboxes = await screen.findAllByRole("checkbox", {
-      name: /select pending agent/i,
-    });
-    fireEvent.click(checkboxes[0]);
-
-    expect(
-      await screen.findByRole("button", { name: /delete selected/i }),
-    ).toBeDefined();
   });
 });

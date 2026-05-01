@@ -14,8 +14,8 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 import {
   applyFiltersAndSort,
-  computeStats,
   INITIAL_FILTER_STATE,
+  toDashboardStats,
   type FilterState,
 } from "./helpers";
 
@@ -79,7 +79,7 @@ export function useCreatorDashboardPage() {
 
   const submissions = response?.submissions ?? [];
 
-  const stats = useMemo(() => computeStats(submissions), [submissions]);
+  const stats = toDashboardStats(response?.stats);
 
   const visibleSubmissions = useMemo(
     () => applyFiltersAndSort(submissions, filterState),

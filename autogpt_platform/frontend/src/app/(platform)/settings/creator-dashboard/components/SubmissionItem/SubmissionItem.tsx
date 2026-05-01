@@ -2,12 +2,10 @@
 
 import Image from "next/image";
 import {
-  CheckSquareIcon,
   DotsThreeVerticalIcon,
   EyeIcon,
   ImageBrokenIcon,
   PencilSimpleIcon,
-  SquareIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
 
@@ -34,8 +32,6 @@ interface EditPayload extends StoreSubmissionEditRequest {
 
 interface Props {
   submission: StoreSubmission;
-  selected: boolean;
-  onToggleSelected: () => void;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
@@ -43,8 +39,6 @@ interface Props {
 
 export function SubmissionItem({
   submission,
-  selected,
-  onToggleSelected,
   onView,
   onEdit,
   onDelete,
@@ -68,31 +62,8 @@ export function SubmissionItem({
       data-testid="submission-row"
       data-agent-id={submission.graph_id}
       data-submission-id={submission.listing_version_id}
-      data-selected={selected}
-      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 data-[selected=true]:bg-zinc-100 hover:bg-zinc-50/60"
+      className="ease-[cubic-bezier(0.16,1,0.3,1)] border-b border-zinc-100 transition-colors duration-150 last:border-b-0 hover:bg-zinc-50/60"
     >
-      <td className="w-[48px] px-3 py-3 align-middle">
-        {canModify ? (
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected}
-            aria-label={`Select ${submission.name}`}
-            onClick={onToggleSelected}
-            className={`shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
-              selected
-                ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
-          >
-            {selected ? (
-              <CheckSquareIcon size={20} weight="fill" />
-            ) : (
-              <SquareIcon size={20} />
-            )}
-          </button>
-        ) : null}
-      </td>
       <td className="px-4 py-3 align-middle">
         <div className="flex items-center gap-3">
           <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-[8px] bg-zinc-100">

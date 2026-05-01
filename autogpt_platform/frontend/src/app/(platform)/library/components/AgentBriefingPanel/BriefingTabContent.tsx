@@ -73,7 +73,7 @@ function UsageSection() {
         <div className="flex-1" />
         {isBillingEnabled && (
           <Link
-            href="/profile/credits"
+            href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"
           >
             Manage billing
@@ -279,7 +279,7 @@ function UsageFooter({
       )}
       {showAddCredits && (
         <Link
-          href="/profile/credits"
+          href="/settings/billing"
           className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           Add credits to reset

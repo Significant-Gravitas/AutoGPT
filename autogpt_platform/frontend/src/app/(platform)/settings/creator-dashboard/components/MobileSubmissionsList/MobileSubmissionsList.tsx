@@ -1,16 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import * as Sentry from "@sentry/nextjs";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
-import { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
+import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
-import { toast } from "@/components/molecules/Toast/use-toast";
 
 import {
   EASE_OUT,
@@ -21,8 +17,6 @@ import {
 import { MobileSubmissionItem } from "../MobileSubmissionItem/MobileSubmissionItem";
 import { SortColumnFilter } from "../SubmissionsList/columns/SortColumnFilter";
 import { StatusColumnFilter } from "../SubmissionsList/columns/StatusColumnFilter";
-import { useSubmissionSelection } from "../SubmissionsList/useSubmissionSelection";
-import { MobileSelectionBar } from "./MobileSelectionBar";
 
 interface EditPayload extends StoreSubmissionEditRequest {
   store_listing_version_id: string | undefined;
@@ -54,48 +48,12 @@ export function MobileSubmissionsList({
 }: Props) {
   const reduceMotion = useReducedMotion();
 
-  const selectableIds = useMemo(
-    () =>
-      submissions
-        .filter((s) => s.status === SubmissionStatus.PENDING)
-        .map((s) => s.listing_version_id),
-    [submissions],
-  );
-
-  const selection = useSubmissionSelection(selectableIds);
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
-  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
-
   function setStatuses(statuses: SubmissionStatus[]) {
     onFilterChange({ ...filterState, statuses });
   }
 
   function setSort(sortKey: SortKey | null, sortDir: SortDir) {
     onFilterChange({ ...filterState, sortKey, sortDir });
-  }
-
-  async function handleBulkDelete() {
-    setIsBulkDeleting(true);
-    const ids = [...selection.selectedIds];
-    try {
-      const results = await Promise.allSettled(ids.map((id) => onDelete(id)));
-      const failed = results.filter((r) => r.status === "rejected").length;
-      const succeeded = ids.length - failed;
-      if (failed > 0) {
-        for (const r of results) {
-          if (r.status === "rejected") Sentry.captureException(r.reason);
-        }
-        toast({
-          title: `Deleted ${succeeded} of ${ids.length} submissions`,
-          description: `${failed} failed to delete. Please try again.`,
-          variant: "destructive",
-        });
-      }
-      selection.clear();
-      setBulkDeleteOpen(false);
-    } finally {
-      setIsBulkDeleting(false);
-    }
   }
 
   return (
@@ -148,49 +106,12 @@ export function MobileSubmissionsList({
         </FilterChip>
       </div>
 
-      <AnimatePresence initial={false}>
-        {selection.selectedCount > 0 && (
-          <motion.div
-            key="selection-bar"
-            initial={
-              reduceMotion
-                ? { opacity: 0 }
-                : { opacity: 0, height: 0, marginBottom: -12 }
-            }
-            animate={
-              reduceMotion
-                ? { opacity: 1 }
-                : { opacity: 1, height: "auto", marginBottom: 0 }
-            }
-            exit={
-              reduceMotion
-                ? { opacity: 0 }
-                : { opacity: 0, height: 0, marginBottom: -12 }
-            }
-            transition={{ duration: 0.2, ease: [0, 0, 0.2, 1] }}
-            className="overflow-hidden"
-          >
-            <MobileSelectionBar
-              selectedCount={selection.selectedCount}
-              allSelected={selection.allSelected}
-              onSelectAll={selection.selectAll}
-              onDeselectAll={selection.clear}
-              onDeleteSelected={() => setBulkDeleteOpen(true)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         {submissions.length > 0 ? (
           submissions.map((submission) => (
             <MobileSubmissionItem
               key={submission.listing_version_id}
               submission={submission}
-              selected={selection.isSelected(submission.listing_version_id)}
-              onToggleSelected={() =>
-                selection.toggle(submission.listing_version_id)
-              }
               onView={onView}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -207,41 +128,6 @@ export function MobileSubmissionsList({
           </div>
         )}
       </div>
-
-      <Dialog
-        title="Delete selected submissions?"
-        styling={{ maxWidth: "420px" }}
-        controlled={{
-          isOpen: bulkDeleteOpen,
-          set: (open) => setBulkDeleteOpen(open),
-        }}
-      >
-        <Dialog.Content>
-          <Text variant="body" className="text-zinc-700">
-            This will remove {selection.selectedCount} submission
-            {selection.selectedCount === 1 ? "" : "s"} from the store. This
-            action cannot be undone.
-          </Text>
-          <Dialog.Footer>
-            <Button
-              variant="ghost"
-              size="small"
-              onClick={() => setBulkDeleteOpen(false)}
-              disabled={isBulkDeleting}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="small"
-              onClick={handleBulkDelete}
-              loading={isBulkDeleting}
-            >
-              {isBulkDeleting ? "Deleting" : "Delete selected"}
-            </Button>
-          </Dialog.Footer>
-        </Dialog.Content>
-      </Dialog>
     </motion.section>
   );
 }

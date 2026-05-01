@@ -2,12 +2,10 @@
 
 import Image from "next/image";
 import {
-  CheckSquareIcon,
   DotsThreeVerticalIcon,
   EyeIcon,
   ImageBrokenIcon,
   PencilSimpleIcon,
-  SquareIcon,
   StarIcon,
   TrashIcon,
 } from "@phosphor-icons/react";
@@ -35,8 +33,6 @@ interface EditPayload extends StoreSubmissionEditRequest {
 
 interface Props {
   submission: StoreSubmission;
-  selected: boolean;
-  onToggleSelected: () => void;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
@@ -44,8 +40,6 @@ interface Props {
 
 export function MobileSubmissionItem({
   submission,
-  selected,
-  onToggleSelected,
   onView,
   onEdit,
   onDelete,
@@ -71,31 +65,9 @@ export function MobileSubmissionItem({
       data-testid="submission-card"
       data-agent-id={submission.graph_id}
       data-submission-id={submission.listing_version_id}
-      data-selected={selected}
-      className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0 data-[selected=true]:bg-zinc-50"
+      className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        {canModify ? (
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={selected}
-            aria-label={`Select ${submission.name}`}
-            onClick={onToggleSelected}
-            className={`mt-1 shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 ${
-              selected
-                ? "text-zinc-800 hover:text-zinc-900"
-                : "text-zinc-500 hover:text-zinc-700"
-            }`}
-          >
-            {selected ? (
-              <CheckSquareIcon size={20} weight="fill" />
-            ) : (
-              <SquareIcon size={20} />
-            )}
-          </button>
-        ) : null}
-
         <div className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-[8px] bg-zinc-100">
           {thumbnail ? (
             <Image

@@ -252,7 +252,7 @@ export function UsagePanelContent({
         isBillingEnabled && (
           <Button
             as="NextLink"
-            href="/profile/credits"
+            href="/settings/billing"
             variant="primary"
             size="small"
             className="mt-1 w-full"
@@ -261,7 +261,7 @@ export function UsagePanelContent({
           </Button>
         )}
       {showBillingLink && (
-        <Link href="/profile/credits" className="hover:underline">
+        <Link href="/settings/billing" className="hover:underline">
           <Text as="span" variant="small" className="text-blue-600">
             Learn more about usage limits
           </Text>

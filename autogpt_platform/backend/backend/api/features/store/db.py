@@ -607,6 +607,37 @@ async def get_store_creator(
         raise DatabaseError("Failed to fetch creator details") from e
 
 
+async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
+    """Compute creator-wide submission aggregates in a single round-trip.
+
+    Uses Postgres FILTER clauses so all five aggregates land in one query —
+    cheaper than five separate counts/sums and immune to the pagination
+    undercount that client-side aggregation suffers from.
+    """
+    sql = """
+        SELECT
+            COUNT(*)::int                                          AS total,
+            COUNT(*) FILTER (WHERE status = 'APPROVED')::int       AS approved,
+            COUNT(*) FILTER (WHERE status = 'PENDING')::int        AS pending,
+            COALESCE(SUM(run_count), 0)::bigint                    AS total_runs,
+            CAST(
+                AVG(review_avg_rating) FILTER (WHERE review_avg_rating > 0)
+                AS double precision
+            )                                                      AS average_rating
+        FROM {schema_prefix}"StoreSubmission"
+        WHERE user_id = $1 AND is_deleted = false
+    """
+    rows = await query_raw_with_schema(sql, user_id)
+    row = rows[0] if rows else {}
+    return store_model.SubmissionStats(
+        total=row.get("total", 0) or 0,
+        approved=row.get("approved", 0) or 0,
+        pending=row.get("pending", 0) or 0,
+        total_runs=row.get("total_runs", 0) or 0,
+        average_rating=row.get("average_rating"),
+    )
+
+
 async def get_store_submissions(
     user_id: str, page: int = 1, page_size: int = 20
 ) -> store_model.StoreSubmissionsResponse:
@@ -614,27 +645,29 @@ async def get_store_submissions(
     logger.debug(f"Getting store submissions for user {user_id}, page={page}")
 
     try:
-        # Calculate pagination values
         skip = (page - 1) * page_size
 
         where: prisma.types.StoreSubmissionWhereInput = {
             "user_id": user_id,
             "is_deleted": False,
         }
-        # Query submissions from database
-        submissions = await prisma.models.StoreSubmission.prisma().find_many(
-            where=where,
-            skip=skip,
-            take=page_size,
-            order=[{"submitted_at": "desc"}],
+
+        # Page rows and creator-wide stats run concurrently — stats already
+        # returns COUNT(*) over the same filter, so we reuse it for pagination
+        # instead of issuing a redundant count query.
+        submissions, stats = await asyncio.gather(
+            prisma.models.StoreSubmission.prisma().find_many(
+                where=where,
+                skip=skip,
+                take=page_size,
+                order=[{"submitted_at": "desc"}],
+            ),
+            _get_submission_stats(user_id),
         )
 
-        # Get total count for pagination
-        total = await prisma.models.StoreSubmission.prisma().count(where=where)
-
+        total = stats.total
         total_pages = (total + page_size - 1) // page_size
 
-        # Convert to response models (internal_comments omitted for regular users)
         submission_models = [
             store_model.StoreSubmission.from_db(sub) for sub in submissions
         ]
@@ -648,6 +681,7 @@ async def get_store_submissions(
                 total_pages=total_pages,
                 page_size=page_size,
             ),
+            stats=stats,
         )
 
     except Exception as e:
@@ -660,6 +694,13 @@ async def get_store_submissions(
                 total_items=0,
                 total_pages=0,
                 page_size=page_size,
+            ),
+            stats=store_model.SubmissionStats(
+                total=0,
+                approved=0,
+                pending=0,
+                total_runs=0,
+                average_rating=None,
             ),
         )
 
