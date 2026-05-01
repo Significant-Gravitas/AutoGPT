@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  cleanup,
-  render,
-  waitFor,
-} from "@/tests/integrations/test-utils";
+import { cleanup, render, waitFor } from "@/tests/integrations/test-utils";
 
 const { mockReplace } = vi.hoisted(() => ({ mockReplace: vi.fn() }));
 

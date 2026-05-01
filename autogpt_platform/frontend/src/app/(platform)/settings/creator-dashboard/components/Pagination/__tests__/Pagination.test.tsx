@@ -29,8 +29,9 @@ describe("Pagination", () => {
         onPageChange={() => {}}
       />,
     );
-    expect(container.querySelector('[data-testid="submissions-pagination"]'))
-      .toBeNull();
+    expect(
+      container.querySelector('[data-testid="submissions-pagination"]'),
+    ).toBeNull();
   });
 
   it("renders the showing-range copy and both nav buttons", () => {
@@ -64,9 +65,11 @@ describe("Pagination", () => {
       />,
     );
     expect(
-      (screen.getByRole("button", {
-        name: /previous page/i,
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: /previous page/i,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
 
     rerender(
@@ -76,9 +79,11 @@ describe("Pagination", () => {
       />,
     );
     expect(
-      (screen.getByRole("button", {
-        name: /next page/i,
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: /next page/i,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 
@@ -104,14 +109,18 @@ describe("Pagination", () => {
       />,
     );
     expect(
-      (screen.getByRole("button", {
-        name: /previous page/i,
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: /previous page/i,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     expect(
-      (screen.getByRole("button", {
-        name: /next page/i,
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: /next page/i,
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
   });
 });
