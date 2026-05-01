@@ -83,9 +83,9 @@ export function UsageCard({ index = 0 }: Props) {
               className="flex h-44 w-10 flex-col justify-between text-right"
               aria-hidden="true"
             >
-              {yTicks.map((tick) => (
+              {yTicks.map((tick, i) => (
                 <Text
-                  key={tick.value}
+                  key={i}
                   variant="small"
                   as="span"
                   className="tabular-nums text-zinc-400"
