@@ -43,9 +43,9 @@ export function UsageCard({ index = 0 }: Props) {
     return { value, label: `$${value.toFixed(2)}` };
   });
 
-  const first = usage[0];
-  const middle = usage[Math.floor(usage.length / 2)];
-  const last = usage[usage.length - 1];
+  const firstDate = usage.at(0)?.date ?? "—";
+  const middleDate = usage[Math.floor(usage.length / 2)]?.date ?? "—";
+  const lastDate = usage.at(-1)?.date ?? "—";
 
   return (
     <motion.section {...sectionMotion} className="flex w-full flex-col gap-2">
@@ -109,13 +109,13 @@ export function UsageCard({ index = 0 }: Props) {
 
               <div className="flex justify-between pl-1">
                 <Text variant="small" as="span" className="text-zinc-500">
-                  {first.date}
+                  {firstDate}
                 </Text>
                 <Text variant="small" as="span" className="text-zinc-500">
-                  {middle.date}
+                  {middleDate}
                 </Text>
                 <Text variant="small" as="span" className="text-zinc-500">
-                  {last.date}
+                  {lastDate}
                 </Text>
               </div>
             </div>
