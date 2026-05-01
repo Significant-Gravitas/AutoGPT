@@ -154,4 +154,25 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-welcome")).toBeDefined();
   });
+
+  it("lets ?step=5&subscription=success bypass the highestStep ceiling", async () => {
+    // Simulates returning from a successful Stripe checkout. The highest
+    // reached step before the redirect was 4 (SubscriptionStep). Without the
+    // success-bypass, ceiling=min(4,5)=4 would clamp the user back to step 4.
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=5&subscription=success");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-preparing")).toBeDefined();
+    expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("returns to SubscriptionStep on ?step=4&subscription=cancelled", async () => {
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    currentSearchParams = new URLSearchParams("step=4&subscription=cancelled");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
+  });
 });

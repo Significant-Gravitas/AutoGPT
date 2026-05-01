@@ -70,11 +70,15 @@ export function useSubscriptionStep() {
       );
 
     try {
+      // Profile must be persisted before Stripe takes over — the zustand
+      // store is in-memory and the post-checkout return is a full page
+      // navigation. Abort on failure rather than silently losing the user's
+      // name / role / pain points.
       await postV1SubmitOnboardingProfile({
         user_name: name,
         user_role: resolvedRole,
         pain_points: resolvedPainPoints,
-      }).catch(() => undefined);
+      });
 
       const baseUrl = `${window.location.origin}/onboarding`;
       const result = await updateTier({

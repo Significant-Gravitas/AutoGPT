@@ -147,4 +147,37 @@ describe("SubscriptionStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /European Union/i }));
     expect(useOnboardingWizardStore.getState().selectedCountryCode).toBe("EU");
   });
+
+  test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {
+    useOnboardingWizardStore.getState().setName("Ada");
+    useOnboardingWizardStore.getState().setRole("Engineer");
+
+    let resolveTier: (value: unknown) => void = () => undefined;
+    server.use(
+      http.post("*/api/onboarding/profile", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+      http.post(
+        "*/api/credits/subscription",
+        () =>
+          new Promise((resolve) => {
+            resolveTier = () => resolve(HttpResponse.json({ url: null }));
+          }),
+      ),
+    );
+
+    render(<SubscriptionStep />);
+    const proButton = screen.getByRole("button", { name: /Get Pro/i });
+    const maxButton = screen.getByRole("button", { name: /Upgrade to Max/i });
+    const teamButton = screen.getByRole("button", { name: /Contact sales/i });
+    fireEvent.click(proButton);
+
+    await waitFor(() => {
+      expect(maxButton.hasAttribute("disabled")).toBe(true);
+      expect(teamButton.hasAttribute("disabled")).toBe(true);
+    });
+    expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
+
+    resolveTier(null);
+  });
 });

@@ -5,7 +5,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Check, Star } from "@phosphor-icons/react";
+import { CheckIcon, StarIcon } from "@phosphor-icons/react";
 import { type Country, formatPrice } from "../../countries";
 import { PLAN_KEYS, type PlanDef, type PlanKey } from "../../helpers";
 import { computePlanPricing } from "./helpers";
@@ -40,11 +40,13 @@ export function PlanCard({
 
   return (
     <div
+      aria-disabled={disabled || undefined}
       className={cn(
-        "relative rounded-2xl p-px",
+        "relative rounded-2xl p-px transition-opacity",
         hl
           ? "bg-gradient-to-br from-purple-500 via-fuchsia-500 to-indigo-500 shadow-[0_10px_32px_-8px_rgba(119,51,245,0.25)]"
           : "bg-gradient-to-br from-zinc-300 via-zinc-400 to-zinc-500 md:my-5",
+        disabled && "pointer-events-none opacity-50",
         className,
       )}
     >
@@ -84,7 +86,7 @@ export function PlanCard({
                     }
               }
             >
-              <Star
+              <StarIcon
                 size={10}
                 weight="fill"
                 aria-hidden="true"
@@ -189,7 +191,7 @@ export function PlanCard({
                     isTeam ? "bg-stone-100" : "bg-purple-50",
                   )}
                 >
-                  <Check
+                  <CheckIcon
                     size={10}
                     weight="bold"
                     className={isTeam ? "text-stone-500" : "text-purple-500"}

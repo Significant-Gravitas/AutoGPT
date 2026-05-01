@@ -100,7 +100,14 @@ export function useOnboardingPage() {
     if (!areFlagsReady || hasInitialized.current) return;
     hasInitialized.current = true;
     const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
-    const ceiling = Math.min(readHighestStep(), preparingStep) as Step;
+    // A successful Stripe checkout return is a trusted intent to advance to
+    // Preparing — without this, the highestStep ceiling (capped at 4 before
+    // redirect) clamps the user back to step 4 and onboarding deadlocks.
+    const isSubscriptionSuccess =
+      searchParams.get("subscription") === "success";
+    const ceiling = isSubscriptionSuccess
+      ? preparingStep
+      : (Math.min(readHighestStep(), preparingStep) as Step);
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
@@ -146,13 +153,17 @@ export function useOnboardingPage() {
     if (currentStep !== preparingStep || hasSubmitted.current) return;
     hasSubmitted.current = true;
 
-    // Profile is submitted before the Stripe Checkout redirect (the wizard
-    // store is in-memory and doesn't survive the round-trip). Skip the
-    // resubmit on return to avoid overwriting saved data with empties.
-    if (searchParams.get("subscription") === "success") return;
-
     const { name, role, otherRole, painPoints, otherPainPoint } =
       useOnboardingWizardStore.getState();
+
+    // Profile is submitted before the Stripe Checkout redirect (the wizard
+    // store is in-memory and doesn't survive the round-trip). Skip the
+    // resubmit on return to avoid overwriting saved data with empties —
+    // belt-and-suspenders: also skip when `name` is empty so that even if
+    // the success query param gets stripped (manual edit, share link,
+    // upstream proxy normalising URLs), we don't blank the saved profile.
+    if (searchParams.get("subscription") === "success" || !name.trim()) return;
+
     const resolvedRole = role === "Other" ? otherRole : role;
     const resolvedPainPoints = painPoints
       .filter((p) => p !== "Something else")
