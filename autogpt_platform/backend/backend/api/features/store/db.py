@@ -636,14 +636,21 @@ async def _get_submission_stats(user_id: str) -> store_model.SubmissionStats:
         FROM {schema_prefix}"StoreSubmission"
         WHERE user_id = $1 AND is_deleted = false
     """
-    rows = await query_raw_with_schema(sql, user_id)
-    row = rows[0] if rows else {}
-    return store_model.SubmissionStats(
-        total=row.get("total", 0) or 0,
-        approved=row.get("approved", 0) or 0,
-        pending=row.get("pending", 0) or 0,
-        total_runs=row.get("total_runs", 0) or 0,
-        average_rating=row.get("average_rating"),
+    rows = await query_raw_with_schema(
+        sql,
+        user_id,
+        model=store_model.SubmissionStats,
+    )
+    return (
+        rows[0]
+        if rows
+        else store_model.SubmissionStats(
+            total=0,
+            approved=0,
+            pending=0,
+            total_runs=0,
+            average_rating=None,
+        )
     )
 
 

@@ -8,7 +8,7 @@ import pytest
 from prisma import Prisma
 
 from . import db
-from .model import Profile
+from .model import Profile, SubmissionStats
 
 
 @pytest.fixture(autouse=True)
@@ -433,17 +433,17 @@ async def test_get_store_creators_only_returns_approved(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_get_submission_stats_maps_row_to_pydantic(mocker):
     """The single FILTER aggregate query result maps cleanly into SubmissionStats."""
-    mocker.patch(
+    query_mock = mocker.patch(
         "backend.api.features.store.db.query_raw_with_schema",
         AsyncMock(
             return_value=[
-                {
-                    "total": 4,
-                    "approved": 2,
-                    "pending": 1,
-                    "total_runs": 360,
-                    "average_rating": 4.5,
-                }
+                SubmissionStats(
+                    total=4,
+                    approved=2,
+                    pending=1,
+                    total_runs=360,
+                    average_rating=4.5,
+                )
             ]
         ),
     )
@@ -455,6 +455,7 @@ async def test_get_submission_stats_maps_row_to_pydantic(mocker):
     assert result.pending == 1
     assert result.total_runs == 360
     assert result.average_rating == 4.5
+    assert query_mock.await_args.kwargs["model"] is SubmissionStats
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -464,13 +465,13 @@ async def test_get_submission_stats_handles_empty_creator(mocker):
         "backend.api.features.store.db.query_raw_with_schema",
         AsyncMock(
             return_value=[
-                {
-                    "total": 0,
-                    "approved": 0,
-                    "pending": 0,
-                    "total_runs": 0,
-                    "average_rating": None,
-                }
+                SubmissionStats(
+                    total=0,
+                    approved=0,
+                    pending=0,
+                    total_runs=0,
+                    average_rating=None,
+                )
             ]
         ),
     )
@@ -544,13 +545,13 @@ async def test_get_store_submissions_reuses_stats_total_for_pagination(mocker):
         "backend.api.features.store.db.query_raw_with_schema",
         AsyncMock(
             return_value=[
-                {
-                    "total": 7,
-                    "approved": 3,
-                    "pending": 2,
-                    "total_runs": 99,
-                    "average_rating": 3.9,
-                }
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
             ]
         ),
     )
