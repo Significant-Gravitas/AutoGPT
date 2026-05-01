@@ -1943,22 +1943,26 @@ async def migrate_webhook_presets_to_new_version(
     new_version: int,
 ) -> int:
     """
-    Migrates webhook-attached presets for a graph to a new version.
+    Migrates webhook-attached presets for a graph to a newly activated version.
 
-    When a new agent version is published, presets with webhooks that were
-    pinned to the old version should be updated to point to the new version,
-    so that existing webhook URLs continue to trigger the latest agent version.
+    When a new agent version is activated (i.e. becomes the live version),
+    presets with webhooks that were pinned to an older version are updated
+    to point to the new active version, so that existing webhook URLs
+    continue to trigger the latest agent version.
+
+    Presets pinned to a newer version than ``new_version`` (e.g. manually
+    pinned to a future/specific version) are intentionally left untouched.
 
     Only migrates presets that:
     - Belong to the user
     - Are attached to a webhook (webhookId is not null)
     - Are not deleted
-    - Are for the given graph but pinned to an older version
+    - Are for the given graph and pinned to a strictly older version
 
     Args:
         user_id: The owner of the presets.
         graph_id: The graph ID whose presets should be migrated.
-        new_version: The new graph version to migrate presets to.
+        new_version: The newly activated graph version to migrate presets to.
 
     Returns:
         The number of presets migrated.
@@ -1967,7 +1971,7 @@ async def migrate_webhook_presets_to_new_version(
         where={
             "userId": user_id,
             "agentGraphId": graph_id,
-            "agentGraphVersion": {"not": new_version},
+            "agentGraphVersion": {"lt": new_version},
             "webhookId": {"not": None},
             "isDeleted": False,
         },

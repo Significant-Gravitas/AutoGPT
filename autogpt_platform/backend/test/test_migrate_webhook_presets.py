@@ -7,10 +7,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+# Patch at the usage site (where the symbol is imported and used) rather
+# than at the definition site, per repo convention.
+_PRISMA_PATCH_TARGET = (
+    "backend.api.features.library.db.prisma.models.AgentPreset.prisma"
+)
+
 
 @pytest.fixture
 def mock_prisma():
-    with patch("prisma.models.AgentPreset.prisma") as mock:
+    with patch(_PRISMA_PATCH_TARGET) as mock:
         mock_client = AsyncMock()
         mock.return_value = mock_client
         yield mock_client
@@ -31,7 +37,7 @@ async def test_migrate_updates_matching_presets(mock_prisma):
         where={
             "userId": "user-123",
             "agentGraphId": "graph-abc",
-            "agentGraphVersion": {"not": 5},
+            "agentGraphVersion": {"lt": 5},
             "webhookId": {"not": None},
             "isDeleted": False,
         },
@@ -67,4 +73,5 @@ async def test_migrate_filters_correctly(mock_prisma):
     assert where["isDeleted"] is False
     assert where["userId"] == "user-456"
     assert where["agentGraphId"] == "graph-xyz"
-    assert where["agentGraphVersion"] == {"not": 10}
+    # Only strictly older versions should be migrated (not equal, not newer).
+    assert where["agentGraphVersion"] == {"lt": 10}
