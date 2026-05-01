@@ -4,9 +4,9 @@ import pytest
 from prisma.enums import NotificationType
 
 from backend.data.notifications import ZeroBalanceData
-from backend.executor.manager import (
+from backend.executor import billing
+from backend.executor.billing import (
     INSUFFICIENT_FUNDS_NOTIFIED_PREFIX,
-    ExecutionProcessor,
     clear_insufficient_funds_notifications,
 )
 from backend.util.exceptions import InsufficientBalanceError
@@ -25,7 +25,6 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time(
 ):
     """Test that the first insufficient funds notification sends a Discord alert."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     graph_id = "test-graph-456"
     error = InsufficientBalanceError(
@@ -36,13 +35,13 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time(
     )
 
     with patch(
-        "backend.executor.manager.queue_notification"
+        "backend.executor.billing.queue_notification"
     ) as mock_queue_notif, patch(
-        "backend.executor.manager.get_notification_manager_client"
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         # Setup mocks
@@ -63,7 +62,7 @@ async def test_handle_insufficient_funds_sends_discord_alert_first_time(
         mock_db_client.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the insufficient funds handler
-        execution_processor._handle_insufficient_funds_notif(
+        billing.handle_insufficient_funds_notif(
             db_client=mock_db_client,
             user_id=user_id,
             graph_id=graph_id,
@@ -99,7 +98,6 @@ async def test_handle_insufficient_funds_skips_duplicate_notifications(
 ):
     """Test that duplicate insufficient funds notifications skip both email and Discord."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     graph_id = "test-graph-456"
     error = InsufficientBalanceError(
@@ -110,13 +108,13 @@ async def test_handle_insufficient_funds_skips_duplicate_notifications(
     )
 
     with patch(
-        "backend.executor.manager.queue_notification"
+        "backend.executor.billing.queue_notification"
     ) as mock_queue_notif, patch(
-        "backend.executor.manager.get_notification_manager_client"
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         # Setup mocks
@@ -134,7 +132,7 @@ async def test_handle_insufficient_funds_skips_duplicate_notifications(
         mock_db_client.get_graph_metadata.return_value = MagicMock(name="Test Agent")
 
         # Test the insufficient funds handler
-        execution_processor._handle_insufficient_funds_notif(
+        billing.handle_insufficient_funds_notif(
             db_client=mock_db_client,
             user_id=user_id,
             graph_id=graph_id,
@@ -154,7 +152,6 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
 ):
     """Test that different agents for the same user get separate Discord alerts."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     graph_id_1 = "test-graph-111"
     graph_id_2 = "test-graph-222"
@@ -166,12 +163,12 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
         amount=-714,
     )
 
-    with patch("backend.executor.manager.queue_notification"), patch(
-        "backend.executor.manager.get_notification_manager_client"
+    with patch("backend.executor.billing.queue_notification"), patch(
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         mock_client = MagicMock()
@@ -190,7 +187,7 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
         mock_db_client.get_user_email_by_id.return_value = "test@example.com"
 
         # First agent notification
-        execution_processor._handle_insufficient_funds_notif(
+        billing.handle_insufficient_funds_notif(
             db_client=mock_db_client,
             user_id=user_id,
             graph_id=graph_id_1,
@@ -198,7 +195,7 @@ async def test_handle_insufficient_funds_different_agents_get_separate_alerts(
         )
 
         # Second agent notification
-        execution_processor._handle_insufficient_funds_notif(
+        billing.handle_insufficient_funds_notif(
             db_client=mock_db_client,
             user_id=user_id,
             graph_id=graph_id_2,
@@ -227,7 +224,7 @@ async def test_clear_insufficient_funds_notifications(server: SpinTestServer):
 
     user_id = "test-user-123"
 
-    with patch("backend.executor.manager.redis") as mock_redis_module:
+    with patch("backend.executor.billing.redis") as mock_redis_module:
 
         mock_redis_client = MagicMock()
         # get_redis_async is an async function, so we need AsyncMock for it
@@ -240,8 +237,8 @@ async def test_clear_insufficient_funds_notifications(server: SpinTestServer):
             f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:graph-3",
         ]
         mock_redis_client.scan_iter.return_value = async_iter(mock_keys)
-        # delete is awaited, so use AsyncMock
-        mock_redis_client.delete = AsyncMock(return_value=3)
+        # Each per-key DELETE returns 1 (one key deleted per call).
+        mock_redis_client.delete = AsyncMock(return_value=1)
 
         # Clear notifications
         result = await clear_insufficient_funds_notifications(user_id)
@@ -250,11 +247,15 @@ async def test_clear_insufficient_funds_notifications(server: SpinTestServer):
         expected_pattern = f"{INSUFFICIENT_FUNDS_NOTIFIED_PREFIX}:{user_id}:*"
         mock_redis_client.scan_iter.assert_called_once_with(match=expected_pattern)
 
-        # Verify delete was called with all keys
-        mock_redis_client.delete.assert_called_once_with(*mock_keys)
+        # Keys span multiple graph IDs → different cluster slots, so DELETE
+        # is called once per key (not a single bulk DELETE).
+        assert mock_redis_client.delete.call_count == len(mock_keys)
+        assert {
+            call.args[0] for call in mock_redis_client.delete.call_args_list
+        } == set(mock_keys)
 
-        # Verify return value
-        assert result == 3
+        # Verify return value — sum of per-key DELETEs
+        assert result == len(mock_keys)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -263,7 +264,7 @@ async def test_clear_insufficient_funds_notifications_no_keys(server: SpinTestSe
 
     user_id = "test-user-no-notifications"
 
-    with patch("backend.executor.manager.redis") as mock_redis_module:
+    with patch("backend.executor.billing.redis") as mock_redis_module:
 
         mock_redis_client = MagicMock()
         # get_redis_async is an async function, so we need AsyncMock for it
@@ -290,7 +291,7 @@ async def test_clear_insufficient_funds_notifications_handles_redis_error(
 
     user_id = "test-user-redis-error"
 
-    with patch("backend.executor.manager.redis") as mock_redis_module:
+    with patch("backend.executor.billing.redis") as mock_redis_module:
 
         # Mock get_redis_async to raise an error
         mock_redis_module.get_redis_async = AsyncMock(
@@ -310,7 +311,6 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
 ):
     """Test that both email and Discord notifications are still sent when Redis fails."""
 
-    execution_processor = ExecutionProcessor()
     user_id = "test-user-123"
     graph_id = "test-graph-456"
     error = InsufficientBalanceError(
@@ -321,13 +321,13 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
     )
 
     with patch(
-        "backend.executor.manager.queue_notification"
+        "backend.executor.billing.queue_notification"
     ) as mock_queue_notif, patch(
-        "backend.executor.manager.get_notification_manager_client"
+        "backend.executor.billing.get_notification_manager_client"
     ) as mock_get_client, patch(
-        "backend.executor.manager.settings"
+        "backend.executor.billing.settings"
     ) as mock_settings, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         mock_client = MagicMock()
@@ -346,7 +346,7 @@ async def test_handle_insufficient_funds_continues_on_redis_error(
         mock_db_client.get_user_email_by_id.return_value = "test@example.com"
 
         # Test the insufficient funds handler
-        execution_processor._handle_insufficient_funds_notif(
+        billing.handle_insufficient_funds_notif(
             db_client=mock_db_client,
             user_id=user_id,
             graph_id=graph_id,
@@ -370,7 +370,7 @@ async def test_add_transaction_clears_notifications_on_grant(server: SpinTestSer
     user_id = "test-user-grant-clear"
 
     with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         # Mock the query to return a successful transaction
@@ -412,7 +412,7 @@ async def test_add_transaction_clears_notifications_on_top_up(server: SpinTestSe
     user_id = "test-user-topup-clear"
 
     with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         # Mock the query to return a successful transaction
@@ -450,7 +450,7 @@ async def test_add_transaction_skips_clearing_for_inactive_transaction(
     user_id = "test-user-inactive"
 
     with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         # Mock the query to return a successful transaction
@@ -486,7 +486,7 @@ async def test_add_transaction_skips_clearing_for_usage_transaction(
     user_id = "test-user-usage"
 
     with patch("backend.data.credit.query_raw_with_schema") as mock_query, patch(
-        "backend.executor.manager.redis"
+        "backend.executor.billing.redis"
     ) as mock_redis_module:
 
         # Mock the query to return a successful transaction
@@ -521,7 +521,7 @@ async def test_enable_transaction_clears_notifications(server: SpinTestServer):
 
     with patch("backend.data.credit.CreditTransaction") as mock_credit_tx, patch(
         "backend.data.credit.query_raw_with_schema"
-    ) as mock_query, patch("backend.executor.manager.redis") as mock_redis_module:
+    ) as mock_query, patch("backend.executor.billing.redis") as mock_redis_module:
 
         # Mock finding the pending transaction
         mock_transaction = MagicMock()

@@ -138,6 +138,10 @@ export function RunAgentTool({ part }: Props) {
                 graph_name: agentOutputResponse.agent_name,
                 library_agent_link:
                   agentOutputResponse.library_agent_link ?? undefined,
+                // Propagate the real terminal status (COMPLETED / FAILED /
+                // STOPPED …) so the card title matches what happened.
+                // Defaults to the "started" label when backend omits status.
+                status: agentOutputResponse.execution?.status ?? "COMPLETED",
               }}
             />
           )}

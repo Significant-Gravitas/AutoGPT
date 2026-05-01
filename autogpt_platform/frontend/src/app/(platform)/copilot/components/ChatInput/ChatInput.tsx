@@ -1,5 +1,6 @@
 import {
   PromptInputBody,
+  PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -9,10 +10,12 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { ArrowUpIcon } from "@phosphor-icons/react";
 import { ChangeEvent, useEffect, useState } from "react";
 import { AttachmentMenu } from "./components/AttachmentMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
+import { ModelToggleButton } from "./components/ModelToggleButton";
 import { ModeToggleButton } from "./components/ModeToggleButton";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
@@ -26,6 +29,8 @@ interface Props {
   isStreaming?: boolean;
   isUploadingFiles?: boolean;
   onStop?: () => void;
+  /** Called to enqueue a message when copilot is streaming and user has typed text. */
+  onEnqueue?: (message: string) => void | Promise<void>;
   placeholder?: string;
   className?: string;
   inputId?: string;
@@ -43,6 +48,7 @@ export function ChatInput({
   isStreaming = false,
   isUploadingFiles = false,
   onStop,
+  onEnqueue,
   placeholder = "Type your message...",
   className,
   inputId = "chat-input",
@@ -50,16 +56,22 @@ export function ChatInput({
   onDroppedFilesConsumed,
   hasSession = false,
 }: Props) {
-  const { copilotMode, setCopilotMode, isDryRun, setIsDryRun } =
-    useCopilotUIStore();
+  const {
+    copilotChatMode,
+    setCopilotChatMode,
+    copilotLlmModel,
+    setCopilotLlmModel,
+    isDryRun,
+    setIsDryRun,
+  } = useCopilotUIStore();
   const showModeToggle = useGetFlag(Flag.CHAT_MODE_OPTION);
   const showDryRunToggle = showModeToggle;
   const [files, setFiles] = useState<File[]>([]);
 
   function handleToggleMode() {
     const next =
-      copilotMode === "extended_thinking" ? "fast" : "extended_thinking";
-    setCopilotMode(next);
+      copilotChatMode === "extended_thinking" ? "fast" : "extended_thinking";
+    setCopilotChatMode(next);
     toast({
       title:
         next === "fast"
@@ -69,6 +81,21 @@ export function ChatInput({
         next === "fast"
           ? "Optimized for speed — ideal for simpler tasks."
           : "Responses may take longer.",
+    });
+  }
+
+  function handleToggleModel() {
+    const next = copilotLlmModel === "advanced" ? "standard" : "advanced";
+    setCopilotLlmModel(next);
+    toast({
+      title:
+        next === "advanced"
+          ? "Switched to Advanced model"
+          : "Switched to Balanced model",
+      description:
+        next === "advanced"
+          ? "Using the highest-capability model."
+          : "Using the balanced default model.",
     });
   }
 
@@ -92,7 +119,12 @@ export function ChatInput({
   }, [droppedFiles, onDroppedFilesConsumed]);
 
   const hasFiles = files.length > 0;
+  // isBusy disables non-essential interactions (attachment menu, voice recording)
+  // but must not disable the textarea itself — streaming allows queued messages.
   const isBusy = disabled || isStreaming || isUploadingFiles;
+  // The textarea is only truly disabled when the session is unavailable, not
+  // during normal streaming (users can type and queue the next message).
+  const isTextareaDisabled = disabled || isUploadingFiles;
 
   const {
     value,
@@ -105,10 +137,12 @@ export function ChatInput({
       // Only clear files after successful send (onSend throws on failure)
       setFiles([]);
     },
-    disabled: isBusy,
+    disabled: isTextareaDisabled,
     canSendEmpty: hasFiles,
     inputId,
   });
+
+  const [isEnqueueing, setIsEnqueueing] = useState(false);
 
   const {
     isRecording,
@@ -121,10 +155,10 @@ export function ChatInput({
     audioStream,
   } = useVoiceRecording({
     setValue,
-    disabled: isBusy,
-    isStreaming,
+    disabled: isTextareaDisabled,
     value,
     inputId,
+    isStreaming,
   });
 
   function handleChange(e: ChangeEvent<HTMLTextAreaElement>) {
@@ -196,18 +230,28 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               disabled={isBusy}
             />
-            {showModeToggle && (
+            {/* Mode and model are per-message settings sent with each stream request,
+                so they can be freely changed between turns in an existing session.
+                Hide only while actively streaming (too late to change for that turn). */}
+            {showModeToggle && !isStreaming && (
               <ModeToggleButton
-                mode={copilotMode}
-                isStreaming={isStreaming}
+                mode={copilotChatMode}
                 onToggle={handleToggleMode}
               />
             )}
-            {showDryRunToggle && (!hasSession || isDryRun) && (
+            {showModeToggle && !isStreaming && (
+              <ModelToggleButton
+                model={copilotLlmModel}
+                onToggle={handleToggleModel}
+              />
+            )}
+            {/* DryRun button only on new chats: once a session exists its
+                dry_run flag is locked and should be read from session metadata
+                (sessionDryRun in useCopilotPage), not toggled here. The banner
+                in CopilotPage.tsx reflects the actual session state. */}
+            {showDryRunToggle && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
-                isStreaming={isStreaming}
-                readOnly={hasSession}
                 onToggle={handleToggleDryRun}
               />
             )}
@@ -222,6 +266,30 @@ export function ChatInput({
                 disabled={disabled || isTranscribing || isStreaming}
                 onClick={toggleRecording}
               />
+            )}
+            {isStreaming && canSend && onEnqueue && (
+              <PromptInputButton
+                aria-label="Queue message"
+                tooltip="Queue message"
+                variant="default"
+                disabled={isEnqueueing}
+                onClick={async () => {
+                  if (isEnqueueing) return;
+                  const trimmed = value.trim();
+                  if (trimmed) {
+                    setIsEnqueueing(true);
+                    try {
+                      await onEnqueue(trimmed);
+                      setValue("");
+                    } finally {
+                      setIsEnqueueing(false);
+                    }
+                  }
+                }}
+                className="size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100"
+              >
+                <ArrowUpIcon className="size-4" weight="bold" />
+              </PromptInputButton>
             )}
             {isStreaming ? (
               <PromptInputSubmit status="streaming" onStop={onStop} />

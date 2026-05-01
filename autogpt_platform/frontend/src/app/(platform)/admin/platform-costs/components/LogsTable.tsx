@@ -67,7 +67,10 @@ function LogsTable({
                 Cost
               </th>
               <th scope="col" className="px-3 py-3 text-right">
-                Tokens
+                In / Out
+              </th>
+              <th scope="col" className="px-3 py-3 text-right">
+                Cache (R/W)
               </th>
               <th scope="col" className="px-3 py-3 text-right">
                 Duration
@@ -106,11 +109,33 @@ function LogsTable({
                     : "-"}
                 </td>
                 <td className="px-3 py-2 text-right text-xs">
+                  {log.cache_read_tokens || log.cache_creation_tokens
+                    ? `${formatTokens(Number(log.cache_read_tokens ?? 0))} / ${formatTokens(Number(log.cache_creation_tokens ?? 0))}`
+                    : "-"}
+                </td>
+                <td className="px-3 py-2 text-right text-xs">
                   {log.duration != null
                     ? formatDuration(Number(log.duration))
                     : "-"}
                 </td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">
+                <td
+                  className={[
+                    "px-3 py-2 text-xs text-muted-foreground",
+                    log.graph_exec_id ? "cursor-pointer" : "",
+                  ].join(" ")}
+                  title={
+                    log.graph_exec_id ? String(log.graph_exec_id) : undefined
+                  }
+                  onClick={
+                    log.graph_exec_id
+                      ? () => {
+                          navigator.clipboard
+                            .writeText(String(log.graph_exec_id))
+                            .catch(() => {});
+                        }
+                      : undefined
+                  }
+                >
                   {log.graph_exec_id
                     ? String(log.graph_exec_id).slice(0, 8)
                     : "-"}
@@ -120,7 +145,7 @@ function LogsTable({
             {logs.length === 0 && (
               <tr>
                 <td
-                  colSpan={10}
+                  colSpan={11}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No logs found

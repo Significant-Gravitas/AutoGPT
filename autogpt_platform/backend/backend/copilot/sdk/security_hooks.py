@@ -10,7 +10,12 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from backend.copilot.context import is_allowed_local_path
+from backend.copilot.context import (
+    get_execution_context,
+    is_allowed_local_path,
+    is_sdk_tool_path,
+)
+from backend.copilot.pending_messages import drain_and_format_for_injection
 
 from .tool_adapter import (
     BLOCKED_TOOLS,
@@ -71,15 +76,31 @@ def _validate_workspace_path(
 ) -> dict[str, Any]:
     """Validate that a workspace-scoped tool only accesses allowed paths.
 
-    Delegates to :func:`is_allowed_local_path` which permits:
-    - The SDK working directory (``/tmp/copilot-<session>/``)
-    - The current session's tool-results directory
-      (``~/.claude/projects/<encoded-cwd>/<uuid>/tool-results/``)
+    For ``Read``: only SDK artifact paths (tool-results/, tool-outputs/) are
+    permitted.  The workspace directory is served by the ``read_file`` MCP
+    tool which enforces per-session isolation.
+
+    For ``Glob`` / ``Grep``: the full workspace (sdk_cwd) is allowed in
+    addition to SDK artifact paths.
     """
     path = tool_input.get("file_path") or tool_input.get("path") or ""
     if not path:
         # Glob/Grep without a path default to cwd which is already sandboxed
         return {}
+
+    if tool_name == "Read":
+        # Narrow carve-out: only allow SDK artifact paths for the native Read tool.
+        # ``is_sdk_tool_path`` validates session membership via _current_project_dir,
+        # preventing cross-session access to another session's tool-results directory.
+        # All other file reads must go through the read_file MCP tool.
+        if is_sdk_tool_path(path):
+            return {}
+        logger.warning(f"Blocked Read outside SDK artifact paths: {path}")
+        return _deny(
+            "[SECURITY] The SDK 'Read' tool can only access tool-results/ or "
+            "tool-outputs/ paths. Use the 'read_file' MCP tool to read workspace files. "
+            "This is enforced by the platform and cannot be bypassed."
+        )
 
     if is_allowed_local_path(path, sdk_cwd):
         return {}
@@ -101,6 +122,13 @@ def _validate_tool_access(
     Returns:
         Empty dict to allow, or dict with hookSpecificOutput to deny
     """
+    # Workspace-scoped tools: allowed only within the SDK workspace directory.
+    # Check this BEFORE the blocked-tools list because Read is blocked in
+    # general but must remain accessible for tool-results/tool-outputs paths
+    # that the SDK uses internally for oversized result handling.
+    if tool_name in WORKSPACE_SCOPED_TOOLS:
+        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
+
     # Block forbidden tools
     if tool_name in BLOCKED_TOOLS:
         logger.warning(f"Blocked tool access attempt: {tool_name}")
@@ -109,10 +137,6 @@ def _validate_tool_access(
             "This is enforced by the platform and cannot be bypassed. "
             "Use the CoPilot-specific MCP tools instead."
         )
-
-    # Workspace-scoped tools: allowed only within the SDK workspace directory
-    if tool_name in WORKSPACE_SCOPED_TOOLS:
-        return _validate_workspace_path(tool_name, tool_input, sdk_cwd)
 
     # Check for dangerous patterns in tool input
     # Use json.dumps for predictable format (str() produces Python repr)
@@ -308,6 +332,30 @@ def create_security_hooks(
                         tool_name,
                     )
 
+            # Mid-turn drain: after ANY tool finishes (MCP or built-in), pull
+            # any queued user follow-up messages and attach them to the
+            # tool_result as ``additionalContext``.  This is the
+            # protocol-legal mid-turn injection slot — Claude reads the
+            # follow-up on the next LLM round without starting a new turn.
+            # The drain helper also stashes a persist-queue copy so
+            # ``sdk/service.py`` can append a matching user row to the UI.
+            _, session = get_execution_context()
+            followup = ""
+            if session is not None and session.session_id:
+                followup = await drain_and_format_for_injection(
+                    session.session_id,
+                    log_prefix="[SDK][PostToolUse]",
+                )
+            if followup:
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PostToolUse",
+                            "additionalContext": followup,
+                        }
+                    },
+                )
             return cast(SyncHookJSONOutput, {})
 
         async def post_tool_failure_hook(
@@ -346,7 +394,7 @@ def create_security_hooks(
             trigger = _sanitize(str(input_data.get("trigger", "auto")), max_len=50)
             # Sanitize untrusted input: strip control chars for logging AND
             # for the value passed downstream.  read_compacted_entries()
-            # validates against _projects_base() as defence-in-depth, but
+            # validates against projects_base() as defence-in-depth, but
             # sanitizing here prevents log injection and rejects obviously
             # malformed paths early.
             transcript_path = _sanitize(

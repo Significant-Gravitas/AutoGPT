@@ -117,7 +117,7 @@ export function DialogWrap({
             </span>
           )}
 
-          {isForceOpen && !handleClose ? null : (
+          {isForceOpen ? null : (
             <Button
               variant="icon"
               size="icon"

@@ -10,12 +10,19 @@ from backend.copilot.constants import is_transient_api_error
 
 
 def _make_config(**overrides) -> ChatConfig:
-    """Create a ChatConfig with safe defaults, applying *overrides*."""
+    """Create a ChatConfig with safe defaults, applying *overrides*.
+
+    SDK model fields are pinned to anthropic/* so the
+    ``_validate_sdk_model_vendor_compatibility`` model_validator allows
+    construction with ``use_openrouter=False`` (the default here).
+    """
     defaults = {
         "use_claude_code_subscription": False,
         "use_openrouter": False,
         "api_key": None,
         "base_url": None,
+        "thinking_standard_model": "anthropic/claude-sonnet-4-6",
+        "thinking_advanced_model": "anthropic/claude-opus-4-7",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -39,8 +46,11 @@ class TestResolveFallbackModel:
 
             assert _resolve_fallback_model() is None
 
-    def test_strips_provider_prefix(self):
-        """OpenRouter-style 'anthropic/claude-sonnet-4-...' is stripped."""
+    def test_keeps_full_slug_when_openrouter_active(self):
+        """OpenRouter routes by ``vendor/model`` slug — _normalize_model_name
+        now preserves the prefix when openrouter_active is True so non-
+        Anthropic vendors stay routable.  Anthropic slugs are passed
+        through unchanged in this mode (PR #12878)."""
         cfg = _make_config(
             claude_agent_fallback_model="anthropic/claude-sonnet-4-20250514",
             use_openrouter=True,
@@ -52,8 +62,7 @@ class TestResolveFallbackModel:
 
             result = _resolve_fallback_model()
 
-        assert result == "claude-sonnet-4-20250514"
-        assert "/" not in result
+        assert result == "anthropic/claude-sonnet-4-20250514"
 
     def test_dots_replaced_for_direct_anthropic(self):
         """Direct Anthropic requires hyphen-separated versions."""
@@ -86,15 +95,14 @@ class TestResolveFallbackModel:
         assert result == "claude-sonnet-4.5-20250514"
 
     def test_default_value(self):
-        """Default fallback model resolves to a valid string."""
+        """Default fallback model resolves to None (disabled by default)."""
         cfg = _make_config()
         with patch(f"{_SVC}.config", cfg):
             from backend.copilot.sdk.service import _resolve_fallback_model
 
             result = _resolve_fallback_model()
 
-        assert result is not None
-        assert "sonnet" in result.lower() or "claude" in result.lower()
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -198,16 +206,19 @@ class TestConfigDefaults:
 
     def test_fallback_model_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_fallback_model
-        assert "sonnet" in cfg.claude_agent_fallback_model.lower()
+        assert cfg.claude_agent_fallback_model == ""
 
     def test_max_turns_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_turns == 1000
+        assert cfg.agent_max_turns == 100
 
     def test_max_budget_usd_default(self):
         cfg = _make_config()
-        assert cfg.claude_agent_max_budget_usd == 100.0
+        assert cfg.claude_agent_max_budget_usd == 10.0
+
+    def test_max_thinking_tokens_default(self):
+        cfg = _make_config()
+        assert cfg.claude_agent_max_thinking_tokens == 8192
 
     def test_max_transient_retries_default(self):
         cfg = _make_config()
@@ -272,7 +283,7 @@ class TestBuildSdkEnv:
         assert "x-user-id: user-1" in env["ANTHROPIC_CUSTOM_HEADERS"]
 
     def test_openrouter_no_headers_when_ids_empty(self):
-        """Mode 3: No custom headers when session_id/user_id are not given."""
+        """Mode 3: Only Accept-Encoding header present when session_id/user_id not given."""
         cfg = _make_config(
             use_claude_code_subscription=False,
             use_openrouter=True,
@@ -284,7 +295,8 @@ class TestBuildSdkEnv:
 
             env = build_sdk_env()
 
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in env
+        # SDK 0.1.58: Accept-Encoding: identity is always injected even without trace headers
+        assert env.get("ANTHROPIC_CUSTOM_HEADERS") == "Accept-Encoding: identity"
 
     def test_openrouter_clears_oauth_tokens(self):
         """Mode 3: OAuth tokens are explicitly cleared to prevent CLI preferring subscription auth."""
@@ -494,21 +506,21 @@ class TestConfigValidators:
 
     def test_max_turns_rejects_zero(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=0)
+            _make_config(agent_max_turns=0)
 
     def test_max_turns_rejects_negative(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=-1)
+            _make_config(agent_max_turns=-1)
 
     def test_max_turns_rejects_above_10000(self):
         with pytest.raises(ValidationError):
-            _make_config(claude_agent_max_turns=10001)
+            _make_config(agent_max_turns=10001)
 
     def test_max_turns_accepts_boundary_values(self):
-        cfg_low = _make_config(claude_agent_max_turns=1)
-        assert cfg_low.claude_agent_max_turns == 1
-        cfg_high = _make_config(claude_agent_max_turns=10000)
-        assert cfg_high.claude_agent_max_turns == 10000
+        cfg_low = _make_config(agent_max_turns=1)
+        assert cfg_low.agent_max_turns == 1
+        cfg_high = _make_config(agent_max_turns=10000)
+        assert cfg_high.agent_max_turns == 10000
 
     def test_max_budget_rejects_zero(self):
         with pytest.raises(ValidationError):
@@ -711,10 +723,15 @@ class TestDoTransientBackoff:
         mock_sleep.assert_called_once_with(7)
 
     async def test_replaces_adapter_with_new_instance(self):
-        """state.adapter is replaced with a new SDKResponseAdapter after yield."""
+        """state.adapter is replaced with a new SDKResponseAdapter after yield,
+        and ``render_reasoning_in_ui`` is threaded from the SDK service config
+        (not hardcoded) so ``CHAT_RENDER_REASONING_IN_UI=false`` at runtime
+        flips the reconstruction consistently with the rest of the path."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
         from backend.copilot.sdk.service import _do_transient_backoff
+
+        cfg = _make_config(render_reasoning_in_ui=False)
 
         original_adapter = MagicMock()
         state = MagicMock()
@@ -723,6 +740,7 @@ class TestDoTransientBackoff:
 
         with (
             patch("asyncio.sleep", new=AsyncMock()),
+            patch(f"{_SVC}.config", cfg),
             patch("backend.copilot.sdk.service.SDKResponseAdapter") as mock_cls,
         ):
             new_adapter = MagicMock()
@@ -730,7 +748,11 @@ class TestDoTransientBackoff:
             async for _ in _do_transient_backoff(3, state, "msg-1", "sess-1"):
                 pass
 
-        mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
+        mock_cls.assert_called_once_with(
+            message_id="msg-1",
+            session_id="sess-1",
+            render_reasoning_in_ui=False,
+        )
         assert state.adapter is new_adapter
 
     async def test_resets_usage_after_yield(self):

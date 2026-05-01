@@ -1,9 +1,64 @@
 import datetime
 
+import prisma.enums
 import prisma.models
 import pytest
 
 from . import model as library_model
+
+
+def _make_library_agent(
+    *,
+    graph_id: str = "g1",
+    executions: list | None = None,
+) -> prisma.models.LibraryAgent:
+    return prisma.models.LibraryAgent(
+        id="la1",
+        userId="u1",
+        agentGraphId=graph_id,
+        settings="{}",  # type: ignore
+        agentGraphVersion=1,
+        isCreatedByUser=True,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=datetime.datetime.now(),
+        updatedAt=datetime.datetime.now(),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        AgentGraph=prisma.models.AgentGraph(
+            id=graph_id,
+            version=1,
+            name="Agent",
+            description="Desc",
+            userId="u1",
+            isActive=True,
+            createdAt=datetime.datetime.now(),
+            Executions=executions,
+        ),
+    )
+
+
+def test_from_db_execution_count_override_covers_success_rate():
+    """Covers execution_count_override is not None branch and executions/count > 0 block."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    exec1 = prisma.models.AgentGraphExecution(
+        id="exec-1",
+        agentGraphId="g1",
+        agentGraphVersion=1,
+        userId="u1",
+        executionStatus=prisma.enums.AgentExecutionStatus.COMPLETED,
+        createdAt=now,
+        updatedAt=now,
+        isDeleted=False,
+        isShared=False,
+    )
+    agent = _make_library_agent(executions=[exec1])
+
+    result = library_model.LibraryAgent.from_db(agent, execution_count_override=1)
+
+    assert result.execution_count == 1
+    assert result.success_rate is not None
+    assert result.success_rate == 100.0
 
 
 @pytest.mark.asyncio

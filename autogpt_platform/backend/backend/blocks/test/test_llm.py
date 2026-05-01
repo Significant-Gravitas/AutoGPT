@@ -1294,6 +1294,16 @@ class TestAnthropicCacheControl:
     """Verify that llm_call attaches cache_control to the system prompt block
     and to the last tool definition when calling the Anthropic API."""
 
+    @pytest.fixture(autouse=True)
+    def disable_openrouter_routing(self):
+        """Ensure tests exercise the direct-Anthropic path by suppressing the
+        OpenRouter API key. Without this, a local .env with OPEN_ROUTER_API_KEY
+        set would silently reroute all Anthropic calls through OpenRouter,
+        bypassing the cache_control code under test."""
+        with patch("backend.blocks.llm.settings") as mock_settings:
+            mock_settings.secrets.open_router_api_key = ""
+            yield mock_settings
+
     def _make_anthropic_credentials(self) -> llm.APIKeyCredentials:
         from pydantic import SecretStr
 
@@ -1428,9 +1438,11 @@ class TestAnthropicCacheControl:
                 tools=None,
             )
 
+        import anthropic
+
         tools_arg = captured_kwargs.get("tools")
-        assert tools_arg is llm.convert_openai_tool_fmt_to_anthropic(
-            None
+        assert (
+            tools_arg is anthropic.NOT_GIVEN
         ), "Empty tools should pass anthropic.NOT_GIVEN sentinel"
 
     @pytest.mark.asyncio
@@ -1466,3 +1478,41 @@ class TestAnthropicCacheControl:
         assert (
             "system" not in captured_kwargs
         ), "system must be omitted when sysprompt is empty to avoid Anthropic 400"
+
+    @pytest.mark.asyncio
+    async def test_whitespace_only_system_prompt_omits_system_key(self):
+        """Whitespace-only system content is treated as empty and omitted.
+
+        The guard in llm_call uses sysprompt.strip() so a prompt consisting of
+        only whitespace should NOT reach the Anthropic API (it would be rejected
+        as an empty text block).
+        """
+        mock_resp = MagicMock()
+        mock_resp.content = [MagicMock(type="text", text="ok")]
+        mock_resp.usage = MagicMock(input_tokens=3, output_tokens=2)
+
+        captured_kwargs: dict = {}
+
+        async def fake_create(**kwargs):
+            captured_kwargs.update(kwargs)
+            return mock_resp
+
+        mock_client = MagicMock()
+        mock_client.messages.create = fake_create
+
+        credentials = self._make_anthropic_credentials()
+
+        with patch("anthropic.AsyncAnthropic", return_value=mock_client):
+            await llm.llm_call(
+                credentials=credentials,
+                llm_model=llm.LlmModel.CLAUDE_4_6_SONNET,
+                prompt=[
+                    {"role": "system", "content": "   \n\t  "},
+                    {"role": "user", "content": "Hi"},
+                ],
+                max_tokens=50,
+            )
+
+        assert (
+            "system" not in captured_kwargs
+        ), "whitespace-only sysprompt must be omitted to avoid Anthropic 400"

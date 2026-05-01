@@ -3,6 +3,7 @@ import {
   screen,
   cleanup,
   waitFor,
+  fireEvent,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlatformCostContent } from "../components/PlatformCostContent";
@@ -29,6 +30,16 @@ const emptyDashboard: PlatformCostDashboard = {
   total_cost_microdollars: 0,
   total_requests: 0,
   total_users: 0,
+  total_input_tokens: 0,
+  total_output_tokens: 0,
+  avg_input_tokens_per_request: 0,
+  avg_output_tokens_per_request: 0,
+  avg_cost_microdollars_per_request: 0,
+  cost_p50_microdollars: 0,
+  cost_p75_microdollars: 0,
+  cost_p95_microdollars: 0,
+  cost_p99_microdollars: 0,
+  cost_buckets: [],
   by_provider: [],
   by_user: [],
 };
@@ -47,6 +58,20 @@ const dashboardWithData: PlatformCostDashboard = {
   total_cost_microdollars: 5_000_000,
   total_requests: 100,
   total_users: 5,
+  total_input_tokens: 150000,
+  total_output_tokens: 60000,
+  avg_input_tokens_per_request: 2500,
+  avg_output_tokens_per_request: 1000,
+  avg_cost_microdollars_per_request: 83333,
+  cost_p50_microdollars: 50000,
+  cost_p75_microdollars: 100000,
+  cost_p95_microdollars: 250000,
+  cost_p99_microdollars: 500000,
+  cost_buckets: [
+    { bucket: "$0-0.50", count: 80 },
+    { bucket: "$0.50-1", count: 15 },
+    { bucket: "$1-2", count: 5 },
+  ],
   by_provider: [
     {
       provider: "openai",
@@ -75,6 +100,7 @@ const dashboardWithData: PlatformCostDashboard = {
       total_input_tokens: 50000,
       total_output_tokens: 20000,
       request_count: 60,
+      cost_bearing_request_count: 40,
     },
   ],
 };
@@ -134,9 +160,14 @@ describe("PlatformCostContent", () => {
     await waitFor(() =>
       expect(document.querySelector(".animate-pulse")).toBeNull(),
     );
-    // Verify the two summary cards that show $0.0000 — Known Cost and Estimated Total
+    // Known Cost and Estimated Total cards render $0.0000
+    // "Known Cost" appears in both the SummaryCard and the ProviderTable header
+    expect(screen.getAllByText("Known Cost").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Estimated Total")).toBeDefined();
+    // All cost summary cards (Known Cost, Estimated Total, Avg Cost,
+    // Typical/Upper/High/Peak Cost) show $0.0000
     const zeroCostItems = screen.getAllByText("$0.0000");
-    expect(zeroCostItems.length).toBe(2);
+    expect(zeroCostItems.length).toBe(7);
     expect(screen.getByText("No cost data yet")).toBeDefined();
   });
 
@@ -155,7 +186,9 @@ describe("PlatformCostContent", () => {
     );
     expect(screen.getByText("$5.0000")).toBeDefined();
     expect(screen.getByText("100")).toBeDefined();
-    expect(screen.getByText("5")).toBeDefined();
+    // "5" appears in multiple places (Active Users card + bucket count),
+    // so verify at least one element renders it.
+    expect(screen.getAllByText("5").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("openai")).toBeDefined();
     expect(screen.getByText("google_maps")).toBeDefined();
   });
@@ -223,10 +256,83 @@ describe("PlatformCostContent", () => {
     await waitFor(() =>
       expect(document.querySelector(".animate-pulse")).toBeNull(),
     );
+    // Original 4 cards
     expect(screen.getAllByText("Known Cost").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Estimated Total")).toBeDefined();
     expect(screen.getByText("Total Requests")).toBeDefined();
     expect(screen.getByText("Active Users")).toBeDefined();
+    // New average/token cards
+    expect(screen.getByText("Avg Cost / Request")).toBeDefined();
+    expect(screen.getByText("Avg Input Tokens")).toBeDefined();
+    expect(screen.getByText("Avg Output Tokens")).toBeDefined();
+    expect(screen.getByText("Total Tokens")).toBeDefined();
+    // Percentile cards (friendlier labels)
+    expect(screen.getByText("Typical Cost (P50)")).toBeDefined();
+    expect(screen.getByText("Upper Cost (P75)")).toBeDefined();
+    expect(screen.getByText("High Cost (P95)")).toBeDefined();
+    expect(screen.getByText("Peak Cost (P99)")).toBeDefined();
+  });
+
+  it("renders cost distribution buckets", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: dashboardWithData,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: logsWithData,
+      isLoading: false,
+    });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    expect(screen.getByText("Cost Distribution by Bucket")).toBeDefined();
+    expect(screen.getByText("$0-0.50")).toBeDefined();
+    expect(screen.getByText("$0.50-1")).toBeDefined();
+    expect(screen.getByText("$1-2")).toBeDefined();
+    expect(screen.getByText("80")).toBeDefined();
+    expect(screen.getByText("15")).toBeDefined();
+  });
+
+  it("renders new summary card values from fixture data", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: dashboardWithData,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: logsWithData,
+      isLoading: false,
+    });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    // Avg Input Tokens: 2500 formatted
+    expect(screen.getByText("2,500")).toBeDefined();
+    // Avg Output Tokens: 1000 formatted
+    expect(screen.getByText("1,000")).toBeDefined();
+    // P50 cost: 50000 microdollars = $0.0500
+    expect(screen.getByText("$0.0500")).toBeDefined();
+  });
+
+  it("renders user table avg cost column with fixture data", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: dashboardWithData,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: logsWithData,
+      isLoading: false,
+    });
+    renderComponent({ tab: "by-user" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    // User table should show Avg Cost / Req header
+    expect(screen.getByText("Avg Cost / Req")).toBeDefined();
+    // Input/Output token columns
+    expect(screen.getByText("Input Tokens")).toBeDefined();
+    expect(screen.getByText("Output Tokens")).toBeDefined();
   });
 
   it("renders filter inputs", async () => {
@@ -244,6 +350,95 @@ describe("PlatformCostContent", () => {
     expect(screen.getAllByText(/Provider/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("User ID")).toBeDefined();
     expect(screen.getByText("Apply")).toBeDefined();
+  });
+
+  it("renders execution ID filter input", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    expect(screen.getByText("Execution ID")).toBeDefined();
+    expect(screen.getByPlaceholderText("Filter by execution")).toBeDefined();
+  });
+
+  it("pre-fills execution ID filter from searchParams", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent({ graph_exec_id: "exec-123" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("exec-123");
+  });
+
+  it("clears execution ID input on Clear click", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent({ graph_exec_id: "exec-123" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    fireEvent.click(screen.getByText("Clear"));
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    expect(input.value).toBe("");
+  });
+
+  it("passes execution ID to filter on Apply click", async () => {
+    mockUseGetDashboard.mockReturnValue({
+      data: emptyDashboard,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({ data: emptyLogs, isLoading: false });
+    renderComponent();
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    const input = screen.getByPlaceholderText(
+      "Filter by execution",
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "exec-abc" } });
+    expect(input.value).toBe("exec-abc");
+    fireEvent.click(screen.getByText("Apply"));
+    // After apply, the input still holds the typed value
+    expect(input.value).toBe("exec-abc");
+  });
+
+  it("copies execution ID to clipboard on cell click in logs tab", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    mockUseGetDashboard.mockReturnValue({
+      data: dashboardWithData,
+      isLoading: false,
+    });
+    mockUseGetLogs.mockReturnValue({
+      data: logsWithData,
+      isLoading: false,
+    });
+    renderComponent({ tab: "logs" });
+    await waitFor(() =>
+      expect(document.querySelector(".animate-pulse")).toBeNull(),
+    );
+    // The exec ID cell shows first 8 chars of "gx-123"
+    const execIdCell = screen.getByText("gx-123".slice(0, 8));
+    fireEvent.click(execIdCell);
+    expect(writeText).toHaveBeenCalledWith("gx-123");
+    vi.unstubAllGlobals();
   });
 
   it("renders by-user tab when specified", async () => {

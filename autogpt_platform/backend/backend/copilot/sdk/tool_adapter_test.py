@@ -251,7 +251,10 @@ class TestTruncationAndStashIntegration:
 # ---------------------------------------------------------------------------
 
 
-def _make_mock_tool(name: str, output: str = "result") -> MagicMock:
+def _make_mock_tool(
+    name: str,
+    output: str = "result",
+) -> MagicMock:
     """Return a BaseTool mock that returns a successful StreamToolOutputAvailable."""
     tool = MagicMock()
     tool.name = name
@@ -334,6 +337,38 @@ class TestCreateToolHandler:
         await handler({"block_id": "b2"})
 
         assert mock_tool.execute.await_count == 2
+
+
+class TestToolInlineExecution:
+    """Tools run inline to completion — no per-handler timeout, no parking."""
+
+    @pytest.fixture(autouse=True)
+    def _init(self):
+        _init_ctx(session=_make_mock_session())
+
+    @pytest.mark.asyncio
+    async def test_tool_runs_to_completion_regardless_of_duration(self):
+        """A tool that takes a while still runs inline; the handler does not
+        park, cancel, or wrap it in a timeout. The stream-level idle timer
+        (in _run_stream_attempt) is what pauses while tool calls are pending."""
+
+        async def slow_but_completes(*_args, **_kwargs):
+            await asyncio.sleep(0.1)
+            return StreamToolOutputAvailable(
+                toolCallId="t1",
+                output="final-result",
+                toolName="slow_tool",
+                success=True,
+            )
+
+        mock_tool = _make_mock_tool("slow_tool")
+        mock_tool.execute = AsyncMock(side_effect=slow_but_completes)
+
+        handler = create_tool_handler(mock_tool)
+        result = await handler({})
+
+        assert result["isError"] is False
+        assert "final-result" in result["content"][0]["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -653,8 +688,8 @@ class TestReadFileHandlerBridge:
         test_file.write_text('{"ok": true}\n')
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
-            lambda path, cwd: True,
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
         )
 
         fake_sandbox = object()
@@ -692,8 +727,8 @@ class TestReadFileHandlerBridge:
         test_file.write_text('{"ok": true}\n')
 
         monkeypatch.setattr(
-            "backend.copilot.sdk.tool_adapter.is_allowed_local_path",
-            lambda path, cwd: True,
+            "backend.copilot.sdk.tool_adapter.is_sdk_tool_path",
+            lambda path: True,
         )
 
         bridge_calls: list[tuple] = []
@@ -873,7 +908,9 @@ class TestStripLlmFields:
         """
         dry_run_session = MagicMock()
         dry_run_session.dry_run = True
-        set_execution_context(user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="test", session=dry_run_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         full_payload = '{"message": "done", "is_dry_run": true}'
 
@@ -906,7 +943,9 @@ class TestStripLlmFields:
         """
         normal_session = MagicMock()
         normal_session.dry_run = False
-        set_execution_context(user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+        set_execution_context(
+            user_id="test", session=normal_session, sandbox=None, sdk_cwd="/tmp/test"
+        )  # type: ignore[arg-type]
 
         full_payload = '{"message": "simulated", "is_dry_run": true}'
 
@@ -929,3 +968,53 @@ class TestStripLlmFields:
         stashed = pop_pending_tool_output("fake_tool_normal")
         assert stashed is not None
         assert '"is_dry_run": true' in stashed
+
+
+class TestTruncatingWrapperLeavesOutputUntouched:
+    """Mid-turn drain moved to the shared ``PostToolUse`` hook path so every
+    tool (MCP + built-in) is covered uniformly.  The wrapper must therefore
+    forward tool output verbatim and never touch ``<user_follow_up>``."""
+
+    @pytest.mark.asyncio
+    async def test_wrapper_does_not_inject_followup(self):
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-no-inject"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": "CLEAN_OUTPUT"}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_clean")
+        result = await wrapper({})
+
+        text = result["content"][0]["text"]
+        assert text == "CLEAN_OUTPUT"
+        assert "<user_follow_up>" not in text
+
+    @pytest.mark.asyncio
+    async def test_stash_stays_clean(self):
+        """The frontend-facing stash must be a byte-for-byte copy of the
+        raw tool output (needed for JSON.parse in the bash widget)."""
+        session = MagicMock()
+        session.dry_run = False
+        session.session_id = "sess-stash"
+        set_execution_context(user_id="u", session=session, sandbox=None, sdk_cwd="/tmp/test")  # type: ignore[arg-type]
+
+        clean_json = '{"stdout": "hello\\n", "exit_code": 0}'
+
+        async def fake_tool_fn(_args: dict) -> dict:
+            return {
+                "content": [{"type": "text", "text": clean_json}],
+                "isError": False,
+            }
+
+        wrapper = _make_truncating_wrapper(fake_tool_fn, "fake_tool_stash_pure")
+        await wrapper({})
+
+        stashed = pop_pending_tool_output("fake_tool_stash_pure")
+        assert stashed == clean_json
+        assert "<user_follow_up>" not in (stashed or "")

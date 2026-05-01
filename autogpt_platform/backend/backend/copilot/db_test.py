@@ -175,6 +175,138 @@ async def test_no_where_on_messages_without_before_sequence(
     assert "where" not in include["Messages"]
 
 
+# ---------- Visibility guarantee ----------
+
+
+@pytest.mark.asyncio
+async def test_visibility_expands_when_all_tool_messages(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When the entire page is tool messages, expand backward to find
+    at least one visible (user/assistant) message so the chat isn't blank."""
+    find_first, find_many = mock_db
+    # Newest 3 messages are all tool messages (DESC → reversed to ASC)
+    find_first.return_value = _make_session(
+        messages=[
+            _make_msg(12, role="tool"),
+            _make_msg(11, role="tool"),
+            _make_msg(10, role="tool"),
+        ],
+    )
+    # Boundary expansion finds the owning assistant first (boundary fix),
+    # then visibility expansion finds a user message further back
+    find_many.side_effect = [
+        # First call: boundary fix (oldest msg is tool → find owner)
+        [_make_msg(9, role="tool"), _make_msg(8, role="tool")],
+        # Second call: visibility expansion (still all tool → find visible)
+        [_make_msg(7, role="tool"), _make_msg(6, role="assistant")],
+    ]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=3)
+
+    assert page is not None
+    # Should include the expanded messages + original tool messages
+    roles = [m.role for m in page.messages]
+    assert "assistant" in roles or "user" in roles
+    assert page.has_more is True
+
+
+@pytest.mark.asyncio
+async def test_no_visibility_expansion_when_visible_messages_present(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """No visibility expansion needed when page already has visible messages."""
+    find_first, find_many = mock_db
+    # Page has an assistant message among tool messages
+    find_first.return_value = _make_session(
+        messages=[
+            _make_msg(5, role="tool"),
+            _make_msg(4, role="assistant"),
+            _make_msg(3, role="user"),
+        ],
+    )
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=3)
+
+    assert page is not None
+    # Boundary expansion might fire (oldest is tool), but NOT visibility
+    assert [m.sequence for m in page.messages][0] <= 3
+
+
+@pytest.mark.asyncio
+async def test_visibility_no_expansion_when_no_earlier_messages(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When the page is all tool messages but there are no earlier messages
+    in the DB, visibility expansion returns early without changes."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(1, role="tool"), _make_msg(0, role="tool")],
+    )
+    # Boundary expansion: no earlier messages
+    # Visibility expansion: no earlier messages
+    find_many.side_effect = [[], []]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
+
+    assert page is not None
+    assert all(m.role == "tool" for m in page.messages)
+
+
+@pytest.mark.asyncio
+async def test_visibility_expansion_reaches_seq_zero(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """When visibility expansion finds a visible message at sequence 0,
+    has_more should be False."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(5, role="tool"), _make_msg(4, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(3, role="tool")],
+        # Visibility expansion — finds user at seq 0
+        [
+            _make_msg(2, role="tool"),
+            _make_msg(1, role="tool"),
+            _make_msg(0, role="user"),
+        ],
+    ]
+
+    page = await get_chat_messages_paginated(SESSION_ID, limit=2)
+
+    assert page is not None
+    assert page.messages[0].role == "user"
+    assert page.messages[0].sequence == 0
+    assert page.has_more is False
+
+
+@pytest.mark.asyncio
+async def test_visibility_expansion_with_user_id(
+    mock_db: tuple[AsyncMock, AsyncMock],
+):
+    """Visibility expansion passes user_id filter to the boundary query."""
+    find_first, find_many = mock_db
+    find_first.return_value = _make_session(
+        messages=[_make_msg(10, role="tool")],
+    )
+    find_many.side_effect = [
+        # Boundary expansion
+        [_make_msg(9, role="tool")],
+        # Visibility expansion
+        [_make_msg(8, role="assistant")],
+    ]
+
+    await get_chat_messages_paginated(SESSION_ID, limit=1, user_id="user-abc")
+
+    # Both find_many calls should include the user_id session filter
+    for call in find_many.call_args_list:
+        where = call.kwargs.get("where") or call[1].get("where")
+        assert "Session" in where
+        assert where["Session"] == {"is": {"userId": "user-abc"}}
+
+
 @pytest.mark.asyncio
 async def test_user_id_filter_applied_to_session_where(
     mock_db: tuple[AsyncMock, AsyncMock],
@@ -329,7 +461,8 @@ async def test_boundary_expansion_warns_when_no_owner_found(
 
     with patch("backend.copilot.db.logger") as mock_logger:
         page = await get_chat_messages_paginated(SESSION_ID, limit=5)
-        mock_logger.warning.assert_called_once()
+        # Two warnings: boundary expansion + visibility expansion (all tool msgs)
+        assert mock_logger.warning.call_count == 2
 
     assert page is not None
     assert page.messages[0].role == "tool"
@@ -394,8 +527,11 @@ async def test_set_turn_duration_no_assistant_message(setup_test_user, test_user
 
 @pytest.mark.asyncio
 async def test_update_message_content_by_sequence_success():
-    """Returns True when update_many reports at least one row updated."""
-    with patch.object(PrismaChatMessage, "prisma") as mock_prisma:
+    """Returns True when update_many reports exactly one row updated."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.sanitize_string", side_effect=lambda x: x),
+    ):
         mock_prisma.return_value.update_many = AsyncMock(return_value=1)
 
         result = await update_message_content_by_sequence("sess-1", 0, "new content")
@@ -437,3 +573,38 @@ async def test_update_message_content_by_sequence_db_error():
 
     assert result is False
     mock_logger.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_message_content_by_sequence_multi_row_logs_error():
+    """Returns True but logs an error when update_many touches more than one row."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch("backend.copilot.db.logger") as mock_logger,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(return_value=2)
+
+        result = await update_message_content_by_sequence("sess-1", 0, "content")
+
+    assert result is True
+    mock_logger.error.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_update_message_content_by_sequence_sanitizes_content():
+    """Verifies sanitize_string is applied to content before the DB write."""
+    with (
+        patch.object(PrismaChatMessage, "prisma") as mock_prisma,
+        patch(
+            "backend.copilot.db.sanitize_string", return_value="sanitized"
+        ) as mock_sanitize,
+    ):
+        mock_prisma.return_value.update_many = AsyncMock(return_value=1)
+
+        await update_message_content_by_sequence("sess-1", 0, "raw content")
+
+    mock_sanitize.assert_called_once_with("raw content")
+    mock_prisma.return_value.update_many.assert_called_once_with(
+        where={"sessionId": "sess-1", "sequence": 0},
+        data={"content": "sanitized"},
+    )

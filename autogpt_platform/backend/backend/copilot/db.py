@@ -10,9 +10,11 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import (
     ChatMessageCreateInput,
+    ChatMessageWhereInput,
     ChatSessionCreateInput,
     ChatSessionUpdateInput,
     ChatSessionWhereInput,
+    FindManyChatMessageArgsFromChatSession,
 )
 from pydantic import BaseModel
 
@@ -29,6 +31,8 @@ from .model import (
 from .model import get_chat_session as get_chat_session_cached
 
 logger = logging.getLogger(__name__)
+
+_BOUNDARY_SCAN_LIMIT = 10
 
 
 class PaginatedMessages(BaseModel):
@@ -69,12 +73,10 @@ async def get_chat_messages_paginated(
     in parallel with the message query.  Returns ``None`` when the session
     is not found or does not belong to the user.
 
-    Args:
-        session_id: The chat session ID.
-        limit: Max messages to return.
-        before_sequence: Cursor — return messages with sequence < this value.
-        user_id: If provided, filters via ``Session.userId`` so only the
-            session owner's messages are returned (acts as an ownership guard).
+    After fetching, a visibility guarantee ensures the page contains at least
+    one user or assistant message.  If the entire page is tool messages (which
+    are hidden in the UI), it expands backward until a visible message is found
+    so the chat never appears blank.
     """
     # Build session-existence / ownership check
     session_where: ChatSessionWhereInput = {"id": session_id}
@@ -82,7 +84,7 @@ async def get_chat_messages_paginated(
         session_where["userId"] = user_id
 
     # Build message include — fetch paginated messages in the same query
-    msg_include: dict[str, Any] = {
+    msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "desc"},
         "take": limit + 1,
     }
@@ -111,42 +113,18 @@ async def get_chat_messages_paginated(
     # expand backward to include the preceding assistant message that
     # owns the tool_calls, so convertChatSessionMessagesToUiMessages
     # can pair them correctly.
-    _BOUNDARY_SCAN_LIMIT = 10
     if results and results[0].role == "tool":
-        boundary_where: dict[str, Any] = {
-            "sessionId": session_id,
-            "sequence": {"lt": results[0].sequence},
-        }
-        if user_id is not None:
-            boundary_where["Session"] = {"is": {"userId": user_id}}
-        extra = await PrismaChatMessage.prisma().find_many(
-            where=boundary_where,
-            order={"sequence": "desc"},
-            take=_BOUNDARY_SCAN_LIMIT,
+        results, has_more = await _expand_tool_boundary(
+            session_id, results, has_more, user_id
         )
-        # Find the first non-tool message (should be the assistant)
-        boundary_msgs = []
-        found_owner = False
-        for msg in extra:
-            boundary_msgs.append(msg)
-            if msg.role != "tool":
-                found_owner = True
-                break
-        boundary_msgs.reverse()
-        if not found_owner:
-            logger.warning(
-                "Boundary expansion did not find owning assistant message "
-                "for session=%s before sequence=%s (%d msgs scanned)",
-                session_id,
-                results[0].sequence,
-                len(extra),
-            )
-        if boundary_msgs:
-            results = boundary_msgs + results
-            # Only mark has_more if the expanded boundary isn't the
-            # very start of the conversation (sequence 0).
-            if boundary_msgs[0].sequence > 0:
-                has_more = True
+
+    # Visibility guarantee: if the entire page has no user/assistant messages
+    # (all tool messages), the chat would appear blank.  Expand backward
+    # until we find at least one visible message.
+    if results and not any(m.role in ("user", "assistant") for m in results):
+        results, has_more = await _expand_for_visibility(
+            session_id, results, has_more, user_id
+        )
 
     messages = [ChatMessage.from_db(m) for m in results]
     oldest_sequence = messages[0].sequence if messages else None
@@ -157,6 +135,98 @@ async def get_chat_messages_paginated(
         oldest_sequence=oldest_sequence,
         session=session_info,
     )
+
+
+async def _expand_tool_boundary(
+    session_id: str,
+    results: list[Any],
+    has_more: bool,
+    user_id: str | None,
+) -> tuple[list[Any], bool]:
+    """Expand backward from the oldest message to include the owning assistant
+    message when the page starts mid-tool-group."""
+    boundary_where: ChatMessageWhereInput = {
+        "sessionId": session_id,
+        "sequence": {"lt": results[0].sequence},
+    }
+    if user_id is not None:
+        boundary_where["Session"] = {"is": {"userId": user_id}}
+    extra = await PrismaChatMessage.prisma().find_many(
+        where=boundary_where,
+        order={"sequence": "desc"},
+        take=_BOUNDARY_SCAN_LIMIT,
+    )
+    # Find the first non-tool message (should be the assistant)
+    boundary_msgs = []
+    found_owner = False
+    for msg in extra:
+        boundary_msgs.append(msg)
+        if msg.role != "tool":
+            found_owner = True
+            break
+    boundary_msgs.reverse()
+    if not found_owner:
+        logger.warning(
+            "Boundary expansion did not find owning assistant message "
+            "for session=%s before sequence=%s (%d msgs scanned)",
+            session_id,
+            results[0].sequence,
+            len(extra),
+        )
+    if boundary_msgs:
+        results = boundary_msgs + results
+        has_more = boundary_msgs[0].sequence > 0
+    return results, has_more
+
+
+_VISIBILITY_EXPAND_LIMIT = 200
+
+
+async def _expand_for_visibility(
+    session_id: str,
+    results: list[Any],
+    has_more: bool,
+    user_id: str | None,
+) -> tuple[list[Any], bool]:
+    """Expand backward until the page contains at least one user or assistant
+    message, so the chat is never blank."""
+    expand_where: ChatMessageWhereInput = {
+        "sessionId": session_id,
+        "sequence": {"lt": results[0].sequence},
+    }
+    if user_id is not None:
+        expand_where["Session"] = {"is": {"userId": user_id}}
+    extra = await PrismaChatMessage.prisma().find_many(
+        where=expand_where,
+        order={"sequence": "desc"},
+        take=_VISIBILITY_EXPAND_LIMIT,
+    )
+    if not extra:
+        return results, has_more
+
+    # Collect messages until we find a visible one (user/assistant)
+    prepend = []
+    found_visible = False
+    for msg in extra:
+        prepend.append(msg)
+        if msg.role in ("user", "assistant"):
+            found_visible = True
+            break
+
+    if not found_visible:
+        logger.warning(
+            "Visibility expansion did not find any user/assistant message "
+            "for session=%s before sequence=%s (%d msgs scanned)",
+            session_id,
+            results[0].sequence,
+            len(extra),
+        )
+
+    prepend.reverse()
+    if prepend:
+        results = prepend + results
+        has_more = prepend[0].sequence > 0
+    return results, has_more
 
 
 async def create_chat_session(
@@ -292,6 +362,21 @@ async def add_chat_message(
     return ChatMessage.from_db(message)
 
 
+_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
+
+
+def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
+    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
+    primary key — i.e. the caller supplied a duplicate ``id``.
+
+    Used by ``append_and_save_message`` to distinguish the dedup signal
+    from the unrelated ``(sessionId, sequence)`` collision that the
+    streaming-callback race retries silently."""
+    return isinstance(
+        exc, UniqueViolationError
+    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
+
+
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
@@ -334,6 +419,12 @@ async def add_chat_messages_batch(
                         "createdAt": now,
                     }
 
+                    # Optional caller-supplied PK (frontend per-click UUID
+                    # for user messages).  When omitted Prisma generates
+                    # via ``@default(uuid())``.
+                    if msg.get("id") is not None:
+                        data["id"] = msg["id"]
+
                     # Add optional string fields — sanitize to strip
                     # PostgreSQL-incompatible control characters.
                     if msg.get("content") is not None:
@@ -369,9 +460,17 @@ async def add_chat_messages_batch(
             # Return next sequence number for counter sync
             return start_sequence + len(messages)
 
-        except UniqueViolationError:
+        except UniqueViolationError as e:
+            # Two distinct unique constraints on ``ChatMessage`` can fire here:
+            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
+            #     duplicate PK — this is the idempotency signal, propagate
+            #     so the route layer can short-circuit.
+            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #     and a long-running callback raced on ``sequence`` — retry
+            #     with a freshly queried offset (existing behaviour).
+            if is_duplicate_chat_message_id_error(e):
+                raise
             if attempt < max_retries - 1:
-                # Collision detected - query MAX(sequence)+1 and retry with correct offset
                 logger.info(
                     f"Collision detected for session {session_id} at sequence "
                     f"{start_sequence}, querying DB for latest sequence"
@@ -508,6 +607,11 @@ async def update_message_content_by_sequence(
     Used to persist content modifications (e.g. user-context prefix injection)
     to a message that was already saved to the DB.
 
+    Authorization note: session_id is a high-entropy UUID generated at session
+    creation time.  Callers (inject_user_context) only receive a session_id
+    after the service layer has already validated that the requesting user owns
+    the session, so a userId join is not required here.
+
     Args:
         session_id: The chat session ID.
         sequence: The 0-based sequence number of the message to update.
@@ -526,6 +630,15 @@ async def update_message_content_by_sequence(
                 f"No message found to update for session {session_id}, sequence {sequence}"
             )
             return False
+        if result > 1:
+            # Defence-in-depth: (sessionId, sequence) is expected to identify
+            # at most one message. If we ever hit this branch it indicates a
+            # data integrity issue (non-unique sequence numbers within a
+            # session) that silently corrupted multiple rows.
+            logger.error(
+                f"update_message_content_by_sequence touched {result} rows "
+                f"for session {session_id}, sequence {sequence} — expected 1"
+            )
         return True
     except Exception as e:
         logger.error(

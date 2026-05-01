@@ -43,8 +43,10 @@ class GetAgentBuildingGuideTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Get the agent JSON building guide (nodes, links, AgentExecutorBlock, MCPToolBlock usage, "
-            "and the create->dry-run->fix iterative workflow). Call before generating agent JSON."
+            "Agent JSON building guide (nodes, links, AgentExecutorBlock, "
+            "MCPToolBlock, iterative create->dry-run->fix flow). REQUIRED "
+            "before create_agent / edit_agent / validate_agent_graph / "
+            "fix_agent_graph — they refuse until called once per session."
         )
 
     @property

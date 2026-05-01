@@ -45,12 +45,12 @@ from openai.types.chat import ChatCompletionToolParam
 from pydantic import ValidationError
 
 from backend.copilot.prompting import get_sdk_supplement
-from backend.copilot.service import DEFAULT_SYSTEM_PROMPT
+from backend.copilot.service import CACHEABLE_SYSTEM_PROMPT as DEFAULT_SYSTEM_PROMPT
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.run_agent import RunAgentInput
 
 # Resolved once for the whole module so individual tests stay fast.
-_SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False, cwd="/tmp/test")
+_SDK_SUPPLEMENT = get_sdk_supplement(use_e2b=False)
 
 
 # ---------------------------------------------------------------------------

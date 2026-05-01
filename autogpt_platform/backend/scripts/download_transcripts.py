@@ -88,17 +88,19 @@ async def cmd_download(session_ids: list[str]) -> None:
             print(f"[{sid[:12]}] Not found in GCS")
             continue
 
+        content_str = (
+            dl.content.decode("utf-8") if isinstance(dl.content, bytes) else dl.content
+        )
         out = _transcript_path(sid)
         with open(out, "w") as f:
-            f.write(dl.content)
+            f.write(content_str)
 
-        lines = len(dl.content.strip().split("\n"))
+        lines = len(content_str.strip().split("\n"))
         meta = {
             "session_id": sid,
             "user_id": user_id,
             "message_count": dl.message_count,
-            "uploaded_at": dl.uploaded_at,
-            "transcript_bytes": len(dl.content),
+            "transcript_bytes": len(content_str),
             "transcript_lines": lines,
         }
         with open(_meta_path(sid), "w") as f:
@@ -106,7 +108,7 @@ async def cmd_download(session_ids: list[str]) -> None:
 
         print(
             f"[{sid[:12]}] Saved: {lines} entries, "
-            f"{len(dl.content)} bytes, msg_count={dl.message_count}"
+            f"{len(content_str)} bytes, msg_count={dl.message_count}"
         )
     print("\nDone. Run 'load' command to import into local dev environment.")
 
@@ -227,7 +229,7 @@ async def cmd_load(session_ids: list[str]) -> None:
             await upload_transcript(
                 user_id=user_id,
                 session_id=sid,
-                content=content,
+                content=content.encode("utf-8"),
                 message_count=msg_count,
             )
             print(f"[{sid[:12]}] Stored transcript in local workspace storage")

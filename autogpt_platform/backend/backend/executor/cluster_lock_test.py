@@ -21,15 +21,21 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def redis_client():
-    """Get Redis client for testing using same config as backend."""
-    from backend.data.redis_client import HOST, PASSWORD, PORT
+    """Get Redis client for testing using same config as backend.
 
-    # Use same config as backend but without decode_responses since ClusterLock needs raw bytes
-    client = redis.Redis(
-        host=HOST,
-        port=PORT,
+    Uses ``RedisCluster`` (not plain ``Redis``) so tests exercise the same
+    cluster-aware routing as prod — a plain client against a sharded
+    cluster bounces on ``MOVED`` for any key hashing to a non-owned slot.
+    """
+    from redis.cluster import ClusterNode, RedisCluster
+
+    from backend.data.redis_client import HOST, PASSWORD, PORT, _address_remap
+
+    client = RedisCluster(
+        startup_nodes=[ClusterNode(HOST, PORT)],
         password=PASSWORD,
         decode_responses=False,  # ClusterLock needs raw bytes for ownership verification
+        address_remap=_address_remap,
     )
 
     # Clean up any existing test keys
@@ -107,6 +113,33 @@ class TestClusterLockBasic:
         new_owner_id = str(uuid.uuid4())
         new_lock = ClusterLock(redis_client, lock_key, new_owner_id, timeout=60)
         assert new_lock.try_acquire() == new_owner_id
+
+    def test_release_does_not_wipe_successor_lock(self, redis_client, lock_key):
+        """Releasing after external delete+reacquire must NOT delete successor.
+
+        Race: an external caller force-deletes the lock key, a new owner
+        acquires it, then the original ClusterLock.release() runs. Owner-checked
+        release must leave the successor's key intact.
+        """
+        owner_a = str(uuid.uuid4())
+        owner_b = str(uuid.uuid4())
+
+        lock_a = ClusterLock(redis_client, lock_key, owner_a, timeout=60)
+        assert lock_a.try_acquire() == owner_a
+
+        # External force-release (e.g. mark_session_completed).
+        redis_client.delete(lock_key)
+
+        # Successor acquires the same key.
+        lock_b = ClusterLock(redis_client, lock_key, owner_b, timeout=60)
+        assert lock_b.try_acquire() == owner_b
+
+        # Original releases — must be a no-op on Redis because value != owner_a.
+        lock_a.release()
+
+        # Successor's lock is still intact.
+        assert redis_client.exists(lock_key) == 1
+        assert redis_client.get(lock_key).decode("utf-8") == owner_b
 
 
 class TestClusterLockRefresh:
@@ -306,7 +339,7 @@ class TestClusterLockErrorHandling:
 
     def test_redis_connection_failure_on_acquire(self, lock_key, owner_id):
         """Test graceful handling when Redis is unavailable during acquisition."""
-        # Use invalid Redis connection
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         bad_redis = redis.Redis(
             host="invalid_host", port=1234, socket_connect_timeout=1
         )
@@ -326,7 +359,7 @@ class TestClusterLockErrorHandling:
         # Acquire normally
         assert lock.try_acquire() == owner_id
 
-        # Replace Redis client with failing one
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         lock.redis = redis.Redis(
             host="invalid_host", port=1234, socket_connect_timeout=1
         )
@@ -481,6 +514,7 @@ class TestClusterLockRealWorldScenarios:
 
         # Simulate Redis becoming unavailable
         original_redis = lock.redis
+        # INTENTIONAL: plain Redis client here is the test subject — validates cluster_lock rejects non-cluster deploys.
         lock.redis = redis.Redis(
             host="invalid_host",
             port=1234,

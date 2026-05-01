@@ -5,6 +5,7 @@ import {
   FileText,
   Image,
   Table,
+  VideoCamera,
 } from "@phosphor-icons/react";
 import type { Icon } from "@phosphor-icons/react";
 
@@ -17,6 +18,7 @@ export interface ArtifactClassification {
     | "csv"
     | "json"
     | "image"
+    | "video"
     | "pdf"
     | "text"
     | "download-only";
@@ -35,6 +37,13 @@ const KIND: Record<string, ArtifactClassification> = {
     type: "image",
     icon: Image,
     label: "Image",
+    openable: true,
+    hasSourceToggle: false,
+  },
+  video: {
+    type: "video",
+    icon: VideoCamera,
+    label: "Video",
     openable: true,
     hasSourceToggle: false,
   },
@@ -113,8 +122,13 @@ const EXT_KIND: Record<string, string> = {
   ".svg": "image",
   ".bmp": "image",
   ".ico": "image",
+  ".avif": "image",
+  ".mp4": "video",
+  ".webm": "video",
+  ".m4v": "video",
   ".pdf": "pdf",
   ".csv": "csv",
+  ".tsv": "csv",
   ".html": "html",
   ".htm": "html",
   ".jsx": "react",
@@ -122,11 +136,17 @@ const EXT_KIND: Record<string, string> = {
   ".md": "markdown",
   ".mdx": "markdown",
   ".json": "json",
+  ".jsonl": "code",
   ".txt": "text",
   ".log": "text",
+  ".ics": "text",
+  ".vcf": "text",
+  ".env": "code",
+  ".gitignore": "code",
   // code extensions
   ".js": "code",
   ".ts": "code",
+  ".dart": "code",
   ".py": "code",
   ".rb": "code",
   ".go": "code",
@@ -142,11 +162,19 @@ const EXT_KIND: Record<string, string> = {
   ".sh": "code",
   ".bash": "code",
   ".zsh": "code",
+  ".scss": "code",
+  ".sass": "code",
+  ".less": "code",
+  ".graphql": "code",
+  ".gql": "code",
+  ".proto": "code",
   ".yml": "code",
   ".yaml": "code",
   ".toml": "code",
   ".ini": "code",
   ".cfg": "code",
+  ".conf": "code",
+  ".properties": "code",
   ".sql": "code",
   ".r": "code",
   ".lua": "code",
@@ -154,10 +182,16 @@ const EXT_KIND: Record<string, string> = {
   ".scala": "code",
 };
 
+const EXACT_FILENAME_KIND: Record<string, string> = {
+  dockerfile: "code",
+  makefile: "code",
+};
+
 // Exact-match MIME → kind (fallback when extension doesn't match).
 const MIME_KIND: Record<string, string> = {
   "application/pdf": "pdf",
   "text/csv": "csv",
+  "text/tab-separated-values": "csv",
   "text/html": "html",
   "text/jsx": "react",
   "text/tsx": "react",
@@ -166,6 +200,9 @@ const MIME_KIND: Record<string, string> = {
   "text/markdown": "markdown",
   "text/x-markdown": "markdown",
   "application/json": "json",
+  "application/x-ndjson": "code",
+  "application/ndjson": "code",
+  "application/jsonl": "code",
   "application/javascript": "code",
   "text/javascript": "code",
   "application/typescript": "code",
@@ -182,10 +219,36 @@ const BINARY_MIMES = new Set([
   "application/x-rar-compressed",
   "application/x-7z-compressed",
   "application/octet-stream",
+  "application/wasm",
   "application/x-executable",
   "application/x-msdos-program",
   "application/vnd.microsoft.portable-executable",
 ]);
+
+const PREVIEWABLE_IMAGE_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/svg+xml",
+  "image/bmp",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+  "image/avif",
+]);
+
+const PREVIEWABLE_VIDEO_MIMES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/x-m4v",
+]);
+
+function getBasename(filename?: string): string {
+  if (!filename) return "";
+  const normalized = filename.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1]?.toLowerCase() ?? "";
+}
 
 function getExtension(filename?: string): string {
   if (!filename) return "";
@@ -194,30 +257,62 @@ function getExtension(filename?: string): string {
   return filename.slice(lastDot).toLowerCase();
 }
 
+// Types the browser renders natively — we don't run their bytes through our
+// React/JS pipeline, so the size gate doesn't need to apply.
+const NATIVELY_RENDERED = new Set<ArtifactClassification["type"]>([
+  "image",
+  "video",
+  "pdf",
+]);
+
 export function classifyArtifact(
   mimeType: string | null,
   filename?: string,
   sizeBytes?: number,
 ): ArtifactClassification {
-  // Size gate: >10MB is download-only regardless of type.
-  if (sizeBytes && sizeBytes > TEN_MB) return KIND["download-only"];
+  const kind = classifyByTypeOnly(mimeType, filename);
+  // Size gate: >10MB is download-only, but only for content we actually
+  // render in JS. Images, videos, and PDFs are handled natively by the
+  // browser — gating them produced "broken previews" for hi-res files
+  // (SECRT-2221).
+  if (sizeBytes && sizeBytes > TEN_MB && !NATIVELY_RENDERED.has(kind.type)) {
+    return KIND["download-only"];
+  }
+  return kind;
+}
+
+function classifyByTypeOnly(
+  mimeType: string | null,
+  filename?: string,
+): ArtifactClassification {
+  const basename = getBasename(filename);
+  const exactKind = EXACT_FILENAME_KIND[basename];
+  if (exactKind) return KIND[exactKind];
+
+  if (basename === ".env" || basename.startsWith(".env.")) {
+    return KIND.code;
+  }
 
   // Extension first (more reliable than MIME for AI-generated files).
-  const ext = getExtension(filename);
+  const ext = getExtension(basename);
   const extKind = EXT_KIND[ext];
   if (extKind) return KIND[extKind];
 
   // MIME fallbacks.
   const mime = (mimeType ?? "").toLowerCase();
-  if (mime.startsWith("image/")) return KIND.image;
+  if (PREVIEWABLE_IMAGE_MIMES.has(mime)) return KIND.image;
+  if (PREVIEWABLE_VIDEO_MIMES.has(mime)) return KIND.video;
   const mimeKind = MIME_KIND[mime];
   if (mimeKind) return KIND[mimeKind];
   if (mime.startsWith("text/x-")) return KIND.code;
   if (
-    BINARY_MIMES.has(mime) ||
-    mime.startsWith("audio/") ||
-    mime.startsWith("video/")
+    mime.startsWith("image/") ||
+    mime.startsWith("video/") ||
+    mime.startsWith("font/")
   ) {
+    return KIND["download-only"];
+  }
+  if (BINARY_MIMES.has(mime) || mime.startsWith("audio/")) {
     return KIND["download-only"];
   }
   if (mime.startsWith("text/")) return KIND.text;

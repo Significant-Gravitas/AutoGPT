@@ -1,7 +1,8 @@
 from enum import Enum
 from typing import Any, Dict, Literal, Optional, Union
 
-from backend.sdk import BaseModel, MediaFileType, SchemaField
+from backend.data.model import NodeExecutionStats
+from backend.sdk import BaseModel, Block, MediaFileType, SchemaField
 
 
 class LivecrawlTypes(str, Enum):
@@ -319,7 +320,7 @@ class CostDollars(BaseModel):
 
 # Helper functions for payload processing
 def process_text_field(
-    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None]
+    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None],
 ) -> Optional[Union[bool, Dict[str, Any]]]:
     """Process text field for API payload."""
     if text is None:
@@ -400,7 +401,7 @@ def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, 
 
 
 def process_context_field(
-    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None]
+    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None],
 ) -> Optional[Union[bool, Dict[str, int]]]:
     """Process context field for API payload."""
     if context is None:
@@ -448,3 +449,65 @@ def add_optional_fields(
                 payload[api_field] = value.value
             else:
                 payload[api_field] = value
+
+
+def extract_exa_cost_usd(response: Any) -> Optional[float]:
+    """Return ``cost_dollars.total`` (USD) from an Exa SDK response, or None.
+
+    Handles dataclass/pydantic responses (``response.cost_dollars.total``),
+    dicts with camelCase keys (``response["costDollars"]["total"]``), dicts
+    with snake_case keys, and bare numeric strings. Returns None whenever the
+    shape is missing cost info — the caller then skips merge_stats.
+    """
+    if response is None:
+        return None
+
+    # Dataclass / pydantic: response.cost_dollars
+    cost_obj = getattr(response, "cost_dollars", None)
+
+    # Dict payloads: try both camelCase and snake_case
+    if cost_obj is None and isinstance(response, dict):
+        cost_obj = response.get("costDollars") or response.get("cost_dollars")
+
+    if cost_obj is None:
+        return None
+
+    # Already a scalar (code_context endpoint returns a string)
+    if isinstance(cost_obj, (int, float)):
+        return max(0.0, float(cost_obj))
+    if isinstance(cost_obj, str):
+        try:
+            return max(0.0, float(cost_obj))
+        except ValueError:
+            return None
+
+    # Nested object/dict: grab the `total` field
+    total = getattr(cost_obj, "total", None)
+    if total is None and isinstance(cost_obj, dict):
+        total = cost_obj.get("total")
+
+    if total is None:
+        return None
+
+    try:
+        return max(0.0, float(total))
+    except (TypeError, ValueError):
+        return None
+
+
+def merge_exa_cost(block: Block, response: Any) -> None:
+    """Pull ``cost_dollars.total`` off an Exa response and merge it into stats.
+
+    No-op when the response shape has no cost info (e.g. webset CRUD where
+    the SDK does not expose per-call pricing) — emission happens only when
+    Exa actually reports a USD amount.
+    """
+    cost_usd = extract_exa_cost_usd(response)
+    if cost_usd is None:
+        return
+    block.merge_stats(
+        NodeExecutionStats(
+            provider_cost=cost_usd,
+            provider_cost_type="cost_usd",
+        )
+    )

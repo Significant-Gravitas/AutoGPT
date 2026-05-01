@@ -41,7 +41,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Agent Date Input](block-integrations/basic.md#agent-date-input) | Block for date input |
 | [Agent Dropdown Input](block-integrations/basic.md#agent-dropdown-input) | Block for dropdown text selection |
 | [Agent File Input](block-integrations/basic.md#agent-file-input) | Block for file upload input (string path for example) |
-| [Agent Google Drive File Input](block-integrations/basic.md#agent-google-drive-file-input) | Block for selecting a file from Google Drive |
+| [Agent Google Drive File Input](block-integrations/basic.md#agent-google-drive-file-input) | Agent-level input for a Google Drive file |
 | [Agent Input](block-integrations/basic.md#agent-input) | A block that accepts and processes user input values within a workflow, supporting various input types and validation |
 | [Agent Long Text Input](block-integrations/basic.md#agent-long-text-input) | Block for long text input (multi-line) |
 | [Agent Number Input](block-integrations/basic.md#agent-number-input) | Block for number input |

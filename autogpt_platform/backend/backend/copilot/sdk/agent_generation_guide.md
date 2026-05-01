@@ -3,29 +3,6 @@
 You can create, edit, and customize agents directly. You ARE the brain —
 generate the agent JSON yourself using block schemas, then validate and save.
 
-### Clarifying — Before or During Building
-
-Use `ask_question` whenever the user's intent is ambiguous — whether
-that's before starting or midway through the workflow. Common moments:
-
-- **Before building**: output format, delivery channel, data source, or
-  trigger is unspecified.
-- **During block discovery**: multiple blocks could fit and the user
-  should choose.
-- **During JSON generation**: a wiring decision depends on user
-  preference.
-
-Steps:
-1. Call `find_block` (or another discovery tool) to learn what the
-   platform actually supports for the ambiguous dimension.
-2. Call `ask_question` with a concrete question listing the discovered
-   options (e.g. "The platform supports Gmail, Slack, and Google Docs —
-   which should the agent use for delivery?").
-3. **Wait for the user's answer** before continuing.
-
-**Skip this** when the goal already specifies all dimensions (e.g.
-"scrape prices from Amazon and email me daily").
-
 ### Workflow for Creating/Editing Agents
 
 1. **If editing**: First narrow to the specific agent by UUID, then fetch its
@@ -34,9 +11,13 @@ Steps:
    always inspect the current graph first so you know exactly what to change.
    Avoid using `include_graph=true` with broad keyword searches, as fetching
    multiple graphs at once is expensive and consumes LLM context budget.
-2. **Discover blocks**: Call `find_block(query, include_schemas=true)` to
+2. **Discover blocks**: Call `find_block(query, include_schemas=true, for_agent_generation=true)` to
    search for relevant blocks. This returns block IDs, names, descriptions,
-   and full input/output schemas.
+   and full input/output schemas. The `for_agent_generation=true` flag is
+   required to surface graph-only blocks such as AgentInputBlock,
+   AgentDropdownInputBlock, AgentOutputBlock, OrchestratorBlock,
+   and WebhookBlock and MCPToolBlock. (When running MCP tools interactively
+   in CoPilot outside agent generation, use `run_mcp_tool` instead.)
 3. **Find library agents**: Call `find_library_agent` to discover reusable
    agents that can be composed as sub-agents via `AgentExecutorBlock`.
 4. **Generate/modify JSON**: Build or modify the agent JSON using block schemas:
@@ -125,6 +106,14 @@ These define the agent's interface — what it accepts and what it produces.
 Without these blocks, the agent has no interface and the user cannot provide
 inputs or see outputs. NEVER skip them.
 
+Specialized input subclasses (`AgentDropdownInputBlock`,
+`AgentGoogleDriveFileInputBlock`, `AgentShortTextInputBlock`, …) satisfy
+this requirement on their own — do NOT add a throwaway base
+`AgentInputBlock` alongside a specialized one. Each subclass carries its
+own usage guidance (when it is required, how to configure it, how to
+wire it to consumers, concrete link shape) in its block and field
+descriptions; read and follow those when `find_block` surfaces a match.
+
 ### Key Rules
 
 - **Name & description**: Include `name` and `description` in the agent JSON
@@ -135,6 +124,12 @@ inputs or see outputs. NEVER skip them.
   output to the consuming block's input.
 - **Credentials**: Do NOT require credentials upfront. Users configure
   credentials later in the platform UI after the agent is saved.
+  Do NOT call `create_agent` / `edit_agent` to handle credentials, and
+  do NOT redirect to the Builder. Credentials are set up inline as part
+  of the run flow: `run_agent` surfaces the setup card automatically
+  when credentials are missing or invalid, then proceeds to execute once
+  connected. Use `connect_integration` only for a standalone provider
+  setup not tied to a specific run.
 - **Node spacing**: Position nodes with at least 800 X-units between them.
 - **Nested properties**: Use `parentField_#_childField` notation in link
   sink_name/source_name to access nested object fields.
@@ -170,6 +165,12 @@ To compose agents using other agents as sub-agents:
    the library agent IDs used, so the fixer can validate schemas
 
 ### Using MCP Tools (MCPToolBlock)
+
+> **Agent graph vs CoPilot direct execution**: This section covers embedding MCP
+> tools as persistent nodes in an agent graph. When running MCP tools directly in
+> CoPilot (outside agent generation), use `run_mcp_tool` instead — it handles
+> server discovery and authentication interactively. Use `MCPToolBlock` here only
+> when the user wants the MCP call baked into a reusable agent graph.
 
 To use an MCP (Model Context Protocol) tool as a node in the agent:
 1. The user must specify which MCP server URL and tool name they want
@@ -264,10 +265,14 @@ user the agent is ready. NEVER skip this step.
    and realistic sample inputs that exercise every path in the agent. This
    simulates execution using an LLM for each block — no real API calls,
    credentials, or credits are consumed.
-3. **Inspect output**: Examine the dry-run result for problems. If
-   `wait_for_result` returns only a summary, call
-   `view_agent_output(execution_id=..., show_execution_details=True)` to
-   see the full node-by-node execution trace. Look for:
+3. **Inspect output**: Examine the dry-run result for problems.
+   `run_agent(dry_run=True, wait_for_result=...)` now returns the
+   per-node trace directly in `execution.node_executions` on completion,
+   so read it from the result and do NOT make a follow-up
+   `view_agent_output` call. (Only call `view_agent_output(...,
+   show_execution_details=True)` if you need the trace for a real,
+   non-dry-run execution or for an execution started in a prior turn.)
+   Look for:
    - **Errors / failed nodes** — a node raised an exception or returned an
      error status. Common causes: wrong `source_name`/`sink_name` in links,
      missing `input_default` values, or referencing a nonexistent block output.

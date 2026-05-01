@@ -1,7 +1,6 @@
 "use client";
 import {
   getGetV2ListSessionsQueryKey,
-  useDeleteV2DeleteSession,
   useGetV2ListSessions,
   usePatchV2UpdateSessionTitle,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -34,8 +33,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
+import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
 import { formatNotificationTitle } from "../../helpers";
+import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
+import { useSessionDeletion } from "../../useSessionDeletion";
 import { NotificationToggle } from "./components/NotificationToggle/NotificationToggle";
 import { DeleteChatDialog } from "../DeleteChatDialog/DeleteChatDialog";
 import { UsageLimits } from "../UsageLimits/UsageLimits";
@@ -44,41 +46,23 @@ export function ChatSidebar() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
-  const {
-    sessionToDelete,
-    setSessionToDelete,
-    completedSessionIDs,
-    clearCompletedSession,
-  } = useCopilotUIStore();
+  const { completedSessionIDs, clearCompletedSession } = useCopilotUIStore();
+  const sessionNeedsReload = useCopilotChatRuntimeStore(
+    (state) => state.sessionNeedsReload,
+  );
 
   const queryClient = useQueryClient();
 
   const { data: sessionsResponse, isLoading: isLoadingSessions } =
     useGetV2ListSessions({ limit: 50 }, { query: { refetchInterval: 10_000 } });
 
-  const { mutate: deleteSession, isPending: isDeleting } =
-    useDeleteV2DeleteSession({
-      mutation: {
-        onSuccess: () => {
-          queryClient.invalidateQueries({
-            queryKey: getGetV2ListSessionsQueryKey(),
-          });
-          if (sessionToDelete?.id === sessionId) {
-            setSessionId(null);
-          }
-          setSessionToDelete(null);
-        },
-        onError: (error) => {
-          toast({
-            title: "Failed to delete chat",
-            description:
-              error instanceof Error ? error.message : "An error occurred",
-            variant: "destructive",
-          });
-          setSessionToDelete(null);
-        },
-      },
-    });
+  const {
+    sessionToDelete,
+    isDeleting,
+    requestDelete,
+    confirmDelete,
+    cancelDelete,
+  } = useSessionDeletion();
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
@@ -165,20 +149,7 @@ export function ChatSidebar() {
     title: string | null | undefined,
   ) {
     e.stopPropagation();
-    if (isDeleting) return;
-    setSessionToDelete({ id, title });
-  }
-
-  function handleConfirmDelete() {
-    if (sessionToDelete) {
-      deleteSession({ sessionId: sessionToDelete.id });
-    }
-  }
-
-  function handleCancelDelete() {
-    if (!isDeleting) {
-      setSessionToDelete(null);
-    }
+    requestDelete(id, title);
   }
 
   function formatDate(dateString: string) {
@@ -246,7 +217,7 @@ export function ChatSidebar() {
           </SidebarHeader>
         )}
         {!isCollapsed && (
-          <SidebarHeader className="shrink-0 px-4 pb-4 pt-4 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
+          <SidebarHeader className="shrink-0 px-4 pb-3 pt-3 shadow-[0_4px_6px_-1px_rgba(0,0,0,0.05)]">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -365,8 +336,15 @@ export function ChatSidebar() {
                             </Text>
                           </div>
                           {session.is_processing &&
-                            session.id !== sessionId &&
-                            !completedSessionIDs.has(session.id) && (
+                            shouldShowSessionProcessingIndicator({
+                              sessionId: session.id,
+                              currentSessionId: sessionId,
+                              isProcessing: session.is_processing,
+                              hasCompletedIndicator: completedSessionIDs.has(
+                                session.id,
+                              ),
+                              needsReload: !!sessionNeedsReload[session.id],
+                            }) && (
                               <CircleNotch
                                 className="h-4 w-4 shrink-0 animate-spin text-zinc-400"
                                 weight="bold"
@@ -424,8 +402,8 @@ export function ChatSidebar() {
       <DeleteChatDialog
         session={sessionToDelete}
         isDeleting={isDeleting}
-        onConfirm={handleConfirmDelete}
-        onCancel={handleCancelDelete}
+        onConfirm={confirmDelete}
+        onCancel={cancelDelete}
       />
     </>
   );

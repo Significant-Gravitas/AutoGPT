@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.moonshot import is_moonshot_model
 from backend.copilot.sdk.subscription import validate_subscription
 
 # ChatConfig is stateless (reads env vars) — a separate instance is fine.
@@ -27,6 +28,7 @@ def build_sdk_env(
     session_id: str | None = None,
     user_id: str | None = None,
     sdk_cwd: str | None = None,
+    model: str | None = None,
 ) -> dict[str, str]:
     """Build env vars for the SDK CLI subprocess.
 
@@ -40,6 +42,11 @@ def build_sdk_env(
     All modes receive workspace isolation (``CLAUDE_CODE_TMPDIR``) and
     security hardening env vars to prevent .claude.md loading, prompt
     history persistence, auto-memory writes, and non-essential traffic.
+
+    *model* is the resolved SDK model slug (e.g. ``"moonshotai/kimi-k2.6"``
+    or ``"anthropic/claude-sonnet-4-6"``).  Used to gate model-specific env
+    vars (currently: ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`` is skipped for
+    Moonshot since the cache-cost rationale doesn't apply there).
     """
     # --- Mode 1: Claude Code subscription auth ---
     if config.use_claude_code_subscription:
@@ -96,5 +103,35 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Strip Anthropic-specific beta headers that OpenRouter rejects.
+    # NOTE: this disables ALL experimental betas including context-1m-2025-08-07
+    # (1M context window) and context-management-2025-06-27.  This is intentional:
+    # OpenRouter compatibility takes priority, and Anthropic direct mode ignores
+    # this flag harmlessly (those betas are not enabled there either by default).
+    env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = "1"
+
+    # Auto-compaction trigger threshold (CLI default: ~93% of perceived window).
+    # The override caps Anthropic cache-creation cost; Moonshot routes skip it
+    # because their OpenRouter endpoint returns ``cache_create=0`` (no cache
+    # writes happen, so there's no cost to cap) and an aggressive trigger
+    # against Kimi's larger window cascades into 3+ compactions per turn.
+    # Operators can also set the config to 0 to disable globally.
+    if (
+        not is_moonshot_model(model)
+        and config.claude_agent_autocompact_pct_override > 0
+    ):
+        env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = str(
+            config.claude_agent_autocompact_pct_override
+        )
+
+    # Disable gzip on API responses to prevent ZlibError decompression
+    # failures (see oven-sh/bun#23149, anthropics/claude-code#18302).
+    # Appended to any existing ANTHROPIC_CUSTOM_HEADERS (OpenRouter mode
+    # already sets trace headers above).
+    accept_encoding = "Accept-Encoding: identity"
+    existing = env.get("ANTHROPIC_CUSTOM_HEADERS", "")
+    env["ANTHROPIC_CUSTOM_HEADERS"] = (
+        f"{existing}\n{accept_encoding}" if existing else accept_encoding
+    )
 
     return env

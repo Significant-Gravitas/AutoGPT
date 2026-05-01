@@ -13,12 +13,19 @@ from backend.copilot.config import ChatConfig
 
 
 def _make_config(**overrides) -> ChatConfig:
-    """Create a ChatConfig with safe defaults, applying *overrides*."""
+    """Create a ChatConfig with safe defaults, applying *overrides*.
+
+    SDK model fields are pinned to anthropic/* so the
+    ``_validate_sdk_model_vendor_compatibility`` model_validator allows
+    construction with ``use_openrouter=False`` (the default here).
+    """
     defaults = {
         "use_claude_code_subscription": False,
         "use_openrouter": False,
         "api_key": None,
         "base_url": None,
+        "thinking_standard_model": "anthropic/claude-sonnet-4-6",
+        "thinking_advanced_model": "anthropic/claude-opus-4-7",
     }
     defaults.update(overrides)
     return ChatConfig(**defaults)
@@ -44,6 +51,8 @@ class TestBuildSdkEnvSubscription:
         assert result["ANTHROPIC_API_KEY"] == ""
         assert result["ANTHROPIC_AUTH_TOKEN"] == ""
         assert result["ANTHROPIC_BASE_URL"] == ""
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
         mock_validate.assert_called_once()
 
     @patch(
@@ -78,6 +87,8 @@ class TestBuildSdkEnvDirectAnthropic:
         assert "ANTHROPIC_API_KEY" not in result
         assert "ANTHROPIC_AUTH_TOKEN" not in result
         assert "ANTHROPIC_BASE_URL" not in result
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
     def test_no_anthropic_key_overrides_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
@@ -93,6 +104,8 @@ class TestBuildSdkEnvDirectAnthropic:
         assert "ANTHROPIC_API_KEY" not in result
         assert "ANTHROPIC_AUTH_TOKEN" not in result
         assert "ANTHROPIC_BASE_URL" not in result
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +135,12 @@ class TestBuildSdkEnvOpenRouter:
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
         assert result["ANTHROPIC_AUTH_TOKEN"] == "sk-or-test-key"
         assert result["ANTHROPIC_API_KEY"] == ""
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+        # SDK 0.1.58: Accept-Encoding: identity is always injected
+        assert "ANTHROPIC_CUSTOM_HEADERS" in result
+        assert "Accept-Encoding: identity" in result["ANTHROPIC_CUSTOM_HEADERS"]
+        # OpenRouter compat: env var must always be present
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
 
     def test_strips_trailing_v1(self):
         """The /v1 suffix is stripped from the base URL."""
@@ -133,6 +151,7 @@ class TestBuildSdkEnvOpenRouter:
             result = build_sdk_env()
 
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
 
     def test_strips_trailing_v1_and_slash(self):
         """Trailing slash before /v1 strip is handled."""
@@ -144,6 +163,7 @@ class TestBuildSdkEnvOpenRouter:
 
         # rstrip("/") first, then remove /v1
         assert result["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
 
     def test_no_v1_suffix_left_alone(self):
         """A base URL without /v1 is used as-is."""
@@ -154,6 +174,7 @@ class TestBuildSdkEnvOpenRouter:
             result = build_sdk_env()
 
         assert result["ANTHROPIC_BASE_URL"] == "https://custom-proxy.example.com"
+        assert result.get("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS") == "1"
 
     def test_session_id_header(self):
         cfg = self._openrouter_config()
@@ -209,9 +230,13 @@ class TestBuildSdkEnvOpenRouter:
             long_id = "x" * 200
             result = build_sdk_env(session_id=long_id)
 
-        # The value after "x-session-id: " should be at most 128 chars
-        header_line = result["ANTHROPIC_CUSTOM_HEADERS"]
-        value = header_line.split(": ", 1)[1]
+        # SDK 0.1.58 appends Accept-Encoding: identity on a separate line.
+        # Parse the x-session-id line specifically and check its value length.
+        headers = result["ANTHROPIC_CUSTOM_HEADERS"]
+        session_line = next(
+            line for line in headers.splitlines() if line.startswith("x-session-id: ")
+        )
+        value = session_line.split(": ", 1)[1]
         assert len(value) == 128
 
     @pytest.mark.parametrize(
@@ -267,8 +292,8 @@ class TestBuildSdkEnvModePriority:
         assert result["ANTHROPIC_API_KEY"] == ""
         assert result["ANTHROPIC_AUTH_TOKEN"] == ""
         assert result["ANTHROPIC_BASE_URL"] == ""
-        # OpenRouter-specific key must NOT be present
-        assert "ANTHROPIC_CUSTOM_HEADERS" not in result
+        # SDK 0.1.58: Accept-Encoding: identity is always injected — no trace headers
+        assert result.get("ANTHROPIC_CUSTOM_HEADERS") == "Accept-Encoding: identity"
 
 
 # ---------------------------------------------------------------------------
@@ -320,3 +345,130 @@ class TestClaudeCodeTmpdir:
 
         assert result["CLAUDE_CODE_TMPDIR"] == "/tmp/sub-workspace"
         assert result["ANTHROPIC_API_KEY"] == ""
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_AUTOCOMPACT_PCT_OVERRIDE — Moonshot gate
+# ---------------------------------------------------------------------------
+
+
+class TestAutocompactPctOverrideMoonshotGate:
+    """Override is set for Anthropic / unknown models, skipped for Moonshot.
+
+    Moonshot's OpenRouter endpoint silently drops cache writes
+    (cache_create=0 in observed traces), so the 50% threshold's
+    cache-cost rationale doesn't apply there.  Forcing aggressive
+    compaction made the CLI auto-compact 3+ times per turn against
+    Kimi's larger effective window — each compaction added a slow
+    extra LLM round-trip.
+    """
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            None,
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-7",
+            "claude-sonnet-4-6",
+        ],
+    )
+    def test_override_set_for_non_moonshot(self, model):
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
+
+    @pytest.mark.parametrize(
+        "model",
+        [
+            "moonshotai/kimi-k2.6",
+            "moonshotai/kimi-k2.5",
+            "moonshotai/kimi-k3.0",
+        ],
+    )
+    def test_override_skipped_for_moonshot(self, model):
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model=model,
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=model)
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+
+class TestAutocompactPctOverrideConfigurable:
+    """The override percentage is read from
+    ``claude_agent_autocompact_pct_override`` so operators can tune it per
+    deployment.  Setting to 0 omits the env var entirely (CLI uses its
+    ~93% default), useful when the post-compact floor (system prompt +
+    tool defs ≈ 65-110K) sits close to an aggressive trigger and
+    cascading recompactions show up.
+    """
+
+    @pytest.mark.parametrize("pct", [25, 50, 70, 93])
+    def test_config_value_propagates_to_env(self, pct):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=pct
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-4-6")
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == str(pct)
+
+    def test_zero_omits_env_var(self):
+        cfg = _make_config(
+            use_openrouter=False, claude_agent_autocompact_pct_override=0
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="anthropic/claude-sonnet-4-6")
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+    def test_moonshot_still_skipped_regardless_of_config(self):
+        cfg = _make_config(
+            use_openrouter=True,
+            api_key="sk-or-test",
+            base_url="https://openrouter.ai/api/v1",
+            thinking_standard_model="moonshotai/kimi-k2.6",
+            claude_agent_autocompact_pct_override=70,
+        )
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model="moonshotai/kimi-k2.6")
+
+        assert "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" not in result
+
+    def test_pct_override_rejects_out_of_range(self):
+        """Pydantic bounds (ge=0, le=100) prevent invalid percentages so the
+        env var never receives garbage."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_autocompact_pct_override=101)
+        with pytest.raises(ValidationError):
+            _make_config(claude_agent_autocompact_pct_override=-1)
+
+    def test_override_set_when_model_is_none(self):
+        """When build_sdk_env is called without a resolved model (e.g. very
+        early init paths), default to setting the env var — Anthropic-default
+        behaviour is the safe choice since most non-Moonshot routes benefit."""
+        cfg = _make_config(use_openrouter=False)
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env(model=None)
+
+        assert result.get("CLAUDE_AUTOCOMPACT_PCT_OVERRIDE") == "50"
