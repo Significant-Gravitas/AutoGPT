@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 
+import type { Pagination as PaginationModel } from "@/app/api/__generated__/models/pagination";
 import type { StoreSubmission } from "@/app/api/__generated__/models/storeSubmission";
 import type { StoreSubmissionEditRequest } from "@/app/api/__generated__/models/storeSubmissionEditRequest";
 import type { SubmissionStatus } from "@/app/api/__generated__/models/submissionStatus";
@@ -15,6 +16,7 @@ import {
   type SortKey,
 } from "../../helpers";
 import { MobileSubmissionItem } from "../MobileSubmissionItem/MobileSubmissionItem";
+import { Pagination } from "../Pagination/Pagination";
 import { SortColumnFilter } from "../SubmissionsList/columns/SortColumnFilter";
 import { StatusColumnFilter } from "../SubmissionsList/columns/StatusColumnFilter";
 
@@ -26,6 +28,9 @@ interface EditPayload extends StoreSubmissionEditRequest {
 interface Props {
   submissions: StoreSubmission[];
   totalCount: number;
+  pagination?: PaginationModel;
+  onPageChange?: (page: number) => void;
+  isFetching?: boolean;
   filterState: FilterState;
   onFilterChange: (next: FilterState) => void;
   onResetFilters: () => void;
@@ -38,6 +43,9 @@ interface Props {
 export function MobileSubmissionsList({
   submissions,
   totalCount,
+  pagination,
+  onPageChange,
+  isFetching,
   filterState,
   onFilterChange,
   onResetFilters,
@@ -108,10 +116,11 @@ export function MobileSubmissionsList({
 
       <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[18px] border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
         {submissions.length > 0 ? (
-          submissions.map((submission) => (
+          submissions.map((submission, rowIndex) => (
             <MobileSubmissionItem
               key={submission.listing_version_id}
               submission={submission}
+              rowIndex={rowIndex}
               onView={onView}
               onEdit={onEdit}
               onDelete={onDelete}
@@ -127,6 +136,15 @@ export function MobileSubmissionsList({
             </Button>
           </div>
         )}
+        {pagination && onPageChange ? (
+          <div className="border-t border-zinc-100">
+            <Pagination
+              pagination={pagination}
+              onPageChange={onPageChange}
+              disabled={isFetching}
+            />
+          </div>
+        ) : null}
       </div>
     </motion.section>
   );

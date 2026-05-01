@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
+import { keepPreviousData } from "@tanstack/react-query";
 
 import {
   getGetV2ListMySubmissionsQueryKey,
@@ -18,6 +19,8 @@ import {
   toDashboardStats,
   type FilterState,
 } from "./helpers";
+
+const PAGE_SIZE = 20;
 
 type PublishStep = "select" | "info" | "review";
 
@@ -52,20 +55,36 @@ export function useCreatorDashboardPage() {
     submission: null,
   });
 
-  const [filterState, setFilterState] =
+  const [filterState, setFilterStateRaw] =
     useState<FilterState>(INITIAL_FILTER_STATE);
+
+  const [page, setPage] = useState(1);
 
   const {
     data: response,
     isSuccess,
+    isFetching,
     error,
     refetch,
-  } = useGetV2ListMySubmissions(undefined, {
-    query: {
-      select: (x) => x.data as StoreSubmissionsResponse,
-      enabled: !!user,
+  } = useGetV2ListMySubmissions(
+    { page, page_size: PAGE_SIZE },
+    {
+      query: {
+        select: (x) => x.data as StoreSubmissionsResponse,
+        enabled: !!user,
+        placeholderData: keepPreviousData,
+      },
     },
-  });
+  );
+
+  function setFilterState(next: FilterState) {
+    setFilterStateRaw(next);
+    setPage(1);
+  }
+
+  function onPageChange(nextPage: number) {
+    setPage(nextPage);
+  }
 
   const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
     mutation: {
@@ -142,6 +161,9 @@ export function useCreatorDashboardPage() {
   return {
     submissions,
     visibleSubmissions,
+    pagination: response?.pagination,
+    onPageChange,
+    isFetching,
     stats,
     filterState,
     setFilterState,

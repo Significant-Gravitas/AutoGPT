@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   DotsThreeVerticalIcon,
   EyeIcon,
@@ -33,17 +34,25 @@ interface EditPayload extends StoreSubmissionEditRequest {
 
 interface Props {
   submission: StoreSubmission;
+  rowIndex?: number;
   onView: (submission: StoreSubmission) => void;
   onEdit: (payload: EditPayload) => void;
   onDelete: (submissionId: string) => Promise<void>;
 }
 
+const ROW_EASE = [0.16, 1, 0.3, 1] as const;
+const ROW_STAGGER = 0.025;
+const ROW_STAGGER_CAP = 6;
+const ROW_DURATION = 0.22;
+
 export function MobileSubmissionItem({
   submission,
+  rowIndex = 0,
   onView,
   onEdit,
   onDelete,
 }: Props) {
+  const reduceMotion = useReducedMotion();
   const {
     canModify,
     handleView,
@@ -61,14 +70,25 @@ export function MobileSubmissionItem({
     !!submission.review_avg_rating && submission.review_avg_rating > 0;
 
   return (
-    <article
+    <motion.article
       data-testid="submission-card"
       data-agent-id={submission.graph_id}
       data-submission-id={submission.listing_version_id}
+      initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0 }}
+      transition={
+        reduceMotion
+          ? undefined
+          : {
+              duration: ROW_DURATION,
+              ease: ROW_EASE,
+              delay: Math.min(rowIndex, ROW_STAGGER_CAP) * ROW_STAGGER,
+            }
+      }
       className="flex flex-col gap-3 border-b border-zinc-100 px-3 py-3 last:border-b-0"
     >
       <div className="flex items-start gap-3">
-        <div className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-[8px] bg-zinc-100">
+        <div className="relative aspect-video w-16 shrink-0 select-none overflow-hidden rounded-[8px] bg-zinc-100">
           {thumbnail ? (
             <Image
               src={thumbnail}
@@ -76,10 +96,15 @@ export function MobileSubmissionItem({
               fill
               sizes="64px"
               style={{ objectFit: "cover" }}
+              draggable={false}
+              className="pointer-events-none"
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center">
-              <ImageBrokenIcon size={18} className="text-zinc-400" />
+              <ImageBrokenIcon
+                size={18}
+                className="pointer-events-none text-zinc-400"
+              />
             </div>
           )}
         </div>
@@ -219,6 +244,6 @@ export function MobileSubmissionItem({
           </Dialog.Footer>
         </Dialog.Content>
       </Dialog>
-    </article>
+    </motion.article>
   );
 }
