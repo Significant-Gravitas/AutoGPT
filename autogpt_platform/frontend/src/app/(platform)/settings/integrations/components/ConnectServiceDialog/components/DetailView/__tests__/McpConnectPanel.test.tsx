@@ -118,7 +118,7 @@ describe("McpConnectPanel", () => {
     expect(screen.queryByPlaceholderText(/paste api token/i)).toBeNull();
   });
 
-  it("submits a bearer token, invalidates credentials, then calls onSuccess", async () => {
+  it("submits a bearer token then calls onSuccess", async () => {
     const {
       postV2InitiateOauthLoginForAnMcpServer,
       postV2StoreABearerTokenForAnMcpServer,
