@@ -18,7 +18,7 @@ export const settingsNavItems: SettingsNavItem[] = [
   { label: "Profile", href: "/settings/profile", Icon: UserIcon },
   {
     label: "Account",
-    href: "/settings/preferences",
+    href: "/settings/account",
     Icon: SlidersHorizontalIcon,
   },
   { label: "Billing", href: "/settings/billing", Icon: CreditCardIcon },

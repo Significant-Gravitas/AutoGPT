@@ -327,14 +327,20 @@ export function Wallet() {
         side="bottom"
         align="end"
         collisionPadding={16}
-        className={cn("relative -top-12 z-50 w-[28.5rem] px-[0.625rem] py-2")}
+        className={cn("relative -top-12 z-50 w-[28.5rem] px-4 py-4")}
       >
         {/* Header */}
-        <div className="mx-1 flex items-center justify-between border-b border-zinc-200 pb-3">
-          <span className="font-poppins font-medium text-zinc-900">
-            Your credits
-          </span>
-          <div className="flex items-center text-sm text-violet-700">
+        <div className="mx-1 flex items-start justify-between gap-3 border-b border-zinc-200 pb-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="font-poppins text-base font-semibold text-zinc-900">
+              Automation Credits
+            </span>
+            <span className="font-sans text-xs text-zinc-500">
+              Platform-only credits for automations. This is separate from your
+              subscription and is not usable for plan fees.
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center text-sm text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Earn credits{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>

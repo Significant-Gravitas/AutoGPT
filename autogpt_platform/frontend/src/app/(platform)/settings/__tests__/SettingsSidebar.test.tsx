@@ -41,7 +41,7 @@ import { SettingsSidebar } from "../components/SettingsSidebar/SettingsSidebar";
 
 const expectedItems = [
   { label: "Profile", href: "/settings/profile" },
-  { label: "Account", href: "/settings/preferences" },
+  { label: "Account", href: "/settings/account" },
   { label: "Billing", href: "/settings/billing" },
   { label: "Integrations", href: "/settings/integrations" },
   { label: "AutoGPT API Keys", href: "/settings/api-keys" },
