@@ -175,4 +175,24 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
     expect(useOnboardingWizardStore.getState().selectedPlan).toBeNull();
   });
+
+  it("preserves form data on mount (zustand persist; no reset-on-init)", async () => {
+    // Regression test for the 422 caused by init's old `reset()` wiping
+    // name/role on every mount. With zustand persist, refreshing mid-wizard
+    // must preserve what the user already typed.
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
+    useOnboardingWizardStore.setState({
+      name: "Alice",
+      role: "Engineering",
+      painPoints: ["slow builds"],
+    });
+    currentSearchParams = new URLSearchParams("step=4");
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-subscription")).toBeDefined();
+    const state = useOnboardingWizardStore.getState();
+    expect(state.name).toBe("Alice");
+    expect(state.role).toBe("Engineering");
+    expect(state.painPoints).toEqual(["slow builds"]);
+  });
 });

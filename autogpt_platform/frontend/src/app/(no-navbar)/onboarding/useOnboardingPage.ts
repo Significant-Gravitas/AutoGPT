@@ -50,7 +50,6 @@ export function useOnboardingPage() {
   const { isLoggedIn } = useSupabase();
   const currentStep = useOnboardingWizardStore((s) => s.currentStep);
   const goToStep = useOnboardingWizardStore((s) => s.goToStep);
-  const reset = useOnboardingWizardStore((s) => s.reset);
 
   // Wait for LaunchDarkly before initialising the wizard from the URL.
   // Without this, the init effect runs against the default flag value
@@ -94,9 +93,12 @@ export function useOnboardingPage() {
   const hasSubmitted = useRef(false);
   const hasInitialized = useRef(false);
 
-  // Initialise store from URL on mount, reset form data, clamp ?step= to
-  // the highest step the user has actually reached. No-step URL resumes from
-  // the highest reached so refreshes don't drop the user back to step 1.
+  // Initialise store from URL on mount, clamp ?step= to the highest step
+  // the user has actually reached. No-step URL resumes from the highest
+  // reached so refreshes don't drop the user back to step 1. Form data is
+  // persisted (zustand persist), so we no longer reset on mount — that
+  // would defeat the point of persistence by wiping the user's name/role
+  // every time they refresh mid-wizard.
   useEffect(() => {
     if (!areFlagsReady || hasInitialized.current) return;
     hasInitialized.current = true;
@@ -112,9 +114,8 @@ export function useOnboardingPage() {
     const target = (
       urlStep === null ? ceiling : Math.min(urlStep, ceiling)
     ) as Step;
-    reset();
     goToStep(target);
-  }, [areFlagsReady, searchParams, reset, goToStep, preparingStep]);
+  }, [areFlagsReady, searchParams, goToStep, preparingStep]);
 
   // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
@@ -137,6 +138,12 @@ export function useOnboardingPage() {
         const onboarding = await resolveResponse(getV1OnboardingState());
         if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
           clearHighestStep();
+          // Clear the persisted form data without touching in-memory state.
+          // `reset()` would set currentStep=1 and trip the URL-sync effect
+          // into racing with the /copilot redirect (the spurious
+          // /onboarding?step=1 replace wins, stranding the user on Welcome
+          // until they refresh).
+          useOnboardingWizardStore.persist.clearStorage();
           router.replace("/copilot");
           return;
         }
@@ -158,12 +165,14 @@ export function useOnboardingPage() {
       useOnboardingWizardStore.getState(),
     );
 
-    // Profile is submitted before the Stripe Checkout redirect (the wizard
-    // store is in-memory and doesn't survive the round-trip). Skip the
-    // resubmit on return to avoid overwriting saved data with empties —
-    // belt-and-suspenders: also skip when `name` is empty so that even if
-    // the success query param gets stripped (manual edit, share link,
-    // upstream proxy normalising URLs), we don't blank the saved profile.
+    // Profile is submitted before the Stripe Checkout redirect (defence in
+    // depth: persist keeps the store across the round-trip, but submitting
+    // pre-redirect ensures the backend has the data even if the user
+    // closes the tab during checkout). Skip the resubmit on return to
+    // avoid overwriting saved data with empties — belt-and-suspenders:
+    // also skip when `name` is empty so that even if the success query
+    // param gets stripped (manual edit, share link, upstream proxy
+    // normalising URLs), we don't blank the saved profile.
     if (searchParams.get("subscription") === "success" || !name.trim()) return;
 
     postV1SubmitOnboardingProfile({
@@ -180,6 +189,7 @@ export function useOnboardingPage() {
       try {
         await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
         clearHighestStep();
+        useOnboardingWizardStore.persist.clearStorage();
         router.replace("/copilot");
         return;
       } catch {
@@ -187,6 +197,7 @@ export function useOnboardingPage() {
       }
     }
     clearHighestStep();
+    useOnboardingWizardStore.persist.clearStorage();
     router.replace("/copilot");
   }
 

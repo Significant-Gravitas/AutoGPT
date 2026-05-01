@@ -2,6 +2,7 @@ import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/cre
 import { postV1SubmitOnboardingProfile } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { environment } from "@/services/environment";
 import { useState } from "react";
 import { normalizeOnboardingProfile } from "../../helpers";
 import { useOnboardingWizardStore } from "../../store";
@@ -62,6 +63,16 @@ export function useSubscriptionStep() {
       return;
     }
     if (isProcessing) return;
+
+    // Local dev: backend has no Stripe wiring, so skip the checkout
+    // round-trip and advance straight to Preparing. The profile still
+    // gets POSTed there via useOnboardingPage's submission effect.
+    if (environment.isLocal()) {
+      setSelectedPlan(planKey);
+      nextStep();
+      return;
+    }
+
     setIsSubmitting(true);
 
     setSelectedPlan(planKey);
