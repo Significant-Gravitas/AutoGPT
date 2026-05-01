@@ -73,7 +73,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       {
         icon: IconType.Settings,
         text: "Settings",
-        href: "/settings/profile",
+        href: "/settings",
       },
     ],
   },
@@ -133,7 +133,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
         {
           icon: IconType.Settings,
           text: "Settings",
-          href: "/settings/profile",
+          href: "/settings",
         },
       ],
     },

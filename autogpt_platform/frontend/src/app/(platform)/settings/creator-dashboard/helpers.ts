@@ -13,7 +13,7 @@ export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
 export type StatusFilterValue = "all" | SubmissionStatus;
 
-export type SortKey = "submitted" | "runs" | "rating";
+export type SortKey = "submitted" | "runs";
 export type SortDir = "asc" | "desc";
 
 export interface FilterState {
@@ -74,8 +74,7 @@ function sortValue(submission: StoreSubmission, key: SortKey): number {
       date instanceof Date ? date.getTime() : new Date(date).getTime();
     return Number.isNaN(time) ? 0 : time;
   }
-  if (key === "runs") return submission.run_count ?? 0;
-  return submission.review_avg_rating ?? 0;
+  return submission.run_count ?? 0;
 }
 
 export function isFiltered(state: FilterState): boolean {

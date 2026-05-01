@@ -34,11 +34,12 @@ export function UsageCard({ index = 0 }: Props) {
     );
   }
 
-  const max = Math.max(...usage.map((d) => d.amount), 0.01);
+  const displayMax = Math.max(...usage.map((d) => d.amount), 0);
+  const normalizedMax = Math.max(displayMax, 0.01);
   const totalSpent = usage.reduce((sum, d) => sum + d.amount, 0);
   const totalRuns = usage.reduce((sum, d) => sum + d.runs, 0);
   const yTicks = Array.from({ length: Y_TICK_COUNT + 1 }, (_, i) => {
-    const value = (max / Y_TICK_COUNT) * (Y_TICK_COUNT - i);
+    const value = (displayMax / Y_TICK_COUNT) * (Y_TICK_COUNT - i);
     return { value, label: `$${value.toFixed(2)}` };
   });
 
@@ -102,7 +103,7 @@ export function UsageCard({ index = 0 }: Props) {
                       key={day.date}
                       day={day}
                       index={i}
-                      max={max}
+                      max={normalizedMax}
                       reduceMotion={Boolean(reduceMotion)}
                     />
                   ))}
@@ -142,41 +143,38 @@ function UsageBar({
   const heightPercent = (day.amount / max) * 100;
   const isEmpty = day.amount <= 0;
 
-  if (isEmpty) {
-    return (
-      <div
-        aria-label={`${day.date}: no usage`}
-        className="flex h-full flex-1 flex-col justify-end"
-      >
-        <div className="h-px w-full bg-transparent" />
-      </div>
-    );
-  }
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           type="button"
-          aria-label={`${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`}
+          aria-label={
+            isEmpty
+              ? `${day.date}: $0.00, 0 runs`
+              : `${day.date}: $${day.amount.toFixed(2)}, ${day.runs} runs`
+          }
           className="group flex h-full flex-1 flex-col justify-end focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400"
         >
-          <motion.div
-            initial={
-              reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
-            }
-            animate={{ height: `${heightPercent}%` }}
-            transition={
-              reduceMotion
-                ? undefined
-                : {
-                    duration: 0.5,
-                    ease: EASE_OUT,
-                    delay: 0.15 + index * 0.015,
-                  }
-            }
-            className="w-full cursor-help rounded-t-[3px] border-t-2 border-purple-500 bg-purple-500/30 transition-colors group-hover:bg-purple-500/50"
-          />
+          {isEmpty ? (
+            <div className="h-px w-full bg-transparent" />
+          ) : (
+            <motion.div
+              initial={
+                reduceMotion ? { height: `${heightPercent}%` } : { height: 0 }
+              }
+              animate={{ height: `${heightPercent}%` }}
+              transition={
+                reduceMotion
+                  ? undefined
+                  : {
+                      duration: 0.5,
+                      ease: EASE_OUT,
+                      delay: 0.15 + index * 0.015,
+                    }
+              }
+              className="w-full cursor-help rounded-t-[3px] border-t-2 border-purple-500 bg-purple-500/30 transition-colors group-hover:bg-purple-500/50"
+            />
+          )}
         </button>
       </TooltipTrigger>
       <TooltipContent side="top">
