@@ -63,11 +63,14 @@ vi.mock("launchdarkly-react-client-sdk", () => ({
   }),
 }));
 
+const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
+
 beforeEach(() => {
   currentSearchParams = new URLSearchParams();
   mockFlagValue = false;
   routerReplace.mockClear();
   useOnboardingWizardStore.getState().reset();
+  window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 });
 
 afterEach(() => {
@@ -92,6 +95,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("treats step 4 as Preparing when payments are gated off", async () => {
     mockFlagValue = false;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
     currentSearchParams = new URLSearchParams("step=4");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
@@ -100,6 +104,7 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("renders SubscriptionStep at step 4 when payments are enabled", async () => {
     mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "4");
     currentSearchParams = new URLSearchParams("step=4");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-subscription")).toBeDefined();
@@ -108,10 +113,31 @@ describe("OnboardingPage — flag-gated SubscriptionStep", () => {
 
   it("treats step 5 as Preparing when payments are enabled", async () => {
     mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "5");
     currentSearchParams = new URLSearchParams("step=5");
     render(<OnboardingPage />);
     expect(await screen.findByTestId("step-preparing")).toBeDefined();
     expect(screen.queryByTestId("step-subscription")).toBeNull();
+  });
+
+  it("clamps ?step=5 to the user's highest reached step (no fast-forward)", async () => {
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "2");
+    currentSearchParams = new URLSearchParams("step=5");
+    render(<OnboardingPage />);
+    // Highest reached is 2 (RoleStep), so manually editing the URL to step=5
+    // should land the user back on step 2, not let them skip ahead.
+    expect(await screen.findByTestId("step-role")).toBeDefined();
+    expect(screen.queryByTestId("step-preparing")).toBeNull();
+  });
+
+  it("resumes from the highest reached step when ?step= is omitted", async () => {
+    mockFlagValue = true;
+    window.sessionStorage.setItem(STEP_STORAGE_KEY, "3");
+    // No step param — user navigated to /onboarding directly.
+    render(<OnboardingPage />);
+    expect(await screen.findByTestId("step-painpoints")).toBeDefined();
+    expect(screen.queryByTestId("step-welcome")).toBeNull();
   });
 
   it("rejects decimal step values and falls back to step 1", async () => {

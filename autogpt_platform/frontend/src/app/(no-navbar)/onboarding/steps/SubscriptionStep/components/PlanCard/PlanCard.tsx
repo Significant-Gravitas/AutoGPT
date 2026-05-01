@@ -1,11 +1,13 @@
 "use client";
 
+import { motion, useReducedMotion } from "framer-motion";
+
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { Check, Info, Star } from "@phosphor-icons/react";
+import { Check, Star } from "@phosphor-icons/react";
 import { type Country, formatPrice } from "../../countries";
-import { type PlanDef, type PlanKey } from "../../helpers";
+import { PLAN_KEYS, type PlanDef, type PlanKey } from "../../helpers";
 import { computePlanPricing } from "./helpers";
 
 interface Props {
@@ -33,6 +35,8 @@ export function PlanCard({
     isYearly,
   });
   const hl = plan.highlighted;
+  const isTeam = plan.key === PLAN_KEYS.TEAM;
+  const reduceMotion = useReducedMotion();
 
   return (
     <div
@@ -45,21 +49,51 @@ export function PlanCard({
       )}
     >
       {plan.badge && hl && (
-        <span className="absolute -top-3 right-5 z-10 inline-flex overflow-hidden rounded-full p-px shadow-[0_10px_28px_-6px_rgba(124,58,237,0.55)]">
+        <motion.span
+          className="absolute -top-3 right-5 z-10 inline-flex overflow-hidden rounded-full p-px shadow-[0_10px_28px_-6px_rgba(124,58,237,0.55)]"
+          initial={reduceMotion ? false : { scale: 0, opacity: 0, rotate: -12 }}
+          animate={
+            reduceMotion ? undefined : { scale: 1, opacity: 1, rotate: 0 }
+          }
+          transition={
+            reduceMotion
+              ? undefined
+              : { type: "spring", stiffness: 320, damping: 14, delay: 0.45 }
+          }
+        >
           <span
             aria-hidden
             className="absolute -inset-[150%] animate-[spin_4s_linear_infinite] bg-[conic-gradient(from_0deg,#a855f7,#7c3aed,#4f46e5,#1e40af,#4f46e5,#7c3aed,#a855f7)]"
           />
           <span className="relative inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-600 via-blue-600 to-blue-500 px-2.5 py-1 text-[10px] font-semibold text-white">
-            <Star
-              size={10}
-              weight="fill"
-              aria-hidden="true"
-              className="text-yellow-300"
-            />
+            <motion.span
+              className="inline-flex"
+              animate={
+                reduceMotion
+                  ? undefined
+                  : { rotate: [0, 18, -10, 0], scale: [1, 1.25, 0.95, 1] }
+              }
+              transition={
+                reduceMotion
+                  ? undefined
+                  : {
+                      duration: 1.2,
+                      repeat: Infinity,
+                      repeatDelay: 2.2,
+                      ease: "easeInOut",
+                    }
+              }
+            >
+              <Star
+                size={10}
+                weight="fill"
+                aria-hidden="true"
+                className="text-yellow-300"
+              />
+            </motion.span>
             {plan.badge}
           </span>
-        </span>
+        </motion.span>
       )}
 
       <div
@@ -130,7 +164,7 @@ export function PlanCard({
             ) : (
               <span
                 className={cn(
-                  "font-poppins font-medium leading-none text-zinc-800",
+                  "font-poppins font-medium leading-none tracking-[-1px] text-zinc-800",
                   hl ? "text-[32px]" : "text-[26px]",
                 )}
               >
@@ -147,35 +181,53 @@ export function PlanCard({
 
           <div className="mb-4 flex flex-1 flex-col gap-2">
             {plan.features.map((f) => (
-              <div key={f} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    aria-hidden="true"
-                    className="flex h-4 w-4 items-center justify-center rounded-full bg-purple-50"
-                  >
-                    <Check
-                      size={10}
-                      weight="bold"
-                      className="text-purple-500"
-                    />
-                  </span>
-                  <span className="text-[13px] text-zinc-800">{f}</span>
-                </div>
-                <Info size={13} className="text-zinc-300" aria-hidden="true" />
+              <div key={f} className="flex items-center gap-2">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex h-4 w-4 items-center justify-center rounded-full",
+                    isTeam ? "bg-stone-100" : "bg-purple-50",
+                  )}
+                >
+                  <Check
+                    size={10}
+                    weight="bold"
+                    className={isTeam ? "text-stone-500" : "text-purple-500"}
+                  />
+                </span>
+                <span className="text-[13px] text-zinc-800">{f}</span>
               </div>
             ))}
           </div>
 
-          <Button
-            variant={plan.buttonVariant}
-            size={hl ? "large" : "small"}
-            onClick={() => onSelect(plan.key)}
-            className="w-full"
-            loading={loading}
-            disabled={disabled}
-          >
-            {plan.cta}
-          </Button>
+          <div className="relative isolate mt-5 w-full">
+            {hl && (
+              <motion.span
+                aria-hidden
+                className="pointer-events-none absolute -inset-0.5 -z-10 block rounded-[14px] bg-[linear-gradient(90deg,#a855f7,#7c3aed,#4f46e5,#6366f1,#a855f7)] bg-[length:200%_100%] opacity-25 blur-md"
+                animate={
+                  reduceMotion
+                    ? undefined
+                    : { backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }
+                }
+                transition={
+                  reduceMotion
+                    ? undefined
+                    : { duration: 8, repeat: Infinity, ease: "linear" }
+                }
+              />
+            )}
+            <Button
+              variant={plan.buttonVariant}
+              size={hl ? "large" : "small"}
+              onClick={() => onSelect(plan.key)}
+              className="w-full"
+              loading={loading}
+              disabled={disabled}
+            >
+              {plan.cta}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

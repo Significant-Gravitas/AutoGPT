@@ -47,7 +47,7 @@ export default function OnboardingPage() {
         </button>
       )}
 
-      <div className="flex flex-1 items-center py-16">
+      <div className="flex flex-1 items-center pb-8 pt-16">
         {currentStep === 1 && <WelcomeStep />}
         {currentStep === 2 && <RoleStep />}
         {currentStep === 3 && <PainPointsStep />}

@@ -14,10 +14,33 @@ import { Step, useOnboardingWizardStore } from "./store";
 
 const LD_INIT_TIMEOUT_SECONDS = 5;
 
-function parseStep(value: string | null, maxStep: number): Step {
+// SessionStorage ceiling for the wizard. The backend's `completedSteps`
+// only records VISIT_COPILOT at the very end (the 5 in-wizard steps aren't
+// tracked individually), so resume / fast-forward guardrails are enforced
+// client-side: the user can only land on a step they've previously reached.
+const STEP_STORAGE_KEY = "autogpt:onboarding-highest-step";
+
+function parseStepParam(value: string | null, maxStep: number): Step | null {
   const n = Number(value);
   if (Number.isInteger(n) && n >= 1 && n <= maxStep) return n as Step;
-  return 1;
+  return null;
+}
+
+function readHighestStep(): number {
+  if (typeof window === "undefined") return 1;
+  const raw = window.sessionStorage.getItem(STEP_STORAGE_KEY);
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
+
+function writeHighestStep(step: number) {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.setItem(STEP_STORAGE_KEY, String(step));
+}
+
+function clearHighestStep() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(STEP_STORAGE_KEY);
 }
 
 export function useOnboardingPage() {
@@ -70,21 +93,30 @@ export function useOnboardingPage() {
   const hasSubmitted = useRef(false);
   const hasInitialized = useRef(false);
 
-  // Initialise store from URL on mount, reset form data
+  // Initialise store from URL on mount, reset form data, clamp ?step= to
+  // the highest step the user has actually reached. No-step URL resumes from
+  // the highest reached so refreshes don't drop the user back to step 1.
   useEffect(() => {
     if (!areFlagsReady || hasInitialized.current) return;
     hasInitialized.current = true;
-    const urlStep = parseStep(searchParams.get("step"), preparingStep);
+    const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
+    const ceiling = Math.min(readHighestStep(), preparingStep) as Step;
+    const target = (
+      urlStep === null ? ceiling : Math.min(urlStep, ceiling)
+    ) as Step;
     reset();
-    goToStep(urlStep);
+    goToStep(target);
   }, [areFlagsReady, searchParams, reset, goToStep, preparingStep]);
 
-  // Sync store → URL when step changes
+  // Sync store → URL when step changes; record the new ceiling.
   useEffect(() => {
     if (!areFlagsReady) return;
-    const urlStep = parseStep(searchParams.get("step"), preparingStep);
+    const urlStep = parseStepParam(searchParams.get("step"), preparingStep);
     if (currentStep !== urlStep) {
       router.replace(`/onboarding?step=${currentStep}`, { scroll: false });
+    }
+    if (currentStep > readHighestStep()) {
+      writeHighestStep(currentStep);
     }
   }, [areFlagsReady, currentStep, router, searchParams, preparingStep]);
 
@@ -96,6 +128,7 @@ export function useOnboardingPage() {
       try {
         const onboarding = await resolveResponse(getV1OnboardingState());
         if (onboarding.completedSteps.includes("VISIT_COPILOT")) {
+          clearHighestStep();
           router.replace("/copilot");
           return;
         }
@@ -142,12 +175,14 @@ export function useOnboardingPage() {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await postV1CompleteOnboardingStep({ step: "VISIT_COPILOT" });
+        clearHighestStep();
         router.replace("/copilot");
         return;
       } catch {
         if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
       }
     }
+    clearHighestStep();
     router.replace("/copilot");
   }
 
