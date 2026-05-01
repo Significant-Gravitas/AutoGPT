@@ -115,7 +115,7 @@ export function Wallet() {
             name: "Run agents 14 days in a row",
             amount: 1,
             details:
-              "Run any agents from the Library or Builder for 10 days in a row",
+              "Run any agents from the Library or Builder for 14 days in a row",
             progress: {
               current: state?.consecutiveRunDays || 0,
               target: 14,
