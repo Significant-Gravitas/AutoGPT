@@ -48,7 +48,7 @@ export const PLANS: PlanDef[] = [
   {
     key: PLAN_KEYS.MAX,
     name: "Max",
-    usage: "7x",
+    usage: "8.5x",
     usdMonthly: MAX_USD_MONTHLY,
     description: "For users who are serious about getting more work done.",
     features: [
