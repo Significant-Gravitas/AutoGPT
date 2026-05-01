@@ -165,15 +165,6 @@ describe("creator-dashboard helpers", () => {
       expect(result.map((s) => s.listing_version_id)).toEqual(["b", "a", "c"]);
     });
 
-    test("sorts by rating descending", () => {
-      const result = applyFiltersAndSort(items, {
-        ...INITIAL_FILTER_STATE,
-        sortKey: "rating",
-        sortDir: "desc",
-      });
-      expect(result.map((s) => s.listing_version_id)).toEqual(["c", "a", "b"]);
-    });
-
     test("sorts by submitted date descending (newest first)", () => {
       const result = applyFiltersAndSort(items, {
         ...INITIAL_FILTER_STATE,

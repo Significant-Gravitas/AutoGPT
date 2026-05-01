@@ -146,16 +146,6 @@ export function MobileSubmissionsList({
             descLabel="Highest first"
           />
         </FilterChip>
-        <FilterChip label="Rating">
-          <SortColumnFilter
-            sortKey="rating"
-            activeKey={filterState.sortKey}
-            activeDir={filterState.sortDir}
-            onChange={setSort}
-            ascLabel="Lowest first"
-            descLabel="Highest first"
-          />
-        </FilterChip>
       </div>
 
       <AnimatePresence initial={false}>
