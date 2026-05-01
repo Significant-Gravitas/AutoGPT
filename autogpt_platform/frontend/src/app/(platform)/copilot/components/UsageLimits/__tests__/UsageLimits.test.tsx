@@ -141,6 +141,6 @@ describe("UsageLimits", () => {
 
     const link = screen.getByText("Learn more about usage limits");
     expect(link).toBeDefined();
-    expect(link.closest("a")?.getAttribute("href")).toBe("/profile/credits");
+    expect(link.closest("a")?.getAttribute("href")).toBe("/settings/billing");
   });
 });

@@ -490,7 +490,7 @@ describe("useYourPlanCard", () => {
     });
 
     expect(openSpy).toHaveBeenCalledWith(
-      expect.stringContaining("contact-sales"),
+      expect.stringContaining("tally.so"),
       "_blank",
       "noopener,noreferrer",
     );

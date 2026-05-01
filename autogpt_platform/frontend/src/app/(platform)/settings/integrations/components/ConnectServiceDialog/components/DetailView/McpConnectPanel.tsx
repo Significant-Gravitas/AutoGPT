@@ -51,12 +51,27 @@ export function McpConnectPanel({ onSuccess }: Props) {
     oauthAbortRef.current?.();
 
     try {
-      // Custom mutator throws ApiError for non-2xx; only the 200 path returns
-      // here, so we can read login_url/state_token directly. The 400 ("server
-      // doesn't support OAuth") case lands in the catch below.
-      const loginRes = await postV2InitiateOauthLoginForAnMcpServer({
-        server_url: trimmedUrl,
-      });
+      // Only a 400 from the *initiate* call means "server doesn't support
+      // OAuth" — fall back to manual-token for that. A 400 from anywhere else
+      // (popup callback, token exchange) is a real error and should surface
+      // as such instead of forcing the manual-token UI.
+      let loginRes: Awaited<
+        ReturnType<typeof postV2InitiateOauthLoginForAnMcpServer>
+      >;
+      try {
+        loginRes = await postV2InitiateOauthLoginForAnMcpServer({
+          server_url: trimmedUrl,
+        });
+      } catch (e: unknown) {
+        if (getErrorStatus(e) === 400) {
+          setPhase("manual-token");
+          setError(
+            "This server doesn't support OAuth sign-in. Paste a bearer token instead.",
+          );
+          return;
+        }
+        throw e;
+      }
 
       const { login_url, state_token } = loginRes.data as MCPOAuthLoginResponse;
 
@@ -76,14 +91,6 @@ export function McpConnectPanel({ onSuccess }: Props) {
       await invalidateCredentials();
       onSuccess();
     } catch (e: unknown) {
-      const status = getErrorStatus(e);
-      if (status === 400) {
-        setPhase("manual-token");
-        setError(
-          "This server doesn't support OAuth sign-in. Paste a bearer token instead.",
-        );
-        return;
-      }
       const message = getErrorMessage(e);
       if (message === "OAuth flow timed out") {
         setError("OAuth sign-in timed out. Please try again.");

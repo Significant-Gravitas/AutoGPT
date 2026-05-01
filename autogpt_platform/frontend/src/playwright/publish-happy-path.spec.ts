@@ -33,8 +33,8 @@ test("publish happy path: user can submit, track, and delete an agent submission
     await marketplacePage.submitAgentForReview(publishableAgentName);
 
   await page.getByTestId("view-progress-button").click();
-  await expect(page).toHaveURL(/\/profile\/dashboard/);
-  await expect(page.getByText("Agent dashboard")).toBeVisible();
+  await expect(page).toHaveURL(/\/settings\/creator-dashboard/);
+  await expect(page.getByText("Creator dashboard")).toBeVisible();
 
   const submissionRow =
     await marketplacePage.waitForDashboardSubmission(agentTitle);
