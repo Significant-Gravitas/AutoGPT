@@ -1,6 +1,7 @@
 "use client";
 
-import { CaretLeft } from "@phosphor-icons/react";
+import { CaretLeftIcon, SignOutIcon } from "@phosphor-icons/react";
+import Link from "next/link";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
 import { PainPointsStep } from "./steps/PainPointsStep";
@@ -29,6 +30,7 @@ export default function OnboardingPage() {
   const showDots = currentStep <= totalSteps;
   const showBack = currentStep > 1 && currentStep <= totalSteps;
   const showProgressBar = currentStep <= totalSteps;
+  const showLogout = currentStep <= totalSteps;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
@@ -42,7 +44,7 @@ export default function OnboardingPage() {
           onClick={prevStep}
           className="text-md absolute left-6 top-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
         >
-          <CaretLeft size={16} />
+          <CaretLeftIcon size={16} />
           Back
         </button>
       )}
@@ -61,6 +63,16 @@ export default function OnboardingPage() {
         <div className="pb-8">
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
+      )}
+
+      {showLogout && (
+        <Link
+          href="/logout"
+          className="text-md absolute bottom-6 left-6 flex items-center gap-1 text-zinc-500 transition-colors duration-200 hover:text-zinc-900"
+        >
+          <SignOutIcon size={16} />
+          Log out
+        </Link>
       )}
     </div>
   );

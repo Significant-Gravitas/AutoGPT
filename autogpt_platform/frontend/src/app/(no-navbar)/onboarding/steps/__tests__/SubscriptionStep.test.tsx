@@ -8,6 +8,7 @@ import {
 } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
+import { environment } from "@/services/environment";
 import { useOnboardingWizardStore } from "../../store";
 import { SubscriptionStep } from "../SubscriptionStep/SubscriptionStep";
 
@@ -26,6 +27,9 @@ afterEach(cleanup);
 beforeEach(() => {
   useOnboardingWizardStore.getState().reset();
   useOnboardingWizardStore.getState().goToStep(4);
+  // Default tests to cloud mode so they exercise the Stripe Checkout path.
+  // The local-bypass test below opts back into LOCAL.
+  vi.spyOn(environment, "isLocal").mockReturnValue(false);
 });
 
 describe("SubscriptionStep", () => {
@@ -146,6 +150,35 @@ describe("SubscriptionStep", () => {
     fireEvent.click(screen.getByRole("button", { name: /United States/i }));
     fireEvent.click(screen.getByRole("button", { name: /European Union/i }));
     expect(useOnboardingWizardStore.getState().selectedCountryCode).toBe("EU");
+  });
+
+  test("local dev: clicking Pro skips Stripe and advances to the next step", async () => {
+    vi.spyOn(environment, "isLocal").mockReturnValue(true);
+
+    let stripeCalled = false;
+    let profileCalledSync = false;
+    server.use(
+      http.post("*/api/credits/subscription", () => {
+        stripeCalled = true;
+        return HttpResponse.json({ url: null });
+      }),
+      http.post("*/api/onboarding/profile", () => {
+        profileCalledSync = true;
+        return HttpResponse.json({}, { status: 200 });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(useOnboardingWizardStore.getState().selectedPlan).toBe("PRO");
+    });
+    // Local short-circuit: no Stripe Checkout, no pre-redirect profile POST
+    // (the Preparing step handles submission via useOnboardingPage).
+    expect(stripeCalled).toBe(false);
+    expect(profileCalledSync).toBe(false);
+    expect(useOnboardingWizardStore.getState().currentStep).toBe(5);
   });
 
   test("clicking a plan keeps the request in flight: clicked card spins, others lock", async () => {

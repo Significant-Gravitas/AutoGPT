@@ -2,6 +2,7 @@ import { useUpdateSubscriptionTier } from "@/app/api/__generated__/endpoints/cre
 import { postV1SubmitOnboardingProfile } from "@/app/api/__generated__/endpoints/onboarding/onboarding";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { environment } from "@/services/environment";
 import { useState } from "react";
 import { normalizeOnboardingProfile } from "../../helpers";
 import { useOnboardingWizardStore } from "../../store";
@@ -64,21 +65,29 @@ export function useSubscriptionStep() {
     if (isProcessing) return;
     setIsSubmitting(true);
 
+    // Local dev: backend has no Stripe wiring, so skip the checkout
+    // round-trip and advance straight to Preparing. The profile still
+    // gets POSTed there via useOnboardingPage's submission effect.
+    if (environment.isLocal()) {
+      setSelectedPlan(planKey);
+      nextStep();
+      return;
+    }
+
     setSelectedPlan(planKey);
     const tier = PLAN_TO_TIER[planKey];
 
-    // Profile data lives in an in-memory zustand store, so persist it before
-    // Stripe takes the user off-page — otherwise the user's name/role/pain
-    // points are lost on the post-checkout redirect.
     const { name, role, painPoints } = normalizeOnboardingProfile(
       useOnboardingWizardStore.getState(),
     );
 
     try {
-      // Profile must be persisted before Stripe takes over — the zustand
-      // store is in-memory and the post-checkout return is a full page
-      // navigation. Abort on failure rather than silently losing the user's
-      // name / role / pain points.
+      // POST the profile pre-redirect as defence in depth: zustand persist
+      // (sessionStorage) keeps the store across the Stripe round-trip, but
+      // submitting now also covers the case where the user closes the tab
+      // mid-checkout — the backend still has their name / role / pain
+      // points. Abort on failure rather than starting a Checkout session
+      // we'd have to reconcile with a missing profile after success.
       await postV1SubmitOnboardingProfile({
         user_name: name,
         user_role: role,
