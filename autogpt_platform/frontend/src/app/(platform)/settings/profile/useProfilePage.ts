@@ -55,31 +55,40 @@ export function useProfilePage() {
   );
 
   const [formState, setFormState] = useState<ProfileFormState>(EMPTY_FORM);
+  const formStateRef = useRef<ProfileFormState>(EMPTY_FORM);
   const lastSyncedRef = useRef<ProfileFormState>(EMPTY_FORM);
   const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    formStateRef.current = formState;
+  }, [formState]);
 
   useEffect(
     function syncFormStateOnDataLoad() {
       if (!profileQuery.data) return;
       const incoming = profileToFormState(profileQuery.data);
-      setFormState((prev) => {
-        // First load always hydrates — even when the server returns an empty
-        // profile, we need the padded link slots in formState to render.
-        if (!hasHydratedRef.current) {
-          hasHydratedRef.current = true;
-          lastSyncedRef.current = incoming;
-          return incoming;
-        }
-        if (!isFormDirty(incoming, prev)) {
-          lastSyncedRef.current = incoming;
-          return prev;
-        }
-        // Don't clobber unsaved edits on background refetches — only hydrate
-        // when the local form is still pristine relative to the last sync.
-        if (isFormDirty(lastSyncedRef.current, prev)) return prev;
+      const prev = formStateRef.current;
+
+      // First load always hydrates — even when the server returns an empty
+      // profile, we need the padded link slots in formState to render.
+      if (!hasHydratedRef.current) {
+        hasHydratedRef.current = true;
         lastSyncedRef.current = incoming;
-        return incoming;
-      });
+        setFormState(incoming);
+        return;
+      }
+      // Refetch returned the same content as the local form — keep prev to
+      // preserve link IDs (avoids a row exit/enter flash) and refresh the
+      // synced snapshot so future dirty checks compare against the latest.
+      if (!isFormDirty(incoming, prev)) {
+        lastSyncedRef.current = incoming;
+        return;
+      }
+      // User has edits relative to the last synced snapshot — never clobber.
+      if (isFormDirty(lastSyncedRef.current, prev)) return;
+      // Form pristine, server data changed — hydrate with the new snapshot.
+      lastSyncedRef.current = incoming;
+      setFormState(incoming);
     },
     [profileQuery.data],
   );

@@ -40,6 +40,10 @@ export function useAutoRefillCard() {
       initializedForOpenRef.current = false;
       return;
     }
+    // Wait for the config fetch to settle before locking in defaults —
+    // otherwise opening the dialog mid-load would seed "5/5" and skip
+    // re-hydration when saved config arrives moments later.
+    if (isLoading) return;
     // Initialize once per open transition so background refetches (e.g. on
     // window focus) don't clobber the user's in-progress edits.
     if (initializedForOpenRef.current) return;
@@ -48,7 +52,7 @@ export function useAutoRefillCard() {
     // by default and matches the "$5 minimum" copy in the empty state.
     setThreshold(config?.threshold ? (config.threshold / 100).toString() : "5");
     setRefillAmount(config?.amount ? (config.amount / 100).toString() : "5");
-  }, [open, config]);
+  }, [open, config, isLoading]);
 
   const thresholdValue = Number.parseFloat(threshold);
   const refillValue = Number.parseFloat(refillAmount);
