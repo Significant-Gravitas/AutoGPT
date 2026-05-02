@@ -58,9 +58,9 @@ export function useProfilePage() {
 
   useEffect(
     function syncFormStateOnDataLoad() {
-      if (profileQuery.data) {
-        setFormState(profileToFormState(profileQuery.data));
-      }
+      if (!profileQuery.data) return;
+      const incoming = profileToFormState(profileQuery.data);
+      setFormState((prev) => (isFormDirty(incoming, prev) ? incoming : prev));
     },
     [profileQuery.data],
   );

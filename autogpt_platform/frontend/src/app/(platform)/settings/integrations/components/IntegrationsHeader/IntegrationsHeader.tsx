@@ -18,7 +18,7 @@ export function IntegrationsHeader({ onConnect }: Props) {
         <Text variant="body" className="mt-4 max-w-[600px] text-[#505057]">
           Manage the 3rd party accounts you&apos;ve connected to AutoGPT. These
           are services that can be used by your agents — like Gmail for sending
-          emails, GitHub for code, or Figma for designs.
+          emails, GitHub for code, or Notion for documents.
         </Text>
       </div>
 
