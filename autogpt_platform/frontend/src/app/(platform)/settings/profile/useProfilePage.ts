@@ -56,12 +56,20 @@ export function useProfilePage() {
 
   const [formState, setFormState] = useState<ProfileFormState>(EMPTY_FORM);
   const lastSyncedRef = useRef<ProfileFormState>(EMPTY_FORM);
+  const hasHydratedRef = useRef(false);
 
   useEffect(
     function syncFormStateOnDataLoad() {
       if (!profileQuery.data) return;
       const incoming = profileToFormState(profileQuery.data);
       setFormState((prev) => {
+        // First load always hydrates — even when the server returns an empty
+        // profile, we need the padded link slots in formState to render.
+        if (!hasHydratedRef.current) {
+          hasHydratedRef.current = true;
+          lastSyncedRef.current = incoming;
+          return incoming;
+        }
         if (!isFormDirty(incoming, prev)) {
           lastSyncedRef.current = incoming;
           return prev;
