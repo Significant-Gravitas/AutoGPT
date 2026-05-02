@@ -186,7 +186,7 @@ Multiple worktrees share the same host — Docker infra (postgres, redis, clamav
 
 ### Lock file contract
 
-Path (**always** the root worktree so all siblings see it): `/Users/majdyz/Code/AutoGPT/.ign.testing.lock`
+Path (**always** the root worktree so all siblings see it): `$REPO_ROOT/.ign.testing.lock`
 
 Body (one `key=value` per line):
 ```
@@ -202,7 +202,7 @@ intent=<one-line description + rough duration>
 ### Claim
 
 ```bash
-LOCK=/Users/majdyz/Code/AutoGPT/.ign.testing.lock
+LOCK=$REPO_ROOT/.ign.testing.lock
 NOW=$(date -u +%Y-%m-%dT%H:%MZ)
 STALE_AFTER_MIN=5
 
@@ -252,7 +252,7 @@ echo "$HEARTBEAT_PID" > /tmp/pr-test-heartbeat.pid
 kill "$HEARTBEAT_PID" 2>/dev/null
 rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
 echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock" \
-    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+    >> $REPO_ROOT/.ign.testing.log
 ```
 
 Use a `trap` so release runs even on `exit 1`:
@@ -260,12 +260,38 @@ Use a `trap` so release runs even on `exit 1`:
 trap 'kill "$HEARTBEAT_PID" 2>/dev/null; rm -f "$LOCK"' EXIT INT TERM
 ```
 
+### **Release the lock AS SOON AS the test run is done**
+
+The lock guards **test execution**, not **app lifecycle**. Once Step 5 (record results) and Step 6 (post PR comment) are complete, release the lock IMMEDIATELY — even if:
+
+- The native `poetry run app` / `pnpm dev` processes are still running so the user can keep poking at the app manually.
+- You're leaving docker containers up.
+- You're tailing logs for a minute or two.
+
+Keeping the lock held past the test run is the single most common way `/pr-test` stalls other agents. **The app staying up is orthogonal to the lock; don't conflate them.** Sibling worktrees running their own `/pr-test` will kill the stray processes and free the ports themselves (Step 3c/3e-native handle that) — they just need the lock file gone.
+
+Concretely, the sequence at the end of every `/pr-test` run (success or failure) is:
+
+```bash
+# 1. Write the final report + post PR comment — done above in Step 5/6.
+# 2. Release the lock right now, even if the app is still up.
+kill "$HEARTBEAT_PID" 2>/dev/null
+rm -f "$LOCK" /tmp/pr-test-heartbeat.pid
+echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] released lock (app may still be running)" \
+    >> $REPO_ROOT/.ign.testing.log
+# 3. Optionally leave the app running and note it so the user knows:
+echo "Native stack still running on :3000 / :8006 for manual poking. Kill with:"
+echo "  pkill -9 -f 'poetry run app'; pkill -9 -f 'next-server|next dev'"
+```
+
+If a sibling agent's `/pr-test` needs to take over, it'll do the kill+rebuild dance from Step 3c/3e-native on its own — your only job is to not hold the lock file past the end of your test.
+
 ### Shared status log
 
-`/Users/majdyz/Code/AutoGPT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
+`$REPO_ROOT/.ign.testing.log` is an append-only channel any agent can read/write. Use it for "I'm waiting", "I'm done, resources free", or post-run notes:
 ```bash
 echo "$(date -u +%Y-%m-%dT%H:%MZ) [pr-${PR_NUMBER}] <message>" \
-    >> /Users/majdyz/Code/AutoGPT/.ign.testing.log
+    >> $REPO_ROOT/.ign.testing.log
 ```
 
 ## Step 3: Environment setup
@@ -754,6 +780,19 @@ Upload screenshots to the PR using the GitHub Git API (no local git operations �
 **This step is MANDATORY. Every test run MUST post a PR comment with screenshots. No exceptions.**
 
 **CRITICAL — NEVER post a bare directory link like `https://github.com/.../tree/...`.** Every screenshot MUST appear as `![name](raw_url)` inline in the PR comment so reviewers can see them without clicking any links. After posting, the verification step below greps the comment for `![` tags and exits 1 if none are found — the test run is considered incomplete until this passes.
+
+**CRITICAL — NEVER paste absolute local paths into the PR comment.** Strings like `/Users/…`, `/home/…`, `C:\…` are useless to every reviewer except you. Before posting, grep the final body for `/Users/`, `/home/`, `/tmp/`, `/private/`, `C:\`, `~/` and either drop those lines entirely or rewrite them as repo-relative paths (`autogpt_platform/backend/…`). The PR comment is an artifact reviewers on GitHub read — it must be self-contained on github.com. Keep local paths in `$RESULTS_DIR/test-report.md` for yourself; only copy the *content* they reference (excerpts, test names, log lines) into the PR comment, not the path.
+
+**Pre-post sanity check** (paste after building the comment body, before `gh api ... comments`):
+
+```bash
+# Reject any local-looking absolute path or home-dir shortcut in the body
+if grep -nE '(^|[^A-Za-z])(/Users/|/home/|/tmp/|/private/|C:\\|~/)[A-Za-z0-9]' "$COMMENT_FILE" ; then
+  echo "ABORT: local filesystem paths detected in PR comment body."
+  echo "Remove or rewrite as repo-relative (autogpt_platform/...) before posting."
+  exit 1
+fi
+```
 
 ```bash
 # Upload screenshots via GitHub Git API (creates blobs, tree, commit, and ref remotely)

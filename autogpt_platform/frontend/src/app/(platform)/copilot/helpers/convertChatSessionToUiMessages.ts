@@ -1,6 +1,13 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 
+export interface TurnStats {
+  durationMs?: number;
+  createdAt?: string;
+}
+
+export type TurnStatsMap = Map<string, TurnStats>;
+
 interface SessionChatMessage {
   role: string;
   content: string | null;
@@ -8,6 +15,7 @@ interface SessionChatMessage {
   tool_calls: unknown[] | null;
   sequence: number | null;
   duration_ms: number | null;
+  created_at: string | null;
 }
 
 function coerceSessionChatMessages(
@@ -39,6 +47,14 @@ function coerceSessionChatMessages(
         sequence: typeof msg.sequence === "number" ? msg.sequence : null,
         duration_ms:
           typeof msg.duration_ms === "number" ? msg.duration_ms : null,
+        // The API mutator transforms ISO strings to Date objects before
+        // the data reaches here, so accept both string and Date.
+        created_at:
+          typeof msg.created_at === "string"
+            ? msg.created_at
+            : msg.created_at instanceof Date
+              ? msg.created_at.toISOString()
+              : null,
       };
     })
     .filter((m): m is SessionChatMessage => m !== null);
@@ -103,13 +119,33 @@ function toToolInput(rawArguments: unknown): unknown {
   return {};
 }
 
+// Capture trailing sequence number from a hydrated UIMessage id of the
+// shape ``<sessionId>-seq-<N>``.  Streaming-path ids (AI SDK uuids) and
+// idx-based fallback ids (``-idx-<N>``) don't match — return null so the
+// caller refuses the merge in those cases (the safer default).
+const HYDRATED_ID_SEQ_RE = /-seq-(\d+)$/;
+
+function extractDbSequence(uiMessage: UIMessage): number | null {
+  if (typeof uiMessage.id !== "string") return null;
+  const match = HYDRATED_ID_SEQ_RE.exec(uiMessage.id);
+  return match ? Number(match[1]) : null;
+}
+
 /**
  * Concatenate two UIMessage arrays, merging consecutive assistant messages
  * at the join point so that reasoning + response parts stay in a single bubble.
  *
  * Within each page, `convertChatSessionMessagesToUiMessages` already merges
- * consecutive assistant DB rows. This handles the boundary between pages
+ * consecutive assistant DB rows.  This handles the boundary between pages
  * (or between older-pages and the current/streaming page).
+ *
+ * The merge is gated on **DB-sequence adjacency**: extract the trailing
+ * ``-seq-N`` from each id and only merge when ``firstSeq === lastSeq + 1``.
+ * Without that check, a hydration-race window (where a user/reasoning row
+ * exists in the DB but has not yet been hydrated into either page) would
+ * silently swallow the missing row by stitching the two surrounding
+ * assistant bubbles into one — matching the chip-disappearing /
+ * "merged as previous chat" report.
  */
 export function concatWithAssistantMerge(
   a: UIMessage<unknown, UIDataTypes, UITools>[],
@@ -119,14 +155,24 @@ export function concatWithAssistantMerge(
   if (b.length === 0) return a;
   const last = a[a.length - 1];
   const first = b[0];
-  if (last.role === "assistant" && first.role === "assistant") {
-    return [
-      ...a.slice(0, -1),
-      { ...last, parts: [...last.parts, ...first.parts] },
-      ...b.slice(1),
-    ];
+  if (last.role !== "assistant" || first.role !== "assistant") {
+    return [...a, ...b];
   }
-  return [...a, ...b];
+  // Both sides assistant — only merge when the underlying DB sequences are
+  // strictly adjacent (no skipped user / reasoning row between them that a
+  // hydration race could be hiding).  Streaming-path ids fail extraction and
+  // refuse the merge, which is fine: the streaming consumer handles its own
+  // assistant continuity inside the active turn.
+  const lastSeq = extractDbSequence(last);
+  const firstSeq = extractDbSequence(first);
+  if (lastSeq === null || firstSeq === null || firstSeq !== lastSeq + 1) {
+    return [...a, ...b];
+  }
+  return [
+    ...a.slice(0, -1),
+    { ...last, parts: [...last.parts, ...first.parts] },
+    ...b.slice(1),
+  ];
 }
 
 /**
@@ -166,7 +212,7 @@ export function convertChatSessionMessagesToUiMessages(
   },
 ): {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
-  durations: Map<string, number>;
+  stats: TurnStatsMap;
 } {
   const messages = coerceSessionChatMessages(rawMessages);
   const toolOutputsByCallId = new Map<string, unknown>();
@@ -187,7 +233,12 @@ export function convertChatSessionMessagesToUiMessages(
   }
 
   const uiMessages: UIMessage<unknown, UIDataTypes, UITools>[] = [];
-  const durations = new Map<string, number>();
+  const stats: TurnStatsMap = new Map();
+
+  function patchStats(id: string, patch: Partial<TurnStats>) {
+    const existing = stats.get(id) ?? {};
+    stats.set(id, { ...existing, ...patch });
+  }
 
   messages.forEach((msg, idx) => {
     if (msg.role === "tool") return;
@@ -280,12 +331,42 @@ export function convertChatSessionMessagesToUiMessages(
 
     // Merge consecutive assistant messages (including reasoning rows) into a
     // single UIMessage to avoid split bubbles on page reload.
+    //
+    // The merged bubble's ``id`` advances to the LAST DB sequence in the
+    // group (i.e. the row we are currently appending) so
+    // ``concatWithAssistantMerge`` can read the correct adjacency from the
+    // id alone — without that, a merged bubble holding seq=5+6 would still
+    // be keyed ``-seq-5``, and a cross-page assistant at seq=7 would fail
+    // the ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into two
+    // bubbles instead of joining the ongoing turn.
     const prevUI = uiMessages[uiMessages.length - 1];
     if (uiRole === "assistant" && prevUI && prevUI.role === "assistant") {
       prevUI.parts.push(...parts);
+      const oldId = prevUI.id;
+      const newId =
+        msg.sequence != null
+          ? `${sessionId}-seq-${msg.sequence}`
+          : `${sessionId}-idx-${idx}`;
+      if (newId !== oldId) {
+        // Migrate stats over to the new id and let the old key go.
+        const existingStats = stats.get(oldId);
+        stats.delete(oldId);
+        if (existingStats) stats.set(newId, existingStats);
+        prevUI.id = newId;
+      }
       // Capture duration on merged message (last assistant msg wins)
       if (msg.duration_ms != null) {
-        durations.set(prevUI.id, msg.duration_ms);
+        patchStats(prevUI.id, { durationMs: msg.duration_ms });
+      }
+      // Advance createdAt to the latest row in the merge so the live
+      // "Thinking Xs" counter anchors to the most recent sub-step rather
+      // than the turn's first assistant row.
+      const existingCreatedAt = stats.get(prevUI.id)?.createdAt;
+      if (
+        msg.created_at &&
+        (!existingCreatedAt || msg.created_at > existingCreatedAt)
+      ) {
+        patchStats(prevUI.id, { createdAt: msg.created_at });
       }
       return;
     }
@@ -302,10 +383,13 @@ export function convertChatSessionMessagesToUiMessages(
       parts,
     });
 
+    const patch: Partial<TurnStats> = {};
+    if (msg.created_at) patch.createdAt = msg.created_at;
     if (uiRole === "assistant" && msg.duration_ms != null) {
-      durations.set(msgId, msg.duration_ms);
+      patch.durationMs = msg.duration_ms;
     }
+    if (Object.keys(patch).length > 0) patchStats(msgId, patch);
   });
 
-  return { messages: uiMessages, durations };
+  return { messages: uiMessages, stats };
 }

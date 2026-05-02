@@ -1339,6 +1339,7 @@ async def compact_transcript(
     *,
     model: str,
     log_prefix: str = "[Transcript]",
+    target_tokens: int | None = None,
 ) -> str | None:
     """Compact an oversized JSONL transcript using LLM summarization.
 
@@ -1378,7 +1379,9 @@ async def compact_transcript(
         logger.warning("%s Nothing to compress (only tail entries remain)", log_prefix)
         return None
     try:
-        result = await _run_compression(messages, model, log_prefix)
+        result = await _run_compression(
+            messages, model, log_prefix, target_tokens=target_tokens
+        )
         if not result.was_compacted:
             logger.warning(
                 "%s Compressor reports within budget but SDK rejected — "

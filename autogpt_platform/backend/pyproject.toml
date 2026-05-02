@@ -60,6 +60,7 @@ psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
 pydantic = { extras = ["email"], version = "^2.12.5" }
 pydantic-settings = "^2.12.0"
+pywebpush = "^2.3"
 pytest = "^8.4.1"
 pytest-asyncio = "^1.1.0"
 python-dotenv = "^1.1.1"
@@ -134,6 +135,7 @@ executor = "backend.exec:main"
 analytics-setup = "scripts.generate_views:main_setup"
 analytics-views = "scripts.generate_views:main_views"
 copilot-executor = "backend.copilot.executor.__main__:main"
+copilot-bot = "backend.copilot.bot.__main__:main"
 cli = "backend.cli:main"
 format = "scripts.linter:format"
 lint = "scripts.linter:lint"
@@ -164,6 +166,7 @@ addopts = "-p no:syrupy"
 markers = [
     "supplementary: tests kept for coverage but superseded by integration tests",
     "integration: end-to-end tests that require a live database (skipped in CI)",
+    "slow: tests that take more than a few seconds (e.g. spin up an isolated docker stack)",
 ]
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",

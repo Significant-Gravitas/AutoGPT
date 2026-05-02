@@ -2442,6 +2442,59 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Queue Pending Message",
+        "description": "Queue a follow-up message while the session has an active turn.",
+        "operationId": "postV2QueuePendingMessage",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueuePendingMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuePendingMessageResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "Session has no active turn to receive pending messages"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Call-frequency cap exceeded" }
+        }
       }
     },
     "/api/chat/sessions/{session_id}/stream": {
@@ -2477,7 +2530,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nArgs:\n    session_id: The chat session identifier.\n    user_id: Optional authenticated user ID.\n\nReturns:\n    StreamingResponse (SSE) when an active stream exists,\n    or 204 No Content when there is nothing to resume.",
+        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nAlways replays the active turn from ``0-0``. The AI SDK UI-message parser\nkeeps text/reasoning part state inside a single parser instance; resuming\nfrom a Redis cursor can skip the ``*-start`` events required by later\n``*-delta`` chunks.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2509,7 +2562,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Stream Chat Post",
-        "description": "Start a new turn OR queue a follow-up — decided server-side.\n\n- **Session idle**: starts a turn.  Returns an SSE stream (``text/event-stream``)\n  with Vercel AI SDK chunks (text fragments, tool-call UI, tool results).\n  The generation runs in a background task that survives client disconnects;\n  reconnect via ``GET /sessions/{session_id}/stream`` to resume.\n\n- **Session has a turn in flight**: pushes the message into the per-session\n  pending buffer and returns ``202 application/json`` with\n  ``QueuePendingMessageResponse``.  The executor running the current turn\n  drains the buffer between tool-call rounds (baseline) or at the start of\n  the next turn (SDK).  Clients should detect the 202 and surface the\n  message as a queued-chip in the UI.\n\nArgs:\n    session_id: The chat session identifier.\n    request: Request body with message, is_user_message, and optional context.\n    user_id: Authenticated user ID.",
+        "description": "Start a new turn and return an AI SDK UI message stream.\n\nReturns an SSE stream (``text/event-stream``) with Vercel AI SDK chunks\n(text fragments, tool-call UI, tool results). The generation runs in a\nbackground task that survives client disconnects; reconnect via\n``GET /sessions/{session_id}/stream`` to resume.\n\nFollow-up messages typed while a turn is already running should use\n``POST /sessions/{session_id}/messages/pending``. If an older client still\nposts that follow-up here, we queue it defensively but still return a valid\nempty UI-message stream so AI SDK transports never receive a JSON body from\nthe stream endpoint.\n\nArgs:\n    session_id: The chat session identifier.\n    request: Request body with message, is_user_message, and optional context.\n    user_id: Authenticated user ID.",
         "operationId": "postV2StreamChatPost",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -2532,16 +2585,6 @@
           "200": {
             "description": "Successful Response",
             "content": { "application/json": { "schema": {} } }
-          },
-          "202": {
-            "description": "Session has a turn in flight — message queued into the pending buffer and will be picked up between tool-call rounds by the executor currently processing the turn.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueuePendingMessageResponse"
-                }
-              }
-            }
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
@@ -3022,6 +3065,163 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/admin/copilot-usage/export": {
+      "get": {
+        "tags": ["v2", "admin", "credits", "admin"],
+        "summary": "Export Copilot Weekly Usage vs Rate Limit",
+        "description": "Export per-(user, ISO week) copilot spend with the user's tier limit.\n\nUses the same 90-day window cap and 100k row cap as the credit export.",
+        "operationId": "getV2Export copilot weekly usage vs rate limit",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopilotUsageExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/credits/admin/transactions/export": {
+      "get": {
+        "tags": ["v2", "admin", "credits", "admin"],
+        "summary": "Export Credit Transactions",
+        "description": "Export CreditTransaction rows in [start, end].\n\nCapped at CREDIT_EXPORT_MAX_DAYS days and CREDIT_EXPORT_MAX_ROWS rows;\nover-cap requests fail fast with 400 so callers narrow the window\ninstead of receiving silently truncated data.",
+        "operationId": "getV2Export credit transactions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "transaction_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/CreditTransactionType" },
+                { "type": "null" }
+              ],
+              "title": "Transaction Type"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include inactive rows (e.g. abandoned Stripe checkouts). Off by default so phantom rows aren't surfaced in normal exports.",
+              "default": false,
+              "title": "Include Inactive"
+            },
+            "description": "Include inactive rows (e.g. abandoned Stripe checkouts). Off by default so phantom rows aren't surfaced in normal exports."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditTransactionsExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/credits/admin/users_history": {
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
@@ -3060,6 +3260,16 @@
                 { "type": "null" }
               ],
               "title": "Transaction Filter"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
             }
           }
         ],
@@ -3144,6 +3354,54 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/invoices": {
+      "get": {
+        "tags": ["v1", "credits"],
+        "summary": "List Stripe invoices",
+        "description": "Recent Stripe invoices for the current user.\n\nEach item includes ``hosted_invoice_url`` (Stripe-hosted view) and\n``invoice_pdf_url`` (direct PDF download). Returns an empty list when\nthe credit system is disabled or the user has no Stripe customer yet.",
+        "operationId": "getV1List stripe invoices",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 24,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/InvoiceListItem" },
+                  "title": "Response Getv1List Stripe Invoices"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/credits/manage": {
@@ -4515,7 +4773,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Ayrshare Sso Url",
-        "description": "Generate an SSO URL for Ayrshare social media integration.\n\nReturns:\n    dict: Contains the SSO URL for Ayrshare integration",
+        "description": "Generate a JWT SSO URL so the user can link their social accounts.\n\nThe per-user Ayrshare profile key is provisioned and persisted as a\nstandard ``is_managed=True`` credential by\n:class:`~backend.integrations.managed_providers.ayrshare.AyrshareManagedProvider`.\nThis endpoint only signs a short-lived JWT pointing at the Ayrshare-\nhosted social-linking page; all profile lifecycle logic lives with the\nmanaged provider.",
         "operationId": "getV1GetAyrshareSsoUrl",
         "responses": {
           "200": {
@@ -4564,7 +4822,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Providers",
-        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
+        "description": "Get metadata for every available provider.\n\nReturns both statically defined providers (from ``ProviderName`` enum) and\ndynamically registered providers (from SDK decorators). Each entry includes\na ``description`` declared via ``ProviderBuilder.with_description(...)`` in\nthe provider's ``_config.py``.\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
         "operationId": "getV1ListProviders",
         "responses": {
           "200": {
@@ -4572,7 +4830,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "type": "string" },
+                  "items": { "$ref": "#/components/schemas/ProviderMetadata" },
                   "type": "array",
                   "title": "Response Getv1Listproviders"
                 }
@@ -4981,6 +5239,57 @@
         }
       }
     },
+    "/api/integrations/{provider}/credentials/{cred_id}/picker-token": {
+      "post": {
+        "tags": ["v1", "integrations"],
+        "summary": "Issue a short-lived access token for a provider-hosted picker",
+        "description": "Return the raw access token for an OAuth2 credential so the frontend\ncan initialize a provider-hosted picker (e.g. Google Drive Picker).\n\n`GET /{provider}/credentials/{cred_id}` deliberately strips secrets (see\n`CredentialsMetaResponse` + `TestGetCredentialReturnsMetaOnly` in\n`router_test.py`). That hardening broke the Drive picker, which needs the\nraw access token to call `google.picker.Builder.setOAuthToken(...)`. This\nendpoint carves a narrow, explicit hole: the caller must own the\ncredential, it must be OAuth2, and the endpoint returns only the access\ntoken + its expiry — nothing else about the credential. SDK-default\ncredentials are excluded for the same reason as `get_credential`.",
+        "operationId": "postV1GetPickerToken",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The provider that owns the credentials",
+              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+            }
+          },
+          {
+            "name": "cred_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "The ID of the OAuth2 credentials to mint a token from"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PickerTokenResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/integrations/{provider}/login": {
       "get": {
         "tags": ["v1", "integrations"],
@@ -5006,6 +5315,15 @@
               "type": "string",
               "title": "Comma-separated list of authorization scopes",
               "default": ""
+            }
+          },
+          {
+            "name": "credential_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "ID of existing credential to upgrade scopes for"
             }
           }
         ],
@@ -6867,7 +7185,6 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
               "type": "string",
@@ -7266,6 +7583,87 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/push/subscribe": {
+      "post": {
+        "tags": ["push"],
+        "summary": "Register a push subscription for the current user",
+        "operationId": "postPushRegister a push subscription for the current user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PushSubscribeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/push/unsubscribe": {
+      "post": {
+        "tags": ["push"],
+        "summary": "Remove a push subscription",
+        "operationId": "postPushRemove a push subscription",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushUnsubscribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/push/vapid-key": {
+      "get": {
+        "tags": ["push"],
+        "summary": "Get VAPID public key for push subscription",
+        "operationId": "getPushGet vapid public key for push subscription",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VapidPublicKeyResponse"
+                }
               }
             }
           }
@@ -9098,7 +9496,11 @@
       "ActiveStreamInfo": {
         "properties": {
           "turn_id": { "type": "string", "title": "Turn Id" },
-          "last_message_id": { "type": "string", "title": "Last Message Id" }
+          "last_message_id": { "type": "string", "title": "Last Message Id" },
+          "started_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Started At"
+          }
         },
         "type": "object",
         "required": ["turn_id", "last_message_id"],
@@ -9716,7 +10118,12 @@
             "type": "object",
             "title": "Cost Filter"
           },
-          "cost_type": { "$ref": "#/components/schemas/BlockCostType" }
+          "cost_type": { "$ref": "#/components/schemas/BlockCostType" },
+          "cost_divisor": {
+            "type": "integer",
+            "title": "Cost Divisor",
+            "default": 1
+          }
         },
         "type": "object",
         "required": ["cost_amount", "cost_filter", "cost_type"],
@@ -9724,7 +10131,7 @@
       },
       "BlockCostType": {
         "type": "string",
-        "enum": ["run", "byte", "second"],
+        "enum": ["run", "byte", "second", "items", "cost_usd", "tokens"],
         "title": "BlockCostType"
       },
       "BlockDetails": {
@@ -10317,7 +10724,7 @@
           },
           "tier": {
             "$ref": "#/components/schemas/SubscriptionTier",
-            "default": "FREE"
+            "default": "NO_TIER"
           },
           "reset_cost": {
             "type": "integer",
@@ -10380,6 +10787,61 @@
           "LIBRARY_AGENT"
         ],
         "title": "ContentType"
+      },
+      "CopilotUsageExportResponse": {
+        "properties": {
+          "rows": {
+            "items": { "$ref": "#/components/schemas/CopilotWeeklyUsageRow" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" }
+        },
+        "type": "object",
+        "required": ["rows", "total_rows", "window_days", "max_window_days"],
+        "title": "CopilotUsageExportResponse"
+      },
+      "CopilotWeeklyUsageRow": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Week Start"
+          },
+          "week_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Week End"
+          },
+          "copilot_cost_microdollars": {
+            "type": "integer",
+            "title": "Copilot Cost Microdollars"
+          },
+          "tier": { "type": "string", "title": "Tier" },
+          "weekly_limit_microdollars": {
+            "type": "integer",
+            "title": "Weekly Limit Microdollars"
+          },
+          "percent_used": { "type": "number", "title": "Percent Used" }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "week_start",
+          "week_end",
+          "copilot_cost_microdollars",
+          "tier",
+          "weekly_limit_microdollars",
+          "percent_used"
+        ],
+        "title": "CopilotWeeklyUsageRow"
       },
       "CostBucket": {
         "properties": {
@@ -10722,6 +11184,26 @@
           "SUBSCRIPTION"
         ],
         "title": "CreditTransactionType"
+      },
+      "CreditTransactionsExportResponse": {
+        "properties": {
+          "transactions": {
+            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "type": "array",
+            "title": "Transactions"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" }
+        },
+        "type": "object",
+        "required": [
+          "transactions",
+          "total_rows",
+          "window_days",
+          "max_window_days"
+        ],
+        "title": "CreditTransactionsExportResponse"
       },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
@@ -12188,6 +12670,53 @@
         "required": ["message", "unrecognized_fields", "inputs"],
         "title": "InputValidationErrorResponse",
         "description": "Response when run_agent receives unknown input fields."
+      },
+      "InvoiceListItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "number": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Number"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "total_cents": { "type": "integer", "title": "Total Cents" },
+          "amount_paid_cents": {
+            "type": "integer",
+            "title": "Amount Paid Cents"
+          },
+          "currency": {
+            "type": "string",
+            "title": "Currency",
+            "default": "usd"
+          },
+          "status": { "type": "string", "title": "Status" },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "hosted_invoice_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Hosted Invoice Url"
+          },
+          "invoice_pdf_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Invoice Pdf Url"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "total_cents",
+          "amount_paid_cents",
+          "status"
+        ],
+        "title": "InvoiceListItem",
+        "description": "A single invoice surfaced from Stripe for the billing UI.\n\nMirrors the subset of `stripe.Invoice` we expose to the client. ``hosted_invoice_url``\nopens the Stripe-hosted view; ``invoice_pdf_url`` lets users download the PDF directly.\n\n``total_cents`` is the invoice total (what the user owes / will be charged); use it\nfor the displayed amount. ``amount_paid_cents`` is what Stripe has actually settled\nso far — `0` for ``open``/``draft`` invoices — and is kept for callers that need to\nshow outstanding balances separately."
       },
       "LibraryAgent": {
         "properties": {
@@ -13749,6 +14278,24 @@
         "title": "PendingHumanReviewModel",
         "description": "Response model for pending human review data.\n\nRepresents a human review request that is awaiting user action.\nContains all necessary information for a user to review and approve\nor reject data from a Human-in-the-Loop block execution.\n\nAttributes:\n    id: Unique identifier for the review record\n    user_id: ID of the user who must perform the review\n    node_exec_id: ID of the node execution that created this review\n    node_id: ID of the node definition (for grouping reviews from same node)\n    graph_exec_id: ID of the graph execution containing the node\n    graph_id: ID of the graph template being executed\n    graph_version: Version number of the graph template\n    payload: The actual data payload awaiting review\n    instructions: Instructions or message for the reviewer\n    editable: Whether the reviewer can edit the data\n    status: Current review status (WAITING, APPROVED, or REJECTED)\n    review_message: Optional message from the reviewer\n    created_at: Timestamp when review was created\n    updated_at: Timestamp when review was last modified\n    reviewed_at: Timestamp when review was completed (if applicable)"
       },
+      "PickerTokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "OAuth access token suitable for the picker SDK call."
+          },
+          "access_token_expires_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Access Token Expires At",
+            "description": "Unix timestamp at which the access token expires, if known."
+          }
+        },
+        "type": "object",
+        "required": ["access_token"],
+        "title": "PickerTokenResponse",
+        "description": "Short-lived OAuth access token shipped to the browser for rendering a\nprovider-hosted picker UI (e.g. Google Drive Picker). Deliberately narrow:\nonly the fields the client needs to initialize the picker widget. Issued\nfrom the user's own stored credential so ownership and scope gating are\nenforced by the credential lookup."
+      },
       "PlatformCostDashboard": {
         "properties": {
           "by_provider": {
@@ -14376,6 +14923,33 @@
         "title": "ProviderEnumResponse",
         "description": "Response containing a provider from the enum."
       },
+      "ProviderMetadata": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Provider slug (e.g. ``github``)"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description",
+            "description": "One-line human-readable summary of what the provider does. Declared via ``ProviderBuilder.with_description(...)`` in the provider's ``_config.py``. ``None`` if not set."
+          },
+          "supported_auth_types": {
+            "items": {
+              "type": "string",
+              "enum": ["api_key", "oauth2", "user_password", "host_scoped"]
+            },
+            "type": "array",
+            "title": "Supported Auth Types",
+            "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          }
+        },
+        "type": "object",
+        "required": ["name"],
+        "title": "ProviderMetadata",
+        "description": "Display metadata for a provider, shown in the settings integrations UI."
+      },
       "ProviderNamesResponse": {
         "properties": {
           "providers": {
@@ -14402,6 +14976,93 @@
         "required": ["providers", "pagination"],
         "title": "ProviderResponse"
       },
+      "PushSubscribeRequest": {
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint"
+          },
+          "keys": { "$ref": "#/components/schemas/PushSubscriptionKeys" },
+          "user_agent": {
+            "anyOf": [
+              { "type": "string", "maxLength": 512 },
+              { "type": "null" }
+            ],
+            "title": "User Agent"
+          }
+        },
+        "type": "object",
+        "required": ["endpoint", "keys"],
+        "title": "PushSubscribeRequest"
+      },
+      "PushSubscriptionKeys": {
+        "properties": {
+          "p256dh": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "P256Dh"
+          },
+          "auth": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Auth"
+          }
+        },
+        "type": "object",
+        "required": ["p256dh", "auth"],
+        "title": "PushSubscriptionKeys"
+      },
+      "PushUnsubscribeRequest": {
+        "properties": {
+          "endpoint": {
+            "type": "string",
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Endpoint"
+          }
+        },
+        "type": "object",
+        "required": ["endpoint"],
+        "title": "PushUnsubscribeRequest"
+      },
+      "QueuePendingMessageRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "maxLength": 64000,
+            "title": "Message"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": { "type": "string" },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Context"
+          },
+          "file_ids": {
+            "anyOf": [
+              {
+                "items": { "type": "string" },
+                "type": "array",
+                "maxItems": 20
+              },
+              { "type": "null" }
+            ],
+            "title": "File Ids"
+          }
+        },
+        "type": "object",
+        "required": ["message"],
+        "title": "QueuePendingMessageRequest",
+        "description": "Request model for queueing a follow-up while a turn is running."
+      },
       "QueuePendingMessageResponse": {
         "properties": {
           "buffer_length": { "type": "integer", "title": "Buffer Length" },
@@ -14414,7 +15075,7 @@
         "type": "object",
         "required": ["buffer_length", "max_buffer_length", "turn_in_flight"],
         "title": "QueuePendingMessageResponse",
-        "description": "Response returned by ``POST /stream`` with status 202 when a message\nis queued because the session already has a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback.  Always ``True``\n  for responses from ``POST /stream`` with status 202."
+        "description": "Response returned when a message is queued because the session already\nhas a turn in flight.\n\n- ``buffer_length``: how many messages are now in the session's\n  pending buffer (after this push)\n- ``max_buffer_length``: the per-session cap (server-side constant)\n- ``turn_in_flight``: ``True`` if a copilot turn was running when\n  we checked — purely informational for UX feedback."
       },
       "RateLimitResetResponse": {
         "properties": {
@@ -15834,10 +16495,11 @@
             "type": "array",
             "title": "Submissions"
           },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
+          "pagination": { "$ref": "#/components/schemas/Pagination" },
+          "stats": { "$ref": "#/components/schemas/SubmissionStats" }
         },
         "type": "object",
-        "required": ["submissions", "pagination"],
+        "required": ["submissions", "pagination", "stats"],
         "title": "StoreSubmissionsResponse"
       },
       "StreamChatRequest": {
@@ -15888,12 +16550,42 @@
             ],
             "title": "Model",
             "description": "Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. If None, the server applies per-user LD targeting then falls back to config."
+          },
+          "message_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Message Id",
+            "description": "Optional per-click UUID generated by the frontend.  Becomes the persisted ``ChatMessage.id`` (PK).  Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the id, so the Postgres unique-constraint on the PK is the atomic dedup primitive: a duplicate INSERT returns a subscribe-only response without creating a parallel turn.  Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
+      },
+      "SubmissionStats": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "approved": { "type": "integer", "title": "Approved" },
+          "pending": { "type": "integer", "title": "Pending" },
+          "total_runs": { "type": "integer", "title": "Total Runs" },
+          "average_rating": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "approved",
+          "pending",
+          "total_runs",
+          "average_rating"
+        ],
+        "title": "SubmissionStats",
+        "description": "Creator-wide aggregates over a user's non-deleted submissions.\n\nComputed server-side so values stay accurate regardless of pagination —\nsumming client-side over the current page silently undercounts once the\ncreator has more submissions than fit on one page."
       },
       "SubmissionStatus": {
         "type": "string",
@@ -15904,7 +16596,14 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+            "enum": [
+              "NO_TIER",
+              "BASIC",
+              "PRO",
+              "MAX",
+              "BUSINESS",
+              "ENTERPRISE"
+            ],
             "title": "Tier"
           },
           "monthly_cost": { "type": "integer", "title": "Monthly Cost" },
@@ -15913,13 +16612,33 @@
             "type": "object",
             "title": "Tier Costs"
           },
+          "tier_multipliers": {
+            "additionalProperties": { "type": "number" },
+            "type": "object",
+            "title": "Tier Multipliers",
+            "description": "Tier → rate-limit multiplier. Covers the same tiers listed in ``tier_costs`` so the frontend can render rate-limit badges relative to the lowest visible tier without knowing backend defaults."
+          },
           "proration_credit_cents": {
             "type": "integer",
             "title": "Proration Credit Cents"
           },
+          "has_active_stripe_subscription": {
+            "type": "boolean",
+            "title": "Has Active Stripe Subscription",
+            "description": "True when the user has an active/trialing Stripe subscription. The frontend uses this to branch upgrade UX: modify-in-place + saved-card auto-charge when True, redirect to Stripe Checkout when False.",
+            "default": false
+          },
+          "current_period_end": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Current Period End",
+            "description": "Unix timestamp of the active subscription's current_period_end. Used to show the date Stripe will issue the next invoice (with prorated upgrade charges, if any). None when no active sub."
+          },
           "pending_tier": {
             "anyOf": [
-              { "type": "string", "enum": ["FREE", "PRO", "BUSINESS"] },
+              {
+                "type": "string",
+                "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]
+              },
               { "type": "null" }
             ],
             "title": "Pending Tier"
@@ -15934,7 +16653,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (FREE → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
             "default": ""
           }
         },
@@ -15949,7 +16668,7 @@
       },
       "SubscriptionTier": {
         "type": "string",
-        "enum": ["FREE", "PRO", "BUSINESS", "ENTERPRISE"],
+        "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"],
         "title": "SubscriptionTier",
         "description": "Subscription tiers with increasing cost allowances.\n\nMirrors the ``SubscriptionTier`` enum in ``schema.prisma``.\nOnce ``prisma generate`` is run, this can be replaced with::\n\n    from prisma.enums import SubscriptionTier"
       },
@@ -15957,7 +16676,7 @@
         "properties": {
           "tier": {
             "type": "string",
-            "enum": ["FREE", "PRO", "BUSINESS"],
+            "enum": ["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"],
             "title": "Tier"
           },
           "success_url": {
@@ -18044,6 +18763,14 @@
         "type": "object",
         "required": ["loc", "msg", "type"],
         "title": "ValidationError"
+      },
+      "VapidPublicKeyResponse": {
+        "properties": {
+          "public_key": { "type": "string", "title": "Public Key" }
+        },
+        "type": "object",
+        "required": ["public_key"],
+        "title": "VapidPublicKeyResponse"
       },
       "Webhook": {
         "properties": {

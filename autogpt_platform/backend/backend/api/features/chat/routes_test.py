@@ -157,6 +157,11 @@ def _mock_stream_internals(mocker: pytest_mock.MockerFixture):
         "backend.api.features.chat.routes._validate_and_get_session",
         return_value=None,
     )
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     mock_save = mocker.patch(
         "backend.api.features.chat.routes.append_and_save_message",
         return_value=MagicMock(),  # non-None = message was saved (not a duplicate)
@@ -380,7 +385,7 @@ def _mock_usage(
     weekly_used: int = 2000,
     daily_limit: int = 10000,
     weekly_limit: int = 50000,
-    tier: "SubscriptionTier" = SubscriptionTier.FREE,
+    tier: "SubscriptionTier" = SubscriptionTier.BASIC,
 ) -> AsyncMock:
     """Mock get_usage_status and get_global_rate_limits for usage endpoint tests.
 
@@ -440,7 +445,7 @@ def test_usage_returns_daily_and_weekly(
         daily_cost_limit=10000,
         weekly_cost_limit=50000,
         rate_limit_reset_cost=chat_routes.config.rate_limit_reset_cost,
-        tier=SubscriptionTier.FREE,
+        tier=SubscriptionTier.BASIC,
     )
 
 
@@ -461,7 +466,7 @@ def test_usage_uses_config_limits(
         daily_cost_limit=99999,
         weekly_cost_limit=77777,
         rate_limit_reset_cost=500,
-        tier=SubscriptionTier.FREE,
+        tier=SubscriptionTier.BASIC,
     )
 
 
@@ -637,7 +642,7 @@ class TestStreamChatRequestModeValidation:
         assert req.mode is None
 
 
-# ─── POST /stream queue-fallback (when a turn is already in flight) ──
+# ─── Pending message queue (when a turn is already in flight) ─────────
 
 
 def _mock_stream_queue_internals(
@@ -646,11 +651,9 @@ def _mock_stream_queue_internals(
     session_exists: bool = True,
     turn_in_flight: bool = True,
     call_count: int = 1,
+    push_length: int | None = 1,
 ):
-    """Mock dependencies for the POST /stream queue-fallback path.
-
-    When ``turn_in_flight`` is True the handler takes the 202 queue branch.
-    """
+    """Mock dependencies for the pending-message queue path."""
     if session_exists:
         mock_session = mocker.MagicMock()
         mock_session.id = "sess-1"
@@ -692,12 +695,10 @@ def _mock_stream_queue_internals(
         return_value=call_count,
     )
     mocker.patch(
-        "backend.copilot.pending_message_helpers.push_pending_message",
+        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
         new_callable=AsyncMock,
-        return_value=1,
+        return_value=push_length,
     )
-    # queue_user_message re-runs is_turn_in_flight via the helper module —
-    # stub that path out too so we don't need a fake stream_registry.
     mocker.patch(
         "backend.copilot.pending_message_helpers.get_active_session_meta",
         new_callable=AsyncMock,
@@ -705,37 +706,65 @@ def _mock_stream_queue_internals(
     )
 
 
-def test_stream_queue_returns_202_when_turn_in_flight(
+def test_queue_pending_message_returns_200_when_turn_in_flight(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    """Happy path: POST /stream to a session with a live turn → 202 queue."""
+    """Happy path: POST /messages/pending to a live turn queues the message."""
     _mock_stream_queue_internals(mocker)
 
     response = client.post(
-        "/sessions/sess-1/stream",
-        json={"message": "follow-up", "is_user_message": True},
+        "/sessions/sess-1/messages/pending",
+        json={"message": "follow-up"},
     )
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     data = response.json()
     assert data["buffer_length"] == 1
     assert "turn_in_flight" in data
 
 
-def test_stream_queue_session_not_found_returns_404(
+def test_queue_pending_message_session_not_found_returns_404(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """If the session doesn't exist or belong to the user, returns 404."""
     _mock_stream_queue_internals(mocker, session_exists=False)
 
     response = client.post(
-        "/sessions/bad-sess/stream",
-        json={"message": "hi", "is_user_message": True},
+        "/sessions/bad-sess/messages/pending",
+        json={"message": "hi"},
     )
     assert response.status_code == 404
 
 
-def test_stream_queue_call_frequency_limit_returns_429(
+def test_queue_pending_message_without_active_turn_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A pending-message push needs an active turn to consume it."""
+    _mock_stream_queue_internals(mocker, turn_in_flight=False)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_queue_pending_message_race_after_active_check_returns_409(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """If the active turn ends before the atomic push, the message is not queued."""
+    _mock_stream_queue_internals(mocker, push_length=None)
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
+    )
+
+    assert response.status_code == 409
+
+
+def test_queue_pending_message_call_frequency_limit_returns_429(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """Per-user call-frequency cap rejects rapid-fire queued pushes."""
@@ -744,14 +773,14 @@ def test_stream_queue_call_frequency_limit_returns_429(
     _mock_stream_queue_internals(mocker, call_count=PENDING_CALL_LIMIT + 1)
 
     response = client.post(
-        "/sessions/sess-1/stream",
-        json={"message": "hi", "is_user_message": True},
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
     )
     assert response.status_code == 429
     assert "Too many queued message requests this minute" in response.json()["detail"]
 
 
-def test_stream_queue_converts_context_dict_to_pending_context(
+def test_queue_pending_message_converts_context_dict_to_pending_context(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """StreamChatRequest.context is a raw dict; must be coerced to the
@@ -768,15 +797,14 @@ def test_stream_queue_converts_context_dict_to_pending_context(
     )
 
     response = client.post(
-        "/sessions/sess-1/stream",
+        "/sessions/sess-1/messages/pending",
         json={
             "message": "hi",
-            "is_user_message": True,
             "context": {"url": "https://example.test", "content": "body"},
         },
     )
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     queue_spy.assert_awaited_once()
     kwargs = queue_spy.await_args.kwargs
     from backend.copilot.pending_messages import PendingMessageContext
@@ -786,7 +814,7 @@ def test_stream_queue_converts_context_dict_to_pending_context(
     assert kwargs["context"].content == "body"
 
 
-def test_stream_queue_passes_none_context_when_omitted(
+def test_queue_pending_message_passes_none_context_when_omitted(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """When request.context is omitted, the queue call receives context=None."""
@@ -802,13 +830,29 @@ def test_stream_queue_passes_none_context_when_omitted(
     )
 
     response = client.post(
-        "/sessions/sess-1/stream",
-        json={"message": "hi", "is_user_message": True},
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
     )
 
-    assert response.status_code == 202
+    assert response.status_code == 200
     queue_spy.assert_awaited_once()
     assert queue_spy.await_args.kwargs["context"] is None
+
+
+def test_stream_chat_queues_legacy_inflight_post_but_returns_sse(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """POST /stream must not return JSON to an AI SDK transport."""
+    _mock_stream_queue_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "follow-up", "is_user_message": True},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert '"type":"finish"' in response.text
 
 
 # ─── get_pending_messages (GET /sessions/{session_id}/messages/pending) ─────
@@ -996,7 +1040,7 @@ def test_stream_chat_accepts_exactly_max_length_message(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 0, SubscriptionTier.FREE),
+        return_value=(0, 0, SubscriptionTier.BASIC),
     )
 
     response = client.post(
@@ -1267,7 +1311,7 @@ def _mock_reset_internals(
     enable_credit: bool = True,
     daily_limit: int = 10_000,
     weekly_limit: int = 50_000,
-    tier: "SubscriptionTier" = SubscriptionTier.FREE,
+    tier: "SubscriptionTier" = SubscriptionTier.BASIC,
     daily_used: int = 10_001,
     weekly_used: int = 1_000,
     reset_count: int | None = 0,
@@ -1324,6 +1368,7 @@ def _mock_reset_internals(
     mock_credit_model = MagicMock()
     mock_credit_model.spend_credits = AsyncMock(return_value=remaining_balance)
     mock_credit_model.top_up_credits = AsyncMock(return_value=None)
+    mock_credit_model.grant_credits = AsyncMock(return_value=remaining_balance)
     mocker.patch(
         "backend.api.features.chat.routes.get_user_credit_model",
         new_callable=AsyncMock,
@@ -1366,7 +1411,7 @@ def test_reset_usage_returns_400_when_no_daily_limit(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(0, 50_000, SubscriptionTier.FREE),
+        return_value=(0, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1389,7 +1434,7 @@ def test_reset_usage_returns_503_when_redis_unavailable(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.FREE),
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1412,7 +1457,7 @@ def test_reset_usage_returns_429_when_max_resets_reached(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.FREE),
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1436,7 +1481,7 @@ def test_reset_usage_returns_429_when_lock_not_acquired(
     mocker.patch(
         "backend.api.features.chat.routes.get_global_rate_limits",
         new_callable=AsyncMock,
-        return_value=(10_000, 50_000, SubscriptionTier.FREE),
+        return_value=(10_000, 50_000, SubscriptionTier.BASIC),
     )
     mocker.patch(
         "backend.api.features.chat.routes.get_daily_reset_count",
@@ -1542,8 +1587,10 @@ def test_reset_usage_refunds_on_redis_failure(
     response = client.post("/usage/reset")
 
     assert response.status_code == 503
-    # Credits should be refunded via top_up_credits
-    mock_credit.top_up_credits.assert_called_once()
+    # Credits should be refunded via grant_credits (GRANT, not TOP_UP), and
+    # the Stripe-charging top_up_credits path must not be hit.
+    mock_credit.grant_credits.assert_called_once()
+    mock_credit.top_up_credits.assert_not_called()
 
 
 # ─── resume_session_stream ───────────────────────────────────────────
@@ -1581,9 +1628,14 @@ def test_resume_session_stream_no_subscriber_queue(
     mock_registry.subscribe_to_session = AsyncMock(return_value=None)
     mocker.patch("backend.api.features.chat.routes.stream_registry", mock_registry)
 
-    response = client.get("/sessions/sess-1/stream")
+    response = client.get("/sessions/sess-1/stream?last_chunk_id=9999-9")
 
     assert response.status_code == 204
+    mock_registry.subscribe_to_session.assert_awaited_once_with(
+        session_id="sess-1",
+        user_id=TEST_USER_ID,
+        last_message_id="0-0",
+    )
 
 
 # ─── DELETE /sessions/{id}/stream — disconnect listeners ──────────────

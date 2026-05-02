@@ -19,6 +19,7 @@ import { TOOL_PART_PREFIX } from "../JobStatsBar/constants";
 import { TurnStatsBar } from "../JobStatsBar/TurnStatsBar";
 import { useElapsedTimer } from "../JobStatsBar/useElapsedTimer";
 import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingReviews";
+import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import {
   buildRenderSegments,
   getTurnMessages,
@@ -27,6 +28,7 @@ import {
   parseSpecialMarkers,
   splitReasoningAndResponse,
 } from "./helpers";
+import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
 import { CopyButton } from "./components/CopyButton";
 import { CollapsedToolGroup } from "./components/CollapsedToolGroup";
@@ -40,14 +42,24 @@ interface Props {
   status: string;
   error: Error | undefined;
   isLoading: boolean;
+  isRestoringActiveSession?: boolean;
+  restoreStatusMessage?: string | null;
+  /** ISO start time of the active backend turn. Seeds the elapsed-time
+   *  counter so restored turns show honest age instead of counting from
+   *  zero on every fresh mount. */
+  activeStreamStartedAt?: string | null;
   sessionID?: string | null;
   hasMoreMessages?: boolean;
   isLoadingMore?: boolean;
   onLoadMore?: () => void;
   onRetry?: () => void;
-  historicalDurations?: Map<string, number>;
+  turnStats?: TurnStatsMap;
   /** Pending queued messages waiting to be injected, shown at the end of chat. */
   queuedMessages?: string[];
+  /** Extra bottom padding (px) applied to the scrollable message list so
+   *  overlays pinned above the input area (e.g. the usage-limit card) can
+   *  sit over the last message without permanently obscuring it. */
+  bottomContentPadding?: number;
 }
 
 function renderSegments(
@@ -251,13 +263,17 @@ export function ChatMessagesContainer({
   status,
   error,
   isLoading,
+  isRestoringActiveSession,
+  restoreStatusMessage,
+  activeStreamStartedAt,
   sessionID,
   hasMoreMessages,
   isLoadingMore,
   onLoadMore,
   onRetry,
-  historicalDurations,
+  turnStats,
   queuedMessages,
+  bottomContentPadding,
 }: Props) {
   // Hide the container for one frame when messages first load so
   // StickToBottom can scroll to the bottom before the user sees it.
@@ -279,15 +295,53 @@ export function ChatMessagesContainer({
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
+  // The backend appends a persisted error marker to ``session.messages`` AND
+  // yields a ``StreamError`` SSE event on final-failure paths. Both surface
+  // the same error string — the marker becomes an in-line ErrorCard bubble,
+  // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
+  // the same error twice. Suppress the trailing banner whenever the last
+  // assistant message already carries the marker.
+  const lastAssistantHasErrorMarker = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      for (let j = msg.parts.length - 1; j >= 0; j--) {
+        const part = msg.parts[j];
+        if (part.type !== "text") continue;
+        const { markerType } = parseSpecialMarkers(part.text);
+        return markerType === "error" || markerType === "retryable_error";
+      }
+      return false;
+    }
+    return false;
+  }, [messages]);
+
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
-    const parts = lastMessage.parts;
+    // Ignore bookkeeping parts. data-cursor is legacy resume metadata and
+    // data-status is transient copy for the Thinking indicator; neither
+    // counts as "real" content that hides the indicator.
+    const parts = lastMessage.parts.filter(
+      (p) => p.type !== "data-cursor" && p.type !== "data-status",
+    );
     if (parts.length === 0) return false;
 
     const lastPart = parts[parts.length - 1];
 
     if (lastPart.type === "text" && lastPart.text.trim().length > 0)
       return true;
+
+    // Reasoning chunks stream before the final text — while they have
+    // rendered content, the "Thinking..." indicator should give way to the
+    // reasoning view (e.g. Perplexity deep research streams minutes of
+    // reasoning before any answer text).
+    if (lastPart.type === "reasoning" && lastPart.text.trim().length > 0)
+      return true;
+
+    // step-start is a turn boundary emitted right before the next tool or
+    // text chunk. Treat it as inflight so the bubble transitions straight
+    // into the next part without flashing back to "Thinking...".
+    if (lastPart.type === "step-start") return true;
 
     if (
       lastPart.type.startsWith(TOOL_PART_PREFIX) &&
@@ -300,11 +354,59 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  const showThinking =
-    status === "submitted" || (status === "streaming" && !hasInflight);
+  // Surface the latest `data-status` message from the live assistant when
+  // the Thinking indicator is up — but only if it wasn't invalidated by a
+  // more recent content part (in which case the model has moved on and the
+  // status is stale).
+  const latestStatusMessage = (() => {
+    if (lastMessage?.role !== "assistant") return null;
+    for (let i = lastMessage.parts.length - 1; i >= 0; i--) {
+      const part = lastMessage.parts[i];
+      if (part.type === "data-cursor") continue;
+      if (part.type === "data-status") {
+        const data = (part as { data?: { message?: unknown } }).data;
+        return typeof data?.message === "string" ? data.message : null;
+      }
+      // Any other part = the model has produced output past the status.
+      return null;
+    }
+    return null;
+  })();
 
+  // Suppressed during active-session restore so the ThinkingIndicator and
+  // the "Retrieving latest messages" spinner can't both render — the
+  // restore spinner wins until real content arrives (see the
+  // ``hasConnectedThisMountRef`` latch in useCopilotStream for why).
+  const showThinking =
+    !isRestoringActiveSession &&
+    (status === "submitted" || (status === "streaming" && !hasInflight));
   const isActivelyStreaming = status === "streaming" || status === "submitted";
-  const { elapsedSeconds } = useElapsedTimer(isActivelyStreaming);
+  const { elapsedSeconds } = useElapsedTimer(
+    isActivelyStreaming,
+    activeStreamStartedAt,
+  );
+  const indicator = (
+    <ThinkingIndicator
+      active={showThinking}
+      elapsedSeconds={elapsedSeconds}
+      statusMessage={latestStatusMessage}
+    />
+  );
+  const showIndicator = showThinking;
+  const [showRestoreFallback, setShowRestoreFallback] = useState(false);
+  useEffect(() => {
+    if (!isRestoringActiveSession) {
+      setShowRestoreFallback(false);
+      return;
+    }
+    const timer = setTimeout(
+      () => setShowRestoreFallback(true),
+      RESTORE_STALL_TIMEOUT_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [isRestoringActiveSession]);
+  const { elapsedSeconds: restoreElapsedSeconds } =
+    useElapsedTimer(showRestoreFallback);
 
   // Freeze elapsed time when streaming ends so TurnStatsBar shows the final value.
   // Reset when a new streaming turn begins.
@@ -333,7 +435,14 @@ export function ChatMessagesContainer({
           : "opacity-100 transition-opacity duration-100 ease-out")
       }
     >
-      <ConversationContent className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6">
+      <ConversationContent
+        className="flex min-h-full flex-1 flex-col gap-6 px-3 py-6"
+        style={
+          bottomContentPadding
+            ? { paddingBottom: bottomContentPadding + 24 }
+            : undefined
+        }
+      >
         {hasMoreMessages && onLoadMore && (
           <LoadMoreSentinel
             hasMore={hasMoreMessages}
@@ -342,7 +451,7 @@ export function ChatMessagesContainer({
             onLoadMore={onLoadMore}
           />
         )}
-        {isLoading && messages.length === 0 && (
+        {isLoading && messages.length === 0 && !isRestoringActiveSession && (
           <div className="flex flex-1 items-center justify-center">
             <LoadingSpinner className="text-neutral-600" />
           </div>
@@ -363,7 +472,13 @@ export function ChatMessagesContainer({
             isAssistant &&
             messageIndex <= messages.length - 1 &&
             (!nextMessage || nextMessage.role === "user");
-          const textParts = message.parts.filter(
+          // data-cursor / data-status parts are internal bookkeeping —
+          // strip them before any render/split logic so they never reach
+          // the user UI. data-status surfaces via ThinkingIndicator.
+          const renderableParts = message.parts.filter(
+            (p) => p.type !== "data-cursor" && p.type !== "data-status",
+          );
+          const textParts = renderableParts.filter(
             (p): p is Extract<typeof p, { type: "text" }> => p.type === "text",
           );
           const lastTextPart = textParts[textParts.length - 1];
@@ -379,7 +494,7 @@ export function ChatMessagesContainer({
             textParts.length > 0 &&
             !hasErrorMarker;
 
-          const fileParts = message.parts.filter(
+          const fileParts = renderableParts.filter(
             (p): p is FileUIPart => p.type === "file",
           );
 
@@ -388,13 +503,13 @@ export function ChatMessagesContainer({
           const isFinalized =
             message.role === "assistant" && !isCurrentlyStreaming;
           const { reasoning, response } = isFinalized
-            ? splitReasoningAndResponse(message.parts)
-            : { reasoning: [] as MessagePart[], response: message.parts };
+            ? splitReasoningAndResponse(renderableParts)
+            : { reasoning: [] as MessagePart[], response: renderableParts };
           const hasReasoning = reasoning.length > 0;
 
           // Note: when interactive tools are pinned from reasoning into response,
           // this index approximates their position (used only for React keys).
-          const responseStartIndex = message.parts.length - response.length;
+          const responseStartIndex = renderableParts.length - response.length;
           const responseSegments =
             message.role === "assistant"
               ? buildRenderSegments(response, responseStartIndex)
@@ -424,7 +539,7 @@ export function ChatMessagesContainer({
                       message.id,
                       isLastAssistant ? onRetry : undefined,
                     )
-                  : message.parts.map((part, i) => (
+                  : renderableParts.map((part, i) => (
                       <MessagePartRenderer
                         key={`${message.id}-${i}`}
                         part={part}
@@ -441,18 +556,27 @@ export function ChatMessagesContainer({
                         ? frozenElapsedRef.current
                         : undefined
                     }
-                    durationMs={historicalDurations?.get(message.id)}
+                    stats={turnStats?.get(message.id)}
                   />
                 )}
-                {isLastAssistant && showThinking && (
-                  <ThinkingIndicator
-                    active={showThinking}
-                    elapsedSeconds={elapsedSeconds}
-                  />
-                )}
+                {isLastAssistant && showIndicator && indicator}
               </MessageContent>
               {message.role === "user" && textParts.length > 0 && (
-                <MessageActions className="mt-1 justify-end opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                <MessageActions className="mt-1 items-center justify-end gap-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+                  {(() => {
+                    const createdAt = turnStats?.get(message.id)?.createdAt;
+                    if (!createdAt) return null;
+                    const date = new Date(createdAt);
+                    if (Number.isNaN(date.getTime())) return null;
+                    return (
+                      <span className="text-[11px] tabular-nums text-neutral-500">
+                        {date.toLocaleString(undefined, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })}
+                      </span>
+                    );
+                  })()}
                   <CopyButton text={textParts.map((p) => p.text).join("\n")} />
                 </MessageActions>
               )}
@@ -471,13 +595,35 @@ export function ChatMessagesContainer({
             </Message>
           );
         })}
-        {showThinking && lastMessage?.role !== "assistant" && (
+        {showIndicator && lastMessage?.role !== "assistant" && (
           <Message from="assistant">
             <MessageContent className="text-[1rem] leading-relaxed">
-              <ThinkingIndicator
-                active={showThinking}
-                elapsedSeconds={elapsedSeconds}
-              />
+              {indicator}
+            </MessageContent>
+          </Message>
+        )}
+        {isRestoringActiveSession && (
+          <Message from="assistant">
+            <MessageContent className="text-[1rem] leading-relaxed text-slate-900">
+              {showRestoreFallback ? (
+                <div className="flex flex-col gap-1 text-sm text-slate-500">
+                  <ThinkingIndicator
+                    active
+                    elapsedSeconds={restoreElapsedSeconds}
+                    statusMessage={
+                      restoreStatusMessage ?? "Reconnecting to live stream..."
+                    }
+                  />
+                  <span className="pl-6 text-xs text-slate-400">
+                    Still syncing the latest progress.
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <LoadingSpinner className="h-4 w-4 text-neutral-500" />
+                  <span>Retrieving latest messages</span>
+                </div>
+              )}
             </MessageContent>
           </Message>
         )}
@@ -493,7 +639,7 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         ))}
-        {error && (
+        {error && !lastAssistantHasErrorMarker && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your

@@ -1,5 +1,9 @@
+import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { describe, expect, it } from "vitest";
-import { convertChatSessionMessagesToUiMessages } from "../convertChatSessionToUiMessages";
+import {
+  concatWithAssistantMerge,
+  convertChatSessionMessagesToUiMessages,
+} from "../convertChatSessionToUiMessages";
 
 const SESSION_ID = "sess-test";
 
@@ -149,7 +153,7 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(1);
     const mergedId = result.messages[0].id;
-    expect(result.durations.get(mergedId)).toBe(750);
+    expect(result.stats.get(mergedId)?.durationMs).toBe(750);
   });
 
   it("falls back to idx-based ids when sequence is null so sequence-less rows don't collide", () => {
@@ -212,6 +216,171 @@ describe("convertChatSessionMessagesToUiMessages", () => {
 
     expect(result.messages).toHaveLength(2);
     const assistantId = result.messages[1].id;
-    expect(result.durations.get(assistantId)).toBe(123);
+    expect(result.stats.get(assistantId)?.durationMs).toBe(123);
+  });
+
+  it("captures created_at when supplied as an ISO string", () => {
+    const iso = "2026-04-23T01:32:09.871Z";
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "hi", sequence: 0, created_at: iso }],
+      { isComplete: true },
+    );
+
+    const userId = result.messages[0].id;
+    expect(result.stats.get(userId)?.createdAt).toBe(iso);
+  });
+
+  it("captures created_at when the API mutator has already converted the field to a Date object", () => {
+    // The generated `customMutator` runs `transformDates()` on every response,
+    // which turns ISO date strings into Date objects before they reach the
+    // UI-shape converter.  A literal `typeof === "string"` check would reject
+    // the Date and silently drop the timestamp — breaking the "Thought for X"
+    // tooltip.  Assert we still recover the ISO value.
+    const date = new Date("2026-04-23T01:32:09.871Z");
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [{ role: "user", content: "hi", sequence: 0, created_at: date }],
+      { isComplete: true },
+    );
+
+    const userId = result.messages[0].id;
+    expect(result.stats.get(userId)?.createdAt).toBe(date.toISOString());
+  });
+
+  it("advances createdAt to the latest row when merging consecutive assistant rows", () => {
+    // Reasoning row persisted early + assistant row persisted later should
+    // leave the merged bubble's stats.createdAt pointing at the LATER row,
+    // so the live "Thinking Xs" counter anchors to the most recent step.
+    const early = "2026-04-23T10:00:00.000Z";
+    const later = "2026-04-23T10:00:30.000Z";
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "user", content: "hi", sequence: 0, created_at: early },
+        {
+          role: "reasoning",
+          content: "ponder",
+          sequence: 1,
+          created_at: early,
+        },
+        {
+          role: "assistant",
+          content: "reply",
+          sequence: 2,
+          created_at: later,
+        },
+      ],
+      { isComplete: true },
+    );
+
+    expect(result.messages).toHaveLength(2);
+    const mergedId = result.messages[1].id;
+    expect(result.stats.get(mergedId)?.createdAt).toBe(later);
+  });
+});
+
+// --------------------------------------------------------------------------- //
+//  concatWithAssistantMerge — page-boundary stitching                         //
+// --------------------------------------------------------------------------- //
+
+function uiAssistant(
+  sessionId: string,
+  seq: number,
+  text: string,
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id: `${sessionId}-seq-${seq}`,
+    role: "assistant",
+    parts: [{ type: "text", text, state: "done" }],
+  };
+}
+
+function uiUser(
+  sessionId: string,
+  seq: number,
+  text: string,
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id: `${sessionId}-seq-${seq}`,
+    role: "user",
+    parts: [{ type: "text", text, state: "done" }],
+  };
+}
+
+describe("concatWithAssistantMerge", () => {
+  it("returns b unchanged when a is empty", () => {
+    const b = [uiAssistant(SESSION_ID, 0, "hi")];
+    expect(concatWithAssistantMerge([], b)).toEqual(b);
+  });
+
+  it("returns a unchanged when b is empty", () => {
+    const a = [uiAssistant(SESSION_ID, 0, "hi")];
+    expect(concatWithAssistantMerge(a, [])).toEqual(a);
+  });
+
+  it("merges two ASSISTANT bubbles whose DB sequences are strictly adjacent", () => {
+    const a = [uiAssistant(SESSION_ID, 2, "hello")];
+    const b = [uiAssistant(SESSION_ID, 3, " world")];
+    const result = concatWithAssistantMerge(a, b);
+    expect(result).toHaveLength(1);
+    expect(result[0].role).toBe("assistant");
+    expect(result[0].parts).toHaveLength(2);
+  });
+
+  it("does NOT merge when DB sequences are not adjacent — a hidden user/reasoning row would be silently swallowed", () => {
+    // Real-world repro: assistant_seq3 + (user_seq4 not yet hydrated) +
+    // assistant_seq6.  Pre-fix this stitched seq3 and seq6 into one bubble
+    // and the chip's user follow-up at seq4 vanished.
+    const a = [uiAssistant(SESSION_ID, 3, "before")];
+    const b = [uiAssistant(SESSION_ID, 6, "after")];
+    const result = concatWithAssistantMerge(a, b);
+    expect(result).toHaveLength(2);
+    expect(result[0].id).toBe(`${SESSION_ID}-seq-3`);
+    expect(result[1].id).toBe(`${SESSION_ID}-seq-6`);
+  });
+
+  it("does NOT merge when last-of-a is user and first-of-b is assistant", () => {
+    const a = [uiUser(SESSION_ID, 4, "follow up")];
+    const b = [uiAssistant(SESSION_ID, 5, "got it")];
+    const result = concatWithAssistantMerge(a, b);
+    expect(result).toHaveLength(2);
+  });
+
+  it("merges a single-row page B onto a multi-row merged bubble in page A using the LAST seq of the bubble", () => {
+    // Sentry: pre-fix, a merged bubble holding seq=5+6 was keyed
+    // ``-seq-5``, and a cross-page assistant at seq=7 failed the
+    // ``firstSeq === lastSeq + 1`` check (7 !== 5+1) and split into
+    // two bubbles.  The in-page merge now advances the id to the last
+    // seq, so the adjacency check sees ``7 === 6+1`` and merges.
+    const pageA = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        { role: "reasoning", content: "thinking", sequence: 5 },
+        { role: "assistant", content: "first part", sequence: 6 },
+      ],
+      { isComplete: true },
+    ).messages;
+    expect(pageA).toHaveLength(1);
+    expect(pageA[0].id).toBe(`${SESSION_ID}-seq-6`);
+    const pageB = [uiAssistant(SESSION_ID, 7, "continued")];
+    const result = concatWithAssistantMerge(pageA, pageB);
+    expect(result).toHaveLength(1);
+    expect(result[0].parts.length).toBeGreaterThan(1);
+  });
+
+  it("does NOT merge across hydrated → streaming boundary (streaming ids fail seq-extraction)", () => {
+    const a = [uiAssistant(SESSION_ID, 5, "from db")];
+    const b: UIMessage<unknown, UIDataTypes, UITools>[] = [
+      {
+        id: "ai-sdk-streaming-uuid",
+        role: "assistant",
+        parts: [{ type: "text", text: " streaming", state: "streaming" }],
+      },
+    ];
+    const result = concatWithAssistantMerge(a, b);
+    // Refusing to merge is the safer default — streaming consumer handles
+    // its own assistant continuity inside the active turn.
+    expect(result).toHaveLength(2);
   });
 });

@@ -7,6 +7,7 @@ import logging
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from pydantic import field_validator
 from typing_extensions import TypedDict  # Needed for Python <3.12 compatibility
 
 from backend.blocks._base import (
@@ -17,6 +18,7 @@ from backend.blocks._base import (
     BlockSchemaOutput,
 )
 from backend.copilot.permissions import (
+    DISABLED_LEGACY_TOOL_NAMES,
     CopilotPermissions,
     ToolName,
     all_known_tool_names,
@@ -197,6 +199,13 @@ class AutoPilotBlock(Block):
         # timeout_seconds removed: the SDK manages its own heartbeat-based
         # timeouts internally; wrapping with asyncio.timeout corrupts the
         # SDK's internal stream (see service.py CRITICAL comment).
+
+        @field_validator("tools", mode="before")
+        @classmethod
+        def strip_disabled_legacy_tools(cls, tools: Any) -> Any:
+            if not isinstance(tools, list):
+                return tools
+            return [tool for tool in tools if tool not in DISABLED_LEGACY_TOOL_NAMES]
 
     class Output(BlockSchemaOutput):
         """Output schema for the AutoPilot block."""

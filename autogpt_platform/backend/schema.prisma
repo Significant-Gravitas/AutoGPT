@@ -40,14 +40,7 @@ model User {
 
   timezone String @default("not-set")
 
-  // CoPilot subscription tier — controls rate-limit multipliers.
-  // Multipliers applied in get_global_rate_limits(): FREE=1x, PRO=5x, BUSINESS=20x, ENTERPRISE=60x.
-  // NOTE: @default(PRO) is intentional for the beta period — all existing and new
-  // users receive PRO-level (5x) rate limits by default. The Python-level constant
-  // DEFAULT_TIER=FREE (in copilot/rate_limit.py) acts as a code-level fallback when
-  // the DB value is NULL or unrecognised. At GA, a migration will flip the column
-  // default to FREE and batch-update users to their billing-derived tiers.
-  subscriptionTier SubscriptionTier @default(PRO)
+  subscriptionTier SubscriptionTier @default(NO_TIER)
 
   // Relations
 
@@ -72,6 +65,7 @@ model User {
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
   NotificationBatches   UserNotificationBatch[]
+  PushSubscriptions     PushSubscription[]
   PendingHumanReviews   PendingHumanReview[]
   Workspace             UserWorkspace?
   PlatformCostLogs PlatformCostLog[]
@@ -88,8 +82,10 @@ model User {
 }
 
 enum SubscriptionTier {
-  FREE
+  NO_TIER
+  BASIC
   PRO
+  MAX
   BUSINESS
   ENTERPRISE
 }
@@ -423,6 +419,25 @@ model UserNotificationBatch {
 
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String
+  p256dh   String
+  auth     String
+
+  userAgent    String?
+  failCount    Int       @default(0)
+  lastFailedAt DateTime?
+
+  @@unique([userId, endpoint])
 }
 
 // For the library page

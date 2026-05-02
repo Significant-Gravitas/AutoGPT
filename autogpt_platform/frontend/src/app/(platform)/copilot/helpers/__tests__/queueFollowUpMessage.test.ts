@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { queueFollowUpMessage } from "../queueFollowUpMessage";
+import {
+  QueueFollowUpNotActiveError,
+  queueFollowUpMessage,
+} from "../queueFollowUpMessage";
 
 vi.mock("@/services/environment", () => ({
   environment: {
@@ -24,7 +27,7 @@ describe("queueFollowUpMessage", () => {
     vi.restoreAllMocks();
   });
 
-  it("POSTs to /stream and returns kind=queued on 202", async () => {
+  it("POSTs to /messages/pending and returns queued state on 200", async () => {
     const fetchMock = vi.mocked(global.fetch);
     fetchMock.mockResolvedValueOnce(
       new Response(
@@ -33,14 +36,13 @@ describe("queueFollowUpMessage", () => {
           max_buffer_length: 10,
           turn_in_flight: true,
         }),
-        { status: 202, headers: { "Content-Type": "application/json" } },
+        { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
 
     const result = await queueFollowUpMessage("sess-1", "hello");
 
     expect(result).toEqual({
-      kind: "queued",
       buffer_length: 2,
       max_buffer_length: 10,
       turn_in_flight: true,
@@ -48,7 +50,7 @@ describe("queueFollowUpMessage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe(
-      "https://api.example.test/api/chat/sessions/sess-1/stream",
+      "https://api.example.test/api/chat/sessions/sess-1/messages/pending",
     );
     expect(init?.method).toBe("POST");
     const headers = init?.headers as Record<string, string>;
@@ -56,41 +58,50 @@ describe("queueFollowUpMessage", () => {
     expect(headers.Authorization).toBe("Bearer test-token");
     expect(JSON.parse(init?.body as string)).toEqual({
       message: "hello",
-      is_user_message: true,
       context: null,
       file_ids: null,
     });
   });
 
-  it("returns kind=raced_started_turn on 200 (race: server started a new turn)", async () => {
+  it("treats a 200 inactive response as not active", async () => {
     const fetchMock = vi.mocked(global.fetch);
-    // SSE-shaped 200 response — the body must be drainable
-    const sseBody = new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("data: hello\n\n"));
-        controller.close();
-      },
-    });
     fetchMock.mockResolvedValueOnce(
-      new Response(sseBody, {
-        status: 200,
-        headers: { "Content-Type": "text/event-stream" },
+      new Response(
+        JSON.stringify({
+          buffer_length: 0,
+          max_buffer_length: 10,
+          turn_in_flight: false,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toBeInstanceOf(
+      QueueFollowUpNotActiveError,
+    );
+  });
+
+  it("throws a typed error when there is no active turn to queue against", async () => {
+    const fetchMock = vi.mocked(global.fetch);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ detail: "no active turn" }), {
+        status: 409,
       }),
     );
 
-    const result = await queueFollowUpMessage("sess-1", "hi");
-
-    expect(result).toEqual({ kind: "raced_started_turn", status: 200 });
+    await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toBeInstanceOf(
+      QueueFollowUpNotActiveError,
+    );
   });
 
-  it("throws when response is neither 200 nor 202", async () => {
+  it("throws when response is not 200", async () => {
     const fetchMock = vi.mocked(global.fetch);
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: "boom" }), { status: 500 }),
     );
 
     await expect(queueFollowUpMessage("sess-1", "hi")).rejects.toThrow(
-      /Expected 202 \(queued\) or 200 \(raced new turn\) from \/stream; got 500/,
+      /Expected 200 from \/messages\/pending; got 500/,
     );
   });
 

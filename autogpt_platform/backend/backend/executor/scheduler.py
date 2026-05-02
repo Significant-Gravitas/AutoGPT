@@ -259,6 +259,16 @@ def cleanup_oauth_tokens():
     run_async(_cleanup())
 
 
+def cleanup_failed_push_subscriptions():
+    """Delete push subscriptions that have exceeded the failure threshold."""
+
+    async def _cleanup():
+        db = get_database_manager_async_client()
+        return await db.cleanup_failed_push_subscriptions()
+
+    run_async(_cleanup())
+
+
 def execution_accuracy_alerts():
     """Check execution accuracy and send alerts if drops are detected."""
     return report_execution_accuracy_alerts()
@@ -579,6 +589,16 @@ class Scheduler(AppService):
                 replace_existing=True,
                 seconds=config.oauth_token_cleanup_interval_hours
                 * 3600,  # Convert hours to seconds
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Failed Push Subscription Cleanup - configurable interval
+            self.scheduler.add_job(
+                cleanup_failed_push_subscriptions,
+                id="cleanup_failed_push_subscriptions",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.push_subscription_cleanup_interval_hours * 3600,
                 jobstore=Jobstores.EXECUTION.value,
             )
 

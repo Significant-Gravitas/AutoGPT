@@ -249,6 +249,14 @@ class _FakeRedis:
     async def hgetall(self, _key: str):
         return dict(self._meta)
 
+    async def hdel(self, _key: str, *fields: str) -> int:
+        removed = 0
+        for f in fields:
+            if f in self._meta:
+                del self._meta[f]
+                removed += 1
+        return removed
+
 
 @pytest.mark.asyncio
 async def test_mark_session_completed_releases_cluster_lock_on_success():
@@ -335,3 +343,73 @@ async def test_mark_session_completed_survives_lock_release_redis_error():
         isinstance(call.args[1], stream_registry.StreamFinish)
         for call in publish_mock.call_args_list
     ), "StreamFinish must still be published even if lock DELETE raises"
+
+
+# ---------------------------------------------------------------------------
+# Replays must contain protocol chunks only. Redis cursor data parts are not
+# emitted because AI SDK resume needs the complete stream envelope from 0-0.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
+    """During replay, the subscriber queue contains chunks plus terminal finish."""
+    import orjson
+
+    from backend.copilot.response_model import (
+        StreamTextDelta,
+        StreamTextEnd,
+        StreamTextStart,
+    )
+
+    # Three chunks recorded in Redis for a completed turn. Completed status
+    # means the listener branch is skipped and only the replay path runs,
+    # which keeps the test hermetic.
+    stream_key_msgs = [
+        (
+            "9999-0",
+            {"data": orjson.dumps(StreamTextStart(id="blk-1").model_dump()).decode()},
+        ),
+        (
+            "9999-1",
+            {
+                "data": orjson.dumps(
+                    StreamTextDelta(id="blk-1", delta="hi").model_dump()
+                ).decode()
+            },
+        ),
+        (
+            "9999-2",
+            {"data": orjson.dumps(StreamTextEnd(id="blk-1").model_dump()).decode()},
+        ),
+    ]
+
+    fake_redis = AsyncMock()
+    fake_redis.hgetall = AsyncMock(
+        return_value={
+            "user_id": "u1",
+            "session_id": "sess-1",
+            "turn_id": "turn-1",
+            "status": "completed",  # finished → no listener task
+        }
+    )
+    fake_redis.xread = AsyncMock(return_value=[("stream-key", stream_key_msgs)])
+
+    with patch.object(
+        stream_registry, "get_redis_async", new=AsyncMock(return_value=fake_redis)
+    ):
+        queue = await stream_registry.subscribe_to_session(
+            session_id="sess-1", user_id="u1", last_message_id="0-0"
+        )
+
+    assert queue is not None
+
+    delivered = []
+    while not queue.empty():
+        delivered.append(queue.get_nowait())
+
+    assert len(delivered) == 4
+    assert isinstance(delivered[0], StreamTextStart)
+    assert isinstance(delivered[1], StreamTextDelta)
+    assert isinstance(delivered[2], StreamTextEnd)
+    assert isinstance(delivered[3], stream_registry.StreamFinish)

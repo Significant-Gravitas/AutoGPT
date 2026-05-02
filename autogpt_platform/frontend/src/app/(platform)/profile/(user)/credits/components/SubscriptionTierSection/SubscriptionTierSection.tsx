@@ -10,6 +10,7 @@ import {
   TIER_ORDER,
   formatCost,
   formatPendingDate,
+  formatRelativeMultiplier,
   getTierLabel,
 } from "./helpers";
 
@@ -119,9 +120,27 @@ export function SubscriptionTierSection() {
     handleTierChange(targetTierKey, currentTier, setConfirmDowngradeTo);
   }
 
+  // Gate the "Pick a plan" banner on the DB tier rather than
+  // has_active_stripe_subscription so a transient Stripe outage doesn't show
+  // the banner to active subscribers. Same rationale as PaywallGate.
+  const needsSubscription = isPaymentEnabled && subscription.tier === "NO_TIER";
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium">Subscription Plan</h3>
+
+      {needsSubscription && (
+        <div
+          role="status"
+          className="rounded-md border border-violet-300 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200"
+        >
+          <p className="font-medium">Pick a plan to continue using AutoGPT.</p>
+          <p className="mt-1">
+            Your account doesn&apos;t have an active subscription. Choose a tier
+            below to unlock AutoPilot and start running agents.
+          </p>
+        </div>
+      )}
 
       {tierError && (
         <p
@@ -143,7 +162,9 @@ export function SubscriptionTierSection() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        {TIERS.map((tier) => {
+        {TIERS.filter(
+          (tier) => subscription.tier_costs[tier.key] !== undefined,
+        ).map((tier) => {
           const isCurrent = currentTier === tier.key;
           const cost = subscription.tier_costs[tier.key] ?? 0;
           const currentIdx = TIER_ORDER.indexOf(currentTier);
@@ -153,6 +174,10 @@ export function SubscriptionTierSection() {
           const isThisPending = pendingTier === tier.key;
           const isScheduledTier =
             hasPendingChange && pendingTierFromSubscription === tier.key;
+          const rateLimitLabel = formatRelativeMultiplier(
+            tier.key,
+            subscription.tier_multipliers ?? {},
+          );
 
           return (
             <div
@@ -176,9 +201,11 @@ export function SubscriptionTierSection() {
               <p className="mb-1 text-2xl font-bold">
                 {formatCost(cost, tier.key)}
               </p>
-              <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
-                {tier.multiplier} rate limits
-              </p>
+              {rateLimitLabel && (
+                <p className="mb-1 text-sm font-medium text-neutral-600 dark:text-neutral-400">
+                  {rateLimitLabel}
+                </p>
+              )}
               <p className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
                 {tier.description}
               </p>
@@ -206,12 +233,24 @@ export function SubscriptionTierSection() {
         })}
       </div>
 
-      {currentTier !== "FREE" && isPaymentEnabled && (
-        <p className="text-sm text-neutral-500">
-          Your subscription is managed through Stripe. Upgrades take effect
-          immediately. Downgrades take effect at the end of your current billing
-          period.
-        </p>
+      {currentTier !== "NO_TIER" && isPaymentEnabled && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-neutral-500">
+            Your subscription is managed through Stripe. Upgrades take effect
+            immediately. Downgrades take effect at the end of your current
+            billing period.
+          </p>
+          {!hasPendingChange && (
+            <Button
+              variant="ghost"
+              className="shrink-0 text-sm text-neutral-600 hover:text-red-600 dark:text-neutral-400"
+              disabled={isPending}
+              onClick={() => setConfirmDowngradeTo("NO_TIER")}
+            >
+              Cancel subscription
+            </Button>
+          )}
+        </div>
       )}
 
       <Dialog
@@ -225,9 +264,9 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {confirmDowngradeTo === "FREE"
-              ? "Downgrading to Free will schedule your subscription to cancel at the end of your current billing period. You keep your current plan until then."
-              : `Switching to ${TIERS.find((t) => t.key === confirmDowngradeTo)?.label ?? confirmDowngradeTo} will take effect at the end of your current billing period. You keep your current plan until then.`}{" "}
+            {confirmDowngradeTo === "NO_TIER"
+              ? `Cancelling your subscription schedules it to end at the close of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today and no further charges to your card. You keep your current plan and existing credits until then.`
+              : `Switching to ${getTierLabel(confirmDowngradeTo ?? "")} takes effect at the end of your current billing period${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""} — no charge today. You keep your current plan until then. From that date your saved card is billed at the ${getTierLabel(confirmDowngradeTo ?? "")} rate, and matching credits are added to your AutoGPT balance with each paid invoice.`}{" "}
             Are you sure?
           </p>
           <Dialog.Footer>
@@ -294,13 +333,9 @@ export function SubscriptionTierSection() {
       >
         <Dialog.Content>
           <p className="text-sm text-neutral-600 dark:text-neutral-400">
-            {subscription &&
-              subscription.proration_credit_cents > 0 &&
-              `Your unused ${currentTier.charAt(0) + currentTier.slice(1).toLowerCase()} subscription ($${(subscription.proration_credit_cents / 100).toFixed(2)}) will be applied as a credit to your next Stripe invoice. `}
-            You will be redirected to Stripe to complete your upgrade to{" "}
-            {TIERS.find((t) => t.key === pendingUpgradeTier)?.label ??
-              pendingUpgradeTier}
-            .
+            {subscription.has_active_stripe_subscription
+              ? `Your subscription is upgraded to ${getTierLabel(pendingUpgradeTier ?? "")} immediately. On your next invoice${subscription.current_period_end ? ` on ${formatPendingDate(new Date(subscription.current_period_end * 1000))}` : ""}, your saved card is charged for the upgrade proration since today plus the next month at the new rate, with the unused portion of your current plan automatically deducted. Credits matching the paid amount are added to your AutoGPT balance once Stripe confirms the charge.`
+              : `You'll be redirected to Stripe to enter payment details and start your ${getTierLabel(pendingUpgradeTier ?? "")} subscription. The first invoice's amount is added to your AutoGPT balance once Stripe confirms the charge.`}
           </p>
           <Dialog.Footer>
             <Button
@@ -310,7 +345,9 @@ export function SubscriptionTierSection() {
               Cancel
             </Button>
             <Button onClick={() => void confirmUpgrade()}>
-              Continue to Checkout
+              {subscription.has_active_stripe_subscription
+                ? "Confirm Upgrade"
+                : "Continue to Checkout"}
             </Button>
           </Dialog.Footer>
         </Dialog.Content>

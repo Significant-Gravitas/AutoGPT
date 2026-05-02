@@ -48,6 +48,7 @@ from .response_model import (
     StreamReasoningStart,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -89,8 +90,19 @@ class ActiveSession:
 
 
 def _get_session_meta_key(session_id: str) -> str:
+    """Get Redis key for session metadata (keyed by session_id).
+
+    Hash-tag braces colocate this key with ``pending_messages._buffer_key``
+    on the same Redis Cluster slot — the gated-rpush Lua script touches both
+    keys atomically and would CROSSSLOT-fail if they hashed to different
+    shards.
+    """
+    return f"{config.session_meta_prefix}{{{session_id}}}"
+
+
+def get_session_meta_key(session_id: str) -> str:
     """Get Redis key for session metadata (keyed by session_id)."""
-    return f"{config.session_meta_prefix}{session_id}"
+    return _get_session_meta_key(session_id)
 
 
 def _get_turn_stream_key(turn_id: str) -> str:
@@ -870,9 +882,9 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # Compute wall-clock duration from session created_at.
-    # Only persist when (a) the session completed successfully and
-    # (b) created_at was actually present in Redis meta (not a fallback).
+    # Compute wall-clock duration from session created_at.  Only persist when
+    # the session completed successfully and created_at was actually present
+    # in Redis meta (not a fallback).
     duration_ms: int | None = None
     if meta and not error_message:
         created_at_raw = meta.get("created_at")
@@ -1026,8 +1038,8 @@ async def get_active_session(
 
     # Check if session is stale (running beyond tool timeout + buffer).
     # Auto-complete it to prevent infinite polling loops.
-    # Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour),
-    # so we add a 5-minute buffer to avoid false positives during legitimate operations.
+    # A turn can legitimately run up to COPILOT_CONSUMER_TIMEOUT_SECONDS, so we
+    # add a 5-minute buffer to avoid false positives during legitimate operations.
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:
@@ -1093,6 +1105,7 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.ERROR.value: StreamError,
         ResponseType.USAGE.value: StreamUsage,
         ResponseType.HEARTBEAT.value: StreamHeartbeat,
+        ResponseType.STATUS.value: StreamStatus,
     }
 
     chunk_type = chunk_data.get("type")

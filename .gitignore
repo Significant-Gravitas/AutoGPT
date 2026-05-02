@@ -196,3 +196,7 @@ test.db
 plans/
 .claude/worktrees/
 test-results/
+
+# Playwright MCP / local browser-testing artifacts
+.playwright-mcp/
+copilot-session-switch-qa/

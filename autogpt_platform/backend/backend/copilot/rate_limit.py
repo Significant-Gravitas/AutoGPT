@@ -47,15 +47,14 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisError
 
 from backend.data.db_accessors import user_db
-from backend.data.redis_client import get_redis_async
+from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 
 logger = logging.getLogger(__name__)
 
-# Redis key prefixes. Bumped from "copilot:usage" (token-based) to
-# "copilot:cost" on the token→cost migration so stale counters do not
-# get misinterpreted as microdollars (which would dramatically under-count).
+# "copilot:cost" (not the legacy "copilot:usage") so stale token-based
+# counters are not misread as microdollars.
 _USAGE_KEY_PREFIX = "copilot:cost"
 
 
@@ -73,24 +72,252 @@ class SubscriptionTier(str, Enum):
         from prisma.enums import SubscriptionTier
     """
 
-    FREE = "FREE"
+    NO_TIER = "NO_TIER"
+    BASIC = "BASIC"
     PRO = "PRO"
+    MAX = "MAX"
     BUSINESS = "BUSINESS"
     ENTERPRISE = "ENTERPRISE"
 
 
-# Multiplier applied to the base cost limits (from LD / config) for each tier.
-# Intentionally int (not float): keeps limits as whole microdollars and avoids
-# floating-point rounding. If fractional multipliers are ever needed, change
-# the type and round the result in get_global_rate_limits().
-TIER_MULTIPLIERS: dict[SubscriptionTier, int] = {
-    SubscriptionTier.FREE: 1,
-    SubscriptionTier.PRO: 5,
-    SubscriptionTier.BUSINESS: 20,
-    SubscriptionTier.ENTERPRISE: 60,
+# Default multiplier applied to the base cost limits (from LD / config) for each
+# tier. Used as the fallback when the LD flag ``copilot-tier-multipliers`` is
+# unset or unparseable — see ``get_tier_multipliers``.  BUSINESS matches
+# ENTERPRISE (60x); MAX sits at 20x as the self-service $320 tier. Float-typed
+# so LD-provided fractional multipliers (e.g. 8.5×) compose naturally; the
+# eventual ``int(base * multiplier)`` in ``get_global_rate_limits`` keeps the
+# downstream microdollar math integer.
+_DEFAULT_TIER_MULTIPLIERS: dict[SubscriptionTier, float] = {
+    # NO_TIER is the explicit "no active Stripe subscription" state —
+    # multiplier 0.0 collapses the per-period limit to int(base * 0) = 0, so
+    # all rate-limited routes (CoPilot chat, AutoPilot) refuse with 429
+    # before any business logic runs. This is the backend half of the
+    # paywall (the frontend modal nudges UI users; this gate enforces
+    # server-side regardless of client). BASIC stays as a future paid-tier
+    # option; for now it falls back to the same baseline as paid tiers.
+    SubscriptionTier.NO_TIER: 0.0,
+    SubscriptionTier.BASIC: 1.0,
+    SubscriptionTier.PRO: 5.0,
+    SubscriptionTier.MAX: 20.0,
+    SubscriptionTier.BUSINESS: 60.0,
+    SubscriptionTier.ENTERPRISE: 60.0,
 }
 
-DEFAULT_TIER = SubscriptionTier.FREE
+# Public re-export retained for backward compatibility with call-sites / tests
+# that historically read ``TIER_MULTIPLIERS`` directly.  New code should prefer
+# ``get_tier_multipliers`` so LD overrides are honoured.
+TIER_MULTIPLIERS = _DEFAULT_TIER_MULTIPLIERS
+
+DEFAULT_TIER = SubscriptionTier.NO_TIER
+
+
+# Per-tier workspace storage caps in MB. NO_TIER keeps the same baseline as
+# BASIC so users who cancel retain a small quota and see a real overage cap,
+# while LaunchDarkly can still tune tiers without a deploy.
+_DEFAULT_TIER_WORKSPACE_STORAGE_MB: dict[SubscriptionTier, int] = {
+    SubscriptionTier.NO_TIER: 250,  # 250 MB
+    SubscriptionTier.BASIC: 250,  # 250 MB
+    SubscriptionTier.PRO: 1024,  # 1 GB
+    SubscriptionTier.MAX: 5 * 1024,  # 5 GB
+    SubscriptionTier.BUSINESS: 15 * 1024,  # 15 GB
+    SubscriptionTier.ENTERPRISE: 15 * 1024,  # 15 GB
+}
+
+
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_tier_multipliers_flag() -> dict[SubscriptionTier, float] | None:
+    """Fetch the ``copilot-tier-multipliers`` LD flag and parse it.
+
+    Returns a sparse ``{tier: multiplier}`` map built from whichever keys are
+    valid in the flag payload, or ``None`` when the flag is unset / invalid /
+    LD is unavailable.  ``cache_none=False`` avoids pinning a transient LD
+    failure for a full minute — the next call retries.
+
+    The LD value is expected to be a JSON object keyed by tier enum name
+    (``{"BASIC": 1, "PRO": 5, "BUSINESS": 20.5}``).  Unknown tier keys and
+    non-numeric / non-positive values are skipped; callers merge whatever
+    survives into :data:`_DEFAULT_TIER_MULTIPLIERS`.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(
+        Flag.COPILOT_TIER_MULTIPLIERS.value, "system", None
+    )
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-tier-multipliers (expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[SubscriptionTier, float] = {}
+    for key, value in raw.items():
+        try:
+            tier = SubscriptionTier(key)
+        except ValueError:
+            continue
+        try:
+            multiplier = float(value)
+        except (TypeError, ValueError):
+            continue
+        if multiplier <= 0:
+            continue
+        parsed[tier] = multiplier
+    return parsed or None
+
+
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_cost_limits_flag() -> dict[str, int] | None:
+    """Fetch the ``copilot-cost-limits`` LD flag and parse it.
+
+    Returns a sparse ``{"daily": int, "weekly": int}`` map built from whichever
+    keys are valid in the flag payload, or ``None`` when the flag is unset /
+    invalid / LD is unavailable.  Callers merge whatever survives into their
+    config defaults (see :func:`get_global_rate_limits`).
+
+    The LD value is expected to be a JSON object keyed by window name
+    (``{"daily": 625000, "weekly": 3125000}``).  Non-int / negative values
+    are skipped so a broken key degrades to the config default instead of
+    wiping out the limit.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(Flag.COPILOT_COST_LIMITS.value, "system", None)
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-cost-limits (expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[str, int] = {}
+    for key in ("daily", "weekly"):
+        if key not in raw:
+            continue
+        value = raw[key]
+        # Strict int check — booleans are subclasses of int in Python, and we
+        # don't want to coerce strings like "100" or floats like 1.9 silently
+        # into a rate-limit cap. Docstring says "non-int values are skipped".
+        if isinstance(value, bool) or not isinstance(value, int):
+            logger.warning(
+                "Invalid LD value for copilot-cost-limits[%s]: %r", key, value
+            )
+            continue
+        if value < 0:
+            logger.warning(
+                "Negative LD value for copilot-cost-limits[%s]: %r", key, value
+            )
+            continue
+        parsed[key] = value
+    return parsed or None
+
+
+async def get_tier_multipliers() -> dict[str, float]:
+    """Return the effective ``{tier_value: multiplier}`` map.
+
+    Honours the ``copilot-tier-multipliers`` LD flag when set; missing tiers
+    inherit :data:`_DEFAULT_TIER_MULTIPLIERS`.  Unparseable flag values or LD
+    fetch failures fall back to the defaults without raising.
+
+    Keys are the tier enum string values (``"BASIC"``, ``"PRO"``, …) rather
+    than the enum itself so callers holding ``prisma.enums.SubscriptionTier``
+    don't hit a spurious mismatch against this module's local mirror.
+
+    The flag is evaluated system-wide — per-tier multipliers are a global knob.
+    If per-cohort overrides are ever needed, add a user_id parameter here and
+    thread it through ``_fetch_tier_multipliers_flag`` to LD.
+    """
+    try:
+        override = await _fetch_tier_multipliers_flag()
+    except Exception:
+        # LD SDK / Redis / network failures here are best-effort — fall back.
+        logger.warning("get_tier_multipliers: LD lookup failed", exc_info=True)
+        override = None
+    merged: dict[SubscriptionTier, float] = dict(_DEFAULT_TIER_MULTIPLIERS)
+    if override:
+        merged.update(override)
+    return {tier.value: multiplier for tier, multiplier in merged.items()}
+
+
+@cached(ttl_seconds=60, maxsize=1, cache_none=False)
+async def _fetch_workspace_storage_limits_flag() -> dict[SubscriptionTier, int] | None:
+    """Fetch the ``copilot-tier-workspace-storage-limits`` LD flag and parse it.
+
+    Returns a sparse ``{tier: megabytes}`` map built from whichever keys are
+    valid in the flag payload, or ``None`` when the flag is unset / invalid /
+    LD is unavailable. Callers merge whatever survives into
+    :data:`_DEFAULT_TIER_WORKSPACE_STORAGE_MB`.
+
+    The LD value is expected to be a JSON object keyed by tier enum name
+    (``{"NO_TIER": 250, "PRO": 1024, "BUSINESS": 15360}``). Non-int or
+    negative values are skipped so a broken key degrades to the code default
+    instead of wiping out the limit.
+    """
+    # Lazy import: rate_limit -> feature_flag -> settings -> ... -> rate_limit.
+    from backend.util.feature_flag import Flag, get_feature_flag_value
+
+    raw = await get_feature_flag_value(
+        Flag.COPILOT_TIER_WORKSPACE_STORAGE_LIMITS.value, "system", None
+    )
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        logger.warning(
+            "Invalid LD value for copilot-tier-workspace-storage-limits "
+            "(expected JSON object): %r",
+            raw,
+        )
+        return None
+
+    parsed: dict[SubscriptionTier, int] = {}
+    for key, value in raw.items():
+        try:
+            tier = SubscriptionTier(key)
+        except ValueError:
+            continue
+        if isinstance(value, bool) or not isinstance(value, int):
+            logger.warning(
+                "Invalid LD value for copilot-tier-workspace-storage-limits[%s]: %r",
+                key,
+                value,
+            )
+            continue
+        if value <= 0:
+            logger.warning(
+                "Non-positive LD value for copilot-tier-workspace-storage-limits[%s]: %r",
+                key,
+                value,
+            )
+            continue
+        parsed[tier] = value
+    return parsed or None
+
+
+async def get_workspace_storage_limits_mb() -> dict[str, int]:
+    """Return the effective ``{tier_value: megabytes}`` workspace limit map.
+
+    Honours the ``copilot-tier-workspace-storage-limits`` LD flag when set;
+    missing tiers inherit :data:`_DEFAULT_TIER_WORKSPACE_STORAGE_MB`.
+    Unparseable flag values or LD fetch failures fall back to the defaults.
+    """
+    try:
+        override = await _fetch_workspace_storage_limits_flag()
+    except Exception:
+        logger.warning(
+            "get_workspace_storage_limits_mb: LD lookup failed", exc_info=True
+        )
+        override = None
+
+    merged: dict[SubscriptionTier, int] = dict(_DEFAULT_TIER_WORKSPACE_STORAGE_MB)
+    if override:
+        merged.update(override)
+    return {tier.value: megabytes for tier, megabytes in merged.items()}
 
 
 class UsageWindow(BaseModel):
@@ -316,25 +543,16 @@ async def reset_daily_usage(user_id: str, daily_cost_limit: int = 0) -> bool:
     try:
         redis = await get_redis_async()
 
-        # Use a MULTI/EXEC transaction so that DELETE (daily) and DECRBY
-        # (weekly) either both execute or neither does.  This prevents the
-        # scenario where the daily counter is cleared but the weekly
-        # counter is not decremented — which would let the caller refund
-        # credits even though the daily limit was already reset.
         d_key = _daily_key(user_id, now=now)
         w_key = _weekly_key(user_id, now=now) if daily_cost_limit > 0 else None
 
-        pipe = redis.pipeline(transaction=True)
-        pipe.delete(d_key)
+        # Daily and weekly keys hash to different cluster slots, so cross-key
+        # MULTI/EXEC is not available. Issue the writes sequentially — the
+        # failure mode (daily deleted, weekly not decremented) is a
+        # best-effort refund budget that the read path already tolerates.
+        await redis.delete(d_key)
         if w_key is not None:
-            pipe.decrby(w_key, daily_cost_limit)
-        results = await pipe.execute()
-
-        # Clamp negative weekly counter to 0 (best-effort; not critical).
-        if w_key is not None:
-            new_val = results[1]  # DECRBY result
-            if new_val < 0:
-                await redis.set(w_key, 0, keepttl=True)
+            await _decr_counter_floor_zero(redis, w_key, daily_cost_limit)
 
         logger.info("Reset daily usage for user %s", user_id[:8])
         return True
@@ -424,30 +642,18 @@ async def record_cost_usage(
     logger.info("Recording copilot spend: %d microdollars", cost_microdollars)
 
     now = datetime.now(UTC)
+    d_key = _daily_key(user_id, now=now)
+    w_key = _weekly_key(user_id, now=now)
+    daily_ttl = max(int((_daily_reset_time(now=now) - now).total_seconds()), 1)
+    weekly_ttl = max(int((_weekly_reset_time(now=now) - now).total_seconds()), 1)
     try:
         redis = await get_redis_async()
-        # Use MULTI/EXEC so each INCRBY/EXPIRE pair is atomic — guarantees
-        # the TTL is set even if the connection drops mid-pipeline, so
-        # counters can never survive past their date-based rotation window.
-        pipe = redis.pipeline(transaction=True)
-
-        # Daily counter (expires at next midnight UTC)
-        d_key = _daily_key(user_id, now=now)
-        pipe.incrby(d_key, cost_microdollars)
-        seconds_until_daily_reset = int(
-            (_daily_reset_time(now=now) - now).total_seconds()
-        )
-        pipe.expire(d_key, max(seconds_until_daily_reset, 1))
-
-        # Weekly counter (expires end of week)
-        w_key = _weekly_key(user_id, now=now)
-        pipe.incrby(w_key, cost_microdollars)
-        seconds_until_weekly_reset = int(
-            (_weekly_reset_time(now=now) - now).total_seconds()
-        )
-        pipe.expire(w_key, max(seconds_until_weekly_reset, 1))
-
-        await pipe.execute()
+        # Daily and weekly keys hash to different cluster slots — cross-slot
+        # MULTI/EXEC is not supported, so each counter gets its own
+        # single-key transaction. Per-counter INCRBY+EXPIRE atomicity is the
+        # invariant that matters; the two counters are independent budgets.
+        await _incr_counter_atomic(redis, d_key, cost_microdollars, daily_ttl)
+        await _incr_counter_atomic(redis, w_key, cost_microdollars, weekly_ttl)
     except (RedisError, ConnectionError, OSError):
         logger.warning(
             "Redis unavailable for recording cost usage (microdollars=%d)",
@@ -455,30 +661,56 @@ async def record_cost_usage(
         )
 
 
+async def _incr_counter_atomic(
+    redis: AsyncRedisClient, key: str, delta: int, ttl_seconds: int
+) -> None:
+    """INCRBY + EXPIRE on a single key inside a MULTI/EXEC transaction."""
+    pipe = redis.pipeline(transaction=True)
+    pipe.incrby(key, delta)
+    pipe.expire(key, ttl_seconds)
+    await pipe.execute()
+
+
+# Atomic DECRBY + floor-to-zero so a concurrent INCRBY from record_cost_usage
+# cannot be lost. DELETE on underflow also avoids leaving a zero-valued key
+# with no TTL, which the non-atomic set-with-keepttl variant could do.
+_DECR_FLOOR_ZERO_SCRIPT = """
+local value = redis.call("DECRBY", KEYS[1], ARGV[1])
+if value < 0 then
+    redis.call("DEL", KEYS[1])
+    return 0
+end
+return value
+"""
+
+
+async def _decr_counter_floor_zero(
+    redis: AsyncRedisClient, key: str, delta: int
+) -> None:
+    """Atomically DECRBY ``delta`` on ``key`` and DEL on underflow.
+
+    DEL on underflow avoids leaving a zero-valued key without a TTL, so the
+    next INCRBY in ``record_cost_usage`` re-seeds both the value and the
+    expiry in one shot.
+    """
+    await redis.eval(_DECR_FLOOR_ZERO_SCRIPT, 1, key, delta)
+
+
 class _UserNotFoundError(Exception):
     """Raised when a user record is missing or has no subscription tier.
 
-    Used internally by ``_fetch_user_tier`` to signal a cache-miss condition:
-    by raising instead of returning ``DEFAULT_TIER``, we prevent the ``@cached``
-    decorator from storing the fallback value.  This avoids a race condition
-    where a non-existent user's DEFAULT_TIER is cached, then the user is
-    created with a higher tier but receives the stale cached FREE tier for
-    up to 5 minutes.
+    Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
+    from persisting the fallback, which would otherwise keep serving FREE
+    for up to the TTL after the user's real tier is set.
     """
 
 
 @cached(maxsize=1000, ttl_seconds=300, shared_cache=True)
 async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
-    """Fetch the user's rate-limit tier from the database (cached via Redis).
+    """Fetch the user's rate-limit tier, cached across pods.
 
-    Uses ``shared_cache=True`` so that tier changes propagate across all pods
-    immediately when the cache entry is invalidated (via ``cache_delete``).
-
-    Only successful DB lookups of existing users with a valid tier are cached.
-    Raises ``_UserNotFoundError`` when the user is missing or has no tier, so
-    the ``@cached`` decorator does **not** store a fallback value.  This
-    prevents a race condition where a non-existent user's ``DEFAULT_TIER`` is
-    cached and then persists after the user is created with a higher tier.
+    Only successful lookups are cached. Missing users raise
+    ``_UserNotFoundError`` so ``@cached`` never stores the fallback.
     """
     try:
         user = await user_db().get_user_by_id(user_id)
@@ -517,23 +749,26 @@ get_user_tier.cache_clear = _fetch_user_tier.cache_clear  # type: ignore[attr-de
 get_user_tier.cache_delete = _fetch_user_tier.cache_delete  # type: ignore[attr-defined]
 
 
+async def get_workspace_storage_limit_bytes(user_id: str) -> int:
+    """Return the workspace storage cap in bytes for the user's subscription tier."""
+    tier = await get_user_tier(user_id)
+    limits_mb = await get_workspace_storage_limits_mb()
+    tier_key = getattr(tier, "value", str(tier))
+    fallback_mb = limits_mb.get(
+        DEFAULT_TIER.value,
+        _DEFAULT_TIER_WORKSPACE_STORAGE_MB[DEFAULT_TIER],
+    )
+    mb = limits_mb.get(tier_key, fallback_mb)
+    return mb * 1024 * 1024
+
+
 async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     """Persist the user's rate-limit tier to the database.
 
-    Invalidates every cache that keys off the user's subscription tier so the
-    change is visible immediately: this function's own ``get_user_tier``, the
-    shared ``get_user_by_id`` (which exposes ``user.subscription_tier``), and
-    ``get_pending_subscription_change`` (since an admin override can invalidate
-    a cached ``cancel_at_period_end`` or schedule-based pending state).
-
-    If the user has an active Stripe subscription whose current price does not
-    match ``tier``, Stripe will keep billing the old price and the next
-    ``customer.subscription.updated`` webhook will overwrite the DB tier back
-    to whatever Stripe has. Proper reconciliation (cancelling or modifying the
-    Stripe subscription when an admin overrides the tier) is out of scope for
-    this PR — it changes the admin contract and needs its own test coverage.
-    For now we emit a ``WARNING`` so drift surfaces via Sentry until that
-    follow-up lands.
+    Invalidates the caches that expose ``subscription_tier`` so the change
+    takes effect immediately. If the user has an active Stripe subscription
+    on a mismatched price, emits a WARNING; Stripe remains the billing
+    source of truth and the next webhook will reconcile the DB tier.
 
     Raises:
         prisma.errors.RecordNotFoundError: If the user does not exist.
@@ -543,21 +778,13 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         data={"subscriptionTier": tier.value},
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local import required: backend.data.credit imports backend.copilot.rate_limit
-    # (via get_user_tier in credit.py's _invalidate_user_tier_caches), so a
-    # top-level ``from backend.data.credit import ...`` here would create a
-    # circular import at module-load time.
+    # Local import: backend.data.credit imports from this module.
     from backend.data.credit import get_pending_subscription_change
 
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
     get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
 
-    # The DB write above is already committed; the drift check is best-effort
-    # diagnostic logging. Fire-and-forget so admin bulk ops don't wait on a
-    # Stripe roundtrip. The inner helper wraps its body in a timeout + broad
-    # except so background task errors still surface via logs rather than as
-    # "task exception never retrieved" warnings. Cancellation on request
-    # shutdown is acceptable — the drift warning is non-load-bearing.
+    # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
 
 
@@ -580,8 +807,6 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
             tier.value,
         )
     except asyncio.CancelledError:
-        # Request may have completed and the event loop is cancelling tasks —
-        # the drift log is non-critical, so accept cancellation silently.
         raise
     except Exception:
         logger.exception(
@@ -595,19 +820,9 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
 async def _warn_if_stripe_subscription_drifts(
     user_id: str, new_tier: SubscriptionTier
 ) -> None:
-    """Emit a WARNING when an admin tier override leaves an active Stripe sub on a
-    mismatched price.
-
-    The warning is diagnostic only: Stripe remains the billing source of truth,
-    so the next ``customer.subscription.updated`` webhook will reset the DB
-    tier. Surfacing the drift here lets ops catch admin overrides that bypass
-    the intended Checkout / Portal cancel flows before users notice surprise
-    charges.
-    """
-    # Local imports: see note in ``set_user_tier`` about the credit <-> rate_limit
-    # circular. These helpers (``_get_active_subscription``,
-    # ``get_subscription_price_id``) live in credit.py alongside the rest of
-    # the Stripe billing code.
+    """Emit a WARNING when an admin tier override leaves an active Stripe
+    subscription on a mismatched price."""
+    # Local import: breaks a credit <-> rate_limit circular at module load.
     from backend.data.credit import _get_active_subscription, get_subscription_price_id
 
     try:
@@ -622,10 +837,8 @@ async def _warn_if_stripe_subscription_drifts(
             return
         price = items[0].price
         current_price_id = price if isinstance(price, str) else price.id
-        # The LaunchDarkly-backed price lookup must live inside this try/except:
-        # an LD SDK failure (network, token revoked) here would otherwise
-        # propagate past set_user_tier's already-committed DB write and turn a
-        # best-effort diagnostic into a 500 on admin tier writes.
+        # Inside the try/except: an LD SDK failure here must not turn a
+        # best-effort diagnostic into a 500 after the DB write committed.
         expected_price_id = await get_subscription_price_id(new_tier)
     except Exception:
         logger.debug(
@@ -670,37 +883,37 @@ async def get_global_rate_limits(
     Returns:
         (daily_cost_limit, weekly_cost_limit, tier) — limits in microdollars.
     """
-    # Lazy import to avoid circular dependency:
-    # rate_limit -> feature_flag -> settings -> ... -> rate_limit
-    from backend.util.feature_flag import Flag, get_feature_flag_value
-
-    # Fetch daily + weekly flags in parallel — each LD evaluation is an
-    # independent network round-trip, so gather cuts latency roughly in half.
-    daily_raw, weekly_raw = await asyncio.gather(
-        get_feature_flag_value(
-            Flag.COPILOT_DAILY_COST_LIMIT.value, user_id, config_daily
-        ),
-        get_feature_flag_value(
-            Flag.COPILOT_WEEKLY_COST_LIMIT.value, user_id, config_weekly
-        ),
-    )
     try:
-        daily = max(0, int(daily_raw))
-    except (TypeError, ValueError):
-        logger.warning("Invalid LD value for daily cost limit: %r", daily_raw)
-        daily = config_daily
-    try:
-        weekly = max(0, int(weekly_raw))
-    except (TypeError, ValueError):
-        logger.warning("Invalid LD value for weekly cost limit: %r", weekly_raw)
-        weekly = config_weekly
+        override = await _fetch_cost_limits_flag()
+    except Exception:
+        logger.warning("get_global_rate_limits: LD lookup failed", exc_info=True)
+        override = None
+    override = override or {}
+    daily = override.get("daily", config_daily)
+    weekly = override.get("weekly", config_weekly)
 
-    # Apply tier multiplier
+    # Apply tier multiplier — resolved through LD (copilot-tier-multipliers)
+    # so multipliers can be tuned without a deploy. Falls back to the defaults
+    # when LD is unavailable.
     tier = await get_user_tier(user_id)
-    multiplier = TIER_MULTIPLIERS.get(tier, 1)
-    if multiplier != 1:
-        daily = daily * multiplier
-        weekly = weekly * multiplier
+    multipliers = await get_tier_multipliers()
+    multiplier = multipliers.get(tier.value, 1.0)
+    # NO_TIER's 0.0 multiplier is the backend half of the paywall — it
+    # collapses limits to zero so unsubscribed users can't run the chat.
+    # Only enforce that gate when the platform-payment flag is on for this
+    # user; in the beta cohort (flag off) NO_TIER falls back to BASIC's
+    # baseline so the e2e suite and beta testers retain access.
+    if tier == SubscriptionTier.NO_TIER:
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        if not await is_feature_enabled(Flag.ENABLE_PLATFORM_PAYMENT, user_id):
+            multiplier = multipliers.get(SubscriptionTier.BASIC.value, 1.0)
+    if multiplier != 1.0:
+        # Cast back to int to preserve the microdollar integer contract
+        # downstream — fractional LD multipliers (e.g. 8.5×) truncate at the
+        # last microdollar, which is well below any meaningful precision.
+        daily = int(daily * multiplier)
+        weekly = int(weekly * multiplier)
 
     return daily, weekly, tier
 
@@ -717,12 +930,15 @@ async def reset_user_usage(user_id: str, *, reset_weekly: bool = False) -> None:
     the admin believing the counters were zeroed when they were not.
     """
     now = datetime.now(UTC)
-    keys_to_delete = [_daily_key(user_id, now=now)]
-    if reset_weekly:
-        keys_to_delete.append(_weekly_key(user_id, now=now))
+    d_key = _daily_key(user_id, now=now)
+    w_key = _weekly_key(user_id, now=now) if reset_weekly else None
     try:
         redis = await get_redis_async()
-        await redis.delete(*keys_to_delete)
+        # Daily and weekly keys hash to different cluster slots — multi-key
+        # DELETE would raise CROSSSLOT, so issue separate calls.
+        await redis.delete(d_key)
+        if w_key is not None:
+            await redis.delete(w_key)
     except (RedisError, ConnectionError, OSError):
         logger.warning("Redis unavailable for resetting user usage")
         raise

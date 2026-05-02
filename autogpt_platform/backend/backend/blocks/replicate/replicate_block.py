@@ -16,11 +16,23 @@ from backend.blocks.replicate._auth import (
     TEST_CREDENTIALS_INPUT,
     ReplicateCredentialsInput,
 )
-from backend.blocks.replicate._helper import ReplicateOutputs, extract_result
-from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
+from backend.blocks.replicate._helper import extract_result
+from backend.data.model import (
+    APIKeyCredentials,
+    CredentialsField,
+    NodeExecutionStats,
+    SchemaField,
+)
 from backend.util.exceptions import BlockExecutionError, BlockInputError
 
 logger = logging.getLogger(__name__)
+
+# Replicate $/sec varies by hardware tier (CPU $0.000100 → 8×H100 $0.005600).
+# The API doesn't return which tier ran the prediction, so we pick a single
+# rate that covers up to A100-80GB ($0.001875/sec) without under-billing.
+# Cheaper hardware (L40S/L4/T4) is over-billed slightly; multi-GPU configs
+# are still under-billed but are rare in user-facing community models.
+_REPLICATE_USD_PER_SEC = 0.002000
 
 
 class ReplicateModelBlock(Block):
@@ -138,20 +150,54 @@ class ReplicateModelBlock(Block):
         """
         Run the Replicate model. This method can be mocked for testing.
 
+        Uses predictions.async_create + async_wait instead of async_run so
+        we can read ``prediction.metrics.predict_time`` after completion
+        and emit it as ``provider_cost`` for the COST_USD resolver.
+
         Args:
             model_ref: The model reference (e.g., "owner/model-name:version")
             model_inputs: The inputs to pass to the model
             api_key: The Replicate API key as SecretStr
 
         Returns:
-            Tuple of (result, prediction_id)
+            Model output (same shape as previous async_run path)
         """
         api_key_str = api_key.get_secret_value()
         client = ReplicateClient(api_token=api_key_str)
-        output: ReplicateOutputs = await client.async_run(
-            model_ref, input=model_inputs, wait=False
-        )  # type: ignore they suck at typing
 
-        result = extract_result(output)
+        # Replicate SDK: version-pinned refs use `version=`; unpinned use
+        # `model=`. Matches the `owner/name[:version]` contract above.
+        if ":" in model_ref:
+            model_name, version = model_ref.split(":", 1)
+            prediction = await client.predictions.async_create(
+                version=version, input=model_inputs
+            )
+        else:
+            prediction = await client.predictions.async_create(
+                model=model_ref, input=model_inputs
+            )
 
-        return result
+        await prediction.async_wait()
+
+        # async_wait returns normally on "failed"/"canceled" — only async_run
+        # raises. Without this check we'd bill partial compute time on a
+        # failed run and silently yield empty output.
+        if prediction.status == "failed":
+            raise RuntimeError(
+                f"Replicate prediction failed: {prediction.error or 'unknown error'}"
+            )
+        if prediction.status == "canceled":
+            raise RuntimeError("Replicate prediction was canceled")
+
+        if prediction.metrics and prediction.metrics.get("predict_time"):
+            predict_time = float(prediction.metrics["predict_time"])
+            self.merge_stats(
+                NodeExecutionStats(
+                    provider_cost=predict_time * _REPLICATE_USD_PER_SEC,
+                    provider_cost_type="cost_usd",
+                )
+            )
+
+        if prediction.output is None:
+            raise RuntimeError("Replicate prediction returned no output")
+        return extract_result(prediction.output)

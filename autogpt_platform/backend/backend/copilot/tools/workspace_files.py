@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.context import (
     E2B_WORKDIR,
     get_current_sandbox,
@@ -19,7 +20,6 @@ from backend.copilot.context import (
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.sandbox import make_session_path
 from backend.util.settings import Config
-from backend.util.virus_scanner import scan_content_safe
 from backend.util.workspace import WorkspaceManager
 
 from .base import BaseTool
@@ -837,7 +837,6 @@ class WriteWorkspaceFileTool(BaseTool):
             )
 
         try:
-            await scan_content_safe(content_bytes, filename=filename)
             manager = await get_workspace_manager(user_id, session_id)
             rec = await manager.write_file(
                 content=content_bytes,
@@ -895,8 +894,21 @@ class WriteWorkspaceFileTool(BaseTool):
                 message=msg,
                 session_id=session_id,
             )
-        except ValueError as e:
+        except VirusDetectedError as e:
+            logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
             return ErrorResponse(message=str(e), session_id=session_id)
+        except VirusScanError as e:
+            logger.error(f"Virus scan infrastructure error: {e}", exc_info=True)
+            return ErrorResponse(message=str(e), session_id=session_id)
+        except ValueError as e:
+            msg = str(e)
+            if msg.startswith("Storage limit exceeded"):
+                msg += (
+                    " Use list_workspace_files to find candidates, then "
+                    "delete_workspace_file to free space and retry — or ask "
+                    "the user to upgrade their plan."
+                )
+            return ErrorResponse(message=msg, session_id=session_id)
         except Exception as e:
             logger.error(f"Error writing workspace file: {e}", exc_info=True)
             return ErrorResponse(
