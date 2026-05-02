@@ -1,6 +1,6 @@
 "use client";
 
-import { ClockIcon, InfoIcon } from "@phosphor-icons/react";
+import { InfoIcon } from "@phosphor-icons/react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Select } from "@/components/atoms/Select/Select";
@@ -11,12 +11,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 
-import {
-  EASE_OUT,
-  TIMEZONES,
-  findTimezoneLabel,
-  formatGmtOffset,
-} from "../../helpers";
+import { EASE_OUT, TIMEZONES, findTimezoneLabel } from "../../helpers";
 
 interface Props {
   value: string;
@@ -26,7 +21,6 @@ interface Props {
 
 export function TimezoneCard({ value, onChange, index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
-  const offset = formatGmtOffset(value);
 
   const options = TIMEZONES.some((t) => t.value === value)
     ? TIMEZONES
@@ -69,31 +63,17 @@ export function TimezoneCard({ value, onChange, index = 0 }: Props) {
             </Tooltip>
           </div>
 
-          <div className="flex h-fit items-center gap-2">
-            <Select
-              id="timezone"
-              label="Timezone"
-              hideLabel
-              value={value}
-              onValueChange={onChange}
-              options={options}
-              placeholder="Select your timezone"
-              size="small"
-              wrapperClassName="!mb-0 w-fit"
-            />
-            {offset ? (
-              <div className="flex h-fit shrink-0 items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 tabular-nums text-zinc-600">
-                <ClockIcon size={14} weight="duotone" />
-                <Text
-                  variant="small-medium"
-                  as="span"
-                  className="text-zinc-600"
-                >
-                  {offset}
-                </Text>
-              </div>
-            ) : null}
-          </div>
+          <Select
+            id="timezone"
+            label="Timezone"
+            hideLabel
+            value={value}
+            onValueChange={onChange}
+            options={options}
+            placeholder="Select your timezone"
+            size="small"
+            wrapperClassName="!mb-0 w-fit"
+          />
         </div>
       </div>
     </motion.section>
