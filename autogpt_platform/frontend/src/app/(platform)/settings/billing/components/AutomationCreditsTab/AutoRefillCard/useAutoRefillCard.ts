@@ -46,9 +46,7 @@ export function useAutoRefillCard() {
     initializedForOpenRef.current = true;
     // Backend minimum is $5 — pre-fill with the floor so the form is valid
     // by default and matches the "$5 minimum" copy in the empty state.
-    setThreshold(
-      config?.threshold ? (config.threshold / 100).toString() : "5",
-    );
+    setThreshold(config?.threshold ? (config.threshold / 100).toString() : "5");
     setRefillAmount(config?.amount ? (config.amount / 100).toString() : "5");
   }, [open, config]);
 
