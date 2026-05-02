@@ -479,6 +479,34 @@ describe("SettingsProfilePage - save & discard", () => {
     });
   });
 
+  test("background refetch with unchanged server data does not clobber in-progress link edits", async () => {
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+
+    render(<SettingsProfilePage />);
+
+    const link = (await screen.findByLabelText(
+      /^link 1$/i,
+    )) as HTMLInputElement;
+
+    // User edits a link.
+    fireEvent.change(link, { target: { value: "https://edited.dev" } });
+    expect(link.value).toBe("https://edited.dev");
+
+    // Simulate a background refetch returning the SAME server data — this
+    // used to regenerate LinkRow IDs and replace state, wiping the edit
+    // and triggering a row exit/enter flash.
+    server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
+    fireEvent(window, new Event("focus"));
+
+    // Wait a tick to let any refetch effect run, then assert the edit
+    // survived.
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText(/^link 1$/i) as HTMLInputElement).value,
+      ).toBe("https://edited.dev");
+    });
+  });
+
   test("Save shows a destructive toast on a 422", async () => {
     server.use(
       getGetV2GetUserProfileMockHandler200(makeProfile()),

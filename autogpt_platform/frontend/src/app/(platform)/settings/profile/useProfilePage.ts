@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import {
@@ -55,12 +55,23 @@ export function useProfilePage() {
   );
 
   const [formState, setFormState] = useState<ProfileFormState>(EMPTY_FORM);
+  const lastSyncedRef = useRef<ProfileFormState>(EMPTY_FORM);
 
   useEffect(
     function syncFormStateOnDataLoad() {
       if (!profileQuery.data) return;
       const incoming = profileToFormState(profileQuery.data);
-      setFormState((prev) => (isFormDirty(incoming, prev) ? incoming : prev));
+      setFormState((prev) => {
+        if (!isFormDirty(incoming, prev)) {
+          lastSyncedRef.current = incoming;
+          return prev;
+        }
+        // Don't clobber unsaved edits on background refetches — only hydrate
+        // when the local form is still pristine relative to the last sync.
+        if (isFormDirty(lastSyncedRef.current, prev)) return prev;
+        lastSyncedRef.current = incoming;
+        return incoming;
+      });
     },
     [profileQuery.data],
   );

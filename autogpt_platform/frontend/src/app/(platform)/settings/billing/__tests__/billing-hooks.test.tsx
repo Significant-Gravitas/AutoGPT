@@ -323,6 +323,85 @@ describe("useAutoRefillCard", () => {
     // Mutation never started.
     expect(result.current.isSaving).toBe(false);
   });
+
+  it("opening the dialog with no saved config pre-fills $5/$5 so the form is valid by default", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 0,
+        threshold: 0,
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setOpen(true));
+
+    // Empty-state copy in the dialog says "min $5"; defaults must match.
+    await waitFor(() => {
+      expect(result.current.threshold).toBe("5");
+      expect(result.current.refillAmount).toBe("5");
+      expect(result.current.isValid).toBe(true);
+    });
+  });
+
+  it("opening the dialog with saved config pre-fills the saved threshold and refill amount", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 2000,
+        threshold: 750,
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setOpen(true));
+
+    await waitFor(() => {
+      // 750 cents → $7.50; 2000 cents → $20.
+      expect(result.current.threshold).toBe("7.5");
+      expect(result.current.refillAmount).toBe("20");
+    });
+  });
+
+  it("does not clobber in-progress edits if the dialog is re-opened without first closing", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/auto-top-up", {
+        amount: 0,
+        threshold: 0,
+      }),
+    );
+
+    const { result } = renderHook(() => useAutoRefillCard(), {
+      wrapper: makeWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    act(() => result.current.setOpen(true));
+    await waitFor(() => expect(result.current.threshold).toBe("5"));
+
+    // User starts editing — increases the threshold beyond the default.
+    act(() => {
+      result.current.setThreshold("25");
+      result.current.setRefillAmount("50");
+    });
+
+    // Re-trigger the open=true effect by toggling open again WITHOUT closing
+    // (e.g. another effect fires while open). Defaults must NOT overwrite
+    // the user's in-progress edits.
+    act(() => result.current.setOpen(true));
+
+    expect(result.current.threshold).toBe("25");
+    expect(result.current.refillAmount).toBe("50");
+  });
 });
 
 describe("usePaymentMethodCard", () => {

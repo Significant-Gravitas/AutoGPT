@@ -22,11 +22,13 @@ import { SubscriptionTab } from "./components/SubscriptionTab/SubscriptionTab";
 
 type BillingTab = "subscription" | "automation-credits";
 
+function isBillingTab(value: string): value is BillingTab {
+  return value === "subscription" || value === "automation-credits";
+}
+
 function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   const tabParam = searchParams.get("tab");
-  if (tabParam === "automation-credits" || tabParam === "subscription") {
-    return tabParam;
-  }
+  if (tabParam && isBillingTab(tabParam)) return tabParam;
   // Topup flow only originates from the Automation Credits tab — when Stripe
   // redirects back, return the user to where they started instead of the
   // Subscription default.
@@ -46,6 +48,10 @@ export default function SettingsBillingPage() {
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
   );
+
+  function handleTabChange(value: string) {
+    if (isBillingTab(value)) setActiveTab(value);
+  }
 
   useEffect(function setBillingDocumentTitle() {
     document.title = "Billing – AutoGPT Platform";
@@ -116,10 +122,7 @@ export default function SettingsBillingPage() {
         Billing
       </Text>
 
-      <TabsLine
-        value={activeTab}
-        onValueChange={(value) => setActiveTab(value as BillingTab)}
-      >
+      <TabsLine value={activeTab} onValueChange={handleTabChange}>
         <TabsLineList flush className="ml-4 overflow-x-auto">
           <TabsLineTrigger value="subscription">Subscription</TabsLineTrigger>
           <TabsLineTrigger value="automation-credits">
