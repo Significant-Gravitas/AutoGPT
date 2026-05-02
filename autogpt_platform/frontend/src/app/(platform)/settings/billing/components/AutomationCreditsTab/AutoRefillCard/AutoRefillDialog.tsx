@@ -61,10 +61,7 @@ export function AutoRefillDialog({
           />
 
           <div className="flex items-start gap-2 rounded-[12px] bg-amber-50 px-3 py-2">
-            <WarningIcon
-              size={18}
-              className="mt-0.5 shrink-0 text-amber-600"
-            />
+            <WarningIcon size={18} className="mt-0.5 shrink-0 text-amber-600" />
             <Text variant="small" as="span" className="text-amber-700">
               A single agent run can only trigger one auto-refill. Set a refill
               amount that covers your typical usage so agents don&apos;t pause
