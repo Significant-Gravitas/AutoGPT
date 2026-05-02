@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import tw from "tailwind-styled-components";
 
 interface RadarChartProps {
-  data: any;
+  data?: any;
 }
 
 const RadarChart: React.FC<RadarChartProps> = ({ data }) => {

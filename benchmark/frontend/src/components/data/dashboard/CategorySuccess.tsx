@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import tw from "tailwind-styled-components";
 
 interface CategorySuccessProps {
-  data: any;
+  data?: any;
 }
 
 const CategorySuccess: React.FC<CategorySuccessProps> = ({ data }) => {

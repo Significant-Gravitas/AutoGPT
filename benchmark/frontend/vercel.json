@@ -1,0 +1,6 @@
+{
+  "framework": "nextjs",
+  "installCommand": "npm install --ignore-scripts",
+  "buildCommand": "SKIP_ENV_VALIDATION=1 npm run build",
+  "outputDirectory": ".next"
+}

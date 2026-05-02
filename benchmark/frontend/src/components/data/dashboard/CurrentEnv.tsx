@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import tw from "tailwind-styled-components";
 
 interface CurrentEnvProps {
-  data: any;
+  data?: any;
 }
 
 const CurrentEnv: React.FC<CurrentEnvProps> = ({ data }) => {
@@ -18,7 +18,7 @@ const CurrentEnv: React.FC<CurrentEnvProps> = ({ data }) => {
       <EnvWrapper>
         <EnvLabel>Agent Name</EnvLabel>
         <EnvInput
-          onChange={(e) => setAgentName(e.targetValue)}
+          onChange={(e) => setAgentName(e.target.value)}
           placeholder="mini-agi"
         />
       </EnvWrapper>
