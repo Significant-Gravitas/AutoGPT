@@ -48,13 +48,13 @@ export function useProfilePage() {
     },
   });
 
-  const initialState: ProfileFormState = useMemo(
-    () =>
-      profileQuery.data ? profileToFormState(profileQuery.data) : EMPTY_FORM,
-    [profileQuery.data],
-  );
-
   const [formState, setFormState] = useState<ProfileFormState>(EMPTY_FORM);
+  // Pristine baseline for dirty detection + Discard. Held as state (not a
+  // ref) so dirty re-derives when it changes; pinned to the current
+  // formState's link IDs on every sync so Discard never swaps IDs and
+  // triggers an AnimatePresence flash.
+  const [pristineState, setPristineState] =
+    useState<ProfileFormState>(EMPTY_FORM);
   const formStateRef = useRef<ProfileFormState>(EMPTY_FORM);
   const lastSyncedRef = useRef<ProfileFormState>(EMPTY_FORM);
   const hasHydratedRef = useRef(false);
@@ -75,6 +75,7 @@ export function useProfilePage() {
         hasHydratedRef.current = true;
         lastSyncedRef.current = incoming;
         setFormState(incoming);
+        setPristineState(incoming);
         return;
       }
       // Refetch returned the same content as the local form — keep prev to
@@ -82,6 +83,10 @@ export function useProfilePage() {
       // synced snapshot so future dirty checks compare against the latest.
       if (!isFormDirty(incoming, prev)) {
         lastSyncedRef.current = incoming;
+        // Pin the pristine baseline to the current formState (with its
+        // existing link IDs) so a subsequent Discard restores the same
+        // rows — not freshly-keyed copies that would re-trigger animations.
+        setPristineState(prev);
         return;
       }
       // User has edits relative to the last synced snapshot — never clobber.
@@ -89,14 +94,15 @@ export function useProfilePage() {
       // Form pristine, server data changed — hydrate with the new snapshot.
       lastSyncedRef.current = incoming;
       setFormState(incoming);
+      setPristineState(incoming);
     },
     [profileQuery.data],
   );
 
   const validation = useMemo(() => validateForm(formState), [formState]);
   const dirty = useMemo(
-    () => isFormDirty(initialState, formState),
-    [initialState, formState],
+    () => isFormDirty(pristineState, formState),
+    [pristineState, formState],
   );
 
   function patchField<K extends keyof ProfileFormState>(
@@ -131,7 +137,7 @@ export function useProfilePage() {
   }
 
   function discardChanges() {
-    setFormState(initialState);
+    setFormState(pristineState);
   }
 
   const uploadMutation = usePostV2UploadSubmissionMedia({
@@ -200,7 +206,6 @@ export function useProfilePage() {
     error: profileQuery.error,
     refetch: profileQuery.refetch,
     formState,
-    initialState,
     patchField,
     setLink,
     addLink,

@@ -479,6 +479,43 @@ describe("SettingsProfilePage - save & discard", () => {
     });
   });
 
+  test("Discard restores the row in place (no remount → no AnimatePresence flash)", async () => {
+    server.use(
+      getGetV2GetUserProfileMockHandler200(
+        makeProfile({ links: ["https://a.dev", "https://b.dev"] }),
+      ),
+    );
+
+    render(<SettingsProfilePage />);
+
+    const link1Before = (await screen.findByLabelText(
+      /^link 1$/i,
+    )) as HTMLInputElement;
+    // Capture the input element identity. If Discard re-keys the row,
+    // AnimatePresence remounts it and this reference becomes a stale node.
+    const link1Node = link1Before;
+
+    // Trigger a background refetch with the same data — this used to
+    // regenerate link IDs via makeLinkRow() and cause Discard to remount
+    // every row.
+    server.use(
+      getGetV2GetUserProfileMockHandler200(
+        makeProfile({ links: ["https://a.dev", "https://b.dev"] }),
+      ),
+    );
+    fireEvent(window, new Event("focus"));
+
+    fireEvent.change(link1Before, { target: { value: "https://edited.dev" } });
+    fireEvent.click(screen.getByRole("button", { name: /discard/i }));
+
+    await waitFor(() => {
+      expect(link1Node.value).toBe("https://a.dev");
+    });
+    // The original input node is still in the document — it was never
+    // unmounted/remounted by Discard.
+    expect(link1Node.isConnected).toBe(true);
+  });
+
   test("background refetch with unchanged server data does not clobber in-progress link edits", async () => {
     server.use(getGetV2GetUserProfileMockHandler200(makeProfile()));
 
