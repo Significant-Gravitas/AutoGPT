@@ -523,6 +523,45 @@ Summarizing lengthy research papers or articles to quickly grasp the main points
 
 ---
 
+## Cajal Scientific Paper Generator
+
+### What it is
+Generates a citation-grounded scientific paper draft using verified arXiv references and a local Ollama model.
+
+### How it works
+<!-- MANUAL: how_it_works -->
+The block searches arXiv for the requested topic, converts the returned Atom feed into a verified reference list, and sends that reference context to a local Ollama model. The prompt requires a seven-section Markdown paper and instructs the model to cite only the supplied arXiv references, avoid invented metadata, and mark unsupported empirical results as proposed or expected results.
+<!-- END MANUAL -->
+
+### Inputs
+
+| Input | Description | Type | Required |
+|-------|-------------|------|----------|
+| topic | Research topic or question for the scientific paper. | str | Yes |
+| instructions | Additional paper requirements, constraints, or audience context. | str | No |
+| model | Ollama model name to use for paper generation. | str | No |
+| ollama_host | Ollama host for local inference. | str | No |
+| citation_count | Number of arXiv references to retrieve and require in the paper. | int | No |
+| temperature | Ollama sampling temperature. | float | No |
+| max_tokens | Maximum number of tokens Ollama should generate. | int | No |
+
+### Outputs
+
+| Output | Description | Type |
+|--------|-------------|------|
+| error | Error message if the operation failed | str |
+| paper | Generated scientific paper in Markdown format. | str |
+| references | Verified arXiv references supplied to the generator. | List[ArxivReference] |
+| citations_context | Formatted citation context sent to the local model. | str |
+| prompt | Messages sent to the local Ollama model. | List[Dict[str, str]] |
+
+### Possible use case
+<!-- MANUAL: use_case -->
+Create a first draft for a literature-grounded research proposal, then pass the Markdown paper and reference list into downstream review, editing, or document publishing blocks.
+<!-- END MANUAL -->
+
+---
+
 ## Claude Code
 
 ### What it is
