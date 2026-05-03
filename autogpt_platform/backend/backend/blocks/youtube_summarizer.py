@@ -1,19 +1,12 @@
 """
 YouTube Transcript Summarizer Block
-Fetches a YouTube transcript and processes it with an LLM.
-Does not require a proxy - uses the youtube-transcript-api directly.
+Fetches a YouTube transcript via Supadata API and summarizes it with an LLM.
 """
 import logging
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
-from youtube_transcript_api import YouTubeTranscriptApi
-from youtube_transcript_api._errors import (
-    CouldNotRetrieveTranscript,
-    NoTranscriptFound,
-    TranscriptsDisabled,
-    VideoUnavailable,
-)
+import requests
 
 from backend.blocks._base import (
     BlockCategory,
@@ -37,13 +30,15 @@ from backend.data.model import APIKeyCredentials, NodeExecutionStats, SchemaFiel
 logger = logging.getLogger(__name__)
 
 MAX_TRANSCRIPT_CHARS = 12_000
+SUPADATA_ENDPOINT = "https://api.supadata.ai/v1/transcript"
 
 
 class YouTubeTranscriptSummarizerBlock(AIBlockBase):
     """
-    Fetches the transcript of a YouTube video and summarizes it using an LLM.
+    Fetches the transcript of a YouTube video via Supadata API
+    and summarizes it using an LLM.
 
-    Input  : YouTube URL + optional custom prompt + LLM model choice
+    Input  : YouTube URL + Supadata API key (optional) + LLM model
     Output : video_id, transcript (raw), summary (LLM output), error
     """
 
@@ -52,6 +47,16 @@ class YouTubeTranscriptSummarizerBlock(AIBlockBase):
             title="YouTube URL",
             description="URL of the YouTube video to summarize.",
             placeholder="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        )
+        supadata_api_key: Optional[str] = SchemaField(
+            title="Supadata API Key (optional)",
+            description=(
+                "Required for self-hosted users. "
+                "Get a free key (100 requests/month, no credit card) at supadata.ai. "
+                "AutoGPT Cloud users can leave this blank."
+            ),
+            placeholder="Leave blank (AutoGPT Cloud) or enter your Supadata key",
+            default=None,
         )
         custom_prompt: Optional[str] = SchemaField(
             title="Custom Prompt (optional)",
@@ -81,12 +86,14 @@ class YouTubeTranscriptSummarizerBlock(AIBlockBase):
             input_schema=YouTubeTranscriptSummarizerBlock.Input,
             output_schema=YouTubeTranscriptSummarizerBlock.Output,
             description=(
-                "Fetches a YouTube video transcript and summarizes it with an LLM. "
-                "No proxy required."
+                "Fetches a YouTube video transcript via Supadata API "
+                "and summarizes it with an LLM. "
+                "Self-hosted users need a free Supadata API key from supadata.ai."
             ),
             categories={BlockCategory.AI, BlockCategory.SOCIAL},
             test_input={
                 "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "supadata_api_key": None,
                 "custom_prompt": None,
                 "model": DEFAULT_LLM_MODEL,
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -98,7 +105,7 @@ class YouTubeTranscriptSummarizerBlock(AIBlockBase):
                 ("summary", "The video is a classic 80s pop song by Rick Astley."),
             ],
             test_mock={
-                "fetch_transcript": lambda video_id: (
+                "fetch_transcript": lambda video_id, api_key: (
                     "Never gonna give you up Never gonna let you down"
                 ),
                 "llm_call": lambda *args, **kwargs: LLMResponse(
@@ -129,20 +136,42 @@ class YouTubeTranscriptSummarizerBlock(AIBlockBase):
                 return parsed.path.split("/")[2]
         raise ValueError(f"Cannot extract video ID from: {url}")
 
-    def fetch_transcript(self, video_id: str) -> str:
-        """Fetch and concatenate all transcript snippets for a video."""
-        try:
-            api = YouTubeTranscriptApi()
-            fetched = api.fetch(video_id)
-            return " ".join(snippet.text for snippet in fetched)
-        except TranscriptsDisabled:
-            raise RuntimeError("Transcripts are disabled for this video.")
-        except NoTranscriptFound:
-            raise RuntimeError("No transcript available for this video.")
-        except VideoUnavailable:
-            raise RuntimeError("Video is unavailable or private.")
-        except CouldNotRetrieveTranscript as exc:
-            raise RuntimeError(f"Could not retrieve transcript: {exc}")
+    def fetch_transcript(self, video_id: str, api_key: Optional[str]) -> str:
+        """Fetch transcript via Supadata API."""
+        if not api_key:
+            raise RuntimeError(
+                "Supadata API key is required. "
+                "Get a free key at supadata.ai and enter it in the block settings."
+            )
+
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        response = requests.get(
+            SUPADATA_ENDPOINT,
+            params={"url": url, "text": "true", "lang": "en"},
+            headers={"x-api-key": api_key},
+            timeout=30,
+        )
+
+        if response.status_code == 401:
+            raise RuntimeError("Invalid Supadata API key.")
+        if response.status_code == 404:
+            raise RuntimeError("No transcript found for this video.")
+        if not response.ok:
+            raise RuntimeError(
+                f"Supadata API error {response.status_code}: {response.text[:200]}"
+            )
+
+        data = response.json()
+        content = data.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                item.get("text", "") for item in content if item.get("text")
+            )
+
+        if not content.strip():
+            raise RuntimeError("Transcript is empty for this video.")
+
+        return content
 
     async def llm_call(
         self,
@@ -172,7 +201,7 @@ class YouTubeTranscriptSummarizerBlock(AIBlockBase):
     ) -> BlockOutput:
         try:
             video_id = self.extract_video_id(input_data.youtube_url)
-            transcript = self.fetch_transcript(video_id)
+            transcript = self.fetch_transcript(video_id, input_data.supadata_api_key)
         except Exception as exc:
             yield "error", str(exc)
             return
