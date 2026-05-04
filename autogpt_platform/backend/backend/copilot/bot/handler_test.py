@@ -6,7 +6,7 @@ import pytest
 
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
-from .adapters.base import ChannelType, MessageContext
+from .adapters.base import ChannelType, MessageContext, MessageHistoryEntry
 from .bot_backend import LinkTokenResult, ResolveResult
 from .handler import MessageHandler, TargetState
 
@@ -20,6 +20,8 @@ def _ctx(
     user_id: str = "user-1",
     username: str = "Bently",
     text: str = "hello bot",
+    bot_mentioned: bool = False,
+    thread_history: tuple[MessageHistoryEntry, ...] = (),
 ) -> MessageContext:
     return MessageContext(
         platform="discord",
@@ -30,6 +32,8 @@ def _ctx(
         user_id=user_id,
         username=username,
         text=text,
+        bot_mentioned=bot_mentioned,
+        thread_history=thread_history,
     )
 
 
@@ -108,6 +112,28 @@ class TestEnsureLinked:
         adapter.send_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_unlinked_mentioned_thread_tells_user_to_setup(self):
+        api = _api(server_linked=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        with (
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(
+                _ctx(channel_type="thread", bot_mentioned=True), adapter
+            )
+
+        subscribe.assert_not_awaited()
+        adapter.send_message.assert_awaited_once()
+        assert "/setup" in adapter.send_message.await_args.args[1]
+
+    @pytest.mark.asyncio
     async def test_unlinked_dm_prompts_link_flow(self):
         handler = MessageHandler(_api(user_linked=False))
         adapter = _adapter()
@@ -179,6 +205,55 @@ class TestResolveTarget:
         adapter.create_thread = AsyncMock(return_value=None)
         result = await handler._resolve_target(_ctx(channel_id="parent-chan"), adapter)
         assert result == "parent-chan"
+
+
+class TestThreadAdoption:
+    @pytest.mark.asyncio
+    async def test_mentioned_unsubscribed_thread_is_subscribed(self):
+        handler = MessageHandler(_api())
+        adapter = _adapter()
+        enqueue = AsyncMock()
+
+        with (
+            patch.object(handler, "_enqueue_and_process", new=enqueue),
+            patch(
+                "backend.copilot.bot.handler.threads.is_subscribed",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "backend.copilot.bot.handler.threads.subscribe", new=AsyncMock()
+            ) as subscribe,
+        ):
+            await handler.handle(
+                _ctx(
+                    channel_type="thread",
+                    channel_id="thread-existing",
+                    bot_mentioned=True,
+                ),
+                adapter,
+            )
+
+        subscribe.assert_awaited_once_with("discord", "thread-existing")
+        enqueue.assert_awaited_once()
+
+    def test_thread_history_is_included_in_message_text(self):
+        handler = MessageHandler(_api())
+        text = handler._message_text(
+            _ctx(
+                channel_type="thread",
+                text="what should we do?",
+                thread_history=(
+                    MessageHistoryEntry("Alice", "u-1", "I think option A"),
+                    MessageHistoryEntry("Bob", "u-2", "Option B is safer"),
+                ),
+            )
+        )
+
+        assert "Recent thread context" in text
+        assert "Alice (Discord user ID: u-1)" in text
+        assert "I think option A" in text
+        assert "Current message" in text
+        assert "what should we do?" in text
 
 
 class TestBatching:
