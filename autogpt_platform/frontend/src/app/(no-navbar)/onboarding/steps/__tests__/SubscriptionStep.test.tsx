@@ -104,6 +104,55 @@ describe("SubscriptionStep", () => {
     expect(capturedProfileBody!.pain_points).toEqual(["Repetitive work"]);
   });
 
+  test("toggling yearly + selecting Pro forwards billing_cycle=yearly", async () => {
+    let capturedTierBody: {
+      tier?: string;
+      billing_cycle?: string;
+    } | null = null;
+
+    server.use(
+      http.post("*/api/onboarding/profile", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Yearly billing/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    expect(capturedTierBody!.tier).toBe("PRO");
+    expect(capturedTierBody!.billing_cycle).toBe("yearly");
+  });
+
+  test("default monthly billing forwards billing_cycle=monthly", async () => {
+    let capturedTierBody: { billing_cycle?: string } | null = null;
+
+    server.use(
+      http.post("*/api/onboarding/profile", () =>
+        HttpResponse.json({}, { status: 200 }),
+      ),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedTierBody = (await request.json()) as typeof capturedTierBody;
+        return HttpResponse.json({ url: null });
+      }),
+    );
+
+    render(<SubscriptionStep />);
+    fireEvent.click(screen.getByRole("button", { name: /Get Pro/i }));
+
+    await waitFor(() => {
+      expect(capturedTierBody).not.toBeNull();
+    });
+    expect(capturedTierBody!.billing_cycle).toBe("monthly");
+  });
+
   test("selecting Max uses the MAX tier in the Stripe Checkout request", async () => {
     let capturedTierBody: { tier?: string } | null = null;
 

@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import stripe
 from fastapi.concurrency import run_in_threadpool
@@ -53,6 +53,8 @@ base_url = settings.config.frontend_base_url or settings.config.platform_base_ur
 # Constants for test compatibility
 POSTGRES_INT_MAX = 2147483647
 POSTGRES_INT_MIN = -2147483648
+
+BillingCycle = Literal["monthly", "yearly"]
 
 
 class UsageTransactionMetadata(BaseModel):
@@ -1776,7 +1778,9 @@ async def _schedule_downgrade_at_period_end(
 
 
 async def modify_stripe_subscription_for_tier(
-    user_id: str, tier: SubscriptionTier
+    user_id: str,
+    tier: SubscriptionTier,
+    billing_cycle: BillingCycle = "monthly",
 ) -> bool:
     """Change a Stripe subscription to a new paid tier.
 
@@ -1799,7 +1803,7 @@ async def modify_stripe_subscription_for_tier(
     Raises stripe.StripeError on API failures so callers can propagate a 502.
     Raises ValueError when no Stripe price ID is configured for the tier.
     """
-    price_id = await get_subscription_price_id(tier)
+    price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"No Stripe price ID configured for tier {tier}")
 
@@ -2076,14 +2080,20 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
-@cached(ttl_seconds=60, maxsize=8, cache_none=False)
-async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
-    """Return Stripe Price ID for a tier from LaunchDarkly, cached for 60 seconds.
+@cached(ttl_seconds=60, maxsize=16, cache_none=False)
+async def get_subscription_price_id(
+    tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
+) -> str | None:
+    """Return Stripe Price ID for a tier+cycle from LaunchDarkly, cached 60s.
 
     Reads the ``copilot-tier-stripe-prices`` JSON flag once and looks up the
-    requested tier. The flag is a JSON object keyed by tier enum value
-    (``{"PRO": "price_xxx", "MAX": "price_yyy"}``); tiers missing from the
-    payload resolve to ``None`` ("not offered").
+    requested tier. Two payload shapes are supported:
+
+    - Legacy flat: ``{"PRO": "price_xxx"}`` — value is the monthly price ID.
+      Yearly requests against this shape return ``None`` (fail-closed: we
+      never silently bill a user for monthly when they asked for yearly).
+    - Nested: ``{"PRO": {"monthly": "price_m", "yearly": "price_y"}}`` — the
+      matching cycle's price ID is returned, or ``None`` if absent.
 
     ``cache_none=False`` prevents a transient LD failure from caching ``None``
     and blocking subscription upgrades for the full 60-second TTL window.
@@ -2099,8 +2109,16 @@ async def get_subscription_price_id(tier: SubscriptionTier) -> str | None:
             raw,
         )
         return None
-    price_id = raw.get(tier.value)
-    return price_id if isinstance(price_id, str) and price_id else None
+    entry = raw.get(tier.value)
+    if isinstance(entry, str):
+        # Legacy flat shape: value is monthly-only. Fail closed for yearly.
+        if billing_cycle != "monthly":
+            return None
+        return entry or None
+    if isinstance(entry, dict):
+        price_id = entry.get(billing_cycle)
+        return price_id if isinstance(price_id, str) and price_id else None
+    return None
 
 
 async def create_subscription_checkout(
@@ -2108,9 +2126,10 @@ async def create_subscription_checkout(
     tier: SubscriptionTier,
     success_url: str,
     cancel_url: str,
+    billing_cycle: BillingCycle = "monthly",
 ) -> str:
     """Create a Stripe Checkout Session for a subscription. Returns the redirect URL."""
-    price_id = await get_subscription_price_id(tier)
+    price_id = await get_subscription_price_id(tier, billing_cycle)
     if not price_id:
         raise ValueError(f"Subscription not available for tier {tier.value}")
     customer_id = await get_stripe_customer_id(user_id)
@@ -2121,7 +2140,13 @@ async def create_subscription_checkout(
         line_items=[{"price": price_id, "quantity": 1}],
         success_url=success_url,
         cancel_url=cancel_url,
-        subscription_data={"metadata": {"user_id": user_id, "tier": tier.value}},
+        subscription_data={
+            "metadata": {
+                "user_id": user_id,
+                "tier": tier.value,
+                "billing_cycle": billing_cycle,
+            }
+        },
         allow_promotion_codes=True,
     )
     if not session.url:
@@ -2225,20 +2250,25 @@ async def sync_subscription_from_stripe(stripe_subscription: dict) -> None:
         items = stripe_subscription.get("items", {}).get("data", [])
         if items:
             price_id = items[0].get("price", {}).get("id", "")
-        basic_price, pro_price, max_price, business_price = await asyncio.gather(
-            get_subscription_price_id(SubscriptionTier.BASIC),
-            get_subscription_price_id(SubscriptionTier.PRO),
-            get_subscription_price_id(SubscriptionTier.MAX),
-            get_subscription_price_id(SubscriptionTier.BUSINESS),
+        priceable = (
+            SubscriptionTier.BASIC,
+            SubscriptionTier.PRO,
+            SubscriptionTier.MAX,
+            SubscriptionTier.BUSINESS,
         )
-        if price_id and basic_price and price_id == basic_price:
-            tier = SubscriptionTier.BASIC
-        elif price_id and pro_price and price_id == pro_price:
-            tier = SubscriptionTier.PRO
-        elif price_id and max_price and price_id == max_price:
-            tier = SubscriptionTier.MAX
-        elif price_id and business_price and price_id == business_price:
-            tier = SubscriptionTier.BUSINESS
+        # Gather monthly + yearly price IDs for every priceable tier so a user
+        # on a yearly plan still maps back to the correct tier.
+        prices = await asyncio.gather(
+            *[get_subscription_price_id(t, "monthly") for t in priceable],
+            *[get_subscription_price_id(t, "yearly") for t in priceable],
+        )
+        price_to_tier: dict[str, SubscriptionTier] = {}
+        for t, pid in zip(priceable + priceable, prices):
+            if pid:
+                price_to_tier[pid] = t
+        matched = price_to_tier.get(price_id) if price_id else None
+        if matched is not None:
+            tier = matched
         else:
             # Unknown or unconfigured price ID — preserve the user's current tier
             # rather than defaulting to BASIC. This prevents accidental downgrades

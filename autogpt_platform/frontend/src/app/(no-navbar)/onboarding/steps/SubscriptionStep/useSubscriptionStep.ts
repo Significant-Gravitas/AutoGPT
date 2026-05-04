@@ -100,6 +100,7 @@ export function useSubscriptionStep() {
           tier,
           success_url: `${baseUrl}?step=5&subscription=success`,
           cancel_url: `${baseUrl}?step=4&subscription=cancelled`,
+          billing_cycle: isYearly ? "yearly" : "monthly",
         },
       });
       const url = (result?.data as CheckoutResponse | undefined)?.url;

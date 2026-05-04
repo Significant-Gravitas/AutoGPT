@@ -705,6 +705,7 @@ class SubscriptionTierRequest(BaseModel):
     tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
+    billing_cycle: Literal["monthly", "yearly"] = "monthly"
 
 
 class SubscriptionStatusResponse(BaseModel):
@@ -953,7 +954,7 @@ async def update_subscription_tier(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
-    target_price_id = await get_subscription_price_id(tier)
+    target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
 
     # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
     # cancel_at_period_end=True lets the webhook flip the DB tier. No active
@@ -998,7 +999,9 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await modify_stripe_subscription_for_tier(user_id, tier)
+        modified = await modify_stripe_subscription_for_tier(
+            user_id, tier, request.billing_cycle
+        )
         if modified:
             return await get_subscription_status(user_id)
     except ValueError as e:
@@ -1084,6 +1087,7 @@ async def update_subscription_tier(
             tier=tier,
             success_url=request.success_url,
             cancel_url=request.cancel_url,
+            billing_cycle=request.billing_cycle,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

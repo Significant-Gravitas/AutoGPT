@@ -79,7 +79,7 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     helpers.  Individual tests can override via their own mocker.patch call.
     """
 
-    async def default_price_id(tier: SubscriptionTier) -> str | None:
+    async def default_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return _DEFAULT_TIER_PRICES.get(tier)
 
     mocker.patch(
@@ -161,7 +161,7 @@ def test_get_subscription_status_pro(
         "price_business": 14999,
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return prices.get(tier)
 
     async def mock_stripe_price_amount(price_id: str) -> int:
@@ -292,7 +292,7 @@ def test_get_subscription_status_stripe_error_falls_back_to_zero(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return "price_pro" if tier == SubscriptionTier.PRO else None
 
     async def mock_stripe_price_amount_none(price_id: str) -> None:
@@ -550,6 +550,180 @@ def test_update_subscription_tier_creates_checkout(
 
     assert response.status_code == 200
     assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_abc"
+
+
+def test_update_subscription_tier_forwards_yearly_billing_cycle(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """billing_cycle=yearly is forwarded to modify + checkout helpers and the
+    target_price_id lookup so the 422 fail-closed branch fires correctly when
+    yearly is unconfigured for the tier."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BASIC
+
+    async def mock_feature_enabled(*args, **kwargs):
+        return True
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        side_effect=mock_feature_enabled,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.v1._get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+    price_lookup_calls: list[tuple] = []
+
+    async def price_lookup(tier: SubscriptionTier, billing_cycle: str = "monthly"):
+        price_lookup_calls.append((tier, billing_cycle))
+        return "price_pro_yearly"
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_lookup,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+            "billing_cycle": "yearly",
+        },
+    )
+
+    assert response.status_code == 200
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO, "yearly")
+    assert (SubscriptionTier.PRO, "yearly") in price_lookup_calls
+
+
+def test_update_subscription_tier_yearly_unconfigured_returns_422(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When yearly price is not configured for the tier, the route fails closed
+    with a 422 instead of silently using the monthly price."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BASIC
+
+    async def mock_feature_enabled(*args, **kwargs):
+        return True
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1._get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+
+    async def price_lookup(tier: SubscriptionTier, billing_cycle: str = "monthly"):
+        if billing_cycle == "yearly":
+            return None
+        return "price_pro_monthly"
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_lookup,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+            "billing_cycle": "yearly",
+        },
+    )
+
+    assert response.status_code == 422
+    modify_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_creates_checkout_with_yearly_billing(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When no active sub, create_subscription_checkout receives billing_cycle=yearly."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.BASIC
+
+    async def mock_feature_enabled(*args, **kwargs):
+        return True
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        side_effect=mock_feature_enabled,
+    )
+    mocker.patch(
+        "backend.api.features.v1._get_stripe_price_amount",
+        new_callable=AsyncMock,
+        return_value=1999,
+    )
+
+    async def price_lookup(tier: SubscriptionTier, billing_cycle: str = "monthly"):
+        return "price_pro_yearly"
+
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_lookup,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.stripe.com/pay/cs_test_yearly",
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+            "billing_cycle": "yearly",
+        },
+    )
+
+    assert response.status_code == 200
+    checkout_mock.assert_awaited_once()
+    kwargs = checkout_mock.await_args.kwargs
+    assert kwargs["billing_cycle"] == "yearly"
+    assert kwargs["tier"] == SubscriptionTier.PRO
 
 
 def test_update_subscription_tier_rejects_open_redirect(
@@ -941,7 +1115,7 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+    async def price_id_with_business(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return {
             **_DEFAULT_TIER_PRICES,
             SubscriptionTier.BUSINESS: "price_business",
@@ -982,7 +1156,7 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
 
     assert response.status_code == 200
     assert response.json()["url"] == ""
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS, "monthly")
     checkout_mock.assert_not_awaited()
 
 
@@ -1025,7 +1199,7 @@ def test_update_subscription_tier_max_checkout(
 
     assert response.status_code == 200
     assert response.json()["url"] == ""
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX, "monthly")
     checkout_mock.assert_not_awaited()
 
 
@@ -1079,7 +1253,7 @@ def test_update_subscription_tier_no_active_sub_falls_through_to_checkout(
 
     assert response.status_code == 200
     assert response.json()["url"] == "https://checkout.stripe.com/pay/cs_test_no_sub"
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX, "monthly")
     # No DB-flip — payment must be collected via Checkout regardless of direction.
     set_tier_mock.assert_not_awaited()
     checkout_mock.assert_awaited_once()
@@ -1094,7 +1268,7 @@ def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return {
             SubscriptionTier.BASIC: "price_basic",
             SubscriptionTier.PRO: "price_pro",
@@ -1149,7 +1323,7 @@ def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
     set_tier_mock.assert_not_awaited()
     checkout_mock.assert_awaited_once()
     # modify is still called first; returning False just means "no active sub".
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO, "monthly")
 
 
 def test_update_subscription_tier_target_without_ld_price_returns_422(
@@ -1166,7 +1340,7 @@ def test_update_subscription_tier_target_without_ld_price_returns_422(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return None  # Neither BASIC nor PRO have an LD price.
 
     mocker.patch(
@@ -1215,7 +1389,7 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+    async def price_id_with_business(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return {
             **_DEFAULT_TIER_PRICES,
             SubscriptionTier.BUSINESS: "price_business",
@@ -1309,7 +1483,7 @@ def test_get_subscription_status_includes_pending_tier(
 
     effective_at = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return None
 
     mocker.patch(
@@ -1385,7 +1559,7 @@ def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
-    async def price_id_with_business(tier: SubscriptionTier) -> str | None:
+    async def price_id_with_business(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return {
             **_DEFAULT_TIER_PRICES,
             SubscriptionTier.BUSINESS: "price_business",
@@ -1426,7 +1600,7 @@ def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
 
     assert response.status_code == 200
     assert response.json()["url"] == ""
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO, "monthly")
     checkout_mock.assert_not_awaited()
 
 

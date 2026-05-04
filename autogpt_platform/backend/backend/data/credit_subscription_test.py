@@ -75,11 +75,60 @@ async def test_sync_subscription_from_stripe_active():
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if billing_cycle != "monthly":
+            return None
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
             return "price_biz_monthly"
+        return None
+
+    empty_list = MagicMock()
+    empty_list.data = []
+    empty_list.has_more = False
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list",
+            return_value=empty_list,
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await sync_subscription_from_stripe(stripe_sub)
+        mock_set.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
+
+
+@pytest.mark.asyncio
+async def test_sync_subscription_from_stripe_yearly_pro_maps_to_pro():
+    """A user on a yearly Pro plan still maps to SubscriptionTier.PRO."""
+    mock_user = _make_user()
+    stripe_sub = {
+        "id": "sub_yearly",
+        "customer": "cus_123",
+        "status": "active",
+        "items": {"data": [{"price": {"id": "price_pro_yearly"}}]},
+    }
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+            return "price_pro_yearly"
         return None
 
     empty_list = MagicMock()
@@ -118,7 +167,11 @@ async def test_sync_subscription_from_stripe_idempotent_no_write_if_unchanged():
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if billing_cycle != "monthly":
+            return None
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -324,7 +377,7 @@ async def test_sync_subscription_from_stripe_trialing():
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -763,7 +816,7 @@ async def test_sync_subscription_from_stripe_unknown_price_id_preserves_current_
         "items": {"data": [{"price": {"id": "price_unknown"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return "price_pro_monthly" if tier == SubscriptionTier.PRO else None
 
     with (
@@ -824,7 +877,7 @@ async def test_sync_subscription_from_stripe_business_tier():
         "items": {"data": [{"price": {"id": "price_biz_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -872,7 +925,7 @@ async def test_sync_subscription_from_stripe_basic_tier_via_ld_price():
         "items": {"data": [{"price": {"id": "price_basic_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.BASIC:
             return "price_basic_monthly"
         if tier == SubscriptionTier.PRO:
@@ -922,7 +975,7 @@ async def test_sync_subscription_from_stripe_cancels_stale_subs():
         "items": {"data": [{"price": {"id": "price_biz_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -972,7 +1025,7 @@ async def test_sync_subscription_from_stripe_stale_cancel_errors_swallowed():
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -1204,6 +1257,94 @@ async def test_get_subscription_price_id_none_not_cached():
 
 
 @pytest.mark.asyncio
+async def test_get_subscription_price_id_nested_yearly():
+    """Nested shape returns the yearly price for billing_cycle=yearly."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={
+            "PRO": {"monthly": "price_pro_m", "yearly": "price_pro_y"},
+        },
+    ):
+        assert (
+            await get_subscription_price_id(SubscriptionTier.PRO, "yearly")
+            == "price_pro_y"
+        )
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_nested_monthly():
+    """Nested shape returns the monthly price for billing_cycle=monthly."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={
+            "PRO": {"monthly": "price_pro_m", "yearly": "price_pro_y"},
+        },
+    ):
+        assert (
+            await get_subscription_price_id(SubscriptionTier.PRO, "monthly")
+            == "price_pro_m"
+        )
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_nested_missing_cycle_returns_none():
+    """Nested shape with only one cycle configured returns None for the other."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": {"monthly": "price_pro_m"}},
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO, "yearly") is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_legacy_flat_yearly_fail_closed():
+    """Legacy flat shape never silently returns monthly for a yearly request."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": "price_pro_monthly_only"},
+    ):
+        assert await get_subscription_price_id(SubscriptionTier.PRO, "yearly") is None
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_get_subscription_price_id_legacy_flat_monthly_returns_price():
+    """Legacy flat shape resolves monthly requests to the configured price."""
+    from backend.data.credit import get_subscription_price_id
+
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    with patch(
+        "backend.data.credit.get_feature_flag_value",
+        new_callable=AsyncMock,
+        return_value={"PRO": "price_pro_monthly_only"},
+    ):
+        assert (
+            await get_subscription_price_id(SubscriptionTier.PRO, "monthly")
+            == "price_pro_monthly_only"
+        )
+    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
 async def test_cancel_stripe_subscription_raises_on_cancel_error():
     """Stripe errors during period-end scheduling are re-raised so the DB tier is not updated."""
     import stripe as stripe_mod
@@ -1247,7 +1388,7 @@ async def test_sync_subscription_from_stripe_metadata_user_id_matches():
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return "price_pro_monthly" if tier == SubscriptionTier.PRO else None
 
     empty_list = MagicMock()
@@ -1317,7 +1458,7 @@ async def test_sync_subscription_from_stripe_no_metadata_user_id_skips_check():
         # No "metadata" key at all
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return "price_pro_monthly" if tier == SubscriptionTier.PRO else None
 
     empty_list = MagicMock()
@@ -2284,7 +2425,7 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -2357,7 +2498,7 @@ async def test_get_pending_subscription_change_from_schedule():
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -2435,7 +2576,7 @@ async def test_get_pending_subscription_change_from_schedule_to_basic():
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.BASIC:
             return "price_basic_monthly"
         if tier == SubscriptionTier.PRO:
@@ -2496,7 +2637,7 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return {
             SubscriptionTier.PRO: "price_pro",
             SubscriptionTier.BUSINESS: "price_biz",
@@ -2617,7 +2758,7 @@ async def test_sync_subscription_from_stripe_phase_transition_updates_tier():
         "items": {"data": [{"price": {"id": "price_pro_monthly"}}]},
     }
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -3069,7 +3210,7 @@ async def test_get_pending_subscription_change_raises_when_price_lookups_fail():
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
-    async def mock_price_id(tier: SubscriptionTier) -> str | None:
+    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
         return None
 
     with (
