@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { renderHook } from "@testing-library/react";
+import { renderHook, cleanup } from "@testing-library/react";
 import { useAutoOpenArtifacts } from "../useAutoOpenArtifacts";
 import { useCopilotUIStore } from "../../../store";
 
@@ -24,17 +24,26 @@ function resetStore() {
 
 describe("useAutoOpenArtifacts", () => {
   beforeEach(resetStore);
-  afterEach(resetStore);
+  afterEach(() => {
+    cleanup();
+    resetStore();
+  });
 
   it("does not auto-open artifacts on initial message load", () => {
-    renderHook(() => useAutoOpenArtifacts({ sessionId: "session-1" }));
+    renderHook(() =>
+      useAutoOpenArtifacts({
+        sessionId: "session-1",
+        messages: [],
+        isLoadingSession: false,
+      }),
+    );
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   it("does not auto-open when rerendering within the same session", () => {
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
-        useAutoOpenArtifacts({ sessionId }),
+        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
       { initialProps: { sessionId: "session-1" } },
     );
 
@@ -61,7 +70,7 @@ describe("useAutoOpenArtifacts", () => {
 
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
-        useAutoOpenArtifacts({ sessionId }),
+        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
       { initialProps: { sessionId: "session-1" } },
     );
 

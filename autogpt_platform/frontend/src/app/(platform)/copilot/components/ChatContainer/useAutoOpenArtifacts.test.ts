@@ -1,10 +1,12 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { UIDataTypes, UIMessage, UITools } from "ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useCopilotUIStore } from "../../store";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
 const A_ID = "11111111-0000-0000-0000-000000000000";
 const B_ID = "22222222-0000-0000-0000-000000000000";
+const C_ID = "33333333-0000-0000-0000-000000000000";
 
 function makeArtifact(id: string, title = `${id}.txt`) {
   return {
@@ -13,6 +15,42 @@ function makeArtifact(id: string, title = `${id}.txt`) {
     mimeType: "text/plain",
     sourceUrl: `/api/proxy/api/workspace/files/${id}/download`,
     origin: "agent" as const,
+  };
+}
+
+function makeAgentMessage(
+  id: string,
+  artifactIds: string[],
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id,
+    role: "assistant",
+    content: "",
+    parts: artifactIds.map((aid) => ({
+      type: "file" as const,
+      url: `/api/proxy/api/workspace/files/${aid}/download`,
+      filename: `${aid}.txt`,
+      mediaType: "text/plain",
+    })),
+    createdAt: new Date(),
+  };
+}
+
+function makeUserMessage(
+  id: string,
+  artifactIds: string[],
+): UIMessage<unknown, UIDataTypes, UITools> {
+  return {
+    id,
+    role: "user",
+    content: "",
+    parts: artifactIds.map((aid) => ({
+      type: "file" as const,
+      url: `/api/proxy/api/workspace/files/${aid}/download`,
+      filename: `${aid}.txt`,
+      mediaType: "text/plain",
+    })),
+    createdAt: new Date(),
   };
 }
 
@@ -38,13 +76,20 @@ describe("useAutoOpenArtifacts", () => {
   afterEach(cleanup);
 
   it("does not auto-open on initial render", () => {
-    renderHook(() => useAutoOpenArtifacts({ sessionId: "s1" }));
+    renderHook(() =>
+      useAutoOpenArtifacts({
+        sessionId: "s1",
+        messages: [],
+        isLoadingSession: false,
+      }),
+    );
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   it("does not auto-open when rerendering within the same session", () => {
     const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ sessionId }),
+      ({ sessionId }) =>
+        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -60,7 +105,8 @@ describe("useAutoOpenArtifacts", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
 
     const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ sessionId }),
+      ({ sessionId }) =>
+        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -79,7 +125,8 @@ describe("useAutoOpenArtifacts", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
 
     const { rerender } = renderHook(
-      ({ sessionId }) => useAutoOpenArtifacts({ sessionId }),
+      ({ sessionId }) =>
+        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -102,7 +149,11 @@ describe("useAutoOpenArtifacts", () => {
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
     const { unmount } = renderHook(() =>
-      useAutoOpenArtifacts({ sessionId: "s1" }),
+      useAutoOpenArtifacts({
+        sessionId: "s1",
+        messages: [],
+        isLoadingSession: false,
+      }),
     );
 
     act(() => {
@@ -132,14 +183,151 @@ describe("useAutoOpenArtifacts", () => {
     });
 
     const { unmount } = renderHook(() =>
-      useAutoOpenArtifacts({ sessionId: "s1" }),
+      useAutoOpenArtifacts({
+        sessionId: "s1",
+        messages: [],
+        isLoadingSession: false,
+      }),
     );
     act(() => {
       unmount();
     });
 
     // Next mount of the page should see a clean store.
-    renderHook(() => useAutoOpenArtifacts({ sessionId: "s1" }));
+    renderHook(() =>
+      useAutoOpenArtifacts({
+        sessionId: "s1",
+        messages: [],
+        isLoadingSession: false,
+      }),
+    );
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("auto-opens when a new agent artifact appears after the initial snapshot", () => {
+    const { rerender } = renderHook(
+      ({ messages }) =>
+        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
+      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+    );
+
+    act(() => {
+      rerender({ messages: [makeAgentMessage("m1", [A_ID])] });
+    });
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe(A_ID);
+  });
+
+  it("does not auto-open artifacts already present at session load", () => {
+    renderHook(() =>
+      useAutoOpenArtifacts({
+        sessionId: "s1",
+        messages: [makeAgentMessage("m1", [A_ID])],
+        isLoadingSession: false,
+      }),
+    );
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("does not auto-open user-uploaded artifacts", () => {
+    const { rerender } = renderHook(
+      ({ messages }) =>
+        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
+      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+    );
+
+    act(() => {
+      rerender({ messages: [makeUserMessage("m1", [A_ID])] });
+    });
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("opens the most recent artifact when multiple new ones appear simultaneously", () => {
+    const { rerender } = renderHook(
+      ({ messages }) =>
+        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
+      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+    );
+
+    act(() => {
+      rerender({
+        messages: [makeAgentMessage("m1", [A_ID, B_ID, C_ID])],
+      });
+    });
+
+    const s = useCopilotUIStore.getState().artifactPanel;
+    expect(s.isOpen).toBe(true);
+    expect(s.activeArtifact?.id).toBe(C_ID);
+  });
+
+  it("does not auto-open after the user explicitly closes the panel", () => {
+    const { rerender } = renderHook(
+      ({ messages }) =>
+        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
+      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+    );
+
+    // First artifact → auto-opens.
+    act(() => {
+      rerender({ messages: [makeAgentMessage("m1", [A_ID])] });
+    });
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    // User explicitly closes the panel.
+    act(() => {
+      useCopilotUIStore.getState().closeArtifactPanel();
+    });
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+
+    // Second artifact arrives — should NOT reopen.
+    act(() => {
+      rerender({
+        messages: [
+          makeAgentMessage("m1", [A_ID]),
+          makeAgentMessage("m2", [B_ID]),
+        ],
+      });
+    });
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("does not re-trigger auto-open when isLoadingSession pulses (reconnect)", () => {
+    const { rerender } = renderHook(
+      ({ messages, isLoadingSession }) =>
+        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession }),
+      {
+        initialProps: {
+          messages: [
+            makeAgentMessage("m1", [A_ID]),
+          ] as UIMessage<unknown, UIDataTypes, UITools>[],
+          isLoadingSession: false,
+        },
+      },
+    );
+
+    // Snapshot taken: A_ID is known. Panel stays closed.
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+
+    // Simulate reconnect: isLoadingSession pulses true → false.
+    act(() => {
+      rerender({
+        messages: [makeAgentMessage("m1", [A_ID])],
+        isLoadingSession: true,
+      });
+    });
+    act(() => {
+      rerender({
+        messages: [makeAgentMessage("m1", [A_ID])],
+        isLoadingSession: false,
+      });
+    });
+
+    // A_ID was in the snapshot — must not auto-open.
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 });
