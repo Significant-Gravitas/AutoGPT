@@ -4,7 +4,6 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { CountrySelector } from "./components/CountrySelector/CountrySelector";
 import { PlanCard } from "./components/PlanCard/PlanCard";
 import { PLAN_KEYS, PLANS } from "./helpers";
 import { useSubscriptionStep } from "./useSubscriptionStep";
@@ -13,8 +12,6 @@ export function SubscriptionStep() {
   const {
     billing,
     setBilling,
-    countryIdx,
-    setCountryIdx,
     country,
     isYearly,
     handlePlanSelect,
@@ -91,9 +88,6 @@ export function SubscriptionStep() {
                 )}
               />
             ))}
-          </div>
-          <div className="mt-4 flex justify-center px-[1rem] md:fixed md:right-6 md:top-[14px] md:z-50 md:mt-0 md:px-0">
-            <CountrySelector selected={countryIdx} onSelect={setCountryIdx} />
           </div>
         </div>
 

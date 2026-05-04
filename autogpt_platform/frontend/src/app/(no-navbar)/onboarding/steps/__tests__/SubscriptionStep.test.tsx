@@ -145,13 +145,6 @@ describe("SubscriptionStep", () => {
     }
   });
 
-  test("changing country persists the country code", () => {
-    render(<SubscriptionStep />);
-    fireEvent.click(screen.getByRole("button", { name: /United States/i }));
-    fireEvent.click(screen.getByRole("button", { name: /European Union/i }));
-    expect(useOnboardingWizardStore.getState().selectedCountryCode).toBe("EU");
-  });
-
   test("local dev: clicking Pro skips Stripe and advances to the next step", async () => {
     vi.spyOn(environment, "isLocal").mockReturnValue(true);
 

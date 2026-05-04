@@ -29,9 +29,6 @@ export function useSubscriptionStep() {
   const selectedCountryCode = useOnboardingWizardStore(
     (s) => s.selectedCountryCode,
   );
-  const setSelectedCountryCode = useOnboardingWizardStore(
-    (s) => s.setSelectedCountryCode,
-  );
   const setSelectedPlan = useOnboardingWizardStore((s) => s.setSelectedPlan);
   const nextStep = useOnboardingWizardStore((s) => s.nextStep);
   const selectedPlan = useOnboardingWizardStore((s) => s.selectedPlan);
@@ -50,12 +47,6 @@ export function useSubscriptionStep() {
   );
   const country = COUNTRIES[countryIdx];
   const isYearly = billing === "yearly";
-
-  function setCountryIdx(idx: number) {
-    const next = COUNTRIES[idx];
-    if (!next) return;
-    setSelectedCountryCode(next.countryCode);
-  }
 
   async function handlePlanSelect(planKey: PlanKey) {
     if (planKey === PLAN_KEYS.TEAM) {
@@ -129,8 +120,6 @@ export function useSubscriptionStep() {
   return {
     billing,
     setBilling: setSelectedBilling,
-    countryIdx,
-    setCountryIdx,
     country,
     isYearly,
     handlePlanSelect,
