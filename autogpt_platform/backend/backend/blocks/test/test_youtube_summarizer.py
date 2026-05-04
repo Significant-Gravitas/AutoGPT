@@ -68,52 +68,50 @@ class TestExtractVideoId:
 # ---------------------------------------------------------------------------
 
 
+class _MockResponse:
+    """Minimal requests.Response stand-in for monkeypatching."""
+
+    def __init__(self, status_code: int, body: dict | None = None):
+        self.status_code = status_code
+        self.ok = status_code < 400
+        self.text = ""
+        self._body = body or {}
+
+    def json(self) -> dict:
+        return self._body
+
+
 class TestFetchTranscriptErrors:
-    """Verify that API errors are translated into RuntimeError."""
+    """Verify that Supadata HTTP errors are translated into RuntimeError."""
 
     def _block(self) -> YouTubeTranscriptSummarizerBlock:
         return YouTubeTranscriptSummarizerBlock()
 
-    def test_transcripts_disabled_raises_runtime_error(self, monkeypatch):
-        from youtube_transcript_api._errors import TranscriptsDisabled
-
-        def raise_disabled(*args, **kwargs):
-            raise TranscriptsDisabled("vid123")
-
-        block = self._block()
+    def test_invalid_api_key_raises_runtime_error(self, monkeypatch):
         monkeypatch.setattr(
-            "backend.blocks.youtube_summarizer.YouTubeTranscriptApi.fetch",
-            raise_disabled,
+            "backend.blocks.youtube_summarizer.requests.get",
+            lambda *a, **kw: _MockResponse(401),
         )
-        with pytest.raises(RuntimeError, match="disabled"):
+        block = self._block()
+        with pytest.raises(RuntimeError, match="Invalid"):
             block.fetch_transcript("vid123", TEST_API_KEY)
 
     def test_no_transcript_found_raises_runtime_error(self, monkeypatch):
-        from youtube_transcript_api._errors import NoTranscriptFound
-
-        def raise_not_found(*args, **kwargs):
-            raise NoTranscriptFound("vid123", [], {})
-
-        block = self._block()
         monkeypatch.setattr(
-            "backend.blocks.youtube_summarizer.YouTubeTranscriptApi.fetch",
-            raise_not_found,
+            "backend.blocks.youtube_summarizer.requests.get",
+            lambda *a, **kw: _MockResponse(404),
         )
+        block = self._block()
         with pytest.raises(RuntimeError, match="No transcript"):
             block.fetch_transcript("vid123", TEST_API_KEY)
 
-    def test_video_unavailable_raises_runtime_error(self, monkeypatch):
-        from youtube_transcript_api._errors import VideoUnavailable
-
-        def raise_unavailable(*args, **kwargs):
-            raise VideoUnavailable("vid123")
-
-        block = self._block()
+    def test_supadata_api_error_raises_runtime_error(self, monkeypatch):
         monkeypatch.setattr(
-            "backend.blocks.youtube_summarizer.YouTubeTranscriptApi.fetch",
-            raise_unavailable,
+            "backend.blocks.youtube_summarizer.requests.get",
+            lambda *a, **kw: _MockResponse(503),
         )
-        with pytest.raises(RuntimeError, match="unavailable"):
+        block = self._block()
+        with pytest.raises(RuntimeError, match="Supadata API error"):
             block.fetch_transcript("vid123", TEST_API_KEY)
 
 
