@@ -2493,7 +2493,10 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" }
+          "429": { "description": "Call-frequency cap exceeded" },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
         }
       }
     },
@@ -2602,7 +2605,7 @@
             "description": "Cost rate-limit or call-frequency cap exceeded"
           },
           "503": {
-            "description": "Rate limit service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
           }
         }
       }
