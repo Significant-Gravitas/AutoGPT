@@ -2,6 +2,7 @@
 YouTube Transcript Summarizer Block
 Fetches a YouTube transcript via Supadata API and summarizes it with an LLM.
 """
+
 import logging
 from typing import Optional
 from urllib.parse import parse_qs, urlparse

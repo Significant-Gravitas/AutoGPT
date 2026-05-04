@@ -6,6 +6,7 @@ Tests cover:
 - Transcript fetch error handling
 - Full block execution via execute_block_test (mocked)
 """
+
 import pytest
 
 from backend.blocks.youtube_summarizer import YouTubeTranscriptSummarizerBlock
@@ -24,19 +25,26 @@ class TestExtractVideoId:
         return YouTubeTranscriptSummarizerBlock.extract_video_id(url)
 
     def test_standard_watch_url(self):
-        assert self._extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+        assert (
+            self._extract("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+            == "dQw4w9WgXcQ"
+        )
 
     def test_short_youtu_be_url(self):
         assert self._extract("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
 
     def test_embed_url(self):
-        assert self._extract("https://www.youtube.com/embed/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+        assert (
+            self._extract("https://www.youtube.com/embed/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+        )
 
     def test_v_url(self):
         assert self._extract("https://www.youtube.com/v/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
 
     def test_shorts_url(self):
-        assert self._extract("https://www.youtube.com/shorts/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+        assert (
+            self._extract("https://www.youtube.com/shorts/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+        )
 
     def test_url_without_www(self):
         assert self._extract("https://youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
@@ -168,7 +176,12 @@ async def test_block_fetch_error_yields_error_field():
     input_data = YouTubeTranscriptSummarizerBlock.Input(
         youtube_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
         custom_prompt=None,
-        credentials={"provider": "openai", "id": str(uuid.uuid4()), "type": "api_key", "title": "test"},  # type: ignore[arg-type]
+        credentials={
+            "provider": "openai",
+            "id": str(uuid.uuid4()),
+            "type": "api_key",
+            "title": "test",
+        },  # type: ignore[arg-type]
     )
 
     outputs = {}
