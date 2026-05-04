@@ -1,3 +1,4 @@
+import asyncio
 from urllib.parse import urlencode
 
 import feedparser
@@ -22,6 +23,10 @@ from backend.util.settings import Settings
 settings = Settings()
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
+ARXIV_REQUEST_TIMEOUT_SECONDS = 30
+OLLAMA_INFERENCE_TIMEOUT_SECONDS = 300
+MAX_OLLAMA_CONTEXT_WINDOW = 16384
+ALLOWED_OLLAMA_SCHEMES = ("http", "https")
 DEFAULT_CAJAL_SYSTEM_PROMPT = (
     "You are CAJAL, a scientific paper authoring assistant. Write rigorous, "
     "citation-grounded academic drafts using only the verified references supplied "
@@ -53,12 +58,20 @@ class CajalScientificPaperGeneratorBlock(Block):
             max_length=2000,
         )
         model: str = SchemaField(
-            description="Ollama model name to use for paper generation.",
+            description=(
+                "Ollama model tag to use for paper generation. Defaults to 'cajal' "
+                "(Agnuxo/CAJAL-4B-P2PCLAW); pull or alias the model in your local "
+                "Ollama instance before running this block. Any locally-available "
+                "Ollama model tag is accepted."
+            ),
             default="cajal",
         )
         ollama_host: str = SchemaField(
-            description="Ollama host for local inference.",
-            default="localhost:11434",
+            description=(
+                "Ollama host URL for local inference. Must include an http:// or "
+                "https:// scheme."
+            ),
+            default="http://localhost:11434",
             advanced=True,
         )
         citation_count: int = SchemaField(
@@ -155,7 +168,11 @@ class CajalScientificPaperGeneratorBlock(Block):
 
         citations_context = format_references(references)
         prompt = self._build_prompt(input_data, citations_context, len(references))
-        paper = await self._generate_paper(input_data, prompt)
+        try:
+            paper = await self._generate_paper(input_data, prompt)
+        except (ValueError, asyncio.TimeoutError) as error:
+            yield "error", str(error)
+            return
 
         yield "paper", paper
         yield "references", references
@@ -179,8 +196,8 @@ class CajalScientificPaperGeneratorBlock(Block):
         response = await Requests(
             raise_for_status=True,
             retry_max_attempts=2,
-        ).get(f"{ARXIV_API_URL}?{query}", timeout=30)
-        feed = feedparser.parse(response.content)
+        ).get(f"{ARXIV_API_URL}?{query}", timeout=ARXIV_REQUEST_TIMEOUT_SECONDS)
+        feed = await asyncio.to_thread(feedparser.parse, response.content)
         entries = feed.get("entries") or []
         return [reference_from_feed_entry(entry) for entry in entries[:citation_count]]
 
@@ -189,20 +206,28 @@ class CajalScientificPaperGeneratorBlock(Block):
         input_data: Input,
         prompt: list[dict[str, str]],
     ) -> str:
+        if not input_data.ollama_host.lower().startswith(
+            tuple(f"{scheme}://" for scheme in ALLOWED_OLLAMA_SCHEMES)
+        ):
+            raise ValueError("ollama_host must include an http:// or https:// scheme.")
         parsed_host, _, _ = await validate_url_host(
             input_data.ollama_host,
             trusted_hostnames=[settings.config.ollama_host],
         )
+        num_ctx = min(MAX_OLLAMA_CONTEXT_WINDOW, max(4096, input_data.max_tokens * 2))
         client = ollama.AsyncClient(host=parsed_host.geturl())
-        response = await client.chat(
-            model=input_data.model,
-            messages=prompt,
-            stream=False,
-            options={
-                "temperature": input_data.temperature,
-                "num_predict": input_data.max_tokens,
-                "num_ctx": max(4096, input_data.max_tokens * 2),
-            },
+        response = await asyncio.wait_for(
+            client.chat(
+                model=input_data.model,
+                messages=prompt,
+                stream=False,
+                options={
+                    "temperature": input_data.temperature,
+                    "num_predict": input_data.max_tokens,
+                    "num_ctx": num_ctx,
+                },
+            ),
+            timeout=OLLAMA_INFERENCE_TIMEOUT_SECONDS,
         )
         paper = response["message"]["content"].strip()
         if not paper:

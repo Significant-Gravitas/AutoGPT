@@ -1,6 +1,13 @@
-import feedparser
+import asyncio
 
-from backend.blocks.cajal_paper import CajalScientificPaperGeneratorBlock
+import feedparser
+import pytest
+
+from backend.blocks.cajal_paper import (
+    MAX_OLLAMA_CONTEXT_WINDOW,
+    OLLAMA_INFERENCE_TIMEOUT_SECONDS,
+    CajalScientificPaperGeneratorBlock,
+)
 from backend.blocks.cajal_paper_helpers import (
     MAX_REFERENCE_ABSTRACT_CHARS,
     ArxivReference,
@@ -115,6 +122,151 @@ async def test_run_yields_error_when_no_references(monkeypatch):
     assert "No-results topic" in message
 
 
+async def test_run_yields_error_when_generator_raises_value_error(monkeypatch):
+    block = CajalScientificPaperGeneratorBlock()
+    references = [
+        ArxivReference(
+            title="Ref",
+            authors=["X"],
+            published="2024-01-01",
+            url="u",
+            pdf_url="p",
+            summary="s",
+            categories=["c"],
+        )
+    ]
+
+    async def fetch_references(*args, **kwargs):
+        return references
+
+    async def generate_empty(*args, **kwargs):
+        raise ValueError("Ollama returned an empty paper.")
+
+    monkeypatch.setattr(block, "_fetch_arxiv_references", fetch_references)
+    monkeypatch.setattr(block, "_generate_paper", generate_empty)
+
+    outputs = []
+    async for output_name, output_data in block.run(
+        block.Input(topic="Topic", citation_count=1)
+    ):
+        outputs.append((output_name, output_data))
+
+    assert outputs == [("error", "Ollama returned an empty paper.")]
+
+
+async def test_run_yields_error_when_generator_times_out(monkeypatch):
+    block = CajalScientificPaperGeneratorBlock()
+    references = [
+        ArxivReference(
+            title="Ref",
+            authors=["X"],
+            published="2024-01-01",
+            url="u",
+            pdf_url="p",
+            summary="s",
+            categories=["c"],
+        )
+    ]
+
+    async def fetch_references(*args, **kwargs):
+        return references
+
+    async def generate_timeout(*args, **kwargs):
+        raise asyncio.TimeoutError("inference timed out")
+
+    monkeypatch.setattr(block, "_fetch_arxiv_references", fetch_references)
+    monkeypatch.setattr(block, "_generate_paper", generate_timeout)
+
+    outputs = []
+    async for output_name, output_data in block.run(
+        block.Input(topic="Topic", citation_count=1)
+    ):
+        outputs.append((output_name, output_data))
+
+    assert len(outputs) == 1
+    assert outputs[0][0] == "error"
+
+
+async def test_generate_paper_rejects_schemeless_host():
+    block = CajalScientificPaperGeneratorBlock()
+    input_data = block.Input(
+        topic="Topic",
+        citation_count=1,
+        ollama_host="localhost:11434",
+    )
+
+    with pytest.raises(ValueError, match="http://"):
+        await block._generate_paper(input_data, prompt=[])
+
+
+async def test_generate_paper_rejects_non_http_scheme():
+    block = CajalScientificPaperGeneratorBlock()
+    input_data = block.Input(
+        topic="Topic",
+        citation_count=1,
+        ollama_host="ftp://example.com:11434",
+    )
+
+    with pytest.raises(ValueError, match="http://"):
+        await block._generate_paper(input_data, prompt=[])
+
+
+async def test_generate_paper_caps_num_ctx_and_applies_timeout(monkeypatch):
+    from urllib.parse import ParseResult
+
+    block = CajalScientificPaperGeneratorBlock()
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, host: str):
+            captured["host"] = host
+
+        async def chat(self, **kwargs):
+            captured["chat_kwargs"] = kwargs
+            return {"message": {"content": "  Generated paper.  "}}
+
+    captured_timeout = {}
+    real_wait_for = asyncio.wait_for
+
+    async def spy_wait_for(awaitable, timeout):
+        captured_timeout["timeout"] = timeout
+        return await real_wait_for(awaitable, timeout)
+
+    async def fake_validate_url_host(url, trusted_hostnames=None):
+        parsed = ParseResult(
+            scheme="http",
+            netloc="localhost:11434",
+            path="",
+            params="",
+            query="",
+            fragment="",
+        )
+        return parsed, True, []
+
+    monkeypatch.setattr(
+        "backend.blocks.cajal_paper.ollama.AsyncClient", FakeAsyncClient
+    )
+    monkeypatch.setattr("backend.blocks.cajal_paper.asyncio.wait_for", spy_wait_for)
+    monkeypatch.setattr(
+        "backend.blocks.cajal_paper.validate_url_host", fake_validate_url_host
+    )
+
+    input_data = block.Input(
+        topic="Topic",
+        citation_count=1,
+        max_tokens=32768,
+        ollama_host="http://localhost:11434",
+    )
+    paper = await block._generate_paper(
+        input_data,
+        prompt=[{"role": "user", "content": "hi"}],
+    )
+
+    assert paper == "Generated paper."
+    assert captured["chat_kwargs"]["options"]["num_ctx"] == MAX_OLLAMA_CONTEXT_WINDOW
+    assert captured_timeout["timeout"] == OLLAMA_INFERENCE_TIMEOUT_SECONDS
+
+
 def test_build_prompt_pins_sections_and_uses_default_instructions():
     block = CajalScientificPaperGeneratorBlock()
     references = [
@@ -220,10 +372,7 @@ def test_entry_pdf_url_falls_back_to_entry_link_when_no_pdf_link():
         """
     )
 
-    assert (
-        entry_pdf_url(feed["entries"][0])
-        == "https://arxiv.org/abs/2401.00004"
-    )
+    assert entry_pdf_url(feed["entries"][0]) == "https://arxiv.org/abs/2401.00004"
 
 
 def test_clean_text_collapses_whitespace_and_strips():
