@@ -206,6 +206,12 @@ class _SDKLoopState:
     msgs_since_flush: int = 0
     consecutive_empty_tool_calls: int = 0
     ended_with_stream_error: bool = False
+    # Carried out of the helper so the caller can plumb idle-timeout /
+    # transient / breaker error metadata into the ``_HandledStreamError``
+    # raised after the loop finishes — without these fields the helper's
+    # error context would be silently dropped.
+    stream_error_msg: str | None = None
+    stream_error_code: str | None = None
 
 
 async def _consume_sdk_until_done(
@@ -257,20 +263,22 @@ async def _consume_sdk_until_done(
                 # on the wire so the frontend can still parse a
                 # machine-readable code out of the otherwise opaque
                 # `{type, errorText}` schema.
-                stream_error_code = "idle_timeout"
+                loop_state.stream_error_code = "idle_timeout"
                 tool_phrase = (
                     f" while running {_humanise_tool_list(unresolved_tool_names)}"
                     if unresolved_tool_names
                     else ""
                 )
-                stream_error_msg = (
+                loop_state.stream_error_msg = (
                     f"AutoPilot stopped responding{tool_phrase}. "
                     "This usually means a tool got stuck. Please try again."
                 )
-                _append_error_marker(ctx.session, stream_error_msg, retryable=True)
+                _append_error_marker(
+                    ctx.session, loop_state.stream_error_msg, retryable=True
+                )
                 yield StreamError(
-                    errorText=stream_error_msg,
-                    code=stream_error_code,
+                    errorText=loop_state.stream_error_msg,
+                    code=loop_state.stream_error_code,
                 )
                 loop_state.ended_with_stream_error = True
                 break
@@ -365,8 +373,8 @@ async def _consume_sdk_until_done(
                     "suppressing raw error text",
                     ctx.log_prefix,
                 )
-                stream_error_msg = FRIENDLY_TRANSIENT_MSG
-                stream_error_code = "transient_api_error"
+                loop_state.stream_error_msg = FRIENDLY_TRANSIENT_MSG
+                loop_state.stream_error_code = "transient_api_error"
                 # Do NOT yield StreamError or append error marker here.
                 # The outer retry loop decides: if a retry is available it
                 # yields StreamStatus("retrying…"); if retries are exhausted
@@ -552,8 +560,8 @@ async def _consume_sdk_until_done(
         )
         loop_state.consecutive_empty_tool_calls = breaker.count
         if breaker.tripped and breaker.error is not None:
-            stream_error_msg = breaker.error_msg
-            stream_error_code = breaker.error_code
+            loop_state.stream_error_msg = breaker.error_msg
+            loop_state.stream_error_code = breaker.error_code
             yield breaker.error
             loop_state.ended_with_stream_error = True
             break
@@ -3090,11 +3098,6 @@ async def _run_stream_attempt(
         assistant_response=ChatMessage(role="assistant", content=""),
         accumulated_tool_calls=[],
     )
-    # Stores the error message used by _append_error_marker so the outer
-    # retry loop can re-append the correct message after session rollback.
-    stream_error_msg: str | None = None
-    stream_error_code: str | None = None
-
     # --- Intermediate persistence tracking ---
     # Flush session messages to DB periodically so page reloads show progress
     # during long-running turns (see incident d2f7cba3: 82-min turn lost on refresh).
@@ -3176,6 +3179,11 @@ async def _run_stream_attempt(
             # Re-prompt round must still trip the placeholder guard if model returns thinking-only again.
             state.adapter._text_since_last_tool_result = False
             acc.stream_completed = False
+            # The previous round's tool_result is no longer "fresh" for the
+            # post-tool placeholder pre-create branch — clearing prevents the
+            # re-prompt round from spuriously appending an empty assistant
+            # ChatMessage before its first text delta lands.
+            acc.has_tool_results = False
             logger.info(
                 "%s Re-prompting model for closing summary "
                 "after thinking-only final turn",
@@ -3249,9 +3257,9 @@ async def _run_stream_attempt(
     if loop_state.ended_with_stream_error:
         raise _HandledStreamError(
             "Stream error handled",
-            error_msg=stream_error_msg,
-            code=stream_error_code,
-            already_yielded=(stream_error_code != "transient_api_error"),
+            error_msg=loop_state.stream_error_msg,
+            code=loop_state.stream_error_code,
+            already_yielded=(loop_state.stream_error_code != "transient_api_error"),
         )
 
 
@@ -3651,6 +3659,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # the sweep would pick up prior turns' compaction files that persist
     # under ``<session_id>/subagents/``, double-billing the user.
     turn_start_ts = time.time()
+
+    # Initialised before the retry loop so every code path that reads it after
+    # the loop (post-stream upload guards, finally-block bookkeeping) sees a
+    # bound name even when the loop never enters its happy path.
+    ended_with_stream_error = False
 
     # Make sure there is no more code between the lock acquisition and try-block.
     try:
