@@ -79,7 +79,9 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     helpers.  Individual tests can override via their own mocker.patch call.
     """
 
-    async def default_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def default_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return _DEFAULT_TIER_PRICES.get(tier)
 
     mocker.patch(
@@ -161,7 +163,9 @@ def test_get_subscription_status_pro(
         "price_business": 14999,
     }
 
-    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return prices.get(tier)
 
     async def mock_stripe_price_amount(price_id: str) -> int:
@@ -292,7 +296,9 @@ def test_get_subscription_status_stripe_error_falls_back_to_zero(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return "price_pro" if tier == SubscriptionTier.PRO else None
 
     async def mock_stripe_price_amount_none(price_id: str) -> None:
@@ -1115,7 +1121,9 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def price_id_with_business(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def price_id_with_business(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return {
             **_DEFAULT_TIER_PRICES,
             SubscriptionTier.BUSINESS: "price_business",
@@ -1156,7 +1164,9 @@ def test_update_subscription_tier_paid_to_paid_modifies_subscription(
 
     assert response.status_code == 200
     assert response.json()["url"] == ""
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.BUSINESS, "monthly")
+    modify_mock.assert_awaited_once_with(
+        TEST_USER_ID, SubscriptionTier.BUSINESS, "monthly"
+    )
     checkout_mock.assert_not_awaited()
 
 
@@ -1268,7 +1278,9 @@ def test_update_subscription_tier_priced_basic_no_sub_falls_through_to_checkout(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
-    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return {
             SubscriptionTier.BASIC: "price_basic",
             SubscriptionTier.PRO: "price_pro",
@@ -1340,7 +1352,9 @@ def test_update_subscription_tier_target_without_ld_price_returns_422(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BASIC
 
-    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return None  # Neither BASIC nor PRO have an LD price.
 
     mocker.patch(
@@ -1389,7 +1403,9 @@ def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
-    async def price_id_with_business(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def price_id_with_business(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return {
             **_DEFAULT_TIER_PRICES,
             SubscriptionTier.BUSINESS: "price_business",
@@ -1483,7 +1499,9 @@ def test_get_subscription_status_includes_pending_tier(
 
     effective_at = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
 
-    async def mock_price_id(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return None
 
     mocker.patch(
@@ -1559,7 +1577,9 @@ def test_update_subscription_tier_downgrade_paid_to_paid_schedules(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
-    async def price_id_with_business(tier: SubscriptionTier, billing_cycle: str = "monthly") -> str | None:
+    async def price_id_with_business(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
         return {
             **_DEFAULT_TIER_PRICES,
             SubscriptionTier.BUSINESS: "price_business",
