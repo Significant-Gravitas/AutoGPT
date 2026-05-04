@@ -9,8 +9,8 @@ Tests cover:
 
 import pytest
 
-from backend.util.test import execute_block_test
 from backend.blocks.youtube_summarizer import YouTubeTranscriptSummarizerBlock
+from backend.util.test import execute_block_test
 
 TEST_API_KEY = "test-api-key"
 
