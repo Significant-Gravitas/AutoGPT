@@ -9,9 +9,10 @@ Tests cover:
 
 import pytest
 
-from backend.blocks.youtube_summarizer import YouTubeTranscriptSummarizerBlock
 from backend.util.test import execute_block_test
+from backend.blocks.youtube_summarizer import YouTubeTranscriptSummarizerBlock
 
+TEST_API_KEY = "test-api-key"
 
 # ---------------------------------------------------------------------------
 # extract_video_id
@@ -85,7 +86,7 @@ class TestFetchTranscriptErrors:
             raise_disabled,
         )
         with pytest.raises(RuntimeError, match="disabled"):
-            block.fetch_transcript("vid123")
+            block.fetch_transcript("vid123", TEST_API_KEY)
 
     def test_no_transcript_found_raises_runtime_error(self, monkeypatch):
         from youtube_transcript_api._errors import NoTranscriptFound
@@ -99,7 +100,7 @@ class TestFetchTranscriptErrors:
             raise_not_found,
         )
         with pytest.raises(RuntimeError, match="No transcript"):
-            block.fetch_transcript("vid123")
+            block.fetch_transcript("vid123", TEST_API_KEY)
 
     def test_video_unavailable_raises_runtime_error(self, monkeypatch):
         from youtube_transcript_api._errors import VideoUnavailable
@@ -113,7 +114,7 @@ class TestFetchTranscriptErrors:
             raise_unavailable,
         )
         with pytest.raises(RuntimeError, match="unavailable"):
-            block.fetch_transcript("vid123")
+            block.fetch_transcript("vid123", TEST_API_KEY)
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +141,7 @@ async def test_block_fetch_error_yields_error_field():
     block = YouTubeTranscriptSummarizerBlock()
 
     # Mock fetch_transcript to simulate a failure
-    def bad_fetch(video_id: str) -> str:
+    def bad_fetch(video_id: str, api_key: str | None) -> str:
         raise RuntimeError("Transcripts are disabled for this video.")
 
     block.fetch_transcript = bad_fetch  # type: ignore[method-assign]
