@@ -1207,6 +1207,53 @@ def test_update_subscription_tier_target_without_ld_price_returns_422(
     modify_mock.assert_not_awaited()
 
 
+def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Pro→Max upgrade where Stripe raises CardError must return HTTP 402 and the
+    DB tier must NOT be flipped — modify_stripe_subscription_for_tier short-circuits
+    before the set_subscription_tier call inside it."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.CardError(
+            "Your card was declined.", param="card", code="card_declined"
+        ),
+    )
+    set_tier_mock = mocker.patch(
+        "backend.api.features.v1.set_subscription_tier",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    assert "card was declined" in response.json()["detail"].lower()
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
+    set_tier_mock.assert_not_awaited()
+
+
 def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,

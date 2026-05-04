@@ -1003,6 +1003,19 @@ async def update_subscription_tier(
             return await get_subscription_status(user_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except stripe.CardError as e:
+        # Auto-charge declined under payment_behavior=error_if_incomplete: the
+        # modify was rolled back, so 402 lets the UI prompt for a new card.
+        logger.warning(
+            "Card declined on subscription upgrade for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Your card was declined. The plan was not changed; please"
+                " update your payment method and try again."
+            ),
+        )
     except stripe.InvalidRequestError as e:
         # Stripe rejects schedule modify when phases mix currencies, e.g. the
         # active sub was checked out in GBP but the target tier's Price is

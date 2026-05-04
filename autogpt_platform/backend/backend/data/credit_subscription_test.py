@@ -1836,7 +1836,8 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
     mock_modify.assert_called_once_with(
         "sub_abc",
         items=[{"id": "si_abc", "price": "price_pro_monthly"}],
-        proration_behavior="create_prorations",
+        proration_behavior="always_invoice",
+        payment_behavior="error_if_incomplete",
     )
     mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
 
@@ -1894,7 +1895,8 @@ async def test_modify_stripe_subscription_for_tier_clears_cancel_at_period_end_o
     mock_modify.assert_called_once_with(
         "sub_upgrading",
         items=[{"id": "si_abc", "price": "price_biz_monthly"}],
-        proration_behavior="create_prorations",
+        proration_behavior="always_invoice",
+        payment_behavior="error_if_incomplete",
         cancel_at_period_end=False,
     )
     mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
@@ -2118,9 +2120,125 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
     mock_modify.assert_called_once_with(
         "sub_pro",
         items=[{"id": "si_pro", "price": "price_biz_monthly"}],
-        proration_behavior="create_prorations",
+        proration_behavior="always_invoice",
+        payment_behavior="error_if_incomplete",
     )
     mock_schedule_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_for_tier_pro_to_max_bills_immediately():
+    """Pro→Max upgrade calls Stripe with always_invoice + error_if_incomplete so the
+    user is charged the prorated amount immediately rather than at next cycle, and
+    the DB tier flip lands once Stripe confirms payment success."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_max_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ) as mock_set_tier,
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.MAX
+        )
+
+    assert result is True
+    mock_modify.assert_called_once_with(
+        "sub_pro",
+        items=[{"id": "si_pro", "price": "price_max_monthly"}],
+        proration_behavior="always_invoice",
+        payment_behavior="error_if_incomplete",
+    )
+    mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.MAX)
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_for_tier_pro_to_max_card_decline_does_not_flip_tier():
+    """Pro→Max upgrade where Stripe raises CardError (auto-charge declined under
+    payment_behavior=error_if_incomplete): the function must propagate the error
+    AND must not call set_subscription_tier — the user stays on Pro."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_max_monthly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+            side_effect=stripe.CardError(
+                "Your card was declined.", param="card", code="card_declined"
+            ),
+        ),
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ) as mock_set_tier,
+    ):
+        with pytest.raises(stripe.CardError):
+            await modify_stripe_subscription_for_tier("user-1", SubscriptionTier.MAX)
+
+    mock_set_tier.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -3015,7 +3133,8 @@ async def test_upgrade_releases_pending_schedule():
     mock_modify.assert_called_once_with(
         "sub_pro",
         items=[{"id": "si_pro", "price": "price_biz_monthly"}],
-        proration_behavior="create_prorations",
+        proration_behavior="always_invoice",
+        payment_behavior="error_if_incomplete",
     )
 
 
