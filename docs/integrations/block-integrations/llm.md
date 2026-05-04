@@ -539,8 +539,8 @@ The block searches arXiv for the requested topic, converts the returned Atom fee
 |-------|-------------|------|----------|
 | topic | Research topic or question for the scientific paper. | str | Yes |
 | instructions | Additional paper requirements, constraints, or audience context. | str | No |
-| model | Ollama model name to use for paper generation. | str | No |
-| ollama_host | Ollama host for local inference. | str | No |
+| model | Ollama model tag to use for paper generation. Defaults to 'cajal' (Agnuxo/CAJAL-4B-P2PCLAW); pull or alias the model in your local Ollama instance before running this block. Any locally-available Ollama model tag is accepted. | str | No |
+| ollama_host | Ollama host URL for local inference. Must include an http:// or https:// scheme. | str | No |
 | citation_count | Number of arXiv references to retrieve and require in the paper. | int | No |
 | temperature | Ollama sampling temperature. | float | No |
 | max_tokens | Maximum number of tokens Ollama should generate. | int | No |
