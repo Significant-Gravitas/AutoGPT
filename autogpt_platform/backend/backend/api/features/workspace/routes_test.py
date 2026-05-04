@@ -151,15 +151,16 @@ def test_list_files_null_metadata_coerced_to_empty_dict(
 # -- upload_file metadata tests --
 
 
+@patch("backend.api.features.workspace.routes.get_workspace_storage_limit_bytes")
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.get_workspace_total_size")
-@patch("backend.api.features.workspace.routes.scan_content_safe")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_upload_passes_user_upload_origin_metadata(
-    mock_manager_cls, mock_scan, mock_total_size, mock_get_workspace
+    mock_manager_cls, mock_total_size, mock_get_workspace, mock_storage_limit
 ):
     mock_get_workspace.return_value = _make_workspace()
     mock_total_size.return_value = 100
+    mock_storage_limit.return_value = 250 * 1024 * 1024
     written = _make_file(id="new-file", name="doc.pdf")
     mock_instance = AsyncMock()
     mock_instance.write_file.return_value = written
@@ -178,10 +179,9 @@ def test_upload_passes_user_upload_origin_metadata(
 
 @patch("backend.api.features.workspace.routes.get_or_create_workspace")
 @patch("backend.api.features.workspace.routes.get_workspace_total_size")
-@patch("backend.api.features.workspace.routes.scan_content_safe")
 @patch("backend.api.features.workspace.routes.WorkspaceManager")
 def test_upload_returns_409_on_file_conflict(
-    mock_manager_cls, mock_scan, mock_total_size, mock_get_workspace
+    mock_manager_cls, mock_total_size, mock_get_workspace
 ):
     mock_get_workspace.return_value = _make_workspace()
     mock_total_size.return_value = 100
@@ -234,8 +234,8 @@ def test_upload_happy_path(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -256,20 +256,24 @@ def test_upload_exceeds_max_file_size(mocker):
     """Files larger than max_file_size_mb should be rejected with 413."""
     cfg = mocker.patch("backend.api.features.workspace.routes.Config")
     cfg.return_value.max_file_size_mb = 0  # 0 MB → any content is too big
-    cfg.return_value.max_workspace_storage_mb = 500
 
     response = _upload(content=b"x" * 1024)
     assert response.status_code == 413
 
 
 def test_upload_storage_quota_exceeded(mocker):
+    """WorkspaceManager.write_file raises ValueError when quota exceeded → 413."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=ValueError("Storage limit exceeded: 500 MB used of 250 MB (200.0%)")
+    )
     mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=500 * 1024 * 1024,
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
     )
 
     response = _upload()
@@ -278,33 +282,33 @@ def test_upload_storage_quota_exceeded(mocker):
 
 
 def test_upload_post_write_quota_race(mocker):
-    """Concurrent upload tipping over limit after write should soft-delete + 413."""
+    """Concurrent upload tipping over limit after write should delete + 413."""
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
+    # Post-write total exceeds the tier-based limit (250 MB for FREE).
     mocker.patch(
         "backend.api.features.workspace.routes.get_workspace_total_size",
-        side_effect=[0, 600 * 1024 * 1024],
+        return_value=600 * 1024 * 1024,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
+    mock_manager.delete_file = mocker.AsyncMock(return_value=True)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
     )
-    mock_delete = mocker.patch(
-        "backend.api.features.workspace.routes.soft_delete_workspace_file",
-        return_value=None,
-    )
 
     response = _upload()
     assert response.status_code == 413
-    mock_delete.assert_called_once_with("file-aaa-bbb", "ws-001")
+    # Rollback must go through manager.delete_file so the storage blob is removed,
+    # not just soft_delete_workspace_file (which would orphan the blob).
+    mock_manager.delete_file.assert_awaited_once_with("file-aaa-bbb")
 
 
 def test_upload_any_extension(mocker):
@@ -318,8 +322,8 @@ def test_upload_any_extension(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -333,23 +337,17 @@ def test_upload_any_extension(mocker):
 
 
 def test_upload_blocked_by_virus_scan(mocker):
-    """Files flagged by ClamAV should be rejected and never written to storage."""
+    """Files flagged by ClamAV should be rejected via WorkspaceManager."""
     from backend.api.features.store.exceptions import VirusDetectedError
 
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
         side_effect=VirusDetectedError("Eicar-Test-Signature"),
     )
-    mock_manager = mocker.MagicMock()
-    mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
     mocker.patch(
         "backend.api.features.workspace.routes.WorkspaceManager",
         return_value=mock_manager,
@@ -357,7 +355,6 @@ def test_upload_blocked_by_virus_scan(mocker):
 
     response = _upload(filename="evil.exe", content=b"X5O!P%@AP...")
     assert response.status_code == 400
-    mock_manager.write_file.assert_not_called()
 
 
 def test_upload_file_without_extension(mocker):
@@ -371,8 +368,8 @@ def test_upload_file_without_extension(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -402,8 +399,8 @@ def test_upload_strips_path_components(mocker):
         return_value=0,
     )
     mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=250 * 1024 * 1024,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(return_value=_MOCK_FILE)
@@ -488,14 +485,6 @@ def test_upload_write_file_too_large_returns_413(mocker):
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
     )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
-    )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(
         side_effect=ValueError("File too large: 900 bytes exceeds 1MB limit")
@@ -515,14 +504,6 @@ def test_upload_write_file_conflict_returns_409(mocker):
     mocker.patch(
         "backend.api.features.workspace.routes.get_or_create_workspace",
         return_value=_make_workspace(),
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.get_workspace_total_size",
-        return_value=0,
-    )
-    mocker.patch(
-        "backend.api.features.workspace.routes.scan_content_safe",
-        return_value=None,
     )
     mock_manager = mocker.MagicMock()
     mock_manager.write_file = mocker.AsyncMock(
@@ -600,3 +581,269 @@ def test_list_files_offset_is_echoed_back(mock_manager_cls, mock_get_workspace):
     mock_instance.list_files.assert_called_once_with(
         limit=11, offset=50, include_all_sessions=True
     )
+
+
+def test_upload_virus_scan_infrastructure_error_returns_500(mocker):
+    """VirusScanError (ClamAV outage) should return 500, not 409."""
+    from backend.api.features.store.exceptions import VirusScanError
+
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mock_manager = mocker.MagicMock()
+    mock_manager.write_file = mocker.AsyncMock(
+        side_effect=VirusScanError("ClamAV connection refused"),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.WorkspaceManager",
+        return_value=mock_manager,
+    )
+
+    response = _upload()
+    assert response.status_code == 500
+
+
+def test_get_storage_usage_returns_tier_based_limit(mocker):
+    """get_storage_usage should return the user's tier-based limit, not a static config."""
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_or_create_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_total_size",
+        return_value=100 * 1024 * 1024,  # 100 MB used
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.count_workspace_files",
+        return_value=5,
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage_limit_bytes",
+        return_value=1024 * 1024 * 1024,  # 1 GB (PRO tier)
+    )
+
+    response = client.get("/storage/usage")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["limit_bytes"] == 1024 * 1024 * 1024
+    assert data["used_bytes"] == 100 * 1024 * 1024
+    assert data["file_count"] == 5
+
+
+# -- _sanitize_filename_for_header tests --
+
+
+class TestSanitizeFilenameForHeader:
+    def test_simple_ascii_attachment(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        assert _sanitize_filename_for_header("report.pdf") == (
+            'attachment; filename="report.pdf"'
+        )
+
+    def test_inline_disposition(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        assert _sanitize_filename_for_header("image.png", disposition="inline") == (
+            'inline; filename="image.png"'
+        )
+
+    def test_strips_cr_lf_null(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("a\rb\nc\x00d.txt")
+        assert "\r" not in result
+        assert "\n" not in result
+        assert "\x00" not in result
+        assert 'filename="abcd.txt"' in result
+
+    def test_escapes_quotes(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header('file"name.txt')
+        assert 'filename="file\\"name.txt"' in result
+
+    def test_header_injection_blocked(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("evil.txt\r\nX-Injected: true")
+        # CR/LF stripped — the remaining text is safely inside the quoted value
+        assert "\r" not in result
+        assert "\n" not in result
+        assert result == 'attachment; filename="evil.txtX-Injected: true"'
+
+    def test_unicode_uses_rfc5987(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("日本語.pdf")
+        assert "filename*=UTF-8''" in result
+        assert "attachment" in result
+
+    def test_unicode_inline(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("图片.png", disposition="inline")
+        assert result.startswith("inline; filename*=UTF-8''")
+
+    def test_empty_filename(self):
+        from backend.api.features.workspace.routes import _sanitize_filename_for_header
+
+        result = _sanitize_filename_for_header("")
+        assert result == 'attachment; filename=""'
+
+
+# -- _create_streaming_response tests --
+
+
+class TestCreateStreamingResponse:
+    def test_attachment_disposition_by_default(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="data.bin", mime_type="application/octet-stream")
+        response = _create_streaming_response(b"binary-data", file)
+        assert (
+            response.headers["Content-Disposition"] == 'attachment; filename="data.bin"'
+        )
+        assert response.headers["Content-Type"] == "application/octet-stream"
+        assert response.headers["Content-Length"] == "11"
+        assert response.body == b"binary-data"
+
+    def test_inline_disposition(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name="photo.png", mime_type="image/png")
+        response = _create_streaming_response(b"\x89PNG", file, inline=True)
+        assert response.headers["Content-Disposition"] == 'inline; filename="photo.png"'
+        assert response.headers["Content-Type"] == "image/png"
+
+    def test_inline_sanitizes_filename(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        file = _make_file(name='evil"\r\n.txt', mime_type="text/plain")
+        response = _create_streaming_response(b"data", file, inline=True)
+        assert "\r" not in response.headers["Content-Disposition"]
+        assert "\n" not in response.headers["Content-Disposition"]
+        assert "inline" in response.headers["Content-Disposition"]
+
+    def test_content_length_matches_body(self):
+        from backend.api.features.workspace.routes import _create_streaming_response
+
+        content = b"x" * 1000
+        file = _make_file(name="big.bin", mime_type="application/octet-stream")
+        response = _create_streaming_response(content, file)
+        assert response.headers["Content-Length"] == "1000"
+
+
+# -- create_file_download_response tests --
+
+
+class TestCreateFileDownloadResponse:
+    @pytest.mark.asyncio
+    async def test_local_storage_returns_streaming_response(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.return_value = b"file contents"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(
+            storage_path="local://uploads/test.txt",
+            mime_type="text/plain",
+        )
+        response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"file contents"
+        assert "attachment" in response.headers["Content-Disposition"]
+
+    @pytest.mark.asyncio
+    async def test_local_storage_inline(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.retrieve.return_value = b"\x89PNG"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(
+            storage_path="local://uploads/photo.png",
+            mime_type="image/png",
+            name="photo.png",
+        )
+        response = await create_file_download_response(file, inline=True)
+        assert "inline" in response.headers["Content-Disposition"]
+
+    @pytest.mark.asyncio
+    async def test_gcs_redirect(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = (
+            "https://storage.googleapis.com/signed-url"
+        )
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.pdf")
+        response = await create_file_download_response(file)
+        assert response.status_code == 302
+        assert (
+            response.headers["location"] == "https://storage.googleapis.com/signed-url"
+        )
+
+    @pytest.mark.asyncio
+    async def test_gcs_api_fallback_streams_directly(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = "/api/fallback"
+        mock_storage.retrieve.return_value = b"fallback content"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"fallback content"
+
+    @pytest.mark.asyncio
+    async def test_gcs_signed_url_failure_falls_back_to_streaming(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.side_effect = RuntimeError("GCS error")
+        mock_storage.retrieve.return_value = b"streamed"
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"streamed"
+
+    @pytest.mark.asyncio
+    async def test_gcs_total_failure_raises(self, mocker):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.side_effect = RuntimeError("GCS error")
+        mock_storage.retrieve.side_effect = RuntimeError("Also failed")
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        with pytest.raises(RuntimeError, match="Also failed"):
+            await create_file_download_response(file)

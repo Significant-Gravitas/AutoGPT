@@ -1,7 +1,12 @@
 "use client";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/molecules/Accordion/Accordion";
 import { LightbulbIcon } from "@phosphor-icons/react";
-import { Dialog } from "@/components/molecules/Dialog/Dialog";
 
 interface Props {
   children: React.ReactNode;
@@ -9,19 +14,18 @@ interface Props {
 
 export function ReasoningCollapse({ children }: Props) {
   return (
-    <Dialog title="Reasoning">
-      <Dialog.Trigger>
-        <button
-          type="button"
-          className="flex items-center gap-1 text-xs text-zinc-500 transition-colors hover:text-zinc-700"
-        >
-          <LightbulbIcon size={12} weight="bold" />
-          <span>Show reasoning</span>
-        </button>
-      </Dialog.Trigger>
-      <Dialog.Content>
-        <div className="space-y-1">{children}</div>
-      </Dialog.Content>
-    </Dialog>
+    <Accordion type="single" collapsible className="my-1">
+      <AccordionItem value="reasoning" className="border-none">
+        <AccordionTrigger className="justify-start gap-1.5 py-1 text-xs font-medium text-zinc-500 hover:no-underline">
+          <span className="flex items-center gap-1.5">
+            <LightbulbIcon size={14} weight="bold" className="shrink-0" />
+            Reasoning
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="pb-1 pl-5 pt-0 text-xs text-zinc-500 [&_pre]:m-0 [&_pre]:whitespace-pre-wrap [&_pre]:bg-transparent [&_pre]:p-0 [&_pre]:text-xs [&_pre]:text-zinc-500">
+          {children}
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }

@@ -415,13 +415,16 @@ async def test_sequential_tool_execution():
 
 @pytest.mark.asyncio
 async def test_last_iteration_message_appended():
-    """On the final iteration, last_iteration_message should be appended."""
+    """On the final iteration, last_iteration_message should be appended
+    and ``tools`` should be empty so the model is forced to produce text."""
     captured_messages: list[list[dict[str, Any]]] = []
+    captured_tools: list[Sequence[Any]] = []
 
     async def llm_call(
         messages: list[dict[str, Any]], tools: Sequence[Any]
     ) -> LLMLoopResponse:
         captured_messages.append(list(messages))
+        captured_tools.append(tools)
         return _make_response(
             tool_calls=[LLMToolCall(id="tc_1", name="get_weather", arguments="{}")]
         )
@@ -452,14 +455,17 @@ async def test_last_iteration_message_appended():
     ):
         pass
 
-    # First iteration: no extra message
+    # First iteration: no extra message, tools available
     assert len(captured_messages[0]) == 1
-    # Second (last) iteration: should have the hint appended
+    assert list(captured_tools[0]) == list(TOOL_DEFS)
+    # Second (last) iteration: hint appended, tools dropped (forces the
+    # model to produce a text response instead of another tool call).
     last_call_msgs = captured_messages[1]
     assert any(
         m.get("role") == "system" and "Please finish now." in m.get("content", "")
         for m in last_call_msgs
     )
+    assert list(captured_tools[1]) == []
 
 
 @pytest.mark.asyncio

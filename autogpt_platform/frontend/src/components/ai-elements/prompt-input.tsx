@@ -146,13 +146,7 @@ export function PromptInputTextarea({
         if (e.shiftKey) return;
         e.preventDefault();
 
-        const { form } = e.currentTarget;
-        const submitButton = form?.querySelector(
-          'button[type="submit"]',
-        ) as HTMLButtonElement | null;
-        if (submitButton?.disabled) return;
-
-        form?.requestSubmit();
+        e.currentTarget.form?.requestSubmit();
       }
     },
     [onKeyDown, isComposing],

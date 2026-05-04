@@ -22,6 +22,58 @@ class AyrshareAPIException(Exception):
         self.status_code = status_code
 
 
+def _extract_error_message(response: Any) -> str:
+    """Safely pull an error message out of an Ayrshare response.
+
+    Ayrshare surfaces errors in several shapes depending on how far the
+    request got:
+
+    - flat:              ``{"status": "error", "message": "..."}``
+    - post-level reject: ``{"posts": [{"message": "Missing post parameter", ...}]}``
+      (the request itself was rejected — e.g. validation fails before
+      trying any platform)
+    - per-platform fail: ``{"posts": [{"errors": [{"message": "Twitter is not linked"}]}]}``
+      (a platform-specific failure after the request reached Ayrshare's
+      post-dispatch path)
+
+    Tolerates bodies that aren't a dict (list, string, malformed JSON) —
+    otherwise a ``.get()`` on a list raises AttributeError and the caller
+    gets a confusing generic error instead of the upstream detail.
+    """
+    try:
+        data = response.json()
+    except (json.JSONDecodeError, ValueError):
+        return response.text() or "Unknown error"
+    if not isinstance(data, dict):
+        return response.text() or "Unknown error"
+
+    # Prefer the nested per-post error since that's where the actionable
+    # reason lives for create_post failures.
+    posts = data.get("posts")
+    if isinstance(posts, list):
+        messages: list[str] = []
+        for post in posts:
+            if not isinstance(post, dict):
+                continue
+            # Shape: posts[].errors[].message (per-platform failure)
+            errors = post.get("errors")
+            if isinstance(errors, list):
+                for e in errors:
+                    if isinstance(e, dict) and e.get("message"):
+                        messages.append(str(e["message"]))
+            # Shape: posts[].message (request-level reject)
+            post_msg = post.get("message")
+            if post_msg:
+                messages.append(str(post_msg))
+        if messages:
+            return "; ".join(messages)
+
+    top = data.get("message")
+    if top:
+        return str(top)
+    return "Unknown error"
+
+
 class SocialPlatform(str, Enum):
     BLUESKY = "bluesky"
     FACEBOOK = "facebook"
@@ -129,9 +181,14 @@ class AyrshareClient:
         if custom_requests:
             self._requests = custom_requests
         else:
+            # raise_for_status=False — every method inspects response.ok +
+            # the "status" envelope itself and raises AyrshareAPIException
+            # with Ayrshare's own error message, which is more actionable
+            # than the generic HTTPError that would fire otherwise.
             self._requests = Requests(
                 extra_headers=headers,
                 trusted_origins=["https://api.ayrshare.com"],
+                raise_for_status=False,
             )
 
     async def generate_jwt(
@@ -197,14 +254,9 @@ class AyrshareClient:
         )
 
         if not response.ok:
-            try:
-                error_data = response.json()
-                error_message = error_data.get("message", "Unknown error")
-            except json.JSONDecodeError:
-                error_message = response.text()
-
             raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status}): {error_message}",
+                f"Ayrshare API request failed ({response.status}): "
+                f"{_extract_error_message(response)}",
                 response.status,
             )
 
@@ -275,14 +327,9 @@ class AyrshareClient:
         response = await self._requests.post(self.PROFILES_ENDPOINT, json=payload)
 
         if not response.ok:
-            try:
-                error_data = response.json()
-                error_message = error_data.get("message", "Unknown error")
-            except json.JSONDecodeError:
-                error_message = response.text()
-
             raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status}): {error_message}",
+                f"Ayrshare API request failed ({response.status}): "
+                f"{_extract_error_message(response)}",
                 response.status,
             )
 
@@ -477,14 +524,9 @@ class AyrshareClient:
             logger.error(
                 f"Ayrshare API request failed ({response.status}): {response.text()}"
             )
-            try:
-                error_data = response.json()
-                error_message = error_data.get("message", "Unknown error")
-            except json.JSONDecodeError:
-                error_message = response.text()
-
             raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status}): {error_message}",
+                f"Ayrshare API request failed ({response.status}): "
+                f"{_extract_error_message(response)}",
                 response.status,
             )
 

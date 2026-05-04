@@ -84,9 +84,10 @@ async def test_resolve_file_ref_local_path_with_line_range():
 async def test_resolve_file_ref_rejects_path_outside_sdk_cwd():
     """resolve_file_ref raises ValueError for paths outside sdk_cwd."""
     with tempfile.TemporaryDirectory() as sdk_cwd:
-        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var, patch(
-            "backend.copilot.context._current_sandbox"
-        ) as mock_sandbox_var:
+        with (
+            patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var,
+            patch("backend.copilot.context._current_sandbox") as mock_sandbox_var,
+        ):
             mock_cwd_var.get.return_value = sdk_cwd
             mock_sandbox_var.get.return_value = None
 
@@ -387,11 +388,13 @@ async def test_read_file_handler_local_file():
         with open(test_file, "w") as f:
             f.writelines(lines)
 
-        with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var, patch(
-            "backend.copilot.context._current_project_dir"
-        ) as mock_proj_var, patch(
-            "backend.copilot.sdk.tool_adapter.get_execution_context",
-            return_value=("user-1", _make_session()),
+        with (
+            patch("backend.copilot.context._current_sdk_cwd") as mock_cwd_var,
+            patch("backend.copilot.context._current_project_dir") as mock_proj_var,
+            patch(
+                "backend.copilot.sdk.tool_adapter.get_execution_context",
+                return_value=("user-1", _make_session()),
+            ),
         ):
             mock_cwd_var.get.return_value = sdk_cwd
             # No project_dir set — so is_sdk_tool_path returns False for sdk_cwd paths
@@ -413,12 +416,15 @@ async def test_read_file_handler_workspace_uri():
     mock_manager = AsyncMock()
     mock_manager.read_file_by_id.return_value = b"workspace file content\nline two\n"
 
-    with patch(
-        "backend.copilot.sdk.tool_adapter.get_execution_context",
-        return_value=("user-1", mock_session),
-    ), patch(
-        "backend.copilot.sdk.file_ref.get_workspace_manager",
-        new=AsyncMock(return_value=mock_manager),
+    with (
+        patch(
+            "backend.copilot.sdk.tool_adapter.get_execution_context",
+            return_value=("user-1", mock_session),
+        ),
+        patch(
+            "backend.copilot.sdk.file_ref.get_workspace_manager",
+            new=AsyncMock(return_value=mock_manager),
+        ),
     ):
         result = await _read_file_handler(
             {"file_path": "workspace://file-id-abc", "offset": 0, "limit": 10}
@@ -446,11 +452,13 @@ async def test_read_file_handler_workspace_uri_no_session():
 @pytest.mark.asyncio
 async def test_read_file_handler_access_denied():
     """_read_file_handler rejects paths outside allowed locations."""
-    with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
-        "backend.copilot.context._current_sandbox"
-    ) as mock_sandbox, patch(
-        "backend.copilot.sdk.tool_adapter.get_execution_context",
-        return_value=("user-1", _make_session()),
+    with (
+        patch("backend.copilot.context._current_sdk_cwd") as mock_cwd,
+        patch("backend.copilot.context._current_sandbox") as mock_sandbox,
+        patch(
+            "backend.copilot.sdk.tool_adapter.get_execution_context",
+            return_value=("user-1", _make_session()),
+        ),
     ):
         mock_cwd.get.return_value = "/tmp/safe-dir"
         mock_sandbox.get.return_value = None
@@ -490,11 +498,11 @@ async def test_read_file_bytes_e2b_sandbox_branch():
     mock_sandbox = AsyncMock()
     mock_sandbox.files.read.return_value = bytearray(b"sandbox content")
 
-    with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
-        "backend.copilot.context._current_sandbox"
-    ) as mock_sandbox_var, patch(
-        "backend.copilot.context._current_project_dir"
-    ) as mock_proj:
+    with (
+        patch("backend.copilot.context._current_sdk_cwd") as mock_cwd,
+        patch("backend.copilot.context._current_sandbox") as mock_sandbox_var,
+        patch("backend.copilot.context._current_project_dir") as mock_proj,
+    ):
         mock_cwd.get.return_value = ""
         mock_sandbox_var.get.return_value = mock_sandbox
         mock_proj.get.return_value = ""
@@ -513,11 +521,11 @@ async def test_read_file_bytes_e2b_path_escapes_sandbox_raises():
     session = _make_session()
     mock_sandbox = AsyncMock()
 
-    with patch("backend.copilot.context._current_sdk_cwd") as mock_cwd, patch(
-        "backend.copilot.context._current_sandbox"
-    ) as mock_sandbox_var, patch(
-        "backend.copilot.context._current_project_dir"
-    ) as mock_proj:
+    with (
+        patch("backend.copilot.context._current_sdk_cwd") as mock_cwd,
+        patch("backend.copilot.context._current_sandbox") as mock_sandbox_var,
+        patch("backend.copilot.context._current_project_dir") as mock_proj,
+    ):
         mock_cwd.get.return_value = ""
         mock_sandbox_var.get.return_value = mock_sandbox
         mock_proj.get.return_value = ""

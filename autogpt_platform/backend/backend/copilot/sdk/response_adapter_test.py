@@ -6,8 +6,10 @@ import pytest
 from claude_agent_sdk import (
     AssistantMessage,
     ResultMessage,
+    StreamEvent,
     SystemMessage,
     TextBlock,
+    ThinkingBlock,
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
@@ -19,8 +21,11 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -134,6 +139,29 @@ def test_tool_use_emits_input_start_and_available():
     assert results[2].input == {"q": "x"}
 
 
+def test_tool_use_strips_whitespace_in_tool_name():
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[
+            ToolUseBlock(
+                id="tool-1",
+                name=f" {MCP_TOOL_PREFIX}find_block",
+                input={},
+            )
+        ],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    tool_events = [
+        r
+        for r in results
+        if isinstance(r, (StreamToolInputStart, StreamToolInputAvailable))
+    ]
+    assert tool_events, "expected tool input events"
+    for event in tool_events:
+        assert event.toolName == "find_block"
+
+
 def test_text_then_tool_ends_text_block():
     adapter = _adapter()
     text_msg = AssistantMessage(content=[TextBlock(text="thinking...")], model="test")
@@ -166,13 +194,15 @@ def test_tool_result_emits_output_and_finish_step():
         content=[ToolResultBlock(tool_use_id="t1", content="found 3 agents")]
     )
     results = adapter.convert_message(result_msg)
-    assert len(results) == 2
+    assert len(results) == 3
     assert isinstance(results[0], StreamToolOutputAvailable)
     assert results[0].toolCallId == "t1"
     assert results[0].toolName == "find_agent"  # prefix stripped
     assert results[0].output == "found 3 agents"
     assert results[0].success is True
     assert isinstance(results[1], StreamFinishStep)
+    assert isinstance(results[2], StreamStatus)
+    assert results[2].message == "Analyzing result…"
 
 
 def test_tool_result_error():
@@ -249,6 +279,392 @@ def test_result_success_emits_finish_step_and_finish():
     assert isinstance(results[0], StreamTextEnd)
     assert isinstance(results[1], StreamFinishStep)
     assert isinstance(results[2], StreamFinish)
+
+
+# -- Reasoning streaming -----------------------------------------------------
+
+
+def test_thinking_block_streams_as_reasoning():
+    """ThinkingBlock content streams as StreamReasoningDelta so the
+    frontend renders it via the ``Reasoning`` part (collapsed by
+    default) instead of dropping it silently."""
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[
+            ThinkingBlock(thinking="planning step 1", signature="sig"),
+        ],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    # Step + ReasoningStart + ReasoningDelta
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningStart" in types
+    assert any(
+        isinstance(r, StreamReasoningDelta) and r.delta == "planning step 1"
+        for r in results
+    )
+
+
+def test_text_after_thinking_closes_reasoning_and_opens_text():
+    """Reasoning and text are distinct UI parts — opening text must
+    emit ``ReasoningEnd`` first so the AI SDK transport doesn't merge
+    them into the same ``Reasoning`` part."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="warming up", signature="sig")],
+            model="test",
+        )
+    )
+    results = adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    types = [type(r).__name__ for r in results]
+    # ReasoningEnd must come before TextStart
+    re_idx = types.index("StreamReasoningEnd")
+    ts_idx = types.index("StreamTextStart")
+    assert re_idx < ts_idx
+
+
+def test_thinking_after_text_in_same_message_renders_reasoning_first():
+    """Kimi K2.6 (and other non-Anthropic OpenRouter providers) place
+    ``reasoning`` AFTER the visible text in the response, so the SDK
+    builds an ``AssistantMessage`` with content = [TextBlock, ThinkingBlock].
+    Without reordering, the UI would show the answer first and the
+    reasoning panel below it — the opposite of the natural reading
+    order Anthropic models produce.  response_adapter must hoist
+    ThinkingBlocks to the front so ``reasoning-start/delta/end`` events
+    hit the SSE stream BEFORE the ``text-*`` events."""
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[
+            TextBlock(text="63"),
+            ThinkingBlock(thinking="7 times 9 is 63", signature=""),
+        ],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    # ReasoningStart must land before TextStart in the emitted stream
+    assert "StreamReasoningStart" in types
+    assert "StreamTextStart" in types
+    assert types.index("StreamReasoningStart") < types.index("StreamTextStart")
+    # ReasoningDelta payload is intact
+    assert any(
+        isinstance(r, StreamReasoningDelta) and r.delta == "7 times 9 is 63"
+        for r in results
+    )
+
+
+def test_tool_use_after_thinking_closes_reasoning():
+    """Opening a tool also closes an open reasoning block."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="let me search", signature="sig")],
+            model="test",
+        )
+    )
+    results = adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+            ],
+            model="test",
+        )
+    )
+    types = [type(r).__name__ for r in results]
+    assert types.index("StreamReasoningEnd") < types.index("StreamToolInputStart")
+
+
+def test_empty_thinking_block_is_ignored():
+    """A ThinkingBlock with empty content shouldn't emit anything."""
+    adapter = _adapter()
+    msg = AssistantMessage(
+        content=[ThinkingBlock(thinking="", signature="sig")],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    # Only the StepStart fires — no reasoning events.
+    assert [type(r).__name__ for r in results] == ["StreamStartStep"]
+
+
+def test_render_reasoning_in_ui_false_still_emits_adapter_events():
+    """With the persist/render decoupling the adapter is flag-agnostic:
+    it always emits ``StreamReasoning*`` so the session transcript keeps a
+    durable reasoning record.  Wire-level suppression when
+    ``render_reasoning_in_ui=False`` happens at the SDK service yield
+    boundary, not here — see
+    ``backend/copilot/sdk/service.py::_filter_reasoning_events``.
+    """
+    adapter = SDKResponseAdapter(
+        message_id="m",
+        session_id="s",
+        render_reasoning_in_ui=False,
+    )
+    msg = AssistantMessage(
+        content=[ThinkingBlock(thinking="plan", signature="sig")],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningStart" in types
+    assert "StreamReasoningDelta" in types
+
+
+def test_render_reasoning_off_text_after_thinking_still_closes_reasoning():
+    """Adapter still emits a ``StreamReasoningEnd`` when text follows a
+    thinking block — decoupled from the render flag.  The service layer
+    drops the reasoning events at yield time; the adapter's structural
+    open/close pairing must not depend on the flag or downstream filters
+    would see orphan reasoning starts on the persisted transcript.
+    """
+    adapter = SDKResponseAdapter(
+        message_id="m",
+        session_id="s",
+        render_reasoning_in_ui=False,
+    )
+    adapter.convert_message(
+        AssistantMessage(
+            content=[ThinkingBlock(thinking="warming up", signature="sig")],
+            model="test",
+        )
+    )
+    results = adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningEnd" in types
+    assert "StreamTextStart" in types
+    assert "StreamTextDelta" in types
+
+
+def test_render_reasoning_on_is_default():
+    """Default is True — existing callers keep emitting reasoning events."""
+    adapter = SDKResponseAdapter(message_id="m", session_id="s")
+    msg = AssistantMessage(
+        content=[ThinkingBlock(thinking="plan", signature="sig")],
+        model="test",
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamReasoningStart" in types
+    assert "StreamReasoningDelta" in types
+
+
+def test_result_success_synthesizes_fallback_text_when_final_turn_is_thinking_only():
+    """If the model's last LLM call after a tool_result produced only a
+    ThinkingBlock (no TextBlock), the UI would hang on the tool output
+    with no response text.  The adapter should inject a short closing
+    line before ``StreamFinish`` so the turn visibly completes."""
+    adapter = _adapter()
+
+    # Tool use + tool_result (simulates the tool round).
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={}),
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+            ],
+            parent_tool_use_id=None,
+        )
+    )
+
+    # Model's "final turn" after tool_result is thinking-only.  This test
+    # simulates the *degenerate* case where the SDK never surfaces an
+    # AssistantMessage carrying the ThinkingBlock at all (not even the
+    # streamed reasoning events) before ResultMessage — only the tool_result
+    # has arrived.  The fallback guard should still synthesize closing text.
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="",
+    )
+    results = adapter.convert_message(msg)
+
+    # Fallback text should be injected before the finish events.
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert len(text_deltas) == 1, "should synthesize exactly one fallback text"
+    assert text_deltas[0].delta.strip()  # non-empty
+    assert isinstance(results[-1], StreamFinish)
+
+
+def test_result_success_does_not_synthesize_when_text_already_emitted():
+    """Guard: do NOT synthesize when the model DID emit closing text
+    after the last tool result — the fallback is only for the silent
+    thinking-only case."""
+    adapter = _adapter()
+
+    adapter.convert_message(
+        AssistantMessage(
+            content=[
+                ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+            ],
+            model="test",
+        )
+    )
+    adapter.convert_message(
+        UserMessage(
+            content=[
+                ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+            ],
+            parent_tool_use_id=None,
+        )
+    )
+    # Model responds with actual text after the tool result.
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="all done")], model="test")
+    )
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=4,
+        session_id="s1",
+        result="all done",
+    )
+    results = adapter.convert_message(msg)
+
+    # No fallback — the only TextDelta came from the previous
+    # AssistantMessage call, not from ResultMessage's synthesis.
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert text_deltas == []
+
+
+def test_result_success_does_not_synthesize_when_no_tools_ran():
+    """Guard: no tool_results seen ⇒ no fallback.  Pure-text turns with
+    no tools legitimately produce text-only responses through normal
+    AssistantMessage events; we don't need a fallback there."""
+    adapter = _adapter()
+
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="hello",
+    )
+    results = adapter.convert_message(msg)
+    text_deltas = [r for r in results if isinstance(r, StreamTextDelta)]
+    assert text_deltas == []
+
+
+def test_result_empty_success_emits_error_and_finish():
+    """SECRT-2252: a ``subtype="success"`` ResultMessage with empty ``result``,
+    no produced content, and ``output_tokens == 0`` is the SDK's ghost-finish
+    bug. The adapter surfaces it as a ``StreamError`` *paired with*
+    ``StreamFinish`` so the service-layer post-stream flow flips
+    ``acc.stream_completed`` and skips the ``STOPPED_BY_USER_MARKER``
+    branch. ``SystemMessage(subtype="init")`` opened a step, so the
+    empty-completion branch must close it before emitting the error."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result=None,
+        usage={"input_tokens": 5, "output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinishStep" in types
+    assert "StreamError" in types
+    assert "StreamFinish" in types
+    # Open step must be closed before the error, and the error must
+    # precede StreamFinish on the wire.
+    assert types.index("StreamFinishStep") < types.index("StreamError")
+    assert types.index("StreamError") < types.index("StreamFinish")
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+
+
+def test_result_empty_success_with_empty_string_result_treated_as_empty():
+    """An empty string (not just None) for ``result`` is also empty."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 0},
+    )
+    results = adapter.convert_message(msg)
+    err = next(r for r in results if isinstance(r, StreamError))
+    assert err.code == "empty_completion"
+    assert any(isinstance(r, StreamFinish) for r in results)
+
+
+def test_result_success_with_text_emits_finish_not_error():
+    """Non-empty success (text was produced) keeps the existing
+    ``StreamFinish`` behaviour — no spurious error."""
+    adapter = _adapter()
+    adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="hello")], model="test")
+    )
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="hello",
+        usage={"output_tokens": 5},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
+
+
+def test_result_success_with_nonzero_output_tokens_not_empty():
+    """If ``output_tokens > 0`` but ``result`` is empty, don't classify as
+    empty — fall through to the existing success path. No prior
+    AssistantMessage so the `output_tokens` guard is the only thing
+    keeping `_is_empty_completion()` from firing."""
+    adapter = _adapter()
+    adapter.convert_message(SystemMessage(subtype="init", data={}))
+    msg = ResultMessage(
+        subtype="success",
+        duration_ms=100,
+        duration_api_ms=50,
+        is_error=False,
+        num_turns=1,
+        session_id="s1",
+        result="",
+        usage={"output_tokens": 50},
+    )
+    results = adapter.convert_message(msg)
+    types = [type(r).__name__ for r in results]
+    assert "StreamFinish" in types
+    assert "StreamError" not in types
 
 
 def test_result_error_emits_error_and_finish():
@@ -372,6 +788,7 @@ def test_full_conversation_flow():
         "StreamToolInputAvailable",
         "StreamToolOutputAvailable",  # tool result
         "StreamFinishStep",  # step 1 closed after tool result
+        "StreamStatus",  # user-facing status while continuation is generated
         "StreamStartStep",  # step 2: continuation text
         "StreamTextStart",  # new block after tool
         "StreamTextDelta",  # "I found 2"
@@ -426,6 +843,13 @@ def test_flush_unresolved_at_result_message():
         "StreamToolInputAvailable",
         "StreamToolOutputAvailable",  # flushed with empty output
         "StreamFinishStep",  # step closed by flush
+        # Flush marks a tool_result as seen, so the thinking-only-final-turn
+        # guard at ResultMessage time synthesizes a closing text delta.
+        "StreamStartStep",
+        "StreamTextStart",
+        "StreamTextDelta",
+        "StreamTextEnd",
+        "StreamFinishStep",
         "StreamFinish",
     ]
     # The flushed output should be empty (no stash available)
@@ -789,3 +1213,318 @@ def test_end_text_if_open_no_op_after_text_already_ended():
     second: list[StreamBaseResponse] = []
     adapter._end_text_if_open(second)
     assert second == []
+
+
+# ---------------------------------------------------------------------------
+# Partial-message streaming (CHAT_SDK_INCLUDE_PARTIAL_MESSAGES)
+# Covers the 10 scenarios in docs/sdk-per-token-streaming-followup.md
+# ---------------------------------------------------------------------------
+
+
+def _stream_event(payload: dict) -> StreamEvent:
+    """Convenience constructor for a raw Anthropic StreamEvent payload."""
+    return StreamEvent(
+        uuid="stream-evt",
+        session_id="session-1",
+        parent_tool_use_id=None,
+        event=payload,
+    )
+
+
+def _message_start() -> StreamEvent:
+    return _stream_event({"type": "message_start"})
+
+
+def _text_block_start(index: int) -> StreamEvent:
+    return _stream_event(
+        {
+            "type": "content_block_start",
+            "index": index,
+            "content_block": {"type": "text", "text": ""},
+        }
+    )
+
+
+def _text_delta(index: int, text: str) -> StreamEvent:
+    return _stream_event(
+        {
+            "type": "content_block_delta",
+            "index": index,
+            "delta": {"type": "text_delta", "text": text},
+        }
+    )
+
+
+def _thinking_block_start(index: int) -> StreamEvent:
+    return _stream_event(
+        {
+            "type": "content_block_start",
+            "index": index,
+            "content_block": {"type": "thinking", "thinking": ""},
+        }
+    )
+
+
+def _thinking_delta(index: int, text: str) -> StreamEvent:
+    return _stream_event(
+        {
+            "type": "content_block_delta",
+            "index": index,
+            "delta": {"type": "thinking_delta", "thinking": text},
+        }
+    )
+
+
+def _block_stop(index: int) -> StreamEvent:
+    return _stream_event({"type": "content_block_stop", "index": index})
+
+
+def _collect_text_deltas(responses):
+    return "".join(r.delta for r in responses if isinstance(r, StreamTextDelta))
+
+
+def _collect_reasoning_deltas(responses):
+    return "".join(r.delta for r in responses if isinstance(r, StreamReasoningDelta))
+
+
+class TestPartialMessageStreaming:
+    """Scenarios 1-10 from sdk-per-token-streaming-followup.md.
+
+    The adapter runs unconditionally in partial-aware mode — when the
+    flag ``CHAT_SDK_INCLUDE_PARTIAL_MESSAGES`` is off the CLI simply
+    never emits ``StreamEvent`` messages and the diff maps stay empty
+    (so the tail logic degrades to "emit the full summary content"
+    which is the pre-partial behaviour).
+    """
+
+    def test_partial_and_summary_agree_no_duplicate(self):
+        """Scenario 1: partial streams full text, summary matches exactly.
+        No duplicate emission, no truncation — full content reaches the
+        wire once."""
+        adapter = _adapter()
+        full = "Hello world"
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        for chunk in ("Hello", " ", "world"):
+            adapter._handle_stream_event(_text_delta(0, chunk), responses)
+        adapter._handle_stream_event(_block_stop(0), responses)
+        # Summary arrives with the same full text
+        summary = adapter.convert_message(
+            AssistantMessage(content=[TextBlock(text=full)], model="test")
+        )
+        combined = responses + summary
+        assert _collect_text_deltas(combined) == full
+
+    def test_partial_short_summary_long_tail_emitted(self):
+        """Scenario 2 (the truncation bug we saw): partial emitted a
+        prefix of the real answer; summary has the full text.  The
+        adapter must emit only the tail so no content is lost."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        for chunk in ("The user ", "seems confused. They sent"):
+            adapter._handle_stream_event(_text_delta(0, chunk), responses)
+        # Summary has the full, un-truncated content
+        full = (
+            "The user seems confused. They sent a short greeting. "
+            "Let me offer them concrete options."
+        )
+        summary = adapter.convert_message(
+            AssistantMessage(content=[TextBlock(text=full)], model="test")
+        )
+        combined = responses + summary
+        assert _collect_text_deltas(combined) == full
+
+    def test_partial_empty_summary_only(self):
+        """Scenario 3: no partial deltas (CLI emitted the block entirely
+        in the summary — short blocks, proxy buffering, encrypted
+        content).  Summary carries the full text."""
+        adapter = _adapter()
+        summary = adapter.convert_message(
+            AssistantMessage(content=[TextBlock(text="short answer")], model="test")
+        )
+        assert _collect_text_deltas(summary) == "short answer"
+
+    def test_partial_long_summary_matches_no_double_emit(self):
+        """Scenario 4 (most common): partial streams everything, summary
+        repeats the same content.  No duplication on the wire."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        full = "Here is a long paragraph with several words in it."
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        # Partition into chunks that *exactly* reconstruct ``full`` — a
+        # word-split with trailing spaces would emit more content than
+        # the summary carries and the reconcile would correctly flag
+        # divergence.
+        chunks = [full[:13], full[13:25], full[25:]]
+        assert "".join(chunks) == full
+        for chunk in chunks:
+            adapter._handle_stream_event(_text_delta(0, chunk), responses)
+        adapter._handle_stream_event(_block_stop(0), responses)
+        assert _collect_text_deltas(responses) == full
+
+        summary = adapter.convert_message(
+            AssistantMessage(content=[TextBlock(text=full)], model="test")
+        )
+        # Summary must not add any TextDelta since partial already covered it
+        assert _collect_text_deltas(summary) == ""
+
+    def test_partial_diverges_summary_wins(self):
+        """Scenario 5: partial content isn't a prefix of the summary.
+        Defensive path emits the full summary content — content must
+        not silently disappear."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        adapter._handle_stream_event(_text_delta(0, "first draft"), responses)
+        # Summary has totally different content (proxy rewrote it)
+        summary = adapter.convert_message(
+            AssistantMessage(
+                content=[TextBlock(text="final polished answer")],
+                model="test",
+            )
+        )
+        # The summary's text must reach the wire even though partial
+        # already emitted "first draft" (which was the proxy's draft).
+        assert "final polished answer" in _collect_text_deltas(responses + summary)
+
+    def test_thinking_only_partial_coalesced(self):
+        """Scenario 6a (thinking-only permutation): a run of
+        ``thinking_delta`` events below the coalesce threshold flushes
+        at ``content_block_stop`` so the reasoning tail isn't lost."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_thinking_block_start(0), responses)
+        # Each chunk is well under the 64-char threshold
+        for chunk in ("Let ", "me ", "think"):
+            adapter._handle_stream_event(_thinking_delta(0, chunk), responses)
+        # At stop, the pending buffer drains
+        adapter._handle_stream_event(_block_stop(0), responses)
+        assert _collect_reasoning_deltas(responses) == "Let me think"
+        # Block closed
+        assert any(isinstance(r, StreamReasoningEnd) for r in responses)
+
+    def test_text_only_via_partial_and_summary(self):
+        """Scenario 6b (text-only permutation): partial fills a block,
+        summary matches — see scenario 4 for no-double-emit assertion."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        adapter._handle_stream_event(_text_delta(0, "hi"), responses)
+        adapter._handle_stream_event(_block_stop(0), responses)
+        assert _collect_text_deltas(responses) == "hi"
+
+    def test_mixed_text_then_thinking_partial_preserves_order(self):
+        """Scenario 6c (mixed, Anthropic order — reasoning then text).
+        When partial emits blocks in natural order and summary matches,
+        the wire order is identical to emission order."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        # Anthropic-shape: thinking index 0, text index 1
+        adapter._handle_stream_event(_thinking_block_start(0), responses)
+        adapter._handle_stream_event(
+            _thinking_delta(0, "X" * 80), responses
+        )  # over threshold
+        adapter._handle_stream_event(_block_stop(0), responses)
+        adapter._handle_stream_event(_text_block_start(1), responses)
+        adapter._handle_stream_event(_text_delta(1, "answer"), responses)
+        adapter._handle_stream_event(_block_stop(1), responses)
+        types = [type(r).__name__ for r in responses]
+        # ReasoningStart must come before TextStart — partial streams in
+        # the CLI's natural order, which is also the UI's desired order.
+        assert types.index("StreamReasoningStart") < types.index("StreamTextStart")
+
+    def test_multi_message_turn_resets_per_index_maps(self):
+        """Scenario 7: tool-use loop creates multiple AssistantMessages
+        per turn.  Anthropic content-block indices are scoped to a single
+        message — ``message_start`` must reset the diff maps so the next
+        message's index-0 text isn't silently suppressed."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        # First message at index 0 = "first"
+        adapter._handle_stream_event(_message_start(), responses)
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        adapter._handle_stream_event(_text_delta(0, "first"), responses)
+        adapter._handle_stream_event(_block_stop(0), responses)
+        # New message starts — index 0 now refers to a fresh block
+        adapter._handle_stream_event(_message_start(), responses)
+        adapter._handle_stream_event(_text_block_start(0), responses)
+        adapter._handle_stream_event(_text_delta(0, "second"), responses)
+        adapter._handle_stream_event(_block_stop(0), responses)
+        # Both texts must land on the wire
+        assert _collect_text_deltas(responses) == "firstsecond"
+
+    def test_empty_thinking_with_signature_emits_nothing(self):
+        """Scenario 8: encrypted / empty thinking block.  Partial emits
+        nothing, summary carries ``block.thinking == ""`` with a
+        signature — the adapter must not open a reasoning block."""
+        adapter = _adapter()
+        summary = adapter.convert_message(
+            AssistantMessage(
+                content=[ThinkingBlock(thinking="", signature="sig")],
+                model="test",
+            )
+        )
+        # No reasoning events should be emitted for empty thinking
+        reasoning_events = [
+            r
+            for r in summary
+            if isinstance(r, StreamReasoningDelta)
+            or type(r).__name__ in ("StreamReasoningStart", "StreamReasoningEnd")
+        ]
+        assert reasoning_events == []
+
+    def test_thinking_tail_drains_on_block_stop(self):
+        """Scenario 10: a thinking_delta chunk smaller than the 64-char
+        threshold arrives, then ``content_block_stop``.  The tail text
+        must emit in a final ``StreamReasoningDelta`` BEFORE
+        ``StreamReasoningEnd``."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_thinking_block_start(0), responses)
+        # One small chunk well under 64 chars
+        adapter._handle_stream_event(_thinking_delta(0, "tiny chunk"), responses)
+        # Block stop must flush the pending buffer
+        adapter._handle_stream_event(_block_stop(0), responses)
+        types = [type(r).__name__ for r in responses]
+        # The final ReasoningDelta must precede ReasoningEnd
+        rd_idx = types.index("StreamReasoningDelta")
+        re_idx = types.index("StreamReasoningEnd")
+        assert rd_idx < re_idx
+        assert _collect_reasoning_deltas(responses) == "tiny chunk"
+
+    def test_thinking_coalesces_on_char_threshold(self):
+        """Extra: thinking_delta accumulating past 64 chars flushes
+        mid-block without waiting for block_stop (coalesce threshold)."""
+        adapter = _adapter()
+        responses: list[StreamBaseResponse] = []
+        adapter._handle_stream_event(_thinking_block_start(0), responses)
+        # One 80-char chunk trips the threshold on a single event
+        adapter._handle_stream_event(_thinking_delta(0, "x" * 80), responses)
+        # A ReasoningDelta must already have been emitted (not buffered
+        # until block_stop).
+        assert any(isinstance(r, StreamReasoningDelta) for r in responses)
+
+
+# ---------------------------------------------------------------------------
+# Partial/summary reconcile — summary walk must not duplicate partial content
+# ---------------------------------------------------------------------------
+
+
+def test_summary_walk_skips_fully_streamed_text():
+    """If the partial stream delivered the entire TextBlock, the summary
+    walk must not emit a second ``StreamTextDelta`` for the same block."""
+    adapter = _adapter()
+    responses: list[StreamBaseResponse] = []
+    adapter._handle_stream_event(_text_block_start(0), responses)
+    adapter._handle_stream_event(_text_delta(0, "complete answer"), responses)
+    adapter._handle_stream_event(_block_stop(0), responses)
+    # Summary arrives with matching content
+    summary = adapter.convert_message(
+        AssistantMessage(content=[TextBlock(text="complete answer")], model="test")
+    )
+    # Partial path emitted exactly one StreamTextDelta
+    partial_deltas = [r for r in responses if isinstance(r, StreamTextDelta)]
+    summary_deltas = [r for r in summary if isinstance(r, StreamTextDelta)]
+    assert len(partial_deltas) == 1
+    assert summary_deltas == []

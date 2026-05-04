@@ -15,13 +15,25 @@ const NOTIFICATION_SOUND_PATH = "/notification.mp3";
 
 /**
  * Show a browser notification with click-to-navigate behaviour.
- * Wrapped in try-catch so it degrades gracefully in service-worker or
- * other restricted contexts where the Notification constructor throws.
+ * If a push service worker subscription is active, the SW handles
+ * notifications via the Push API — skip the in-page Notification to
+ * avoid duplicates.
  */
-function showBrowserNotification(
+async function showBrowserNotification(
   title: string,
   opts: { body: string; icon: string; sessionID: string },
 ) {
+  try {
+    // If the push SW is handling notifications, skip the in-page fallback
+    const swReg = await navigator.serviceWorker?.getRegistration?.("/");
+    if (swReg) {
+      const pushSub = await swReg.pushManager?.getSubscription?.();
+      if (pushSub) return;
+    }
+  } catch {
+    // serviceWorker API unavailable — fall through to Notification()
+  }
+
   try {
     const n = new Notification(title, { body: opts.body, icon: opts.icon });
     n.onclick = () => {

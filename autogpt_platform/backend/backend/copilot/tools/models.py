@@ -76,6 +76,7 @@ class ResponseType(str, Enum):
 
     # Web
     WEB_FETCH = "web_fetch"
+    WEB_SEARCH = "web_search"
 
     # Feature requests
     FEATURE_REQUEST_SEARCH = "feature_request_search"
@@ -86,6 +87,9 @@ class ResponseType(str, Enum):
     MEMORY_SEARCH = "memory_search"
     MEMORY_FORGET_CANDIDATES = "memory_forget_candidates"
     MEMORY_FORGET_CONFIRM = "memory_forget_confirm"
+
+    # Planning
+    TODO_WRITE = "todo_write"
 
 
 # Base response model
@@ -259,6 +263,90 @@ class ErrorResponse(ToolResponseBase):
     details: dict[str, Any] | None = None
 
 
+class SubSessionProgressSnapshot(BaseModel):
+    """Mid-flight snapshot of a running sub-AutoPilot.
+
+    Returned under ``progress`` on :class:`SubSessionStatusResponse` when the
+    caller passes ``include_progress=true`` while the sub is still running.
+    """
+
+    message_count: int = Field(
+        description="Total messages in the sub's ChatSession so far.",
+    )
+    last_messages: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Up to the last 5 messages (role + truncated content) from the "
+            "sub's ChatSession — lets the agent report intermediate progress."
+        ),
+    )
+
+
+class SubSessionStatusResponse(ToolResponseBase):
+    """Status / result of a sub-AutoPilot run started by ``run_sub_session``.
+
+    Returned by both ``run_sub_session`` (synchronously when the sub finishes
+    within ``wait_for_result``, else with ``status='running'``) and
+    ``get_sub_session_result`` when the agent polls.
+    """
+
+    type: ResponseType = ResponseType.MCP_TOOL_OUTPUT
+    status: Literal["running", "completed", "cancelled", "error", "queued"] = Field(
+        description=(
+            "Current state of the sub-AutoPilot run.  ``queued`` means the "
+            "target session already had a turn in flight, so the message was "
+            "pushed onto its pending buffer and will be picked up by the "
+            "existing turn on its next drain."
+        ),
+    )
+    sub_session_id: str = Field(
+        description=(
+            "Opaque id for this run. Pass to ``get_sub_session_result`` or "
+            "``run_sub_session(cancel=true, ...)`` to interact with it."
+        ),
+    )
+    response: str | None = Field(
+        default=None,
+        description="Assistant response text when status=completed.",
+    )
+    sub_autopilot_session_id: str | None = Field(
+        default=None,
+        description=(
+            "The session_id of the sub-AutoPilot conversation. Use with "
+            "``run_sub_session(..., sub_autopilot_session_id=<this>)`` "
+            "to continue it."
+        ),
+    )
+    sub_autopilot_session_link: str | None = Field(
+        default=None,
+        description=(
+            "Relative URL the user can click to open the sub-AutoPilot "
+            "conversation in the CoPilot UI. Always set when "
+            "``sub_autopilot_session_id`` is set."
+        ),
+    )
+    tool_calls: list[dict[str, Any]] | None = Field(
+        default=None,
+        description="Tool calls made during the sub-AutoPilot run.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message when status=error.",
+    )
+    elapsed_seconds: float | None = Field(
+        default=None,
+        description="How long the sub-AutoPilot has been running (or took).",
+    )
+    progress: SubSessionProgressSnapshot | None = Field(
+        default=None,
+        description=(
+            "Mid-flight progress snapshot. Populated only when "
+            "get_sub_session_result is called with include_progress=true "
+            "and the sub is still running."
+        ),
+    )
+
+
 class InputValidationErrorResponse(ToolResponseBase):
     """Response when run_agent receives unknown input fields."""
 
@@ -334,6 +422,7 @@ class AgentSavedResponse(ToolResponseBase):
     type: ResponseType = ResponseType.AGENT_BUILDER_SAVED
     agent_id: str
     agent_name: str
+    graph_version: int | None = None
     library_agent_id: str
     library_agent_link: str
     agent_page_link: str  # Link to the agent builder/editor page
@@ -498,6 +587,32 @@ class WebFetchResponse(ToolResponseBase):
     content_type: str
     content: str
     truncated: bool = False
+
+
+class WebSearchResult(BaseModel):
+    """One entry in a web_search tool response."""
+
+    title: str
+    url: str
+    snippet: str = ""
+    page_age: str | None = None
+
+
+class WebSearchResponse(ToolResponseBase):
+    """Response for web_search tool — mirrors the shape of the SDK's
+    native ``WebSearch`` tool so the LLM sees a consistent interface
+    regardless of which path dispatched the call."""
+
+    type: ResponseType = ResponseType.WEB_SEARCH
+    query: str
+    # Web-grounded synthesised answer the search provider wrote from
+    # fresh page content.  The LLM caller should read this directly
+    # instead of re-fetching each citation URL — many sites are
+    # bot-protected and ``web_fetch`` won't get through.  Empty string
+    # when the provider returned only citations.
+    answer: str = ""
+    results: list[WebSearchResult] = Field(default_factory=list)
+    search_requests: int = 0
 
 
 class BashExecResponse(ToolResponseBase):
@@ -729,3 +844,36 @@ class MemoryForgetConfirmResponse(ToolResponseBase):
     type: ResponseType = ResponseType.MEMORY_FORGET_CONFIRM
     deleted_uuids: list[str] = Field(default_factory=list)
     failed_uuids: list[str] = Field(default_factory=list)
+
+
+# --- Planning ---
+
+
+class TodoItem(BaseModel):
+    """One entry in a ``TodoWrite`` checklist.
+
+    Mirrors the schema used by Claude Code's built-in ``TodoWrite`` tool so
+    the frontend's ``GenericTool`` accordion renders baseline-emitted todos
+    identically to SDK-emitted ones.
+    """
+
+    content: str = Field(description="Imperative description of the task.")
+    activeForm: str = Field(
+        description="Present-continuous form shown while the task is running.",
+    )
+    status: Literal["pending", "in_progress", "completed"] = Field(
+        default="pending",
+    )
+
+
+class TodoWriteResponse(ToolResponseBase):
+    """Ack returned by ``TodoWrite``.
+
+    The tool is effectively stateless — the authoritative task list lives in
+    the assistant's latest tool-call arguments, which are replayed from the
+    transcript on each turn. The tool output only needs to confirm that the
+    update was accepted so the model can proceed.
+    """
+
+    type: ResponseType = ResponseType.TODO_WRITE
+    todos: list[TodoItem] = Field(default_factory=list)

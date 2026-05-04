@@ -33,6 +33,8 @@ class RunBlockTool(BaseTool):
             "Execute a block. IMPORTANT: Always get block_id from find_block first "
             "— do NOT guess or fabricate IDs. "
             "Call with empty input_data to see schema, then with data to execute. "
+            "Pass `validate_only: true` to inspect a block without running it "
+            "(safe pre-flight — returns schema + detected missing inputs). "
             "If review_required, use continue_run_block."
         )
 
@@ -49,6 +51,18 @@ class RunBlockTool(BaseTool):
                     "type": "object",
                     "description": "Input values. Use {} first to see schema.",
                 },
+                "validate_only": {
+                    "type": "boolean",
+                    "description": (
+                        "If true, describe what the block would do without "
+                        "executing it or rendering any picker cards. Use this "
+                        "as a safe pre-flight for blocks with no required "
+                        "inputs (where empty input_data would otherwise "
+                        "execute immediately) or to check what a call "
+                        "_would_ need before committing."
+                    ),
+                    "default": False,
+                },
             },
             "required": ["block_id", "input_data"],
         }
@@ -64,6 +78,7 @@ class RunBlockTool(BaseTool):
         *,
         block_id: str = "",
         input_data: dict | None = None,
+        validate_only: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -113,6 +128,7 @@ class RunBlockTool(BaseTool):
             session=session,
             session_id=session_id,
             dry_run=dry_run,
+            validate_only=validate_only,
         )
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
@@ -160,10 +176,14 @@ class RunBlockTool(BaseTool):
                 dry_run=True,
             )
 
-        # Show block details when required inputs are not yet provided.
-        # This is run_block's two-step UX: first call returns the schema,
-        # second call (with inputs) actually executes.
-        if not (prep.required_non_credential_keys <= prep.provided_input_keys):
+        # Show block details when required inputs are not yet provided
+        # (two-step UX: first call returns the schema, second call actually
+        # executes) or when the caller asked for introspection only via
+        # validate_only — in both cases we return BlockDetailsResponse and
+        # do not execute.
+        if validate_only or not (
+            prep.required_non_credential_keys <= prep.provided_input_keys
+        ):
             try:
                 output_schema: dict[str, Any] = prep.block.output_schema.jsonschema()
             except Exception as e:
@@ -177,11 +197,26 @@ class RunBlockTool(BaseTool):
                 )
 
             credentials_meta = list(prep.matched_credentials.values())
+            missing = sorted(
+                prep.required_non_credential_keys - prep.provided_input_keys
+            )
+            if validate_only and not missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — all required inputs "
+                    f"provided, ready to run."
+                )
+            elif missing:
+                detail_msg = (
+                    f"Block '{prep.block.name}' — missing required input(s): "
+                    f"{', '.join(repr(m) for m in missing)}."
+                )
+            else:
+                detail_msg = (
+                    f"Block '{prep.block.name}' details. Provide input_data "
+                    f"matching the inputs schema to execute the block."
+                )
             return BlockDetailsResponse(
-                message=(
-                    f"Block '{prep.block.name}' details. "
-                    "Provide input_data matching the inputs schema to execute the block."
-                ),
+                message=detail_msg,
                 session_id=session_id,
                 block=BlockDetails(
                     id=block_id,

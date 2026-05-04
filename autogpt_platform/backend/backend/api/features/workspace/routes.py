@@ -2,6 +2,7 @@
 Workspace API routes for managing user file storage.
 """
 
+import asyncio
 import logging
 import os
 import re
@@ -14,6 +15,8 @@ from fastapi import Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.rate_limit import get_workspace_storage_limit_bytes
 from backend.data.workspace import (
     WorkspaceFile,
     count_workspace_files,
@@ -21,15 +24,15 @@ from backend.data.workspace import (
     get_workspace,
     get_workspace_file,
     get_workspace_total_size,
-    soft_delete_workspace_file,
 )
 from backend.util.settings import Config
-from backend.util.virus_scanner import scan_content_safe
-from backend.util.workspace import WorkspaceManager
+from backend.util.workspace import WorkspaceManager, format_bytes
 from backend.util.workspace_storage import get_workspace_storage
 
 
-def _sanitize_filename_for_header(filename: str) -> str:
+def _sanitize_filename_for_header(
+    filename: str, disposition: str = "attachment"
+) -> str:
     """
     Sanitize filename for Content-Disposition header to prevent header injection.
 
@@ -44,11 +47,11 @@ def _sanitize_filename_for_header(filename: str) -> str:
     # Check if filename has non-ASCII characters
     try:
         sanitized.encode("ascii")
-        return f'attachment; filename="{sanitized}"'
+        return f'{disposition}; filename="{sanitized}"'
     except UnicodeEncodeError:
         # Use RFC5987 encoding for UTF-8 filenames
         encoded = quote(sanitized, safe="")
-        return f"attachment; filename*=UTF-8''{encoded}"
+        return f"{disposition}; filename*=UTF-8''{encoded}"
 
 
 logger = logging.getLogger(__name__)
@@ -58,19 +61,26 @@ router = fastapi.APIRouter(
 )
 
 
-def _create_streaming_response(content: bytes, file: WorkspaceFile) -> Response:
+def _create_streaming_response(
+    content: bytes, file: WorkspaceFile, *, inline: bool = False
+) -> Response:
     """Create a streaming response for file content."""
+    disposition = _sanitize_filename_for_header(
+        file.name, disposition="inline" if inline else "attachment"
+    )
     return Response(
         content=content,
         media_type=file.mime_type,
         headers={
-            "Content-Disposition": _sanitize_filename_for_header(file.name),
+            "Content-Disposition": disposition,
             "Content-Length": str(len(content)),
         },
     )
 
 
-async def _create_file_download_response(file: WorkspaceFile) -> Response:
+async def create_file_download_response(
+    file: WorkspaceFile, *, inline: bool = False
+) -> Response:
     """
     Create a download response for a workspace file.
 
@@ -82,7 +92,7 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
     # For local storage, stream the file directly
     if file.storage_path.startswith("local://"):
         content = await storage.retrieve(file.storage_path)
-        return _create_streaming_response(content, file)
+        return _create_streaming_response(content, file, inline=inline)
 
     # For GCS, try to redirect to signed URL, fall back to streaming
     try:
@@ -90,7 +100,7 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
         # If we got back an API path (fallback), stream directly instead
         if url.startswith("/api/"):
             content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file)
+            return _create_streaming_response(content, file, inline=inline)
         return fastapi.responses.RedirectResponse(url=url, status_code=302)
     except Exception as e:
         # Log the signed URL failure with context
@@ -102,7 +112,7 @@ async def _create_file_download_response(file: WorkspaceFile) -> Response:
         # Fall back to streaming directly from GCS
         try:
             content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file)
+            return _create_streaming_response(content, file, inline=inline)
         except Exception as fallback_error:
             logger.error(
                 f"Fallback streaming also failed for file {file.id} "
@@ -169,7 +179,7 @@ async def download_file(
     if file is None:
         raise fastapi.HTTPException(status_code=404, detail="File not found")
 
-    return await _create_file_download_response(file)
+    return await create_file_download_response(file)
 
 
 @router.delete(
@@ -240,66 +250,47 @@ async def upload_file(
     # Get or create workspace
     workspace = await get_or_create_workspace(user_id)
 
-    # Pre-write storage cap check (soft check — final enforcement is post-write)
-    storage_limit_bytes = config.max_workspace_storage_mb * 1024 * 1024
-    current_usage = await get_workspace_total_size(workspace.id)
-    if storage_limit_bytes and current_usage + len(content) > storage_limit_bytes:
-        used_percent = (current_usage / storage_limit_bytes) * 100
-        raise fastapi.HTTPException(
-            status_code=413,
-            detail={
-                "message": "Storage limit exceeded",
-                "used_bytes": current_usage,
-                "limit_bytes": storage_limit_bytes,
-                "used_percent": round(used_percent, 1),
-            },
-        )
-
-    # Warn at 80% usage
-    if (
-        storage_limit_bytes
-        and (usage_ratio := (current_usage + len(content)) / storage_limit_bytes) >= 0.8
-    ):
-        logger.warning(
-            f"User {user_id} workspace storage at {usage_ratio * 100:.1f}% "
-            f"({current_usage + len(content)} / {storage_limit_bytes} bytes)"
-        )
-
-    # Virus scan
-    await scan_content_safe(content, filename=filename)
-
-    # Write file via WorkspaceManager
+    # Write file via WorkspaceManager (handles virus scan, per-file size,
+    # and per-user tier-based storage quota internally).
     manager = WorkspaceManager(user_id, workspace.id, session_id)
     try:
         workspace_file = await manager.write_file(
             content, filename, overwrite=overwrite, metadata={"origin": "user-upload"}
         )
+    except VirusDetectedError as e:
+        raise fastapi.HTTPException(status_code=400, detail=str(e)) from e
+    except VirusScanError as e:
+        raise fastapi.HTTPException(status_code=500, detail=str(e)) from e
     except ValueError as e:
-        # write_file raises ValueError for both path-conflict and size-limit
-        # cases; map each to its correct HTTP status.
+        # write_file raises ValueError for path-conflict, size-limit, and
+        # storage-quota cases; map each to its correct HTTP status.
         message = str(e)
-        if message.startswith("File too large"):
+        if message.startswith(("File too large", "Storage limit exceeded")):
             raise fastapi.HTTPException(status_code=413, detail=message) from e
         raise fastapi.HTTPException(status_code=409, detail=message) from e
 
     # Post-write storage check — eliminates TOCTOU race on the quota.
     # If a concurrent upload pushed us over the limit, undo this write.
+    storage_limit_bytes = await get_workspace_storage_limit_bytes(user_id)
     new_total = await get_workspace_total_size(workspace.id)
     if storage_limit_bytes and new_total > storage_limit_bytes:
         try:
-            await soft_delete_workspace_file(workspace_file.id, workspace.id)
+            # Route through WorkspaceManager so the storage backend blob is
+            # removed too — soft_delete_workspace_file alone leaks the blob.
+            await manager.delete_file(workspace_file.id)
         except Exception as e:
             logger.warning(
-                f"Failed to soft-delete over-quota file {workspace_file.id} "
+                f"Failed to delete over-quota file {workspace_file.id} "
                 f"in workspace {workspace.id}: {e}"
             )
         raise fastapi.HTTPException(
             status_code=413,
-            detail={
-                "message": "Storage limit exceeded (concurrent upload)",
-                "used_bytes": new_total,
-                "limit_bytes": storage_limit_bytes,
-            },
+            detail=(
+                f"Storage limit exceeded. "
+                f"You've used {format_bytes(new_total)} of your "
+                f"{format_bytes(storage_limit_bytes)} quota. "
+                f"Delete some files or upgrade your plan for more storage."
+            ),
         )
 
     return UploadFileResponse(
@@ -322,12 +313,13 @@ async def get_storage_usage(
     """
     Get storage usage information for the user's workspace.
     """
-    config = Config()
     workspace = await get_or_create_workspace(user_id)
 
-    used_bytes = await get_workspace_total_size(workspace.id)
-    file_count = await count_workspace_files(workspace.id)
-    limit_bytes = config.max_workspace_storage_mb * 1024 * 1024
+    used_bytes, file_count, limit_bytes = await asyncio.gather(
+        get_workspace_total_size(workspace.id),
+        count_workspace_files(workspace.id),
+        get_workspace_storage_limit_bytes(user_id),
+    )
 
     return StorageUsageResponse(
         used_bytes=used_bytes,

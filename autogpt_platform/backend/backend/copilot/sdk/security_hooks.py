@@ -10,7 +10,12 @@ import re
 from collections.abc import Callable
 from typing import Any, cast
 
-from backend.copilot.context import is_allowed_local_path, is_sdk_tool_path
+from backend.copilot.context import (
+    get_execution_context,
+    is_allowed_local_path,
+    is_sdk_tool_path,
+)
+from backend.copilot.pending_messages import drain_and_format_for_injection
 
 from .tool_adapter import (
     BLOCKED_TOOLS,
@@ -327,6 +332,30 @@ def create_security_hooks(
                         tool_name,
                     )
 
+            # Mid-turn drain: after ANY tool finishes (MCP or built-in), pull
+            # any queued user follow-up messages and attach them to the
+            # tool_result as ``additionalContext``.  This is the
+            # protocol-legal mid-turn injection slot — Claude reads the
+            # follow-up on the next LLM round without starting a new turn.
+            # The drain helper also stashes a persist-queue copy so
+            # ``sdk/service.py`` can append a matching user row to the UI.
+            _, session = get_execution_context()
+            followup = ""
+            if session is not None and session.session_id:
+                followup = await drain_and_format_for_injection(
+                    session.session_id,
+                    log_prefix="[SDK][PostToolUse]",
+                )
+            if followup:
+                return cast(
+                    SyncHookJSONOutput,
+                    {
+                        "hookSpecificOutput": {
+                            "hookEventName": "PostToolUse",
+                            "additionalContext": followup,
+                        }
+                    },
+                )
             return cast(SyncHookJSONOutput, {})
 
         async def post_tool_failure_hook(

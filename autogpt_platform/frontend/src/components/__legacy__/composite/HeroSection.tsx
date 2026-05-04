@@ -4,16 +4,9 @@ import * as React from "react";
 import { SearchBar } from "@/components/__legacy__/SearchBar";
 import { FilterChips } from "@/components/__legacy__/FilterChips";
 import { useRouter } from "next/navigation";
-import { useOnboarding } from "@/providers/onboarding/onboarding-provider";
 
 export const HeroSection: React.FC = () => {
   const router = useRouter();
-  const onboarding = useOnboarding();
-
-  // Mark marketplace visit task as completed
-  React.useEffect(() => {
-    onboarding?.completeStep("MARKETPLACE_VISIT");
-  }, [onboarding?.completeStep]);
 
   function onFilterChange(selectedFilters: string[]) {
     const encodedTerm = encodeURIComponent(selectedFilters.join(", "));

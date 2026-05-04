@@ -17,7 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -32,9 +32,10 @@ from backend.data.notification_bus import (
     NotificationEvent,
 )
 from backend.data.redis_client import get_redis_async
+from backend.data.redis_helpers import hash_compare_and_set
 
 from .config import ChatConfig
-from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS
+from .executor.utils import COPILOT_CONSUMER_TIMEOUT_SECONDS, get_session_lock_key
 from .response_model import (
     ResponseType,
     StreamBaseResponse,
@@ -42,8 +43,12 @@ from .response_model import (
     StreamFinish,
     StreamFinishStep,
     StreamHeartbeat,
+    StreamReasoningDelta,
+    StreamReasoningEnd,
+    StreamReasoningStart,
     StreamStart,
     StreamStartStep,
+    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -68,17 +73,6 @@ _listener_sessions: dict[int, tuple[str, asyncio.Task]] = {}
 # If the queue is full and doesn't drain within this time, send an overflow error
 QUEUE_PUT_TIMEOUT = 5.0
 
-# Lua script for atomic compare-and-swap status update (idempotent completion)
-# Returns 1 if status was updated, 0 if already completed/failed
-COMPLETE_SESSION_SCRIPT = """
-local current = redis.call("HGET", KEYS[1], "status")
-if current == "running" then
-    redis.call("HSET", KEYS[1], "status", ARGV[1])
-    return 1
-end
-return 0
-"""
-
 
 @dataclass
 class ActiveSession:
@@ -96,8 +90,19 @@ class ActiveSession:
 
 
 def _get_session_meta_key(session_id: str) -> str:
+    """Get Redis key for session metadata (keyed by session_id).
+
+    Hash-tag braces colocate this key with ``pending_messages._buffer_key``
+    on the same Redis Cluster slot — the gated-rpush Lua script touches both
+    keys atomically and would CROSSSLOT-fail if they hashed to different
+    shards.
+    """
+    return f"{config.session_meta_prefix}{{{session_id}}}"
+
+
+def get_session_meta_key(session_id: str) -> str:
     """Get Redis key for session metadata (keyed by session_id)."""
-    return f"{config.session_meta_prefix}{session_id}"
+    return _get_session_meta_key(session_id)
 
 
 def _get_turn_stream_key(turn_id: str) -> str:
@@ -336,8 +341,8 @@ async def publish_chunk(
 async def stream_and_publish(
     session_id: str,
     turn_id: str,
-    stream: AsyncIterator[StreamBaseResponse],
-) -> AsyncIterator[StreamBaseResponse]:
+    stream: AsyncGenerator[StreamBaseResponse, None],
+) -> AsyncGenerator[StreamBaseResponse, None]:
     """Wrap an async stream iterator with registry publishing.
 
     Publishes each chunk to the stream registry for frontend SSE consumption,
@@ -360,27 +365,35 @@ async def stream_and_publish(
     """
     publish_failed_once = False
 
-    async for event in stream:
-        if turn_id and not isinstance(event, (StreamFinish, StreamError)):
-            try:
-                await publish_chunk(turn_id, event, session_id=session_id)
-            except (RedisError, ConnectionError, OSError):
-                if not publish_failed_once:
-                    publish_failed_once = True
-                    logger.warning(
-                        "[stream_and_publish] Failed to publish chunk %s for %s "
-                        "(further failures logged at DEBUG)",
-                        type(event).__name__,
-                        session_id[:12],
-                        exc_info=True,
-                    )
-                else:
-                    logger.debug(
-                        "[stream_and_publish] Failed to publish chunk %s",
-                        type(event).__name__,
-                        exc_info=True,
-                    )
-        yield event
+    # async-for does not close an iterator on GeneratorExit; forward close
+    # to ``stream`` explicitly so its own cleanup (stream lock, persist)
+    # runs deterministically instead of waiting for GC.
+    try:
+        async for event in stream:
+            if turn_id and not isinstance(event, (StreamFinish, StreamError)):
+                try:
+                    await publish_chunk(turn_id, event, session_id=session_id)
+                except (RedisError, ConnectionError, OSError):
+                    # Full stack trace on the first failure; terser lines
+                    # for the rest so subsequent failures don't flood logs
+                    # while still being visible at WARNING.
+                    if not publish_failed_once:
+                        publish_failed_once = True
+                        logger.warning(
+                            "[stream_and_publish] Failed to publish chunk %s for %s",
+                            type(event).__name__,
+                            session_id[:12],
+                            exc_info=True,
+                        )
+                    else:
+                        logger.warning(
+                            "[stream_and_publish] Failed to publish chunk %s for %s",
+                            type(event).__name__,
+                            session_id[:12],
+                        )
+            yield event
+    finally:
+        await stream.aclose()
 
 
 async def subscribe_to_session(
@@ -423,20 +436,33 @@ async def subscribe_to_session(
         extra={"json_fields": {**log_meta, "duration_ms": hgetall_time}},
     )
 
-    # RACE CONDITION FIX: If session not found, retry once after small delay
-    # This handles the case where subscribe_to_session is called immediately
-    # after create_session but before Redis propagates the write
+    # RACE CONDITION FIX: If session not found, retry with backoff.
+    # Duplicate requests skip create_session and subscribe immediately; the
+    # original request's create_session (a Redis hset) may not have completed
+    # yet. 3 × 100ms gives a 300ms window which covers DB-write latency on the
+    # original request before the hset even starts.
     if not meta:
-        logger.warning(
-            "[TIMING] Session not found on first attempt, retrying after 50ms delay",
-            extra={"json_fields": {**log_meta}},
-        )
-        await asyncio.sleep(0.05)  # 50ms
-        meta = await redis.hgetall(meta_key)  # type: ignore[misc]
-        if not meta:
+        _max_retries = 3
+        _retry_delay = 0.1  # 100ms per attempt
+        for attempt in range(_max_retries):
+            logger.warning(
+                f"[TIMING] Session not found (attempt {attempt + 1}/{_max_retries}), "
+                f"retrying after {int(_retry_delay * 1000)}ms",
+                extra={"json_fields": {**log_meta, "attempt": attempt + 1}},
+            )
+            await asyncio.sleep(_retry_delay)
+            meta = await redis.hgetall(meta_key)  # type: ignore[misc]
+            if meta:
+                logger.info(
+                    f"[TIMING] Session found after {attempt + 1} retries",
+                    extra={"json_fields": {**log_meta, "attempts": attempt + 1}},
+                )
+                break
+        else:
             elapsed = (time.perf_counter() - start_time) * 1000
             logger.info(
-                f"[TIMING] Session still not found in Redis after retry ({elapsed:.1f}ms total)",
+                f"[TIMING] Session still not found in Redis after {_max_retries} retries "
+                f"({elapsed:.1f}ms total)",
                 extra={
                     "json_fields": {
                         **log_meta,
@@ -446,10 +472,6 @@ async def subscribe_to_session(
                 },
             )
             return None
-        logger.info(
-            "[TIMING] Session found after retry",
-            extra={"json_fields": {**log_meta}},
-        )
 
     # Note: Redis client uses decode_responses=True, so keys are strings
     session_status = meta.get("status", "")
@@ -475,9 +497,11 @@ async def subscribe_to_session(
     subscriber_queue: asyncio.Queue[StreamBaseResponse] = asyncio.Queue()
     stream_key = _get_turn_stream_key(session.turn_id)
 
-    # Step 1: Replay messages from Redis Stream
+    # Replay batch capped by ``stream_replay_count``.
     xread_start = time.perf_counter()
-    messages = await redis.xread({stream_key: last_message_id}, block=None, count=1000)
+    messages = await redis.xread(
+        {stream_key: last_message_id}, block=None, count=config.stream_replay_count
+    )
     xread_time = (time.perf_counter() - xread_start) * 1000
     logger.info(
         f"[TIMING] Redis xread (replay) took {xread_time:.1f}ms, status={session_status}",
@@ -830,14 +854,25 @@ async def mark_session_completed(
     turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
     # Atomic compare-and-swap: only update if status is "running"
-    result = await redis.eval(COMPLETE_SESSION_SCRIPT, 1, meta_key, status)  # type: ignore[misc]
+    swapped = await hash_compare_and_set(
+        redis, meta_key, "status", expected="running", new=status
+    )
 
     # Clean up the in-memory TTL refresh tracker to prevent unbounded growth.
     _meta_ttl_refresh_at.pop(session_id, None)
 
-    if result == 0:
+    if not swapped:
         logger.debug(f"Session {session_id} already completed/failed, skipping")
         return False
+
+    # Force-release the executor's cluster lock so the next enqueued turn can
+    # acquire it immediately. The lock holder's on_run_done will also release
+    # (idempotent delete); doing it here unblocks cases where the task hangs
+    # past the cancel timeout or a pod crash leaves the lock orphaned.
+    try:
+        await redis.delete(get_session_lock_key(session_id))
+    except RedisError as e:
+        logger.warning(f"Failed to release cluster lock for session {session_id}: {e}")
 
     if error_message and not skip_error_publish:
         try:
@@ -847,9 +882,9 @@ async def mark_session_completed(
                 f"Failed to publish error event for session {session_id}: {e}"
             )
 
-    # Compute wall-clock duration from session created_at.
-    # Only persist when (a) the session completed successfully and
-    # (b) created_at was actually present in Redis meta (not a fallback).
+    # Compute wall-clock duration from session created_at.  Only persist when
+    # the session completed successfully and created_at was actually present
+    # in Redis meta (not a fallback).
     duration_ms: int | None = None
     if meta and not error_message:
         created_at_raw = meta.get("created_at")
@@ -1003,8 +1038,8 @@ async def get_active_session(
 
     # Check if session is stale (running beyond tool timeout + buffer).
     # Auto-complete it to prevent infinite polling loops.
-    # Synchronous tools can run up to COPILOT_CONSUMER_TIMEOUT_SECONDS (1 hour),
-    # so we add a 5-minute buffer to avoid false positives during legitimate operations.
+    # A turn can legitimately run up to COPILOT_CONSUMER_TIMEOUT_SECONDS, so we
+    # add a 5-minute buffer to avoid false positives during legitimate operations.
     created_at_str = meta.get("created_at")
     if created_at_str:
         try:
@@ -1061,12 +1096,16 @@ def _reconstruct_chunk(chunk_data: dict) -> StreamBaseResponse | None:
         ResponseType.TEXT_START.value: StreamTextStart,
         ResponseType.TEXT_DELTA.value: StreamTextDelta,
         ResponseType.TEXT_END.value: StreamTextEnd,
+        ResponseType.REASONING_START.value: StreamReasoningStart,
+        ResponseType.REASONING_DELTA.value: StreamReasoningDelta,
+        ResponseType.REASONING_END.value: StreamReasoningEnd,
         ResponseType.TOOL_INPUT_START.value: StreamToolInputStart,
         ResponseType.TOOL_INPUT_AVAILABLE.value: StreamToolInputAvailable,
         ResponseType.TOOL_OUTPUT_AVAILABLE.value: StreamToolOutputAvailable,
         ResponseType.ERROR.value: StreamError,
         ResponseType.USAGE.value: StreamUsage,
         ResponseType.HEARTBEAT.value: StreamHeartbeat,
+        ResponseType.STATUS.value: StreamStatus,
     }
 
     chunk_type = chunk_data.get("type")

@@ -23,6 +23,7 @@ from typing import (
     Type,
     TypeVar,
     cast,
+    overload,
 )
 
 import httpx
@@ -33,6 +34,7 @@ from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
 import backend.util.exceptions as exceptions
+from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
@@ -408,9 +410,23 @@ class AppService(BaseAppService, ABC):
                 await db.disconnect()
         ```
         """
-        # Startup - this runs before Uvicorn starts accepting connections
+        # Startup - this runs before Uvicorn starts accepting connections.
+        # Eager connect so we fail-fast if Redis is unreachable, mirroring
+        # the db.connect()/db.disconnect() pattern subclasses use below.
+        await redis_client.get_redis_async()
 
         yield
+
+        # Close the cluster client so asyncio's GC doesn't emit "Unclosed
+        # ClusterNode" warnings at interpreter shutdown. Wrapped so a wedged
+        # socket close doesn't block subclass-level db.disconnect calls.
+        try:
+            await redis_client.disconnect_async()
+        except Exception:
+            logger.warning(
+                f"[{self.service_name}] redis_client.disconnect_async failed",
+                exc_info=True,
+            )
 
         # Shutdown - this runs when FastAPI/Uvicorn shuts down
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
@@ -835,15 +851,28 @@ def endpoint_to_sync(
     return cast(Callable[Concatenate[Any, P], R], _stub)
 
 
+@overload
+def endpoint_to_async(
+    func: Callable[Concatenate[Any, P], Coroutine[Any, Any, R]],
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+@overload
 def endpoint_to_async(
     func: Callable[Concatenate[Any, P], R],
-) -> Callable[Concatenate[Any, P], Awaitable[R]]:
-    """
-    The async mirror of `to_sync`.
+) -> Callable[Concatenate[Any, P], Awaitable[R]]: ...
+
+
+def endpoint_to_async(func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+    """Typed async stub for a service endpoint.
+
+    The first overload unwraps `Coroutine[Any, Any, R]` (for `async def`
+    service methods); the second keeps sync server methods returning `R`.
+    Both resolve to `Awaitable[R]` on the client.
     """
 
-    async def _stub(*args: P.args, **kwargs: P.kwargs) -> R:  # pragma: no cover
+    async def _stub(*args: Any, **kwargs: Any) -> Any:  # pragma: no cover
         raise RuntimeError("should be intercepted by __getattr__")
 
     update_wrapper(_stub, func)
-    return cast(Callable[Concatenate[Any, P], Awaitable[R]], _stub)
+    return _stub
