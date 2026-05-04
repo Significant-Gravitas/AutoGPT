@@ -65,7 +65,7 @@ export function AutoRefillDialog({
             <Text variant="small" as="span" className="text-amber-700">
               As a safety mechanism, auto-refill will only trigger once per
               task. Keep this in mind when budgeting to ensure your balance does
-              not hit zero and your tasks don&apos;t pause mid-run.
+              not hit zero and your tasks don't pause mid-run.
             </Text>
           </div>
         </div>
