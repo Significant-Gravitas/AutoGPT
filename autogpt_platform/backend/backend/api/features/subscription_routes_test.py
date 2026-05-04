@@ -1211,9 +1211,13 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Pro→Max upgrade where Stripe raises CardError must return HTTP 402 and the
-    DB tier must NOT be flipped — modify_stripe_subscription_for_tier short-circuits
-    before the set_subscription_tier call inside it."""
+    """Pro→Max upgrade where Stripe raises CardError must return HTTP 402.
+
+    The "tier stays on Pro after CardError" invariant is verified at the
+    credit.py layer (see test_modify_stripe_subscription_for_tier_pro_to_max
+    _card_decline_does_not_flip_tier); this test covers the route's HTTP
+    surface only.
+    """
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.PRO
 
@@ -1234,10 +1238,6 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
             "Your card was declined.", param="card", code="card_declined"
         ),
     )
-    set_tier_mock = mocker.patch(
-        "backend.api.features.v1.set_subscription_tier",
-        new_callable=AsyncMock,
-    )
 
     response = client.post(
         "/credits/subscription",
@@ -1251,7 +1251,98 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
     assert response.status_code == 402
     assert "card was declined" in response.json()["detail"].lower()
     modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
-    set_tier_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_pro_to_max_authentication_required_returns_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """SCA-required cards raise CardError(code='authentication_required'). The
+    handler must surface a different message than the plain decline path so EU
+    users don't try a different card when their existing one only needs 3DS."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.CardError(
+            "Your card was declined.",
+            param="card",
+            code="authentication_required",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"].lower()
+    assert "authentication" in detail
+    # Must NOT use the generic decline copy — that would tell the user to
+    # change cards when the card itself is fine.
+    assert "card was declined" not in detail
+
+
+def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Customer with no default payment method: error_if_incomplete makes Stripe
+    raise InvalidRequestError (not CardError). The handler must map that to 402
+    so the UI prompts to add a card instead of the generic 502 outage copy."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.InvalidRequestError(
+            "This customer has no attached payment source or default payment"
+            " method. Please consider adding a default payment method.",
+            param="customer",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"].lower()
+    assert "no payment method" in detail
+    assert "add a payment method" in detail
 
 
 def test_update_subscription_tier_paid_to_paid_stripe_error_returns_502(

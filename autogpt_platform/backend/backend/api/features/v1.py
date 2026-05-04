@@ -1004,8 +1004,23 @@ async def update_subscription_tier(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.CardError as e:
-        # Auto-charge declined under payment_behavior=error_if_incomplete: the
-        # modify was rolled back, so 402 lets the UI prompt for a new card.
+        # Auto-charge failed under payment_behavior=error_if_incomplete: the
+        # modify was rolled back, so 402 lets the UI prompt for a new card or
+        # surface SCA. authentication_required means the card is fine but the
+        # bank wants 3DS — different message so the user doesn't try a new card.
+        if getattr(e, "code", None) == "authentication_required":
+            logger.warning(
+                "SCA required on subscription upgrade for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Your bank requires extra authentication for this charge."
+                    " The plan was not changed; please retry from the billing"
+                    " portal so you can complete authentication, or contact"
+                    " support."
+                ),
+            )
         logger.warning(
             "Card declined on subscription upgrade for user %s: %s", user_id, e
         )
@@ -1022,7 +1037,28 @@ async def update_subscription_tier(
         # USD-only. 502 reads as outage; surface a 422 with a specific message
         # so the user/admin can see what to fix in Stripe.
         msg = str(e)
-        if "currency" in msg.lower():
+        msg_lower = msg.lower()
+        # "No payment method" presents as InvalidRequestError (not CardError) when
+        # error_if_incomplete fires with no default PM on the customer. Map it to
+        # 402 with an actionable message instead of the generic 502 outage copy.
+        if (
+            "no attached payment source" in msg_lower
+            or "default payment method" in msg_lower
+            or "no payment method" in msg_lower
+        ):
+            logger.warning(
+                "No payment method on subscription upgrade for user %s: %s",
+                user_id,
+                msg,
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "No payment method on file. The plan was not changed;"
+                    " please add a payment method and try again."
+                ),
+            )
+        if "currency" in msg_lower:
             logger.warning(
                 "Currency mismatch on tier change for user %s: %s", user_id, msg
             )
