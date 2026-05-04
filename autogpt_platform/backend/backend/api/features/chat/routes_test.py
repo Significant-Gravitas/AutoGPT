@@ -411,6 +411,35 @@ def test_stream_chat_returns_503_with_retry_after_when_rate_limit_unavailable(
     assert "degraded" in response.json()["detail"].lower()
 
 
+def test_stream_chat_returns_503_when_stream_registry_unavailable(
+    mocker: pytest_mock.MockerFixture,
+):
+    """``is_turn_in_flight`` runs BEFORE ``check_rate_limit`` in the
+    pre-flight chain. A Redis brown-out at this step (e.g. ``hgetall`` on
+    the session-meta key fails with ``RedisClusterException``) must be
+    mapped to the same 503 + Retry-After response, NOT bubble as a raw
+    HTTP 500 with internal Redis error in the body. Cap-bypass cannot
+    happen (LLM is not invoked), but the UX must be polished."""
+    from backend.copilot.pending_message_helpers import StreamRegistryUnavailable
+
+    _mock_stream_internals(mocker)
+    # Force the is_turn_in_flight branch to fail-closed by raising the
+    # typed unavailability exception (helper-level Redis-error mapping is
+    # exercised in pending_message_helpers_test).
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        side_effect=StreamRegistryUnavailable(),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+    )
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == "30"
+    assert "degraded" in response.json()["detail"].lower()
+
+
 # ─── Usage endpoint ───────────────────────────────────────────────────
 
 
@@ -784,6 +813,28 @@ def test_queue_pending_message_without_active_turn_returns_409(
     )
 
     assert response.status_code == 409
+
+
+def test_queue_pending_message_returns_503_when_stream_registry_unavailable(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Redis brown-out on the pre-flight ``is_turn_in_flight`` check must
+    return 503 + Retry-After, not bubble as 500."""
+    from backend.copilot.pending_message_helpers import StreamRegistryUnavailable
+
+    _mock_stream_queue_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        side_effect=StreamRegistryUnavailable(),
+    )
+
+    response = client.post(
+        "/sessions/sess-1/messages/pending",
+        json={"message": "hi"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers.get("Retry-After") == "30"
 
 
 def test_queue_pending_message_race_after_active_check_returns_409(

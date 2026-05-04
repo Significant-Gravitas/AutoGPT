@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
+from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.model import ChatMessage, upsert_chat_session
 from backend.copilot.pending_messages import (
@@ -43,6 +44,17 @@ PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
 
 
+class StreamRegistryUnavailable(Exception):
+    """The active-session lookup in Redis failed — the route should fail
+    closed with HTTP 503 instead of bubbling the raw Redis error as 500.
+
+    Mirrors :class:`backend.copilot.rate_limit.RateLimitUnavailable` so the
+    chat-route pre-flight chain (``is_turn_in_flight`` → ``check_rate_limit``)
+    maps any Redis brown-out to the same polished 503 + ``Retry-After``
+    response, regardless of which step tripped first.
+    """
+
+
 async def is_turn_in_flight(session_id: str) -> bool:
     """Return ``True`` when a copilot turn is actively running for *session_id*.
 
@@ -50,8 +62,24 @@ async def is_turn_in_flight(session_id: str) -> bool:
     second message arriving while an earlier turn is still executing gets
     queued into the pending buffer instead of racing the in-flight turn on
     the cluster lock.
+
+    Raises :class:`StreamRegistryUnavailable` when the underlying Redis
+    lookup fails. The HTTP layer must catch this and map it to 503 — letting
+    the raw Redis error bubble would surface as an unhandled 500 with
+    internal cluster details in the body.
     """
-    active = await get_active_session_meta(session_id)
+    try:
+        active = await get_active_session_meta(session_id)
+    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
+        # RedisClusterException covers SlotNotCoveredError raised during a
+        # GKE rolling restart (it does NOT inherit from RedisError, only
+        # from Exception). Same fail-closed posture as ``check_rate_limit``.
+        logger.warning(
+            "is_turn_in_flight: stream registry unavailable for session=%s: %s",
+            session_id,
+            exc,
+        )
+        raise StreamRegistryUnavailable() from exc
     return active is not None and active.status == "running"
 
 
