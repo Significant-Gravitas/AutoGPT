@@ -240,6 +240,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Stagehand Observe](block-integrations/stagehand/blocks.md#stagehand-observe) | Find suggested actions for your workflows |
 | [Unreal Text To Speech](block-integrations/llm.md#unreal-text-to-speech) | Converts text to speech using the Unreal Speech API |
 | [Video Narration](block-integrations/video/narration.md#video-narration) | Generate AI narration and add to video |
+| [YouTube Transcript Summarizer](block-integrations/llm.md#youtube-transcript-summarizer) | Fetches a YouTube video transcript via Supadata API and summarizes it with an LLM |
 
 ## Search and Information Retrieval
 
