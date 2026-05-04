@@ -94,6 +94,20 @@ class TestEnsureLinked:
         assert "/setup" in call_args[1]
 
     @pytest.mark.asyncio
+    async def test_unlinked_unsubscribed_thread_is_ignored(self):
+        api = _api(server_linked=False)
+        handler = MessageHandler(api)
+        adapter = _adapter()
+        with patch(
+            "backend.copilot.bot.handler.threads.is_subscribed",
+            new=AsyncMock(return_value=False),
+        ):
+            await handler.handle(_ctx(channel_type="thread"), adapter)
+
+        api.resolve_server.assert_not_awaited()
+        adapter.send_message.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_unlinked_dm_prompts_link_flow(self):
         handler = MessageHandler(_api(user_linked=False))
         adapter = _adapter()
@@ -133,26 +147,18 @@ class TestResolveTarget:
         assert result == "dm-42"
 
     @pytest.mark.asyncio
-    async def test_unsubscribed_thread_returns_none(self):
+    async def test_resolve_target_reuses_thread_after_subscription_gate(self):
         handler = MessageHandler(_api())
         adapter = _adapter()
         ctx = _ctx(channel_type="thread", channel_id="thread-old")
-        with patch(
-            "backend.copilot.bot.handler.threads.is_subscribed",
-            new=AsyncMock(return_value=False),
-        ):
-            assert await handler._resolve_target(ctx, adapter) is None
+        assert await handler._resolve_target(ctx, adapter) == "thread-old"
 
     @pytest.mark.asyncio
     async def test_subscribed_thread_keeps_channel(self):
         handler = MessageHandler(_api())
         adapter = _adapter()
         ctx = _ctx(channel_type="thread", channel_id="thread-ok")
-        with patch(
-            "backend.copilot.bot.handler.threads.is_subscribed",
-            new=AsyncMock(return_value=True),
-        ):
-            assert await handler._resolve_target(ctx, adapter) == "thread-ok"
+        assert await handler._resolve_target(ctx, adapter) == "thread-ok"
 
     @pytest.mark.asyncio
     async def test_channel_creates_and_subscribes_thread(self):

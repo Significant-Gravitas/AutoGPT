@@ -54,6 +54,11 @@ class MessageHandler:
                 )
             return
 
+        if ctx.channel_type == "thread" and not await threads.is_subscribed(
+            ctx.platform, ctx.channel_id
+        ):
+            return
+
         if not await self._ensure_linked(ctx, adapter):
             return
 
@@ -72,9 +77,7 @@ class MessageHandler:
             return ctx.channel_id
 
         if ctx.channel_type == "thread":
-            if await threads.is_subscribed(ctx.platform, ctx.channel_id):
-                return ctx.channel_id
-            return None
+            return ctx.channel_id
 
         # channel_type == "channel" — create a thread and subscribe
         thread_name = f"{ctx.username} × AutoPilot"
