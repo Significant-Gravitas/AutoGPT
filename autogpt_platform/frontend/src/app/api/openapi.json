@@ -16694,6 +16694,12 @@
             "type": "string",
             "title": "Cancel Url",
             "default": ""
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
           }
         },
         "type": "object",
