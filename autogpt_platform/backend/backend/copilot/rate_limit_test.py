@@ -24,7 +24,7 @@ from .rate_limit import (
     _weekly_key,
     _weekly_reset_time,
     acquire_reset_lock,
-    build_budget_env_ctx,
+    build_budget_ctx,
     check_rate_limit,
     get_daily_reset_count,
     get_global_rate_limits,
@@ -2119,57 +2119,105 @@ class TestGetRemainingUsdBudget:
 
 
 # ---------------------------------------------------------------------------
-# build_budget_env_ctx
+# build_budget_ctx
 # ---------------------------------------------------------------------------
 
 
-class TestBuildBudgetEnvCtx:
+class TestBuildBudgetCtx:
+    """The helper combines ``get_global_rate_limits`` + ``get_remaining_usd_budget``
+    into a single call so callers don't have to compose them by hand on
+    every turn, and returns the *inner* text only — ``inject_user_context``
+    wraps it in the ``<budget_context>`` tag."""
+
     @pytest.mark.asyncio
     async def test_returns_empty_without_user_id(self):
-        result = await build_budget_env_ctx(
-            user_id=None, daily_cost_limit=10_000_000, weekly_cost_limit=0
+        result = await build_budget_ctx(
+            user_id=None,
+            default_daily_cost_limit=10_000_000,
+            default_weekly_cost_limit=0,
         )
         assert result == ""
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_unlimited(self):
-        result = await build_budget_env_ctx(
-            user_id=_USER, daily_cost_limit=0, weekly_cost_limit=0
-        )
+        with patch(
+            "backend.copilot.rate_limit.get_global_rate_limits",
+            new=AsyncMock(return_value=(0, 0, DEFAULT_TIER)),
+        ):
+            result = await build_budget_ctx(
+                user_id=_USER,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=50_000_000,
+            )
         assert result == ""
 
     @pytest.mark.asyncio
-    async def test_includes_remaining_in_dollars(self):
+    async def test_returns_inner_text_with_remaining_in_dollars(self):
         # daily=$10 used $4.50 → $5.50 remaining.
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(side_effect=["4500000", "0"])
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            return_value=mock_redis,
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
         ):
-            block = await build_budget_env_ctx(
+            block = await build_budget_ctx(
                 user_id=_USER,
-                daily_cost_limit=10_000_000,
-                weekly_cost_limit=0,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=0,
             )
-        assert "<budget_context>" in block
+        # No tag wrap — that's inject_user_context's job.
+        assert "<budget_context>" not in block
+        assert "</budget_context>" not in block
         assert "$5.50" in block
-        assert "</budget_context>" in block
 
     @pytest.mark.asyncio
-    async def test_returns_empty_when_redis_unavailable_for_unlimited(self):
-        # Redis brown-out + at least one positive limit → block emitted with $0
-        # at the floor (so the model still gets a hint that we're under load).
-        with patch(
-            "backend.copilot.rate_limit.get_redis_async",
-            side_effect=RedisError("down"),
+    async def test_returns_empty_on_redis_brownout(self):
+        """Redis brown-out → empty string, not a misleading ``$0.00`` hint.
+        Pre-turn rate-limit gate has already failed closed at 503 in this
+        case, so the model would never see the hint anyway."""
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                side_effect=RedisError("down"),
+            ),
         ):
-            block = await build_budget_env_ctx(
+            block = await build_budget_ctx(
                 user_id=_USER,
-                daily_cost_limit=10_000_000,
-                weekly_cost_limit=0,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=0,
             )
-        # build_budget_env_ctx passes floor_usd=0.0, so the helper returns 0.0
-        # and the block renders "$0.00 remaining" — non-empty, model will see it.
-        assert "<budget_context>" in block
-        assert "$0.00" in block
+        assert block == ""
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_remaining_is_zero(self):
+        """At-or-over cap → no hint (the pre-turn gate has already
+        rejected this turn at 429; we only emit a hint when there's
+        actual headroom to communicate)."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["10000000", "0"])
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, DEFAULT_TIER)),
+            ),
+            patch(
+                "backend.copilot.rate_limit.get_redis_async",
+                return_value=mock_redis,
+            ),
+        ):
+            block = await build_budget_ctx(
+                user_id=_USER,
+                default_daily_cost_limit=10_000_000,
+                default_weekly_cost_limit=0,
+            )
+        assert block == ""
