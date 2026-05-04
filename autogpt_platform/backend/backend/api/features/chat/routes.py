@@ -31,6 +31,7 @@ from backend.copilot.model import (
 )
 from backend.copilot.pending_message_helpers import (
     QueuePendingMessageResponse,
+    StreamRegistryUnavailable,
     is_turn_in_flight,
     queue_pending_for_http,
 )
@@ -38,6 +39,7 @@ from backend.copilot.pending_messages import peek_pending_messages
 from backend.copilot.rate_limit import (
     CoPilotUsagePublic,
     RateLimitExceeded,
+    RateLimitUnavailable,
     acquire_reset_lock,
     check_rate_limit,
     get_daily_reset_count,
@@ -901,6 +903,11 @@ def _empty_ui_message_stream_response() -> StreamingResponse:
     responses={
         404: {"description": "Session not found or access denied"},
         429: {"description": "Cost rate-limit or call-frequency cap exceeded"},
+        503: {
+            "description": "Chat service degraded (Redis unavailable for rate "
+            "limit or stream registry); client should honour the Retry-After "
+            "header before retrying."
+        },
     },
 )
 async def stream_chat_post(
@@ -944,11 +951,24 @@ async def stream_chat_post(
     )
     session = await _validate_and_get_session(session_id, user_id)
 
-    if (
-        request.is_user_message
-        and request.message
-        and await is_turn_in_flight(session_id)
-    ):
+    try:
+        turn_in_flight = (
+            request.is_user_message
+            and request.message
+            and await is_turn_in_flight(session_id)
+        )
+    except StreamRegistryUnavailable as exc:
+        # Same fail-closed mapping as the RateLimitUnavailable branch below:
+        # the pre-flight chain runs is_turn_in_flight BEFORE check_rate_limit,
+        # so a Redis brown-out at this step would otherwise surface as a raw
+        # 500 instead of the polished 503 + Retry-After.
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+
+    if turn_in_flight:
         try:
             await queue_pending_for_http(
                 session_id=session_id,
@@ -994,6 +1014,16 @@ async def stream_chat_post(
             )
         except RateLimitExceeded as e:
             raise HTTPException(status_code=429, detail=str(e)) from e
+        except RateLimitUnavailable as e:
+            # Fail-closed on Redis brown-out: the user may already be at or
+            # past their USD cap and we cannot prove otherwise. 503 + a short
+            # Retry-After is the right UX (transient outage, retry shortly),
+            # not 429 ("you hit your limit").
+            raise HTTPException(
+                status_code=503,
+                detail="Rate limit service degraded, retry shortly",
+                headers={"Retry-After": "30"},
+            ) from e
 
     # Enrich message with file metadata if file_ids are provided.
     # Also sanitise file_ids so only validated, workspace-scoped IDs are
@@ -1225,6 +1255,10 @@ async def stream_chat_post(
         404: {"description": "Session not found or access denied"},
         409: {"description": "Session has no active turn to receive pending messages"},
         429: {"description": "Call-frequency cap exceeded"},
+        503: {
+            "description": "Chat service degraded (Redis unavailable); "
+            "client should honour the Retry-After header before retrying."
+        },
     },
 )
 async def queue_pending_message(
@@ -1234,7 +1268,15 @@ async def queue_pending_message(
 ):
     """Queue a follow-up message while the session has an active turn."""
     await _validate_and_get_session(session_id, user_id)
-    if not await is_turn_in_flight(session_id):
+    try:
+        turn_in_flight = await is_turn_in_flight(session_id)
+    except StreamRegistryUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from exc
+    if not turn_in_flight:
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",

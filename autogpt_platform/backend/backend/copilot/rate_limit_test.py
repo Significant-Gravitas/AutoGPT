@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from redis.exceptions import RedisError
+from redis.exceptions import RedisClusterException, RedisError
 
 from .rate_limit import (
     _DEFAULT_TIER_MULTIPLIERS,
@@ -13,6 +13,7 @@ from .rate_limit import (
     TIER_MULTIPLIERS,
     CoPilotUsageStatus,
     RateLimitExceeded,
+    RateLimitUnavailable,
     SubscriptionTier,
     UsageWindow,
     _daily_key,
@@ -216,16 +217,96 @@ class TestCheckRateLimit:
             assert exc_info.value.window == "weekly"
 
     @pytest.mark.asyncio
-    async def test_allows_when_redis_unavailable(self):
-        """Fail-open: allow requests when Redis is down."""
+    async def test_raises_unavailable_when_redis_connection_error(self):
+        """Fail-closed: ConnectionError must surface as RateLimitUnavailable so
+        the API layer can map it to HTTP 503 instead of silently letting the
+        request through and bypassing the per-user USD cap."""
         with patch(
             "backend.copilot.rate_limit.get_redis_async",
             side_effect=ConnectionError("Redis down"),
         ):
-            # Should not raise
-            await check_rate_limit(
-                _USER, daily_cost_limit=10000, weekly_cost_limit=50000
-            )
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_redis_redis_error(self):
+        """Fail-closed for redis-py RedisError (covers cluster-down /
+        CROSSSLOT-style failures during a brown-out)."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=RedisError("cluster down"))
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_redis_cluster_exception(self):
+        """Fail-closed for RedisClusterException — covers SlotNotCoveredError
+        raised during a GKE rolling restart when slot coverage is briefly
+        incomplete. This subclass does NOT inherit from RedisError, so it
+        must be caught explicitly."""
+        try:
+            from redis.exceptions import SlotNotCoveredError as _ClusterExc
+        except ImportError:
+            _ClusterExc = RedisClusterException
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=_ClusterExc("slot 1234 uncovered"))
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_os_error(self):
+        """Fail-closed for OSError (DNS / TCP-level failures during a node
+        rolling-restart)."""
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=OSError("ECONNREFUSED"),
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_raises_unavailable_when_counter_is_corrupt(self):
+        """Fail-closed when a Redis counter holds a non-numeric value — the
+        ``int(...)`` cast would otherwise raise ValueError and surface as a
+        500, but the same fail-closed reasoning applies (we cannot prove the
+        user is under their cap)."""
+        mock_redis = AsyncMock()
+        mock_redis.get = AsyncMock(side_effect=["not-a-number", "200"])
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            return_value=mock_redis,
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await check_rate_limit(
+                    _USER, daily_cost_limit=10000, weekly_cost_limit=50000
+                )
+
+    @pytest.mark.asyncio
+    async def test_skips_redis_and_does_not_raise_unavailable_when_unlimited(self):
+        """When both limits are 0 (unlimited) we must not even attempt Redis,
+        so a brown-out cannot 503 unlimited users."""
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ) as mock_get:
+            # Should not raise — short-circuited before touching Redis.
+            await check_rate_limit(_USER, daily_cost_limit=0, weekly_cost_limit=0)
+            mock_get.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_skips_check_when_limit_is_zero(self):
