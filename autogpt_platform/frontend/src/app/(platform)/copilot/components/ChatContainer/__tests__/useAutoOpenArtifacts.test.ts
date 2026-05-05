@@ -43,7 +43,11 @@ describe("useAutoOpenArtifacts", () => {
   it("does not auto-open when rerendering within the same session", () => {
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
-        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
+        useAutoOpenArtifacts({
+          sessionId,
+          messages: [],
+          isLoadingSession: false,
+        }),
       { initialProps: { sessionId: "session-1" } },
     );
 
@@ -70,7 +74,11 @@ describe("useAutoOpenArtifacts", () => {
 
     const { rerender } = renderHook(
       ({ sessionId }: { sessionId: string }) =>
-        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
+        useAutoOpenArtifacts({
+          sessionId,
+          messages: [],
+          isLoadingSession: false,
+        }),
       { initialProps: { sessionId: "session-1" } },
     );
 

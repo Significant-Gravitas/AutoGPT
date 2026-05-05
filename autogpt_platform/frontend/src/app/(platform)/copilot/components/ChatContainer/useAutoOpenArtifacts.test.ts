@@ -89,7 +89,11 @@ describe("useAutoOpenArtifacts", () => {
   it("does not auto-open when rerendering within the same session", () => {
     const { rerender } = renderHook(
       ({ sessionId }) =>
-        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
+        useAutoOpenArtifacts({
+          sessionId,
+          messages: [],
+          isLoadingSession: false,
+        }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -106,7 +110,11 @@ describe("useAutoOpenArtifacts", () => {
 
     const { rerender } = renderHook(
       ({ sessionId }) =>
-        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
+        useAutoOpenArtifacts({
+          sessionId,
+          messages: [],
+          isLoadingSession: false,
+        }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -126,7 +134,11 @@ describe("useAutoOpenArtifacts", () => {
 
     const { rerender } = renderHook(
       ({ sessionId }) =>
-        useAutoOpenArtifacts({ sessionId, messages: [], isLoadingSession: false }),
+        useAutoOpenArtifacts({
+          sessionId,
+          messages: [],
+          isLoadingSession: false,
+        }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -207,8 +219,16 @@ describe("useAutoOpenArtifacts", () => {
   it("auto-opens when a new agent artifact appears after the initial snapshot", () => {
     const { rerender } = renderHook(
       ({ messages }) =>
-        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
-      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+        useAutoOpenArtifacts({
+          sessionId: "s1",
+          messages,
+          isLoadingSession: false,
+        }),
+      {
+        initialProps: {
+          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
+        },
+      },
     );
 
     act(() => {
@@ -235,8 +255,16 @@ describe("useAutoOpenArtifacts", () => {
   it("does not auto-open user-uploaded artifacts", () => {
     const { rerender } = renderHook(
       ({ messages }) =>
-        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
-      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+        useAutoOpenArtifacts({
+          sessionId: "s1",
+          messages,
+          isLoadingSession: false,
+        }),
+      {
+        initialProps: {
+          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
+        },
+      },
     );
 
     act(() => {
@@ -249,8 +277,16 @@ describe("useAutoOpenArtifacts", () => {
   it("opens the most recent artifact when multiple new ones appear simultaneously", () => {
     const { rerender } = renderHook(
       ({ messages }) =>
-        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
-      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+        useAutoOpenArtifacts({
+          sessionId: "s1",
+          messages,
+          isLoadingSession: false,
+        }),
+      {
+        initialProps: {
+          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
+        },
+      },
     );
 
     act(() => {
@@ -267,8 +303,16 @@ describe("useAutoOpenArtifacts", () => {
   it("does not auto-open after the user explicitly closes the panel", () => {
     const { rerender } = renderHook(
       ({ messages }) =>
-        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession: false }),
-      { initialProps: { messages: [] as UIMessage<unknown, UIDataTypes, UITools>[] } },
+        useAutoOpenArtifacts({
+          sessionId: "s1",
+          messages,
+          isLoadingSession: false,
+        }),
+      {
+        initialProps: {
+          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
+        },
+      },
     );
 
     // First artifact → auto-opens.
@@ -302,9 +346,11 @@ describe("useAutoOpenArtifacts", () => {
         useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession }),
       {
         initialProps: {
-          messages: [
-            makeAgentMessage("m1", [A_ID]),
-          ] as UIMessage<unknown, UIDataTypes, UITools>[],
+          messages: [makeAgentMessage("m1", [A_ID])] as UIMessage<
+            unknown,
+            UIDataTypes,
+            UITools
+          >[],
           isLoadingSession: false,
         },
       },
