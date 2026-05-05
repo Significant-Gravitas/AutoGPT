@@ -1566,3 +1566,117 @@ class TestConsumeSdkUntilDone:
         assert state.adapter.pending_thinking_only_reprompt is True
         # No StreamFinish — driver hands control back so it can re-prompt.
         assert not any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_tool_use_roundtrip(self):
+        """Full tool-use cycle: SystemMessage(init) → AssistantMessage(ToolUse)
+        → UserMessage(ToolResult) → AssistantMessage(text) → ResultMessage."""
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            SystemMessage,
+            TextBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        from backend.copilot.response_model import (
+            StreamFinish,
+            StreamTextDelta,
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+        )
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield SystemMessage(subtype="init", data={})
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="t1",
+                        name=f"{MCP_TOOL_PREFIX}find_block",
+                        input={"q": "x"},
+                    )
+                ],
+                model="test",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(tool_use_id="t1", content="found 3", is_error=False)
+                ],
+                parent_tool_use_id=None,
+            )
+            yield AssistantMessage(content=[TextBlock(text="all done")], model="test")
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=2,
+                session_id="s1",
+                result="all done",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        # Tool input + output dispatched, final text + finish.
+        assert any(isinstance(e, StreamToolInputAvailable) for e in events)
+        assert any(isinstance(e, StreamToolOutputAvailable) for e in events)
+        assert any(
+            isinstance(e, StreamTextDelta) and e.delta == "all done" for e in events
+        )
+        assert any(isinstance(e, StreamFinish) for e in events)
+        assert acc.stream_completed is True
+
+    @pytest.mark.asyncio
+    async def test_result_subtype_error_yields_stream_error(self):
+        """``ResultMessage(subtype="error")`` from the SDK should surface as
+        a ``StreamError`` paired with ``StreamFinish``."""
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamError, StreamFinish
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield ResultMessage(
+                subtype="error",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=True,
+                num_turns=0,
+                session_id="s1",
+                result="upstream blew up",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert any(isinstance(e, StreamError) for e in events)
+        assert any(isinstance(e, StreamFinish) for e in events)
