@@ -200,9 +200,16 @@ export function useYourPlanCard() {
       await subscription.refetch();
       return true;
     } catch (error) {
-      // 422 fail-closed = LD missing the *_YEARLY price for this tier. Surface
-      // a human-readable toast and leave the toggle pinned to its prior cycle.
-      if (error instanceof ApiError && error.status === 422 && billingCycle) {
+      // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for
+      // this tier. Match billingCycle === "yearly" specifically — a 422 on a
+      // monthly request is a different failure (e.g. tier unconfigured) and
+      // should surface the generic "Couldn't update your plan" copy below
+      // instead of misleading the user about yearly availability.
+      if (
+        error instanceof ApiError &&
+        error.status === 422 &&
+        billingCycle === "yearly"
+      ) {
         toast({
           title: "Yearly billing is not yet available for your plan.",
           description: "Please contact support.",
