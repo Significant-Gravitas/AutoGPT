@@ -400,38 +400,54 @@ def _persist_activity_status_cost(
     pays for this call (system OpenAI key) but the user is not billed and not
     rate-limited, so we skip ``record_cost_usage`` and only write to
     ``PlatformCostLog`` for admin attribution.
+
+    Cost-logging is best-effort: any failure here is swallowed so a transient
+    DB / scheduling error never strips a successful activity-status response
+    from the user.
     """
-    cost_usd = stats.provider_cost
-    input_tokens = stats.input_token_count or 0
-    output_tokens = stats.output_token_count or 0
-    if cost_usd is None and input_tokens == 0 and output_tokens == 0:
-        return
+    try:
+        cost_usd = stats.provider_cost
+        input_tokens = stats.input_token_count or 0
+        output_tokens = stats.output_token_count or 0
+        # Skip when there is genuinely nothing to log. ``not cost_usd`` covers
+        # both ``None`` and ``0.0`` so a zero-cost zero-token call doesn't
+        # write an empty row that just dilutes dashboard averages.
+        if not cost_usd and input_tokens == 0 and output_tokens == 0:
+            return
 
-    cost_microdollars = usd_to_microdollars(cost_usd) if cost_usd is not None else None
-    if cost_usd is not None:
-        tracking_type = "cost_usd"
-        tracking_amount = float(cost_usd)
-    else:
-        tracking_type = "tokens"
-        tracking_amount = float(input_tokens + output_tokens)
+        cost_microdollars = (
+            usd_to_microdollars(cost_usd) if cost_usd is not None else None
+        )
+        if cost_usd is not None:
+            tracking_type = "cost_usd"
+            tracking_amount = float(cost_usd)
+        else:
+            tracking_type = "tokens"
+            tracking_amount = float(input_tokens + output_tokens)
 
-    schedule_platform_cost_log(
-        db_client,
-        PlatformCostEntry(
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            block_name="activity_status_generator",
-            provider="openai",
-            cost_microdollars=cost_microdollars,
-            input_tokens=input_tokens or None,
-            output_tokens=output_tokens or None,
-            model=model_name,
-            tracking_type=tracking_type,
-            tracking_amount=tracking_amount,
-            metadata={"source": "activity_status_generator"},
-        ),
-    )
+        schedule_platform_cost_log(
+            db_client,
+            PlatformCostEntry(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                graph_id=graph_id,
+                block_name="activity_status_generator",
+                provider="openai",
+                cost_microdollars=cost_microdollars,
+                input_tokens=input_tokens or None,
+                output_tokens=output_tokens or None,
+                model=model_name,
+                tracking_type=tracking_type,
+                tracking_amount=tracking_amount,
+                metadata={"source": "activity_status_generator"},
+            ),
+        )
+    except Exception:
+        logger.exception(
+            "Failed to persist activity-status cost for graph_exec %s; "
+            "the activity status itself was returned successfully",
+            graph_exec_id,
+        )
 
 
 def _build_execution_summary(

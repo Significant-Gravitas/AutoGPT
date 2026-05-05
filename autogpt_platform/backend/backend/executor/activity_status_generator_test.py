@@ -594,7 +594,7 @@ class TestGenerateActivityStatusForExecution:
             return_value=True,
         ), patch(
             "backend.executor.activity_status_generator.schedule_platform_cost_log"
-        ) as mockschedule_platform_cost_log:
+        ) as mock_schedule_log:
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -626,8 +626,8 @@ class TestGenerateActivityStatusForExecution:
             )
 
             assert result is not None
-            mockschedule_platform_cost_log.assert_called_once()
-            args, _ = mockschedule_platform_cost_log.call_args
+            mock_schedule_log.assert_called_once()
+            args, _ = mock_schedule_log.call_args
             scheduled_db_client, entry = args
             assert scheduled_db_client is mock_db_client
             assert entry.user_id == "test_user"
@@ -673,7 +673,7 @@ class TestGenerateActivityStatusForExecution:
             return_value=True,
         ), patch(
             "backend.executor.activity_status_generator.schedule_platform_cost_log"
-        ) as mockschedule_platform_cost_log:
+        ) as mock_schedule_log:
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -698,7 +698,75 @@ class TestGenerateActivityStatusForExecution:
             )
 
             assert result is not None
-            mockschedule_platform_cost_log.assert_not_called()
+            mock_schedule_log.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_generate_status_tokens_only_branch(
+        self, mock_node_executions, mock_execution_stats, mock_blocks
+    ):
+        """When the provider doesn't report a USD cost but tokens are present,
+        log the entry with tracking_type='tokens' and the summed token count
+        as tracking_amount (so admin dashboards still see request volume even
+        when cost data is missing)."""
+        from backend.data.model import NodeExecutionStats
+
+        mock_db_client = AsyncMock()
+        mock_db_client.get_node_executions.return_value = mock_node_executions
+        mock_graph_metadata = MagicMock()
+        mock_graph_metadata.name = "Test Agent"
+        mock_graph_metadata.description = "A test agent"
+        mock_db_client.get_graph_metadata.return_value = mock_graph_metadata
+        mock_graph = MagicMock()
+        mock_graph.links = []
+        mock_db_client.get_graph.return_value = mock_graph
+
+        with patch(
+            "backend.executor.activity_status_generator.get_block"
+        ) as mock_get_block, patch(
+            "backend.executor.activity_status_generator.Settings"
+        ) as mock_settings, patch(
+            "backend.executor.activity_status_generator.AIStructuredResponseGeneratorBlock"
+        ) as mock_structured_block, patch(
+            "backend.executor.activity_status_generator.is_feature_enabled",
+            return_value=True,
+        ), patch(
+            "backend.executor.activity_status_generator.schedule_platform_cost_log"
+        ) as mock_schedule_log:
+            mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
+            mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
+
+            mock_instance = mock_structured_block.return_value
+            mock_instance.execution_stats = NodeExecutionStats(
+                input_token_count=200,
+                output_token_count=80,
+                provider_cost=None,
+            )
+
+            async def mock_run(*args, **kwargs):
+                yield "response", {
+                    "activity_status": "Done.",
+                    "correctness_score": 0.9,
+                }
+
+            mock_instance.run = mock_run
+
+            result = await generate_activity_status_for_execution(
+                graph_exec_id="test_exec",
+                graph_id="test_graph",
+                graph_version=1,
+                execution_stats=mock_execution_stats,
+                db_client=mock_db_client,
+                user_id="test_user",
+            )
+
+            assert result is not None
+            mock_schedule_log.assert_called_once()
+            _, entry = mock_schedule_log.call_args.args
+            assert entry.tracking_type == "tokens"
+            assert entry.tracking_amount == 280.0
+            assert entry.cost_microdollars is None
+            assert entry.input_tokens == 200
+            assert entry.output_tokens == 80
 
     @pytest.mark.asyncio
     async def test_generate_status_feature_disabled(self, mock_execution_stats):
