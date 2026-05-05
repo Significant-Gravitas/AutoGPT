@@ -2470,6 +2470,26 @@ async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:
     await sync_subscription_from_stripe(dict(sub))
 
 
+def _invoice_subscription_id(invoice: dict) -> str:
+    """Resolve the subscription ID from a Stripe Invoice payload.
+
+    Stripe API ≥2025-04-01 deprecated the top-level ``invoice.subscription``
+    field; subscription invoices now carry it at
+    ``invoice.parent.subscription_details.subscription``. Read the new path
+    first and fall back to the legacy field so older API versions still work.
+    Returns "" when neither is set (one-off invoices, etc.).
+    """
+    parent = invoice.get("parent") or {}
+    if isinstance(parent, dict):
+        details = parent.get("subscription_details") or {}
+        if isinstance(details, dict):
+            new_sub = details.get("subscription")
+            if isinstance(new_sub, str) and new_sub:
+                return new_sub
+    legacy = invoice.get("subscription")
+    return legacy if isinstance(legacy, str) and legacy else ""
+
+
 async def handle_subscription_payment_failure(invoice: dict) -> None:
     """Handle a failed Stripe subscription payment.
 
@@ -2506,7 +2526,7 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         return
 
     amount_due: int = invoice.get("amount_due", 0)
-    sub_id: str = invoice.get("subscription", "")
+    sub_id = _invoice_subscription_id(invoice)
     invoice_id: str = invoice.get("id", "")
 
     if amount_due <= 0:
@@ -2609,7 +2629,7 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
             "handle_subscription_payment_success: missing customer in invoice; skipping"
         )
         return
-    sub_id: str = invoice.get("subscription") or ""
+    sub_id = _invoice_subscription_id(invoice)
     if not sub_id:
         # Non-subscription invoices (one-off invoices, etc.) — no credit grant.
         return
