@@ -48,6 +48,11 @@ class AsyncRedisNotificationEventBus(AsyncRedisEventBus[NotificationEvent]):
 
     async def publish(self, event: NotificationEvent) -> None:
         await self.publish_event(event, event.user_id)
+        # Skip OS push for onboarding step toasts — those are in-page only.
+        # TODO: remove once the onboarding/wallet rework lands and decides
+        # per-event whether a system notification is desired.
+        if event.payload.model_dump().get("type") == "onboarding":
+            return
         # Fan out to web push subscriptions in parallel. Fire-and-forget so
         # publishers never wait on the push service; held in _push_tasks so
         # the task survives until completion.

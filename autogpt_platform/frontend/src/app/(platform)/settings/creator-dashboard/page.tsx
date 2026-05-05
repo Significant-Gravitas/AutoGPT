@@ -21,6 +21,9 @@ export default function SettingsCreatorDashboardPage() {
   const {
     submissions,
     visibleSubmissions,
+    pagination,
+    onPageChange,
+    isFetching,
     stats,
     filterState,
     setFilterState,
@@ -75,7 +78,10 @@ export default function SettingsCreatorDashboardPage() {
           <div className="hidden md:block">
             <SubmissionsList
               submissions={visibleSubmissions}
-              totalCount={submissions.length}
+              totalCount={pagination?.total_items ?? submissions.length}
+              pagination={pagination}
+              onPageChange={onPageChange}
+              isFetching={isFetching}
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}
@@ -88,7 +94,10 @@ export default function SettingsCreatorDashboardPage() {
           <div className="md:hidden">
             <MobileSubmissionsList
               submissions={visibleSubmissions}
-              totalCount={submissions.length}
+              totalCount={pagination?.total_items ?? submissions.length}
+              pagination={pagination}
+              onPageChange={onPageChange}
+              isFetching={isFetching}
               filterState={filterState}
               onFilterChange={setFilterState}
               onResetFilters={resetFilters}

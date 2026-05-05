@@ -85,13 +85,25 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
   CopilotPendingReviews: () => null,
 }));
+// Tests below override this default by re-mocking ../helpers as needed.
 vi.mock("../helpers", () => ({
   buildRenderSegments: () => [],
   getTurnMessages: () => [],
-  parseSpecialMarkers: () => ({ markerType: null }),
+  parseSpecialMarkers: (text: string) => {
+    if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
+      return { markerType: "error" };
+    }
+    if (
+      typeof text === "string" &&
+      text.startsWith("[__COPILOT_RETRYABLE_ERROR_")
+    ) {
+      return { markerType: "retryable_error" };
+    }
+    return { markerType: null };
+  },
   splitReasoningAndResponse: (parts: unknown[]) => ({
-    reasoningParts: [],
-    responseParts: parts,
+    reasoning: [],
+    response: parts,
   }),
 }));
 
@@ -301,6 +313,100 @@ describe("ChatMessagesContainer — loading", () => {
     });
 
     expect(screen.getByText("Analyzing result...")).toBeDefined();
+  });
+});
+
+// ── error banner dedup ────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — error banner dedup", () => {
+  beforeEach(() => {
+    mockScrollEl.scrollHeight = 100;
+    mockScrollEl.scrollTop = 0;
+    mockScrollEl.clientHeight = 500;
+    MockIntersectionObserver.lastCallback = null;
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders the trailing banner when no persisted error marker is in messages", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("SDK stream error: Prompt is too long")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("SDK stream error: Prompt is too long"),
+    ).toBeDefined();
+    expect(screen.getByText(/encountered an error/i)).toBeDefined();
+  });
+
+  it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("SDK stream error: Prompt is too long")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_ERROR_f7a1__] SDK stream error: Prompt is too long",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+  });
+
+  it("suppresses the trailing banner when the marker is retryable", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        error={new Error("Transient error")}
+        status="error"
+        messages={[
+          {
+            id: "u-1",
+            role: "user",
+            parts: [{ type: "text", text: "go" }],
+          },
+          {
+            id: "a-1",
+            role: "assistant",
+            parts: [
+              {
+                type: "text",
+                text: "[__COPILOT_RETRYABLE_ERROR_a9c2__] Transient error",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/encountered an error/i)).toBeNull();
   });
 });
 

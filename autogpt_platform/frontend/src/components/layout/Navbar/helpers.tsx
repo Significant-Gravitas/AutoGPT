@@ -51,7 +51,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       {
         icon: IconType.Edit,
         text: "Edit profile",
-        href: "/profile",
+        href: "/settings/profile",
       },
     ],
   },
@@ -60,7 +60,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       {
         icon: IconType.LayoutDashboard,
         text: "Creator Dashboard",
-        href: "/profile/dashboard",
+        href: "/settings/creator-dashboard",
       },
       {
         icon: IconType.UploadCloud,
@@ -73,7 +73,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       {
         icon: IconType.Settings,
         text: "Settings",
-        href: "/profile/settings",
+        href: "/settings",
       },
     ],
   },
@@ -94,7 +94,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
         {
           icon: IconType.Edit,
           text: "Edit profile",
-          href: "/profile",
+          href: "/settings/profile",
         },
       ],
     },
@@ -103,7 +103,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
         {
           icon: IconType.LayoutDashboard,
           text: "Creator Dashboard",
-          href: "/profile/dashboard",
+          href: "/settings/creator-dashboard",
         },
         {
           icon: IconType.UploadCloud,
@@ -133,7 +133,7 @@ export function getAccountMenuItems(userRole?: string): MenuItemGroup[] {
         {
           icon: IconType.Settings,
           text: "Settings",
-          href: "/profile/settings",
+          href: "/settings",
         },
       ],
     },

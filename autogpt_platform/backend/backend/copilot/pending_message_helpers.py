@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Callable
 
 from fastapi import HTTPException
 from pydantic import BaseModel
+from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.model import ChatMessage, upsert_chat_session
 from backend.copilot.pending_messages import (
@@ -43,6 +44,17 @@ PENDING_CALL_WINDOW_SECONDS = 60
 _PENDING_CALL_KEY_PREFIX = "copilot:pending:calls:"
 
 
+class StreamRegistryUnavailable(Exception):
+    """The active-session lookup in Redis failed — the route should fail
+    closed with HTTP 503 instead of bubbling the raw Redis error as 500.
+
+    Mirrors :class:`backend.copilot.rate_limit.RateLimitUnavailable` so the
+    chat-route pre-flight chain (``is_turn_in_flight`` → ``check_rate_limit``)
+    maps any Redis brown-out to the same polished 503 + ``Retry-After``
+    response, regardless of which step tripped first.
+    """
+
+
 async def is_turn_in_flight(session_id: str) -> bool:
     """Return ``True`` when a copilot turn is actively running for *session_id*.
 
@@ -50,8 +62,24 @@ async def is_turn_in_flight(session_id: str) -> bool:
     second message arriving while an earlier turn is still executing gets
     queued into the pending buffer instead of racing the in-flight turn on
     the cluster lock.
+
+    Raises :class:`StreamRegistryUnavailable` when the underlying Redis
+    lookup fails. The HTTP layer must catch this and map it to 503 — letting
+    the raw Redis error bubble would surface as an unhandled 500 with
+    internal cluster details in the body.
     """
-    active = await get_active_session_meta(session_id)
+    try:
+        active = await get_active_session_meta(session_id)
+    except (RedisError, RedisClusterException, ConnectionError, OSError) as exc:
+        # RedisClusterException covers SlotNotCoveredError raised during a
+        # GKE rolling restart (it does NOT inherit from RedisError, only
+        # from Exception). Same fail-closed posture as ``check_rate_limit``.
+        logger.warning(
+            "is_turn_in_flight: stream registry unavailable for session=%s: %s",
+            session_id,
+            exc,
+        )
+        raise StreamRegistryUnavailable() from exc
     return active is not None and active.status == "running"
 
 
@@ -326,32 +354,42 @@ async def persist_session_safe(
 
 async def persist_pending_as_user_rows(
     session: "ChatSession",
-    transcript_builder: "TranscriptBuilder",
+    transcript_builder: "TranscriptBuilder | None",
     pending: list[PendingMessage],
     *,
     log_prefix: str,
     content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,
     on_rollback: Callable[[int], None] | None = None,
 ) -> bool:
-    """Append ``pending`` as user rows to *session* + *transcript_builder*,
-    persist, and roll back + re-queue if the persist silently failed.
+    """Append ``pending`` as user rows to *session* (and optionally
+    *transcript_builder*), persist, and roll back + re-queue if the
+    persist silently failed.
 
-    This is the shared mid-turn follow-up persist used by both the baseline
-    and SDK paths — they differ only in (a) how they derive the displayed
-    string from a ``PendingMessage`` and (b) what extra per-path state
-    (e.g. ``openai_messages``) needs trimming on rollback.  Those variance
-    points are exposed as ``content_of`` and ``on_rollback``.
+    Used by both **mid-turn** drain (MCP tool boundaries; pass a real
+    ``transcript_builder`` so the entries become additional user turns
+    in the conversation flow) and **turn-start** drain (pass ``None``;
+    the transcript already gets one entry for the whole turn at
+    turn-end via ``append_user(combined_current_message)`` — appending
+    each pending here as well would triple-count them in the next
+    turn's ``--resume`` context).
+
+    Differs across baseline/SDK paths only in (a) how the displayed
+    string is derived from a ``PendingMessage`` and (b) what extra
+    per-path state (e.g. ``openai_messages``) needs trimming on
+    rollback.  Those variance points are exposed as ``content_of`` and
+    ``on_rollback``.
 
     Flow:
-      1. Snapshot transcript + record the session.messages length.
-      2. Append one user row per pending message to both stores.
+      1. Snapshot transcript (if any) + record the session.messages length.
+      2. Append one user row per pending message; mirror to the
+         transcript only when *transcript_builder* is provided.
       3. ``persist_session_safe`` — swallowed errors mean no sequences get
          back-filled, which we use as the failure signal.
       4. If any newly-appended row has ``sequence is None`` → rollback:
-         delete the appended rows, restore the transcript snapshot, call
-         ``on_rollback(anchor)`` for the caller's own state, then re-push
-         each ``PendingMessage`` into the primary pending buffer so the
-         next turn-start drain picks them up.
+         delete the appended rows, restore the transcript snapshot (if
+         any), call ``on_rollback(anchor)`` for the caller's own state,
+         then re-push each ``PendingMessage`` into the primary pending
+         buffer so the next turn-start drain picks them up.
 
     Returns ``True`` when the rows were persisted with sequences, ``False``
     when the rollback path fired.  Callers can use this to decide whether
@@ -361,12 +399,15 @@ async def persist_pending_as_user_rows(
         return True
 
     session_anchor = len(session.messages)
-    transcript_snapshot = transcript_builder.snapshot()
+    transcript_snapshot = (
+        transcript_builder.snapshot() if transcript_builder is not None else None
+    )
 
     for pm in pending:
         content = content_of(pm)
         session.messages.append(ChatMessage(role="user", content=content))
-        transcript_builder.append_user(content=content)
+        if transcript_builder is not None:
+            transcript_builder.append_user(content=content)
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
     # when ``upsert_chat_session`` patches a concurrently-updated title).
@@ -395,7 +436,8 @@ async def persist_pending_as_user_rows(
             len(pending),
         )
         del session.messages[session_anchor:]
-        transcript_builder.restore(transcript_snapshot)
+        if transcript_builder is not None and transcript_snapshot is not None:
+            transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
         # ``push_pending_message`` uses the bounded ``capped_rpush`` (LTRIM

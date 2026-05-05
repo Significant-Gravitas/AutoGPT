@@ -1,5 +1,6 @@
 import type { FileUIPart, UIMessage } from "ai";
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 /**
  * Per-session state. Zustand (not React refs) so it can survive events we
@@ -74,72 +75,100 @@ interface CopilotStreamStore {
   resetAll: () => void;
 }
 
-export const useCopilotStreamStore = create<CopilotStreamStore>((set, get) => ({
-  sessions: {},
-  messageSnapshots: {},
-  pendingFirstSend: null,
-  pendingFileParts: [],
-
-  getCoord(sessionId) {
-    return get().sessions[sessionId] ?? defaultCoord;
-  },
-  updateCoord(sessionId, patch) {
-    set((state) => ({
-      sessions: {
-        ...state.sessions,
-        [sessionId]: {
-          ...(state.sessions[sessionId] ?? defaultCoord),
-          ...patch,
-        },
-      },
-    }));
-  },
-  clearSession(sessionId) {
-    set((state) => {
-      const sessions = { ...state.sessions };
-      delete sessions[sessionId];
-
-      const messageSnapshots = { ...state.messageSnapshots };
-      delete messageSnapshots[sessionId];
-
-      return {
-        sessions,
-        messageSnapshots,
-      };
-    });
-  },
-  getMessageSnapshot(sessionId) {
-    return get().messageSnapshots[sessionId] ?? [];
-  },
-  setMessageSnapshot(sessionId, messages) {
-    set((state) => ({
-      messageSnapshots: {
-        ...state.messageSnapshots,
-        [sessionId]: messages,
-      },
-    }));
-  },
-
-  setPendingFirstSend(send) {
-    set({ pendingFirstSend: send });
-  },
-  setPendingFileParts(parts) {
-    set({ pendingFileParts: parts });
-  },
-  takePendingFirstSend() {
-    const { pendingFirstSend, pendingFileParts } = get();
-    set({ pendingFirstSend: null, pendingFileParts: [] });
-    return { send: pendingFirstSend, parts: pendingFileParts };
-  },
-
-  resetAll() {
-    set({
+export const useCopilotStreamStore = create<CopilotStreamStore>()(
+  persist(
+    (set, get) => ({
       sessions: {},
       messageSnapshots: {},
       pendingFirstSend: null,
       pendingFileParts: [],
-    });
-  },
-}));
+
+      getCoord(sessionId) {
+        return get().sessions[sessionId] ?? defaultCoord;
+      },
+      updateCoord(sessionId, patch) {
+        set((state) => ({
+          sessions: {
+            ...state.sessions,
+            [sessionId]: {
+              ...(state.sessions[sessionId] ?? defaultCoord),
+              ...patch,
+            },
+          },
+        }));
+      },
+      clearSession(sessionId) {
+        set((state) => {
+          const sessions = { ...state.sessions };
+          delete sessions[sessionId];
+
+          const messageSnapshots = { ...state.messageSnapshots };
+          delete messageSnapshots[sessionId];
+
+          return {
+            sessions,
+            messageSnapshots,
+          };
+        });
+      },
+      getMessageSnapshot(sessionId) {
+        return get().messageSnapshots[sessionId] ?? [];
+      },
+      setMessageSnapshot(sessionId, messages) {
+        set((state) => ({
+          messageSnapshots: {
+            ...state.messageSnapshots,
+            [sessionId]: messages,
+          },
+        }));
+      },
+
+      setPendingFirstSend(send) {
+        set({ pendingFirstSend: send });
+      },
+      setPendingFileParts(parts) {
+        set({ pendingFileParts: parts });
+      },
+      takePendingFirstSend() {
+        const { pendingFirstSend, pendingFileParts } = get();
+        set({ pendingFirstSend: null, pendingFileParts: [] });
+        return { send: pendingFirstSend, parts: pendingFileParts };
+      },
+
+      resetAll() {
+        set({
+          sessions: {},
+          messageSnapshots: {},
+          pendingFirstSend: null,
+          pendingFileParts: [],
+        });
+      },
+    }),
+    {
+      // Persist ONLY the per-session ``sessions`` map (which carries
+      // ``lastSubmittedMessageText``). Refresh / new tab in the same browser
+      // session keeps the dedup memory so the wrapped sendMessage's
+      // ``getSendSuppressionReason`` can still block duplicate POSTs after
+      // the in-memory state would otherwise be lost.
+      // ``messageSnapshots`` is intentionally excluded — it's a per-render
+      // cache of UIMessages (often hundreds) that the next mount should
+      // re-derive from the server, not restore from storage.
+      // ``pendingFirstSend`` / ``pendingFileParts`` are tab-local artefacts
+      // of the session-creation remount and would be confusing if persisted.
+      name: "copilot-stream-store",
+      version: 1,
+      // SSR-safe storage adapter: ``window.sessionStorage`` in the browser,
+      // a no-op stub during Next.js SSR / vitest where ``window`` is
+      // undefined.  Returning ``undefined`` from the factory would make
+      // zustand throw on its first ``getItem`` call.
+      storage: createJSONStorage(() =>
+        typeof window !== "undefined" && window.sessionStorage
+          ? window.sessionStorage
+          : { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+      ),
+      partialize: (state) => ({ sessions: state.sessions }),
+    },
+  ),
+);
 
 export const DEFAULT_SESSION_COORD = defaultCoord;

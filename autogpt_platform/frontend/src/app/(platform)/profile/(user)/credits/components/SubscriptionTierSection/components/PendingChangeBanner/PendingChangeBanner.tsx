@@ -25,7 +25,7 @@ export function PendingChangeBanner({
   const currentLabel = getTierLabel(currentTier);
   const dateText = formatPendingDate(pendingEffectiveAt);
 
-  const isCancellation = pendingTier === "BASIC";
+  const isCancellation = pendingTier === "NO_TIER";
 
   return (
     <div

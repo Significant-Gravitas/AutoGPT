@@ -97,6 +97,14 @@ export function useSendMessage({
     files: File[],
     prebuiltParts: FileUIPart[],
   ) {
+    // The per-click UUID that becomes the backend's ``ChatMessage.id``
+    // is generated inside the transport's ``prepareSendMessagesRequest``
+    // (one call per ``sendMessages``, stable across SDK-internal
+    // retries) — NOT here.  AI SDK's ``messageId`` arg means
+    // "replace-existing-message" (edit mode), not "id of a new
+    // message", so passing it would put the SDK into edit-mode with no
+    // target and break the optimistic-render path that pushes the user
+    // bubble into ``messages`` synchronously.
     if (prebuiltParts.length > 0) {
       sendMessage({ text, files: prebuiltParts });
       return;

@@ -362,6 +362,21 @@ async def add_chat_message(
     return ChatMessage.from_db(message)
 
 
+_CHAT_MESSAGE_PKEY_CONSTRAINT = "ChatMessage_pkey"
+
+
+def is_duplicate_chat_message_id_error(exc: BaseException) -> bool:
+    """True iff *exc* is a ``UniqueViolationError`` on the ``ChatMessage``
+    primary key — i.e. the caller supplied a duplicate ``id``.
+
+    Used by ``append_and_save_message`` to distinguish the dedup signal
+    from the unrelated ``(sessionId, sequence)`` collision that the
+    streaming-callback race retries silently."""
+    return isinstance(
+        exc, UniqueViolationError
+    ) and _CHAT_MESSAGE_PKEY_CONSTRAINT in str(exc)
+
+
 async def add_chat_messages_batch(
     session_id: str,
     messages: list[dict[str, Any]],
@@ -404,6 +419,12 @@ async def add_chat_messages_batch(
                         "createdAt": now,
                     }
 
+                    # Optional caller-supplied PK (frontend per-click UUID
+                    # for user messages).  When omitted Prisma generates
+                    # via ``@default(uuid())``.
+                    if msg.get("id") is not None:
+                        data["id"] = msg["id"]
+
                     # Add optional string fields — sanitize to strip
                     # PostgreSQL-incompatible control characters.
                     if msg.get("content") is not None:
@@ -439,9 +460,17 @@ async def add_chat_messages_batch(
             # Return next sequence number for counter sync
             return start_sequence + len(messages)
 
-        except UniqueViolationError:
+        except UniqueViolationError as e:
+            # Two distinct unique constraints on ``ChatMessage`` can fire here:
+            #   - ``ChatMessage_pkey`` (the row ``id``): caller supplied a
+            #     duplicate PK — this is the idempotency signal, propagate
+            #     so the route layer can short-circuit.
+            #   - ``ChatMessage_sessionId_sequence_key``: the streaming loop
+            #     and a long-running callback raced on ``sequence`` — retry
+            #     with a freshly queried offset (existing behaviour).
+            if is_duplicate_chat_message_id_error(e):
+                raise
             if attempt < max_retries - 1:
-                # Collision detected - query MAX(sequence)+1 and retry with correct offset
                 logger.info(
                     f"Collision detected for session {session_id} at sequence "
                     f"{start_sequence}, querying DB for latest sequence"

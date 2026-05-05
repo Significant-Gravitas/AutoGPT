@@ -98,7 +98,7 @@ beforeEach(() => {
   mockUseCopilotStream.mockReturnValue(defaultStream);
   mockUseCopilotPendingChips.mockReturnValue({
     queuedMessages: [],
-    appendChip: vi.fn(),
+    queueMessage: vi.fn(),
   });
   mockUseGetV2GetSession.mockReturnValue({
     data: undefined,
@@ -546,7 +546,7 @@ describe("useBuilderChatPanel", () => {
   });
 
   it("queues a follow-up via the helper when onSend is called while streaming", async () => {
-    const appendChip = vi.fn();
+    const queueMessage = vi.fn();
     const sendMessage = vi.fn();
     mockUseCopilotStream.mockReturnValue({
       ...defaultStream,
@@ -555,7 +555,7 @@ describe("useBuilderChatPanel", () => {
     });
     mockUseCopilotPendingChips.mockReturnValue({
       queuedMessages: [],
-      appendChip,
+      queueMessage,
     });
     createBuilderSession.mockResolvedValue({
       status: 200,
@@ -576,7 +576,7 @@ describe("useBuilderChatPanel", () => {
     });
     await result.current.onSend("queued msg");
     // The message must be appended as a chip AND not sent directly.
-    expect(appendChip).toHaveBeenCalledWith("queued msg");
+    expect(queueMessage).toHaveBeenCalledWith("queued msg");
     expect(sendMessage).not.toHaveBeenCalled();
   });
 

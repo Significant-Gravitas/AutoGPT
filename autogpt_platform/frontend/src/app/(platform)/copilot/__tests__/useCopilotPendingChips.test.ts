@@ -106,7 +106,7 @@ describe("useCopilotPendingChips", () => {
     });
   });
 
-  it("appendChip adds a chip locally without hitting backend", () => {
+  it("queueMessage adds a chip locally without hitting backend", () => {
     const setMessages = vi.fn();
     const { result } = renderHook(() =>
       useCopilotPendingChips({
@@ -118,17 +118,14 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("hello");
+      result.current.queueMessage("hello");
     });
     expect(result.current.queuedMessages).toEqual(["hello"]);
   });
 
-  it("promotes chips to a bubble when a second new assistant appears (auto-continue)", () => {
+  it("promotes one bubble per chip when a second new assistant appears (auto-continue)", () => {
     const setMessages = vi.fn();
 
-    // Initial: only a user msg (no assistants yet). The hook's internal
-    // "seen" set starts empty so the FIRST new assistant in a streaming
-    // chain is treated as Turn 1's opener.
     const { result, rerender } = renderHook(
       ({ messages }: { messages: UIMessage[] }) =>
         useCopilotPendingChips({
@@ -145,12 +142,12 @@ describe("useCopilotPendingChips", () => {
       messages: [user("u1"), assistant("a1", "turn1")],
     });
 
-    // User queues a chip while turn 1 is still streaming.
+    // User queues two distinct chips while turn 1 is still streaming.
     act(() => {
-      result.current.appendChip("followup");
+      result.current.queueMessage("followup-a");
+      result.current.queueMessage("followup-b");
     });
 
-    // Clear any prior setMessages calls so we only inspect the promotion.
     setMessages.mockClear();
 
     // A SECOND new assistant id appears → auto-continue detected.
@@ -162,7 +159,6 @@ describe("useCopilotPendingChips", () => {
       ],
     });
 
-    // setMessages was called with an updater that inserts the promoted bubble.
     const promoteCall = setMessages.mock.calls.find(
       ([fn]) => typeof fn === "function",
     );
@@ -171,25 +167,28 @@ describe("useCopilotPendingChips", () => {
     const updater = promoteCall![0] as (prev: UIMessage[]) => UIMessage[];
     const after = updater([user("u1"), assistant("a1"), assistant("a2")]);
 
-    const a2Idx = after.findIndex((m) => m.id === "a2");
-    const promotedIdx = after.findIndex((m) =>
+    // One bubble per chip — cardinality preserved.
+    const promoted = after.filter((m) =>
       m.id.startsWith("promoted-auto-continue-"),
     );
-    expect(promotedIdx).toBeGreaterThanOrEqual(0);
-    expect(promotedIdx).toBeLessThan(a2Idx);
-    expect(after[promotedIdx].role).toBe("user");
-    expect((after[promotedIdx].parts![0] as { text?: string }).text).toBe(
-      "followup",
-    );
+    expect(promoted).toHaveLength(2);
+    expect(
+      promoted.map((m) => (m.parts![0] as { text?: string }).text),
+    ).toEqual(["followup-a", "followup-b"]);
 
-    // And chips have been cleared.
+    // Both bubbles inserted before a2.
+    const a2Idx = after.findIndex((m) => m.id === "a2");
+    const promotedIndices = promoted.map((m) =>
+      after.findIndex((x) => x.id === m.id),
+    );
+    expect(promotedIndices.every((i) => i < a2Idx)).toBe(true);
+
+    // Chips cleared.
     expect(result.current.queuedMessages).toEqual([]);
   });
 
   it("turn-start drain: peek count=0 clears chips once submitted→streaming", async () => {
     const setMessages = vi.fn();
-    // Seed with chips via the idle-state peek so local state has them by
-    // the time we kick the submitted→streaming transition.
     peekMock.mockResolvedValueOnce({
       status: 200,
       data: { count: 1, messages: ["local-chip"] },
@@ -217,7 +216,6 @@ describe("useCopilotPendingChips", () => {
     });
 
     rerender({ status: "submitted" });
-    // Backend really drained — count is 0.
     peekMock.mockResolvedValue({
       status: 200,
       data: { count: 0, messages: [] },
@@ -231,8 +229,6 @@ describe("useCopilotPendingChips", () => {
 
   it("turn-start drain: non-200 peek response does not clear chips", async () => {
     const setMessages = vi.fn();
-    // Seed chips from the session-load peek so we don't race with a
-    // separate appendChip after idle-peek has already overwritten state.
     peekMock.mockResolvedValueOnce({
       status: 200,
       data: { count: 1, messages: ["keep-me"] },
@@ -260,8 +256,6 @@ describe("useCopilotPendingChips", () => {
     });
 
     rerender({ status: "submitted" });
-    // Turn-start peek returns an error status — the condition `count === 0`
-    // only fires on `status === 200`, so chips must stay.
     peekMock.mockResolvedValue({ status: 500, data: undefined });
     rerender({ status: "streaming" });
 
@@ -286,10 +280,9 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("survives");
+      result.current.queueMessage("survives");
     });
 
-    // Simulate a transient network failure on the peek.
     peekMock.mockRejectedValue(new Error("network blip"));
 
     await act(async () => {
@@ -298,7 +291,6 @@ describe("useCopilotPendingChips", () => {
       await Promise.resolve();
     });
 
-    // No promotion happened, chips remain intact.
     expect(result.current.queuedMessages).toEqual(["survives"]);
     const promoteCall = setMessages.mock.calls.find(([arg]) => {
       if (typeof arg !== "function") return false;
@@ -308,7 +300,7 @@ describe("useCopilotPendingChips", () => {
     expect(promoteCall).toBeUndefined();
   });
 
-  it("mid-turn poll promotes drained chips when backend count drops", async () => {
+  it("mid-turn poll promotes one bubble per drained chip", async () => {
     vi.useFakeTimers();
     const setMessages = vi.fn();
     const { result } = renderHook(() =>
@@ -321,11 +313,10 @@ describe("useCopilotPendingChips", () => {
     );
 
     act(() => {
-      result.current.appendChip("chipA");
-      result.current.appendChip("chipB");
+      result.current.queueMessage("chipA");
+      result.current.queueMessage("chipB");
     });
 
-    // Backend now reports count=0 (drained by MCP wrapper).
     peekMock.mockResolvedValue({
       status: 200,
       data: { count: 0, messages: [] },
@@ -333,12 +324,10 @@ describe("useCopilotPendingChips", () => {
 
     await act(async () => {
       vi.advanceTimersByTime(2_000);
-      // Let the awaited promise resolve.
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    // The poll should have promoted the two chips to a bubble.
     const promotedCall = setMessages.mock.calls.find(([arg]) => {
       if (typeof arg !== "function") return false;
       const updated = (arg as (p: UIMessage[]) => UIMessage[])([]);
@@ -346,25 +335,130 @@ describe("useCopilotPendingChips", () => {
     });
     expect(promotedCall).toBeDefined();
 
-    // And — crucially — the promoted bubble is inserted BEFORE the
-    // trailing streaming assistant, not after.  The AI SDK's ``useChat``
-    // streams SSE deltas into ``messages[-1]``; if the last message is
-    // a user bubble instead of the still-streaming assistant, every
-    // subsequent chunk lands in the wrong slot and the UI freezes until
-    // a page refresh.
     const streamingUpdater = promotedCall![0] as (
       prev: UIMessage[],
     ) => UIMessage[];
     const priorMessages = [user("u1"), assistant("a1", "streaming...")];
     const afterPromotion = streamingUpdater(priorMessages);
-    expect(afterPromotion).toHaveLength(3);
+
+    // Two chips → two bubbles, both inserted before the streaming assistant.
+    expect(afterPromotion).toHaveLength(4);
     const lastIdx = afterPromotion.length - 1;
     expect(afterPromotion[lastIdx].role).toBe("assistant");
     expect(afterPromotion[lastIdx].id).toBe("a1");
-    expect(afterPromotion[lastIdx - 1].id.startsWith("promoted-midturn-")).toBe(
-      true,
+    const promoted = afterPromotion.filter((m) =>
+      m.id.startsWith("promoted-midturn-"),
     );
-    // And remaining chips cleared.
+    expect(promoted).toHaveLength(2);
+    expect(
+      promoted.map((m) => (m.parts![0] as { text?: string }).text),
+    ).toEqual(["chipA", "chipB"]);
+
     expect(result.current.queuedMessages).toEqual([]);
+  });
+
+  it("mid-turn poll: a peek that resolves after the user switches sessions does not promote into the new session", async () => {
+    vi.useFakeTimers();
+    const setMessagesA = vi.fn();
+    const setMessagesB = vi.fn();
+    type Props = { sessionId: string; setMessages: typeof setMessagesA };
+    const { result, rerender } = renderHook<
+      ReturnType<typeof useCopilotPendingChips>,
+      Props
+    >(
+      ({ sessionId, setMessages }) =>
+        useCopilotPendingChips({
+          sessionId,
+          status: "streaming",
+          messages: [user("u1"), assistant("a1")],
+          setMessages,
+        }),
+      {
+        initialProps: { sessionId: "sess-A", setMessages: setMessagesA },
+      },
+    );
+
+    act(() => {
+      result.current.queueMessage("chipA");
+    });
+
+    // Poll fires for sess-A but resolves AFTER we've switched to sess-B.
+    let resolvePeek!: (value: unknown) => void;
+    peekMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePeek = resolve;
+        }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+
+    // User switches sessions.
+    rerender({ sessionId: "sess-B", setMessages: setMessagesB });
+
+    // Old poll resolves now — backend says count=0 — but we've already
+    // moved on to sess-B.  The session-id guard must short-circuit so
+    // setMessagesA is never called for the promotion path.
+    setMessagesA.mockClear();
+    await act(async () => {
+      resolvePeek({ status: 200, data: { count: 0, messages: [] } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const promotedCallA = setMessagesA.mock.calls.find(([arg]) => {
+      if (typeof arg !== "function") return false;
+      const updated = (arg as (p: UIMessage[]) => UIMessage[])([]);
+      return updated.some((m) => m.id.startsWith("promoted-"));
+    });
+    expect(promotedCallA).toBeUndefined();
+  });
+
+  it("mid-turn poll: chip appended during in-flight poll survives the drain", async () => {
+    vi.useFakeTimers();
+    const setMessages = vi.fn();
+    const { result } = renderHook(() =>
+      useCopilotPendingChips({
+        sessionId: "s",
+        status: "streaming",
+        messages: [user("u1"), assistant("a1")],
+        setMessages,
+      }),
+    );
+
+    act(() => {
+      result.current.queueMessage("chipA");
+    });
+
+    // Backend has drained chipA (count=0). The poll's GET resolves, but
+    // the user appends chipB before the setState commits.
+    let resolvePeek!: (value: unknown) => void;
+    peekMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolvePeek = resolve;
+        }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(2_000);
+    });
+
+    // While the GET is still pending, append a second chip.
+    act(() => {
+      result.current.queueMessage("chipB");
+    });
+
+    // Now resolve the in-flight peek.
+    await act(async () => {
+      resolvePeek({ status: 200, data: { count: 0, messages: [] } });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // chipA was drained → promoted; chipB survived as a chip.
+    expect(result.current.queuedMessages).toEqual(["chipB"]);
   });
 });

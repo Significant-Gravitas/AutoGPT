@@ -4,6 +4,7 @@ import { PushNotificationProvider } from "@/services/push-notifications/PushNoti
 import { ReactNode } from "react";
 import { AdminImpersonationBanner } from "./admin/components/AdminImpersonationBanner";
 import { AutoPilotBridgeProvider } from "@/contexts/AutoPilotBridgeContext";
+import { PaywallGate } from "./PaywallGate/PaywallGate";
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
@@ -13,7 +14,9 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         <PushNotificationProvider />
         <Navbar />
         <AdminImpersonationBanner />
-        <section className="flex-1">{children}</section>
+        <section className="flex-1">
+          <PaywallGate>{children}</PaywallGate>
+        </section>
       </main>
     </AutoPilotBridgeProvider>
   );

@@ -197,7 +197,7 @@ describe("SubscriptionTierSection", () => {
     expect(screen.getByText("Free")).toBeDefined();
   });
 
-  it("shows 'Pricing available soon' when tier cost is 0 for a paid tier", () => {
+  it("shows 'Free' for any tier with cost = 0", () => {
     setupMocks({
       subscription: makeSubscription({
         tier: "BASIC",
@@ -205,8 +205,8 @@ describe("SubscriptionTierSection", () => {
       }),
     });
     render(<SubscriptionTierSection />);
-    // PRO and MAX with cost=0 should show "Pricing available soon"
-    expect(screen.getAllByText("Pricing available soon")).toHaveLength(2);
+    // BASIC, PRO, MAX all with cost=0 should each render "Free".
+    expect(screen.getAllByText("Free")).toHaveLength(3);
   });
 
   it("calls changeTier on upgrade click after confirmation dialog", async () => {
@@ -533,11 +533,12 @@ describe("SubscriptionTierSection", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toMatch(
-      /switching to pro will take effect at the end of your current billing period/i,
+      /switching to pro takes effect at the end of your current billing period/i,
     );
     expect(dialog.textContent).toMatch(
       /you keep your current plan until then/i,
     );
+    expect(dialog.textContent).toMatch(/no charge today/i);
     expect(dialog.textContent).not.toMatch(/take effect immediately/i);
   });
 
@@ -676,24 +677,78 @@ describe("SubscriptionTierSection", () => {
     expect(mutateFn).not.toHaveBeenCalled();
   });
 
-  it("renders BASIC cancellation copy in banner when pending_tier is BASIC", () => {
+  it("renders Cancel subscription button for paid users with no pending change", () => {
+    setupMocks({ subscription: makeSubscription({ tier: "PRO" }) });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.getByRole("button", { name: /cancel subscription/i }),
+    ).toBeDefined();
+  });
+
+  it("hides Cancel subscription button for NO_TIER users (already cancelled)", () => {
+    setupMocks({ subscription: makeSubscription({ tier: "NO_TIER" }) });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.queryByRole("button", { name: /cancel subscription/i }),
+    ).toBeNull();
+  });
+
+  it("hides Cancel subscription button when payment flag is disabled", () => {
+    mockPaymentEnabled = false;
+    setupMocks({ subscription: makeSubscription({ tier: "PRO" }) });
+    render(<SubscriptionTierSection />);
+    expect(
+      screen.queryByRole("button", { name: /cancel subscription/i }),
+    ).toBeNull();
+  });
+
+  it("hides Cancel subscription button when a pending change is already scheduled", () => {
+    // Avoid double-cancelling: PendingChangeBanner exposes the cancel-pending
+    // path; an extra Cancel button here would be redundant and confusing.
     setupMocks({
       subscription: makeSubscription({
-        tier: "MAX",
-        pendingTier: "BASIC",
-        // Noon UTC so the local-formatted date lands on the same day
-        // regardless of the runner's timezone (midnight UTC drifts to
-        // the prior day in any timezone west of UTC).
+        tier: "PRO",
+        pendingTier: "NO_TIER",
         pendingTierEffectiveAt: new Date("2026-05-15T12:00:00Z"),
       }),
     });
     render(<SubscriptionTierSection />);
-    // Cancellation copy — distinct from the generic downgrade phrasing.
+    expect(
+      screen.queryByRole("button", { name: /cancel subscription/i }),
+    ).toBeNull();
+  });
+
+  it("opens the cancel-confirm dialog with NO_TIER copy when Cancel subscription is clicked", () => {
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "PRO",
+        // No current_period_end so the date suffix is absent — keeps the
+        // matcher simple and exercises the optional-period branch.
+      }),
+    });
+    render(<SubscriptionTierSection />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /cancel subscription/i }),
+    );
+    expect(screen.getByRole("dialog")).toBeDefined();
+    expect(
+      screen.getByText(/cancelling your subscription schedules it to end/i),
+    ).toBeDefined();
+  });
+
+  it("renders cancellation copy in banner when pending_tier is NO_TIER", () => {
+    setupMocks({
+      subscription: makeSubscription({
+        tier: "MAX",
+        pendingTier: "NO_TIER",
+        pendingTierEffectiveAt: new Date("2026-05-15T12:00:00Z"),
+      }),
+    });
+    render(<SubscriptionTierSection />);
     expect(
       screen.getByText(/scheduled to cancel your subscription on/i),
     ).toBeDefined();
     expect(screen.getByText(/May 15, 2026/)).toBeDefined();
-    // Must NOT render the "downgrade to" phrasing on BASIC cancellation.
     expect(screen.queryByText(/scheduled to downgrade to/i)).toBeNull();
   });
 });
