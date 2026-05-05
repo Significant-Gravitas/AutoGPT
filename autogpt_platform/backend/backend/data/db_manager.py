@@ -123,6 +123,7 @@ from backend.data.workspace import (
     get_or_create_workspace,
     get_workspace_file,
     get_workspace_file_by_path,
+    get_workspace_total_size,
     list_workspace_files,
     soft_delete_workspace_file,
 )
@@ -331,6 +332,7 @@ class DatabaseManager(AppService):
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
+    get_workspace_total_size = _(get_workspace_total_size)
     list_workspace_files = _(list_workspace_files)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
 
@@ -556,6 +558,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
+    get_workspace_total_size = d.get_workspace_total_size
     list_workspace_files = d.list_workspace_files
     soft_delete_workspace_file = d.soft_delete_workspace_file
 

@@ -95,6 +95,19 @@ class SDKResponseAdapter:
         # case so the turn renders as cleanly complete.
         self._text_since_last_tool_result = False
         self._any_tool_results_seen = False
+        # Set by the ResultMessage branch when a thinking-only final turn is
+        # detected and we have not yet asked the model for a closing TextBlock.
+        # The driver in ``service.py`` reads this after ``_iter_sdk_messages``
+        # ends and, if true, sends one synthetic re-prompt before falling back
+        # to the placeholder.  Bounded to one re-prompt per turn.
+        self.pending_thinking_only_reprompt = False
+        self.thinking_only_reprompted = False
+        # Captures the most recent ``ThinkingBlock`` content seen on this
+        # turn, used as the second-tier fallback when re-prompting still
+        # produces no visible TextBlock — the model often packs the actual
+        # answer into thinking, so we promote it to text rather than show
+        # the bare placeholder.
+        self._last_thinking_content = ""
         # --- Partial-message streaming state (CHAT_SDK_INCLUDE_PARTIAL_MESSAGES)
         # When ``include_partial_messages=True`` is set on
         # ``ClaudeAgentOptions``, the CLI emits raw Anthropic streaming
@@ -252,6 +265,8 @@ class SDKResponseAdapter:
                     # ``_end_reasoning_if_open`` still drains on stop.
                     self._flush_pending_thinking(responses)
                     tail = self._thinking_tail_for_summary_block(block.thinking)
+                    if block.thinking:
+                        self._last_thinking_content = block.thinking
                     if tail:
                         self._end_text_if_open(responses)
                         self._ensure_reasoning_started(responses)
@@ -367,6 +382,11 @@ class SDKResponseAdapter:
                 # ``ResultMessage`` time stays accurate.
                 self._text_since_last_tool_result = False
                 self._any_tool_results_seen = True
+                # Stale thinking from before this tool call must not
+                # contaminate the post-tool fallback — only the model's
+                # NEXT thinking block (after seeing the tool result)
+                # carries the actual answer.
+                self._last_thinking_content = ""
 
             # Close the current step after tool results — the next
             # AssistantMessage will open a new step for the continuation.
@@ -425,6 +445,23 @@ class SDKResponseAdapter:
                 and not self._text_since_last_tool_result
                 and sdk_message.subtype == "success"
             ):
+                # First time we hit this in a turn, ask the driver to
+                # re-prompt the model for a closing TextBlock — the answer
+                # often lives inside the ThinkingBlock and the user sees
+                # nothing without that follow-up.  Skip emitting StreamFinish
+                # so the driver can re-enter the SDK loop with a synthetic
+                # query.  If the re-prompt also returns thinking-only, we
+                # fall through here a second time with
+                # ``thinking_only_reprompted`` already true and emit the
+                # placeholder.
+                if not self.thinking_only_reprompted:
+                    self.pending_thinking_only_reprompt = True
+                    self._end_text_if_open(responses)
+                    self._end_reasoning_if_open(responses)
+                    if self.step_open:
+                        responses.append(StreamFinishStep())
+                        self.step_open = False
+                    return responses
                 # UserMessage (tool_result) closed the last step, so we must
                 # open a fresh one before emitting any text — the AI SDK v5
                 # transport rejects text-delta chunks that aren't wrapped in
@@ -437,10 +474,18 @@ class SDKResponseAdapter:
                 # start/end events to distinct UI parts).
                 self._end_reasoning_if_open(responses)
                 self._ensure_text_started(responses)
+                # Prefer promoting the most recent thinking block to visible
+                # text — when the model packed the actual answer into
+                # extended-thinking instead of emitting a TextBlock, the
+                # placeholder hides a real response that's already in hand.
+                fallback_text = (
+                    self._last_thinking_content.strip()
+                    or "(Done — no further commentary.)"
+                )
                 responses.append(
                     StreamTextDelta(
                         id=self.text_block_id,
-                        delta="(Done — no further commentary.)",
+                        delta=fallback_text,
                     )
                 )
             self._end_text_if_open(responses)

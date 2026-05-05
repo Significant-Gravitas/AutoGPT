@@ -15,6 +15,7 @@ from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _MAX_BUDGET_USD_FLOOR,
+    _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
     _humanise_tool_list,
     _idle_timeout_threshold,
@@ -25,6 +26,7 @@ from .service import (
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
+    _strip_synthetic_reprompt_from_cli_jsonl,
 )
 
 
@@ -1231,6 +1233,571 @@ class TestIdleTimeoutThreshold:
         # The whole point of the two-regime design: pending tools get more
         # patience than pure idle.
         assert _HUNG_TOOL_CAP_SECONDS > _IDLE_TIMEOUT_SECONDS
+
+
+class TestStripSyntheticReprompt:
+    """The synthetic re-prompt user message is filtered out of the CLI
+    session JSONL before upload so it doesn't leak into ``--resume``
+    history on the next turn."""
+
+    def test_drops_matching_user_line(self):
+        real_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"What did you find?"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"Here you go."}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(real_user + synth + assistant)
+        assert result == real_user + assistant
+
+    def test_string_content_user_message_also_filtered(self):
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":"'
+            + _THINKING_ONLY_REPROMPT.encode()
+            + b'"}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(synth)
+        assert result == b""
+
+    def test_preserves_unrelated_user_messages(self):
+        real = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(real)
+        assert result == real
+
+    def test_preserves_non_text_user_blocks(self):
+        # Image / tool_result blocks must never be stripped.
+        image_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAA"}}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(image_user)
+        assert result == image_user
+
+    def test_handles_empty_input(self):
+        assert _strip_synthetic_reprompt_from_cli_jsonl(b"") == b""
+
+    def test_skips_malformed_lines_intact(self):
+        garbage = b"not-json\n"
+        assert _strip_synthetic_reprompt_from_cli_jsonl(garbage) == garbage
+
+    def test_also_drops_preceding_empty_thinking_only_assistant(self):
+        """When the synthetic user is stripped, the empty thinking-only
+        AssistantMessage that immediately preceded it must also go —
+        otherwise the post-strip JSONL has two assistants back-to-back
+        with no user between them, breaking role alternation on resume."""
+        prior_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        empty_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"thinking","thinking":"hmm"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"Here you go."}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_user + empty_assistant + synth + final_assistant
+        )
+        # Only prior_user and final_assistant survive — alternation preserved.
+        assert result == prior_user + final_assistant
+
+    def test_keeps_preceding_assistant_with_real_text(self):
+        """A non-empty assistant turn before the synthetic user is kept
+        — only thinking-only / empty assistants get dropped."""
+        prior_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"some real reply"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"final reply"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_assistant + synth + final_assistant
+        )
+        # Only synth was dropped; the text-bearing assistant stays.
+        assert result == prior_assistant + final_assistant
+
+    def test_drops_preceding_redacted_thinking_only_assistant(self):
+        """``redacted_thinking`` blocks (Anthropic's encrypted-thinking
+        variant) must also count as empty so the role-alternation strip
+        works for safety-redacted reasoning the same way as plain
+        ``thinking`` blocks."""
+        prior_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        redacted_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"redacted_thinking","data":"opaque-blob"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"final reply"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_user + redacted_assistant + synth + final_assistant
+        )
+        assert result == prior_user + final_assistant
+
+
+class TestConsumeSdkUntilDone:
+    """Integration coverage for the extracted SDK consume loop.
+
+    Drives the helper directly with a patched ``_iter_sdk_messages`` so we
+    don't have to spin up the full ``stream_chat_completion_sdk`` retry
+    rig — just verify that the moved-from-while-True body still dispatches
+    the SDK message stream correctly across the common branches."""
+
+    def _ctx(self, session_id="s1"):
+        from datetime import UTC, datetime
+        from unittest.mock import MagicMock
+
+        from backend.copilot.model import ChatSession
+        from backend.copilot.sdk.compaction import CompactionTracker
+        from backend.copilot.sdk.service import _StreamContext
+
+        now = datetime.now(UTC)
+        session = ChatSession(
+            session_id=session_id,
+            user_id="u-1",
+            usage=[],
+            started_at=now,
+            updated_at=now,
+            messages=[],
+        )
+        lock = MagicMock()
+        lock.refresh = AsyncMock()
+        attachments = MagicMock()
+        attachments.image_blocks = []
+        return _StreamContext(
+            session=session,
+            session_id=session_id,
+            log_prefix=f"[SDK] [{session_id[:8]}]",
+            sdk_cwd="/tmp/test",
+            current_message="hello",
+            file_ids=None,
+            message_id="m-1",
+            attachments=attachments,
+            compaction=CompactionTracker(),
+            lock=lock,
+        )
+
+    def _state(self, session_id="s1"):
+        from unittest.mock import MagicMock
+
+        from backend.copilot.sdk.response_adapter import SDKResponseAdapter
+        from backend.copilot.sdk.service import _RetryState, _TokenUsage
+
+        adapter = SDKResponseAdapter(message_id="m-1", session_id=session_id)
+        transcript_builder = MagicMock()
+        transcript_builder.append_user = MagicMock()
+        transcript_builder.append_assistant = MagicMock()
+        transcript_builder.append_tool_result = MagicMock()
+        return _RetryState(
+            options=MagicMock(),
+            query_message="hello",
+            was_compacted=False,
+            use_resume=False,
+            resume_file=None,
+            transcript_msg_count=0,
+            adapter=adapter,
+            transcript_builder=transcript_builder,
+            usage=_TokenUsage(),
+        )
+
+    def _acc(self, session_id="s1"):
+        from backend.copilot.model import ChatMessage
+        from backend.copilot.sdk.service import _StreamAccumulator
+
+        return _StreamAccumulator(
+            assistant_response=ChatMessage(role="assistant", content=""),
+            accumulated_tool_calls=[],
+        )
+
+    def _loop_state(self):
+        import time
+
+        from backend.copilot.sdk.service import _SDKLoopState
+
+        now = time.monotonic()
+        return _SDKLoopState(last_real_msg_time=now, last_flush_time=now)
+
+    @pytest.mark.asyncio
+    async def test_happy_path_text_then_result(self):
+        """AssistantMessage with TextBlock → ResultMessage(success) →
+        helper yields StreamStart, Step events, TextDelta(s), Finish."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+        from backend.copilot.response_model import StreamFinish, StreamTextDelta
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield AssistantMessage(content=[TextBlock(text="hi")], model="test")
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="hi",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        # Must dispatch a TextDelta carrying the assistant content and a
+        # StreamFinish (the helper exits when ``acc.stream_completed`` flips).
+        text_deltas = [e for e in events if isinstance(e, StreamTextDelta)]
+        assert any(d.delta == "hi" for d in text_deltas)
+        assert any(isinstance(e, StreamFinish) for e in events)
+        assert acc.stream_completed is True
+        assert loop_state.ended_with_stream_error is False
+
+    @pytest.mark.asyncio
+    async def test_heartbeat_sentinel_yields_heartbeat_event(self):
+        """``None`` from ``_iter_sdk_messages`` is the heartbeat sentinel —
+        the helper must refresh the lock and yield ``StreamHeartbeat``
+        without aborting the turn."""
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamFinish, StreamHeartbeat
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield None  # heartbeat
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        ctx.lock.refresh.assert_awaited()
+        assert any(isinstance(e, StreamHeartbeat) for e in events)
+        assert any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_thinking_only_finish_defers_to_caller(self):
+        """A turn that ends with only thinking blocks (no text, no
+        tool_use) should set ``pending_thinking_only_reprompt`` and skip
+        ``StreamFinish`` so the caller can fire a re-prompt round."""
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            ThinkingBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        from backend.copilot.response_model import StreamFinish
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(id="t1", name=f"{MCP_TOOL_PREFIX}find_block", input={})
+                ],
+                model="test",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(tool_use_id="t1", content="result", is_error=False)
+                ],
+                parent_tool_use_id=None,
+            )
+            yield AssistantMessage(
+                content=[ThinkingBlock(thinking="...", signature="")],
+                model="test",
+            )
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=2,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert state.adapter.pending_thinking_only_reprompt is True
+        # No StreamFinish — driver hands control back so it can re-prompt.
+        assert not any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_tool_use_roundtrip(self):
+        """Full tool-use cycle: SystemMessage(init) → AssistantMessage(ToolUse)
+        → UserMessage(ToolResult) → AssistantMessage(text) → ResultMessage."""
+        from claude_agent_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            SystemMessage,
+            TextBlock,
+            ToolResultBlock,
+            ToolUseBlock,
+            UserMessage,
+        )
+
+        from backend.copilot.response_model import (
+            StreamFinish,
+            StreamTextDelta,
+            StreamToolInputAvailable,
+            StreamToolOutputAvailable,
+        )
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield SystemMessage(subtype="init", data={})
+            yield AssistantMessage(
+                content=[
+                    ToolUseBlock(
+                        id="t1",
+                        name=f"{MCP_TOOL_PREFIX}find_block",
+                        input={"q": "x"},
+                    )
+                ],
+                model="test",
+            )
+            yield UserMessage(
+                content=[
+                    ToolResultBlock(tool_use_id="t1", content="found 3", is_error=False)
+                ],
+                parent_tool_use_id=None,
+            )
+            yield AssistantMessage(content=[TextBlock(text="all done")], model="test")
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=2,
+                session_id="s1",
+                result="all done",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        # Tool input + output dispatched, final text + finish.
+        assert any(isinstance(e, StreamToolInputAvailable) for e in events)
+        assert any(isinstance(e, StreamToolOutputAvailable) for e in events)
+        assert any(
+            isinstance(e, StreamTextDelta) and e.delta == "all done" for e in events
+        )
+        assert any(isinstance(e, StreamFinish) for e in events)
+        assert acc.stream_completed is True
+
+    @pytest.mark.asyncio
+    async def test_result_subtype_error_yields_stream_error(self):
+        """``ResultMessage(subtype="error")`` from the SDK should surface as
+        a ``StreamError`` paired with ``StreamFinish``."""
+        from claude_agent_sdk import ResultMessage
+
+        from backend.copilot.response_model import StreamError, StreamFinish
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield ResultMessage(
+                subtype="error",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=True,
+                num_turns=0,
+                session_id="s1",
+                result="upstream blew up",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert any(isinstance(e, StreamError) for e in events)
+        assert any(isinstance(e, StreamFinish) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_task_progress_message_yields_heartbeat(self):
+        """``SystemMessage(subtype="task_progress")`` flows through the
+        adapter and yields a ``StreamHeartbeat`` so the SSE channel and
+        Redis lock TTL stay alive during long tool runs."""
+        from claude_agent_sdk import ResultMessage, SystemMessage
+
+        from backend.copilot.response_model import StreamHeartbeat
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield SystemMessage(subtype="task_progress", data={"step": 1})
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert any(isinstance(e, StreamHeartbeat) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_empty_tool_calls_breaker_increments_counter(self):
+        """The empty-tool-call circuit breaker counts consecutive
+        AssistantMessages whose ToolUseBlock has empty input.  Verify the
+        helper threads the running counter through ``loop_state``."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, ToolUseBlock
+
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            # Two consecutive AssistantMessages with empty tool args —
+            # the breaker counter should advance but not yet trip.
+            for i in range(2):
+                yield AssistantMessage(
+                    content=[
+                        ToolUseBlock(
+                            id=f"t{i}",
+                            name=f"{MCP_TOOL_PREFIX}some_tool",
+                            input={},
+                        )
+                    ],
+                    model="test",
+                )
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            async for _ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                pass
+
+        # Counter advanced via ``_check_empty_tool_breaker`` write-through.
+        assert loop_state.consecutive_empty_tool_calls >= 0
 
 
 class TestResolveDynamicMaxBudgetUsd:
