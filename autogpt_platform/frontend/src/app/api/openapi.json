@@ -16682,6 +16682,12 @@
             "title": "Url",
             "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
             "default": ""
+          },
+          "stripe_customer_balance_cents": {
+            "type": "integer",
+            "title": "Stripe Customer Balance Cents",
+            "description": "Customer credit-on-file in cents — i.e. money sitting on the Stripe Customer that Stripe will auto-apply to the next invoice. Surfaced using the user's perspective: positive = credit available to the user; 0 = nothing on file. (Internally Stripe stores this as a negative ``customer.balance``; we flip the sign so the frontend can render ``$X.XX credit on file`` without further bookkeeping.) Best-effort: returns 0 when the user has no Stripe customer or the Stripe API is unreachable.",
+            "default": 0
           }
         },
         "type": "object",
