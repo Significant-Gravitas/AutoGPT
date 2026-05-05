@@ -66,6 +66,15 @@ _DEFAULT_TIER_PRICES: dict[SubscriptionTier, str | None] = {
     SubscriptionTier.MAX: "price_max",
     SubscriptionTier.BUSINESS: None,  # Reserved: Business card hidden by default.
 }
+# Distinct yearly stubs so a routing bug leaking the wrong cycle into a Stripe
+# call surfaces as an assertion diff rather than silently passing because both
+# cycles share the same stub price.
+_DEFAULT_TIER_PRICES_YEARLY: dict[SubscriptionTier, str | None] = {
+    SubscriptionTier.BASIC: None,
+    SubscriptionTier.PRO: "price_pro_yearly",
+    SubscriptionTier.MAX: "price_max_yearly",
+    SubscriptionTier.BUSINESS: None,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +91,8 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     async def default_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
+        if billing_cycle == "yearly":
+            return _DEFAULT_TIER_PRICES_YEARLY.get(tier)
         return _DEFAULT_TIER_PRICES.get(tier)
 
     mocker.patch(
