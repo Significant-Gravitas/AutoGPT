@@ -105,6 +105,7 @@
 * [Replicate Flux Advanced](block-integrations/replicate/flux_advanced.md)
 * [Replicate Replicate Block](block-integrations/replicate/replicate_block.md)
 * [Search](block-integrations/search.md)
+* [Slack Blocks](block-integrations/slack/blocks.md)
 * [Slant3D Filament](block-integrations/slant3d/filament.md)
 * [Slant3D Order](block-integrations/slant3d/order.md)
 * [Slant3D Slicing](block-integrations/slant3d/slicing.md)
