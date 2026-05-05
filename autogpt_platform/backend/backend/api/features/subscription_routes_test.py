@@ -1506,6 +1506,54 @@ def test_update_subscription_tier_pro_to_max_authentication_required_returns_402
     assert "card was declined" not in detail
 
 
+def test_update_subscription_tier_pro_to_max_subscription_payment_intent_requires_action_returns_402(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Subscription.modify under error_if_incomplete raises CardError with
+    code='subscription_payment_intent_requires_action' (not the raw
+    authentication_required from PaymentIntent.confirm). The SCA branch must
+    cover both codes, otherwise the user gets the generic "card was declined"
+    copy and would re-enter a card that's already fine."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        side_effect=stripe.CardError(
+            "Payment for this subscription requires additional user action"
+            " before it can be completed successfully.",
+            param=None,
+            code="subscription_payment_intent_requires_action",
+        ),
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "MAX",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 402
+    detail = response.json()["detail"].lower()
+    assert "authentication" in detail
+    assert "card was declined" not in detail
+
+
 def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,

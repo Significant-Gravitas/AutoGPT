@@ -1059,9 +1059,15 @@ async def update_subscription_tier(
     except stripe.CardError as e:
         # Auto-charge failed under payment_behavior=error_if_incomplete: the
         # modify was rolled back, so 402 lets the UI prompt for a new card or
-        # surface SCA. authentication_required means the card is fine but the
-        # bank wants 3DS — different message so the user doesn't try a new card.
-        if e.code == "authentication_required":
+        # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
+        # different message so the user doesn't try a new card. Stripe emits
+        # ``authentication_required`` for raw PaymentIntent confirms but
+        # ``subscription_payment_intent_requires_action`` for Subscription.modify
+        # under ``error_if_incomplete``; both must map to the SCA branch.
+        if e.code in {
+            "authentication_required",
+            "subscription_payment_intent_requires_action",
+        }:
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
