@@ -3286,6 +3286,13 @@ async def _run_stream_attempt(
             # into the previous (empty thinking-only) one.  Without this the
             # two logical assistant turns get fused into a single DB row.
             acc.has_appended_assistant = False
+            # Also swap in a fresh ``assistant_response`` so the dispatch
+            # code doesn't smuggle round 1's stale ``tool_calls`` list into
+            # round 2's reply when it eventually appends to session.messages
+            # — that would re-persist the previous turn's tool calls beside
+            # the re-prompt's text and double the assistant row.
+            acc.assistant_response = ChatMessage(role="assistant", content="")
+            acc.accumulated_tool_calls = []
             # Reset the empty-tool-call breaker counter so a borderline
             # round-1 streak doesn't trip prematurely on the very first
             # re-prompt AssistantMessage.
