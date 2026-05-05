@@ -1842,9 +1842,12 @@ async def modify_stripe_subscription_for_tier(
         # as part of the upgrade — the user is explicitly choosing to stay on a
         # paid tier. Without this, the sub would be upgraded AND still cancelled
         # at period end, leaving a confusing dual state.
+        # always_invoice + error_if_incomplete bill the prorated upgrade now and
+        # roll the modify back if the auto-charge fails (instead of deferring).
         modify_kwargs: dict = {
             "items": [{"id": items[0].id, "price": price_id}],
-            "proration_behavior": "create_prorations",
+            "proration_behavior": "always_invoice",
+            "payment_behavior": "error_if_incomplete",
         }
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False

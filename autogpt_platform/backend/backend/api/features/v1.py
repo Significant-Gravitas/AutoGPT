@@ -1003,15 +1003,74 @@ async def update_subscription_tier(
             return await get_subscription_status(user_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except stripe.CardError as e:
+        # Auto-charge failed under payment_behavior=error_if_incomplete: the
+        # modify was rolled back, so 402 lets the UI prompt for a new card or
+        # surface SCA. authentication_required means the card is fine but the
+        # bank wants 3DS — different message so the user doesn't try a new card.
+        if e.code == "authentication_required":
+            logger.warning(
+                "SCA required on subscription upgrade for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Your bank requires extra authentication for this charge."
+                    " The plan was not changed; please retry from the billing"
+                    " portal so you can complete authentication, or contact"
+                    " support."
+                ),
+            )
+        logger.warning(
+            "Card declined on subscription upgrade for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Your card was declined. The plan was not changed; please"
+                " update your payment method and try again."
+            ),
+        )
     except stripe.InvalidRequestError as e:
+        # Stripe's e.param is documented as nullable, so we match by typed
+        # field first and fall back to substring when param is absent.
+        msg_lower = (e.user_message or str(e)).lower()
+        # "No payment method" presents as InvalidRequestError (not CardError)
+        # when error_if_incomplete fires with no default PM. Stripe signals
+        # this with code=resource_missing/missing — sometimes with a typed
+        # param, sometimes without (the raw "no attached payment source"
+        # message has empty param). Map it to 402 either way.
+        if e.code in {"resource_missing", "missing"} and (
+            e.param
+            in {
+                "default_payment_method",
+                "payment_method",
+                "invoice_settings.default_payment_method",
+            }
+            or "no attached payment source" in msg_lower
+            or "default payment method" in msg_lower
+            or "no payment method" in msg_lower
+        ):
+            logger.warning(
+                "No payment method on subscription upgrade for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "No payment method on file. The plan was not changed;"
+                    " please add a payment method and try again."
+                ),
+            )
         # Stripe rejects schedule modify when phases mix currencies, e.g. the
         # active sub was checked out in GBP but the target tier's Price is
-        # USD-only. 502 reads as outage; surface a 422 with a specific message
-        # so the user/admin can see what to fix in Stripe.
-        msg = str(e)
-        if "currency" in msg.lower():
+        # USD-only. e.param is "currency" on the schedule API but may be
+        # "phases" or absent on older error shapes — substring fallback keeps
+        # the 422 firing instead of dropping to the generic 502.
+        if e.param == "currency" or "currency" in msg_lower:
             logger.warning(
-                "Currency mismatch on tier change for user %s: %s", user_id, msg
+                "Currency mismatch on tier change for user %s: %s", user_id, e
             )
             raise HTTPException(
                 status_code=422,
