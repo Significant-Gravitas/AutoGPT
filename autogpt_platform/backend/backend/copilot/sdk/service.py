@@ -3275,6 +3275,11 @@ async def _run_stream_attempt(
             state.adapter.thinking_only_reprompted = True
             # Re-prompt round must still trip the placeholder guard if model returns thinking-only again.
             state.adapter._text_since_last_tool_result = False
+            # Round 1's thinking content must not be surfaced as round 2's
+            # promote-thinking fallback if round 2 itself produces no
+            # thinking — that would show stale reasoning to the user as
+            # if it were the answer to the re-prompt.
+            state.adapter._last_thinking_content = ""
             acc.stream_completed = False
             # The previous round's tool_result is no longer "fresh" for the
             # post-tool placeholder pre-create branch — clearing prevents the
