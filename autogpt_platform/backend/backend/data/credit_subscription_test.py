@@ -2,6 +2,7 @@
 Tests for Stripe-based subscription tier billing.
 """
 
+from typing import Protocol
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,6 +26,19 @@ from backend.data.credit import (
     sync_subscription_from_stripe,
     sync_subscription_schedule_from_stripe,
 )
+
+
+class _CacheClearable(Protocol):
+    """Type-only view of the cache_clear attribute attached to functions
+    decorated with ``@cached`` in ``backend.util.cache``. Lets the test file
+    invoke ``cache_clear`` without ``# type: ignore[attr-defined]`` while
+    still checking the call site for typos at type-check time."""
+
+    def cache_clear(self) -> None: ...
+
+
+def _clear_cache(fn: _CacheClearable) -> None:
+    fn.cache_clear()
 
 
 @pytest.mark.asyncio
@@ -1079,7 +1093,7 @@ async def test_get_subscription_price_id_pro():
     from backend.data.credit import get_subscription_price_id
 
     # Clear cached state from other tests to ensure a fresh LD flag lookup.
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1087,14 +1101,14 @@ async def test_get_subscription_price_id_pro():
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.PRO)
         assert price_id == "price_pro_monthly"
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
 async def test_get_subscription_price_id_basic_returns_ld_flag():
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1102,14 +1116,14 @@ async def test_get_subscription_price_id_basic_returns_ld_flag():
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.BASIC)
         assert price_id == "price_basic_monthly"
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
 async def test_get_subscription_price_id_max():
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1117,7 +1131,7 @@ async def test_get_subscription_price_id_max():
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.MAX)
         assert price_id == "price_max_monthly"
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1125,7 +1139,7 @@ async def test_get_subscription_price_id_enterprise_returns_none():
     from backend.data.credit import get_subscription_price_id
 
     # ENTERPRISE is never a key in the JSON flag → resolves to None.
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1133,7 +1147,7 @@ async def test_get_subscription_price_id_enterprise_returns_none():
     ):
         price_id = await get_subscription_price_id(SubscriptionTier.ENTERPRISE)
         assert price_id is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1141,7 +1155,7 @@ async def test_get_subscription_price_id_empty_flag_returns_none():
     """Empty dict payload → every tier resolves to None."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1155,7 +1169,7 @@ async def test_get_subscription_price_id_empty_flag_returns_none():
             SubscriptionTier.ENTERPRISE,
         ):
             assert await get_subscription_price_id(tier) is None
-            get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+            _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1163,7 +1177,7 @@ async def test_get_subscription_price_id_partial_dict():
     """Dict with only PRO resolves PRO, other tiers return None."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1172,9 +1186,9 @@ async def test_get_subscription_price_id_partial_dict():
         assert (
             await get_subscription_price_id(SubscriptionTier.PRO) == "price_pro_monthly"
         )
-        get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+        _clear_cache(get_subscription_price_id)
         assert await get_subscription_price_id(SubscriptionTier.MAX) is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1182,14 +1196,14 @@ async def test_get_subscription_price_id_empty_string_value_returns_none():
     """Empty-string price_id in the JSON resolves to None (defensive)."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
         return_value={"PRO": ""},
     ):
         assert await get_subscription_price_id(SubscriptionTier.PRO) is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1197,16 +1211,16 @@ async def test_get_subscription_price_id_non_string_value_returns_none():
     """Non-string price_id (e.g. number, null) resolves to None."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
         return_value={"PRO": 123, "MAX": None},
     ):
         assert await get_subscription_price_id(SubscriptionTier.PRO) is None
-        get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+        _clear_cache(get_subscription_price_id)
         assert await get_subscription_price_id(SubscriptionTier.MAX) is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1214,7 +1228,7 @@ async def test_get_subscription_price_id_non_dict_payload_returns_none(caplog):
     """A non-dict LD value logs a warning and returns None for every tier."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1226,7 +1240,7 @@ async def test_get_subscription_price_id_non_dict_payload_returns_none(caplog):
         assert any(
             "copilot-tier-stripe-prices" in rec.message for rec in caplog.records
         )
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1235,14 +1249,14 @@ async def test_get_subscription_price_id_ld_raises_returns_none():
     get_feature_flag_value → default None) returns None and does not raise."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
         return_value=None,
     ):
         assert await get_subscription_price_id(SubscriptionTier.PRO) is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1255,7 +1269,7 @@ async def test_get_subscription_price_id_none_not_cached():
     """
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     mock_ld = AsyncMock(side_effect=[None, {"PRO": "price_pro_monthly"}])
     with patch("backend.data.credit.get_feature_flag_value", mock_ld):
         # First call: LD returns None (transient failure)
@@ -1265,7 +1279,7 @@ async def test_get_subscription_price_id_none_not_cached():
         second = await get_subscription_price_id(SubscriptionTier.PRO)
         assert second == "price_pro_monthly"
         assert mock_ld.call_count == 2  # both calls hit LD (None was not cached)
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1273,7 +1287,7 @@ async def test_get_subscription_price_id_yearly_suffix_key():
     """Yearly request reads the <TIER>_YEARLY key."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1283,7 +1297,7 @@ async def test_get_subscription_price_id_yearly_suffix_key():
             await get_subscription_price_id(SubscriptionTier.PRO, "yearly")
             == "price_pro_y"
         )
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1292,7 +1306,7 @@ async def test_get_subscription_price_id_monthly_unchanged_after_yearly_addition
     that only reads <TIER> keeps returning the monthly price unaffected."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1302,7 +1316,7 @@ async def test_get_subscription_price_id_monthly_unchanged_after_yearly_addition
             await get_subscription_price_id(SubscriptionTier.PRO, "monthly")
             == "price_pro_m"
         )
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1310,14 +1324,14 @@ async def test_get_subscription_price_id_yearly_missing_returns_none():
     """No <TIER>_YEARLY key → yearly request fails closed (no silent monthly)."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
         return_value={"PRO": "price_pro_m"},
     ):
         assert await get_subscription_price_id(SubscriptionTier.PRO, "yearly") is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -1326,7 +1340,7 @@ async def test_get_subscription_price_id_monthly_only_flag_serves_monthly():
     serving monthly requests exactly as before this PR."""
     from backend.data.credit import get_subscription_price_id
 
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
@@ -1336,7 +1350,7 @@ async def test_get_subscription_price_id_monthly_only_flag_serves_monthly():
             await get_subscription_price_id(SubscriptionTier.PRO, "monthly")
             == "price_pro_monthly_only"
         )
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_subscription_price_id)
 
 
 @pytest.mark.asyncio
@@ -2523,7 +2537,7 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
     """cancel_at_period_end=True maps to pending NO_TIER at current_period_end."""
     import time as time_mod
 
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -2580,7 +2594,7 @@ async def test_get_pending_subscription_change_from_schedule():
     """A schedule whose next phase uses the PRO price maps to pending_tier=PRO."""
     import time as time_mod
 
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -2661,7 +2675,7 @@ async def test_get_pending_subscription_change_yearly_next_phase_maps_to_tier():
     correct tier — yearly subscribers must see their pending downgrade in UI."""
     import time as time_mod
 
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -2749,7 +2763,7 @@ async def test_get_pending_subscription_change_from_schedule_to_basic():
     """A schedule whose next phase uses the BASIC price maps to pending_tier=BASIC."""
     import time as time_mod
 
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -2831,7 +2845,7 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
     """Returns None when neither a schedule nor cancel_at_period_end is set."""
     import time as time_mod
 
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     mock_sub = stripe.Subscription.construct_from(
@@ -3422,7 +3436,7 @@ async def test_get_pending_subscription_change_raises_when_price_lookups_fail():
     @cached wrapper doesn't store None and hide pending changes for 30s."""
     from backend.data.credit import PendingChangeUnknown
 
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
@@ -3452,7 +3466,7 @@ async def test_release_pending_subscription_schedule_invalidates_cache_on_partia
     """If schedule.release succeeds but cancel_at_period_end clear fails, the
     cache must still be invalidated — otherwise the UI shows a stale pending
     banner for up to 30s even though the schedule was actually released."""
-    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+    _clear_cache(get_pending_subscription_change)
 
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
