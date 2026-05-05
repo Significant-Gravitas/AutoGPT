@@ -229,17 +229,19 @@ export function useYourPlanCard() {
     }
   }
 
-  async function downgradeSubscription() {
+  async function downgradeSubscription(
+    targetTier: SubscriptionTierRequestTier,
+  ) {
     // End-of-period downgrade: backend's modify_stripe_subscription_for_tier
     // schedules a phase change at current_period_end. No proration today —
     // user keeps higher tier until period end, then drops to lower price.
-    if (!plan?.isPaidPlan || !plan?.previousTier) return;
-    const targetLabel = plan.previousTierLabel ?? plan.previousTier;
+    if (!plan?.isPaidPlan) return;
+    const targetLabel = PLAN_LABEL[targetTier] ?? targetTier;
     // Preserve the user's current cycle on downgrade — without forwarding
     // serverCycle, the backend would default the missing billing_cycle to
     // "monthly" and silently flip a yearly subscriber to monthly at period
     // end (Sentry caught this; the same-tier release path also bites).
-    const ok = await changeTier(plan.previousTier, serverCycle);
+    const ok = await changeTier(targetTier, serverCycle);
     if (!ok) return;
     const periodEnd = plan.currentPeriodEnd
       ? formatShortDate(plan.currentPeriodEnd * 1000)
@@ -396,9 +398,15 @@ export function useYourPlanCard() {
   }
 
   async function confirmTierDowngrade() {
-    if (!pendingTierDowngrade) return;
+    // Capture pendingTierDowngrade locally before the state-clear — passing
+    // the captured value to downgradeSubscription guarantees the request
+    // targets exactly the tier the user confirmed in the dialog, even if
+    // plan.previousTier shifts between dialog open and confirm (e.g. an
+    // unrelated subscription refetch lands).
+    const target = pendingTierDowngrade;
+    if (!target) return;
     setPendingTierDowngrade(null);
-    await downgradeSubscription();
+    await downgradeSubscription(target);
   }
 
   function cancelTierDowngrade() {
