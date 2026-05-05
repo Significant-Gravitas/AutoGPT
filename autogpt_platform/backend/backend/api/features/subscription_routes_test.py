@@ -106,13 +106,16 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
     )
     # Default tier-multiplier resolver to the backend defaults so the endpoint
     # never reaches LaunchDarkly during tests.  Individual tests override for
-    # LD-override scenarios.
+    # LD-override scenarios. get_tier_multipliers returns a string-keyed dict
+    # (per its docstring) so we mirror that shape here — passing the
+    # enum-keyed _DEFAULT_TIER_MULTIPLIERS directly would silently mismatch
+    # the real lookup and let bugs through.
     from backend.copilot.rate_limit import _DEFAULT_TIER_MULTIPLIERS
 
     mocker.patch(
         "backend.api.features.v1.get_tier_multipliers",
         new_callable=AsyncMock,
-        return_value=dict(_DEFAULT_TIER_MULTIPLIERS),
+        return_value={t.value: v for t, v in _DEFAULT_TIER_MULTIPLIERS.items()},
     )
     # Default billing-cycle resolver to None (treated as monthly) so existing
     # tests don't have to opt into the yearly-aware code path.
@@ -244,15 +247,17 @@ def test_get_subscription_status_tier_multipliers_ld_override(
     )
 
     # LD says PRO is 7.5× (instead of the 5× default); other tiers unchanged.
+    # Keys are tier enum string values to match get_tier_multipliers'
+    # documented return shape (dict[str, float]).
     mocker.patch(
         "backend.api.features.v1.get_tier_multipliers",
         new_callable=AsyncMock,
         return_value={
-            SubscriptionTier.BASIC: 1.0,
-            SubscriptionTier.PRO: 7.5,
-            SubscriptionTier.MAX: 20.0,
-            SubscriptionTier.BUSINESS: 60.0,
-            SubscriptionTier.ENTERPRISE: 60.0,
+            "BASIC": 1.0,
+            "PRO": 7.5,
+            "MAX": 20.0,
+            "BUSINESS": 60.0,
+            "ENTERPRISE": 60.0,
         },
     )
 

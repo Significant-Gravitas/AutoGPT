@@ -892,8 +892,11 @@ async def get_subscription_status(
     # that land in ``tier_costs`` — rows hidden at the price layer must stay
     # hidden in the multiplier layer too.
     multipliers = await get_tier_multipliers()
+    # get_tier_multipliers() keys by tier string value (see its docstring),
+    # so the lookup must use t.value — passing the enum t silently misses
+    # every tier and falls back to 1.0, ignoring LD-configured multipliers.
     tier_multipliers: dict[str, float] = {
-        t.value: multipliers.get(t, 1.0)
+        t.value: multipliers.get(t.value, 1.0)
         for t in priceable_tiers
         if t.value in tier_costs
     }
