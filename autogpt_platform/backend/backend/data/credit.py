@@ -2131,7 +2131,6 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     return AutoTopUpConfig.model_validate(user.top_up_config)
 
 
-@cached(ttl_seconds=60, maxsize=16, cache_none=False)
 def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
     """Compose the LaunchDarkly key for a tier+cycle.
 
@@ -2144,6 +2143,7 @@ def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
     return tier.value
 
 
+@cached(ttl_seconds=60, maxsize=16, cache_none=False)
 async def get_subscription_price_id(
     tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
 ) -> str | None:
