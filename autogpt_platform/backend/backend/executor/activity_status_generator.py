@@ -22,7 +22,7 @@ from backend.data.model import (
     NodeExecutionStats,
 )
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
-from backend.executor.cost_tracking import _schedule_log
+from backend.executor.cost_tracking import schedule_platform_cost_log
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
@@ -31,15 +31,6 @@ if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerAsyncClient
 
 logger = logging.getLogger(__name__)
-
-# Synthetic identifiers used by ``PlatformCostLog`` for activity-status LLM
-# calls. These are not tied to any block_cost_config or credentials_store row;
-# the activity-status generator is platform-side overhead that runs after a
-# graph execution completes (not a user-triggered block), and we surface it in
-# the admin cost dashboard so per-user / per-graph_exec attribution stays
-# accurate. Mirrors the COPILOT_BLOCK_ID pattern in copilot.token_tracking.
-ACTIVITY_STATUS_BLOCK_ID = "activity_status"
-ACTIVITY_STATUS_CREDENTIAL_ID = "activity_status_system"
 
 
 # Default system prompt template for activity status generation
@@ -424,16 +415,14 @@ def _persist_activity_status_cost(
         tracking_type = "tokens"
         tracking_amount = float(input_tokens + output_tokens)
 
-    _schedule_log(
+    schedule_platform_cost_log(
         db_client,
         PlatformCostEntry(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
-            block_id=ACTIVITY_STATUS_BLOCK_ID,
             block_name="activity_status_generator",
             provider="openai",
-            credential_id=ACTIVITY_STATUS_CREDENTIAL_ID,
             cost_microdollars=cost_microdollars,
             input_tokens=input_tokens or None,
             output_tokens=output_tokens or None,

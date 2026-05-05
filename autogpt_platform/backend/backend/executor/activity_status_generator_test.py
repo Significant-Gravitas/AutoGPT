@@ -593,8 +593,8 @@ class TestGenerateActivityStatusForExecution:
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ), patch(
-            "backend.executor.activity_status_generator._schedule_log"
-        ) as mock_schedule_log:
+            "backend.executor.activity_status_generator.schedule_platform_cost_log"
+        ) as mockschedule_platform_cost_log:
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -626,14 +626,13 @@ class TestGenerateActivityStatusForExecution:
             )
 
             assert result is not None
-            mock_schedule_log.assert_called_once()
-            args, _ = mock_schedule_log.call_args
+            mockschedule_platform_cost_log.assert_called_once()
+            args, _ = mockschedule_platform_cost_log.call_args
             scheduled_db_client, entry = args
             assert scheduled_db_client is mock_db_client
             assert entry.user_id == "test_user"
             assert entry.graph_exec_id == "test_exec"
             assert entry.graph_id == "test_graph"
-            assert entry.block_id == "activity_status"
             assert entry.block_name == "activity_status_generator"
             assert entry.provider == "openai"
             assert entry.model == "gpt-4o-mini"
@@ -673,8 +672,8 @@ class TestGenerateActivityStatusForExecution:
             "backend.executor.activity_status_generator.is_feature_enabled",
             return_value=True,
         ), patch(
-            "backend.executor.activity_status_generator._schedule_log"
-        ) as mock_schedule_log:
+            "backend.executor.activity_status_generator.schedule_platform_cost_log"
+        ) as mockschedule_platform_cost_log:
             mock_get_block.side_effect = lambda block_id: mock_blocks.get(block_id)
             mock_settings.return_value.secrets.openai_internal_api_key = "test_key"
 
@@ -699,7 +698,7 @@ class TestGenerateActivityStatusForExecution:
             )
 
             assert result is not None
-            mock_schedule_log.assert_not_called()
+            mockschedule_platform_cost_log.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_generate_status_feature_disabled(self, mock_execution_stats):
