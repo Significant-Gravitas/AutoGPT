@@ -327,6 +327,79 @@ describe("YourPlanCard cycle toggle", () => {
 
     await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
   });
+
+  it("downgrade preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 326400,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      // Without forwarding the current cycle the backend defaults to monthly,
+      // silently flipping the yearly subscriber at period end.
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("resume preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "NO_TIER",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /resume subscription/i }),
+    );
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      // Same-tier release path also defaults to monthly when billing_cycle is
+      // omitted — gates as a cycle-switch and silently flips to monthly.
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
 });
 
 describe("PaymentMethodCard", () => {

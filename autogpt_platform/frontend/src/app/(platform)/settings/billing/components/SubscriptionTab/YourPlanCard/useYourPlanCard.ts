@@ -194,7 +194,11 @@ export function useYourPlanCard() {
     // user keeps higher tier until period end, then drops to lower price.
     if (!plan?.isPaidPlan || !plan?.previousTier) return;
     const targetLabel = plan.previousTierLabel ?? plan.previousTier;
-    const ok = await changeTier(plan.previousTier);
+    // Preserve the user's current cycle on downgrade — without forwarding
+    // serverCycle, the backend would default the missing billing_cycle to
+    // "monthly" and silently flip a yearly subscriber to monthly at period
+    // end (Sentry caught this; the same-tier release path also bites).
+    const ok = await changeTier(plan.previousTier, serverCycle);
     if (!ok) return;
     const periodEnd = plan.currentPeriodEnd
       ? formatShortDate(plan.currentPeriodEnd * 1000)
@@ -218,7 +222,13 @@ export function useYourPlanCard() {
     ) {
       return;
     }
-    const ok = await changeTier(plan.tierKey as SubscriptionTierRequestTier);
+    // Same-tier release also gates on cycle: omitting billing_cycle defaults
+    // the backend to "monthly", which on a yearly sub is treated as a
+    // cycle-switch instead of a release-pending — silent flip to monthly.
+    const ok = await changeTier(
+      plan.tierKey as SubscriptionTierRequestTier,
+      serverCycle,
+    );
     if (!ok) return;
     toast({
       title: plan.isPendingCancel
