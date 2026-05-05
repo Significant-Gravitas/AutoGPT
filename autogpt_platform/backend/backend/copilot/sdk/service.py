@@ -3281,6 +3281,11 @@ async def _run_stream_attempt(
             # re-prompt round from spuriously appending an empty assistant
             # ChatMessage before its first text delta lands.
             acc.has_tool_results = False
+            # Force the re-prompt's first text delta to allocate a NEW
+            # ``acc.assistant_response`` ChatMessage instead of accumulating
+            # into the previous (empty thinking-only) one.  Without this the
+            # two logical assistant turns get fused into a single DB row.
+            acc.has_appended_assistant = False
             # Reset the empty-tool-call breaker counter so a borderline
             # round-1 streak doesn't trip prematurely on the very first
             # re-prompt AssistantMessage.
