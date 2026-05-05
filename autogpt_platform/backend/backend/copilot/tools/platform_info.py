@@ -101,16 +101,16 @@ class PlatformInfoTool(BaseTool):
 
         try:
             tier = await get_user_tier(user_id)
+            tier_multipliers = await get_tier_multipliers()
+            storage_limits = await get_workspace_storage_limits_mb()
         except Exception:
-            logger.exception("Failed to fetch user tier for user %s", user_id)
+            logger.exception("Failed to fetch subscription info for user %s", user_id)
             return ErrorResponse(
                 message="Could not retrieve subscription info.",
                 error="tier_lookup_failed",
                 session_id=session_id,
             )
 
-        tier_multipliers = await get_tier_multipliers()
-        storage_limits = await get_workspace_storage_limits_mb()
         multiplier = tier_multipliers.get(tier.value, 1.0)
         storage_mb = storage_limits.get(tier.value, 250)
 
