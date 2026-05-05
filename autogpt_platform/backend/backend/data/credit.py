@@ -1898,10 +1898,19 @@ async def modify_stripe_subscription_for_tier(
         # at period end, leaving a confusing dual state.
         # always_invoice + error_if_incomplete bill the prorated upgrade now and
         # roll the modify back if the auto-charge fails (instead of deferring).
+        # Refresh metadata so the live sub reflects the new tier+cycle — the
+        # backend derives tier from price_id, but Stripe-side dashboards and
+        # downstream tooling read sub.metadata directly and otherwise see the
+        # stale tier/cycle from the original checkout.
         modify_kwargs: dict = {
             "items": [{"id": items[0].id, "price": price_id}],
             "proration_behavior": "always_invoice",
             "payment_behavior": "error_if_incomplete",
+            "metadata": {
+                "user_id": user_id,
+                "tier": tier.value,
+                "billing_cycle": billing_cycle,
+            },
         }
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False

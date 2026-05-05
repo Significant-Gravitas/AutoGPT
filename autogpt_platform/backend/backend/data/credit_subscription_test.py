@@ -1992,6 +1992,11 @@ async def test_modify_stripe_subscription_for_tier_modifies_existing_sub():
         items=[{"id": "si_abc", "price": "price_pro_monthly"}],
         proration_behavior="always_invoice",
         payment_behavior="error_if_incomplete",
+        metadata={
+            "user_id": "user-1",
+            "tier": SubscriptionTier.PRO.value,
+            "billing_cycle": "monthly",
+        },
     )
     mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.PRO)
 
@@ -2051,6 +2056,11 @@ async def test_modify_stripe_subscription_for_tier_clears_cancel_at_period_end_o
         items=[{"id": "si_abc", "price": "price_biz_monthly"}],
         proration_behavior="always_invoice",
         payment_behavior="error_if_incomplete",
+        metadata={
+            "user_id": "user-1",
+            "tier": SubscriptionTier.BUSINESS.value,
+            "billing_cycle": "monthly",
+        },
         cancel_at_period_end=False,
     )
     mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.BUSINESS)
@@ -2276,6 +2286,11 @@ async def test_modify_stripe_subscription_for_tier_upgrade_immediate_proration()
         items=[{"id": "si_pro", "price": "price_biz_monthly"}],
         proration_behavior="always_invoice",
         payment_behavior="error_if_incomplete",
+        metadata={
+            "user_id": "user-1",
+            "tier": SubscriptionTier.BUSINESS.value,
+            "billing_cycle": "monthly",
+        },
     )
     mock_schedule_create.assert_not_called()
 
@@ -2336,6 +2351,11 @@ async def test_modify_stripe_subscription_for_tier_pro_to_max_bills_immediately(
         items=[{"id": "si_pro", "price": "price_max_monthly"}],
         proration_behavior="always_invoice",
         payment_behavior="error_if_incomplete",
+        metadata={
+            "user_id": "user-1",
+            "tier": SubscriptionTier.MAX.value,
+            "billing_cycle": "monthly",
+        },
     )
     mock_set_tier.assert_awaited_once_with("user-1", SubscriptionTier.MAX)
 
@@ -3388,6 +3408,80 @@ async def test_upgrade_releases_pending_schedule():
         items=[{"id": "si_pro", "price": "price_biz_monthly"}],
         proration_behavior="always_invoice",
         payment_behavior="error_if_incomplete",
+        metadata={
+            "user_id": "user-1",
+            "tier": SubscriptionTier.BUSINESS.value,
+            "billing_cycle": "monthly",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_modify_stripe_subscription_for_tier_upgrade_refreshes_metadata():
+    """Pro→Max yearly upgrade must overwrite the original sub.metadata so the
+    Stripe Dashboard and downstream observability reflect the new tier+cycle
+    instead of the stale values left over from the original checkout."""
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro",
+            "items": {"data": [{"id": "si_pro", "price": {"id": "price_pro_monthly"}}]},
+            "schedule": None,
+            "cancel_at_period_end": False,
+            "metadata": {
+                "user_id": "user-1",
+                "tier": SubscriptionTier.PRO.value,
+                "billing_cycle": "monthly",
+            },
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_user = MagicMock(spec=User)
+    mock_user.stripe_customer_id = "cus_abc"
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    with (
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            new_callable=AsyncMock,
+            return_value="price_max_yearly",
+        ),
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ) as mock_modify,
+        patch(
+            "backend.data.credit.set_subscription_tier",
+            new_callable=AsyncMock,
+        ),
+    ):
+        result = await modify_stripe_subscription_for_tier(
+            "user-1", SubscriptionTier.MAX, billing_cycle="yearly"
+        )
+
+    assert result is True
+    mock_modify.assert_called_once_with(
+        "sub_pro",
+        items=[{"id": "si_pro", "price": "price_max_yearly"}],
+        proration_behavior="always_invoice",
+        payment_behavior="error_if_incomplete",
+        metadata={
+            "user_id": "user-1",
+            "tier": SubscriptionTier.MAX.value,
+            "billing_cycle": "yearly",
+        },
     )
 
 
