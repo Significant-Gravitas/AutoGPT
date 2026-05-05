@@ -1,10 +1,15 @@
 "use client";
 
-import * as React from "react";
-import Image from "next/image";
+import {
+  CheckCircleIcon,
+  PlusIcon,
+  WarningCircleIcon,
+} from "@phosphor-icons/react";
+
 import { Text } from "../../../../atoms/Text/Text";
 import { Button } from "../../../../atoms/Button/Button";
 import { StepHeader } from "../StepHeader";
+import { StepFooter } from "../StepFooter";
 import { Skeleton } from "@/components/__legacy__/ui/skeleton";
 import { useAgentSelectStep } from "./useAgentSelectStep";
 import { scrollbarStyles } from "@/components/styles/scrollbars";
@@ -48,22 +53,22 @@ export function AgentSelectStep({
 
   if (isLoading) {
     return (
-      <div className="mx-auto flex min-h-[70vh] w-full flex-col">
+      <div className="mx-auto flex w-full flex-col">
         <StepHeader
-          title="Publish Agent"
-          description="Select your project that you'd like to publish"
+          title="Choose an agent"
+          description="Pick the saved agent version you want to send to marketplace review."
+          currentStep="select"
         />
-        <div className="flex-grow p-4 sm:p-6">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex-grow pb-5">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="overflow-hidden rounded-2xl border border-neutral-200"
+                className="flex items-center gap-3 rounded-[12px] border border-zinc-200 bg-white p-3"
               >
-                <Skeleton className="h-32 w-full sm:h-40" />
-                <div className="flex flex-col gap-2 p-3">
-                  <Skeleton className="h-5 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-2/3" />
                 </div>
               </div>
             ))}
@@ -75,14 +80,24 @@ export function AgentSelectStep({
 
   if (error) {
     return (
-      <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
+      <div className="mx-auto flex w-full flex-col">
         <StepHeader
-          title="Publish Agent"
-          description="Select your project that you'd like to publish"
+          title="Choose an agent"
+          description="Pick the saved agent version you want to send to marketplace review."
+          currentStep="select"
         />
-        <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <Text variant="lead" className="text-center text-red-600">
-            Failed to load agents. Please try again.
+        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-rose-100 bg-rose-50 px-6 py-8 text-center">
+          <WarningCircleIcon
+            size={32}
+            weight="duotone"
+            className="text-rose-600"
+          />
+          <Text variant="large-medium" className="text-rose-900">
+            We could not load your agents
+          </Text>
+          <Text variant="body" className="max-w-[420px] text-rose-700">
+            Refresh the list and try again. Your current marketplace submissions
+            are unchanged.
           </Text>
           <Button onClick={() => window.location.reload()} variant="secondary">
             Retry
@@ -93,34 +108,35 @@ export function AgentSelectStep({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl">
+    <div className="mx-auto flex w-full flex-col">
       <StepHeader
-        title="Publish Agent"
-        description="Select your project that you'd like to publish"
+        title="Choose an agent"
+        description="Pick the saved agent version you want to send to marketplace review."
+        currentStep="select"
       />
 
       {myAgents.length === 0 ? (
-        <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <Text variant="lead" className="text-center">
-            Uh-oh.. It seems like you don&apos;t have any agents in your
-            library. We&apos;d suggest you to create an agent in our builder
-            first
+        <div className="mt-5 flex min-h-[320px] flex-col items-center justify-center gap-4 rounded-[18px] border border-dashed border-zinc-300 bg-zinc-50 px-6 py-8 text-center">
+          <div className="flex size-11 items-center justify-center rounded-full bg-white text-zinc-700 shadow-[0_1px_2px_rgba(15,15,20,0.06)]">
+            <PlusIcon size={20} weight="bold" />
+          </div>
+          <Text variant="large-medium" className="text-textBlack">
+            No publishable agents yet
           </Text>
-          <Button
-            onClick={onOpenBuilder}
-            className="bg-neutral-800 text-white hover:bg-neutral-900"
-          >
-            Open builder
-          </Button>
+          <Text variant="body" className="max-w-[460px] text-zinc-600">
+            Create and save an agent in the builder. It will appear here when a
+            version is ready to submit.
+          </Text>
+          <Button onClick={onOpenBuilder}>Open builder</Button>
         </div>
       ) : (
         <>
-          <div className="flex-grow overflow-hidden p-4 sm:p-6">
+          <div className="flex-grow overflow-hidden pb-5">
             <h3 className="sr-only">List of agents</h3>
             <div
               className={cn(
                 scrollbarStyles,
-                "h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]",
+                "max-h-[48vh] min-h-[280px] overflow-y-auto pr-2",
               )}
               role="region"
               aria-labelledby="agentListHeading"
@@ -128,68 +144,87 @@ export function AgentSelectStep({
               <div id="agentListHeading" className="sr-only">
                 Scrollable list of agents
               </div>
-              <div className="p-2">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {myAgents.map((agent) => (
-                    <div
+              <div className="grid grid-cols-1 gap-2 p-1 sm:grid-cols-2">
+                {myAgents.map((agent) => {
+                  const isSelected = selectedAgentId === agent.id;
+                  return (
+                    <button
+                      type="button"
                       key={agent.id}
                       data-testid="agent-card"
-                      className={`cursor-pointer select-none overflow-hidden rounded-2xl border border-neutral-200 shadow-sm transition-all ${
-                        selectedAgentId === agent.id
-                          ? "border-transparent shadow-none ring-4 ring-violet-600"
-                          : "hover:shadow-md"
-                      }`}
+                      className={cn(
+                        "group flex w-full cursor-pointer select-none items-center gap-3 rounded-[12px] border bg-white p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-purple-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 focus-visible:ring-offset-2",
+                        isSelected
+                          ? "border-purple-500 bg-purple-50/40 shadow-[0_0_0_3px_rgba(119,51,245,0.12)]"
+                          : "border-zinc-200",
+                      )}
                       onClick={() =>
                         handleAgentClick(agent.name, agent.id, agent.version)
                       }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          handleAgentClick(agent.name, agent.id, agent.version);
-                        }
-                      }}
-                      tabIndex={0}
-                      role="button"
-                      aria-pressed={selectedAgentId === agent.id}
+                      aria-pressed={isSelected}
                     >
-                      <div className="relative h-32 bg-zinc-400 sm:h-40">
-                        <Image
-                          src={agent.imageSrc}
-                          alt={agent.name}
-                          className="object-cover"
-                          fill
-                          sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2 p-3">
-                        <Text variant="large-medium">{agent.name}</Text>
-                        <Text variant="small" className="!text-neutral-500">
-                          Edited {agent.lastEdited}
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Text
+                            variant="body-medium"
+                            as="span"
+                            className="truncate text-textBlack"
+                          >
+                            {agent.name}
+                          </Text>
+                          <span className="shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600">
+                            v{agent.version}
+                          </span>
+                        </div>
+                        <Text
+                          variant="small"
+                          as="span"
+                          className="truncate text-zinc-500"
+                        >
+                          {agent.description
+                            ? agent.description
+                            : `Edited ${agent.lastEdited}`}
                         </Text>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                      {isSelected ? (
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white">
+                          <CheckCircleIcon size={14} weight="fill" />
+                        </span>
+                      ) : (
+                        <span
+                          aria-hidden
+                          className="size-5 shrink-0 rounded-full border border-zinc-300"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
 
-          <div className="flex justify-between gap-4 p-4 sm:p-6">
-            <Button
-              variant="secondary"
-              onClick={onCancel}
-              className="w-full sm:flex-1"
-            >
-              Back
-            </Button>
-            <Button
-              onClick={handleNext}
-              disabled={isNextDisabled}
-              className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
-            >
-              Next
-            </Button>
-          </div>
+          <StepFooter
+            secondary={
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={onCancel}
+                className="w-full sm:w-auto"
+              >
+                Cancel
+              </Button>
+            }
+            primary={
+              <Button
+                size="small"
+                onClick={handleNext}
+                disabled={isNextDisabled}
+                className="w-full sm:w-auto"
+              >
+                Continue
+              </Button>
+            }
+          />
         </>
       )}
     </div>

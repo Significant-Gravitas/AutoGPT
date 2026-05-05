@@ -215,7 +215,7 @@ export class MarketplacePage extends BasePage {
     await expect(publishAgentModal).toBeVisible();
     await expect(
       publishAgentModal.getByText(
-        "Select your project that you'd like to publish",
+        "Pick the saved agent version you want to send to marketplace review.",
       ),
     ).toBeVisible();
 
@@ -226,7 +226,7 @@ export class MarketplacePage extends BasePage {
     await expect(publishableAgentCard).toBeVisible({ timeout: 15000 });
     await publishableAgentCard.click();
     await publishAgentModal
-      .getByRole("button", { name: "Next", exact: true })
+      .getByRole("button", { name: "Continue", exact: true })
       .click();
 
     await expect(

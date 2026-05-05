@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import * as React from "react";
 import { ReactNode } from "react";
 import { Text } from "../Text/Text";
+import type { Variant } from "../Text/helpers";
+import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 
 export interface SelectOption {
   value: string;
@@ -35,6 +37,9 @@ export interface SelectFieldProps {
   onValueChange?: (value: string) => void;
   options: SelectOption[];
   size?: "small" | "medium";
+  labelVariant?: Variant;
+  labelClassName?: string;
+  labelTooltip?: string;
   renderItem?: (option: SelectOption) => React.ReactNode;
   wrapperClassName?: string;
 }
@@ -52,12 +57,15 @@ export function Select({
   onValueChange,
   options,
   size = "medium",
+  labelVariant = "large-medium",
+  labelClassName,
+  labelTooltip,
   renderItem,
   wrapperClassName,
 }: SelectFieldProps) {
   const triggerStyles = cn(
     // Base styles matching Input
-    "rounded-3xl border border-zinc-200 bg-white px-4 shadow-none",
+    "rounded-xl border border-zinc-200 bg-white px-4 shadow-none",
     "font-normal text-black w-full",
     "placeholder:font-normal !placeholder:text-zinc-400",
     // Focus and hover states
@@ -139,10 +147,19 @@ export function Select({
     selectWithError
   ) : (
     <label htmlFor={id} className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Text variant="large-medium" as="span" className="text-black">
-          {label}
-        </Text>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          <Text
+            variant={labelVariant}
+            as="span"
+            className={cn("text-black", labelClassName)}
+          >
+            {label}
+          </Text>
+          {labelTooltip ? (
+            <InformationTooltip description={labelTooltip} iconSize={20} />
+          ) : null}
+        </div>
         {hint}
       </div>
       {selectWithError}

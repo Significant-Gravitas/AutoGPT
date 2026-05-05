@@ -139,7 +139,7 @@ export function DialogWrap({
             )}
             style={{
               scrollbarGutter: "stable",
-              marginRight: hasVerticalScrollbar ? "-14px" : "0px",
+              marginRight: hasVerticalScrollbar ? "-24px" : "0px",
             }}
           >
             {children}
