@@ -1998,21 +1998,22 @@ async def get_pending_subscription_change(
         # BASIC-only users): skip the Stripe API calls entirely.
         return None
 
-    basic_price, pro_price, max_price, business_price = await asyncio.gather(
-        get_subscription_price_id(SubscriptionTier.BASIC),
-        get_subscription_price_id(SubscriptionTier.PRO),
-        get_subscription_price_id(SubscriptionTier.MAX),
-        get_subscription_price_id(SubscriptionTier.BUSINESS),
+    priceable = (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    )
+    # Gather monthly + yearly price IDs so a schedule whose next phase points
+    # at a yearly price still resolves to the correct tier.
+    prices = await asyncio.gather(
+        *[get_subscription_price_id(t, "monthly") for t in priceable],
+        *[get_subscription_price_id(t, "yearly") for t in priceable],
     )
     price_to_tier: dict[str, SubscriptionTier] = {}
-    if basic_price:
-        price_to_tier[basic_price] = SubscriptionTier.BASIC
-    if pro_price:
-        price_to_tier[pro_price] = SubscriptionTier.PRO
-    if max_price:
-        price_to_tier[max_price] = SubscriptionTier.MAX
-    if business_price:
-        price_to_tier[business_price] = SubscriptionTier.BUSINESS
+    for t, pid in zip(priceable + priceable, prices):
+        if pid:
+            price_to_tier[pid] = t
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"

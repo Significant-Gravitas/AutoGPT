@@ -2555,6 +2555,95 @@ async def test_get_pending_subscription_change_from_schedule():
 
 
 @pytest.mark.asyncio
+async def test_get_pending_subscription_change_yearly_next_phase_maps_to_tier():
+    """A schedule whose next phase uses a YEARLY price still resolves to the
+    correct tier — yearly subscribers must see their pending downgrade in UI."""
+    import time as time_mod
+
+    get_pending_subscription_change.cache_clear()  # type: ignore[attr-defined]
+
+    now = int(time_mod.time())
+    period_end = now + 10 * 24 * 3600
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_biz_yearly",
+            "current_period_end": period_end,
+            "cancel_at_period_end": False,
+            "schedule": "sub_sched_yearly",
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_schedule = stripe.SubscriptionSchedule.construct_from(
+        {
+            "id": "sub_sched_yearly",
+            "phases": [
+                {
+                    "start_date": now - 3 * 24 * 3600,
+                    "end_date": period_end,
+                    "items": [{"price": "price_biz_yearly"}],
+                },
+                {
+                    "start_date": period_end,
+                    "items": [{"price": "price_pro_yearly"}],
+                },
+            ],
+        },
+        "k",
+    )
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if billing_cycle == "yearly":
+            if tier == SubscriptionTier.PRO:
+                return "price_pro_yearly"
+            if tier == SubscriptionTier.BUSINESS:
+                return "price_biz_yearly"
+            return None
+        # Monthly entries also configured (mixed config) — confirms the lookup
+        # picks up the yearly mapping rather than only seeing monthly.
+        if tier == SubscriptionTier.PRO:
+            return "price_pro_monthly"
+        if tier == SubscriptionTier.BUSINESS:
+            return "price_biz_monthly"
+        return None
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.retrieve_async",
+            new_callable=AsyncMock,
+            return_value=mock_schedule,
+        ),
+    ):
+        result = await get_pending_subscription_change("user-yearly")
+
+    assert result is not None
+    pending_tier, effective_at = result
+    assert pending_tier == SubscriptionTier.PRO
+    assert int(effective_at.timestamp()) == period_end
+
+
+@pytest.mark.asyncio
 async def test_get_pending_subscription_change_from_schedule_to_basic():
     """A schedule whose next phase uses the BASIC price maps to pending_tier=BASIC."""
     import time as time_mod
