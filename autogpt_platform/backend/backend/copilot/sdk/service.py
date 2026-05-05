@@ -780,39 +780,85 @@ _FLUSH_MESSAGE_THRESHOLD = 10
 
 
 def _strip_synthetic_reprompt_from_cli_jsonl(content: bytes) -> bytes:
-    """Drop any user-message line whose text equals ``_THINKING_ONLY_REPROMPT``.
+    """Drop the synthetic re-prompt user message AND its preceding empty
+    thinking-only AssistantMessage from the CLI session JSONL.
 
     The CLI persists every ``client.query(...)`` call to its session file,
     including the synthetic re-prompt we send when a turn ends thinking-only.
     Leaving it in the uploaded JSONL pollutes ``--resume`` history on the next
     turn — the model would see a phantom user message asking it to summarise.
-    Strip those lines here so the persisted transcript reflects only what the
-    end user actually said.
+
+    We must also drop the empty thinking-only AssistantMessage that came
+    immediately *before* the synthetic user message, otherwise the JSONL
+    ends up with two AssistantMessage entries back-to-back (the empty one
+    and the actual closing turn) without a user message between them —
+    which violates Anthropic's role-alternation contract on resume.
     """
     if not content:
         return content
-    out: list[bytes] = []
+    parsed: list[tuple[bytes, dict | None]] = []
     for line in content.splitlines(keepends=True):
         stripped = line.strip()
         if not stripped:
-            out.append(line)
+            parsed.append((line, None))
             continue
         try:
             entry = json.loads(stripped)
         except (json.JSONDecodeError, ValueError):
-            out.append(line)
+            parsed.append((line, None))
             continue
-        if (
-            isinstance(entry, dict)
-            and entry.get("type") == "user"
-            and isinstance(entry.get("message"), dict)
-            and entry["message"].get("role") == "user"
-        ):
-            text = _extract_user_message_text(entry["message"].get("content"))
-            if text == _THINKING_ONLY_REPROMPT:
-                continue
-        out.append(line)
-    return b"".join(out)
+        parsed.append((line, entry if isinstance(entry, dict) else None))
+
+    drop: set[int] = set()
+    for i, (_line, entry) in enumerate(parsed):
+        if not _is_synthetic_reprompt_user_entry(entry):
+            continue
+        drop.add(i)
+        # Walk backwards over blank / non-entry lines to the most recent
+        # JSONL entry; if it's an empty-content AssistantMessage, drop it
+        # too so the post-strip role alternation stays valid.
+        j = i - 1
+        while j >= 0 and parsed[j][1] is None:
+            j -= 1
+        if j >= 0 and _is_empty_assistant_entry(parsed[j][1]):
+            drop.add(j)
+    return b"".join(
+        line for idx, (line, _entry) in enumerate(parsed) if idx not in drop
+    )
+
+
+def _is_synthetic_reprompt_user_entry(entry: dict | None) -> bool:
+    if not entry or entry.get("type") != "user":
+        return False
+    msg = entry.get("message")
+    if not isinstance(msg, dict) or msg.get("role") != "user":
+        return False
+    return _extract_user_message_text(msg.get("content")) == _THINKING_ONLY_REPROMPT
+
+
+def _is_empty_assistant_entry(entry: dict | None) -> bool:
+    """True for an AssistantMessage whose visible content is empty (no
+    TextBlock / ToolUseBlock / non-empty text).  ThinkingBlocks alone count
+    as empty for role-alternation purposes — the model emitted nothing the
+    next turn would treat as an answer."""
+    if not entry or entry.get("type") != "assistant":
+        return False
+    msg = entry.get("message")
+    if not isinstance(msg, dict) or msg.get("role") != "assistant":
+        return False
+    content = msg.get("content")
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if not isinstance(block, dict):
+            return False
+        btype = block.get("type")
+        if btype == "thinking":
+            continue  # thinking-only counts as empty for our purposes
+        if btype == "text" and not (block.get("text") or "").strip():
+            continue
+        return False
+    return True
 
 
 def _extract_user_message_text(content: object) -> str | None:
