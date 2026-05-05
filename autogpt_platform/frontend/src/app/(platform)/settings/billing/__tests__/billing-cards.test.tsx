@@ -138,50 +138,6 @@ describe("YourPlanCard", () => {
     ).toBeDefined();
   });
 
-  it("renders the Stripe credit-on-file line when balance > 0", async () => {
-    server.use(
-      jsonHandler("get", "/api/credits/subscription", {
-        tier: "PRO",
-        monthly_cost: 5000,
-        has_active_stripe_subscription: true,
-        status: "active",
-        stripe_customer_balance_cents: 1234,
-      }),
-      jsonHandler("get", "/api/credits/manage", {
-        url: "https://billing.stripe.com/p/test",
-      }),
-    );
-
-    render(<YourPlanCard />);
-
-    expect(
-      await screen.findByText(
-        /Stripe credit on file: \$12\.34 \(auto-applied to your next invoice\)/i,
-      ),
-    ).toBeDefined();
-  });
-
-  it("hides the Stripe credit-on-file line when balance = 0", async () => {
-    server.use(
-      jsonHandler("get", "/api/credits/subscription", {
-        tier: "PRO",
-        monthly_cost: 5000,
-        has_active_stripe_subscription: true,
-        status: "active",
-        stripe_customer_balance_cents: 0,
-      }),
-      jsonHandler("get", "/api/credits/manage", {
-        url: "https://billing.stripe.com/p/test",
-      }),
-    );
-
-    render(<YourPlanCard />);
-
-    // Wait for the card to settle on the loaded state before asserting absence.
-    expect(await screen.findByText("Pro")).toBeDefined();
-    expect(screen.queryByText(/Stripe credit on file/i)).toBeNull();
-  });
-
   it("renders the 'no active subscription' state for NO_TIER users", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {

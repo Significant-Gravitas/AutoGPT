@@ -136,13 +136,6 @@ export function YourPlanCard({ index = 0 }: Props) {
               {formatShortDate(plan.pendingEffectiveAt)} · No charge today
             </Text>
           ) : null}
-          {plan.stripeCustomerBalanceCents > 0 ? (
-            <Text variant="small" as="span" className="text-zinc-500">
-              Stripe credit on file:{" "}
-              {formatCents(plan.stripeCustomerBalanceCents)} (auto-applied to
-              your next invoice)
-            </Text>
-          ) : null}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">

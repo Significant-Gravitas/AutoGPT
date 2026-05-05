@@ -777,19 +777,6 @@ class SubscriptionStatusResponse(BaseModel):
             " the client redirects to this URL when non-empty."
         ),
     )
-    stripe_customer_balance_cents: int = Field(
-        default=0,
-        description=(
-            "Customer credit-on-file in cents — i.e. money sitting on the Stripe"
-            " Customer that Stripe will auto-apply to the next invoice. Surfaced"
-            " using the user's perspective: positive = credit available to the"
-            " user; 0 = nothing on file. (Internally Stripe stores this as a"
-            " negative ``customer.balance``; we flip the sign so the frontend can"
-            " render ``$X.XX credit on file`` without further bookkeeping.)"
-            " Best-effort: returns 0 when the user has no Stripe customer or the"
-            " Stripe API is unreachable."
-        ),
-    )
 
 
 def _validate_checkout_redirect_url(url: str) -> bool:
@@ -829,35 +816,6 @@ def _validate_checkout_redirect_url(url: str) -> bool:
         parsed.scheme == allowed_parsed.scheme
         and parsed.netloc == allowed_parsed.netloc
     )
-
-
-async def _get_stripe_customer_credit_cents(user_id: str) -> int:
-    """Return cents of credit Stripe will auto-apply to the user's next invoice.
-
-    Stripe stores customer balance as an integer cents value where ``negative``
-    means *credit owed to the customer* (i.e. money that will offset future
-    invoices) and ``positive`` means *debt* the customer owes. We flip the sign
-    so the frontend can render ``$X.XX credit on file`` directly without
-    knowing Stripe's internal convention. Debt (positive raw balance) returns
-    0 — the user has no usable credit and surfacing a negative number would be
-    misleading.
-
-    Best-effort: returns 0 if the user has no Stripe customer record or Stripe
-    is unreachable. The page must not fail on a Stripe outage.
-    """
-    user = await get_user_by_id(user_id)
-    if not user.stripe_customer_id:
-        return 0
-    try:
-        customer = await stripe.Customer.retrieve_async(user.stripe_customer_id)
-    except stripe.StripeError:
-        logger.warning(
-            "Failed to retrieve Stripe customer for user %s — returning 0 balance",
-            user_id,
-        )
-        return 0
-    raw_balance = customer.balance or 0
-    return -raw_balance if raw_balance < 0 else 0
 
 
 @cached(ttl_seconds=300, maxsize=32, cache_none=False)
@@ -959,17 +917,9 @@ async def get_subscription_status(
         current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
     else:
         current_monthly_cost = tier_costs.get(tier.value, 0)
-    # Run the Stripe customer-balance lookup in parallel with the proration +
-    # period-end fetches so the added Stripe round-trip doesn't sequentially
-    # extend GET /credits/subscription latency.
-    (
-        proration_credit,
-        current_period_end,
-        stripe_customer_balance,
-    ) = await asyncio.gather(
+    proration_credit, current_period_end = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
-        _get_stripe_customer_credit_cents(user_id),
     )
 
     try:
@@ -996,7 +946,6 @@ async def get_subscription_status(
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
-        stripe_customer_balance_cents=stripe_customer_balance,
     )
     if pending is not None:
         pending_tier_enum, pending_effective_at, pending_cycle = pending

@@ -153,9 +153,6 @@ export function useYourPlanCard() {
           ? (PLAN_LABEL[previousTierKey] ?? previousTierKey)
           : null,
         currentPeriodEnd: subscription.data.current_period_end ?? null,
-        stripeCustomerBalanceCents:
-          (subscription.data as { stripe_customer_balance_cents?: number })
-            .stripe_customer_balance_cents ?? 0,
         pendingTier,
         pendingTierLabel: pendingTier
           ? (PLAN_LABEL[pendingTier] ?? pendingTier)
