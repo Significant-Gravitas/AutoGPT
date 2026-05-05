@@ -1306,6 +1306,27 @@ async def stripe_webhook(request: Request):
     if event_type == "invoice.payment_failed":
         await handle_subscription_payment_failure(data_object)
 
+    # New Stripe API (≥2025-04-01) split the per-payment events off the Invoice
+    # resource. data.object is an InvoicePayment, not an Invoice, so we hydrate
+    # the underlying Invoice before delegating to the existing handlers.
+    if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
+        invoice_id = data_object.get("invoice")
+        if invoice_id:
+            try:
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+            except stripe.StripeError:
+                logger.exception(
+                    "stripe_webhook: %s could not retrieve invoice %s; skipping",
+                    event_type,
+                    invoice_id,
+                )
+                return Response(status_code=200)
+            invoice_payload = cast(dict, invoice)
+            if event_type == "invoice_payment.paid":
+                await handle_subscription_payment_success(invoice_payload)
+            else:
+                await handle_subscription_payment_failure(invoice_payload)
+
     # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
     # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
     # StripeObject (a dict subclass) carrying that runtime shape, so we cast
