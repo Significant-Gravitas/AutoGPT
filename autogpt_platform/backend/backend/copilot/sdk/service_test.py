@@ -14,12 +14,14 @@ from backend.copilot import config as cfg_mod
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
+    _MAX_BUDGET_USD_FLOOR,
     _build_system_prompt_value,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _normalize_model_name,
     _prepare_file_attachments,
+    _resolve_dynamic_max_budget_usd,
     _resolve_sdk_model,
     _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
@@ -1229,3 +1231,125 @@ class TestIdleTimeoutThreshold:
         # The whole point of the two-regime design: pending tools get more
         # patience than pure idle.
         assert _HUNG_TOOL_CAP_SECONDS > _IDLE_TIMEOUT_SECONDS
+
+
+class TestResolveDynamicMaxBudgetUsd:
+    """The per-query SDK budget is sized to the smaller of the static
+    config cap and the user's *actual* remaining USD spend, so the
+    CLI's "wrap up gracefully" reminder fires on real headroom."""
+
+    @pytest.mark.asyncio
+    async def test_returns_static_cap_without_user_id(self):
+        with patch(
+            "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+            7.5,
+        ):
+            result = await _resolve_dynamic_max_budget_usd(None)
+        assert result == 7.5
+
+    @pytest.mark.asyncio
+    async def test_returns_static_cap_when_unlimited(self):
+        # When tier limits are 0/0 we treat as unlimited and fall back to the
+        # static config cap (the per-query soft ceiling still applies).
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(0, 0, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=float("inf")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == 10.0
+
+    @pytest.mark.asyncio
+    async def test_uses_remaining_when_smaller_than_static(self):
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=2.5),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == 2.5
+
+    @pytest.mark.asyncio
+    async def test_clamps_to_floor_when_remaining_is_below(self):
+        # A near-capped user still gets enough headroom to dispatch the
+        # turn (and surface the wrap-up reminder) instead of being
+        # blocked at the SDK level.
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 0, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=0.05),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == _MAX_BUDGET_USD_FLOOR
+
+    @pytest.mark.asyncio
+    async def test_static_cap_wins_when_smaller_than_remaining(self):
+        # User has plenty of headroom — the per-query soft ceiling still
+        # applies so a single chat cannot blow the entire daily budget.
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(100_000_000, 0, "PRO")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=80.0),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == 10.0
+
+    @pytest.mark.asyncio
+    async def test_redis_brownout_falls_back_to_static_cap(self):
+        """Redis brown-out → ``get_remaining_usd_budget`` returns the
+        ``floor_usd`` we passed.  The resolver passes ``-1.0`` as a
+        sentinel and falls back to the static cap when it sees that —
+        otherwise every turn during a Redis outage would shrink to the
+        $0.50 floor instead of the configured per-query cap."""
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=-1.0),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == 10.0

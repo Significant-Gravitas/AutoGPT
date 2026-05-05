@@ -58,6 +58,7 @@ from backend.copilot.pending_messages import (
     format_pending_as_user_message,
 )
 from backend.copilot.prompting import SHARED_TOOL_NOTES, get_graphiti_supplement
+from backend.copilot.rate_limit import build_budget_ctx
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
@@ -1559,8 +1560,23 @@ async def stream_chat_completion_baseline(
     # the very start of the message content.
     user_message_for_transcript = message
     if should_inject_user_context:
+        # Mirror the SDK path's "model knows about budget" behaviour by
+        # injecting a per-turn ``<budget_context>`` block — the baseline
+        # path has no equivalent of the SDK CLI's native
+        # ``max_budget_usd`` running-cost reminder, so this is the only
+        # signal the model gets about how much USD spend headroom the
+        # user has left.
+        budget_ctx = await build_budget_ctx(
+            user_id=user_id,
+            default_daily_cost_limit=config.daily_cost_limit_microdollars,
+            default_weekly_cost_limit=config.weekly_cost_limit_microdollars,
+        )
         prefixed = await inject_user_context(
-            understanding, message or "", session_id, session.messages
+            understanding,
+            message or "",
+            session_id,
+            session.messages,
+            budget_ctx=budget_ctx,
         )
         if prefixed is not None:
             # Reverse scan so we update the current turn's user message, not

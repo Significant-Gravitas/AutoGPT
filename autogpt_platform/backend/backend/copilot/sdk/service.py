@@ -81,7 +81,11 @@ from ..pending_messages import (
 )
 from ..permissions import apply_tool_permissions
 from ..prompting import get_graphiti_supplement, get_sdk_supplement
-from ..rate_limit import get_user_tier
+from ..rate_limit import (
+    get_global_rate_limits,
+    get_remaining_usd_budget,
+    get_user_tier,
+)
 from ..response_model import (
     StreamBaseResponse,
     StreamError,
@@ -189,6 +193,50 @@ _CIRCUIT_BREAKER_ERROR_MSG = (
 # 2 h hard cap (lets long sub-AutoPilots run, still backstops a hung tool).
 _IDLE_TIMEOUT_SECONDS = 30 * 60
 _HUNG_TOOL_CAP_SECONDS = 2 * 60 * 60
+
+# Floor on the per-query SDK budget — too small and the CLI refuses to
+# start a turn at all.  Caller (``_resolve_dynamic_max_budget_usd``) clamps
+# to this so a user near (but not yet at) their cap still gets a chance to
+# wrap up gracefully instead of hitting an immediate hard stop.
+_MAX_BUDGET_USD_FLOOR = 0.5
+
+
+async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
+    """Pick the per-query ``max_budget_usd`` for this user *now*.
+
+    Returns the smaller of:
+      * ``config.claude_agent_max_budget_usd`` (the static per-query cap)
+      * the user's remaining daily/weekly USD cap (from Redis)
+
+    Falls back to the static cap when no ``user_id`` is available (e.g. an
+    internal turn run without auth).  Floored at ``_MAX_BUDGET_USD_FLOOR``
+    so a near-capped user still gets enough headroom to surface the
+    "wrap up" reminder rather than failing to dispatch.
+    """
+    static_cap = config.claude_agent_max_budget_usd
+    if not user_id:
+        return static_cap
+    daily_limit, weekly_limit, _ = await get_global_rate_limits(
+        user_id,
+        config.daily_cost_limit_microdollars,
+        config.weekly_cost_limit_microdollars,
+    )
+    # Sentinel ``-1.0`` from ``get_remaining_usd_budget`` means Redis was
+    # unavailable.  In that case fall back to the static per-query cap —
+    # we don't actually know the user is near their limit, and clamping
+    # to the floor would shrink every turn to $0.50 while Redis is in a
+    # brown-out.  The pre-turn gate already failed closed at 503 in this
+    # branch, so this defensive fallback only matters in edge paths that
+    # bypass the gate.
+    remaining = await get_remaining_usd_budget(
+        user_id=user_id,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
+        floor_usd=-1.0,
+    )
+    if remaining < 0 or remaining == float("inf"):
+        return static_cap
+    return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
 
 
 def _idle_timeout_threshold(adapter: SDKResponseAdapter) -> int:
@@ -3728,7 +3776,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # prevent runaway execution from burning budget.
             "max_turns": config.agent_max_turns,
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
-            "max_budget_usd": config.claude_agent_max_budget_usd,
+            # Sized to the smaller of the configured per-query default and
+            # the user's *actual* remaining daily/weekly USD cap so the
+            # CLI's "wrap up gracefully" reminder fires when they're close
+            # to the real limit, not the static $10 default.
+            "max_budget_usd": await _resolve_dynamic_max_budget_usd(user_id),
         }
         # max_thinking_tokens: cap extended thinking output per LLM call.
         # Thinking tokens are billed at output rate ($75/M for Opus) and
