@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
 import { cn } from "@/lib/utils";
+import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { usePaywallModal } from "./usePaywallModal";
 
 // Non-dismissable Stripe paywall for NO_TIER users. Reuses the onboarding
@@ -20,6 +21,10 @@ export function PaywallModal() {
     handleSelectPlan,
     isPending,
     selectedTier,
+    pendingTier,
+    pendingTierLabel,
+    confirmPendingTier,
+    cancelPendingTier,
   } = usePaywallModal();
 
   return (
@@ -113,6 +118,22 @@ export function PaywallModal() {
           </div>
         </div>
       </Dialog.Content>
+      {pendingTier && pendingTierLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTier !== null}
+          onOpenChange={(open) => {
+            if (!open) cancelPendingTier();
+          }}
+          targetTierLabel={pendingTierLabel}
+          title={`Switch to ${pendingTierLabel}?`}
+          confirmLabel={`Switch to ${pendingTierLabel}`}
+          body="Your current Stripe subscription will be modified — you may be charged or refunded the prorated difference. Continue?"
+          isSaving={isPending}
+          onConfirm={() => {
+            void confirmPendingTier();
+          }}
+        />
+      ) : null}
     </Dialog>
   );
 }

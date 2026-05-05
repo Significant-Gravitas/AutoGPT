@@ -556,6 +556,42 @@ describe("YourPlanCard cycle toggle", () => {
       expect(capturedBody?.billing_cycle).toBe("yearly");
     });
   });
+
+  it("shows 'Cycle switch scheduled' badge + cycle-only secondary line when same-tier yearly→monthly is queued", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "PRO",
+        pending_billing_cycle: "monthly",
+        pending_tier_effective_at: "2026-12-15T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Cycle switch scheduled")).toBeDefined();
+    // Active yearly price stays on the primary line; secondary line describes
+    // the queued switch with no charge today.
+    expect(screen.getByText(/\$510\.00 \/ year/)).toBeDefined();
+    expect(
+      screen.getByText(/Switching to monthly Pro on .* · No charge today/i),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /cancel cycle switch/i }),
+    ).toBeDefined();
+    // Tier-downgrade button is suppressed while a cycle switch is pending —
+    // the user needs to cancel/release the schedule first.
+    expect(screen.queryByRole("button", { name: /^downgrade to/i })).toBeNull();
+  });
 });
 
 describe("PaymentMethodCard", () => {

@@ -758,6 +758,17 @@ class SubscriptionStatusResponse(BaseModel):
     )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
+    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
+        default=None,
+        description=(
+            "Billing cycle of the queued change, when resolvable. Set alongside"
+            " ``pending_tier`` for tier downgrades and same-tier cycle"
+            " switches (yearly→monthly). The frontend uses this to differentiate"
+            " a cycle-only schedule (``pending_tier == current tier``) from a"
+            " real tier downgrade so the UI copy can describe the actual"
+            " change. ``None`` for cancellations and unconfigured legacy prices."
+        ),
+    )
     url: str = Field(
         default="",
         description=(
@@ -937,7 +948,7 @@ async def get_subscription_status(
         current_period_end=current_period_end,
     )
     if pending is not None:
-        pending_tier_enum, pending_effective_at = pending
+        pending_tier_enum, pending_effective_at, pending_cycle = pending
         if pending_tier_enum in (
             SubscriptionTier.NO_TIER,
             SubscriptionTier.BASIC,
@@ -947,6 +958,7 @@ async def get_subscription_status(
         ):
             response.pending_tier = pending_tier_enum.value
             response.pending_tier_effective_at = pending_effective_at
+            response.pending_billing_cycle = pending_cycle
     return response
 
 

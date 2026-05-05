@@ -100,11 +100,26 @@ export function useYourPlanCard() {
   const pendingTier = subscription.data?.pending_tier ?? null;
   const pendingEffectiveAt =
     subscription.data?.pending_tier_effective_at ?? null;
+  const pendingBillingCycle = subscription.data?.pending_billing_cycle ?? null;
   // Cancellation = pending change to the "no active subscription" state.
   const isPendingCancel = pendingTier === "NO_TIER";
-  // Paid→paid downgrade scheduled in Stripe (e.g. MAX → PRO at period end).
-  // Initiated from the Stripe billing portal — there's no in-app trigger.
-  const isPendingDowngrade = pendingTier !== null && pendingTier !== "NO_TIER";
+  // Same-tier yearly→monthly schedule: pending_tier matches current tier but
+  // pending_billing_cycle differs from serverCycle. Treat as a cycle-only
+  // switch so the badge + copy describe the change accurately rather than
+  // claiming a confusing "downgrade to <same tier>".
+  const isPendingCycleSwitch =
+    pendingTier !== null &&
+    pendingTier !== "NO_TIER" &&
+    pendingTier === effectiveTier &&
+    pendingBillingCycle !== null &&
+    pendingBillingCycle !== serverCycle;
+  // Paid→paid tier downgrade scheduled in Stripe (e.g. MAX → PRO at period
+  // end). The in-app trigger lives on the Downgrade button below; the Stripe
+  // billing portal can also originate one.
+  const isPendingDowngrade =
+    pendingTier !== null &&
+    pendingTier !== "NO_TIER" &&
+    pendingTier !== effectiveTier;
 
   const tierCostsYearly = subscription.data?.tier_costs_yearly ?? {};
   const tierCosts = subscription.data?.tier_costs ?? {};
@@ -138,8 +153,10 @@ export function useYourPlanCard() {
           ? (PLAN_LABEL[pendingTier] ?? pendingTier)
           : null,
         pendingEffectiveAt,
+        pendingCycle: pendingBillingCycle,
         isPendingCancel,
         isPendingDowngrade,
+        isPendingCycleSwitch,
         billingCycle: serverCycle,
       }
     : undefined;
@@ -220,13 +237,16 @@ export function useYourPlanCard() {
   }
 
   async function resumeSubscription() {
-    // POSTing the current tier back to the backend releases any pending
-    // schedule — both cancel_at_period_end (NO_TIER pending) and paid→paid
-    // downgrade phases. See release_pending_subscription_schedule + the
-    // same-tier branch of update_subscription_tier.
+    // POSTing the current tier+cycle back to the backend releases any pending
+    // schedule — cancel_at_period_end (NO_TIER pending), paid→paid downgrade,
+    // and same-tier yearly→monthly cycle switch all share the release path.
+    // See release_pending_subscription_schedule + the same-tier branch of
+    // update_subscription_tier.
     if (
       !plan?.isPaidPlan ||
-      (!plan?.isPendingCancel && !plan?.isPendingDowngrade)
+      (!plan?.isPendingCancel &&
+        !plan?.isPendingDowngrade &&
+        !plan?.isPendingCycleSwitch)
     ) {
       return;
     }
@@ -241,7 +261,9 @@ export function useYourPlanCard() {
     toast({
       title: plan.isPendingCancel
         ? "Subscription resumed"
-        : "Downgrade cancelled",
+        : plan.isPendingCycleSwitch
+          ? "Cycle switch cancelled"
+          : "Downgrade cancelled",
       description: `Your ${plan.label} plan will continue to renew as normal.`,
     });
   }
@@ -351,7 +373,10 @@ export function useYourPlanCard() {
     // Don't offer upgrade alongside Resume — pending cancel/downgrade should
     // be released first via resumeSubscription, not stacked with a new tier.
     canUpgrade: Boolean(
-      plan?.nextTier && !plan?.isPendingCancel && !plan?.isPendingDowngrade,
+      plan?.nextTier &&
+        !plan?.isPendingCancel &&
+        !plan?.isPendingDowngrade &&
+        !plan?.isPendingCycleSwitch,
     ),
     // Downgrade only when an active paid sub has a tier below it AND no
     // pending change is already in flight — avoids stacking schedules.
@@ -359,9 +384,14 @@ export function useYourPlanCard() {
       plan?.isPaidPlan &&
         plan?.previousTier &&
         !plan?.isPendingCancel &&
-        !plan?.isPendingDowngrade,
+        !plan?.isPendingDowngrade &&
+        !plan?.isPendingCycleSwitch,
     ),
-    canResume: Boolean(plan?.isPendingCancel || plan?.isPendingDowngrade),
+    canResume: Boolean(
+      plan?.isPendingCancel ||
+        plan?.isPendingDowngrade ||
+        plan?.isPendingCycleSwitch,
+    ),
     selectedCycle,
     pendingCycle,
     pendingTierUpgrade,

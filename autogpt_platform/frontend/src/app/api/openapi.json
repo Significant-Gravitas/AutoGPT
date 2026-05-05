@@ -16669,6 +16669,14 @@
             ],
             "title": "Pending Tier Effective At"
           },
+          "pending_billing_cycle": {
+            "anyOf": [
+              { "type": "string", "enum": ["monthly", "yearly"] },
+              { "type": "null" }
+            ],
+            "title": "Pending Billing Cycle",
+            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly→monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
+          },
           "url": {
             "type": "string",
             "title": "Url",

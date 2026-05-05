@@ -1739,7 +1739,7 @@ def test_get_subscription_status_includes_pending_tier(
     mocker.patch(
         "backend.api.features.v1.get_pending_subscription_change",
         new_callable=AsyncMock,
-        return_value=(SubscriptionTier.PRO, effective_at),
+        return_value=(SubscriptionTier.PRO, effective_at, "monthly"),
     )
 
     response = client.get("/credits/subscription")
@@ -1748,6 +1748,7 @@ def test_get_subscription_status_includes_pending_tier(
     data = response.json()
     assert data["pending_tier"] == "PRO"
     assert data["pending_tier_effective_at"] is not None
+    assert data["pending_billing_cycle"] == "monthly"
 
 
 def test_get_subscription_status_no_pending_tier(

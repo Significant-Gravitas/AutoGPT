@@ -11,6 +11,8 @@ interface Props {
   body: string;
   isSaving: boolean;
   onConfirm: () => void;
+  title?: string;
+  confirmLabel?: string;
 }
 
 export function SwitchTierDialog({
@@ -20,10 +22,12 @@ export function SwitchTierDialog({
   body,
   isSaving,
   onConfirm,
+  title,
+  confirmLabel,
 }: Props) {
   return (
     <Dialog
-      title={`Upgrade to ${targetTierLabel}?`}
+      title={title ?? `Upgrade to ${targetTierLabel}?`}
       styling={{ maxWidth: "440px" }}
       controlled={{ isOpen, set: onOpenChange }}
     >
@@ -52,7 +56,7 @@ export function SwitchTierDialog({
             disabled={isSaving}
             loading={isSaving}
           >
-            Upgrade to {targetTierLabel}
+            {confirmLabel ?? `Upgrade to ${targetTierLabel}`}
           </Button>
         </Dialog.Footer>
       </Dialog.Content>

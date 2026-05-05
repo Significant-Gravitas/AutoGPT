@@ -2604,9 +2604,10 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
         result = await get_pending_subscription_change("user-1")
 
     assert result is not None
-    pending_tier, effective_at = result
+    pending_tier, effective_at, pending_cycle = result
     assert pending_tier == SubscriptionTier.NO_TIER
     assert int(effective_at.timestamp()) == period_end
+    assert pending_cycle is None
 
 
 @pytest.mark.asyncio
@@ -2654,6 +2655,8 @@ async def test_get_pending_subscription_change_from_schedule():
     async def mock_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
+        if billing_cycle == "yearly":
+            return None
         if tier == SubscriptionTier.PRO:
             return "price_pro_monthly"
         if tier == SubscriptionTier.BUSINESS:
@@ -2684,9 +2687,10 @@ async def test_get_pending_subscription_change_from_schedule():
         result = await get_pending_subscription_change("user-1")
 
     assert result is not None
-    pending_tier, effective_at = result
+    pending_tier, effective_at, pending_cycle = result
     assert pending_tier == SubscriptionTier.PRO
     assert int(effective_at.timestamp()) == period_end
+    assert pending_cycle == "monthly"
 
 
 @pytest.mark.asyncio
@@ -2773,9 +2777,10 @@ async def test_get_pending_subscription_change_yearly_next_phase_maps_to_tier():
         result = await get_pending_subscription_change("user-yearly")
 
     assert result is not None
-    pending_tier, effective_at = result
+    pending_tier, effective_at, pending_cycle = result
     assert pending_tier == SubscriptionTier.PRO
     assert int(effective_at.timestamp()) == period_end
+    assert pending_cycle == "yearly"
 
 
 @pytest.mark.asyncio
@@ -2823,6 +2828,8 @@ async def test_get_pending_subscription_change_from_schedule_to_basic():
     async def mock_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"
     ) -> str | None:
+        if billing_cycle == "yearly":
+            return None
         if tier == SubscriptionTier.BASIC:
             return "price_basic_monthly"
         if tier == SubscriptionTier.PRO:
@@ -2855,9 +2862,10 @@ async def test_get_pending_subscription_change_from_schedule_to_basic():
         result = await get_pending_subscription_change("user-1")
 
     assert result is not None
-    pending_tier, effective_at = result
+    pending_tier, effective_at, pending_cycle = result
     assert pending_tier == SubscriptionTier.BASIC
     assert int(effective_at.timestamp()) == period_end
+    assert pending_cycle == "monthly"
 
 
 @pytest.mark.asyncio
@@ -2910,6 +2918,92 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
         result = await get_pending_subscription_change("user-1")
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_get_pending_subscription_change_same_tier_yearly_to_monthly_reports_cycle():
+    """Same-tier yearly→monthly schedule must surface the next-phase cycle so the
+    UI can describe a cycle-only switch correctly (pending_tier == current tier
+    would otherwise look like a no-op or a confusing same-tier "downgrade")."""
+    import time as time_mod
+
+    _clear_cache(get_pending_subscription_change)
+
+    now = int(time_mod.time())
+    period_end = now + 200 * 24 * 3600
+    mock_sub = stripe.Subscription.construct_from(
+        {
+            "id": "sub_pro_yearly",
+            "current_period_end": period_end,
+            "cancel_at_period_end": False,
+            "schedule": "sub_sched_cycle",
+        },
+        "k",
+    )
+    mock_list = MagicMock()
+    mock_list.data = [mock_sub]
+
+    mock_schedule = stripe.SubscriptionSchedule.construct_from(
+        {
+            "id": "sub_sched_cycle",
+            "phases": [
+                {
+                    "start_date": now - 5 * 24 * 3600,
+                    "end_date": period_end,
+                    "items": [{"price": "price_pro_yearly"}],
+                },
+                {
+                    "start_date": period_end,
+                    "items": [{"price": "price_pro_monthly"}],
+                },
+            ],
+        },
+        "k",
+    )
+
+    mock_user = MagicMock()
+    mock_user.stripe_customer_id = "cus_abc"
+
+    async def mock_price_id(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if billing_cycle == "yearly":
+            return {
+                SubscriptionTier.PRO: "price_pro_yearly",
+                SubscriptionTier.MAX: "price_max_yearly",
+            }.get(tier)
+        return {
+            SubscriptionTier.PRO: "price_pro_monthly",
+            SubscriptionTier.MAX: "price_max_monthly",
+        }.get(tier)
+
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=mock_user,
+        ),
+        patch(
+            "backend.data.credit.get_subscription_price_id",
+            side_effect=mock_price_id,
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            new_callable=AsyncMock,
+            return_value=mock_list,
+        ),
+        patch(
+            "backend.data.credit.stripe.SubscriptionSchedule.retrieve_async",
+            new_callable=AsyncMock,
+            return_value=mock_schedule,
+        ),
+    ):
+        result = await get_pending_subscription_change("user-yearly-to-monthly")
+
+    assert result is not None
+    pending_tier, _, pending_cycle = result
+    assert pending_tier == SubscriptionTier.PRO
+    assert pending_cycle == "monthly"
 
 
 @pytest.mark.asyncio
@@ -3512,9 +3606,14 @@ async def test_next_phase_tier_and_start_logs_unknown_price(caplog):
         "k",
     )
     price_to_tier = {"price_pro_monthly": SubscriptionTier.PRO}
+    price_to_cycle = {"price_pro_monthly": "monthly"}
 
     with caplog.at_level(logging.WARNING, logger="backend.data.credit"):
-        result = _next_phase_tier_and_start(schedule, price_to_tier)
+        result = _next_phase_tier_and_start(
+            schedule,
+            price_to_tier,
+            price_to_cycle,  # type: ignore[arg-type]
+        )
 
     assert result is None
     assert any(

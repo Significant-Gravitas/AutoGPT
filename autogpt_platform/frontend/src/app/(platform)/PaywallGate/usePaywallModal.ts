@@ -21,6 +21,12 @@ interface CheckoutResponse {
 
 const TIER_DISPLAY_ORDER: BackendTierKey[] = ["PRO", "MAX", "BUSINESS"];
 
+const PLAN_LABEL: Record<string, string> = {
+  PRO: "Pro",
+  MAX: "Max",
+  BUSINESS: "Team",
+};
+
 // Build a PlanDef per priceable tier exposed by /credits/subscription. Static
 // metadata (features / cta / highlight) is layered on top of the API-driven
 // monthly + yearly amounts, so a tier appears here iff LD has a Stripe price
@@ -52,6 +58,12 @@ export function usePaywallModal() {
     "monthly",
   );
   const [selectedTier, setSelectedTier] = useState<string | null>(null);
+  // When the user already has an active Stripe subscription (admin override
+  // flipped DB tier to NO_TIER but Stripe sub is still live), modify-in-place
+  // skips Stripe Checkout entirely — clicking Upgrade silently re-bills the
+  // saved card and looks like a no-op. Stage the target tier here and surface
+  // a confirmation dialog before firing the mutation.
+  const [pendingTier, setPendingTier] = useState<string | null>(null);
 
   const country = COUNTRIES[0];
   const isYearly = selectedCycle === "yearly";
@@ -61,16 +73,11 @@ export function usePaywallModal() {
     subscription?.tier_costs_yearly,
   );
 
-  async function handleSelectPlan(tier: string) {
-    if (isPending) return;
-    // Team (BUSINESS) is contact-sales, not a self-serve Stripe Checkout —
-    // divert to the intake form like onboarding + Settings billing do.
-    // Without this, the POST hits the backend with tier=BUSINESS which 422s
-    // (no LD price) and surfaces a generic "couldn't start checkout" toast.
-    if (tier === "BUSINESS") {
-      window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
-      return;
-    }
+  const hasActiveStripeSubscription = Boolean(
+    subscription?.has_active_stripe_subscription,
+  );
+
+  async function fireUpdate(tier: string) {
     setSelectedTier(tier);
     try {
       const baseUrl = `${window.location.origin}/profile/credits`;
@@ -100,6 +107,41 @@ export function usePaywallModal() {
     }
   }
 
+  async function handleSelectPlan(tier: string) {
+    if (isPending) return;
+    // Team (BUSINESS) is contact-sales, not a self-serve Stripe Checkout —
+    // divert to the intake form like onboarding + Settings billing do.
+    // Without this, the POST hits the backend with tier=BUSINESS which 422s
+    // (no LD price) and surfaces a generic "couldn't start checkout" toast.
+    if (tier === "BUSINESS") {
+      window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+    // Active Stripe sub → modify-in-place hits saved-card auto-charge; no
+    // Stripe Checkout opens, so the click would otherwise be a silent
+    // re-bill / refund. Stage the tier behind the confirmation dialog.
+    if (hasActiveStripeSubscription) {
+      setPendingTier(tier);
+      return;
+    }
+    await fireUpdate(tier);
+  }
+
+  async function confirmPendingTier() {
+    if (!pendingTier) return;
+    const tier = pendingTier;
+    await fireUpdate(tier);
+    setPendingTier(null);
+  }
+
+  function cancelPendingTier() {
+    setPendingTier(null);
+  }
+
+  const pendingTierLabel = pendingTier
+    ? (PLAN_LABEL[pendingTier] ?? pendingTier)
+    : null;
+
   return {
     isLoading,
     plans,
@@ -110,5 +152,9 @@ export function usePaywallModal() {
     handleSelectPlan,
     isPending,
     selectedTier,
+    pendingTier,
+    pendingTierLabel,
+    confirmPendingTier,
+    cancelPendingTier,
   };
 }

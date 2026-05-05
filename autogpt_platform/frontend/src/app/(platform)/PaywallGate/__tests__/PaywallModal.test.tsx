@@ -47,6 +47,7 @@ interface SubscriptionShape {
   tier_costs_yearly?: Record<string, number>;
   monthly_cost?: number;
   proration_credit_cents?: number;
+  has_active_stripe_subscription?: boolean;
 }
 
 function setupMocks({
@@ -301,6 +302,105 @@ describe("PaywallModal — upgrade mutation", () => {
       expect(mockToast).toHaveBeenCalledTimes(1);
     });
     expect(window.location.href).toBe("");
+  });
+});
+
+describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () => {
+  const originalLocation = window.location;
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+  });
+
+  function stubLocation() {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: { origin: "https://app.test", href: "" },
+    });
+  }
+
+  it("staging gate: clicking Upgrade with active Stripe sub opens confirm dialog and skips mutation", () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+      } as SubscriptionShape,
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    // Confirmation dialog text surfaces; mutation has NOT fired yet.
+    expect(
+      screen.getByText(
+        /current Stripe subscription will be modified — you may be charged or refunded/i,
+      ),
+    ).toBeDefined();
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
+
+  it("confirming the dialog fires the upgrade mutation", async () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        has_active_stripe_subscription: true,
+      } as SubscriptionShape,
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /switch to pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
+    const [args] = mutateFn.mock.calls[0];
+    expect(args.data.tier).toBe("PRO");
+  });
+
+  it("cancelling the dialog leaves the user on the paywall and does not fire", () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        has_active_stripe_subscription: true,
+      } as SubscriptionShape,
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
+
+  it("no active Stripe sub: clicking Upgrade fires the mutation directly (Checkout flow)", async () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        has_active_stripe_subscription: false,
+      } as SubscriptionShape,
+    });
+
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+
+    await waitFor(() => {
+      expect(mutateFn).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

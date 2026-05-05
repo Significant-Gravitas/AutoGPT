@@ -2041,8 +2041,8 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
 @cached(ttl_seconds=30, maxsize=512, cache_none=True, shared_cache=True)
 async def get_pending_subscription_change(
     user_id: str,
-) -> tuple[SubscriptionTier, datetime] | None:
-    """Return ``(pending_tier, effective_at)`` when a change is queued, else ``None``.
+) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
+    """Return ``(pending_tier, effective_at, pending_cycle)`` when a change is queued, else ``None``.
 
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
     and ``cancel_at_period_end=True`` (paid→BASIC cancel).
@@ -2084,14 +2084,20 @@ async def get_pending_subscription_change(
     )
     # Gather monthly + yearly price IDs so a schedule whose next phase points
     # at a yearly price still resolves to the correct tier.
-    prices = await asyncio.gather(
-        *[get_subscription_price_id(t, "monthly") for t in priceable],
-        *[get_subscription_price_id(t, "yearly") for t in priceable],
+    monthly_prices, yearly_prices = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in priceable]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in priceable]),
     )
     price_to_tier: dict[str, SubscriptionTier] = {}
-    for t, pid in zip(priceable + priceable, prices):
+    price_to_cycle: dict[str, BillingCycle] = {}
+    for t, pid in zip(priceable, monthly_prices):
         if pid:
             price_to_tier[pid] = t
+            price_to_cycle[pid] = "monthly"
+    for t, pid in zip(priceable, yearly_prices):
+        if pid:
+            price_to_tier[pid] = t
+            price_to_cycle[pid] = "yearly"
     if not price_to_tier:
         logger.warning(
             "get_pending_subscription_change: no Stripe price IDs resolvable for"
@@ -2110,19 +2116,25 @@ async def get_pending_subscription_change(
         return None
     effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
     if sub.cancel_at_period_end:
-        return SubscriptionTier.NO_TIER, effective_at
+        return SubscriptionTier.NO_TIER, effective_at, None
     if not sub.schedule:
         return None
     schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
     schedule = await stripe.SubscriptionSchedule.retrieve_async(schedule_id)
-    return _next_phase_tier_and_start(schedule, price_to_tier)
+    return _next_phase_tier_and_start(schedule, price_to_tier, price_to_cycle)
 
 
 def _next_phase_tier_and_start(
     schedule: stripe.SubscriptionSchedule,
     price_to_tier: dict[str, SubscriptionTier],
-) -> tuple[SubscriptionTier, datetime] | None:
-    """Return (tier, start_datetime) of the phase that follows the active one.
+    price_to_cycle: dict[str, BillingCycle],
+) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
+    """Return ``(tier, start_datetime, billing_cycle)`` of the phase following the active one.
+
+    ``billing_cycle`` is the cycle of the next-phase price (``"monthly"``/``"yearly"``)
+    when resolvable, ``None`` for unconfigured/legacy prices. Same-tier yearly→monthly
+    schedules need this so the UI can distinguish a cycle-only change (where
+    ``pending_tier == current_tier``) from a real tier downgrade.
 
     Using the phase's own ``start_date`` (not the subscription's current_period_end)
     is correct even for schedules created outside this flow — a dashboard-authored
@@ -2139,8 +2151,10 @@ def _next_phase_tier_and_start(
         price = items[0].price
         price_id = price if isinstance(price, str) else price.id
         if price_id in price_to_tier:
-            return price_to_tier[price_id], datetime.fromtimestamp(
-                phase.start_date, tz=timezone.utc
+            return (
+                price_to_tier[price_id],
+                datetime.fromtimestamp(phase.start_date, tz=timezone.utc),
+                price_to_cycle.get(price_id),
             )
         logger.warning(
             "next_phase_tier_and_start: unknown price %s on schedule %s",

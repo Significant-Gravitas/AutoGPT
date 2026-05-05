@@ -78,7 +78,9 @@ export function YourPlanCard({ index = 0 }: Props) {
               variant="success"
               size="small"
               className={
-                plan.isPendingCancel || plan.isPendingDowngrade
+                plan.isPendingCancel ||
+                plan.isPendingDowngrade ||
+                plan.isPendingCycleSwitch
                   ? "bg-amber-100 text-amber-800"
                   : "bg-violet-100 text-violet-800"
               }
@@ -89,7 +91,9 @@ export function YourPlanCard({ index = 0 }: Props) {
                   ? "Cancellation scheduled"
                   : plan.isPendingDowngrade
                     ? "Downgrade scheduled"
-                    : "Active"}
+                    : plan.isPendingCycleSwitch
+                      ? "Cycle switch scheduled"
+                      : "Active"}
             </Badge>
             {isCycleToggleVisible ? (
               <CycleToggle
@@ -107,15 +111,26 @@ export function YourPlanCard({ index = 0 }: Props) {
                 ? ` · Ends on ${formatShortDate(plan.pendingEffectiveAt)}`
                 : plan.isPendingDowngrade && plan.pendingEffectiveAt
                   ? ` · Switches to ${plan.pendingTierLabel} on ${formatShortDate(plan.pendingEffectiveAt)}`
-                  : plan.currentPeriodEnd
-                    ? ` · Renews on ${formatShortDate(plan.currentPeriodEnd * 1000)}`
-                    : null}
+                  : plan.isPendingCycleSwitch && plan.pendingEffectiveAt
+                    ? ` · Active until ${formatShortDate(plan.pendingEffectiveAt)}`
+                    : plan.currentPeriodEnd
+                      ? ` · Renews on ${formatShortDate(plan.currentPeriodEnd * 1000)}`
+                      : null}
             </Text>
           ) : (
             <Text variant="body" as="span" className="text-zinc-700">
               Pick a plan to continue using AutoGPT.
             </Text>
           )}
+          {plan.isPaidPlan &&
+          plan.isPendingCycleSwitch &&
+          plan.pendingEffectiveAt &&
+          plan.pendingCycle ? (
+            <Text variant="small" as="span" className="text-zinc-500">
+              Switching to {plan.pendingCycle} {plan.label} on{" "}
+              {formatShortDate(plan.pendingEffectiveAt)} · No charge today
+            </Text>
+          ) : null}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -129,7 +144,9 @@ export function YourPlanCard({ index = 0 }: Props) {
             >
               {plan.isPendingCancel
                 ? "Resume subscription"
-                : "Cancel downgrade"}
+                : plan.isPendingCycleSwitch
+                  ? "Cancel cycle switch"
+                  : "Cancel downgrade"}
             </Button>
           ) : null}
           {canDowngrade && plan.previousTierLabel ? (
