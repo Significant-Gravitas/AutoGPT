@@ -81,6 +81,12 @@ export function useYourPlanCard() {
     useState<SubscriptionTierRequestBillingCycle>(serverCycle);
   const [pendingCycle, setPendingCycle] =
     useState<SubscriptionTierRequestBillingCycle | null>(null);
+  // Tier upgrades on a paid plan run through always_invoice immediate billing
+  // — without a confirmation step the user is silently charged a large
+  // prorated amount on a single click. Stage the target tier here and only
+  // fire the mutation after the SwitchTierDialog confirms.
+  const [pendingTierUpgrade, setPendingTierUpgrade] =
+    useState<SubscriptionTierRequestTier | null>(null);
 
   // Re-sync local toggle when the server response updates (e.g. after refetch
   // post-mutation). Avoids stale "yearly" pill after a successful switch.
@@ -304,6 +310,39 @@ export function useYourPlanCard() {
       .join(" ");
   }
 
+  function getTierUpgradeDialogBody(): string {
+    if (!pendingTierUpgrade) return "";
+    const targetCents =
+      serverCycle === "yearly"
+        ? tierCostsYearly[pendingTierUpgrade]
+        : tierCosts[pendingTierUpgrade];
+    const newPrice =
+      typeof targetCents === "number" ? formatCents(targetCents) : "";
+    const cycleNoun = serverCycle === "yearly" ? "yearly" : "monthly";
+    const cycleUnit = serverCycle === "yearly" ? "year" : "month";
+    const renewLine = newPrice
+      ? `After this period, your plan renews at ${newPrice} per ${cycleUnit}.`
+      : "";
+    return [
+      `You'll be charged the prorated difference immediately for the rest of your ${cycleNoun} period.`,
+      renewLine,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  async function confirmTierUpgrade() {
+    if (!pendingTierUpgrade) return;
+    const target = pendingTierUpgrade;
+    const ok = await changeTier(target, serverCycle);
+    setPendingTierUpgrade(null);
+    if (!ok) return;
+  }
+
+  function cancelTierUpgrade() {
+    setPendingTierUpgrade(null);
+  }
+
   return {
     plan,
     isLoading: subscription.isLoading,
@@ -325,13 +364,22 @@ export function useYourPlanCard() {
     canResume: Boolean(plan?.isPendingCancel || plan?.isPendingDowngrade),
     selectedCycle,
     pendingCycle,
+    pendingTierUpgrade,
+    pendingTierUpgradeLabel: pendingTierUpgrade
+      ? (PLAN_LABEL[pendingTierUpgrade] ?? pendingTierUpgrade)
+      : null,
     isCycleToggleVisible,
     cycleDialogBody: getDialogBody(),
+    tierUpgradeDialogBody: getTierUpgradeDialogBody(),
     onCycleChange,
     onConfirmCycleSwitch: () => {
       void confirmCycleSwitch();
     },
     onCancelCycleSwitch: cancelCycleSwitch,
+    onConfirmTierUpgrade: () => {
+      void confirmTierUpgrade();
+    },
+    onCancelTierUpgrade: cancelTierUpgrade,
     onUpgrade: () => {
       if (!plan?.nextTier) return;
       // Team (BUSINESS) tier is contact-sales — divert to marketing page
@@ -340,7 +388,15 @@ export function useYourPlanCard() {
         window.open(TEAM_UPGRADE_URL, "_blank", "noopener,noreferrer");
         return;
       }
-      void changeTier(plan.nextTier, selectedCycle);
+      // Free tier (NO_TIER) flow runs through Stripe Checkout via the
+      // success_url redirect — there's no immediate proration risk, so go
+      // straight to changeTier without a confirm step. Only paid→paid
+      // upgrades hit the always_invoice immediate-billing path.
+      if (!plan.isPaidPlan) {
+        void changeTier(plan.nextTier, selectedCycle);
+        return;
+      }
+      setPendingTierUpgrade(plan.nextTier);
     },
     onDowngrade: () => {
       void downgradeSubscription();

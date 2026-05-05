@@ -1880,6 +1880,22 @@ async def modify_stripe_subscription_for_tier(
             await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
             return True
 
+        # Same-tier yearly→monthly is a cycle *downgrade*: the user is moving
+        # from a longer commitment to a shorter one. Route it through the
+        # period-end schedule so the dialog promise ("no charge today, switch
+        # at end of yearly period") actually holds. Same-tier monthly→yearly
+        # stays on the immediate proration path below — the user is committing
+        # to more time, immediate billing is the correct semantic.
+        if current_tier == tier:
+            current_price = items[0].price
+            current_price_id = (
+                current_price if isinstance(current_price, str) else current_price.id
+            )
+            current_cycle = await _resolve_cycle_for_price_id(current_price_id)
+            if current_cycle == "yearly" and billing_cycle == "monthly":
+                await _schedule_downgrade_at_period_end(sub, price_id, user_id, tier)
+                return True
+
         # Upgrade path. If a schedule is attached from a previous pending
         # downgrade, release it first — an upgrade expresses the user's
         # intent to be on this tier immediately, which overrides any pending
@@ -2141,6 +2157,34 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.top_up_config)
+
+
+async def _resolve_cycle_for_price_id(price_id: str | None) -> BillingCycle | None:
+    """Map a Stripe price ID back to its billing cycle via the LD price flag.
+
+    Used by ``modify_stripe_subscription_for_tier`` to detect a same-tier
+    cycle change (yearly→monthly downgrade vs monthly→yearly upgrade) before
+    deciding between the immediate-proration path and the period-end schedule.
+    Returns None when the price ID isn't configured for any tier+cycle (legacy
+    or unconfigured price), which keeps the caller on the upgrade path.
+    """
+    if not price_id:
+        return None
+    priceable = (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    )
+    monthly_prices, yearly_prices = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in priceable]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in priceable]),
+    )
+    if price_id in monthly_prices:
+        return "monthly"
+    if price_id in yearly_prices:
+        return "yearly"
+    return None
 
 
 def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:

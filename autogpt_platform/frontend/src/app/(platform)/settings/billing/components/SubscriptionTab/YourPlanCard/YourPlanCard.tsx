@@ -15,6 +15,7 @@ import {
 } from "../../../helpers";
 import { CycleToggle } from "./CycleToggle";
 import { SwitchCycleDialog } from "./SwitchCycleDialog";
+import { SwitchTierDialog } from "./SwitchTierDialog";
 import { useYourPlanCard } from "./useYourPlanCard";
 
 interface Props {
@@ -33,11 +34,16 @@ export function YourPlanCard({ index = 0 }: Props) {
     canResume,
     selectedCycle,
     pendingCycle,
+    pendingTierUpgrade,
+    pendingTierUpgradeLabel,
     isCycleToggleVisible,
     cycleDialogBody,
+    tierUpgradeDialogBody,
     onCycleChange,
     onConfirmCycleSwitch,
     onCancelCycleSwitch,
+    onConfirmTierUpgrade,
+    onCancelTierUpgrade,
     onUpgrade,
     onDowngrade,
     onResume,
@@ -180,6 +186,19 @@ export function YourPlanCard({ index = 0 }: Props) {
           body={cycleDialogBody}
           isSaving={isUpdatingTier}
           onConfirm={onConfirmCycleSwitch}
+        />
+      ) : null}
+
+      {pendingTierUpgrade && pendingTierUpgradeLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTierUpgrade !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelTierUpgrade();
+          }}
+          targetTierLabel={pendingTierUpgradeLabel}
+          body={tierUpgradeDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmTierUpgrade}
         />
       ) : null}
     </motion.section>
