@@ -901,8 +901,11 @@ def _is_empty_assistant_entry(entry: dict | None) -> bool:
         if not isinstance(block, dict):
             return False
         btype = block.get("type")
-        if btype == "thinking":
-            continue  # thinking-only counts as empty for our purposes
+        # Both ``thinking`` and ``redacted_thinking`` (Anthropic's encrypted
+        # thinking variant for safety-redacted content) count as empty for
+        # role-alternation purposes — neither carries a user-visible answer.
+        if btype in ("thinking", "redacted_thinking"):
+            continue
         if btype == "text" and not (block.get("text") or "").strip():
             continue
         return False

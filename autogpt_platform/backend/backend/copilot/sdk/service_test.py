@@ -1337,6 +1337,32 @@ class TestStripSyntheticReprompt:
         # Only synth was dropped; the text-bearing assistant stays.
         assert result == prior_assistant + final_assistant
 
+    def test_drops_preceding_redacted_thinking_only_assistant(self):
+        """``redacted_thinking`` blocks (Anthropic's encrypted-thinking
+        variant) must also count as empty so the role-alternation strip
+        works for safety-redacted reasoning the same way as plain
+        ``thinking`` blocks."""
+        prior_user = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"hi"}]}}\n'
+        )
+        redacted_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"redacted_thinking","data":"opaque-blob"}]}}\n'
+        )
+        synth = (
+            b'{"type":"user","message":{"role":"user","content":'
+            b'[{"type":"text","text":"' + _THINKING_ONLY_REPROMPT.encode() + b'"}]}}\n'
+        )
+        final_assistant = (
+            b'{"type":"assistant","message":{"role":"assistant","content":'
+            b'[{"type":"text","text":"final reply"}]}}\n'
+        )
+        result = _strip_synthetic_reprompt_from_cli_jsonl(
+            prior_user + redacted_assistant + synth + final_assistant
+        )
+        assert result == prior_user + final_assistant
+
 
 class TestConsumeSdkUntilDone:
     """Integration coverage for the extracted SDK consume loop.
