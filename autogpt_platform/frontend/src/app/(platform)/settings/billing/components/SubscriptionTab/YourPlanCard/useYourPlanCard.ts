@@ -138,8 +138,10 @@ export function useYourPlanCard() {
       }
     : undefined;
 
-  // ENTERPRISE seats are admin-managed; cycle toggle hidden entirely.
-  const isCycleToggleVisible = effectiveTier !== "ENTERPRISE";
+  // ENTERPRISE seats are admin-managed; BASIC is a reserved internal slot
+  // (no Stripe sub, no upgrade target) — neither has a user-manageable cycle.
+  const isCycleToggleVisible =
+    effectiveTier !== "ENTERPRISE" && effectiveTier !== "BASIC";
 
   async function changeTier(
     tier: SubscriptionTierRequestTier,

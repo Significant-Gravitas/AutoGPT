@@ -328,6 +328,25 @@ describe("YourPlanCard cycle toggle", () => {
     await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
   });
 
+  it("hides the cycle toggle entirely for BASIC tier", async () => {
+    // BASIC is a reserved internal slot (no Stripe sub, no upgrade target);
+    // showing a cycle toggle would imply user-manageable billing.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BASIC",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
   it("downgrade preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
