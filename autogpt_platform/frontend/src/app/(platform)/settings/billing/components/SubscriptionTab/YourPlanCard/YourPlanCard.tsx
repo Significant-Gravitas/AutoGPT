@@ -36,14 +36,19 @@ export function YourPlanCard({ index = 0 }: Props) {
     pendingCycle,
     pendingTierUpgrade,
     pendingTierUpgradeLabel,
+    pendingTierDowngrade,
+    pendingTierDowngradeLabel,
     isCycleToggleVisible,
     cycleDialogBody,
     tierUpgradeDialogBody,
+    tierDowngradeDialogBody,
     onCycleChange,
     onConfirmCycleSwitch,
     onCancelCycleSwitch,
     onConfirmTierUpgrade,
     onCancelTierUpgrade,
+    onConfirmTierDowngrade,
+    onCancelTierDowngrade,
     onUpgrade,
     onDowngrade,
     onResume,
@@ -131,6 +136,13 @@ export function YourPlanCard({ index = 0 }: Props) {
               {formatShortDate(plan.pendingEffectiveAt)} · No charge today
             </Text>
           ) : null}
+          {plan.stripeCustomerBalanceCents > 0 ? (
+            <Text variant="small" as="span" className="text-zinc-500">
+              Stripe credit on file:{" "}
+              {formatCents(plan.stripeCustomerBalanceCents)} (auto-applied to
+              your next invoice)
+            </Text>
+          ) : null}
         </div>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -216,6 +228,21 @@ export function YourPlanCard({ index = 0 }: Props) {
           body={tierUpgradeDialogBody}
           isSaving={isUpdatingTier}
           onConfirm={onConfirmTierUpgrade}
+        />
+      ) : null}
+
+      {pendingTierDowngrade && pendingTierDowngradeLabel ? (
+        <SwitchTierDialog
+          isOpen={pendingTierDowngrade !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelTierDowngrade();
+          }}
+          targetTierLabel={pendingTierDowngradeLabel}
+          title={`Downgrade to ${pendingTierDowngradeLabel}?`}
+          confirmLabel={`Downgrade to ${pendingTierDowngradeLabel}`}
+          body={tierDowngradeDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmTierDowngrade}
         />
       ) : null}
     </motion.section>

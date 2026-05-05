@@ -138,6 +138,50 @@ describe("YourPlanCard", () => {
     ).toBeDefined();
   });
 
+  it("renders the Stripe credit-on-file line when balance > 0", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
+        status: "active",
+        stripe_customer_balance_cents: 1234,
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(
+      await screen.findByText(
+        /Stripe credit on file: \$12\.34 \(auto-applied to your next invoice\)/i,
+      ),
+    ).toBeDefined();
+  });
+
+  it("hides the Stripe credit-on-file line when balance = 0", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        has_active_stripe_subscription: true,
+        status: "active",
+        stripe_customer_balance_cents: 0,
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    // Wait for the card to settle on the loaded state before asserting absence.
+    expect(await screen.findByText("Pro")).toBeDefined();
+    expect(screen.queryByText(/Stripe credit on file/i)).toBeNull();
+  });
+
   it("renders the 'no active subscription' state for NO_TIER users", async () => {
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
@@ -423,6 +467,116 @@ describe("YourPlanCard cycle toggle", () => {
     expect(mutationFired).toBe(false);
   });
 
+  it("clicking Downgrade to Pro opens a confirmation dialog with end-of-period copy", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+        current_period_end: 1900000000,
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+
+    expect(await screen.findByText(/Downgrade to Pro\?/i)).toBeDefined();
+    expect(
+      screen.getByText(/until .* then switch to Pro\. No charge today\./i),
+    ).toBeDefined();
+    expect(mutationFired).toBe(false);
+  });
+
+  it("confirming the downgrade dialog fires updateTier with prevTier + serverCycle", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 326400,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+
+    const confirmInDialog = await screen.findAllByRole("button", {
+      name: /downgrade to pro/i,
+    });
+    // Two buttons share the label: the card's trigger + the dialog's confirm.
+    fireEvent.click(confirmInDialog[confirmInDialog.length - 1]);
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("cancelling the downgrade dialog leaves no mutation fired", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "MAX",
+        monthly_cost: 32000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /downgrade to pro/i }),
+    );
+    expect(await screen.findByText(/Downgrade to Pro\?/i)).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Downgrade to Pro\?/i)).toBeNull(),
+    );
+    expect(mutationFired).toBe(false);
+  });
+
   it("NO_TIER user clicking Get Pro skips the confirmation dialog (Stripe Checkout flow)", async () => {
     let mutationFired = false;
     server.use(
@@ -510,6 +664,13 @@ describe("YourPlanCard cycle toggle", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /downgrade to pro/i }),
     );
+    // Downgrade now goes through a confirm dialog (symmetric with upgrade).
+    // Two buttons share the label: the card's trigger + the dialog's confirm —
+    // confirm is the second one in DOM order.
+    const confirmInDialog = await screen.findAllByRole("button", {
+      name: /downgrade to pro/i,
+    });
+    fireEvent.click(confirmInDialog[confirmInDialog.length - 1]);
 
     await waitFor(() => {
       expect(capturedBody).not.toBeNull();

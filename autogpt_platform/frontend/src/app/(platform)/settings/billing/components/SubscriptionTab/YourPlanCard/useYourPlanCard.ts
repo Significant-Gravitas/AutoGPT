@@ -87,6 +87,11 @@ export function useYourPlanCard() {
   // fire the mutation after the SwitchTierDialog confirms.
   const [pendingTierUpgrade, setPendingTierUpgrade] =
     useState<SubscriptionTierRequestTier | null>(null);
+  // Downgrade is end-of-period (no charge today) so the risk is lower than
+  // upgrade, but we still gate behind a confirm dialog so the user gets
+  // explicit feedback that the action took effect.
+  const [pendingTierDowngrade, setPendingTierDowngrade] =
+    useState<SubscriptionTierRequestTier | null>(null);
 
   // Re-sync local toggle when the server response updates (e.g. after refetch
   // post-mutation). Avoids stale "yearly" pill after a successful switch.
@@ -148,6 +153,9 @@ export function useYourPlanCard() {
           ? (PLAN_LABEL[previousTierKey] ?? previousTierKey)
           : null,
         currentPeriodEnd: subscription.data.current_period_end ?? null,
+        stripeCustomerBalanceCents:
+          (subscription.data as { stripe_customer_balance_cents?: number })
+            .stripe_customer_balance_cents ?? 0,
         pendingTier,
         pendingTierLabel: pendingTier
           ? (PLAN_LABEL[pendingTier] ?? pendingTier)
@@ -365,6 +373,30 @@ export function useYourPlanCard() {
     setPendingTierUpgrade(null);
   }
 
+  function getTierDowngradeDialogBody(): string {
+    if (!pendingTierDowngrade || !plan) return "";
+    const targetLabel =
+      PLAN_LABEL[pendingTierDowngrade] ?? pendingTierDowngrade;
+    const cycleNoun = serverCycle === "yearly" ? "yearly" : "monthly";
+    const periodEnd = plan.currentPeriodEnd
+      ? formatShortDate(plan.currentPeriodEnd * 1000)
+      : null;
+    if (periodEnd) {
+      return `You'll keep ${plan.label} (${cycleNoun}) until ${periodEnd}, then switch to ${targetLabel}. No charge today.`;
+    }
+    return `Your plan will switch to ${targetLabel} at the close of the current billing period. No charge today.`;
+  }
+
+  async function confirmTierDowngrade() {
+    if (!pendingTierDowngrade) return;
+    setPendingTierDowngrade(null);
+    await downgradeSubscription();
+  }
+
+  function cancelTierDowngrade() {
+    setPendingTierDowngrade(null);
+  }
+
   return {
     plan,
     isLoading: subscription.isLoading,
@@ -398,9 +430,14 @@ export function useYourPlanCard() {
     pendingTierUpgradeLabel: pendingTierUpgrade
       ? (PLAN_LABEL[pendingTierUpgrade] ?? pendingTierUpgrade)
       : null,
+    pendingTierDowngrade,
+    pendingTierDowngradeLabel: pendingTierDowngrade
+      ? (PLAN_LABEL[pendingTierDowngrade] ?? pendingTierDowngrade)
+      : null,
     isCycleToggleVisible,
     cycleDialogBody: getDialogBody(),
     tierUpgradeDialogBody: getTierUpgradeDialogBody(),
+    tierDowngradeDialogBody: getTierDowngradeDialogBody(),
     onCycleChange,
     onConfirmCycleSwitch: () => {
       void confirmCycleSwitch();
@@ -410,6 +447,10 @@ export function useYourPlanCard() {
       void confirmTierUpgrade();
     },
     onCancelTierUpgrade: cancelTierUpgrade,
+    onConfirmTierDowngrade: () => {
+      void confirmTierDowngrade();
+    },
+    onCancelTierDowngrade: cancelTierDowngrade,
     onUpgrade: () => {
       if (!plan?.nextTier) return;
       // Team (BUSINESS) tier is contact-sales — divert to marketing page
@@ -429,7 +470,8 @@ export function useYourPlanCard() {
       setPendingTierUpgrade(plan.nextTier);
     },
     onDowngrade: () => {
-      void downgradeSubscription();
+      if (!plan?.previousTier) return;
+      setPendingTierDowngrade(plan.previousTier);
     },
     onResume: () => {
       void resumeSubscription();

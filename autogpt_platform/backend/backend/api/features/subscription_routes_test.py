@@ -132,6 +132,18 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         new_callable=AsyncMock,
         return_value=1_900_000_000,
     )
+    # Default Stripe customer-balance lookup to a zero-balance customer so the
+    # helper exercised by GET /credits/subscription returns 0 without making
+    # a real API call. Stub at the stripe boundary (not the helper itself) so
+    # the helper's sign-flipping + None-customer short-circuit logic is still
+    # covered end-to-end by balance-specific tests below.
+    default_customer = Mock()
+    default_customer.balance = 0
+    mocker.patch(
+        "backend.api.features.v1.stripe.Customer.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=default_customer,
+    )
 
 
 @pytest.mark.parametrize(
@@ -2199,3 +2211,164 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     assert data["url"] == "https://checkout.example.com/sess_admingranted"
     release_mock.assert_not_awaited()
     checkout_mock.assert_awaited_once()
+
+
+def test_get_subscription_status_includes_stripe_customer_balance(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """GET /credits/subscription surfaces the user's Stripe credit-on-file.
+
+    Stripe stores credits as a negative customer.balance in cents. The
+    endpoint flips the sign so the response always exposes a positive cents
+    figure to the frontend (or 0 when the user has no usable credit).
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+    mock_user.stripe_customer_id = "cus_test_balance"
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_active_subscription_period_end",
+        new_callable=AsyncMock,
+        return_value=1_900_000_000,
+    )
+
+    # Stripe customer with $12.34 of credit on file (stored as -1234 cents).
+    stripe_customer = Mock()
+    stripe_customer.balance = -1234
+
+    retrieve_mock = mocker.patch(
+        "backend.api.features.v1.stripe.Customer.retrieve_async",
+        new_callable=AsyncMock,
+        return_value=stripe_customer,
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    # Sign flipped: negative Stripe balance → positive credit on the response.
+    assert data["stripe_customer_balance_cents"] == 1234
+    retrieve_mock.assert_awaited_once_with("cus_test_balance")
+
+
+def test_get_subscription_status_stripe_balance_falls_back_to_zero_on_error(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Stripe outage during balance lookup must not fail the page.
+
+    The Stripe API call is best-effort: a StripeError downgrades the field to
+    0 rather than propagating a 5xx — GET /credits/subscription is the
+    settings page's primary fetch and must survive a transient Stripe
+    incident.
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+    mock_user.stripe_customer_id = "cus_test_outage"
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_active_subscription_period_end",
+        new_callable=AsyncMock,
+        return_value=1_900_000_000,
+    )
+    mocker.patch(
+        "backend.api.features.v1.stripe.Customer.retrieve_async",
+        new_callable=AsyncMock,
+        side_effect=stripe.StripeError("transient outage"),
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["stripe_customer_balance_cents"] == 0
+
+
+def test_get_subscription_status_balance_zero_when_no_stripe_customer(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Users without a Stripe customer record skip the API call entirely.
+
+    Calling stripe.Customer.retrieve_async with None would raise; the helper
+    short-circuits to 0 instead.
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.NO_TIER
+    mock_user.stripe_customer_id = None
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_proration_credit_cents",
+        new_callable=AsyncMock,
+        return_value=0,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_pending_subscription_change",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_active_subscription_period_end",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    retrieve_mock = mocker.patch(
+        "backend.api.features.v1.stripe.Customer.retrieve_async",
+        new_callable=AsyncMock,
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    assert response.json()["stripe_customer_balance_cents"] == 0
+    retrieve_mock.assert_not_awaited()
