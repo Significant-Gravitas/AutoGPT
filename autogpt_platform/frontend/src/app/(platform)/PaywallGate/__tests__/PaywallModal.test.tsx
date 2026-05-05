@@ -110,7 +110,8 @@ describe("PaywallModal — dynamic plan rendering", () => {
 
     expect(screen.getByText("Pro")).toBeDefined();
     expect(screen.getByText("Max")).toBeDefined();
-    expect(screen.getByText("Business")).toBeDefined();
+    // BUSINESS is rendered as "Team" — contact-sales tier label.
+    expect(screen.getByText("Team")).toBeDefined();
   });
 
   it("hides cards for tiers absent from tier_costs (LD-hidden tier)", () => {
@@ -252,6 +253,31 @@ describe("PaywallModal — upgrade mutation", () => {
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/c/test");
     });
+  });
+
+  it("Team (BUSINESS) opens the contact-sales intake form instead of firing updateTier", async () => {
+    stubLocation();
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "NO_TIER",
+        // Including BUSINESS in tier_costs so the card renders; click should
+        // still divert to the intake form rather than POSTing to /credits/subscription.
+        tier_costs: { PRO: 5000, MAX: 32000, BUSINESS: 50000 },
+      },
+    });
+
+    render(<PaywallModal />);
+
+    // BUSINESS card renders the "Talk to sales" CTA per PLAN_METADATA.
+    fireEvent.click(screen.getByRole("button", { name: /talk to sales/i }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("tally.so"),
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(mutateFn).not.toHaveBeenCalled();
   });
 
   it("422 from updateTier surfaces a toast and does not redirect", async () => {

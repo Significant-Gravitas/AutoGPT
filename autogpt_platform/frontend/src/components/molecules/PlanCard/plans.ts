@@ -141,7 +141,7 @@ export const PLAN_METADATA: Record<
   },
   BUSINESS: {
     key: PLAN_KEYS.BUSINESS,
-    name: "Business",
+    name: "Team",
     usage: null,
     description:
       "For teams and heavy workloads that need expanded capacity and controls.",
@@ -152,7 +152,9 @@ export const PLAN_METADATA: Record<
       "Advanced security & compliance options",
       "Dedicated account contact",
     ],
-    cta: "Upgrade to Business",
+    // Team is contact-sales — the click handler diverts to TEAM_INTAKE_FORM_URL
+    // rather than POSTing to /credits/subscription, so the CTA reflects that.
+    cta: "Talk to sales",
     highlighted: false,
     badge: null,
     buttonVariant: "secondary",

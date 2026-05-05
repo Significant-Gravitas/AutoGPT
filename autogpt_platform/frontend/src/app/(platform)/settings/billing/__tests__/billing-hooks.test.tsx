@@ -647,8 +647,16 @@ describe("useYourPlanCard", () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.canUpgrade).toBe(true);
 
+    // Paid → paid upgrade now stages a confirmation dialog before firing the
+    // mutation (silent prorated charge guard). onUpgrade only sets pending
+    // state; onConfirmTierUpgrade fires the actual updateTier call.
     await act(async () => {
       result.current.onUpgrade();
+    });
+    await waitFor(() => expect(result.current.pendingTierUpgrade).toBe("MAX"));
+
+    await act(async () => {
+      await result.current.onConfirmTierUpgrade();
     });
 
     await waitFor(() => expect(capturedTier).toBe("MAX"));

@@ -12,6 +12,7 @@ import {
   type BackendTierKey,
   PLAN_METADATA,
   type PlanDef,
+  TEAM_INTAKE_FORM_URL,
 } from "@/components/molecules/PlanCard/plans";
 
 interface CheckoutResponse {
@@ -62,6 +63,14 @@ export function usePaywallModal() {
 
   async function handleSelectPlan(tier: string) {
     if (isPending) return;
+    // Team (BUSINESS) is contact-sales, not a self-serve Stripe Checkout —
+    // divert to the intake form like onboarding + Settings billing do.
+    // Without this, the POST hits the backend with tier=BUSINESS which 422s
+    // (no LD price) and surfaces a generic "couldn't start checkout" toast.
+    if (tier === "BUSINESS") {
+      window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
     setSelectedTier(tier);
     try {
       const baseUrl = `${window.location.origin}/profile/credits`;
