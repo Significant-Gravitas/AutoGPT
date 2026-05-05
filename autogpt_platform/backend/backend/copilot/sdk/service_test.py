@@ -1329,3 +1329,27 @@ class TestResolveDynamicMaxBudgetUsd:
         ):
             result = await _resolve_dynamic_max_budget_usd("u-1")
         assert result == 10.0
+
+    @pytest.mark.asyncio
+    async def test_redis_brownout_falls_back_to_static_cap(self):
+        """Redis brown-out → ``get_remaining_usd_budget`` returns the
+        ``floor_usd`` we passed.  The resolver passes ``-1.0`` as a
+        sentinel and falls back to the static cap when it sees that —
+        otherwise every turn during a Redis outage would shrink to the
+        $0.50 floor instead of the configured per-query cap."""
+        with (
+            patch(
+                "backend.copilot.sdk.service.get_global_rate_limits",
+                new=AsyncMock(return_value=(10_000_000, 50_000_000, "FREE")),
+            ),
+            patch(
+                "backend.copilot.sdk.service.get_remaining_usd_budget",
+                new=AsyncMock(return_value=-1.0),
+            ),
+            patch(
+                "backend.copilot.sdk.service.config.claude_agent_max_budget_usd",
+                10.0,
+            ),
+        ):
+            result = await _resolve_dynamic_max_budget_usd("u-1")
+        assert result == 10.0

@@ -221,13 +221,20 @@ async def _resolve_dynamic_max_budget_usd(user_id: str | None) -> float:
         config.daily_cost_limit_microdollars,
         config.weekly_cost_limit_microdollars,
     )
+    # Sentinel ``-1.0`` from ``get_remaining_usd_budget`` means Redis was
+    # unavailable.  In that case fall back to the static per-query cap —
+    # we don't actually know the user is near their limit, and clamping
+    # to the floor would shrink every turn to $0.50 while Redis is in a
+    # brown-out.  The pre-turn gate already failed closed at 503 in this
+    # branch, so this defensive fallback only matters in edge paths that
+    # bypass the gate.
     remaining = await get_remaining_usd_budget(
         user_id=user_id,
         daily_cost_limit=daily_limit,
         weekly_cost_limit=weekly_limit,
-        floor_usd=_MAX_BUDGET_USD_FLOOR,
+        floor_usd=-1.0,
     )
-    if remaining == float("inf"):
+    if remaining < 0 or remaining == float("inf"):
         return static_cap
     return max(_MAX_BUDGET_USD_FLOOR, min(static_cap, remaining))
 
