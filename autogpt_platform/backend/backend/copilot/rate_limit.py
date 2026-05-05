@@ -885,7 +885,12 @@ async def _warn_if_stripe_subscription_drifts(
         current_price_id = price if isinstance(price, str) else price.id
         # Inside the try/except: an LD SDK failure here must not turn a
         # best-effort diagnostic into a 500 after the DB write committed.
-        expected_price_id = await get_subscription_price_id(new_tier)
+        # Match either cycle so a yearly subscriber on the right tier doesn't
+        # spuriously trigger the drift warning.
+        expected_monthly, expected_yearly = await asyncio.gather(
+            get_subscription_price_id(new_tier, "monthly"),
+            get_subscription_price_id(new_tier, "yearly"),
+        )
     except Exception:
         logger.debug(
             "_warn_if_stripe_subscription_drifts: drift lookup failed for"
@@ -894,19 +899,20 @@ async def _warn_if_stripe_subscription_drifts(
             exc_info=True,
         )
         return
-    if expected_price_id is not None and expected_price_id == current_price_id:
+    if current_price_id and current_price_id in (expected_monthly, expected_yearly):
         return
     logger.warning(
         "Admin tier override will drift from Stripe: user=%s admin_tier=%s"
-        " stripe_sub=%s stripe_price=%s expected_price=%s — the next"
-        " customer.subscription.updated webhook will reconcile the DB tier"
-        " back to whatever Stripe has; cancel or modify the Stripe subscription"
-        " if you intended the admin override to stick.",
+        " stripe_sub=%s stripe_price=%s expected_prices=(monthly=%s, yearly=%s)"
+        " — the next customer.subscription.updated webhook will reconcile the"
+        " DB tier back to whatever Stripe has; cancel or modify the Stripe"
+        " subscription if you intended the admin override to stick.",
         user_id,
         new_tier.value,
         sub.id,
         current_price_id,
-        expected_price_id,
+        expected_monthly,
+        expected_yearly,
     )
 
 

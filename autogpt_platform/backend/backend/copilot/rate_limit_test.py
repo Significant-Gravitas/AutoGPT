@@ -2036,3 +2036,98 @@ class TestWorkspaceStorageLimits:
         ):
             result = await get_workspace_storage_limit_bytes("user-1")
         assert result == 250 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# _warn_if_stripe_subscription_drifts — yearly billing
+# ---------------------------------------------------------------------------
+
+
+class TestWarnIfStripeSubscriptionDriftsYearly:
+    @pytest.mark.asyncio
+    async def test_yearly_subscription_does_not_log_drift(self, caplog):
+        """A user on the yearly price for their admin-set tier must NOT trigger
+        a drift warning — the drift check now matches either monthly OR yearly."""
+        from backend.copilot.rate_limit import _warn_if_stripe_subscription_drifts
+
+        mock_user = MagicMock()
+        mock_user.stripe_customer_id = "cus_yearly"
+
+        mock_sub = MagicMock()
+        mock_sub.id = "sub_yearly"
+        mock_sub["items"].data = [MagicMock(price=MagicMock(id="price_pro_yearly"))]
+
+        async def price_lookup(tier, billing_cycle="monthly"):
+            if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+                return "price_pro_monthly"
+            if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+                return "price_pro_yearly"
+            return None
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=mock_user,
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=mock_sub,
+            ),
+            patch(
+                "backend.data.credit.get_subscription_price_id",
+                side_effect=price_lookup,
+            ),
+        ):
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                await _warn_if_stripe_subscription_drifts(_USER, SubscriptionTier.PRO)
+
+        drift_records = [
+            r for r in caplog.records if "will drift from Stripe" in r.getMessage()
+        ]
+        assert drift_records == []
+
+    @pytest.mark.asyncio
+    async def test_genuine_drift_still_logs(self, caplog):
+        """When the Stripe price doesn't match either monthly or yearly for the
+        admin-set tier, the drift warning still fires."""
+        from backend.copilot.rate_limit import _warn_if_stripe_subscription_drifts
+
+        mock_user = MagicMock()
+        mock_user.stripe_customer_id = "cus_drift"
+
+        mock_sub = MagicMock()
+        mock_sub.id = "sub_drift"
+        mock_sub["items"].data = [MagicMock(price=MagicMock(id="price_max_yearly"))]
+
+        async def price_lookup(tier, billing_cycle="monthly"):
+            if tier == SubscriptionTier.PRO and billing_cycle == "monthly":
+                return "price_pro_monthly"
+            if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+                return "price_pro_yearly"
+            return None
+
+        with (
+            patch(
+                "backend.copilot.rate_limit.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=mock_user,
+            ),
+            patch(
+                "backend.data.credit._get_active_subscription",
+                new_callable=AsyncMock,
+                return_value=mock_sub,
+            ),
+            patch(
+                "backend.data.credit.get_subscription_price_id",
+                side_effect=price_lookup,
+            ),
+        ):
+            with caplog.at_level("WARNING", logger="backend.copilot.rate_limit"):
+                await _warn_if_stripe_subscription_drifts(_USER, SubscriptionTier.PRO)
+
+        drift_records = [
+            r for r in caplog.records if "will drift from Stripe" in r.getMessage()
+        ]
+        assert len(drift_records) == 1
