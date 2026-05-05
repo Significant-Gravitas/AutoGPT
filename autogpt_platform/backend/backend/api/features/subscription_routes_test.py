@@ -2179,6 +2179,15 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
         "backend.api.features.v1.release_pending_subscription_schedule",
         new_callable=AsyncMock,
     )
+    # Admin-granted user has no active Stripe sub, so the modify path returns
+    # False (no sub to mutate). Mock explicitly so the test doesn't reach the
+    # real backend.data.credit.modify_stripe_subscription_for_tier (which
+    # would try to read from Prisma + call Stripe).
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=False,
+    )
     checkout_mock = mocker.patch(
         "backend.api.features.v1.create_subscription_checkout",
         new_callable=AsyncMock,
@@ -2198,4 +2207,5 @@ def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_check
     data = response.json()
     assert data["url"] == "https://checkout.example.com/sess_admingranted"
     release_mock.assert_not_awaited()
+    modify_mock.assert_awaited_once()
     checkout_mock.assert_awaited_once()
