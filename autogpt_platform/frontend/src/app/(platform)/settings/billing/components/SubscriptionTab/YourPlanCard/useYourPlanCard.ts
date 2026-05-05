@@ -166,10 +166,14 @@ export function useYourPlanCard() {
       }
     : undefined;
 
-  // ENTERPRISE seats are admin-managed; BASIC is a reserved internal slot
-  // (no Stripe sub, no upgrade target) — neither has a user-manageable cycle.
+  // ENTERPRISE seats are admin-managed; BASIC is a reserved internal slot;
+  // NO_TIER means no active subscription. None of those have a
+  // user-manageable cycle to switch — the toggle would be dead UI.
   const isCycleToggleVisible =
-    effectiveTier !== "ENTERPRISE" && effectiveTier !== "BASIC";
+    effectiveTier !== null &&
+    effectiveTier !== "ENTERPRISE" &&
+    effectiveTier !== "BASIC" &&
+    effectiveTier !== "NO_TIER";
 
   async function changeTier(
     tier: SubscriptionTierRequestTier,

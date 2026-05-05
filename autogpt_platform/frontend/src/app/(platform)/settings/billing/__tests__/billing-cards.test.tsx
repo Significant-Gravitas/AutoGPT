@@ -594,6 +594,24 @@ describe("YourPlanCard cycle toggle", () => {
     await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
   });
 
+  it("hides the cycle toggle entirely for NO_TIER users (no active sub)", async () => {
+    // NO_TIER means no active subscription — the user has nothing to switch.
+    // The toggle would be dead UI implying functionality that doesn't apply.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "NO_TIER",
+        monthly_cost: 0,
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
   it("downgrade preserves yearly cycle (forwards billing_cycle in mutation)", async () => {
     let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
     server.use(
