@@ -983,9 +983,20 @@ async def update_subscription_tier(
     # Same-tier-DIFFERENT-cycle (monthly Pro → yearly Pro, or vice versa) must
     # fall through to modify_stripe_subscription_for_tier so Stripe swaps the
     # price ID for the cycle the user actually requested.
+    #
+    # Gate the short-circuit on an actual active/trialing Stripe subscription:
+    # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
+    # Checkout flow so "start paying for my current tier" is not a no-op.
     current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
     current_cycle = await get_user_billing_cycle(user_id) or "monthly"
-    if current_tier == tier and current_cycle == request.billing_cycle:
+    has_active_stripe_subscription = (
+        await get_active_subscription_period_end(user_id) is not None
+    )
+    if (
+        current_tier == tier
+        and current_cycle == request.billing_cycle
+        and has_active_stripe_subscription
+    ):
         try:
             await release_pending_subscription_schedule(user_id)
         except stripe.StripeError as e:

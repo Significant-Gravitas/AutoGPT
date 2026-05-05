@@ -124,6 +124,14 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         new_callable=AsyncMock,
         return_value=None,
     )
+    # Default to a non-None period_end so same-tier short-circuit tests still
+    # fire (they assume an active Stripe subscription).  Tests that exercise
+    # the admin-granted "no Stripe sub" fall-through override this to None.
+    mocker.patch(
+        "backend.api.features.v1.get_active_subscription_period_end",
+        new_callable=AsyncMock,
+        return_value=1_900_000_000,
+    )
 
 
 @pytest.mark.parametrize(
@@ -2136,3 +2144,57 @@ def test_update_subscription_tier_same_tier_same_cycle_still_releases_pending(
     assert response.status_code == 200
     release_mock.assert_awaited_once_with(TEST_USER_ID)
     modify_mock.assert_not_awaited()
+
+
+def test_update_subscription_tier_same_tier_no_stripe_sub_falls_through_to_checkout(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Admin-granted tier (DB tier set, no active Stripe subscription) posting
+    their *current* tier must fall through to the Checkout flow, not short-
+    circuit through release_pending_subscription_schedule. Otherwise "start
+    paying for my current tier" silently no-ops for these users.
+    """
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    # No active Stripe subscription — period_end is None.
+    mocker.patch(
+        "backend.api.features.v1.get_active_subscription_period_end",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    release_mock = mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        new_callable=AsyncMock,
+    )
+    checkout_mock = mocker.patch(
+        "backend.api.features.v1.create_subscription_checkout",
+        new_callable=AsyncMock,
+        return_value="https://checkout.example.com/sess_admingranted",
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["url"] == "https://checkout.example.com/sess_admingranted"
+    release_mock.assert_not_awaited()
+    checkout_mock.assert_awaited_once()
