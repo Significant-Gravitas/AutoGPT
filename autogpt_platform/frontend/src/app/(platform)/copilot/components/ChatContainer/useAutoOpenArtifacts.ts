@@ -9,12 +9,14 @@ interface UseAutoOpenArtifactsOptions {
   sessionId: string | null;
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
   isLoadingSession: boolean;
+  isArtifactsEnabled: boolean;
 }
 
 export function useAutoOpenArtifacts({
   sessionId,
   messages,
   isLoadingSession,
+  isArtifactsEnabled,
 }: UseAutoOpenArtifactsOptions) {
   const resetArtifactPanel = useCopilotUIStore(
     (state) => state.resetArtifactPanel,
@@ -53,7 +55,9 @@ export function useAutoOpenArtifacts({
 
   // Auto-open: watch messages for newly-created agent artifacts.
   useEffect(() => {
-    if (!sessionId || isLoadingSession) return;
+    if (!sessionId || isLoadingSession || !isArtifactsEnabled) return;
+
+    if (userHasClosedRef.current) return;
 
     const agentArtifacts = messages
       .flatMap((msg) => getMessageArtifacts(msg))
@@ -69,8 +73,6 @@ export function useAutoOpenArtifacts({
       return;
     }
 
-    if (userHasClosedRef.current) return;
-
     const newArtifacts = agentArtifacts.filter(
       (a) => !knownArtifactIdsRef.current.has(a.id),
     );
@@ -83,7 +85,7 @@ export function useAutoOpenArtifacts({
 
     // Open the most recently added artifact.
     openArtifact(newArtifacts[newArtifacts.length - 1]);
-  }, [sessionId, isLoadingSession, messages, openArtifact]);
+  }, [sessionId, isLoadingSession, isArtifactsEnabled, messages, openArtifact]);
 
   // Reset on unmount so navigating away from /copilot (to /profile, /home,
   // etc.) can't leave the panel open in the Zustand store, which would then

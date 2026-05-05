@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useCopilotUIStore } from "../../store";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 
+type Messages = UIMessage<unknown, UIDataTypes, UITools>[];
+
 const A_ID = "11111111-0000-0000-0000-000000000000";
 const B_ID = "22222222-0000-0000-0000-000000000000";
 const C_ID = "33333333-0000-0000-0000-000000000000";
@@ -31,7 +33,6 @@ function makeAgentMessage(
       filename: `${aid}.txt`,
       mediaType: "text/plain",
     })),
-    createdAt: new Date(),
   };
 }
 
@@ -48,7 +49,6 @@ function makeUserMessage(
       filename: `${aid}.txt`,
       mediaType: "text/plain",
     })),
-    createdAt: new Date(),
   };
 }
 
@@ -65,33 +65,25 @@ function resetStore() {
   });
 }
 
+const defaultProps = {
+  sessionId: "s1",
+  messages: [] as Messages,
+  isLoadingSession: false,
+  isArtifactsEnabled: true,
+};
+
 describe("useAutoOpenArtifacts", () => {
   beforeEach(resetStore);
-  // Testing Library auto-cleanup isn't registered in our Vitest setup, so
-  // mounted `renderHook` instances (and their unmount cleanups) would leak
-  // between tests — here the unmount effect in useAutoOpenArtifacts would
-  // fire after the next test had already run and corrupt its assertions.
   afterEach(cleanup);
 
   it("does not auto-open on initial render", () => {
-    renderHook(() =>
-      useAutoOpenArtifacts({
-        sessionId: "s1",
-        messages: [],
-        isLoadingSession: false,
-      }),
-    );
+    renderHook(() => useAutoOpenArtifacts(defaultProps));
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   it("does not auto-open when rerendering within the same session", () => {
     const { rerender } = renderHook(
-      ({ sessionId }) =>
-        useAutoOpenArtifacts({
-          sessionId,
-          messages: [],
-          isLoadingSession: false,
-        }),
+      ({ sessionId }) => useAutoOpenArtifacts({ ...defaultProps, sessionId }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -107,12 +99,7 @@ describe("useAutoOpenArtifacts", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
 
     const { rerender } = renderHook(
-      ({ sessionId }) =>
-        useAutoOpenArtifacts({
-          sessionId,
-          messages: [],
-          isLoadingSession: false,
-        }),
+      ({ sessionId }) => useAutoOpenArtifacts({ ...defaultProps, sessionId }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -131,12 +118,7 @@ describe("useAutoOpenArtifacts", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(B_ID, "b.txt"));
 
     const { rerender } = renderHook(
-      ({ sessionId }) =>
-        useAutoOpenArtifacts({
-          sessionId,
-          messages: [],
-          isLoadingSession: false,
-        }),
+      ({ sessionId }) => useAutoOpenArtifacts({ ...defaultProps, sessionId }),
       { initialProps: { sessionId: "s1" } },
     );
 
@@ -151,20 +133,11 @@ describe("useAutoOpenArtifacts", () => {
     expect(s.history).toEqual([]);
   });
 
-  // SECRT-2254: "had agent panel open then went to profile then went to home
-  // and agent panel was still open". Nav-away unmounts the copilot page; if
-  // the panel state persists in the store, coming back re-renders it open.
   it("closes the panel on unmount so nav-away → nav-back doesn't resurrect it (SECRT-2254)", () => {
     useCopilotUIStore.getState().openArtifact(makeArtifact(A_ID, "a.txt"));
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
-    const { unmount } = renderHook(() =>
-      useAutoOpenArtifacts({
-        sessionId: "s1",
-        messages: [],
-        isLoadingSession: false,
-      }),
-    );
+    const { unmount } = renderHook(() => useAutoOpenArtifacts(defaultProps));
 
     act(() => {
       unmount();
@@ -176,11 +149,7 @@ describe("useAutoOpenArtifacts", () => {
     expect(s.history).toEqual([]);
   });
 
-  // SECRT-2220: "keep closed by default" — a fresh mount (e.g. user returns to
-  // /copilot) must start with a closed panel even if the store somehow carries
-  // stale state from a prior life.
   it("does not re-open a panel whose store state is stale on fresh mount (SECRT-2220)", () => {
-    // Simulate the store being left in an open state by a previous page life.
     useCopilotUIStore.setState({
       artifactPanel: {
         isOpen: true,
@@ -192,41 +161,19 @@ describe("useAutoOpenArtifacts", () => {
       },
     });
 
-    const { unmount } = renderHook(() =>
-      useAutoOpenArtifacts({
-        sessionId: "s1",
-        messages: [],
-        isLoadingSession: false,
-      }),
-    );
+    const { unmount } = renderHook(() => useAutoOpenArtifacts(defaultProps));
     act(() => {
       unmount();
     });
 
-    // Next mount of the page should see a clean store.
-    renderHook(() =>
-      useAutoOpenArtifacts({
-        sessionId: "s1",
-        messages: [],
-        isLoadingSession: false,
-      }),
-    );
+    renderHook(() => useAutoOpenArtifacts(defaultProps));
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 
   it("auto-opens when a new agent artifact appears after the initial snapshot", () => {
     const { rerender } = renderHook(
-      ({ messages }) =>
-        useAutoOpenArtifacts({
-          sessionId: "s1",
-          messages,
-          isLoadingSession: false,
-        }),
-      {
-        initialProps: {
-          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
-        },
-      },
+      ({ messages }) => useAutoOpenArtifacts({ ...defaultProps, messages }),
+      { initialProps: { messages: [] as Messages } },
     );
 
     act(() => {
@@ -241,9 +188,8 @@ describe("useAutoOpenArtifacts", () => {
   it("does not auto-open artifacts already present at session load", () => {
     renderHook(() =>
       useAutoOpenArtifacts({
-        sessionId: "s1",
+        ...defaultProps,
         messages: [makeAgentMessage("m1", [A_ID])],
-        isLoadingSession: false,
       }),
     );
 
@@ -252,17 +198,8 @@ describe("useAutoOpenArtifacts", () => {
 
   it("does not auto-open user-uploaded artifacts", () => {
     const { rerender } = renderHook(
-      ({ messages }) =>
-        useAutoOpenArtifacts({
-          sessionId: "s1",
-          messages,
-          isLoadingSession: false,
-        }),
-      {
-        initialProps: {
-          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
-        },
-      },
+      ({ messages }) => useAutoOpenArtifacts({ ...defaultProps, messages }),
+      { initialProps: { messages: [] as Messages } },
     );
 
     act(() => {
@@ -274,17 +211,8 @@ describe("useAutoOpenArtifacts", () => {
 
   it("opens the most recent artifact when multiple new ones appear simultaneously", () => {
     const { rerender } = renderHook(
-      ({ messages }) =>
-        useAutoOpenArtifacts({
-          sessionId: "s1",
-          messages,
-          isLoadingSession: false,
-        }),
-      {
-        initialProps: {
-          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
-        },
-      },
+      ({ messages }) => useAutoOpenArtifacts({ ...defaultProps, messages }),
+      { initialProps: { messages: [] as Messages } },
     );
 
     act(() => {
@@ -300,32 +228,20 @@ describe("useAutoOpenArtifacts", () => {
 
   it("does not auto-open after the user explicitly closes the panel", () => {
     const { rerender } = renderHook(
-      ({ messages }) =>
-        useAutoOpenArtifacts({
-          sessionId: "s1",
-          messages,
-          isLoadingSession: false,
-        }),
-      {
-        initialProps: {
-          messages: [] as UIMessage<unknown, UIDataTypes, UITools>[],
-        },
-      },
+      ({ messages }) => useAutoOpenArtifacts({ ...defaultProps, messages }),
+      { initialProps: { messages: [] as Messages } },
     );
 
-    // First artifact → auto-opens.
     act(() => {
       rerender({ messages: [makeAgentMessage("m1", [A_ID])] });
     });
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
 
-    // User explicitly closes the panel.
     act(() => {
       useCopilotUIStore.getState().closeArtifactPanel();
     });
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
 
-    // Second artifact arrives — should NOT reopen.
     act(() => {
       rerender({
         messages: [
@@ -341,23 +257,21 @@ describe("useAutoOpenArtifacts", () => {
   it("does not re-trigger auto-open when isLoadingSession pulses (reconnect)", () => {
     const { rerender } = renderHook(
       ({ messages, isLoadingSession }) =>
-        useAutoOpenArtifacts({ sessionId: "s1", messages, isLoadingSession }),
+        useAutoOpenArtifacts({
+          ...defaultProps,
+          messages,
+          isLoadingSession,
+        }),
       {
         initialProps: {
-          messages: [makeAgentMessage("m1", [A_ID])] as UIMessage<
-            unknown,
-            UIDataTypes,
-            UITools
-          >[],
+          messages: [makeAgentMessage("m1", [A_ID])] as Messages,
           isLoadingSession: false,
         },
       },
     );
 
-    // Snapshot taken: A_ID is known. Panel stays closed.
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
 
-    // Simulate reconnect: isLoadingSession pulses true → false.
     act(() => {
       rerender({
         messages: [makeAgentMessage("m1", [A_ID])],
@@ -371,7 +285,81 @@ describe("useAutoOpenArtifacts", () => {
       });
     });
 
-    // A_ID was in the snapshot — must not auto-open.
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("resets close-suppression when session changes (remount)", () => {
+    const { rerender, unmount } = renderHook(
+      ({ sessionId, messages }) =>
+        useAutoOpenArtifacts({ ...defaultProps, sessionId, messages }),
+      { initialProps: { sessionId: "s1", messages: [] as Messages } },
+    );
+
+    // New artifact → opens
+    act(() => {
+      rerender({
+        sessionId: "s1",
+        messages: [makeAgentMessage("m1", [A_ID])],
+      });
+    });
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+
+    // User closes
+    act(() => {
+      useCopilotUIStore.getState().closeArtifactPanel();
+    });
+
+    // Unmount (simulates key={sessionId} remount)
+    act(() => {
+      unmount();
+    });
+    resetStore();
+
+    // Remount with new session — close suppression should be cleared
+    const { rerender: rerender2 } = renderHook(
+      ({ messages }) =>
+        useAutoOpenArtifacts({
+          ...defaultProps,
+          sessionId: "s2",
+          messages,
+        }),
+      { initialProps: { messages: [] as Messages } },
+    );
+
+    act(() => {
+      rerender2({ messages: [makeAgentMessage("m2", [B_ID])] });
+    });
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(true);
+  });
+
+  it("does not auto-open when sessionId is null", () => {
+    renderHook(() =>
+      useAutoOpenArtifacts({
+        ...defaultProps,
+        sessionId: null,
+        messages: [makeAgentMessage("m1", [A_ID])],
+      }),
+    );
+
+    expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
+  });
+
+  it("does not auto-open when artifacts feature flag is disabled", () => {
+    const { rerender } = renderHook(
+      ({ messages }) =>
+        useAutoOpenArtifacts({
+          ...defaultProps,
+          isArtifactsEnabled: false,
+          messages,
+        }),
+      { initialProps: { messages: [] as Messages } },
+    );
+
+    act(() => {
+      rerender({ messages: [makeAgentMessage("m1", [A_ID])] });
+    });
+
     expect(useCopilotUIStore.getState().artifactPanel.isOpen).toBe(false);
   });
 });

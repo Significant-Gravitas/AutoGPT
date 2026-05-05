@@ -91,7 +91,12 @@ export const ChatContainer = ({
   // open state drive layout width; an artifact generated in a stale session
   // state would otherwise shrink the chat column with no panel rendered.
   const isArtifactOpen = isArtifactsEnabled && isArtifactPanelOpen;
-  useAutoOpenArtifacts({ sessionId, messages, isLoadingSession });
+  useAutoOpenArtifacts({
+    sessionId,
+    messages,
+    isLoadingSession,
+    isArtifactsEnabled,
+  });
   // isStreaming controls the stop-button UI and routes submits to the queue
   // endpoint — the input itself must NOT be disabled during streaming so users
   // can type and queue their next message. ``isUserStopping`` force-flips
