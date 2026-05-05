@@ -3230,6 +3230,10 @@ async def _run_stream_attempt(
             # re-prompt round from spuriously appending an empty assistant
             # ChatMessage before its first text delta lands.
             acc.has_tool_results = False
+            # Reset the empty-tool-call breaker counter so a borderline
+            # round-1 streak doesn't trip prematurely on the very first
+            # re-prompt AssistantMessage.
+            loop_state.consecutive_empty_tool_calls = 0
             logger.info(
                 "%s Re-prompting model for closing summary "
                 "after thinking-only final turn",
