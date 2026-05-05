@@ -510,6 +510,119 @@ async def get_usage_status(
     )
 
 
+async def get_remaining_usd_budget(
+    user_id: str,
+    daily_cost_limit: int,
+    weekly_cost_limit: int,
+    floor_usd: float = 0.5,
+) -> float:
+    """Return the user's remaining USD spend cap for the current windows.
+
+    The result is the smaller of ``daily_remaining`` and ``weekly_remaining``
+    expressed in USD.  Used to size the SDK's per-query ``max_budget_usd``
+    so the in-CLI "wrap up gracefully" reminder fires earlier when the
+    user is close to their actual cap, and to feed the baseline path's
+    per-turn budget hint via :func:`build_budget_ctx`.
+
+    A limit of ``0`` is treated as unlimited.  Both limits unlimited →
+    ``float('inf')``.
+
+    Failure modes:
+        * Both limits unlimited → ``float('inf')`` (no Redis call).
+        * Redis brown-out → ``floor_usd`` (so callers using the value
+          as a soft hint don't pretend the user has unlimited budget;
+          the pre-turn gate has already failed closed at 503 in this
+          case, so we only land here from observability paths).
+
+    Args:
+        user_id: The user's ID.
+        daily_cost_limit: Daily cap in microdollars (0 = unlimited).
+        weekly_cost_limit: Weekly cap in microdollars (0 = unlimited).
+        floor_usd: Lower bound on the returned value (USD).  Avoids
+            handing the SDK a degenerate ``$0`` budget that would refuse
+            to start a turn.  Set to ``0.0`` when the caller wants a
+            faithful "no remaining budget" signal instead of a floor.
+    """
+    if daily_cost_limit <= 0 and weekly_cost_limit <= 0:
+        return float("inf")
+
+    now = datetime.now(UTC)
+    try:
+        redis = await get_redis_async()
+        daily_raw, weekly_raw = await asyncio.gather(
+            redis.get(_daily_key(user_id, now=now)),
+            redis.get(_weekly_key(user_id, now=now)),
+        )
+        daily_used = int(daily_raw or 0)
+        weekly_used = int(weekly_raw or 0)
+    except (RedisError, RedisClusterException, ConnectionError, OSError, ValueError):
+        logger.warning("Redis unavailable for remaining-budget lookup, returning floor")
+        return floor_usd
+
+    remaining_microdollars = float("inf")
+    if daily_cost_limit > 0:
+        remaining_microdollars = min(
+            remaining_microdollars, max(0, daily_cost_limit - daily_used)
+        )
+    if weekly_cost_limit > 0:
+        remaining_microdollars = min(
+            remaining_microdollars, max(0, weekly_cost_limit - weekly_used)
+        )
+    remaining_usd = (
+        remaining_microdollars / 1_000_000.0
+        if remaining_microdollars != float("inf")
+        else float("inf")
+    )
+    return max(floor_usd, remaining_usd)
+
+
+async def build_budget_ctx(
+    user_id: str | None,
+    default_daily_cost_limit: int,
+    default_weekly_cost_limit: int,
+) -> str:
+    """Build the inner content for an ``<budget_context>`` block.
+
+    Returns the *inner* text — the caller (``inject_user_context``)
+    wraps it in the ``<budget_context>`` tag.  Combines the tier-limit
+    lookup (``get_global_rate_limits``) and the remaining-USD lookup
+    (``get_remaining_usd_budget``) so callers don't have to compose
+    them by hand on every turn.
+
+    Returns ``""`` when:
+        * no ``user_id`` is available,
+        * the user's tier limits are unlimited (no cap to surface),
+        * Redis is unavailable (we'd rather emit nothing than a
+          misleading ``$0.00`` hint — the pre-turn gate already fails
+          closed at 503 in that case).
+    """
+    if not user_id:
+        return ""
+    daily_limit, weekly_limit, _tier = await get_global_rate_limits(
+        user_id,
+        default_daily_cost_limit,
+        default_weekly_cost_limit,
+    )
+    if daily_limit <= 0 and weekly_limit <= 0:
+        return ""
+    remaining = await get_remaining_usd_budget(
+        user_id=user_id,
+        daily_cost_limit=daily_limit,
+        weekly_cost_limit=weekly_limit,
+        # 0.0 here is a sentinel meaning "Redis brown-out / no value" —
+        # we map it back to "" below so the model doesn't see a
+        # misleading $0.00 hint when our metrics are degraded.
+        floor_usd=0.0,
+    )
+    if remaining == float("inf") or remaining <= 0.0:
+        return ""
+    return (
+        f"Approximate remaining USD budget for this user: ${remaining:.2f}.\n"
+        "Pace your tool use and reasoning depth so the response stays "
+        "within this envelope."
+    )
+
+
 async def check_rate_limit(
     user_id: str,
     daily_cost_limit: int,
