@@ -2132,19 +2132,32 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
 
 
 @cached(ttl_seconds=60, maxsize=16, cache_none=False)
+def _ld_price_key(tier: SubscriptionTier, billing_cycle: BillingCycle) -> str:
+    """Compose the LaunchDarkly key for a tier+cycle.
+
+    Monthly keeps the legacy ``<TIER>`` key (so a flag value flipped from
+    monthly-only to also-yearly never breaks an older deploy that still reads
+    only the monthly key). Yearly lives under ``<TIER>_YEARLY``.
+    """
+    if billing_cycle == "yearly":
+        return f"{tier.value}_YEARLY"
+    return tier.value
+
+
 async def get_subscription_price_id(
     tier: SubscriptionTier, billing_cycle: BillingCycle = "monthly"
 ) -> str | None:
     """Return Stripe Price ID for a tier+cycle from LaunchDarkly, cached 60s.
 
-    Reads the ``copilot-tier-stripe-prices`` JSON flag once and looks up the
-    requested tier. Two payload shapes are supported:
+    Reads the ``copilot-tier-stripe-prices`` JSON flag and looks up:
 
-    - Legacy flat: ``{"PRO": "price_xxx"}`` — value is the monthly price ID.
-      Yearly requests against this shape return ``None`` (fail-closed: we
-      never silently bill a user for monthly when they asked for yearly).
-    - Nested: ``{"PRO": {"monthly": "price_m", "yearly": "price_y"}}`` — the
-      matching cycle's price ID is returned, or ``None`` if absent.
+    - Monthly: ``raw["<TIER>"]`` (e.g. ``raw["PRO"]``) — the existing key
+      pre-yearly. Older deploys see this exact key, so adding yearly keys
+      alongside it never breaks an in-flight rollout.
+    - Yearly: ``raw["<TIER>_YEARLY"]`` (e.g. ``raw["PRO_YEARLY"]``). Yearly
+      requests for a tier without a configured yearly key fail closed
+      (return ``None``) instead of silently falling back to the monthly
+      price.
 
     ``cache_none=False`` prevents a transient LD failure from caching ``None``
     and blocking subscription upgrades for the full 60-second TTL window.
@@ -2160,16 +2173,8 @@ async def get_subscription_price_id(
             raw,
         )
         return None
-    entry = raw.get(tier.value)
-    if isinstance(entry, str):
-        # Legacy flat shape: value is monthly-only. Fail closed for yearly.
-        if billing_cycle != "monthly":
-            return None
-        return entry or None
-    if isinstance(entry, dict):
-        price_id = entry.get(billing_cycle)
-        return price_id if isinstance(price_id, str) and price_id else None
-    return None
+    price_id = raw.get(_ld_price_key(tier, billing_cycle))
+    return price_id if isinstance(price_id, str) and price_id else None
 
 
 async def create_subscription_checkout(

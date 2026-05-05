@@ -1269,17 +1269,15 @@ async def test_get_subscription_price_id_none_not_cached():
 
 
 @pytest.mark.asyncio
-async def test_get_subscription_price_id_nested_yearly():
-    """Nested shape returns the yearly price for billing_cycle=yearly."""
+async def test_get_subscription_price_id_yearly_suffix_key():
+    """Yearly request reads the <TIER>_YEARLY key."""
     from backend.data.credit import get_subscription_price_id
 
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value={
-            "PRO": {"monthly": "price_pro_m", "yearly": "price_pro_y"},
-        },
+        return_value={"PRO": "price_pro_m", "PRO_YEARLY": "price_pro_y"},
     ):
         assert (
             await get_subscription_price_id(SubscriptionTier.PRO, "yearly")
@@ -1289,17 +1287,16 @@ async def test_get_subscription_price_id_nested_yearly():
 
 
 @pytest.mark.asyncio
-async def test_get_subscription_price_id_nested_monthly():
-    """Nested shape returns the monthly price for billing_cycle=monthly."""
+async def test_get_subscription_price_id_monthly_unchanged_after_yearly_addition():
+    """Adding a yearly suffix key never changes the monthly lookup. Old code
+    that only reads <TIER> keeps returning the monthly price unaffected."""
     from backend.data.credit import get_subscription_price_id
 
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value={
-            "PRO": {"monthly": "price_pro_m", "yearly": "price_pro_y"},
-        },
+        return_value={"PRO": "price_pro_m", "PRO_YEARLY": "price_pro_y"},
     ):
         assert (
             await get_subscription_price_id(SubscriptionTier.PRO, "monthly")
@@ -1309,38 +1306,24 @@ async def test_get_subscription_price_id_nested_monthly():
 
 
 @pytest.mark.asyncio
-async def test_get_subscription_price_id_nested_missing_cycle_returns_none():
-    """Nested shape with only one cycle configured returns None for the other."""
+async def test_get_subscription_price_id_yearly_missing_returns_none():
+    """No <TIER>_YEARLY key → yearly request fails closed (no silent monthly)."""
     from backend.data.credit import get_subscription_price_id
 
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
     with patch(
         "backend.data.credit.get_feature_flag_value",
         new_callable=AsyncMock,
-        return_value={"PRO": {"monthly": "price_pro_m"}},
+        return_value={"PRO": "price_pro_m"},
     ):
         assert await get_subscription_price_id(SubscriptionTier.PRO, "yearly") is None
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio
-async def test_get_subscription_price_id_legacy_flat_yearly_fail_closed():
-    """Legacy flat shape never silently returns monthly for a yearly request."""
-    from backend.data.credit import get_subscription_price_id
-
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
-    with patch(
-        "backend.data.credit.get_feature_flag_value",
-        new_callable=AsyncMock,
-        return_value={"PRO": "price_pro_monthly_only"},
-    ):
-        assert await get_subscription_price_id(SubscriptionTier.PRO, "yearly") is None
-    get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
-
-
-@pytest.mark.asyncio
-async def test_get_subscription_price_id_legacy_flat_monthly_returns_price():
-    """Legacy flat shape resolves monthly requests to the configured price."""
+async def test_get_subscription_price_id_monthly_only_flag_serves_monthly():
+    """Backward compat: a monthly-only flag value (pre-yearly rollout) keeps
+    serving monthly requests exactly as before this PR."""
     from backend.data.credit import get_subscription_price_id
 
     get_subscription_price_id.cache_clear()  # type: ignore[attr-defined]
