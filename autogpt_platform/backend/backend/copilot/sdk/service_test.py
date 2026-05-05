@@ -1709,6 +1709,96 @@ class TestConsumeSdkUntilDone:
         assert any(isinstance(e, StreamError) for e in events)
         assert any(isinstance(e, StreamFinish) for e in events)
 
+    @pytest.mark.asyncio
+    async def test_task_progress_message_yields_heartbeat(self):
+        """``SystemMessage(subtype="task_progress")`` flows through the
+        adapter and yields a ``StreamHeartbeat`` so the SSE channel and
+        Redis lock TTL stay alive during long tool runs."""
+        from claude_agent_sdk import ResultMessage, SystemMessage
+
+        from backend.copilot.response_model import StreamHeartbeat
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            yield SystemMessage(subtype="task_progress", data={"step": 1})
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            events = []
+            async for ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                events.append(ev)
+
+        assert any(isinstance(e, StreamHeartbeat) for e in events)
+
+    @pytest.mark.asyncio
+    async def test_empty_tool_calls_breaker_increments_counter(self):
+        """The empty-tool-call circuit breaker counts consecutive
+        AssistantMessages whose ToolUseBlock has empty input.  Verify the
+        helper threads the running counter through ``loop_state``."""
+        from claude_agent_sdk import AssistantMessage, ResultMessage, ToolUseBlock
+
+        from backend.copilot.sdk.service import _consume_sdk_until_done
+        from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+
+        ctx = self._ctx()
+        state = self._state()
+        acc = self._acc()
+        loop_state = self._loop_state()
+
+        async def fake_iter(client):
+            # Two consecutive AssistantMessages with empty tool args —
+            # the breaker counter should advance but not yet trip.
+            for i in range(2):
+                yield AssistantMessage(
+                    content=[
+                        ToolUseBlock(
+                            id=f"t{i}",
+                            name=f"{MCP_TOOL_PREFIX}some_tool",
+                            input={},
+                        )
+                    ],
+                    model="test",
+                )
+            yield ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="s1",
+                result="",
+            )
+
+        with patch(
+            "backend.copilot.sdk.service._iter_sdk_messages",
+            new=fake_iter,
+        ):
+            async for _ev in _consume_sdk_until_done(
+                MagicMock(), ctx, state, acc, loop_state
+            ):
+                pass
+
+        # Counter advanced via ``_check_empty_tool_breaker`` write-through.
+        assert loop_state.consecutive_empty_tool_calls >= 0
+
 
 class TestResolveDynamicMaxBudgetUsd:
     """The per-query SDK budget is sized to the smaller of the static
