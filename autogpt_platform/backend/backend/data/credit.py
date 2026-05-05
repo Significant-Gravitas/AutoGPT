@@ -1593,6 +1593,53 @@ async def _get_active_subscription(customer_id: str) -> stripe.Subscription | No
     return None
 
 
+async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
+    """Return the billing cycle ("monthly"/"yearly") of the user's active sub.
+
+    Resolves cycle by matching the active subscription's price ID against the
+    LaunchDarkly-configured monthly/yearly price IDs for the user's current
+    tier, falling back to scanning every priceable tier (handles the brief
+    window during a tier change where DB tier and Stripe price disagree).
+    Returns None when there's no Stripe customer, no active sub, or the price
+    ID doesn't match any configured cycle (e.g. legacy unconfigured price).
+    """
+    user = await get_user_by_id(user_id)
+    if not user.stripe_customer_id:
+        return None
+    try:
+        sub = await _get_active_subscription(user.stripe_customer_id)
+    except stripe.StripeError:
+        logger.warning(
+            "get_user_billing_cycle: Stripe lookup failed for user %s", user_id
+        )
+        return None
+    if sub is None:
+        return None
+    items = sub["items"].data
+    if not items:
+        return None
+    price = items[0].price
+    current_price_id = price if isinstance(price, str) else price.id
+    if not current_price_id:
+        return None
+
+    priceable = (
+        SubscriptionTier.BASIC,
+        SubscriptionTier.PRO,
+        SubscriptionTier.MAX,
+        SubscriptionTier.BUSINESS,
+    )
+    cycles: tuple[BillingCycle, BillingCycle] = ("monthly", "yearly")
+    prices = await asyncio.gather(
+        *[get_subscription_price_id(t, c) for c in cycles for t in priceable]
+    )
+    price_to_cycle: dict[str, BillingCycle] = {}
+    for (cycle, _tier), pid in zip([(c, t) for c in cycles for t in priceable], prices):
+        if pid:
+            price_to_cycle[pid] = cycle
+    return price_to_cycle.get(current_price_id)
+
+
 async def get_active_subscription_period_end(user_id: str) -> int | None:
     """Return the Unix timestamp of the active sub's current_period_end, or None.
 

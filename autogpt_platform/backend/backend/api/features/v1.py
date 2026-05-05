@@ -63,6 +63,7 @@ from backend.data.credit import (
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
+    get_user_billing_cycle,
     get_user_credit_model,
     handle_subscription_payment_failure,
     handle_subscription_payment_success,
@@ -711,7 +712,24 @@ class SubscriptionTierRequest(BaseModel):
 class SubscriptionStatusResponse(BaseModel):
     tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
-    tier_costs: dict[str, int]  # tier name -> amount in cents
+    tier_costs: dict[str, int]  # tier name -> monthly amount in cents
+    tier_costs_yearly: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → yearly amount in cents. Populated only for tiers with a"
+            " yearly Stripe price configured in LaunchDarkly. Empty for"
+            " monthly-only configurations."
+        ),
+    )
+    billing_cycle: Literal["monthly", "yearly"] = Field(
+        default="monthly",
+        description=(
+            "Billing cycle of the user's active Stripe subscription. Defaults"
+            " to ``monthly`` for users without an active sub. ``monthly_cost``"
+            " above reflects this cycle's actual price (so a yearly subscriber"
+            " sees their yearly amount, not the monthly equivalent)."
+        ),
+    )
     tier_multipliers: dict[str, float] = Field(
         default_factory=dict,
         description=(
@@ -834,19 +852,39 @@ async def get_subscription_status(
         SubscriptionTier.MAX,
         SubscriptionTier.BUSINESS,
     ]
-    price_ids = await asyncio.gather(
-        *[get_subscription_price_id(t) for t in priceable_tiers]
+    monthly_price_ids, yearly_price_ids = await asyncio.gather(
+        asyncio.gather(
+            *[get_subscription_price_id(t, "monthly") for t in priceable_tiers]
+        ),
+        asyncio.gather(
+            *[get_subscription_price_id(t, "yearly") for t in priceable_tiers]
+        ),
     )
 
     async def _cost(pid: str | None) -> int:
         return (await _get_stripe_price_amount(pid) or 0) if pid else 0
 
-    costs = await asyncio.gather(*[_cost(pid) for pid in price_ids])
+    monthly_costs, yearly_costs = await asyncio.gather(
+        asyncio.gather(*[_cost(pid) for pid in monthly_price_ids]),
+        asyncio.gather(*[_cost(pid) for pid in yearly_price_ids]),
+    )
 
+    # Row visibility: include a tier if EITHER cycle is configured. Monthly
+    # cost falls back to 0 when only yearly is configured so the frontend can
+    # still render the card and surface yearly via ``tier_costs_yearly``.
     tier_costs: dict[str, int] = {}
-    for t, pid, cost in zip(priceable_tiers, price_ids, costs):
-        if pid:
-            tier_costs[t.value] = cost
+    tier_costs_yearly: dict[str, int] = {}
+    for t, m_pid, y_pid, m_cost, y_cost in zip(
+        priceable_tiers,
+        monthly_price_ids,
+        yearly_price_ids,
+        monthly_costs,
+        yearly_costs,
+    ):
+        if m_pid or y_pid:
+            tier_costs[t.value] = m_cost if m_pid else 0
+        if y_pid:
+            tier_costs_yearly[t.value] = y_cost
 
     # Expose the effective rate-limit multipliers alongside prices so the
     # frontend can render "Nx rate limits" relative to the lowest visible
@@ -860,7 +898,11 @@ async def get_subscription_status(
         if t.value in tier_costs
     }
 
-    current_monthly_cost = tier_costs.get(tier.value, 0)
+    user_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    if user_cycle == "yearly":
+        current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
+    else:
+        current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit, current_period_end = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
@@ -884,6 +926,8 @@ async def get_subscription_status(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
+        tier_costs_yearly=tier_costs_yearly,
+        billing_cycle=user_cycle,
         tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
@@ -927,12 +971,18 @@ async def update_subscription_tier(
             detail="ENTERPRISE subscription changes must be managed by an administrator",
         )
 
-    # Same-tier request = "stay on my current tier" = cancel any pending
-    # scheduled change (paid→paid downgrade or paid→BASIC cancel). This is the
-    # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
-    # route. Safe when no pending change exists: release_pending_subscription_schedule
-    # returns False and we simply return the current status.
-    if (user.subscription_tier or SubscriptionTier.NO_TIER) == tier:
+    # Same-tier + same-cycle request = "stay on my current tier" = cancel any
+    # pending scheduled change (paid→paid downgrade or paid→BASIC cancel). This
+    # replaces the old /credits/subscription/cancel-pending route. Safe when no
+    # pending change exists: release_pending_subscription_schedule returns
+    # False and we simply return the current status.
+    #
+    # Same-tier-DIFFERENT-cycle (monthly Pro → yearly Pro, or vice versa) must
+    # fall through to modify_stripe_subscription_for_tier so Stripe swaps the
+    # price ID for the cycle the user actually requested.
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    current_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    if current_tier == tier and current_cycle == request.billing_cycle:
         try:
             await release_pending_subscription_schedule(user_id)
         except stripe.StripeError as e:

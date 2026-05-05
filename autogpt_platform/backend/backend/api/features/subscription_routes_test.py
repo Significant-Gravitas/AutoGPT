@@ -103,6 +103,13 @@ def _stub_subscription_status_lookups(mocker: pytest_mock.MockFixture) -> None:
         new_callable=AsyncMock,
         return_value=dict(_DEFAULT_TIER_MULTIPLIERS),
     )
+    # Default billing-cycle resolver to None (treated as monthly) so existing
+    # tests don't have to opt into the yearly-aware code path.
+    mocker.patch(
+        "backend.api.features.v1.get_user_billing_cycle",
+        new_callable=AsyncMock,
+        return_value=None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -1693,3 +1700,236 @@ def test_stripe_webhook_ignores_subscription_schedule_updated(
 
     assert response.status_code == 200
     sync_mock.assert_not_awaited()
+
+
+def test_get_subscription_status_yearly_only_tier_visible(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When LD configures only the yearly price for a tier, the row must still
+    appear in tier_costs (with monthly cost 0) and the yearly cost surfaces
+    via tier_costs_yearly so the frontend can render it."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    async def price_lookup(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        # PRO has only a yearly price configured; MAX has both; others none.
+        if tier == SubscriptionTier.PRO and billing_cycle == "yearly":
+            return "price_pro_yearly"
+        if tier == SubscriptionTier.MAX and billing_cycle == "monthly":
+            return "price_max_monthly"
+        if tier == SubscriptionTier.MAX and billing_cycle == "yearly":
+            return "price_max_yearly"
+        return None
+
+    amounts = {
+        "price_pro_yearly": 19_999,
+        "price_max_monthly": 4999,
+        "price_max_yearly": 49_999,
+    }
+
+    async def stripe_amount(price_id: str) -> int:
+        return amounts.get(price_id, 0)
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_lookup,
+    )
+    mocker.patch(
+        "backend.api.features.v1._get_stripe_price_amount",
+        side_effect=stripe_amount,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_billing_cycle",
+        new_callable=AsyncMock,
+        return_value="yearly",
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    # PRO row still visible despite no monthly price.
+    assert "PRO" in data["tier_costs"]
+    assert data["tier_costs"]["PRO"] == 0
+    assert data["tier_costs_yearly"]["PRO"] == 19_999
+    # MAX has both cycles.
+    assert data["tier_costs"]["MAX"] == 4999
+    assert data["tier_costs_yearly"]["MAX"] == 49_999
+    # User is on yearly Pro → monthly_cost reflects the yearly price.
+    assert data["billing_cycle"] == "yearly"
+    assert data["monthly_cost"] == 19_999
+
+
+def test_get_subscription_status_yearly_user_both_cycles_uses_yearly_cost(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When LD has both monthly and yearly prices and the user is on yearly,
+    monthly_cost in the response reflects the yearly price (the user's actual
+    cost), not the monthly equivalent."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    async def price_lookup(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.PRO:
+            return (
+                "price_pro_yearly" if billing_cycle == "yearly" else "price_pro_monthly"
+            )
+        return None
+
+    amounts = {
+        "price_pro_monthly": 1999,
+        "price_pro_yearly": 19_999,
+    }
+
+    async def stripe_amount(price_id: str) -> int:
+        return amounts.get(price_id, 0)
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_lookup,
+    )
+    mocker.patch(
+        "backend.api.features.v1._get_stripe_price_amount",
+        side_effect=stripe_amount,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_billing_cycle",
+        new_callable=AsyncMock,
+        return_value="yearly",
+    )
+
+    response = client.get("/credits/subscription")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["billing_cycle"] == "yearly"
+    assert data["tier_costs"]["PRO"] == 1999
+    assert data["tier_costs_yearly"]["PRO"] == 19_999
+    # User pays the yearly price — surface it via monthly_cost so the UI shows
+    # the user's real recurring cost rather than the unrelated monthly equivalent.
+    assert data["monthly_cost"] == 19_999
+
+
+def test_update_subscription_tier_same_tier_cycle_change_routes_to_modify(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A monthly Pro user posting {tier:'PRO', billing_cycle:'yearly'} must
+    NOT short-circuit through release_pending_subscription_schedule — that
+    would no-op the cycle change. Route through modify_stripe_subscription_for_tier
+    so Stripe swaps to the yearly price."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    async def price_lookup(
+        tier: SubscriptionTier, billing_cycle: str = "monthly"
+    ) -> str | None:
+        if tier == SubscriptionTier.PRO:
+            return (
+                "price_pro_yearly" if billing_cycle == "yearly" else "price_pro_monthly"
+            )
+        return None
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.is_feature_enabled",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_subscription_price_id",
+        side_effect=price_lookup,
+    )
+    # User is currently on monthly Pro.
+    mocker.patch(
+        "backend.api.features.v1.get_user_billing_cycle",
+        new_callable=AsyncMock,
+        return_value="monthly",
+    )
+    release_mock = mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        new_callable=AsyncMock,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+            "billing_cycle": "yearly",
+        },
+    )
+
+    assert response.status_code == 200
+    release_mock.assert_not_awaited()
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.PRO, "yearly")
+
+
+def test_update_subscription_tier_same_tier_same_cycle_still_releases_pending(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A yearly Pro user posting {tier:'PRO', billing_cycle:'yearly'} keeps the
+    "stay on my current tier + cycle" semantics — release any pending change."""
+    mock_user = Mock()
+    mock_user.subscription_tier = SubscriptionTier.PRO
+
+    mocker.patch(
+        "backend.api.features.v1.get_user_by_id",
+        new_callable=AsyncMock,
+        return_value=mock_user,
+    )
+    mocker.patch(
+        "backend.api.features.v1.get_user_billing_cycle",
+        new_callable=AsyncMock,
+        return_value="yearly",
+    )
+    release_mock = mocker.patch(
+        "backend.api.features.v1.release_pending_subscription_schedule",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    modify_mock = mocker.patch(
+        "backend.api.features.v1.modify_stripe_subscription_for_tier",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/subscription",
+        json={
+            "tier": "PRO",
+            "success_url": f"{TEST_FRONTEND_ORIGIN}/success",
+            "cancel_url": f"{TEST_FRONTEND_ORIGIN}/cancel",
+            "billing_cycle": "yearly",
+        },
+    )
+
+    assert response.status_code == 200
+    release_mock.assert_awaited_once_with(TEST_USER_ID)
+    modify_mock.assert_not_awaited()
