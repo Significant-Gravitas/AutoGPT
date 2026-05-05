@@ -16,7 +16,13 @@ from pydantic import SecretStr
 from backend.blocks import get_block
 from backend.blocks.llm import AIStructuredResponseGeneratorBlock, LlmModel
 from backend.data.execution import ExecutionStatus, NodeExecutionResult
-from backend.data.model import APIKeyCredentials, GraphExecutionStats
+from backend.data.model import (
+    APIKeyCredentials,
+    GraphExecutionStats,
+    NodeExecutionStats,
+)
+from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
+from backend.executor.cost_tracking import _schedule_log
 from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.settings import Settings
 from backend.util.truncate import truncate
@@ -25,6 +31,15 @@ if TYPE_CHECKING:
     from backend.data.db_manager import DatabaseManagerAsyncClient
 
 logger = logging.getLogger(__name__)
+
+# Synthetic identifiers used by ``PlatformCostLog`` for activity-status LLM
+# calls. These are not tied to any block_cost_config or credentials_store row;
+# the activity-status generator is platform-side overhead that runs after a
+# graph execution completes (not a user-triggered block), and we surface it in
+# the admin cost dashboard so per-user / per-graph_exec attribution stays
+# accurate. Mirrors the COPILOT_BLOCK_ID pattern in copilot.token_tracking.
+ACTIVITY_STATUS_BLOCK_ID = "activity_status"
+ACTIVITY_STATUS_CREDENTIAL_ID = "activity_status_system"
 
 
 # Default system prompt template for activity status generation
@@ -358,6 +373,18 @@ async def generate_activity_status_for_execution(
             f"Generated activity status for {graph_exec_id}: {activity_response}"
         )
 
+        # Persist this LLM call's cost to PlatformCostLog so the admin
+        # dashboard attributes the spend per-user / per-graph_exec.
+        # Platform-side overhead (not user-billed and not user rate-limited).
+        _persist_activity_status_cost(
+            stats=structured_block.execution_stats,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            model_name=model_name,
+            db_client=db_client,
+        )
+
         return activity_response
 
     except Exception as e:
@@ -365,6 +392,57 @@ async def generate_activity_status_for_execution(
             f"Failed to generate activity status for execution {graph_exec_id}: {str(e)}"
         )
         return None
+
+
+def _persist_activity_status_cost(
+    *,
+    stats: NodeExecutionStats,
+    user_id: str,
+    graph_exec_id: str,
+    graph_id: str,
+    model_name: str,
+    db_client: "DatabaseManagerAsyncClient",
+) -> None:
+    """Schedule a PlatformCostLog entry for the activity-status LLM call.
+
+    Mirrors ``backend.copilot.token_tracking._schedule_cost_log``: the platform
+    pays for this call (system OpenAI key) but the user is not billed and not
+    rate-limited, so we skip ``record_cost_usage`` and only write to
+    ``PlatformCostLog`` for admin attribution.
+    """
+    cost_usd = stats.provider_cost
+    input_tokens = stats.input_token_count or 0
+    output_tokens = stats.output_token_count or 0
+    if cost_usd is None and input_tokens == 0 and output_tokens == 0:
+        return
+
+    cost_microdollars = usd_to_microdollars(cost_usd) if cost_usd is not None else None
+    if cost_usd is not None:
+        tracking_type = "cost_usd"
+        tracking_amount = float(cost_usd)
+    else:
+        tracking_type = "tokens"
+        tracking_amount = float(input_tokens + output_tokens)
+
+    _schedule_log(
+        db_client,
+        PlatformCostEntry(
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            graph_id=graph_id,
+            block_id=ACTIVITY_STATUS_BLOCK_ID,
+            block_name="activity_status_generator",
+            provider="openai",
+            credential_id=ACTIVITY_STATUS_CREDENTIAL_ID,
+            cost_microdollars=cost_microdollars,
+            input_tokens=input_tokens or None,
+            output_tokens=output_tokens or None,
+            model=model_name,
+            tracking_type=tracking_type,
+            tracking_amount=tracking_amount,
+            metadata={"source": "activity_status_generator"},
+        ),
+    )
 
 
 def _build_execution_summary(
