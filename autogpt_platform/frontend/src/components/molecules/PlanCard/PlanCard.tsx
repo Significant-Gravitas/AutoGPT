@@ -6,9 +6,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import { CheckIcon, StarIcon } from "@phosphor-icons/react";
-import { type Country, formatPrice } from "../../countries";
-import { PLAN_KEYS, type PlanDef, type PlanKey } from "../../helpers";
-import { computePlanPricing } from "./helpers";
+import { type Country, formatPrice } from "./countries";
+import { PLAN_KEYS, type PlanDef, type PlanKey } from "./plans";
+import { computePlanPricing } from "./computePricing";
 
 interface Props {
   plan: PlanDef;

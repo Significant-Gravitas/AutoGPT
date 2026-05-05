@@ -8,6 +8,7 @@ export const PLAN_KEYS = {
   PRO: "PRO",
   MAX: "MAX",
   TEAM: "TEAM",
+  BUSINESS: "BUSINESS",
 } as const;
 export type PlanKey = (typeof PLAN_KEYS)[keyof typeof PLAN_KEYS];
 
@@ -16,6 +17,10 @@ export interface PlanDef {
   name: string;
   usage: string | null;
   usdMonthly: number | null;
+  // Explicit yearly price in USD; when provided, computePlanPricing uses it
+  // instead of usdMonthly * YEARLY_PRICE_FACTOR * 12. Lets API-driven surfaces
+  // (PaywallGate) display the actual Stripe yearly amount.
+  usdYearly?: number | null;
   description: string;
   features: string[];
   cta: string;
@@ -86,3 +91,70 @@ export const PLANS: PlanDef[] = [
     buttonVariant: "secondary",
   },
 ];
+
+// Backend-tier → static visual metadata. Used by API-driven surfaces
+// (PaywallGate) which derive prices from /credits/subscription and need only
+// the descriptive content (features/usage/highlight/cta).
+export type BackendTierKey = "PRO" | "MAX" | "BUSINESS";
+
+export const PLAN_METADATA: Record<
+  BackendTierKey,
+  Omit<PlanDef, "usdMonthly" | "usdYearly">
+> = {
+  PRO: {
+    key: PLAN_KEYS.PRO,
+    name: "Pro",
+    usage: "1x",
+    description:
+      "For individuals getting started with dependable everyday automation.",
+    features: [
+      "Access to virtually any leading AI model",
+      "Agents work non-stop in the background",
+      "Visual agent builder and chat-based agent creation",
+      "File-aware agents that can work with your documents",
+      "End-to-end agent management and run visibility",
+      "Scheduled and event-based triggers",
+    ],
+    cta: "Upgrade to Pro",
+    highlighted: false,
+    badge: null,
+    buttonVariant: "secondary",
+  },
+  MAX: {
+    key: PLAN_KEYS.MAX,
+    name: "Max",
+    usage: "8.5x",
+    description: "For users who are serious about getting more work done.",
+    features: [
+      "Includes everything in Pro",
+      "8.5x Pro usage",
+      "5x file storage",
+      "Early access to features before anyone else",
+      "Expand our extensive integration library",
+      "Priority support",
+      "Help drive the roadmap for new features",
+    ],
+    cta: "Upgrade to Max",
+    highlighted: true,
+    badge: "Best value",
+    buttonVariant: "primary",
+  },
+  BUSINESS: {
+    key: PLAN_KEYS.BUSINESS,
+    name: "Business",
+    usage: null,
+    description:
+      "For teams and heavy workloads that need expanded capacity and controls.",
+    features: [
+      "Includes everything in Max",
+      "Highest AutoPilot capacity",
+      "Priority support and onboarding",
+      "Advanced security & compliance options",
+      "Dedicated account contact",
+    ],
+    cta: "Upgrade to Business",
+    highlighted: false,
+    badge: null,
+    buttonVariant: "secondary",
+  },
+};

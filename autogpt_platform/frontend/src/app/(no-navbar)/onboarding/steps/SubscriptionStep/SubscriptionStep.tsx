@@ -4,8 +4,8 @@ import { AutoGPTLogo } from "@/components/atoms/AutoGPTLogo/AutoGPTLogo";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
-import { PlanCard } from "./components/PlanCard/PlanCard";
-import { PLAN_KEYS, PLANS } from "./helpers";
+import { PlanCard } from "@/components/molecules/PlanCard/PlanCard";
+import { PLAN_KEYS, PLANS } from "@/components/molecules/PlanCard/plans";
 import { useSubscriptionStep } from "./useSubscriptionStep";
 
 export function SubscriptionStep() {

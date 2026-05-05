@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { type Country } from "../../countries";
-import { type PlanDef, PLAN_KEYS, YEARLY_PRICE_FACTOR } from "../../helpers";
-import { computePlanPricing } from "./helpers";
+import { type Country } from "./countries";
+import { type PlanDef, PLAN_KEYS, YEARLY_PRICE_FACTOR } from "./plans";
+import { computePlanPricing } from "./computePricing";
 
 const usdCountry: Country = {
   name: "United States",
