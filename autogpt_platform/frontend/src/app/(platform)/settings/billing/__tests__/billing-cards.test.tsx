@@ -160,6 +160,175 @@ describe("YourPlanCard", () => {
   });
 });
 
+describe("YourPlanCard cycle toggle", () => {
+  it("renders Monthly selected when billing_cycle is monthly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    const monthly = await screen.findByRole("radio", { name: /monthly/i });
+    const yearly = screen.getByRole("radio", { name: /yearly/i });
+    expect(monthly.getAttribute("aria-checked")).toBe("true");
+    expect(yearly.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("renders Yearly selected when billing_cycle is yearly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 51000,
+        billing_cycle: "yearly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    const yearly = await screen.findByRole("radio", { name: /yearly/i });
+    const monthly = screen.getByRole("radio", { name: /monthly/i });
+    expect(yearly.getAttribute("aria-checked")).toBe("true");
+    expect(monthly.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("opens the confirmation dialog with prorated copy when monthly Pro user clicks Yearly", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    const yearly = await screen.findByRole("radio", { name: /yearly/i });
+    fireEvent.click(yearly);
+
+    expect(
+      await screen.findByText(/Switch billing to Yearly\?/i),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/charged the prorated difference immediately/i),
+    ).toBeDefined();
+    expect(screen.getByText(/\$510\.00/)).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /switch to yearly/i }),
+    ).toBeDefined();
+  });
+
+  it("fires updateTier with billing_cycle on confirm", async () => {
+    let capturedBody: { tier?: string; billing_cycle?: string } | null = null;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", async ({ request }) => {
+        capturedBody = (await request.json()) as typeof capturedBody;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /switch to yearly/i }),
+    );
+
+    await waitFor(() => {
+      expect(capturedBody).not.toBeNull();
+      expect(capturedBody?.tier).toBe("PRO");
+      expect(capturedBody?.billing_cycle).toBe("yearly");
+    });
+  });
+
+  it("cancelling the dialog leaves no mutation fired", async () => {
+    let mutationFired = false;
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "PRO",
+        monthly_cost: 5000,
+        billing_cycle: "monthly",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        tier_costs_yearly: { PRO: 51000, MAX: 326400 },
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+      http.post("*/api/credits/subscription", () => {
+        mutationFired = true;
+        return HttpResponse.json({ url: "" });
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: /yearly/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: /switch to yearly/i }),
+      ).toBeNull(),
+    );
+    expect(mutationFired).toBe(false);
+  });
+
+  it("hides the cycle toggle entirely for ENTERPRISE tier", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "ENTERPRISE",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+});
+
 describe("PaymentMethodCard", () => {
   it("disables 'Open portal' until the portal URL resolves", async () => {
     server.use(jsonHandler("get", "/api/credits/manage", { url: null }));

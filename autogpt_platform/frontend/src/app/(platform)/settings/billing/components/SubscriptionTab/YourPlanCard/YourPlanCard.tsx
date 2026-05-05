@@ -13,6 +13,8 @@ import {
   formatShortDate,
   getSectionMotionProps,
 } from "../../../helpers";
+import { CycleToggle } from "./CycleToggle";
+import { SwitchCycleDialog } from "./SwitchCycleDialog";
 import { useYourPlanCard } from "./useYourPlanCard";
 
 interface Props {
@@ -29,6 +31,13 @@ export function YourPlanCard({ index = 0 }: Props) {
     canUpgrade,
     canDowngrade,
     canResume,
+    selectedCycle,
+    pendingCycle,
+    isCycleToggleVisible,
+    cycleDialogBody,
+    onCycleChange,
+    onConfirmCycleSwitch,
+    onCancelCycleSwitch,
     onUpgrade,
     onDowngrade,
     onResume,
@@ -54,8 +63,8 @@ export function YourPlanCard({ index = 0 }: Props) {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] border border-zinc-200 bg-white p-5 shadow-[0_1px_2px_rgba(15,15,20,0.04)]">
-        <div className="flex min-w-0 flex-col gap-1">
-          <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Text variant="large-medium" as="span" className="text-textBlack">
               {plan.label}
             </Text>
@@ -76,10 +85,18 @@ export function YourPlanCard({ index = 0 }: Props) {
                     ? "Downgrade scheduled"
                     : "Active"}
             </Badge>
+            {isCycleToggleVisible ? (
+              <CycleToggle
+                value={selectedCycle}
+                onChange={onCycleChange}
+                disabled={isUpdatingTier}
+              />
+            ) : null}
           </div>
           {plan.isPaidPlan ? (
             <Text variant="body" as="span" className="text-zinc-700">
-              {formatCents(plan.monthlyCostCents)} / month
+              {formatCents(plan.monthlyCostCents)}
+              {plan.billingCycle === "yearly" ? " / year" : " / month"}
               {plan.isPendingCancel && plan.pendingEffectiveAt
                 ? ` · Ends on ${formatShortDate(plan.pendingEffectiveAt)}`
                 : plan.isPendingDowngrade && plan.pendingEffectiveAt
@@ -152,6 +169,19 @@ export function YourPlanCard({ index = 0 }: Props) {
           ) : null}
         </div>
       </div>
+
+      {pendingCycle ? (
+        <SwitchCycleDialog
+          isOpen={pendingCycle !== null}
+          onOpenChange={(open) => {
+            if (!open) onCancelCycleSwitch();
+          }}
+          targetCycle={pendingCycle}
+          body={cycleDialogBody}
+          isSaving={isUpdatingTier}
+          onConfirm={onConfirmCycleSwitch}
+        />
+      ) : null}
     </motion.section>
   );
 }
