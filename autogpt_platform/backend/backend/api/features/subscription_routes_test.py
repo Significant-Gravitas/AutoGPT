@@ -1456,7 +1456,7 @@ def test_update_subscription_tier_pro_to_max_card_declined_returns_402(
 
     assert response.status_code == 402
     assert "card was declined" in response.json()["detail"].lower()
-    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX)
+    modify_mock.assert_awaited_once_with(TEST_USER_ID, SubscriptionTier.MAX, "monthly")
 
 
 def test_update_subscription_tier_pro_to_max_authentication_required_returns_402(
