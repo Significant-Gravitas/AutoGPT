@@ -445,7 +445,7 @@ def test_update_subscription_tier_currency_mismatch_returns_422(
         side_effect=stripe.InvalidRequestError(
             "The price specified only supports `usd`. This doesn't match the"
             " expected currency: `gbp`.",
-            param="phases",
+            param="currency",
         ),
     )
 
@@ -1326,7 +1326,8 @@ def test_update_subscription_tier_pro_to_max_no_payment_method_returns_402(
         side_effect=stripe.InvalidRequestError(
             "This customer has no attached payment source or default payment"
             " method. Please consider adding a default payment method.",
-            param="customer",
+            param="default_payment_method",
+            code="resource_missing",
         ),
     )
 

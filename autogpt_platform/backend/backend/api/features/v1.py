@@ -1008,7 +1008,7 @@ async def update_subscription_tier(
         # modify was rolled back, so 402 lets the UI prompt for a new card or
         # surface SCA. authentication_required means the card is fine but the
         # bank wants 3DS — different message so the user doesn't try a new card.
-        if getattr(e, "code", None) == "authentication_required":
+        if e.code == "authentication_required":
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
@@ -1032,24 +1032,20 @@ async def update_subscription_tier(
             ),
         )
     except stripe.InvalidRequestError as e:
-        # Stripe rejects schedule modify when phases mix currencies, e.g. the
-        # active sub was checked out in GBP but the target tier's Price is
-        # USD-only. 502 reads as outage; surface a 422 with a specific message
-        # so the user/admin can see what to fix in Stripe.
-        msg = str(e)
-        msg_lower = msg.lower()
         # "No payment method" presents as InvalidRequestError (not CardError) when
-        # error_if_incomplete fires with no default PM on the customer. Map it to
-        # 402 with an actionable message instead of the generic 502 outage copy.
-        if (
-            "no attached payment source" in msg_lower
-            or "default payment method" in msg_lower
-            or "no payment method" in msg_lower
-        ):
+        # error_if_incomplete fires with no default PM on the customer. Stripe
+        # signals this with code=resource_missing/missing on the payment-method
+        # param. Map it to 402 with an actionable message instead of the generic
+        # 502 outage copy.
+        if e.code in {"resource_missing", "missing"} and e.param in {
+            "default_payment_method",
+            "payment_method",
+            "invoice_settings.default_payment_method",
+        }:
             logger.warning(
                 "No payment method on subscription upgrade for user %s: %s",
                 user_id,
-                msg,
+                e,
             )
             raise HTTPException(
                 status_code=402,
@@ -1058,9 +1054,13 @@ async def update_subscription_tier(
                     " please add a payment method and try again."
                 ),
             )
-        if "currency" in msg_lower:
+        # Stripe rejects schedule modify when phases mix currencies, e.g. the
+        # active sub was checked out in GBP but the target tier's Price is
+        # USD-only. 502 reads as outage; surface a 422 with a specific message
+        # so the user/admin can see what to fix in Stripe.
+        if e.param == "currency":
             logger.warning(
-                "Currency mismatch on tier change for user %s: %s", user_id, msg
+                "Currency mismatch on tier change for user %s: %s", user_id, e
             )
             raise HTTPException(
                 status_code=422,
