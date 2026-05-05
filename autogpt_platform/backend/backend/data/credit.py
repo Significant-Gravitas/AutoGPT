@@ -1629,14 +1629,17 @@ async def get_user_billing_cycle(user_id: str) -> BillingCycle | None:
         SubscriptionTier.MAX,
         SubscriptionTier.BUSINESS,
     )
-    cycles: tuple[BillingCycle, BillingCycle] = ("monthly", "yearly")
-    prices = await asyncio.gather(
-        *[get_subscription_price_id(t, c) for c in cycles for t in priceable]
+    monthly_prices, yearly_prices = await asyncio.gather(
+        asyncio.gather(*[get_subscription_price_id(t, "monthly") for t in priceable]),
+        asyncio.gather(*[get_subscription_price_id(t, "yearly") for t in priceable]),
     )
     price_to_cycle: dict[str, BillingCycle] = {}
-    for (cycle, _tier), pid in zip([(c, t) for c in cycles for t in priceable], prices):
+    for pid in monthly_prices:
         if pid:
-            price_to_cycle[pid] = cycle
+            price_to_cycle[pid] = "monthly"
+    for pid in yearly_prices:
+        if pid:
+            price_to_cycle[pid] = "yearly"
     return price_to_cycle.get(current_price_id)
 
 
