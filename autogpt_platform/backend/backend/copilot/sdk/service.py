@@ -3234,6 +3234,11 @@ async def _run_stream_attempt(
             # round-1 streak doesn't trip prematurely on the very first
             # re-prompt AssistantMessage.
             loop_state.consecutive_empty_tool_calls = 0
+            # Restart the idle-timeout clock for the re-prompt round —
+            # otherwise a long round 1 (e.g. 29 min) plus a tiny delay
+            # before the first re-prompt message would push the clock
+            # past the 30-min threshold and trip a phantom idle timeout.
+            loop_state.last_real_msg_time = time.monotonic()
             logger.info(
                 "%s Re-prompting model for closing summary "
                 "after thinking-only final turn",
