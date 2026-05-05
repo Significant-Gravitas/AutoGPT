@@ -72,7 +72,7 @@ class User(BaseModel):
         None, description="Top up configuration"
     )
     subscription_tier: SubscriptionTier = Field(
-        default=SubscriptionTier.FREE, description="User subscription tier"
+        default=SubscriptionTier.BASIC, description="User subscription tier"
     )
 
     # Notification preferences
@@ -148,7 +148,7 @@ class User(BaseModel):
             integrations=prisma_user.integrations or "",
             stripe_customer_id=prisma_user.stripeCustomerId,
             top_up_config=top_up_config,
-            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.FREE,
+            subscription_tier=prisma_user.subscriptionTier or SubscriptionTier.BASIC,
             max_emails_per_day=prisma_user.maxEmailsPerDay or 3,
             notify_on_agent_run=prisma_user.notifyOnAgentRun or True,
             notify_on_zero_balance=prisma_user.notifyOnZeroBalance or True,
@@ -456,6 +456,8 @@ class OAuthState(BaseModel):
     code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
+    credential_id: Optional[str] = None
+    """If set, this OAuth flow upgrades an existing credential's scopes."""
     # Fields for external API OAuth flows
     callback_url: Optional[str] = None
     """External app's callback URL for OAuth redirect"""
@@ -485,7 +487,6 @@ class UserMetadataRaw(TypedDict, total=False):
 
 
 class UserIntegrations(BaseModel):
-
     class ManagedCredentials(BaseModel):
         """Integration credentials managed by us, rather than by the user"""
 
@@ -607,6 +608,8 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
     discriminator_values: set[Any] = Field(default_factory=set)
+    is_auto_credential: bool = False
+    input_field_name: Optional[str] = None
 
     @classmethod
     def combine(
@@ -694,6 +697,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 + "_credentials"
             )
 
+            # Propagate is_auto_credential from the combined field.
+            # All fields in a group should share the same is_auto_credential
+            # value since auto and regular credentials serve different purposes.
             result[group_key] = (
                 CredentialsFieldInfo[CP, CT](
                     credentials_provider=combined.provider,
@@ -702,6 +708,8 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     discriminator=combined.discriminator,
                     discriminator_mapping=combined.discriminator_mapping,
                     discriminator_values=set(all_discriminator_values),
+                    is_auto_credential=combined.is_auto_credential,
+                    input_field_name=combined.input_field_name,
                 ),
                 combined_keys,
             )
@@ -726,7 +734,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             credentials_scopes=self.required_scopes,
             discriminator=self.discriminator,
             discriminator_mapping=self.discriminator_mapping,
-            discriminator_values=set(self.discriminator_values),  # defensive copy
+            discriminator_values=set(self.discriminator_values),
+            is_auto_credential=self.is_auto_credential,
+            input_field_name=self.input_field_name,
         )
 
 
@@ -853,8 +863,16 @@ class NodeExecutionStats(BaseModel):
     cache_read_token_count: int = 0
     cache_creation_token_count: int = 0
     cost: int = 0
-    extra_cost: int = 0
+    # Post-flight adjustment to the pre-flight ``cost`` estimate. Three writers:
+    # 1. charge_reconciled_usage — dynamic cost delta (TOKENS/SECOND/ITEMS/
+    #    COST_USD); can be negative when a TOKENS floor over-estimated.
+    # 2. OrchestratorBlock — sub-block cost roll-up for run_block tool calls
+    #    (debit already happened on the child; this is reporting-only).
+    # 3. AgentExecutorBlock — sub-graph total roll-up.
+    # Readers aggregating into graph_stats.cost should add this to cost.
+    reconciled_cost_delta: int = 0
     extra_steps: int = 0
+
     provider_cost: float | None = None
     # Type of the provider-reported cost/usage captured above. When set
     # by a block, resolve_tracking honors this directly instead of

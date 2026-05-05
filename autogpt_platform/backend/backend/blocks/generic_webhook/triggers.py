@@ -14,6 +14,7 @@ from ._webhook import GenericWebhooksManager, GenericWebhookType
 
 generic_webhook = (
     ProviderBuilder("generic_webhook")
+    .with_description("Inbound webhook trigger")
     .with_webhook_manager(GenericWebhooksManager)
     .build()
 )

@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export const MAX_PAIN_POINT_SELECTIONS = 3;
-export type Step = 1 | 2 | 3 | 4;
+export type Step = 1 | 2 | 3 | 4 | 5;
 
 interface OnboardingWizardState {
   currentStep: Step;
@@ -10,11 +10,17 @@ interface OnboardingWizardState {
   otherRole: string;
   painPoints: string[];
   otherPainPoint: string;
+  selectedPlan: string | null;
+  selectedBilling: "monthly" | "yearly";
+  selectedCountryCode: string;
   setName(name: string): void;
   setRole(role: string): void;
   setOtherRole(otherRole: string): void;
   togglePainPoint(painPoint: string): void;
   setOtherPainPoint(otherPainPoint: string): void;
+  setSelectedPlan(plan: string): void;
+  setSelectedBilling(billing: "monthly" | "yearly"): void;
+  setSelectedCountryCode(code: string): void;
   nextStep(): void;
   prevStep(): void;
   goToStep(step: Step): void;
@@ -29,6 +35,9 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     otherRole: "",
     painPoints: [],
     otherPainPoint: "",
+    selectedPlan: null,
+    selectedBilling: "monthly",
+    selectedCountryCode: "US",
     setName(name) {
       set({ name });
     },
@@ -53,9 +62,18 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
     setOtherPainPoint(otherPainPoint) {
       set({ otherPainPoint });
     },
+    setSelectedPlan(plan) {
+      set({ selectedPlan: plan });
+    },
+    setSelectedBilling(billing) {
+      set({ selectedBilling: billing });
+    },
+    setSelectedCountryCode(code) {
+      set({ selectedCountryCode: code });
+    },
     nextStep() {
       set((state) => ({
-        currentStep: Math.min(4, state.currentStep + 1) as Step,
+        currentStep: Math.min(5, state.currentStep + 1) as Step,
       }));
     },
     prevStep() {
@@ -74,6 +92,9 @@ export const useOnboardingWizardStore = create<OnboardingWizardState>(
         otherRole: "",
         painPoints: [],
         otherPainPoint: "",
+        selectedPlan: null,
+        selectedBilling: "monthly",
+        selectedCountryCode: "US",
       });
     },
   }),

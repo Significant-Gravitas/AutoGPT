@@ -3,6 +3,8 @@ import {
   screen,
   fireEvent,
   cleanup,
+  act,
+  waitFor,
 } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
@@ -19,6 +21,8 @@ const mockSetCopilotLlmModel = vi.fn((model: string) => {
 
 vi.mock("@/app/(platform)/copilot/store", () => ({
   useCopilotUIStore: () => ({
+    copilotMode: mockCopilotMode,
+    setCopilotMode: mockSetCopilotChatMode,
     copilotChatMode: mockCopilotMode,
     setCopilotChatMode: mockSetCopilotChatMode,
     copilotLlmModel: mockCopilotLlmModel,
@@ -85,6 +89,19 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
   PromptInputTools: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="tools">{children}</div>
   ),
+  PromptInputButton: ({
+    children,
+    onClick,
+    "aria-label": ariaLabel,
+  }: {
+    children?: React.ReactNode;
+    onClick?: React.MouseEventHandler<HTMLButtonElement>;
+    "aria-label"?: string;
+  }) => (
+    <button aria-label={ariaLabel} onClick={onClick} data-testid="queue-btn">
+      {children}
+    </button>
+  ),
 }));
 
 vi.mock("@/components/ui/input-group", () => ({
@@ -108,6 +125,20 @@ vi.mock("../components/RecordingButton", () => ({
 }));
 vi.mock("../components/RecordingIndicator", () => ({
   RecordingIndicator: () => null,
+}));
+vi.mock("../components/DryRunToggleButton", () => ({
+  DryRunToggleButton: ({
+    onToggle,
+  }: {
+    isDryRun: boolean;
+    isStreaming: boolean;
+    readOnly: boolean;
+    onToggle: () => void;
+  }) => (
+    <button data-testid="dry-run-toggle" onClick={onToggle}>
+      Dry Run
+    </button>
+  ),
 }));
 
 const mockOnSend = vi.fn();
@@ -212,6 +243,99 @@ describe("ChatInput mode toggle", () => {
   });
 });
 
+describe("ChatInput queue button", () => {
+  it("does not render queue button when not streaming", () => {
+    render(<ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} />);
+    expect(screen.queryByLabelText(/queue message/i)).toBeNull();
+  });
+
+  it("does not render queue button when streaming but no text typed", () => {
+    render(<ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} isStreaming />);
+    expect(screen.queryByLabelText(/queue message/i)).toBeNull();
+  });
+
+  it("renders queue button when streaming with text and onEnqueue provided", () => {
+    render(<ChatInput onSend={mockOnSend} onEnqueue={vi.fn()} isStreaming />);
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "follow-up question" } });
+    expect(screen.getByLabelText(/queue message/i)).toBeDefined();
+  });
+
+  it("calls onEnqueue with trimmed text when queue button clicked", async () => {
+    const mockOnEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "  hello  " } });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(/queue message/i));
+    });
+    expect(mockOnEnqueue).toHaveBeenCalledWith("hello");
+  });
+
+  it("clears textarea after successful enqueue", async () => {
+    const mockOnEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    fireEvent.change(textarea, { target: { value: "my message" } });
+    fireEvent.click(screen.getByLabelText(/queue message/i));
+    await waitFor(() => {
+      expect((textarea as HTMLTextAreaElement).value).toBe("");
+    });
+  });
+
+  it("preserves textarea text if queue button clicked with empty input", async () => {
+    const mockOnEnqueue = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ChatInput onSend={mockOnSend} onEnqueue={mockOnEnqueue} isStreaming />,
+    );
+    const textarea = screen.getByTestId("textarea");
+    // No text typed — queue button should not render
+    expect(screen.queryByLabelText(/queue message/i)).toBeNull();
+    // onEnqueue must not be called
+    expect(mockOnEnqueue).not.toHaveBeenCalled();
+    // textarea stays empty
+    expect((textarea as HTMLTextAreaElement).value).toBe("");
+  });
+});
+
+describe("ChatInput dry-run toggle", () => {
+  it("does not render dry-run toggle when flag is disabled", () => {
+    mockFlagValue = false;
+    render(<ChatInput onSend={mockOnSend} />);
+    expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
+  });
+
+  it("renders dry-run toggle when flag is enabled and no session", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} hasSession={false} />);
+    expect(screen.getByTestId("dry-run-toggle")).toBeDefined();
+  });
+
+  it("hides dry-run toggle when session is active and isDryRun is false", () => {
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} hasSession />);
+    // isDryRun is false in mock, hasSession is true → toggle hidden
+    expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
+  });
+
+  it("calls setIsDryRun and shows toast when dry-run toggled", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockFlagValue = true;
+    render(<ChatInput onSend={mockOnSend} />);
+    fireEvent.click(screen.getByTestId("dry-run-toggle"));
+    // isDryRun was false → next is true
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Test mode enabled",
+      }),
+    );
+  });
+});
+
 describe("ChatInput model toggle", () => {
   it("renders model toggle button when flag is enabled", () => {
     mockFlagValue = true;
@@ -265,14 +389,13 @@ describe("ChatInput model toggle", () => {
     // flag is immutable and shown via the CopilotPage banner, not this button.
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
-    expect(screen.queryByLabelText(/test mode/i)).toBeNull();
-    expect(screen.queryByLabelText(/enable test mode/i)).toBeNull();
+    expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
   it("shows dry-run toggle when no session", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
-    expect(screen.getByLabelText(/test mode|enable test mode/i)).toBeTruthy();
+    expect(screen.getByTestId("dry-run-toggle")).toBeTruthy();
   });
 
   it("shows a toast when switching to advanced", async () => {

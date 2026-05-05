@@ -86,6 +86,7 @@ See @CONTRIBUTING.md for complete patterns. Quick reference:
    - Regenerate with `pnpm generate:api`
    - Pattern: `use{Method}{Version}{OperationName}`
 4. **Styling**: Tailwind CSS only, use design tokens, Phosphor Icons only
+   - Always import the `-Icon`-suffixed alias from `@phosphor-icons/react` (e.g. `TrashIcon`, `PlusIcon`, `SquareIcon`) — bare exports like `Trash`/`Plus` are deprecated.
 5. **Testing**: Integration tests are the default (~90%). See `TESTING.md` for full details.
    - **New pages/features**: Write integration tests in `__tests__/` next to `page.tsx` using Vitest + RTL + MSW
    - **API mocking**: Use Orval-generated MSW handlers from `@/app/api/__generated__/endpoints/{tag}/{tag}.msw.ts`

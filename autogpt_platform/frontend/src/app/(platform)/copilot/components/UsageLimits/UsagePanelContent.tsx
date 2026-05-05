@@ -1,47 +1,69 @@
-import type { CoPilotUsageStatus } from "@/app/api/__generated__/models/coPilotUsageStatus";
+import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { Button } from "@/components/atoms/Button/Button";
+import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { formatCents, formatResetTime } from "../usageHelpers";
 import { useResetRateLimit } from "../../hooks/useResetRateLimit";
 
 export { formatResetTime };
 
+type Size = "sm" | "md";
+
+const labelVariant = (size: Size) =>
+  size === "md" ? "body-medium" : "small-medium";
+const metaVariant = "small" as const;
+
 function UsageBar({
   label,
-  used,
-  limit,
+  percentUsed,
   resetsAt,
+  size = "sm",
 }: {
   label: string;
-  used: number;
-  limit: number;
+  percentUsed: number;
   resetsAt: Date | string;
+  size?: Size;
 }) {
-  if (limit <= 0) return null;
-
-  const rawPercent = (used / limit) * 100;
-  const percent = Math.min(100, Math.round(rawPercent));
-  const isHigh = percent >= 80;
+  const percent = Math.min(100, Math.max(0, Math.round(percentUsed)));
   const percentLabel =
-    used > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
+    percentUsed > 0 && percent === 0 ? "<1% used" : `${percent}% used`;
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
-        <span className="text-xs font-medium text-neutral-700">{label}</span>
-        <span className="text-[11px] tabular-nums text-neutral-500">
+        <Text
+          as="span"
+          variant={labelVariant(size)}
+          className="text-neutral-700"
+        >
+          {label}
+        </Text>
+        <Text
+          as="span"
+          variant={metaVariant}
+          className="tabular-nums text-neutral-500"
+        >
           {percentLabel}
-        </span>
+        </Text>
       </div>
-      <div className="text-[10px] text-neutral-400">
+      <Text as="span" variant={metaVariant} className="text-neutral-400">
         Resets {formatResetTime(resetsAt)}
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-200">
+      </Text>
+      <div
+        className={cn(
+          "w-full overflow-hidden rounded-full bg-neutral-200",
+          size === "md" ? "h-2.5" : "h-2",
+        )}
+      >
         <div
-          className={`h-full rounded-full transition-[width] duration-300 ease-out ${
-            isHigh ? "bg-orange-500" : "bg-blue-500"
-          }`}
-          style={{ width: `${Math.max(used > 0 ? 1 : 0, percent)}%` }}
+          role="progressbar"
+          aria-label={`${label} usage`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          className="h-full rounded-full bg-blue-500 transition-[width] duration-300 ease-out"
+          style={{ width: `${Math.max(percent > 0 ? 1 : 0, percent)}%` }}
         />
       </div>
     </div>
@@ -63,7 +85,7 @@ function ResetButton({
       size="small"
       onClick={() => resetUsage()}
       loading={isPending}
-      className="mt-1 w-full text-[11px]"
+      className="mt-1 w-full"
     >
       {isPending
         ? "Resetting..."
@@ -74,28 +96,32 @@ function ResetButton({
 
 export function UsagePanelContent({
   usage,
+  showHeader = true,
   showBillingLink = true,
   hasInsufficientCredits = false,
   isBillingEnabled = false,
   onCreditChange,
+  size = "sm",
 }: {
-  usage: CoPilotUsageStatus;
+  usage: CoPilotUsagePublic;
+  showHeader?: boolean;
   showBillingLink?: boolean;
   hasInsufficientCredits?: boolean;
   isBillingEnabled?: boolean;
   onCreditChange?: () => void;
+  size?: Size;
 }) {
-  const hasDailyLimit = usage.daily.limit > 0;
-  const hasWeeklyLimit = usage.weekly.limit > 0;
-  const isDailyExhausted =
-    hasDailyLimit && usage.daily.used >= usage.daily.limit;
-  const isWeeklyExhausted =
-    hasWeeklyLimit && usage.weekly.used >= usage.weekly.limit;
+  const daily = usage.daily;
+  const weekly = usage.weekly;
+  const isDailyExhausted = !!daily && daily.percent_used >= 100;
+  const isWeeklyExhausted = !!weekly && weekly.percent_used >= 100;
   const resetCost = usage.reset_cost ?? 0;
 
-  if (!hasDailyLimit && !hasWeeklyLimit) {
+  if (!daily && !weekly) {
     return (
-      <div className="text-xs text-neutral-500">No usage limits configured</div>
+      <Text as="span" variant="small" className="text-neutral-500">
+        No usage limits configured
+      </Text>
     );
   }
 
@@ -105,28 +131,36 @@ export function UsagePanelContent({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs font-semibold text-neutral-800">
-          Usage limits
-        </span>
-        {tierLabel && (
-          <span className="text-[11px] text-neutral-500">{tierLabel} plan</span>
-        )}
-      </div>
-      {hasDailyLimit && (
+      {showHeader && (
+        <div className="flex items-baseline justify-between">
+          <Text
+            as="span"
+            variant={size === "md" ? "body-medium" : "small-medium"}
+            className="font-semibold text-neutral-800"
+          >
+            Usage limits
+          </Text>
+          {tierLabel && (
+            <Text as="span" variant="small" className="text-neutral-500">
+              {tierLabel} plan
+            </Text>
+          )}
+        </div>
+      )}
+      {daily && (
         <UsageBar
           label="Today"
-          used={usage.daily.used}
-          limit={usage.daily.limit}
-          resetsAt={usage.daily.resets_at}
+          percentUsed={daily.percent_used}
+          resetsAt={daily.resets_at}
+          size={size}
         />
       )}
-      {hasWeeklyLimit && (
+      {weekly && (
         <UsageBar
           label="This week"
-          used={usage.weekly.used}
-          limit={usage.weekly.limit}
-          resetsAt={usage.weekly.resets_at}
+          percentUsed={weekly.percent_used}
+          resetsAt={weekly.resets_at}
+          size={size}
         />
       )}
       {isDailyExhausted &&
@@ -139,19 +173,21 @@ export function UsagePanelContent({
         !isWeeklyExhausted &&
         hasInsufficientCredits &&
         isBillingEnabled && (
-          <Link
+          <Button
+            as="NextLink"
             href="/profile/credits"
-            className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90"
+            variant="primary"
+            size="small"
+            className="mt-1 w-full"
           >
             Add credits to reset
-          </Link>
+          </Button>
         )}
       {showBillingLink && (
-        <Link
-          href="/profile/credits"
-          className="text-[11px] text-blue-600 hover:underline"
-        >
-          Learn more about usage limits
+        <Link href="/profile/credits" className="hover:underline">
+          <Text as="span" variant="small" className="text-blue-600">
+            Learn more about usage limits
+          </Text>
         </Link>
       )}
     </div>

@@ -591,7 +591,16 @@ class TestStripForUpload:
                 "role": "assistant",
                 "id": "msg_new",
                 "content": [
-                    {"type": "thinking", "thinking": "fresh thinking"},
+                    # Anthropic-style thinking block — has a signature so
+                    # ``_should_strip_thinking_block`` preserves it on the
+                    # last turn.  Without the signature (e.g. emitted by
+                    # Kimi K2.6 via OpenRouter) it would be stripped — see
+                    # ``test_strips_signatureless_thinking_from_last_turn``.
+                    {
+                        "type": "thinking",
+                        "thinking": "fresh thinking",
+                        "signature": "anthropic-signed-blob",
+                    },
                     {"type": "text", "text": "new answer"},
                 ],
             },
@@ -623,6 +632,224 @@ class TestStripForUpload:
         new_content = new_asst["message"]["content"]
         new_types = [b["type"] for b in new_content if isinstance(b, dict)]
         assert "thinking" in new_types  # last assistant preserved
+
+    def test_strips_signatureless_thinking_from_last_turn(self):
+        """Kimi K2.6 (and other non-Anthropic OpenRouter providers) emit
+        thinking blocks without the Anthropic ``signature`` field.  When
+        a subsequent advanced-tier toggle replays the transcript to Opus,
+        Anthropic's API rejects the signature-less block with ``Invalid
+        `signature` in `thinking` block`` — so strip_for_upload must drop
+        them from the LAST assistant entry too, not just stale ones."""
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": "",
+            "message": {"role": "user", "content": "hi"},
+        }
+        # Last (and only) assistant entry with a Kimi-shape thinking block
+        asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "role": "assistant",
+                "id": "msg_kimi",
+                "content": [
+                    # No ``signature`` field → non-Anthropic provider
+                    {"type": "thinking", "thinking": "kimi reasoning"},
+                    {"type": "text", "text": "answer"},
+                ],
+            },
+        }
+        content = _make_jsonl(user, asst)
+        result = strip_for_upload(content)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+        asst_entry = next(
+            e for e in entries if e.get("message", {}).get("id") == "msg_kimi"
+        )
+        types = [
+            b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
+        ]
+        assert "thinking" not in types, (
+            "Signature-less thinking block on last turn must be stripped "
+            "to prevent Anthropic API rejection on model-switch replay"
+        )
+        assert "text" in types, "Text content must survive stripping"
+
+    def test_strips_non_anthropic_thinking_with_placeholder_signature(self):
+        """OpenRouter's Anthropic-compat shim can emit thinking blocks
+        from non-Anthropic producers (Kimi K2.6, DeepSeek) with a
+        PLACEHOLDER signature string that passes the "non-empty string"
+        check but fails Anthropic's cryptographic validation on replay.
+
+        Observed in session 864a55ba after model-toggle from standard
+        (Kimi) to advanced (Opus): the CLI session upload included a
+        thinking block with ``signature="ANTHROPIC_SHIM_PLACEHOLDER"``
+        (or similar), Opus 4.7 rejected with 400 ``Invalid `signature`
+        in `thinking` block``.  Fix: strip thinking blocks from the
+        LAST assistant turn whenever the producing ``model`` isn't an
+        ``anthropic/*`` slug, regardless of signature presence."""
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": "",
+            "message": {"role": "user", "content": "hi"},
+        }
+        asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "role": "assistant",
+                "id": "msg_kimi_shim",
+                "model": "moonshotai/kimi-k2.6-20260420",
+                "content": [
+                    # Placeholder signature — non-empty but cryptographically
+                    # invalid for Anthropic.  Legacy strip (signature-only)
+                    # would KEEP this block.
+                    {
+                        "type": "thinking",
+                        "thinking": "shimmed reasoning",
+                        "signature": "PLACEHOLDER_SHIM_SIG_abc123",
+                    },
+                    {"type": "text", "text": "answer"},
+                ],
+            },
+        }
+        content = _make_jsonl(user, asst)
+        result = strip_for_upload(content)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+        asst_entry = next(
+            e for e in entries if e.get("message", {}).get("id") == "msg_kimi_shim"
+        )
+        types = [
+            b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
+        ]
+        assert "thinking" not in types, (
+            "Non-Anthropic thinking block must be stripped even when it "
+            "carries a placeholder signature — replay-to-Opus otherwise "
+            "400s with Invalid signature"
+        )
+        assert "text" in types
+
+    def test_preserves_anthropic_thinking_on_non_last_turn(self):
+        """Anthropic ``thinking`` blocks on NON-last turns carry real
+        reasoning state that helps context continuity on ``--resume``.
+        Keep them when the producing model is known-Anthropic with a
+        valid signature; strip only when we can't validate safely
+        (legacy callers with no model info — falls through to the
+        old stale-strip rule).
+        """
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": "",
+            "message": {"role": "user", "content": "first"},
+        }
+        asst1 = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "role": "assistant",
+                "id": "msg_opus_prev",
+                "model": "anthropic/claude-4.7-opus-20260416",
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "first-turn reasoning",
+                        "signature": "ANTHROPIC_SIG_1",
+                    },
+                    {"type": "text", "text": "first answer"},
+                ],
+            },
+        }
+        user2 = {
+            "type": "user",
+            "uuid": "u2",
+            "parentUuid": "a1",
+            "message": {"role": "user", "content": "second"},
+        }
+        asst2 = {
+            "type": "assistant",
+            "uuid": "a2",
+            "parentUuid": "u2",
+            "message": {
+                "role": "assistant",
+                "id": "msg_opus_last",
+                "model": "anthropic/claude-4.7-opus-20260416",
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "last-turn reasoning",
+                        "signature": "ANTHROPIC_SIG_2",
+                    },
+                    {"type": "text", "text": "last answer"},
+                ],
+            },
+        }
+        content = _make_jsonl(user, asst1, user2, asst2)
+        result = strip_for_upload(content)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+
+        # Prior Opus turn's thinking must survive — valid Anthropic
+        # block with signature.
+        prev = next(
+            e for e in entries if e.get("message", {}).get("id") == "msg_opus_prev"
+        )
+        prev_types = [b["type"] for b in prev["message"]["content"]]
+        assert "thinking" in prev_types, (
+            "Anthropic thinking block on a non-last turn must be "
+            "preserved — it carries real reasoning state"
+        )
+        # Last turn's thinking also preserved.
+        last = next(
+            e for e in entries if e.get("message", {}).get("id") == "msg_opus_last"
+        )
+        last_types = [b["type"] for b in last["message"]["content"]]
+        assert "thinking" in last_types
+
+    def test_preserves_anthropic_thinking_with_valid_signature(self):
+        """Sanity: an Anthropic-issued thinking block with a real
+        signature on the last turn must NOT be stripped — Anthropic
+        requires value-identity on replay."""
+        user = {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": "",
+            "message": {"role": "user", "content": "hi"},
+        }
+        asst = {
+            "type": "assistant",
+            "uuid": "a1",
+            "parentUuid": "u1",
+            "message": {
+                "role": "assistant",
+                "id": "msg_opus",
+                "model": "anthropic/claude-4.7-opus-20260416",
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "reasoning",
+                        "signature": "REAL_ANTHROPIC_SIG_blob",
+                    },
+                    {"type": "text", "text": "answer"},
+                ],
+            },
+        }
+        content = _make_jsonl(user, asst)
+        result = strip_for_upload(content)
+        entries = [json.loads(line) for line in result.strip().split("\n")]
+        asst_entry = next(
+            e for e in entries if e.get("message", {}).get("id") == "msg_opus"
+        )
+        types = [
+            b["type"] for b in asst_entry["message"]["content"] if isinstance(b, dict)
+        ]
+        assert (
+            "thinking" in types
+        ), "Anthropic-signed thinking on last turn must survive strip"
+        assert "text" in types
 
     def test_empty_content(self):
         result = strip_for_upload("")

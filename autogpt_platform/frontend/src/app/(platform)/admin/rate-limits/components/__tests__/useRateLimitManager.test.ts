@@ -28,11 +28,11 @@ function makeRateLimitResponse(overrides = {}) {
   return {
     user_id: "user-123",
     user_email: "alice@example.com",
-    daily_token_limit: 10000,
-    weekly_token_limit: 50000,
-    daily_tokens_used: 2500,
-    weekly_tokens_used: 10000,
-    tier: "FREE",
+    daily_cost_limit_microdollars: 10_000_000,
+    weekly_cost_limit_microdollars: 50_000_000,
+    daily_cost_used_microdollars: 2_500_000,
+    weekly_cost_used_microdollars: 10_000_000,
+    tier: "BASIC",
     ...overrides,
   };
 }
@@ -229,8 +229,12 @@ describe("useRateLimitManager", () => {
   });
 
   it("handleReset calls reset endpoint and updates data", async () => {
-    const initial = makeRateLimitResponse({ daily_tokens_used: 5000 });
-    const after = makeRateLimitResponse({ daily_tokens_used: 0 });
+    const initial = makeRateLimitResponse({
+      daily_cost_used_microdollars: 5_000_000,
+    });
+    const after = makeRateLimitResponse({
+      daily_cost_used_microdollars: 0,
+    });
     mockGetV2GetUserRateLimit.mockResolvedValue({ status: 200, data: initial });
     mockPostV2ResetUserRateLimitUsage.mockResolvedValue({
       status: 200,
@@ -300,7 +304,7 @@ describe("useRateLimitManager", () => {
   });
 
   it("handleTierChange calls set tier and re-fetches", async () => {
-    const initial = makeRateLimitResponse({ tier: "FREE" });
+    const initial = makeRateLimitResponse({ tier: "BASIC" });
     const updated = makeRateLimitResponse({ tier: "PRO" });
     mockGetV2GetUserRateLimit
       .mockResolvedValueOnce({ status: 200, data: initial })
@@ -338,7 +342,9 @@ describe("useRateLimitManager", () => {
   });
 
   it("handleReset throws when endpoint returns non-200 status", async () => {
-    const initial = makeRateLimitResponse({ daily_tokens_used: 5000 });
+    const initial = makeRateLimitResponse({
+      daily_cost_used_microdollars: 5_000_000,
+    });
     mockGetV2GetUserRateLimit.mockResolvedValue({ status: 200, data: initial });
     mockPostV2ResetUserRateLimitUsage.mockResolvedValue({ status: 500 });
 
@@ -365,7 +371,7 @@ describe("useRateLimitManager", () => {
   });
 
   it("handleTierChange throws when set-tier endpoint returns non-200", async () => {
-    const initial = makeRateLimitResponse({ tier: "FREE" });
+    const initial = makeRateLimitResponse({ tier: "BASIC" });
     mockGetV2GetUserRateLimit.mockResolvedValue({ status: 200, data: initial });
     mockPostV2SetUserRateLimitTier.mockResolvedValue({ status: 500 });
 

@@ -11,12 +11,17 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
     ChatCompletionMessageToolCallParam,
     Function,
 )
+from pytest_mock import MockerFixture
+
+from backend.util.exceptions import NotFoundError
 
 from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    append_and_save_message,
     get_chat_session,
+    get_or_create_builder_session,
     is_message_duplicate,
     maybe_append_user_message,
     upsert_chat_session,
@@ -574,3 +579,520 @@ def test_maybe_append_assistant_skips_duplicate():
     result = maybe_append_user_message(session, "dup", is_user_message=False)
     assert result is False
     assert len(session.messages) == 2
+
+
+# --------------------------------------------------------------------------- #
+#  append_and_save_message                                                     #
+# --------------------------------------------------------------------------- #
+
+
+def _make_session_with_messages(*msgs: ChatMessage) -> ChatSession:
+    s = ChatSession.new(user_id="u1", dry_run=False)
+    s.messages = list(msgs)
+    return s
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_returns_none_for_duplicate(
+    mocker: MockerFixture,
+) -> None:
+    """append_and_save_message returns None when the trailing message is a duplicate."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="hello"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock()
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="hello")
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_appends_new_message(
+    mocker: MockerFixture,
+) -> None:
+    """append_and_save_message appends a non-duplicate message and returns the session."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="hello"),
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock()
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=2)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    new_msg = ChatMessage(role="user", content="second message")
+    result = await append_and_save_message(session.session_id, new_msg)
+    assert result is not None
+    assert result.messages[-1].content == "second message"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_raises_when_session_not_found(
+    mocker: MockerFixture,
+) -> None:
+    """append_and_save_message raises ValueError when the session does not exist."""
+
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock()
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+
+    with pytest.raises(ValueError, match="not found"):
+        await append_and_save_message(
+            "missing-session-id", ChatMessage(role="user", content="hi")
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_uses_db_when_lock_degraded(
+    mocker: MockerFixture,
+) -> None:
+    """When the Redis lock times out (acquired=False), the fallback reads from DB."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=False)
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mock_get_from_db = mocker.patch(
+        "backend.copilot.model._get_session_from_db",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    new_msg = ChatMessage(role="user", content="new msg")
+    result = await append_and_save_message(session.session_id, new_msg)
+    # DB path was used (not cache-first)
+    mock_get_from_db.assert_called_once_with(session.session_id)
+    assert result is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_raises_database_error_on_save_failure(
+    mocker: MockerFixture,
+) -> None:
+    """When _save_session_to_db fails, append_and_save_message raises DatabaseError."""
+    from backend.util.exceptions import DatabaseError
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock()
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+        side_effect=RuntimeError("db down"),
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+
+    with pytest.raises(DatabaseError):
+        await append_and_save_message(
+            session.session_id, ChatMessage(role="user", content="new msg")
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_invalidates_cache_on_cache_failure(
+    mocker: MockerFixture,
+) -> None:
+    """When cache_chat_session fails, invalidate_session_cache is called to avoid stale reads."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock()
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=RuntimeError("redis write failed"),
+    )
+    mock_invalidate = mocker.patch(
+        "backend.copilot.model.invalidate_session_cache",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="new msg")
+    )
+    # DB write succeeded, cache invalidation was called
+    mock_invalidate.assert_called_once_with(session.session_id)
+    assert result is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_uses_db_when_redis_unavailable(
+    mocker: MockerFixture,
+) -> None:
+    """When get_redis_async raises, _get_session_lock yields False (degraded) and DB is read."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        side_effect=ConnectionError("redis down"),
+    )
+    mock_get_from_db = mocker.patch(
+        "backend.copilot.model._get_session_from_db",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    new_msg = ChatMessage(role="user", content="new msg")
+    result = await append_and_save_message(session.session_id, new_msg)
+    mock_get_from_db.assert_called_once_with(session.session_id)
+    assert result is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_lock_release_failure_is_ignored(
+    mocker: MockerFixture,
+) -> None:
+    """If lock.release() raises, the exception is swallowed (TTL will clean up)."""
+
+    session = _make_session_with_messages(
+        ChatMessage(role="assistant", content="hi"),
+    )
+    mock_redis_lock = mocker.AsyncMock()
+    mock_redis_lock.acquire = mocker.AsyncMock(return_value=True)
+    mock_redis_lock.release = mocker.AsyncMock(
+        side_effect=RuntimeError("release failed")
+    )
+    mock_redis_client = mocker.MagicMock()
+    mock_redis_client.lock = mocker.MagicMock(return_value=mock_redis_lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=mock_redis_client,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db",
+        new_callable=mocker.AsyncMock,
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=1)
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    new_msg = ChatMessage(role="user", content="new msg")
+    result = await append_and_save_message(session.session_id, new_msg)
+    assert result is not None
+
+
+# ─── get_or_create_builder_session ─────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_raises_when_graph_not_owned(
+    mocker: MockerFixture,
+) -> None:
+    """Regression: the helper must verify the caller owns the graph before
+    any session lookup/creation. ``library_db().get_library_agent_by_graph_id``
+    returns ``None`` when the user doesn't own *graph_id*, which must surface
+    as :class:`NotFoundError` (mapped to HTTP 404 by the REST layer)."""
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=None),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    with pytest.raises(NotFoundError):
+        await get_or_create_builder_session("u1", "graph-not-mine")
+
+    # Confirms the ownership check short-circuits before we hit
+    # create_chat_session, so no orphaned session rows can be created.
+    create_mock.assert_not_awaited()
+    library_db_mock.update_library_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_returns_existing_when_owned(
+    mocker: MockerFixture,
+) -> None:
+    """When the caller owns the graph AND a session pointer on the library
+    agent resolves to a live chat session, return it unchanged without
+    creating a new one or re-writing the pointer."""
+    existing_session = ChatSession.new(
+        "u1", dry_run=False, builder_graph_id="graph-mine"
+    )
+    existing_session.session_id = "sess-existing"
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id="sess-existing"),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing_session,
+    )
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await get_or_create_builder_session("u1", "graph-mine")
+
+    assert result is existing_session
+    create_mock.assert_not_awaited()
+    library_db_mock.update_library_agent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_writes_pointer_on_create(
+    mocker: MockerFixture,
+) -> None:
+    """When no session pointer exists yet, create a new ChatSession and
+    write its id back to ``library_agent.settings.builder_chat_session_id``
+    so the next call resumes the same chat."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id=None),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    new_session = ChatSession.new("u1", dry_run=False, builder_graph_id="graph-mine")
+    new_session.session_id = "sess-new"
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=new_session,
+    )
+
+    result = await get_or_create_builder_session("u1", "graph-mine")
+
+    assert result is new_session
+    create_mock.assert_awaited_once()
+    library_db_mock.update_library_agent.assert_awaited_once()
+    call_kwargs = library_db_mock.update_library_agent.call_args.kwargs
+    assert call_kwargs["library_agent_id"] == "lib-1"
+    assert call_kwargs["user_id"] == "u1"
+    assert call_kwargs["settings"].builder_chat_session_id == "sess-new"
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_builder_session_recreates_when_pointer_stale(
+    mocker: MockerFixture,
+) -> None:
+    """When the stored pointer no longer resolves (session was deleted),
+    fall through to creating a fresh session and updating the pointer."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id="sess-gone"),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    new_session = ChatSession.new("u1", dry_run=False, builder_graph_id="graph-mine")
+    new_session.session_id = "sess-new"
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=new_session,
+    )
+
+    result = await get_or_create_builder_session("u1", "graph-mine")
+
+    assert result is new_session
+    create_mock.assert_awaited_once()
+    library_db_mock.update_library_agent.assert_awaited_once()
+
+
+def test_chat_message_from_db_round_trips_created_at() -> None:
+    """ChatMessage.from_db surfaces the DB row's createdAt on the pydantic
+    model so the API response carries it through to the frontend's TurnStats
+    map (powering the hover-reveal date on the copilot UI)."""
+    from datetime import datetime, timezone
+
+    from prisma.models import ChatMessage as PrismaChatMessage
+
+    created_at = datetime(2026, 4, 23, 10, 15, 30, tzinfo=timezone.utc)
+    row = PrismaChatMessage.model_construct(
+        id="m1",
+        sessionId="sess-1",
+        role="assistant",
+        content="hi",
+        name=None,
+        toolCallId=None,
+        refusal=None,
+        toolCalls=None,
+        functionCall=None,
+        sequence=3,
+        durationMs=4200,
+        createdAt=created_at,
+    )
+
+    msg = ChatMessage.from_db(row)
+
+    assert msg.role == "assistant"
+    assert msg.content == "hi"
+    assert msg.sequence == 3
+    assert msg.duration_ms == 4200
+    assert msg.created_at == created_at

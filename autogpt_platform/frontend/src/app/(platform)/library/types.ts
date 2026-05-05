@@ -41,6 +41,7 @@ export interface FleetSummary {
   listening: number;
   scheduled: number;
   idle: number;
+  /** Total spend for the current calendar month, in cents. */
   monthlySpend: number;
 }
 

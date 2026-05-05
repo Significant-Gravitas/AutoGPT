@@ -8,6 +8,7 @@ from backend.copilot.model import ChatSession
 from .agent_generator import get_agent_as_json
 from .agent_generator.pipeline import fetch_library_agents, fix_validate_and_save
 from .base import BaseTool
+from .helpers import require_guide_read
 from .models import ErrorResponse, ToolResponseBase
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class EditAgentTool(BaseTool):
     def description(self) -> str:
         return (
             "Edit an existing agent. Validates, auto-fixes, and saves. "
-            "If you haven't already, call get_agent_building_guide first."
+            "Requires get_agent_building_guide first (refuses otherwise)."
         )
 
     @property
@@ -72,6 +73,28 @@ class EditAgentTool(BaseTool):
         if library_agent_ids is None:
             library_agent_ids = []
         session_id = session.session_id if session else None
+
+        # Builder-bound sessions are locked to a specific graph: default
+        # missing agent_id to the bound graph, and reject any other id so
+        # the assistant cannot accidentally mutate a different agent.
+        builder_graph_id = session.metadata.builder_graph_id if session else None
+        if builder_graph_id:
+            if not agent_id:
+                agent_id = builder_graph_id
+            elif agent_id != builder_graph_id:
+                return ErrorResponse(
+                    message=(
+                        "This chat is bound to the builder's current agent. "
+                        "Editing a different agent is not allowed here — "
+                        "open that agent in the builder instead."
+                    ),
+                    error="builder_session_graph_mismatch",
+                    session_id=session_id,
+                )
+
+        guide_gate = require_guide_read(session, "edit_agent")
+        if guide_gate is not None:
+            return guide_gate
 
         if not agent_id:
             return ErrorResponse(

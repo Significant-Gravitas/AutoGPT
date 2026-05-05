@@ -52,9 +52,14 @@ is at most as permissive as the parent:
 from __future__ import annotations
 
 import re
-from typing import Literal, get_args
+from typing import TYPE_CHECKING, Literal, get_args
 
 from pydantic import BaseModel, PrivateAttr
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from backend.copilot.tools import ToolGroup
 
 # ---------------------------------------------------------------------------
 # Constants — single source of truth for all accepted tool names
@@ -66,7 +71,6 @@ from pydantic import BaseModel, PrivateAttr
 ToolName = Literal[
     # Platform tools (must match keys in TOOL_REGISTRY)
     "add_understanding",
-    "ask_question",
     "bash_exec",
     "browser_act",
     "browser_navigate",
@@ -87,6 +91,7 @@ ToolName = Literal[
     "get_agent_building_guide",
     "get_doc_page",
     "get_mcp_guide",
+    "get_sub_session_result",
     "list_folders",
     "list_workspace_files",
     "memory_forget_confirm",
@@ -99,12 +104,14 @@ ToolName = Literal[
     "run_agent",
     "run_block",
     "run_mcp_tool",
+    "run_sub_session",
     "search_docs",
     "search_feature_requests",
     "update_folder",
     "validate_agent_graph",
     "view_agent_output",
     "web_fetch",
+    "web_search",
     "write_workspace_file",
     # SDK built-ins
     "Agent",
@@ -121,9 +128,24 @@ ToolName = Literal[
 # Frozen set of all valid tool names — derived from the Literal.
 ALL_TOOL_NAMES: frozenset[str] = frozenset(get_args(ToolName))
 
-# SDK built-in tool names — uppercase-initial names are SDK built-ins.
+DISABLED_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({"ask_question"})
+"""Tool names accepted only for backwards compatibility with saved graphs.
+
+These names are intentionally absent from ``ToolName`` and
+``PLATFORM_TOOL_NAMES`` so they are not exposed in new block schemas or sent to
+the model as available tools.
+"""
+
+# SDK built-in tool names — tools provided by the Claude Code CLI that our
+# code does not implement directly.  ``TodoWrite`` is DELIBERATELY excluded:
+# baseline mode ships an MCP-wrapped platform version
+# (``tools/todo_write.py``), while SDK mode still uses the CLI-native
+# original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
+# MCP copy is filtered out there.  ``Task`` remains an SDK-only built-in
+# (for queue-backed context-isolation on baseline, use ``run_sub_session``
+# instead).
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
-    n for n in ALL_TOOL_NAMES if n[0].isupper()
+    {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
 )
 
 # Platform tool names — everything that isn't an SDK built-in.
@@ -290,7 +312,11 @@ def validate_tool_names(tools: list[str]) -> list[str]:
     Returns:
         List of invalid names (empty if all are valid).
     """
-    return [t for t in tools if t not in ALL_TOOL_NAMES]
+    return [
+        t
+        for t in tools
+        if t not in ALL_TOOL_NAMES and t not in DISABLED_LEGACY_TOOL_NAMES
+    ]
 
 
 _tool_names_checked = False
@@ -360,13 +386,17 @@ def apply_tool_permissions(
     permissions: CopilotPermissions,
     *,
     use_e2b: bool = False,
+    disabled_groups: Iterable[ToolGroup] = (),
 ) -> tuple[list[str], list[str]]:
     """Compute (allowed_tools, extra_disallowed) for :class:`ClaudeAgentOptions`.
 
     Takes the base allowed/disallowed lists from
     :func:`~backend.copilot.sdk.tool_adapter.get_copilot_tool_names` /
     :func:`~backend.copilot.sdk.tool_adapter.get_sdk_disallowed_tools` and
-    applies *permissions* on top.
+    applies *permissions* on top.  Tools belonging to any *disabled_groups*
+    are hidden from the base allowed list — use this to gate capability
+    groups (e.g. ``"graphiti"`` when the memory backend is off for the
+    current user).
 
     Returns:
         ``(allowed_tools, extra_disallowed)`` where *allowed_tools* is the
@@ -376,13 +406,16 @@ def apply_tool_permissions(
     """
     from backend.copilot.sdk.tool_adapter import (
         _READ_TOOL_NAME,
+        BASELINE_ONLY_MCP_TOOLS,
         MCP_TOOL_PREFIX,
         get_copilot_tool_names,
         get_sdk_disallowed_tools,
     )
     from backend.copilot.tools import TOOL_REGISTRY
 
-    base_allowed = get_copilot_tool_names(use_e2b=use_e2b)
+    base_allowed = get_copilot_tool_names(
+        use_e2b=use_e2b, disabled_groups=disabled_groups
+    )
     base_disallowed = get_sdk_disallowed_tools(use_e2b=use_e2b)
 
     if permissions.is_empty():
@@ -416,7 +449,14 @@ def apply_tool_permissions(
     # keeping only those present in the original base_allowed list.
     def to_sdk_names(short: str) -> list[str]:
         names: list[str] = []
-        if short in TOOL_REGISTRY:
+        if short in BASELINE_ONLY_MCP_TOOLS:
+            # Baseline ships MCP versions of these (Task/TodoWrite) for
+            # model-flexibility parity, but SDK mode uses the CLI-native
+            # originals. Permissions target the CLI built-in here so
+            # ``base_allowed`` (which excludes the MCP wrappers) still
+            # matches.
+            names.append(short)
+        elif short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Map SDK built-in file tool to its MCP equivalent.

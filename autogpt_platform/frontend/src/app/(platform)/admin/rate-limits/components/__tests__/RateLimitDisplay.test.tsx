@@ -30,11 +30,11 @@ function makeData(
   return {
     user_id: "user-abc-123",
     user_email: "alice@example.com",
-    daily_token_limit: 10000,
-    weekly_token_limit: 50000,
-    daily_tokens_used: 2500,
-    weekly_tokens_used: 10000,
-    tier: "FREE",
+    daily_cost_limit_microdollars: 10_000_000,
+    weekly_cost_limit_microdollars: 50_000_000,
+    daily_cost_used_microdollars: 2_500_000,
+    weekly_cost_used_microdollars: 10_000_000,
+    tier: "BASIC",
     ...overrides,
   };
 }
@@ -71,14 +71,14 @@ describe("RateLimitDisplay", () => {
     expect(badge.className).toContain("bg-blue-100");
   });
 
-  it("defaults unknown tier to FREE", () => {
+  it("defaults unknown tier to BASIC", () => {
     render(
       <RateLimitDisplay
         data={makeData({ tier: "UNKNOWN" as UserRateLimitResponse["tier"] })}
         onReset={vi.fn()}
       />,
     );
-    const badge = screen.getByText("FREE");
+    const badge = screen.getByText("BASIC");
     expect(badge).toBeDefined();
   });
 
@@ -86,7 +86,7 @@ describe("RateLimitDisplay", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
     const select = screen.getByLabelText("Subscription tier");
     expect(select).toBeDefined();
-    expect(select.querySelectorAll("option").length).toBe(4);
+    expect(select.querySelectorAll("option").length).toBe(5);
   });
 
   it("disables tier dropdown when onTierChange is not provided", () => {
@@ -113,8 +113,8 @@ describe("RateLimitDisplay", () => {
 
   it("renders daily and weekly usage sections", () => {
     render(<RateLimitDisplay data={makeData()} onReset={vi.fn()} />);
-    expect(screen.getByText("Daily Usage")).toBeDefined();
-    expect(screen.getByText("Weekly Usage")).toBeDefined();
+    expect(screen.getByText("Daily Spend")).toBeDefined();
+    expect(screen.getByText("Weekly Spend")).toBeDefined();
   });
 
   it("renders reset scope dropdown and reset button", () => {
@@ -126,7 +126,7 @@ describe("RateLimitDisplay", () => {
   it("disables reset button when nothing to reset", () => {
     render(
       <RateLimitDisplay
-        data={makeData({ daily_tokens_used: 0 })}
+        data={makeData({ daily_cost_used_microdollars: 0 })}
         onReset={vi.fn()}
       />,
     );
@@ -137,7 +137,7 @@ describe("RateLimitDisplay", () => {
   it("enables reset button when there is usage to reset", () => {
     render(
       <RateLimitDisplay
-        data={makeData({ daily_tokens_used: 100 })}
+        data={makeData({ daily_cost_used_microdollars: 100_000 })}
         onReset={vi.fn()}
       />,
     );
@@ -174,7 +174,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ weekly_tokens_used: 100 })}
+        data={makeData({ weekly_cost_used_microdollars: 100_000 })}
         onReset={onReset}
       />,
     );
@@ -195,7 +195,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,
@@ -215,14 +215,14 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,
     );
 
     fireEvent.change(screen.getByLabelText("Subscription tier"), {
-      target: { value: "FREE" },
+      target: { value: "BASIC" },
     });
 
     expect(onTierChange).not.toHaveBeenCalled();
@@ -234,7 +234,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,
@@ -253,7 +253,7 @@ describe("RateLimitDisplay", () => {
 
     render(
       <RateLimitDisplay
-        data={makeData({ tier: "FREE" })}
+        data={makeData({ tier: "BASIC" })}
         onReset={vi.fn()}
         onTierChange={onTierChange}
       />,

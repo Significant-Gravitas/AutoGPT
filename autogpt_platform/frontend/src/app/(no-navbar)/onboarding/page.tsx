@@ -6,6 +6,7 @@ import { StepIndicator } from "./components/StepIndicator";
 import { PainPointsStep } from "./steps/PainPointsStep";
 import { PreparingStep } from "./steps/PreparingStep";
 import { RoleStep } from "./steps/RoleStep";
+import { SubscriptionStep } from "./steps/SubscriptionStep/SubscriptionStep";
 import { WelcomeStep } from "./steps/WelcomeStep";
 import { useOnboardingWizardStore } from "./store";
 import { useOnboardingPage } from "./useOnboardingPage";
@@ -17,11 +18,12 @@ export default function OnboardingPage() {
 
   if (isLoading) return null;
 
+  // ProgressBar + StepIndicator track only the user-interactive steps (1-4).
+  // Step 5 (PreparingStep) is a transition view that hides both indicators.
   const totalSteps = 4;
-  const showDots = currentStep <= 3;
-  const showBack = currentStep > 1 && currentStep <= 3;
-
-  const showProgressBar = currentStep <= 3;
+  const showDots = currentStep <= totalSteps;
+  const showBack = currentStep > 1 && currentStep <= totalSteps;
+  const showProgressBar = currentStep <= totalSteps;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
@@ -44,14 +46,15 @@ export default function OnboardingPage() {
         {currentStep === 1 && <WelcomeStep />}
         {currentStep === 2 && <RoleStep />}
         {currentStep === 3 && <PainPointsStep />}
-        {currentStep === 4 && (
+        {currentStep === 4 && <SubscriptionStep />}
+        {currentStep === 5 && (
           <PreparingStep onComplete={handlePreparingComplete} />
         )}
       </div>
 
       {showDots && (
         <div className="pb-8">
-          <StepIndicator totalSteps={3} currentStep={currentStep} />
+          <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
       )}
     </div>

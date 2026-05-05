@@ -174,11 +174,11 @@ describe("RateLimitManager", () => {
       rateLimitData: {
         user_id: "user-123",
         user_email: "alice@example.com",
-        daily_token_limit: 10000,
-        weekly_token_limit: 50000,
-        daily_tokens_used: 2500,
-        weekly_tokens_used: 10000,
-        tier: "FREE",
+        daily_cost_limit_microdollars: 10_000_000,
+        weekly_cost_limit_microdollars: 50_000_000,
+        daily_cost_used_microdollars: 2_500_000,
+        weekly_cost_used_microdollars: 10_000_000,
+        tier: "BASIC",
       },
     });
 
@@ -197,11 +197,11 @@ describe("RateLimitManager", () => {
       rateLimitData: {
         user_id: "user-123",
         user_email: "alice@example.com",
-        daily_token_limit: 10000,
-        weekly_token_limit: 50000,
-        daily_tokens_used: 2500,
-        weekly_tokens_used: 10000,
-        tier: "FREE",
+        daily_cost_limit_microdollars: 10_000_000,
+        weekly_cost_limit_microdollars: 50_000_000,
+        daily_cost_used_microdollars: 2_500_000,
+        weekly_cost_used_microdollars: 10_000_000,
+        tier: "BASIC",
       },
     });
 
