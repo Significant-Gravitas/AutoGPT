@@ -1032,16 +1032,25 @@ async def update_subscription_tier(
             ),
         )
     except stripe.InvalidRequestError as e:
-        # "No payment method" presents as InvalidRequestError (not CardError) when
-        # error_if_incomplete fires with no default PM on the customer. Stripe
-        # signals this with code=resource_missing/missing on the payment-method
-        # param. Map it to 402 with an actionable message instead of the generic
-        # 502 outage copy.
-        if e.code in {"resource_missing", "missing"} and e.param in {
-            "default_payment_method",
-            "payment_method",
-            "invoice_settings.default_payment_method",
-        }:
+        # Stripe's e.param is documented as nullable, so we match by typed
+        # field first and fall back to substring when param is absent.
+        msg_lower = (e.user_message or str(e)).lower()
+        # "No payment method" presents as InvalidRequestError (not CardError)
+        # when error_if_incomplete fires with no default PM. Stripe signals
+        # this with code=resource_missing/missing — sometimes with a typed
+        # param, sometimes without (the raw "no attached payment source"
+        # message has empty param). Map it to 402 either way.
+        if e.code in {"resource_missing", "missing"} and (
+            e.param
+            in {
+                "default_payment_method",
+                "payment_method",
+                "invoice_settings.default_payment_method",
+            }
+            or "no attached payment source" in msg_lower
+            or "default payment method" in msg_lower
+            or "no payment method" in msg_lower
+        ):
             logger.warning(
                 "No payment method on subscription upgrade for user %s: %s",
                 user_id,
@@ -1056,9 +1065,10 @@ async def update_subscription_tier(
             )
         # Stripe rejects schedule modify when phases mix currencies, e.g. the
         # active sub was checked out in GBP but the target tier's Price is
-        # USD-only. 502 reads as outage; surface a 422 with a specific message
-        # so the user/admin can see what to fix in Stripe.
-        if e.param == "currency":
+        # USD-only. e.param is "currency" on the schedule API but may be
+        # "phases" or absent on older error shapes — substring fallback keeps
+        # the 422 firing instead of dropping to the generic 502.
+        if e.param == "currency" or "currency" in msg_lower:
             logger.warning(
                 "Currency mismatch on tier change for user %s: %s", user_id, e
             )
