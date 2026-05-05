@@ -25,7 +25,6 @@ function makeAgentMessage(
   return {
     id,
     role: "assistant",
-    content: "",
     parts: artifactIds.map((aid) => ({
       type: "file" as const,
       url: `/api/proxy/api/workspace/files/${aid}/download`,
@@ -43,7 +42,6 @@ function makeUserMessage(
   return {
     id,
     role: "user",
-    content: "",
     parts: artifactIds.map((aid) => ({
       type: "file" as const,
       url: `/api/proxy/api/workspace/files/${aid}/download`,
