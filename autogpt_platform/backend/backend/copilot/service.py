@@ -465,8 +465,8 @@ async def inject_user_context(
                 from .rate_limit import get_user_tier
 
                 tier = await get_user_tier(user_id)
-                tier_line = f"\nPlan: {tier.value}"
-                raw_ctx = (raw_ctx or "") + tier_line
+                tier_line = f"Plan: {tier.value}"
+                raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
             except Exception:
                 pass  # Tier lookup failure is non-fatal
         if not raw_ctx:

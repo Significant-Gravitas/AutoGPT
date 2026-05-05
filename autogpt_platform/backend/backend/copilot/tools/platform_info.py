@@ -5,10 +5,10 @@ from typing import Any
 
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import (
-    _DEFAULT_TIER_MULTIPLIERS,
-    _DEFAULT_TIER_WORKSPACE_STORAGE_MB,
     SubscriptionTier,
+    get_tier_multipliers,
     get_user_tier,
+    get_workspace_storage_limits_mb,
 )
 
 from .base import BaseTool
@@ -76,7 +76,7 @@ class PlatformInfoTool(BaseTool):
         topic: str = "subscription",
         **kwargs: Any,
     ) -> ToolResponseBase:
-        session_id = session.session_id if session else None
+        session_id = session.session_id
 
         if topic == "subscription":
             return await self._handle_subscription(user_id, session_id)
@@ -101,16 +101,18 @@ class PlatformInfoTool(BaseTool):
 
         try:
             tier = await get_user_tier(user_id)
-        except Exception as e:
-            logger.exception("Failed to fetch user tier")
+        except Exception:
+            logger.exception("Failed to fetch user tier for user %s", user_id)
             return ErrorResponse(
                 message="Could not retrieve subscription info.",
-                error=str(e),
+                error="tier_lookup_failed",
                 session_id=session_id,
             )
 
-        multiplier = _DEFAULT_TIER_MULTIPLIERS.get(tier, 1.0)
-        storage_mb = _DEFAULT_TIER_WORKSPACE_STORAGE_MB.get(tier, 250)
+        tier_multipliers = await get_tier_multipliers()
+        storage_limits = await get_workspace_storage_limits_mb()
+        multiplier = tier_multipliers.get(tier.value, 1.0)
+        storage_mb = storage_limits.get(tier.value, 250)
 
         # Build upgrade suggestions: show tiers above the current one.
         current_idx = _TIER_ORDER.index(tier) if tier in _TIER_ORDER else 0

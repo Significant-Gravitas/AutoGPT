@@ -8,6 +8,11 @@ from backend.copilot.rate_limit import SubscriptionTier
 from backend.copilot.tools.models import ResponseType
 from backend.copilot.tools.platform_info import PlatformInfoTool
 
+_MOCK_MULTIPLIERS = {t.value: float(i) for i, t in enumerate(SubscriptionTier)}
+_MOCK_MULTIPLIERS.update({"NO_TIER": 0.0, "BASIC": 1.0, "PRO": 5.0, "MAX": 20.0})
+_MOCK_STORAGE = {t.value: 250 for t in SubscriptionTier}
+_MOCK_STORAGE.update({"PRO": 1024, "MAX": 5 * 1024, "BUSINESS": 15 * 1024})
+
 
 @pytest.fixture
 def tool():
@@ -39,10 +44,22 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_pro(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.PRO,
+        with (
+            patch(
+                "backend.copilot.tools.platform_info.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.PRO,
+            ),
+            patch(
+                "backend.copilot.tools.platform_info.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value=_MOCK_MULTIPLIERS,
+            ),
+            patch(
+                "backend.copilot.tools.platform_info.get_workspace_storage_limits_mb",
+                new_callable=AsyncMock,
+                return_value=_MOCK_STORAGE,
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -57,10 +74,22 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_no_tier(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.NO_TIER,
+        with (
+            patch(
+                "backend.copilot.tools.platform_info.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.NO_TIER,
+            ),
+            patch(
+                "backend.copilot.tools.platform_info.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value=_MOCK_MULTIPLIERS,
+            ),
+            patch(
+                "backend.copilot.tools.platform_info.get_workspace_storage_limits_mb",
+                new_callable=AsyncMock,
+                return_value=_MOCK_STORAGE,
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
@@ -74,10 +103,22 @@ class TestPlatformInfoTool:
 
     @pytest.mark.asyncio
     async def test_subscription_topic_max(self, tool, mock_session):
-        with patch(
-            "backend.copilot.tools.platform_info.get_user_tier",
-            new_callable=AsyncMock,
-            return_value=SubscriptionTier.MAX,
+        with (
+            patch(
+                "backend.copilot.tools.platform_info.get_user_tier",
+                new_callable=AsyncMock,
+                return_value=SubscriptionTier.MAX,
+            ),
+            patch(
+                "backend.copilot.tools.platform_info.get_tier_multipliers",
+                new_callable=AsyncMock,
+                return_value=_MOCK_MULTIPLIERS,
+            ),
+            patch(
+                "backend.copilot.tools.platform_info.get_workspace_storage_limits_mb",
+                new_callable=AsyncMock,
+                return_value=_MOCK_STORAGE,
+            ),
         ):
             result = await tool._execute(
                 user_id="user-1", session=mock_session, topic="subscription"
