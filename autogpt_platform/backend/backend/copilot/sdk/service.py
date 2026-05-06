@@ -3231,7 +3231,7 @@ async def _run_stream_attempt(
         # seconds on cold-starts or large contexts. The frontend prefers
         # this over the generic "Thinking…" copy; fast turns replace it
         # with content immediately.
-        yield StreamStatus(message="Reading your message…")
+        yield StreamStatus(message="Reading your message\u2026")
 
         if ctx.attachments.image_blocks:
             content_blocks: list[dict[str, Any]] = [
