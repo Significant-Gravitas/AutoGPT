@@ -1,27 +1,30 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { server } from "@/mocks/mock-server";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { UsageLimitReachedCard } from "../UsageLimitReachedCard";
 
-const mockUseUsageLimitReachedCard = vi.fn();
-vi.mock("../useUsageLimitReachedCard", () => ({
-  useUsageLimitReachedCard: () => mockUseUsageLimitReachedCard(),
-}));
+const mockUseGetFlag = vi.fn();
+vi.mock("@/services/feature-flags/use-get-flag", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/services/feature-flags/use-get-flag")
+  >("@/services/feature-flags/use-get-flag");
+  return {
+    ...actual,
+    useGetFlag: (flag: unknown) => mockUseGetFlag(flag),
+  };
+});
 
 vi.mock("../../StorageBar", () => ({
   StorageBar: () => null,
 }));
 
 afterEach(() => {
-  cleanup();
-  mockUseUsageLimitReachedCard.mockReset();
+  mockUseGetFlag.mockReset();
 });
 
 beforeEach(() => {
-  mockUseUsageLimitReachedCard.mockReturnValue({
-    usage: undefined,
-    isSuccess: false,
-    isBillingEnabled: true,
-  });
+  mockUseGetFlag.mockReturnValue(true);
 });
 
 interface UsageOverrides {
@@ -49,69 +52,64 @@ function makeUsage({
   };
 }
 
+function mockUsageResponse(body: JsonBodyType) {
+  server.use(http.get("*/api/chat/usage", () => HttpResponse.json(body)));
+}
+
 describe("UsageLimitReachedCard", () => {
-  it("renders nothing while usage data is loading", () => {
+  it("renders nothing on the first paint while data is loading", () => {
+    mockUsageResponse(makeUsage());
     const { container } = render(<UsageLimitReachedCard />);
     expect(container.innerHTML).toBe("");
   });
 
-  it("renders the alert with daily and weekly bars when data is ready", () => {
-    mockUseUsageLimitReachedCard.mockReturnValue({
-      usage: makeUsage(),
-      isSuccess: true,
-      isBillingEnabled: true,
-    });
+  it("renders nothing when neither daily nor weekly is exhausted", async () => {
+    mockUsageResponse(makeUsage({ dailyPercent: 5, weeklyPercent: 4 }));
+    const { container } = render(<UsageLimitReachedCard />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("renders the alert with daily and weekly bars when the daily limit is reached", async () => {
+    mockUsageResponse(makeUsage());
     render(<UsageLimitReachedCard />);
 
-    expect(screen.getByRole("alert")).toBeDefined();
+    expect(await screen.findByRole("alert")).toBeDefined();
     expect(screen.getByText("Usage limit reached")).toBeDefined();
     expect(screen.getByText("Today")).toBeDefined();
     expect(screen.getByText("This week")).toBeDefined();
   });
 
-  it("always shows the 'Go to billing' button when billing is enabled", () => {
-    mockUseUsageLimitReachedCard.mockReturnValue({
-      usage: makeUsage(),
-      isSuccess: true,
-      isBillingEnabled: true,
-    });
+  it("always shows the 'Go to billing' button when billing is enabled", async () => {
+    mockUsageResponse(makeUsage());
     render(<UsageLimitReachedCard />);
 
-    const link = screen.getByText("Go to billing").closest("a");
+    const link = (await screen.findByText("Go to billing")).closest("a");
     expect(link).not.toBeNull();
     expect(link?.getAttribute("href")).toBe("/settings/billing");
   });
 
-  it("hides the 'Go to billing' button when billing is disabled at the platform level", () => {
-    mockUseUsageLimitReachedCard.mockReturnValue({
-      usage: makeUsage(),
-      isSuccess: true,
-      isBillingEnabled: false,
-    });
+  it("hides the 'Go to billing' button when billing is disabled at the platform level", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    mockUsageResponse(makeUsage());
     render(<UsageLimitReachedCard />);
 
+    expect(await screen.findByRole("alert")).toBeDefined();
     expect(screen.queryByText("Go to billing")).toBeNull();
   });
 
-  it("renders the tier badge when a tier is set", () => {
-    mockUseUsageLimitReachedCard.mockReturnValue({
-      usage: makeUsage({ tier: "PRO" }),
-      isSuccess: true,
-      isBillingEnabled: true,
-    });
+  it("renders the tier badge when a tier is set", async () => {
+    mockUsageResponse(makeUsage({ tier: "PRO" }));
     render(<UsageLimitReachedCard />);
 
-    expect(screen.getByText("Pro")).toBeDefined();
+    expect(await screen.findByText("Pro")).toBeDefined();
   });
 
-  it("never renders the legacy 'Reset daily limit' control", () => {
-    mockUseUsageLimitReachedCard.mockReturnValue({
-      usage: makeUsage(),
-      isSuccess: true,
-      isBillingEnabled: true,
-    });
+  it("never renders the legacy 'Reset daily limit' control", async () => {
+    mockUsageResponse(makeUsage());
     render(<UsageLimitReachedCard />);
 
+    expect(await screen.findByRole("alert")).toBeDefined();
     expect(screen.queryByText(/Reset daily limit/i)).toBeNull();
   });
 });

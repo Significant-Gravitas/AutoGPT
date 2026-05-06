@@ -1,11 +1,8 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { http, HttpResponse, type JsonBodyType } from "msw";
+import { describe, expect, it, vi } from "vitest";
+import { server } from "@/mocks/mock-server";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { UsagePopover } from "../UsagePopover";
-
-const mockUseUsagePopover = vi.fn();
-vi.mock("../useUsagePopover", () => ({
-  useUsagePopover: () => mockUseUsagePopover(),
-}));
 
 vi.mock("../../StorageBar", () => ({
   StorageBar: () => null,
@@ -22,15 +19,6 @@ vi.mock("@/components/molecules/Popover/Popover", () => ({
     <div>{children}</div>
   ),
 }));
-
-afterEach(() => {
-  cleanup();
-  mockUseUsagePopover.mockReset();
-});
-
-beforeEach(() => {
-  mockUseUsagePopover.mockReturnValue({ usage: undefined, isSuccess: false });
-});
 
 interface UsageOverrides {
   dailyPercent?: number | null;
@@ -57,74 +45,67 @@ function makeUsage({
   };
 }
 
+function mockUsageResponse(body: JsonBodyType) {
+  server.use(http.get("*/api/chat/usage", () => HttpResponse.json(body)));
+}
+
 describe("UsagePopover", () => {
-  it("renders nothing while loading", () => {
+  it("renders nothing on the first paint while data is loading", () => {
+    mockUsageResponse(makeUsage({ dailyPercent: 50 }));
     const { container } = render(<UsagePopover />);
     expect(container.innerHTML).toBe("");
   });
 
-  it("renders nothing when no limits are configured", () => {
-    mockUseUsagePopover.mockReturnValue({
-      usage: makeUsage({ dailyPercent: null, weeklyPercent: null }),
-      isSuccess: true,
-    });
+  it("renders nothing when no limits are configured", async () => {
+    mockUsageResponse(makeUsage({ dailyPercent: null, weeklyPercent: null }));
     const { container } = render(<UsagePopover />);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(container.innerHTML).toBe("");
   });
 
-  it("renders the trigger button and panel when limits exist", () => {
-    mockUseUsagePopover.mockReturnValue({
-      usage: makeUsage({ dailyPercent: 50 }),
-      isSuccess: true,
-    });
+  it("renders the trigger button and panel when limits exist", async () => {
+    mockUsageResponse(makeUsage({ dailyPercent: 50 }));
     render(<UsagePopover />);
 
-    expect(screen.getByRole("button", { name: /usage limits/i })).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: /usage limits/i }),
+    ).toBeDefined();
     expect(screen.getByText("Usage limits")).toBeDefined();
     expect(screen.getByText("Today")).toBeDefined();
     expect(screen.getByText("This week")).toBeDefined();
     expect(screen.getByText("50% used")).toBeDefined();
   });
 
-  it("shows only the weekly bar when daily is null", () => {
-    mockUseUsagePopover.mockReturnValue({
-      usage: makeUsage({ dailyPercent: null, weeklyPercent: 50 }),
-      isSuccess: true,
-    });
+  it("shows only the weekly bar when daily is null", async () => {
+    mockUsageResponse(makeUsage({ dailyPercent: null, weeklyPercent: 50 }));
     render(<UsagePopover />);
 
-    expect(screen.getByText("This week")).toBeDefined();
+    expect(await screen.findByText("This week")).toBeDefined();
     expect(screen.queryByText("Today")).toBeNull();
   });
 
-  it("caps the bar width at 100% when over the limit", () => {
-    mockUseUsagePopover.mockReturnValue({
-      usage: makeUsage({ dailyPercent: 150 }),
-      isSuccess: true,
-    });
+  it("caps the bar width at 100% when over the limit", async () => {
+    mockUsageResponse(makeUsage({ dailyPercent: 150 }));
     render(<UsagePopover />);
 
-    const dailyBar = screen.getByRole("progressbar", { name: /today usage/i });
+    const dailyBar = await screen.findByRole("progressbar", {
+      name: /today usage/i,
+    });
     expect(dailyBar.getAttribute("aria-valuenow")).toBe("100");
   });
 
-  it("renders the tier label", () => {
-    mockUseUsagePopover.mockReturnValue({
-      usage: makeUsage({ tier: "PRO" }),
-      isSuccess: true,
-    });
+  it("renders the tier label", async () => {
+    mockUsageResponse(makeUsage({ tier: "PRO" }));
     render(<UsagePopover />);
 
-    expect(screen.getByText("Pro plan")).toBeDefined();
+    expect(await screen.findByText("Pro plan")).toBeDefined();
   });
 
-  it("never renders the 'Go to billing' button (handled by the card)", () => {
-    mockUseUsagePopover.mockReturnValue({
-      usage: makeUsage({ dailyPercent: 100 }),
-      isSuccess: true,
-    });
+  it("never renders the 'Go to billing' button (handled by the card)", async () => {
+    mockUsageResponse(makeUsage({ dailyPercent: 100 }));
     render(<UsagePopover />);
 
+    expect(await screen.findByText("Today")).toBeDefined();
     expect(screen.queryByText("Go to billing")).toBeNull();
   });
 });

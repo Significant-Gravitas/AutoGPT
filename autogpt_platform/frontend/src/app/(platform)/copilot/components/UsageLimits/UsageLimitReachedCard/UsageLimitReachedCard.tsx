@@ -13,6 +13,10 @@ export function UsageLimitReachedCard() {
 
   if (!isSuccess || !usage) return null;
 
+  const dailyExhausted = (usage.daily?.percent_used ?? 0) >= 100;
+  const weeklyExhausted = (usage.weekly?.percent_used ?? 0) >= 100;
+  if (!dailyExhausted && !weeklyExhausted) return null;
+
   const tierLabel = usage.tier
     ? usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()
     : null;
