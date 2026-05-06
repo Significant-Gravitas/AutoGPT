@@ -220,7 +220,7 @@ export function UsagePanelContent({
           Go to billing
         </Button>
       )}
-      {showBillingLink && (
+      {showBillingLink && !(isDailyExhausted && isBillingEnabled) && (
         <Link href="/settings/billing" className="hover:underline">
           <Text as="span" variant="small" className="text-blue-600">
             Learn more about usage limits

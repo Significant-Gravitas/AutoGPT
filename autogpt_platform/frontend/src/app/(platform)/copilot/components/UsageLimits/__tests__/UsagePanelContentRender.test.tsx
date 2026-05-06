@@ -127,6 +127,17 @@ describe("UsagePanelContent", () => {
     expect(screen.getByText("Go to billing")).toBeDefined();
   });
 
+  it("hides the 'Learn more about usage limits' link when 'Go to billing' button is shown", () => {
+    mockUseGetFlag.mockReturnValue(true);
+    render(
+      <UsagePanelContent
+        usage={makeUsage({ dailyPercent: 100, weeklyPercent: 40 })}
+      />,
+    );
+    expect(screen.getByText("Go to billing")).toBeDefined();
+    expect(screen.queryByText("Learn more about usage limits")).toBeNull();
+  });
+
   it("does not render 'Go to billing' when showBillingLink is false", () => {
     mockUseGetFlag.mockReturnValue(true);
     render(
