@@ -461,14 +461,11 @@ async def inject_user_context(
         raw_ctx = format_understanding_for_prompt(understanding)
         # Append subscription tier so the agent has ambient awareness.
         if user_id:
-            try:
-                from .rate_limit import get_user_tier
+            from .rate_limit import get_user_tier
 
-                tier = await get_user_tier(user_id)
-                tier_line = f"Plan: {tier.value}"
-                raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
-            except Exception:
-                pass  # Tier lookup failure is non-fatal
+            tier = await get_user_tier(user_id)
+            tier_line = f"Plan: {tier.value}"
+            raw_ctx = f"{raw_ctx}\n{tier_line}" if raw_ctx else tier_line
         if not raw_ctx:
             # All BusinessUnderstanding fields are empty/None — injecting an
             # empty <user_context>\n\n</user_context> block adds no value and
