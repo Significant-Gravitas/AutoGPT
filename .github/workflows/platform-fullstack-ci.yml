@@ -142,8 +142,39 @@ jobs:
         run: pnpm types
         if: success() || (steps.generate-api-client.outcome == 'success')
 
+  preflight-e2e:
+    name: Wait for upstream CI
+    # Don't burn a big-boi runner on E2E if backend/frontend CI is already
+    # broken on this SHA. Polls upstream workflow runs and gates the
+    # downstream e2e_test job. A workflow that didn't trigger for this SHA
+    # (path-filtered out) is treated as a non-blocker.
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      actions: read
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install requests
+        working-directory: .
+      - id: gate
+        working-directory: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          UPSTREAM_WORKFLOWS: |
+            AutoGPT Platform - Backend CI
+            AutoGPT Platform - Frontend CI
+        run: python .github/workflows/scripts/wait_for_upstream.py
+
   e2e_test:
     name: end-to-end tests
+    needs: preflight-e2e
+    if: needs.preflight-e2e.outputs.proceed == 'true'
     runs-on: big-boi
 
     steps:

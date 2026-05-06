@@ -4,25 +4,19 @@ on:
   push:
     branches: [ master, dev, ci-test* ]
     paths:
-      - '.github/workflows/classic-python-checks-ci.yml'
-      - 'classic/original_autogpt/**'
-      - 'classic/forge/**'
-      - 'classic/direct_benchmark/**'
+      - '.github/workflows/classic-python-checks.yml'
+      - 'classic/**.py'
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
-      - '**.py'
-      - '!classic/forge/tests/vcr_cassettes'
+      - '!classic/forge/tests/vcr_cassettes/**'
   pull_request:
     branches: [ master, dev, release-* ]
     paths:
-      - '.github/workflows/classic-python-checks-ci.yml'
-      - 'classic/original_autogpt/**'
-      - 'classic/forge/**'
-      - 'classic/direct_benchmark/**'
+      - '.github/workflows/classic-python-checks.yml'
+      - 'classic/**.py'
       - 'classic/pyproject.toml'
       - 'classic/poetry.lock'
-      - '**.py'
-      - '!classic/forge/tests/vcr_cassettes'
+      - '!classic/forge/tests/vcr_cassettes/**'
 
 concurrency:
   group: ${{ format('classic-python-checks-ci-{0}', github.head_ref && format('{0}-{1}', github.event_name, github.event.pull_request.number) || github.sha) }}

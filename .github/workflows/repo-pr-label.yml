@@ -1,11 +1,13 @@
 name: Repo - Pull Request auto-label
 
 on:
-  # So that PRs touching the same files as the push are updated
+  # So that PRs touching the same files as the push are updated.
+  # Only `dev` — that's the active integration branch most PRs target.
+  # Push to master/release-* would re-fan-out across all open PRs for marginal value.
   push:
-    branches: [ master, dev, release-* ]
+    branches: [ dev ]
     paths-ignore:
-      - 'classic/forge/tests/vcr_cassettes'
+      - 'classic/forge/tests/vcr_cassettes/**'
       - 'classic/benchmark/reports/**'
   # So that the `dirtyLabel` is removed if conflicts are resolve
   # We recommend `pull_request_target` so that github secrets are available.
