@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
@@ -27,7 +27,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
 });
 
 afterEach(() => {
-  cleanup();
   mockUseGetV2GetCopilotUsage.mockReset();
   mockUseGetFlag.mockReset();
 });
@@ -36,12 +35,10 @@ function makeUsage({
   dailyPercent = 5,
   weeklyPercent = 4,
   tier = "BASIC",
-  resetCost = 500,
 }: {
   dailyPercent?: number | null;
   weeklyPercent?: number | null;
   tier?: string;
-  resetCost?: number;
 } = {}) {
   const future = new Date(Date.now() + 3600 * 1000).toISOString();
   return {
@@ -54,7 +51,6 @@ function makeUsage({
         ? null
         : { percent_used: weeklyPercent, resets_at: future },
     tier,
-    reset_cost: resetCost,
   };
 }
 

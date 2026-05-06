@@ -1,4 +1,4 @@
-import { render, screen, cleanup } from "@/tests/integrations/test-utils";
+import { render, screen } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UsagePanelContent, formatBytes } from "../UsagePanelContent";
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
@@ -20,7 +20,6 @@ vi.mock("@/services/feature-flags/use-get-flag", async () => {
 });
 
 afterEach(() => {
-  cleanup();
   mockStorageData.mockReset();
   mockUseGetFlag.mockReset();
 });
@@ -35,15 +34,9 @@ function makeUsage(
     dailyPercent: number | null;
     weeklyPercent: number | null;
     tier: string;
-    resetCost: number;
   }> = {},
 ): CoPilotUsagePublic {
-  const {
-    dailyPercent = 5,
-    weeklyPercent = 4,
-    tier = "BASIC",
-    resetCost = 100,
-  } = overrides;
+  const { dailyPercent = 5, weeklyPercent = 4, tier = "BASIC" } = overrides;
   const future = new Date(Date.now() + 3600 * 1000).toISOString();
   return {
     daily:
@@ -55,7 +48,6 @@ function makeUsage(
         ? null
         : { percent_used: weeklyPercent, resets_at: future },
     tier,
-    reset_cost: resetCost,
   } as CoPilotUsagePublic;
 }
 
@@ -111,7 +103,7 @@ describe("UsagePanelContent", () => {
   it("never renders the legacy 'Reset daily limit' button", () => {
     render(
       <UsagePanelContent
-        usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
+        usage={makeUsage({ dailyPercent: 100 })}
       />,
     );
     expect(screen.queryByText(/Reset daily limit/)).toBeNull();
