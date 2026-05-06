@@ -80,7 +80,11 @@ def _get_model_error_guidance(error: Exception) -> str | None:
     msg = str(error).lower()
 
     # Context-length errors are handled by the retry loop — don't interfere.
-    if "maximum context length" in msg or "token limit" in msg or "context length" in msg:
+    if (
+        "maximum context length" in msg
+        or "token limit" in msg
+        or "context length" in msg
+    ):
         return None
 
     # Only trust status codes from providers with well-defined error schemas
@@ -1709,10 +1713,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             except Exception as e:
                 msg_lower = str(e).lower()
                 # Context-length errors are retryable — handle before user-error check.
-                if (
-                    "maximum context length" in msg_lower
-                    or "token limit" in msg_lower
-                ):
+                if "maximum context length" in msg_lower or "token limit" in msg_lower:
                     if input_data.max_tokens is None:
                         input_data.max_tokens = llm_model.max_output_tokens or 4096
                     input_data.max_tokens = max(1, int(input_data.max_tokens * 0.85))
@@ -1822,15 +1823,13 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             else "Please provide a"
         ) + f" valid JSON {outer_output_type} that matches the expected format."
 
-        return trim_prompt(
-            f"""
+        return trim_prompt(f"""
             |{complaint}
             |
             |{indented_parse_error}
             |
             |{instruction}
-        """
-        )
+        """)
 
     def get_json_from_response(
         self, response_text: str, *, pure_json_mode: bool, output_tag_start: str
@@ -2480,8 +2479,7 @@ class AIListGeneratorBlock(AIBlockBase):
         for item in parsed_list:
             yield "list_item", item
 
-    SYSTEM_PROMPT = trim_prompt(
-        """
+    SYSTEM_PROMPT = trim_prompt("""
         |You are a JSON array generator. Your task is to generate a JSON array of string values based on the user's prompt.
         |
         |The 'list' field should contain a JSON array with the generated string values.
@@ -2491,5 +2489,4 @@ class AIListGeneratorBlock(AIBlockBase):
         |• ["string1", "string2", "string3"]
         |
         |Ensure you provide a proper JSON array with only string values in the 'list' field.
-        """
-    )
+        """)
