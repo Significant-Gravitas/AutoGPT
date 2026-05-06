@@ -2493,7 +2493,10 @@
               }
             }
           },
-          "429": { "description": "Call-frequency cap exceeded" }
+          "429": { "description": "Call-frequency cap exceeded" },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable); client should honour the Retry-After header before retrying."
+          }
         }
       }
     },
@@ -2600,6 +2603,9 @@
           },
           "429": {
             "description": "Cost rate-limit or call-frequency cap exceeded"
+          },
+          "503": {
+            "description": "Chat service degraded (Redis unavailable for rate limit or stream registry); client should honour the Retry-After header before retrying."
           }
         }
       }
@@ -3065,6 +3071,163 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/admin/copilot-usage/export": {
+      "get": {
+        "tags": ["v2", "admin", "credits", "admin"],
+        "summary": "Export Copilot Weekly Usage vs Rate Limit",
+        "description": "Export per-(user, ISO week) copilot spend with the user's tier limit.\n\nUses the same 90-day window cap and 100k row cap as the credit export.",
+        "operationId": "getV2Export copilot weekly usage vs rate limit",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopilotUsageExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/credits/admin/transactions/export": {
+      "get": {
+        "tags": ["v2", "admin", "credits", "admin"],
+        "summary": "Export Credit Transactions",
+        "description": "Export CreditTransaction rows in [start, end].\n\nCapped at CREDIT_EXPORT_MAX_DAYS days and CREDIT_EXPORT_MAX_ROWS rows;\nover-cap requests fail fast with 400 so callers narrow the window\ninstead of receiving silently truncated data.",
+        "operationId": "getV2Export credit transactions",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "Start"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "format": "date-time" },
+                { "type": "null" }
+              ],
+              "description": "ISO timestamp (inclusive)",
+              "title": "End"
+            },
+            "description": "ISO timestamp (inclusive)"
+          },
+          {
+            "name": "transaction_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "$ref": "#/components/schemas/CreditTransactionType" },
+                { "type": "null" }
+              ],
+              "title": "Transaction Type"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Include inactive rows (e.g. abandoned Stripe checkouts). Off by default so phantom rows aren't surfaced in normal exports.",
+              "default": false,
+              "title": "Include Inactive"
+            },
+            "description": "Include inactive rows (e.g. abandoned Stripe checkouts). Off by default so phantom rows aren't surfaced in normal exports."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditTransactionsExportResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/credits/admin/users_history": {
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
@@ -3103,6 +3266,16 @@
                 { "type": "null" }
               ],
               "title": "Transaction Filter"
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Inactive"
             }
           }
         ],
@@ -7018,7 +7191,6 @@
                 "AGENT_INPUT",
                 "CONGRATS",
                 "VISIT_COPILOT",
-                "MARKETPLACE_VISIT",
                 "BUILDER_OPEN"
               ],
               "type": "string",
@@ -10622,6 +10794,61 @@
         ],
         "title": "ContentType"
       },
+      "CopilotUsageExportResponse": {
+        "properties": {
+          "rows": {
+            "items": { "$ref": "#/components/schemas/CopilotWeeklyUsageRow" },
+            "type": "array",
+            "title": "Rows"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" }
+        },
+        "type": "object",
+        "required": ["rows", "total_rows", "window_days", "max_window_days"],
+        "title": "CopilotUsageExportResponse"
+      },
+      "CopilotWeeklyUsageRow": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "user_email": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "User Email"
+          },
+          "week_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Week Start"
+          },
+          "week_end": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Week End"
+          },
+          "copilot_cost_microdollars": {
+            "type": "integer",
+            "title": "Copilot Cost Microdollars"
+          },
+          "tier": { "type": "string", "title": "Tier" },
+          "weekly_limit_microdollars": {
+            "type": "integer",
+            "title": "Weekly Limit Microdollars"
+          },
+          "percent_used": { "type": "number", "title": "Percent Used" }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "week_start",
+          "week_end",
+          "copilot_cost_microdollars",
+          "tier",
+          "weekly_limit_microdollars",
+          "percent_used"
+        ],
+        "title": "CopilotWeeklyUsageRow"
+      },
       "CostBucket": {
         "properties": {
           "bucket": { "type": "string", "title": "Bucket" },
@@ -10963,6 +11190,26 @@
           "SUBSCRIPTION"
         ],
         "title": "CreditTransactionType"
+      },
+      "CreditTransactionsExportResponse": {
+        "properties": {
+          "transactions": {
+            "items": { "$ref": "#/components/schemas/UserTransaction" },
+            "type": "array",
+            "title": "Transactions"
+          },
+          "total_rows": { "type": "integer", "title": "Total Rows" },
+          "window_days": { "type": "integer", "title": "Window Days" },
+          "max_window_days": { "type": "integer", "title": "Max Window Days" }
+        },
+        "type": "object",
+        "required": [
+          "transactions",
+          "total_rows",
+          "window_days",
+          "max_window_days"
+        ],
+        "title": "CreditTransactionsExportResponse"
       },
       "DeleteFileResponse": {
         "properties": { "deleted": { "type": "boolean", "title": "Deleted" } },
@@ -16254,10 +16501,11 @@
             "type": "array",
             "title": "Submissions"
           },
-          "pagination": { "$ref": "#/components/schemas/Pagination" }
+          "pagination": { "$ref": "#/components/schemas/Pagination" },
+          "stats": { "$ref": "#/components/schemas/SubmissionStats" }
         },
         "type": "object",
-        "required": ["submissions", "pagination"],
+        "required": ["submissions", "pagination", "stats"],
         "title": "StoreSubmissionsResponse"
       },
       "StreamChatRequest": {
@@ -16308,12 +16556,42 @@
             ],
             "title": "Model",
             "description": "Model tier: 'standard' for the default model, 'advanced' for the highest-capability model. If None, the server applies per-user LD targeting then falls back to config."
+          },
+          "message_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Message Id",
+            "description": "Optional per-click UUID generated by the frontend.  Becomes the persisted ``ChatMessage.id`` (PK).  Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the id, so the Postgres unique-constraint on the PK is the atomic dedup primitive: a duplicate INSERT returns a subscribe-only response without creating a parallel turn.  Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
+      },
+      "SubmissionStats": {
+        "properties": {
+          "total": { "type": "integer", "title": "Total" },
+          "approved": { "type": "integer", "title": "Approved" },
+          "pending": { "type": "integer", "title": "Pending" },
+          "total_runs": { "type": "integer", "title": "Total Runs" },
+          "average_rating": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Average Rating"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total",
+          "approved",
+          "pending",
+          "total_runs",
+          "average_rating"
+        ],
+        "title": "SubmissionStats",
+        "description": "Creator-wide aggregates over a user's non-deleted submissions.\n\nComputed server-side so values stay accurate regardless of pagination —\nsumming client-side over the current page silently undercounts once the\ncreator has more submissions than fit on one page."
       },
       "SubmissionStatus": {
         "type": "string",
@@ -16339,6 +16617,19 @@
             "additionalProperties": { "type": "integer" },
             "type": "object",
             "title": "Tier Costs"
+          },
+          "tier_costs_yearly": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Tier Costs Yearly",
+            "description": "Tier → yearly amount in cents. Populated only for tiers with a yearly Stripe price configured in LaunchDarkly. Empty for monthly-only configurations."
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "description": "Billing cycle of the user's active Stripe subscription. Defaults to ``monthly`` for users without an active sub. ``monthly_cost`` above reflects this cycle's actual price (so a yearly subscriber sees their yearly amount, not the monthly equivalent).",
+            "default": "monthly"
           },
           "tier_multipliers": {
             "additionalProperties": { "type": "number" },
@@ -16378,6 +16669,14 @@
             ],
             "title": "Pending Tier Effective At"
           },
+          "pending_billing_cycle": {
+            "anyOf": [
+              { "type": "string", "enum": ["monthly", "yearly"] },
+              { "type": "null" }
+            ],
+            "title": "Pending Billing Cycle",
+            "description": "Billing cycle of the queued change, when resolvable. Set alongside ``pending_tier`` for tier downgrades and same-tier cycle switches (yearly→monthly). The frontend uses this to differentiate a cycle-only schedule (``pending_tier == current tier``) from a real tier downgrade so the UI copy can describe the actual change. ``None`` for cancellations and unconfigured legacy prices."
+          },
           "url": {
             "type": "string",
             "title": "Url",
@@ -16416,6 +16715,12 @@
             "type": "string",
             "title": "Cancel Url",
             "default": ""
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
           }
         },
         "type": "object",

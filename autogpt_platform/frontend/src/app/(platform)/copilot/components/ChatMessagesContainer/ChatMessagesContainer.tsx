@@ -295,6 +295,27 @@ export function ChatMessagesContainer({
   const lastMessage = messages[messages.length - 1];
   const graphExecId = useMemo(() => extractGraphExecId(messages), [messages]);
 
+  // The backend appends a persisted error marker to ``session.messages`` AND
+  // yields a ``StreamError`` SSE event on final-failure paths. Both surface
+  // the same error string — the marker becomes an in-line ErrorCard bubble,
+  // the SSE event sets ``error`` on ``useChat``. Without dedup, the user sees
+  // the same error twice. Suppress the trailing banner whenever the last
+  // assistant message already carries the marker.
+  const lastAssistantHasErrorMarker = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== "assistant") continue;
+      for (let j = msg.parts.length - 1; j >= 0; j--) {
+        const part = msg.parts[j];
+        if (part.type !== "text") continue;
+        const { markerType } = parseSpecialMarkers(part.text);
+        return markerType === "error" || markerType === "retryable_error";
+      }
+      return false;
+    }
+    return false;
+  }, [messages]);
+
   const hasInflight = (() => {
     if (lastMessage?.role !== "assistant") return false;
     // Ignore bookkeeping parts. data-cursor is legacy resume metadata and
@@ -618,7 +639,7 @@ export function ChatMessagesContainer({
             </MessageContent>
           </Message>
         ))}
-        {error && (
+        {error && !lastAssistantHasErrorMarker && (
           <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
             <summary className="cursor-pointer font-medium">
               The assistant encountered an error. Please try sending your

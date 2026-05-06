@@ -3,14 +3,9 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import {
-  formatResetTime,
-  formatCents,
-} from "@/app/(platform)/copilot/components/usageHelpers";
-import { useResetRateLimit } from "@/app/(platform)/copilot/hooks/useResetRateLimit";
+import { formatResetTime } from "@/app/(platform)/copilot/components/usageHelpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
-import useCredits from "@/hooks/useCredits";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useSitrepItems } from "../SitrepItem/useSitrepItems";
 import { SitrepItem } from "../SitrepItem/SitrepItem";
@@ -51,13 +46,12 @@ function UsageSection() {
   });
 
   const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const resetCost = usage?.reset_cost;
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
 
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
+
+  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
+  const showGoToBilling = isDailyExhausted && isBillingEnabled;
 
   return (
     <div className="py-2">
@@ -71,9 +65,9 @@ function UsageSection() {
           </Badge>
         )}
         <div className="flex-1" />
-        {isBillingEnabled && (
+        {isBillingEnabled && !showGoToBilling && (
           <Link
-            href="/profile/credits"
+            href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"
           >
             Manage billing
@@ -96,11 +90,18 @@ function UsageSection() {
           />
         )}
       </div>
-      <UsageFooter
-        usage={usage}
-        hasInsufficientCredits={hasInsufficientCredits}
-        onCreditChange={fetchCredits}
-      />
+      {showGoToBilling && (
+        <div className="mt-4 flex items-center gap-3">
+          <Button
+            as="NextLink"
+            href="/settings/billing"
+            variant="primary"
+            size="small"
+          >
+            Go to billing
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -233,57 +234,6 @@ function AgentListSection({
             {showAll ? "Collapse" : `Show all (${filtered.length})`}
           </Button>
         </div>
-      )}
-    </div>
-  );
-}
-
-function UsageFooter({
-  usage,
-  hasInsufficientCredits,
-  onCreditChange,
-}: {
-  usage: CoPilotUsagePublic;
-  hasInsufficientCredits: boolean;
-  onCreditChange?: () => void;
-}) {
-  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
-  const isWeeklyExhausted = !!usage.weekly && usage.weekly.percent_used >= 100;
-  const resetCost = usage.reset_cost ?? 0;
-  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
-
-  const showReset =
-    isDailyExhausted &&
-    !isWeeklyExhausted &&
-    resetCost > 0 &&
-    !hasInsufficientCredits;
-
-  const showAddCredits =
-    isDailyExhausted && !isWeeklyExhausted && hasInsufficientCredits;
-
-  if (!showReset && !showAddCredits) return null;
-
-  return (
-    <div className="mt-4 flex items-center gap-3">
-      {showReset && (
-        <Button
-          variant="primary"
-          size="small"
-          onClick={() => resetUsage()}
-          loading={isPending}
-        >
-          {isPending
-            ? "Resetting..."
-            : `Reset daily limit for ${formatCents(resetCost)}`}
-        </Button>
-      )}
-      {showAddCredits && (
-        <Link
-          href="/profile/credits"
-          className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Add credits to reset
-        </Link>
       )}
     </div>
   );

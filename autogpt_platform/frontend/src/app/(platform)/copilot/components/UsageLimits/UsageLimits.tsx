@@ -1,7 +1,5 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import useCredits from "@/hooks/useCredits";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
   Popover,
   PopoverContent,
@@ -22,12 +20,6 @@ export function UsageLimits() {
     },
   });
 
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const resetCost = usage?.reset_cost;
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
-
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
@@ -39,12 +31,7 @@ export function UsageLimits() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-3">
-        <UsagePanelContent
-          usage={usage}
-          hasInsufficientCredits={hasInsufficientCredits}
-          isBillingEnabled={isBillingEnabled}
-          onCreditChange={fetchCredits}
-        />
+        <UsagePanelContent usage={usage} />
       </PopoverContent>
     </Popover>
   );

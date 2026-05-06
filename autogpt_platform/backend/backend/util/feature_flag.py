@@ -44,6 +44,7 @@ class Flag(str, Enum):
     COPILOT_SDK = "copilot-sdk"
     COPILOT_COST_LIMITS = "copilot-cost-limits"
     COPILOT_TIER_MULTIPLIERS = "copilot-tier-multipliers"
+    COPILOT_TIER_WORKSPACE_STORAGE_LIMITS = "copilot-tier-workspace-storage-limits"
     COPILOT_TIER_STRIPE_PRICES = "copilot-tier-stripe-prices"
     GRAPHITI_MEMORY = "graphiti-memory"
     # Stripe Product ID for top-up Checkout sessions. When unset (default),

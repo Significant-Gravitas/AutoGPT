@@ -128,14 +128,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="If user credit system is enabled or not",
     )
-    enable_beta_monthly_credit: bool = Field(
-        default=True,
-        description="If beta monthly credits accounting is enabled or not",
-    )
-    num_user_credits_refill: int = Field(
-        default=1500,
-        description="Number of credits to refill for each user",
-    )
     refund_credit_tolerance_threshold: int = Field(
         default=500,
         description="Maximum number of credits above the balance to be auto-approved.",
@@ -439,13 +431,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1024,
         description="Maximum file size in MB for workspace files (1-1024 MB)",
-    )
-
-    max_workspace_storage_mb: int = Field(
-        default=500,
-        ge=1,
-        le=10240,
-        description="Maximum total workspace storage per user in MB.",
     )
 
     # AutoMod configuration

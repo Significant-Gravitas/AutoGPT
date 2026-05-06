@@ -33,7 +33,7 @@ export function ProviderGroup({
       type="single"
       collapsible
       defaultValue={provider.id}
-      className="w-full overflow-hidden rounded-lg border border-[#DADADC] bg-white"
+      className="w-full overflow-hidden rounded-2xl border border-[#DADADC] bg-white"
     >
       <AccordionItem value={provider.id} className="border-b-0">
         <AccordionTrigger className="px-3 py-3 pr-5 hover:no-underline [&>svg]:text-[#1F1F20]">

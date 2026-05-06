@@ -8,7 +8,7 @@ import pytest
 from prisma import Prisma
 
 from . import db
-from .model import Profile
+from .model import Profile, SubmissionStats
 
 
 @pytest.fixture(autouse=True)
@@ -428,3 +428,137 @@ async def test_get_store_creators_only_returns_approved(mocker):
     _, count_kwargs = mock_creator.return_value.count.call_args
     assert find_kwargs["where"]["num_agents"] == {"gt": 0}
     assert count_kwargs["where"]["num_agents"] == {"gt": 0}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_submission_stats_maps_row_to_pydantic(mocker):
+    """The single FILTER aggregate query result maps cleanly into SubmissionStats."""
+    query_mock = mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=4,
+                    approved=2,
+                    pending=1,
+                    total_runs=360,
+                    average_rating=4.5,
+                )
+            ]
+        ),
+    )
+
+    result = await db._get_submission_stats("user-id")
+
+    assert result.total == 4
+    assert result.approved == 2
+    assert result.pending == 1
+    assert result.total_runs == 360
+    assert result.average_rating == 4.5
+    assert query_mock.await_args.kwargs["model"] is SubmissionStats
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_submission_stats_handles_empty_creator(mocker):
+    """No submissions → COUNT/SUM yield zeros and NULL avg, mapped to zeros + None."""
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=0,
+                    approved=0,
+                    pending=0,
+                    total_runs=0,
+                    average_rating=None,
+                )
+            ]
+        ),
+    )
+
+    result = await db._get_submission_stats("user-id")
+
+    assert result.total == 0
+    assert result.approved == 0
+    assert result.pending == 0
+    assert result.total_runs == 0
+    assert result.average_rating is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_submission_stats_handles_no_rows(mocker):
+    """Defensive: empty query result still produces a valid zeroed payload."""
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(return_value=[]),
+    )
+
+    result = await db._get_submission_stats("user-id")
+
+    assert result.total == 0
+    assert result.approved == 0
+    assert result.average_rating is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_store_submissions_reuses_stats_total_for_pagination(mocker):
+    """get_store_submissions should not issue a separate COUNT — it should pull
+    `total` off the stats payload returned from _get_submission_stats."""
+    mock_submission = prisma.models.StoreSubmission(
+        listing_id="listing-1",
+        user_id="user-id",
+        slug="agent",
+        listing_version_id="lv-1",
+        listing_version=1,
+        graph_id="graph-1",
+        graph_version=1,
+        name="Test",
+        sub_heading="sh",
+        description="desc",
+        instructions=None,
+        categories=[],
+        image_urls=[],
+        video_url=None,
+        agent_output_demo_url=None,
+        submitted_at=datetime.now(),
+        changes_summary=None,
+        status=prisma.enums.SubmissionStatus.APPROVED,
+        reviewed_at=None,
+        reviewer_id=None,
+        review_comments=None,
+        internal_comments=None,
+        is_deleted=False,
+        run_count=10,
+        review_count=2,
+        review_avg_rating=4.0,
+    )
+
+    mock_store_sub = mocker.patch("prisma.models.StoreSubmission.prisma")
+    mock_store_sub.return_value.find_many = AsyncMock(return_value=[mock_submission])
+    # If the implementation regresses to issuing a count(), this surfaces the
+    # bug because we explicitly do NOT register a count mock.
+    mock_store_sub.return_value.count = AsyncMock(
+        side_effect=AssertionError("count() must not be called"),
+    )
+
+    mocker.patch(
+        "backend.api.features.store.db.query_raw_with_schema",
+        AsyncMock(
+            return_value=[
+                SubmissionStats(
+                    total=7,
+                    approved=3,
+                    pending=2,
+                    total_runs=99,
+                    average_rating=3.9,
+                )
+            ]
+        ),
+    )
+
+    result = await db.get_store_submissions(user_id="user-id", page=1, page_size=20)
+
+    assert result.pagination.total_items == 7
+    assert result.stats.total == 7
+    assert result.stats.average_rating == 3.9
+    mock_store_sub.return_value.count.assert_not_called()

@@ -4,8 +4,6 @@ import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotU
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
-import useCredits from "@/hooks/useCredits";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Warning } from "@phosphor-icons/react";
 import Link from "next/link";
 import { UsagePanelContent } from "./UsagePanelContent";
@@ -28,12 +26,6 @@ export function useIsUsageLimitReached() {
 export function UsageLimitReachedCard() {
   const { data: usage, isSuccess } =
     useGetV2GetCopilotUsage(USAGE_QUERY_CONFIG);
-
-  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
-  const { credits, fetchCredits } = useCredits({ fetchInitialCredits: true });
-  const resetCost = usage?.reset_cost;
-  const hasInsufficientCredits =
-    credits !== null && resetCost != null && credits < resetCost;
 
   if (!isSuccess || !usage) return null;
   const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
@@ -69,7 +61,7 @@ export function UsageLimitReachedCard() {
             </Badge>
           )}
         </div>
-        <Link href="/profile/credits" className="shrink-0 hover:underline">
+        <Link href="/settings/billing" className="shrink-0 hover:underline">
           <Text as="span" variant="small" className="text-blue-600">
             Learn more about usage limits
           </Text>
@@ -79,9 +71,6 @@ export function UsageLimitReachedCard() {
         usage={usage}
         showHeader={false}
         showBillingLink={false}
-        hasInsufficientCredits={hasInsufficientCredits}
-        isBillingEnabled={isBillingEnabled}
-        onCreditChange={fetchCredits}
         size="md"
       />
     </div>

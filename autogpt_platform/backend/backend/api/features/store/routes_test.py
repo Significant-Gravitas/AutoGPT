@@ -562,6 +562,13 @@ def test_get_submissions_success(
             total_pages=1,
             page_size=20,
         ),
+        stats=store_model.SubmissionStats(
+            total=1,
+            approved=1,
+            pending=0,
+            total_runs=50,
+            average_rating=4.2,
+        ),
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")
     mock_db_call.return_value = mocked_value
@@ -573,6 +580,8 @@ def test_get_submissions_success(
     assert len(data.submissions) == 1
     assert data.submissions[0].name == "Test Agent"
     assert data.pagination.current_page == 1
+    assert data.stats.total == 1
+    assert data.stats.total_runs == 50
     snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
     mock_db_call.assert_called_once_with(user_id=test_user_id, page=1, page_size=20)
@@ -590,6 +599,13 @@ def test_get_submissions_pagination(
             total_items=10,
             total_pages=2,
             page_size=5,
+        ),
+        stats=store_model.SubmissionStats(
+            total=10,
+            approved=4,
+            pending=3,
+            total_runs=12_345,
+            average_rating=3.7,
         ),
     )
     mock_db_call = mocker.patch("backend.api.features.store.db.get_store_submissions")

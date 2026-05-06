@@ -132,7 +132,7 @@ describe("UsageLimits", () => {
     expect(screen.getByText("Pro plan")).toBeDefined();
   });
 
-  it("shows learn more link to credits page", () => {
+  it("shows learn more link to billing page", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage(),
       isSuccess: true,
@@ -141,6 +141,6 @@ describe("UsageLimits", () => {
 
     const link = screen.getByText("Learn more about usage limits");
     expect(link).toBeDefined();
-    expect(link.closest("a")?.getAttribute("href")).toBe("/profile/credits");
+    expect(link.closest("a")?.getAttribute("href")).toBe("/settings/billing");
   });
 });

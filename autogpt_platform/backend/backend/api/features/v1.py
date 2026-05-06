@@ -63,6 +63,7 @@ from backend.data.credit import (
     get_pending_subscription_change,
     get_proration_credit_cents,
     get_subscription_price_id,
+    get_user_billing_cycle,
     get_user_credit_model,
     handle_subscription_payment_failure,
     handle_subscription_payment_success,
@@ -81,7 +82,6 @@ from backend.data.onboarding import (
     OnboardingStep,
     UserOnboardingUpdate,
     complete_onboarding_step,
-    complete_re_run_agent,
     format_onboarding_for_extraction,
     get_recommended_agents,
     get_user_onboarding,
@@ -706,12 +706,30 @@ class SubscriptionTierRequest(BaseModel):
     tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]
     success_url: str = ""
     cancel_url: str = ""
+    billing_cycle: Literal["monthly", "yearly"] = "monthly"
 
 
 class SubscriptionStatusResponse(BaseModel):
     tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS", "ENTERPRISE"]
     monthly_cost: int  # amount in cents (Stripe convention)
-    tier_costs: dict[str, int]  # tier name -> amount in cents
+    tier_costs: dict[str, int]  # tier name -> monthly amount in cents
+    tier_costs_yearly: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Tier → yearly amount in cents. Populated only for tiers with a"
+            " yearly Stripe price configured in LaunchDarkly. Empty for"
+            " monthly-only configurations."
+        ),
+    )
+    billing_cycle: Literal["monthly", "yearly"] = Field(
+        default="monthly",
+        description=(
+            "Billing cycle of the user's active Stripe subscription. Defaults"
+            " to ``monthly`` for users without an active sub. ``monthly_cost``"
+            " above reflects this cycle's actual price (so a yearly subscriber"
+            " sees their yearly amount, not the monthly equivalent)."
+        ),
+    )
     tier_multipliers: dict[str, float] = Field(
         default_factory=dict,
         description=(
@@ -740,6 +758,17 @@ class SubscriptionStatusResponse(BaseModel):
     )
     pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
     pending_tier_effective_at: Optional[datetime] = None
+    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
+        default=None,
+        description=(
+            "Billing cycle of the queued change, when resolvable. Set alongside"
+            " ``pending_tier`` for tier downgrades and same-tier cycle"
+            " switches (yearly→monthly). The frontend uses this to differentiate"
+            " a cycle-only schedule (``pending_tier == current tier``) from a"
+            " real tier downgrade so the UI copy can describe the actual"
+            " change. ``None`` for cancellations and unconfigured legacy prices."
+        ),
+    )
     url: str = Field(
         default="",
         description=(
@@ -834,19 +863,39 @@ async def get_subscription_status(
         SubscriptionTier.MAX,
         SubscriptionTier.BUSINESS,
     ]
-    price_ids = await asyncio.gather(
-        *[get_subscription_price_id(t) for t in priceable_tiers]
+    monthly_price_ids, yearly_price_ids = await asyncio.gather(
+        asyncio.gather(
+            *[get_subscription_price_id(t, "monthly") for t in priceable_tiers]
+        ),
+        asyncio.gather(
+            *[get_subscription_price_id(t, "yearly") for t in priceable_tiers]
+        ),
     )
 
     async def _cost(pid: str | None) -> int:
         return (await _get_stripe_price_amount(pid) or 0) if pid else 0
 
-    costs = await asyncio.gather(*[_cost(pid) for pid in price_ids])
+    monthly_costs, yearly_costs = await asyncio.gather(
+        asyncio.gather(*[_cost(pid) for pid in monthly_price_ids]),
+        asyncio.gather(*[_cost(pid) for pid in yearly_price_ids]),
+    )
 
+    # Row visibility: include a tier if EITHER cycle is configured. Monthly
+    # cost falls back to 0 when only yearly is configured so the frontend can
+    # still render the card and surface yearly via ``tier_costs_yearly``.
     tier_costs: dict[str, int] = {}
-    for t, pid, cost in zip(priceable_tiers, price_ids, costs):
-        if pid:
-            tier_costs[t.value] = cost
+    tier_costs_yearly: dict[str, int] = {}
+    for t, m_pid, y_pid, m_cost, y_cost in zip(
+        priceable_tiers,
+        monthly_price_ids,
+        yearly_price_ids,
+        monthly_costs,
+        yearly_costs,
+    ):
+        if m_pid or y_pid:
+            tier_costs[t.value] = m_cost if m_pid else 0
+        if y_pid:
+            tier_costs_yearly[t.value] = y_cost
 
     # Expose the effective rate-limit multipliers alongside prices so the
     # frontend can render "Nx rate limits" relative to the lowest visible
@@ -854,13 +903,20 @@ async def get_subscription_status(
     # that land in ``tier_costs`` — rows hidden at the price layer must stay
     # hidden in the multiplier layer too.
     multipliers = await get_tier_multipliers()
+    # get_tier_multipliers() keys by tier string value (see its docstring),
+    # so the lookup must use t.value — passing the enum t silently misses
+    # every tier and falls back to 1.0, ignoring LD-configured multipliers.
     tier_multipliers: dict[str, float] = {
-        t.value: multipliers.get(t, 1.0)
+        t.value: multipliers.get(t.value, 1.0)
         for t in priceable_tiers
         if t.value in tier_costs
     }
 
-    current_monthly_cost = tier_costs.get(tier.value, 0)
+    user_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    if user_cycle == "yearly":
+        current_monthly_cost = tier_costs_yearly.get(tier.value, 0)
+    else:
+        current_monthly_cost = tier_costs.get(tier.value, 0)
     proration_credit, current_period_end = await asyncio.gather(
         get_proration_credit_cents(user_id, current_monthly_cost),
         get_active_subscription_period_end(user_id),
@@ -884,13 +940,15 @@ async def get_subscription_status(
         tier=tier.value,
         monthly_cost=current_monthly_cost,
         tier_costs=tier_costs,
+        tier_costs_yearly=tier_costs_yearly,
+        billing_cycle=user_cycle,
         tier_multipliers=tier_multipliers,
         proration_credit_cents=proration_credit,
         has_active_stripe_subscription=current_period_end is not None,
         current_period_end=current_period_end,
     )
     if pending is not None:
-        pending_tier_enum, pending_effective_at = pending
+        pending_tier_enum, pending_effective_at, pending_cycle = pending
         if pending_tier_enum in (
             SubscriptionTier.NO_TIER,
             SubscriptionTier.BASIC,
@@ -900,6 +958,7 @@ async def get_subscription_status(
         ):
             response.pending_tier = pending_tier_enum.value
             response.pending_tier_effective_at = pending_effective_at
+            response.pending_billing_cycle = pending_cycle
     return response
 
 
@@ -927,12 +986,29 @@ async def update_subscription_tier(
             detail="ENTERPRISE subscription changes must be managed by an administrator",
         )
 
-    # Same-tier request = "stay on my current tier" = cancel any pending
-    # scheduled change (paid→paid downgrade or paid→BASIC cancel). This is the
-    # collapsed behaviour that replaces the old /credits/subscription/cancel-pending
-    # route. Safe when no pending change exists: release_pending_subscription_schedule
-    # returns False and we simply return the current status.
-    if (user.subscription_tier or SubscriptionTier.NO_TIER) == tier:
+    # Same-tier + same-cycle request = "stay on my current tier" = cancel any
+    # pending scheduled change (paid→paid downgrade or paid→BASIC cancel). This
+    # replaces the old /credits/subscription/cancel-pending route. Safe when no
+    # pending change exists: release_pending_subscription_schedule returns
+    # False and we simply return the current status.
+    #
+    # Same-tier-DIFFERENT-cycle (monthly Pro → yearly Pro, or vice versa) must
+    # fall through to modify_stripe_subscription_for_tier so Stripe swaps the
+    # price ID for the cycle the user actually requested.
+    #
+    # Gate the short-circuit on an actual active/trialing Stripe subscription:
+    # admin-granted tiers (DB tier set, no Stripe sub) must fall through to the
+    # Checkout flow so "start paying for my current tier" is not a no-op.
+    current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
+    current_cycle = await get_user_billing_cycle(user_id) or "monthly"
+    has_active_stripe_subscription = (
+        await get_active_subscription_period_end(user_id) is not None
+    )
+    if (
+        current_tier == tier
+        and current_cycle == request.billing_cycle
+        and has_active_stripe_subscription
+    ):
         try:
             await release_pending_subscription_schedule(user_id)
         except stripe.StripeError as e:
@@ -954,7 +1030,7 @@ async def update_subscription_tier(
         Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
     )
 
-    target_price_id = await get_subscription_price_id(tier)
+    target_price_id = await get_subscription_price_id(tier, request.billing_cycle)
 
     # Cancel: target NO_TIER. Schedule Stripe cancellation at period end;
     # cancel_at_period_end=True lets the webhook flip the DB tier. No active
@@ -999,20 +1075,87 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await modify_stripe_subscription_for_tier(user_id, tier)
+        modified = await modify_stripe_subscription_for_tier(
+            user_id, tier, request.billing_cycle
+        )
         if modified:
             return await get_subscription_status(user_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    except stripe.CardError as e:
+        # Auto-charge failed under payment_behavior=error_if_incomplete: the
+        # modify was rolled back, so 402 lets the UI prompt for a new card or
+        # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
+        # different message so the user doesn't try a new card. Stripe emits
+        # ``authentication_required`` for raw PaymentIntent confirms but
+        # ``subscription_payment_intent_requires_action`` for Subscription.modify
+        # under ``error_if_incomplete``; both must map to the SCA branch.
+        if e.code in {
+            "authentication_required",
+            "subscription_payment_intent_requires_action",
+        }:
+            logger.warning(
+                "SCA required on subscription upgrade for user %s: %s", user_id, e
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "Your bank requires extra authentication for this charge."
+                    " The plan was not changed; please retry from the billing"
+                    " portal so you can complete authentication, or contact"
+                    " support."
+                ),
+            )
+        logger.warning(
+            "Card declined on subscription upgrade for user %s: %s", user_id, e
+        )
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                "Your card was declined. The plan was not changed; please"
+                " update your payment method and try again."
+            ),
+        )
     except stripe.InvalidRequestError as e:
+        # Stripe's e.param is documented as nullable, so we match by typed
+        # field first and fall back to substring when param is absent.
+        msg_lower = (e.user_message or str(e)).lower()
+        # "No payment method" presents as InvalidRequestError (not CardError)
+        # when error_if_incomplete fires with no default PM. Stripe signals
+        # this with code=resource_missing/missing — sometimes with a typed
+        # param, sometimes without (the raw "no attached payment source"
+        # message has empty param). Map it to 402 either way.
+        if e.code in {"resource_missing", "missing"} and (
+            e.param
+            in {
+                "default_payment_method",
+                "payment_method",
+                "invoice_settings.default_payment_method",
+            }
+            or "no attached payment source" in msg_lower
+            or "default payment method" in msg_lower
+            or "no payment method" in msg_lower
+        ):
+            logger.warning(
+                "No payment method on subscription upgrade for user %s: %s",
+                user_id,
+                e,
+            )
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    "No payment method on file. The plan was not changed;"
+                    " please add a payment method and try again."
+                ),
+            )
         # Stripe rejects schedule modify when phases mix currencies, e.g. the
         # active sub was checked out in GBP but the target tier's Price is
-        # USD-only. 502 reads as outage; surface a 422 with a specific message
-        # so the user/admin can see what to fix in Stripe.
-        msg = str(e)
-        if "currency" in msg.lower():
+        # USD-only. e.param is "currency" on the schedule API but may be
+        # "phases" or absent on older error shapes — substring fallback keeps
+        # the 422 firing instead of dropping to the generic 502.
+        if e.param == "currency" or "currency" in msg_lower:
             logger.warning(
-                "Currency mismatch on tier change for user %s: %s", user_id, msg
+                "Currency mismatch on tier change for user %s: %s", user_id, e
             )
             raise HTTPException(
                 status_code=422,
@@ -1085,6 +1228,7 @@ async def update_subscription_tier(
             tier=tier,
             success_url=request.success_url,
             cancel_url=request.cancel_url,
+            billing_cycle=request.billing_cycle,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -1184,6 +1328,27 @@ async def stripe_webhook(request: Request):
 
     if event_type == "invoice.payment_failed":
         await handle_subscription_payment_failure(data_object)
+
+    # New Stripe API (≥2025-04-01) split the per-payment events off the Invoice
+    # resource. data.object is an InvoicePayment, not an Invoice, so we hydrate
+    # the underlying Invoice before delegating to the existing handlers.
+    if event_type in ("invoice_payment.paid", "invoice_payment.payment_failed"):
+        invoice_id = data_object.get("invoice")
+        if invoice_id:
+            try:
+                invoice = await run_in_threadpool(stripe.Invoice.retrieve, invoice_id)
+            except stripe.StripeError:
+                logger.exception(
+                    "stripe_webhook: %s could not retrieve invoice %s; skipping",
+                    event_type,
+                    invoice_id,
+                )
+                return Response(status_code=200)
+            invoice_payload = cast(dict, invoice)
+            if event_type == "invoice_payment.paid":
+                await handle_subscription_payment_success(invoice_payload)
+            else:
+                await handle_subscription_payment_failure(invoice_payload)
 
     # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
     # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
@@ -1359,9 +1524,6 @@ async def create_new_graph(
     await graph_db.create_graph(graph, user_id=user_id)
     await library_db.create_library_agent(graph, user_id)
     activated_graph = await on_graph_activate(graph, user_id=user_id)
-
-    if create_graph.source == "builder":
-        await complete_onboarding_step(user_id, OnboardingStep.BUILDER_SAVE_AGENT)
 
     return activated_graph
 
@@ -1541,7 +1703,6 @@ async def execute_graph(
         # Record successful graph execution
         record_graph_execution(graph_id=graph_id, status="success", user_id=user_id)
         record_graph_operation(operation="execute", status="success")
-        await complete_re_run_agent(user_id, graph_id)
         if source == "library":
             await complete_onboarding_step(
                 user_id, OnboardingStep.MARKETPLACE_RUN_AGENT

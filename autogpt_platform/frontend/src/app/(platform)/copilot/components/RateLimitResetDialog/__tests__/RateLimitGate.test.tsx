@@ -19,20 +19,21 @@ vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
     mockUseGetV2GetCopilotUsage(...args),
 }));
 
-vi.mock("@/hooks/useCredits", () => ({
-  default: () => ({ credits: 1000, fetchCredits: vi.fn() }),
-}));
-
-const mockUseGetFlag = vi.fn(() => true);
-vi.mock("@/services/feature-flags/use-get-flag", () => ({
-  Flag: { ENABLE_PLATFORM_PAYMENT: "ENABLE_PLATFORM_PAYMENT" },
-  useGetFlag: () => mockUseGetFlag(),
+const mockUseGetSubscriptionStatus = vi.fn();
+vi.mock("@/app/api/__generated__/endpoints/credits/credits", () => ({
+  useGetSubscriptionStatus: (...args: unknown[]) =>
+    mockUseGetSubscriptionStatus(...args),
 }));
 
 // Capture props the dialog was rendered with so we can assert on them.
 const dialogSpy = vi.fn();
 vi.mock("../RateLimitResetDialog", () => ({
-  RateLimitResetDialog: (props: { isOpen: boolean }) => {
+  RateLimitResetDialog: (props: {
+    isOpen: boolean;
+    onClose: () => void;
+    resetsAt?: string | Date | null;
+    tier?: string | null;
+  }) => {
     dialogSpy(props);
     return <div data-testid="reset-dialog" data-open={String(props.isOpen)} />;
   },
@@ -44,10 +45,17 @@ afterEach(() => {
   cleanup();
   mockToast.mockReset();
   mockUseGetV2GetCopilotUsage.mockReset();
+  mockUseGetSubscriptionStatus.mockReset();
   dialogSpy.mockReset();
-  mockUseGetFlag.mockReset();
-  mockUseGetFlag.mockReturnValue(true);
 });
+
+function setSubscription(tier: string | null = null) {
+  mockUseGetSubscriptionStatus.mockReturnValue({
+    data: tier,
+    isSuccess: tier !== null,
+    isError: false,
+  });
+}
 
 describe("RateLimitGate", () => {
   it("disables the usage query when no rate-limit message is present", () => {
@@ -56,6 +64,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: false,
     });
+    setSubscription();
 
     render(<RateLimitGate rateLimitMessage={null} onDismiss={vi.fn()} />);
 
@@ -72,6 +81,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: false,
     });
+    setSubscription();
 
     render(
       <RateLimitGate
@@ -86,12 +96,31 @@ describe("RateLimitGate", () => {
     expect(config?.query?.enabled).toBe(true);
   });
 
-  it("opens the reset dialog when usage has a positive reset cost", () => {
+  it("disables the subscription query when no rate-limit message is present", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: { reset_cost: 50, weekly: { percent_used: 100 } },
+      data: undefined,
+      isSuccess: false,
+      isError: false,
+    });
+    setSubscription();
+
+    render(<RateLimitGate rateLimitMessage={null} onDismiss={vi.fn()} />);
+
+    expect(mockUseGetSubscriptionStatus).toHaveBeenCalled();
+    const [config] = mockUseGetSubscriptionStatus.mock.calls[0] as [
+      { query?: { enabled?: boolean } },
+    ];
+    expect(config?.query?.enabled).toBe(false);
+  });
+
+  it("opens the reset dialog when usage data is available", () => {
+    const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: future }, weekly: null },
       isSuccess: true,
       isError: false,
     });
+    setSubscription("PRO");
 
     render(
       <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
@@ -103,6 +132,40 @@ describe("RateLimitGate", () => {
     expect(mockToast).not.toHaveBeenCalled();
   });
 
+  it("forwards the user's subscription tier to the dialog", () => {
+    const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: future }, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription("MAX");
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.tier).toBe("MAX");
+  });
+
+  it("passes null tier when subscription status is unavailable", () => {
+    const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: future }, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription(null);
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.tier).toBeNull();
+  });
+
   it("falls back to a toast when usage query errors", () => {
     const onDismiss = vi.fn();
     mockUseGetV2GetCopilotUsage.mockReturnValue({
@@ -110,6 +173,7 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: true,
     });
+    setSubscription();
 
     render(
       <RateLimitGate
@@ -127,45 +191,6 @@ describe("RateLimitGate", () => {
     expect(toastArg.variant).toBe("destructive");
     expect(onDismiss).toHaveBeenCalledTimes(1);
 
-    // Dialog stays closed when the fallback fired.
-    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
-    expect(lastProps.isOpen).toBe(false);
-  });
-
-  it("falls back to a toast when reset cost is non-positive (credit reset unavailable)", () => {
-    const onDismiss = vi.fn();
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: { reset_cost: 0, weekly: { percent_used: 100 } },
-      isSuccess: true,
-      isError: false,
-    });
-
-    render(
-      <RateLimitGate rateLimitMessage="limit reached" onDismiss={onDismiss} />,
-    );
-
-    expect(mockToast).toHaveBeenCalledTimes(1);
-    expect(onDismiss).toHaveBeenCalledTimes(1);
-
-    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
-    expect(lastProps.isOpen).toBe(false);
-  });
-
-  it("falls back to a toast when ENABLE_PLATFORM_PAYMENT is off, even with a positive reset cost", () => {
-    mockUseGetFlag.mockReturnValue(false);
-    const onDismiss = vi.fn();
-    mockUseGetV2GetCopilotUsage.mockReturnValue({
-      data: { reset_cost: 50, weekly: { percent_used: 10 } },
-      isSuccess: true,
-      isError: false,
-    });
-
-    render(
-      <RateLimitGate rateLimitMessage="limit reached" onDismiss={onDismiss} />,
-    );
-
-    expect(mockToast).toHaveBeenCalledTimes(1);
-    expect(onDismiss).toHaveBeenCalledTimes(1);
     const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
     expect(lastProps.isOpen).toBe(false);
   });
@@ -176,9 +201,107 @@ describe("RateLimitGate", () => {
       isSuccess: false,
       isError: true,
     });
+    setSubscription();
 
     render(<RateLimitGate rateLimitMessage={null} onDismiss={vi.fn()} />);
 
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dialog closed while the usage query is still loading", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: undefined,
+      isSuccess: false,
+      isError: false,
+    });
+    setSubscription();
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.isOpen).toBe(false);
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it("forwards daily resets_at timestamp to the dialog", () => {
+    const future = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: { percent_used: 100, resets_at: future }, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription();
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.resetsAt).toBe(future);
+  });
+
+  it("falls back to weekly resets_at when daily is missing", () => {
+    const weeklyFuture = new Date(
+      Date.now() + 3 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: {
+        daily: null,
+        weekly: { percent_used: 100, resets_at: weeklyFuture },
+      },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription();
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.isOpen).toBe(true);
+    expect(lastProps.resetsAt).toBe(weeklyFuture);
+  });
+
+  it("passes null resetsAt when neither daily nor weekly data exists", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: { daily: null, weekly: null },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription();
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.isOpen).toBe(true);
+    expect(lastProps.resetsAt).toBeNull();
+  });
+
+  it("prefers daily resets_at over weekly when both are present", () => {
+    const dailyFuture = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+    const weeklyFuture = new Date(
+      Date.now() + 3 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: {
+        daily: { percent_used: 100, resets_at: dailyFuture },
+        weekly: { percent_used: 80, resets_at: weeklyFuture },
+      },
+      isSuccess: true,
+      isError: false,
+    });
+    setSubscription();
+
+    render(
+      <RateLimitGate rateLimitMessage="limit reached" onDismiss={vi.fn()} />,
+    );
+
+    const lastProps = dialogSpy.mock.calls.at(-1)?.[0];
+    expect(lastProps.resetsAt).toBe(dailyFuture);
   });
 });

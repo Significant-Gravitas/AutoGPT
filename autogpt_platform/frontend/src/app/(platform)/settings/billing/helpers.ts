@@ -1,5 +1,46 @@
 export const EASE_OUT = [0.16, 1, 0.3, 1] as const;
 
+const SECTION_BASE_DELAY = 0.04;
+const SECTION_STAGGER = 0.05;
+const SECTION_DURATION = 0.32;
+const ROW_DELAY_CHILDREN = 0.08;
+const ROW_STAGGER = 0.035;
+const ROW_DURATION = 0.28;
+
+export function getSectionMotionProps(index: number, reduceMotion: boolean) {
+  if (reduceMotion) {
+    return { initial: false as const };
+  }
+  return {
+    initial: { opacity: 0, y: 12 },
+    animate: { opacity: 1, y: 0 },
+    transition: {
+      duration: SECTION_DURATION,
+      ease: EASE_OUT,
+      delay: SECTION_BASE_DELAY + index * SECTION_STAGGER,
+    },
+  };
+}
+
+export const rowsContainerVariants = {
+  hidden: {},
+  show: {
+    transition: {
+      delayChildren: ROW_DELAY_CHILDREN,
+      staggerChildren: ROW_STAGGER,
+    },
+  },
+};
+
+export const rowVariants = {
+  hidden: { opacity: 0, y: 8 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: ROW_DURATION, ease: EASE_OUT },
+  },
+};
+
 const CURRENCY_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",

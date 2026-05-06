@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   useGetV1GetAutoTopUp,
@@ -33,15 +33,26 @@ export function useAutoRefillCard() {
   const [open, setOpen] = useState(false);
   const [threshold, setThreshold] = useState("");
   const [refillAmount, setRefillAmount] = useState("");
+  const initializedForOpenRef = useRef(false);
 
   useEffect(() => {
-    if (open) {
-      setThreshold(
-        config?.threshold ? (config.threshold / 100).toString() : "",
-      );
-      setRefillAmount(config?.amount ? (config.amount / 100).toString() : "");
+    if (!open) {
+      initializedForOpenRef.current = false;
+      return;
     }
-  }, [open, config]);
+    // Wait for the config fetch to settle before locking in defaults —
+    // otherwise opening the dialog mid-load would seed "5/5" and skip
+    // re-hydration when saved config arrives moments later.
+    if (isLoading) return;
+    // Initialize once per open transition so background refetches (e.g. on
+    // window focus) don't clobber the user's in-progress edits.
+    if (initializedForOpenRef.current) return;
+    initializedForOpenRef.current = true;
+    // Backend minimum is $5 — pre-fill with the floor so the form is valid
+    // by default and matches the "$5 minimum" copy in the empty state.
+    setThreshold(config?.threshold ? (config.threshold / 100).toString() : "5");
+    setRefillAmount(config?.amount ? (config.amount / 100).toString() : "5");
+  }, [open, config, isLoading]);
 
   const thresholdValue = Number.parseFloat(threshold);
   const refillValue = Number.parseFloat(refillAmount);
