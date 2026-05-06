@@ -145,6 +145,8 @@ class TestPlatformInfoTool:
             "backend.copilot.tools.platform_info.get_user_tier",
             return_value=SubscriptionTier.PRO,
         ):
-            result = await tool._execute(user_id="u1", session=mock_session, topic="subscription")
+            result = await tool._execute(
+                user_id="u1", session=mock_session, topic="subscription"
+            )
         assert "AutoGPT" in result.message
         assert "AutoPilot" in result.message
