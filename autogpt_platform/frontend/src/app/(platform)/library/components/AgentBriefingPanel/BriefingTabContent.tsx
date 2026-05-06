@@ -3,7 +3,10 @@
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
 import type { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/chat";
-import { formatResetTime } from "@/app/(platform)/copilot/components/usageHelpers";
+import {
+  formatResetTime,
+  formatTierLabel,
+} from "@/app/(platform)/copilot/components/usageHelpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
@@ -50,15 +53,17 @@ function UsageSection() {
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
+  const tierLabel = formatTierLabel(usage.tier);
+
   return (
     <div className="py-2">
       <div className="flex items-center gap-2">
         <Text variant="h5" className="text-neutral-800">
           Usage limits
         </Text>
-        {usage.tier && (
+        {tierLabel && (
           <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
-            {usage.tier.charAt(0) + usage.tier.slice(1).toLowerCase()} plan
+            {tierLabel} plan
           </Badge>
         )}
         <div className="flex-1" />
