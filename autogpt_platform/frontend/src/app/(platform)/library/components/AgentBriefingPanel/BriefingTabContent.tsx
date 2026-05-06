@@ -65,7 +65,7 @@ function UsageSection() {
           </Badge>
         )}
         <div className="flex-1" />
-        {isBillingEnabled && (
+        {isBillingEnabled && !showGoToBilling && (
           <Link
             href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"

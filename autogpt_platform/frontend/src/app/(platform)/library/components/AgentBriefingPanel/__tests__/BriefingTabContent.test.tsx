@@ -120,6 +120,17 @@ describe("BriefingTabContent — UsageSection", () => {
     expect(screen.getByText("Go to billing")).toBeDefined();
   });
 
+  it("hides 'Manage billing' link when 'Go to billing' button is shown", () => {
+    mockUseGetV2GetCopilotUsage.mockReturnValue({
+      data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),
+      isSuccess: true,
+    });
+    mockUseGetFlag.mockReturnValue(true);
+    render(<BriefingTabContent activeTab="all" agents={[]} />);
+    expect(screen.getByText("Go to billing")).toBeDefined();
+    expect(screen.queryByText("Manage billing")).toBeNull();
+  });
+
   it("hides 'Go to billing' when billing flag is off", () => {
     mockUseGetV2GetCopilotUsage.mockReturnValue({
       data: makeUsage({ dailyPercent: 100, weeklyPercent: 40 }),

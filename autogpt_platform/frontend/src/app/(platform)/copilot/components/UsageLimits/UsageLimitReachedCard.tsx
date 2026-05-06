@@ -70,7 +70,7 @@ export function UsageLimitReachedCard() {
       <UsagePanelContent
         usage={usage}
         showHeader={false}
-        showBillingLink={false}
+        showBillingLink={true}
         size="md"
       />
     </div>

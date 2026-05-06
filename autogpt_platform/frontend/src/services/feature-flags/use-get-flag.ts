@@ -19,7 +19,7 @@ const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
 const defaultFlags = {
   [Flag.BETA_BLOCKS]: [],
   [Flag.MARKETPLACE_SEARCH_TERMS]: DEFAULT_SEARCH_TERMS,
-  [Flag.ENABLE_PLATFORM_PAYMENT]: false,
+  [Flag.ENABLE_PLATFORM_PAYMENT]: true,
   [Flag.ARTIFACTS]: false,
   [Flag.CHAT_MODE_OPTION]: false,
   [Flag.BUILDER_CHAT_PANEL]: false,
