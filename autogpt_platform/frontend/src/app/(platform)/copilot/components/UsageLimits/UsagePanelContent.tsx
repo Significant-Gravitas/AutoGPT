@@ -209,7 +209,7 @@ export function UsagePanelContent({
         />
       )}
       <WorkspaceStorageSection />
-      {isDailyExhausted && isBillingEnabled && (
+      {isDailyExhausted && isBillingEnabled && showBillingLink && (
         <Button
           as="NextLink"
           href="/settings/billing"

@@ -127,6 +127,17 @@ describe("UsagePanelContent", () => {
     expect(screen.getByText("Go to billing")).toBeDefined();
   });
 
+  it("does not render 'Go to billing' when showBillingLink is false", () => {
+    mockUseGetFlag.mockReturnValue(true);
+    render(
+      <UsagePanelContent
+        usage={makeUsage({ dailyPercent: 100, weeklyPercent: 40 })}
+        showBillingLink={false}
+      />,
+    );
+    expect(screen.queryByText("Go to billing")).toBeNull();
+  });
+
   it("does not render 'Go to billing' when billing flag is disabled", () => {
     mockUseGetFlag.mockReturnValue(false);
     render(
