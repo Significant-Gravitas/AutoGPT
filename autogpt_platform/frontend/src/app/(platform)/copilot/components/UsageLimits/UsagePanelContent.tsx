@@ -3,8 +3,8 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { formatCents, formatResetTime } from "../usageHelpers";
-import { useResetRateLimit } from "../../hooks/useResetRateLimit";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
+import { formatResetTime } from "../usageHelpers";
 import { useWorkspaceStorage } from "./useWorkspaceStorage";
 
 export { formatResetTime };
@@ -130,30 +130,6 @@ function StorageBar({
   );
 }
 
-function ResetButton({
-  cost,
-  onCreditChange,
-}: {
-  cost: number;
-  onCreditChange?: () => void;
-}) {
-  const { resetUsage, isPending } = useResetRateLimit({ onCreditChange });
-
-  return (
-    <Button
-      variant="primary"
-      size="small"
-      onClick={() => resetUsage()}
-      loading={isPending}
-      className="mt-1 w-full"
-    >
-      {isPending
-        ? "Resetting..."
-        : `Reset daily limit for ${formatCents(cost)}`}
-    </Button>
-  );
-}
-
 function WorkspaceStorageSection() {
   const { data: storage } = useWorkspaceStorage();
   if (!storage || storage.limit_bytes <= 0) return null;
@@ -171,24 +147,18 @@ export function UsagePanelContent({
   usage,
   showHeader = true,
   showBillingLink = true,
-  hasInsufficientCredits = false,
-  isBillingEnabled = false,
-  onCreditChange,
   size = "sm",
 }: {
   usage: CoPilotUsagePublic;
   showHeader?: boolean;
   showBillingLink?: boolean;
-  hasInsufficientCredits?: boolean;
-  isBillingEnabled?: boolean;
-  onCreditChange?: () => void;
   size?: Size;
 }) {
+  const isBillingEnabled = useGetFlag(Flag.ENABLE_PLATFORM_PAYMENT);
   const daily = usage.daily;
   const weekly = usage.weekly;
   const isDailyExhausted = !!daily && daily.percent_used >= 100;
   const isWeeklyExhausted = !!weekly && weekly.percent_used >= 100;
-  const resetCost = usage.reset_cost ?? 0;
 
   if (!daily && !weekly) {
     return (
@@ -240,26 +210,17 @@ export function UsagePanelContent({
         />
       )}
       <WorkspaceStorageSection />
-      {isDailyExhausted &&
-        !isWeeklyExhausted &&
-        resetCost > 0 &&
-        !hasInsufficientCredits && (
-          <ResetButton cost={resetCost} onCreditChange={onCreditChange} />
-        )}
-      {isDailyExhausted &&
-        !isWeeklyExhausted &&
-        hasInsufficientCredits &&
-        isBillingEnabled && (
-          <Button
-            as="NextLink"
-            href="/settings/billing"
-            variant="primary"
-            size="small"
-            className="mt-1 w-full"
-          >
-            Go to billing
-          </Button>
-        )}
+      {isDailyExhausted && !isWeeklyExhausted && isBillingEnabled && (
+        <Button
+          as="NextLink"
+          href="/settings/billing"
+          variant="primary"
+          size="small"
+          className="mt-1 w-full"
+        >
+          Go to billing
+        </Button>
+      )}
       {showBillingLink && (
         <Link href="/settings/billing" className="hover:underline">
           <Text as="span" variant="small" className="text-blue-600">

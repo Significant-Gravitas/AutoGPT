@@ -1,32 +1,33 @@
-import {
-  render,
-  screen,
-  cleanup,
-  fireEvent,
-} from "@/tests/integrations/test-utils";
+import { render, screen, cleanup } from "@/tests/integrations/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UsagePanelContent, formatBytes } from "../UsagePanelContent";
 import type { CoPilotUsagePublic } from "@/app/api/__generated__/models/coPilotUsagePublic";
-
-const mockResetUsage = vi.fn();
-vi.mock("../../../hooks/useResetRateLimit", () => ({
-  useResetRateLimit: () => ({ resetUsage: mockResetUsage, isPending: false }),
-}));
 
 const mockStorageData = vi.fn();
 vi.mock("../useWorkspaceStorage", () => ({
   useWorkspaceStorage: () => mockStorageData(),
 }));
 
-afterEach(() => {
-  cleanup();
-  mockResetUsage.mockReset();
-  mockStorageData.mockReset();
+const mockUseGetFlag = vi.fn();
+vi.mock("@/services/feature-flags/use-get-flag", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/services/feature-flags/use-get-flag")
+  >("@/services/feature-flags/use-get-flag");
+  return {
+    ...actual,
+    useGetFlag: (flag: unknown) => mockUseGetFlag(flag),
+  };
 });
 
-// Default: no storage data (most existing tests don't need it)
+afterEach(() => {
+  cleanup();
+  mockStorageData.mockReset();
+  mockUseGetFlag.mockReset();
+});
+
 beforeEach(() => {
   mockStorageData.mockReturnValue({ data: undefined });
+  mockUseGetFlag.mockReturnValue(true);
 });
 
 function makeUsage(
@@ -107,47 +108,42 @@ describe("UsagePanelContent", () => {
     expect(screen.getByText("File storage")).toBeDefined();
   });
 
-  it("renders the reset button when daily limit is exhausted", () => {
+  it("never renders the legacy 'Reset daily limit' button", () => {
     render(
       <UsagePanelContent
         usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
-      />,
-    );
-    expect(screen.getByText(/Reset daily limit/)).toBeDefined();
-  });
-
-  it("does not render the reset button when weekly limit is also exhausted", () => {
-    render(
-      <UsagePanelContent
-        usage={makeUsage({
-          dailyPercent: 100,
-          weeklyPercent: 100,
-          resetCost: 50,
-        })}
       />,
     );
     expect(screen.queryByText(/Reset daily limit/)).toBeNull();
   });
 
-  it("calls resetUsage when the reset button is clicked", () => {
+  it("renders 'Go to billing' when daily is exhausted and billing is enabled", () => {
+    mockUseGetFlag.mockReturnValue(true);
     render(
       <UsagePanelContent
-        usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
-      />,
-    );
-    fireEvent.click(screen.getByText(/Reset daily limit/));
-    expect(mockResetUsage).toHaveBeenCalled();
-  });
-
-  it("renders 'Go to billing' link when insufficient credits", () => {
-    render(
-      <UsagePanelContent
-        usage={makeUsage({ dailyPercent: 100, resetCost: 50 })}
-        hasInsufficientCredits={true}
-        isBillingEnabled={true}
+        usage={makeUsage({ dailyPercent: 100, weeklyPercent: 40 })}
       />,
     );
     expect(screen.getByText("Go to billing")).toBeDefined();
+  });
+
+  it("does not render 'Go to billing' when billing flag is disabled", () => {
+    mockUseGetFlag.mockReturnValue(false);
+    render(
+      <UsagePanelContent
+        usage={makeUsage({ dailyPercent: 100, weeklyPercent: 40 })}
+      />,
+    );
+    expect(screen.queryByText("Go to billing")).toBeNull();
+  });
+
+  it("does not render 'Go to billing' when weekly is also exhausted", () => {
+    render(
+      <UsagePanelContent
+        usage={makeUsage({ dailyPercent: 100, weeklyPercent: 100 })}
+      />,
+    );
+    expect(screen.queryByText("Go to billing")).toBeNull();
   });
 
   it("renders percent used in the usage bar", () => {
