@@ -102,7 +102,7 @@ describe("UsageLimitReachedCard", () => {
     mockUsageResponse(makeUsage({ tier: "PRO" }));
     render(<UsageLimitReachedCard />);
 
-    expect(await screen.findByText("Pro")).toBeDefined();
+    expect(await screen.findByText("Pro plan")).toBeDefined();
   });
 
   it("never renders the legacy 'Reset daily limit' control", async () => {

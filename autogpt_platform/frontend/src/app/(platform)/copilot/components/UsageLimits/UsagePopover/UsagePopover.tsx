@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import {
   Popover,
@@ -29,20 +30,20 @@ export function UsagePopover() {
           <ChartBarIcon className="!size-5" weight="light" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-3">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-baseline justify-between">
-            <Text
-              as="span"
-              variant="small-medium"
-              className="font-semibold text-neutral-800"
-            >
+      <PopoverContent align="start" className="w-72 p-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-2">
+            <Text variant="body-medium" className="text-neutral-800">
               Usage limits
             </Text>
             {tierLabel && (
-              <Text as="span" variant="small" className="text-neutral-500">
+              <Badge
+                variant="info"
+                size="small"
+                className="bg-[rgb(224,237,255)]"
+              >
                 {tierLabel} plan
-              </Text>
+              </Badge>
             )}
           </div>
           {usage.daily && (

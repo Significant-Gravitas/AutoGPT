@@ -24,24 +24,16 @@ export function UsageLimitReachedCard() {
   return (
     <div
       role="alert"
-      className="mx-auto flex w-full max-w-[30rem] flex-col gap-3 rounded-2xl border border-orange-100 bg-white/70 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-md"
+      className="mx-auto flex w-full max-w-[30rem] flex-col gap-4 rounded-2xl border border-orange-100 bg-white/70 p-4 shadow-[0_8px_32px_rgba(0,0,0,0.04)] backdrop-blur-md"
     >
       <div className="flex items-center gap-2">
         <WarningIcon className="size-5 text-orange-500" weight="fill" />
-        <Text
-          as="span"
-          variant="body-medium"
-          className="font-semibold text-neutral-900"
-        >
+        <Text variant="body-medium" className="text-neutral-900">
           Usage limit reached
         </Text>
         {tierLabel && (
-          <Badge
-            variant="info"
-            size="small"
-            className="border border-neutral-200"
-          >
-            {tierLabel}
+          <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
+            {tierLabel} plan
           </Badge>
         )}
       </div>
@@ -50,7 +42,6 @@ export function UsageLimitReachedCard() {
           label="Today"
           percentUsed={usage.daily.percent_used}
           resetsAt={usage.daily.resets_at}
-          size="md"
         />
       )}
       {usage.weekly && (
@@ -58,7 +49,6 @@ export function UsageLimitReachedCard() {
           label="This week"
           percentUsed={usage.weekly.percent_used}
           resetsAt={usage.weekly.resets_at}
-          size="md"
         />
       )}
       <StorageBar />
