@@ -5,6 +5,7 @@ import {
   formatMicrodollarsAsUsd,
   formatResetTime,
   formatTierLabel,
+  isUsageExhausted,
 } from "../usageHelpers";
 
 describe("formatCents", () => {
@@ -102,6 +103,45 @@ describe("formatTierLabel", () => {
   it("normalizes first-letter casing for lowercase or mixed-case input", () => {
     expect(formatTierLabel("pro")).toBe("Pro");
     expect(formatTierLabel("pRo")).toBe("Pro");
+  });
+});
+
+describe("isUsageExhausted", () => {
+  it("returns false for null/undefined usage", () => {
+    expect(isUsageExhausted(null)).toBe(false);
+    expect(isUsageExhausted(undefined)).toBe(false);
+  });
+
+  it("returns false when neither window is over 100%", () => {
+    expect(
+      isUsageExhausted({
+        daily: { percent_used: 50 },
+        weekly: { percent_used: 60 },
+      }),
+    ).toBe(false);
+  });
+
+  it("returns true when daily is exhausted", () => {
+    expect(
+      isUsageExhausted({
+        daily: { percent_used: 100 },
+        weekly: { percent_used: 10 },
+      }),
+    ).toBe(true);
+  });
+
+  it("returns true when weekly is exhausted", () => {
+    expect(
+      isUsageExhausted({
+        daily: { percent_used: 0 },
+        weekly: { percent_used: 100 },
+      }),
+    ).toBe(true);
+  });
+
+  it("treats missing percent_used as 0", () => {
+    expect(isUsageExhausted({ daily: null, weekly: null })).toBe(false);
+    expect(isUsageExhausted({})).toBe(false);
   });
 });
 

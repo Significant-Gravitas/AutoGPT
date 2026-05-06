@@ -40,6 +40,24 @@ export function formatTierLabel(
   return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
 
+export const TIER_BADGE_CLASS_NAME = "bg-[rgb(224,237,255)]";
+
+interface UsageWindowLike {
+  percent_used?: number | null;
+}
+
+interface UsageLike {
+  daily?: UsageWindowLike | null;
+  weekly?: UsageWindowLike | null;
+}
+
+export function isUsageExhausted(usage: UsageLike | null | undefined): boolean {
+  if (!usage) return false;
+  const daily = usage.daily?.percent_used ?? 0;
+  const weekly = usage.weekly?.percent_used ?? 0;
+  return daily >= 100 || weekly >= 100;
+}
+
 export function formatBytes(bytes: number): string {
   const KB = 1024;
   const MB = KB * 1024;

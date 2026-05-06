@@ -10,7 +10,7 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { ChartBarIcon } from "@phosphor-icons/react";
 import Link from "next/link";
-import { formatTierLabel } from "../../usageHelpers";
+import { formatTierLabel, TIER_BADGE_CLASS_NAME } from "../../usageHelpers";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
@@ -40,7 +40,7 @@ export function UsagePopover() {
               <Badge
                 variant="info"
                 size="small"
-                className="bg-[rgb(224,237,255)]"
+                className={TIER_BADGE_CLASS_NAME}
               >
                 {tierLabel} plan
               </Badge>

@@ -6,6 +6,7 @@ import { useGetV2GetCopilotUsage } from "@/app/api/__generated__/endpoints/chat/
 import {
   formatResetTime,
   formatTierLabel,
+  TIER_BADGE_CLASS_NAME,
 } from "@/app/(platform)/copilot/components/usageHelpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { Badge } from "@/components/atoms/Badge/Badge";
@@ -62,7 +63,7 @@ function UsageSection() {
           Usage limits
         </Text>
         {tierLabel && (
-          <Badge variant="info" size="small" className="bg-[rgb(224,237,255)]">
+          <Badge variant="info" size="small" className={TIER_BADGE_CLASS_NAME}>
             {tierLabel} plan
           </Badge>
         )}
