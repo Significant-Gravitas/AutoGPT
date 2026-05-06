@@ -50,9 +50,6 @@ function UsageSection() {
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
 
-  const isDailyExhausted = !!usage.daily && usage.daily.percent_used >= 100;
-  const showGoToBilling = isDailyExhausted && isBillingEnabled;
-
   return (
     <div className="py-2">
       <div className="flex items-center gap-2">
@@ -65,7 +62,7 @@ function UsageSection() {
           </Badge>
         )}
         <div className="flex-1" />
-        {isBillingEnabled && !showGoToBilling && (
+        {isBillingEnabled && (
           <Link
             href="/settings/billing"
             className="text-sm text-blue-600 hover:underline"
@@ -90,18 +87,6 @@ function UsageSection() {
           />
         )}
       </div>
-      {showGoToBilling && (
-        <div className="mt-4 flex items-center gap-3">
-          <Button
-            as="NextLink"
-            href="/settings/billing"
-            variant="primary"
-            size="small"
-          >
-            Go to billing
-          </Button>
-        </div>
-      )}
     </div>
   );
 }
