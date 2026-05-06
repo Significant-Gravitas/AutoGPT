@@ -442,7 +442,7 @@ class OrchestratorBlock(Block):
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models",
         )
         agent_mode_max_iterations: int = SchemaField(
             title="Agent Mode Max Iterations",

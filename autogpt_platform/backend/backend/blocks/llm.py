@@ -1408,7 +1408,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models",
         )
 
     class Output(BlockSchemaOutput):
@@ -1852,7 +1852,7 @@ class AITextGeneratorBlock(AIBlockBase):
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models",
         )
         max_tokens: int | None = SchemaField(
             advanced=True,
@@ -1955,7 +1955,7 @@ class AITextSummarizerBlock(AIBlockBase):
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models",
         )
 
     class Output(BlockSchemaOutput):
@@ -2154,7 +2154,7 @@ class AIConversationBlock(AIBlockBase):
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models",
         )
 
     class Output(BlockSchemaOutput):
@@ -2286,7 +2286,7 @@ class AIListGeneratorBlock(AIBlockBase):
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
-            description="Ollama host for local  models",
+            description="Ollama host for local models",
         )
 
     class Output(BlockSchemaOutput):
