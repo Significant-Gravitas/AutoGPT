@@ -3838,26 +3838,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
             return sandbox
 
-        async def _fetch_graphiti_context() -> tuple[bool, str]:
-            """Check Graphiti flag and fetch warm context in one shot.
-
-            Warm context: pre-load relevant facts from Graphiti on first turn.
-            Stored here and injected into the first user message (not the
-            system prompt) so the system prompt stays identical across all
-            users and sessions, enabling cross-session Anthropic prompt-cache
-            hits.
-            """
-            enabled = await is_enabled_for_user(user_id)
-            if not enabled:
-                return False, ""
-            if not (user_id and len(session.messages) <= 1):
-                return True, ""
-
-            from ..graphiti.context import fetch_warm_context
-
-            ctx = await fetch_warm_context(user_id, message or "") or ""
-            return True, ctx
-
         (
             e2b_sandbox,
             (base_system_prompt, understanding),
@@ -3866,7 +3846,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         ) = await asyncio.gather(
             _setup_e2b(),
             _build_system_prompt(user_id if not has_history else None),
-            _fetch_graphiti_context(),
+            _fetch_graphiti_context(user_id, session, message),
             # Restore CLI session — single GCS round-trip covers both
             # --resume and builder state.  message_count watermark lives
             # in the companion .meta.json alongside the session file.
@@ -4009,7 +3989,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # max_turns: hard cap on agentic tool-use loops per query to
             # prevent runaway execution from burning budget.
             max_turns=config.agent_max_turns,
-            # max_budget_usd: per-query spend ceiling enforced by the CLI.
             # max_budget_usd: per-query spend ceiling enforced by the CLI.
             # Sized to the smaller of the configured per-query default and
             # the user's *actual* remaining daily/weekly USD cap so the
@@ -5163,3 +5142,29 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 raise
             if _auto_requeued:
                 return
+
+
+async def _fetch_graphiti_context(
+    user_id: str | None,
+    session: ChatSession,
+    message: str | None,
+) -> tuple[bool, str]:
+    """Check Graphiti flag and fetch warm context in one shot.
+
+    Returns ``(graphiti_enabled, warm_ctx)`` where ``warm_ctx`` is a
+    pre-loaded fact bundle injected into the first user message (not the
+    system prompt) so the system prompt stays identical across users and
+    sessions, enabling cross-session Anthropic prompt-cache hits.  Skips
+    the fetch on follow-up turns (history > 1 message) and when the user
+    is anonymous.
+    """
+    enabled = await is_enabled_for_user(user_id)
+    if not enabled:
+        return False, ""
+    if not (user_id and len(session.messages) <= 1):
+        return True, ""
+
+    from ..graphiti.context import fetch_warm_context
+
+    ctx = await fetch_warm_context(user_id, message or "") or ""
+    return True, ctx
