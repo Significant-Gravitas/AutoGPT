@@ -1,8 +1,27 @@
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/mocks/mock-server";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { UsagePopover } from "../UsagePopover";
+
+const mockUseGetFlag = vi.fn();
+vi.mock("@/services/feature-flags/use-get-flag", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/services/feature-flags/use-get-flag")
+  >("@/services/feature-flags/use-get-flag");
+  return {
+    ...actual,
+    useGetFlag: (flag: unknown) => mockUseGetFlag(flag),
+  };
+});
+
+afterEach(() => {
+  mockUseGetFlag.mockReset();
+});
+
+beforeEach(() => {
+  mockUseGetFlag.mockReturnValue(true);
+});
 
 vi.mock("../../StorageBar", () => ({
   StorageBar: () => null,
@@ -107,5 +126,23 @@ describe("UsagePopover", () => {
 
     expect(await screen.findByText("Today")).toBeDefined();
     expect(screen.queryByText("Go to billing")).toBeNull();
+  });
+
+  it("renders a 'Manage billing' link when billing is enabled", async () => {
+    mockUsageResponse(makeUsage());
+    render(<UsagePopover />);
+
+    const link = (await screen.findByText("Manage billing")).closest("a");
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute("href")).toBe("/settings/billing");
+  });
+
+  it("hides the 'Manage billing' link when billing is disabled at the platform level", async () => {
+    mockUseGetFlag.mockReturnValue(false);
+    mockUsageResponse(makeUsage());
+    render(<UsagePopover />);
+
+    expect(await screen.findByText("Today")).toBeDefined();
+    expect(screen.queryByText("Manage billing")).toBeNull();
   });
 });

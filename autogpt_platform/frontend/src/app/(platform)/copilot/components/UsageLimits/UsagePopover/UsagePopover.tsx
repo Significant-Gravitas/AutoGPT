@@ -9,12 +9,13 @@ import {
 } from "@/components/molecules/Popover/Popover";
 import { Button } from "@/components/ui/button";
 import { ChartBarIcon } from "@phosphor-icons/react";
+import Link from "next/link";
 import { StorageBar } from "../StorageBar";
 import { UsageBar } from "../UsageBar";
 import { useUsagePopover } from "./useUsagePopover";
 
 export function UsagePopover() {
-  const { usage, isSuccess } = useUsagePopover();
+  const { usage, isSuccess, isBillingEnabled } = useUsagePopover();
 
   if (!isSuccess || !usage) return null;
   if (!usage.daily && !usage.weekly) return null;
@@ -61,6 +62,14 @@ export function UsagePopover() {
             />
           )}
           <StorageBar />
+          {isBillingEnabled && (
+            <Link
+              href="/settings/billing"
+              className="text-sm text-blue-600 hover:underline"
+            >
+              Manage billing
+            </Link>
+          )}
         </div>
       </PopoverContent>
     </Popover>
