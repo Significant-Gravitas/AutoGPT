@@ -101,11 +101,7 @@ describe("UsagePanelContent", () => {
   });
 
   it("never renders the legacy 'Reset daily limit' button", () => {
-    render(
-      <UsagePanelContent
-        usage={makeUsage({ dailyPercent: 100 })}
-      />,
-    );
+    render(<UsagePanelContent usage={makeUsage({ dailyPercent: 100 })} />);
     expect(screen.queryByText(/Reset daily limit/)).toBeNull();
   });
 
