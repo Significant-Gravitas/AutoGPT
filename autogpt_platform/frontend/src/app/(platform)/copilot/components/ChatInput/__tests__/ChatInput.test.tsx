@@ -6,8 +6,17 @@ import {
   act,
   waitFor,
 } from "@/tests/integrations/test-utils";
+import type { UIMessage } from "ai";
+import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatInput } from "../ChatInput";
+import { useCopilotStop } from "../../../useCopilotStop";
+
+const mockCancel =
+  vi.fn<(sessionId: string) => Promise<{ status: number; data: unknown }>>();
+vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  postV2CancelSessionTask: (sessionId: string) => mockCancel(sessionId),
+}));
 
 let mockCopilotMode = "extended_thinking";
 const mockSetCopilotChatMode = vi.fn((mode: string) => {
@@ -65,11 +74,29 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
   PromptInputFooter: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
-  PromptInputSubmit: ({ disabled }: { disabled?: boolean }) => (
-    <button disabled={disabled} data-testid="submit">
-      Send
-    </button>
-  ),
+  PromptInputSubmit: ({
+    disabled,
+    status,
+    onStop,
+  }: {
+    disabled?: boolean;
+    status?: string;
+    onStop?: () => void;
+  }) =>
+    status === "streaming" ? (
+      <button
+        type="button"
+        onClick={onStop}
+        data-testid="stop"
+        aria-label="Stop"
+      >
+        Stop
+      </button>
+    ) : (
+      <button disabled={disabled} data-testid="submit">
+        Send
+      </button>
+    ),
   PromptInputTextarea: (props: {
     id?: string;
     value?: string;
@@ -146,8 +173,10 @@ const mockOnSend = vi.fn();
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mockCancel.mockReset();
   mockCopilotMode = "extended_thinking";
   mockCopilotLlmModel = "standard";
+  mockFlagValue = false;
 });
 
 describe("ChatInput mode toggle", () => {
@@ -422,5 +451,328 @@ describe("ChatInput model toggle", () => {
         title: expect.stringMatching(/switched to balanced model/i),
       }),
     );
+  });
+});
+
+describe("ChatInput submit behavior", () => {
+  it("does not call onSend when textarea is empty", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const form = screen.getByTestId("submit").closest("form")!;
+    fireEvent.submit(form);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("sends trimmed value and clears textarea", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "  hello  " } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("hello", undefined);
+    });
+    await waitFor(() => {
+      expect(textarea.value).toBe("");
+    });
+  });
+
+  it("does not call onSend when disabled", () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} disabled />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("prevents double-submit while a send is in flight", async () => {
+    let resolveFirst: (() => void) | undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    render(<ChatInput onSend={onSend} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    const form = textarea.closest("form")!;
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(onSend).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      resolveFirst?.();
+    });
+  });
+
+  it("allows sending again after a failed send", async () => {
+    const swallowWindow = (e: PromiseRejectionEvent) => e.preventDefault();
+    const swallowProcess = () => undefined;
+    window.addEventListener("unhandledrejection", swallowWindow);
+    process.on("unhandledRejection", swallowProcess);
+    try {
+      let failNext = true;
+      const onSend = vi.fn(async () => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("fail");
+        }
+      });
+      render(<ChatInput onSend={onSend} />);
+      const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+      fireEvent.change(textarea, { target: { value: "hello" } });
+      const form = textarea.closest("form")!;
+      fireEvent.submit(form);
+      await waitFor(() => {
+        expect(onSend).toHaveBeenCalledTimes(1);
+      });
+      fireEvent.change(textarea, { target: { value: "retry" } });
+      fireEvent.submit(form);
+      await waitFor(() => {
+        expect(onSend).toHaveBeenCalledTimes(2);
+      });
+      expect(onSend).toHaveBeenLastCalledWith("retry", undefined);
+    } finally {
+      window.removeEventListener("unhandledrejection", swallowWindow);
+      process.off("unhandledRejection", swallowProcess);
+    }
+  });
+});
+
+interface StopHarnessProps {
+  sessionId: string | null;
+  sdkStop: () => void;
+  setMessages: (
+    updater: ((prev: UIMessage[]) => UIMessage[]) | UIMessage[],
+  ) => void;
+  setIsUserStopping: (value: boolean) => void;
+}
+
+function StopHarness({
+  sessionId,
+  sdkStop,
+  setMessages,
+  setIsUserStopping,
+}: StopHarnessProps) {
+  const isUserStoppingRef = useRef(false);
+  const stop = useCopilotStop({
+    sessionId,
+    sdkStop,
+    setMessages: setMessages as Parameters<
+      typeof useCopilotStop
+    >[0]["setMessages"],
+    isUserStoppingRef,
+    setIsUserStopping,
+  });
+  return <ChatInput onSend={vi.fn()} isStreaming onStop={stop} />;
+}
+
+function asstMessage(parts: UIMessage["parts"], id = "a1"): UIMessage {
+  return { id, role: "assistant", parts };
+}
+
+describe("ChatInput stop button", () => {
+  it("appends a cancellation marker to the trailing assistant message", async () => {
+    mockCancel.mockResolvedValue({ status: 200, data: { reason: "ok" } });
+    let messages: UIMessage[] = [
+      asstMessage([{ type: "text", text: "partial reply", state: "done" }]),
+    ];
+    const setMessages = vi.fn((updater: unknown) => {
+      if (typeof updater === "function") {
+        messages = (updater as (prev: UIMessage[]) => UIMessage[])(messages);
+      } else {
+        messages = updater as UIMessage[];
+      }
+    });
+
+    render(
+      <StopHarness
+        sessionId="sess-1"
+        sdkStop={vi.fn()}
+        setMessages={setMessages}
+        setIsUserStopping={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      const last = messages[messages.length - 1];
+      const tail = last.parts[last.parts.length - 1];
+      expect(tail.type).toBe("text");
+      expect((tail as { text: string }).text).toContain("Operation cancelled");
+    });
+  });
+
+  it("leaves messages unchanged when there is no trailing assistant message", async () => {
+    mockCancel.mockResolvedValue({ status: 200, data: { reason: "ok" } });
+    let messages: UIMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "hi", state: "done" }],
+      },
+    ];
+    const setMessages = vi.fn((updater: unknown) => {
+      if (typeof updater === "function") {
+        messages = (updater as (prev: UIMessage[]) => UIMessage[])(messages);
+      } else {
+        messages = updater as UIMessage[];
+      }
+    });
+
+    render(
+      <StopHarness
+        sessionId="sess-1"
+        sdkStop={vi.fn()}
+        setMessages={setMessages}
+        setIsUserStopping={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      expect(mockCancel).toHaveBeenCalled();
+    });
+    expect(messages).toHaveLength(1);
+    expect(messages[0].role).toBe("user");
+  });
+
+  it("aborts the SDK stream and flips the user-stopping flag when clicked", async () => {
+    mockCancel.mockResolvedValue({ status: 200, data: { reason: "ok" } });
+    const sdkStop = vi.fn();
+    const setIsUserStopping = vi.fn();
+
+    render(
+      <StopHarness
+        sessionId="sess-1"
+        sdkStop={sdkStop}
+        setMessages={vi.fn()}
+        setIsUserStopping={setIsUserStopping}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      expect(sdkStop).toHaveBeenCalledTimes(1);
+      expect(setIsUserStopping).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it("still proceeds with cancel if sdkStop throws", async () => {
+    mockCancel.mockResolvedValue({ status: 200, data: { reason: "ok" } });
+    const sdkStop = vi.fn(() => {
+      throw new Error("no fetch in flight");
+    });
+
+    const swallowWindow = (e: PromiseRejectionEvent) => e.preventDefault();
+    const swallowProcess = () => undefined;
+    window.addEventListener("unhandledrejection", swallowWindow);
+    process.on("unhandledRejection", swallowProcess);
+    try {
+      render(
+        <StopHarness
+          sessionId="sess-1"
+          sdkStop={sdkStop}
+          setMessages={vi.fn()}
+          setIsUserStopping={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByTestId("stop"));
+
+      await waitFor(() => {
+        expect(mockCancel).toHaveBeenCalledTimes(1);
+      });
+    } finally {
+      window.removeEventListener("unhandledrejection", swallowWindow);
+      process.off("unhandledRejection", swallowProcess);
+    }
+  });
+
+  it("does not call the cancel endpoint when there is no active sessionId", async () => {
+    const setIsUserStopping = vi.fn();
+    render(
+      <StopHarness
+        sessionId={null}
+        sdkStop={vi.fn()}
+        setMessages={vi.fn()}
+        setIsUserStopping={setIsUserStopping}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+    await waitFor(() => {
+      expect(setIsUserStopping).toHaveBeenCalledWith(true);
+    });
+    expect(mockCancel).not.toHaveBeenCalled();
+  });
+
+  it("toasts a 'Stop may take a moment' notice on cancel_published_not_confirmed", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockCancel.mockResolvedValue({
+      status: 200,
+      data: { reason: "cancel_published_not_confirmed" },
+    });
+
+    render(
+      <StopHarness
+        sessionId="sess-1"
+        sdkStop={vi.fn()}
+        setMessages={vi.fn()}
+        setIsUserStopping={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Stop may take a moment" }),
+      );
+    });
+  });
+
+  it("toasts a destructive notice when the cancel request rejects", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockCancel.mockRejectedValue(new Error("network down"));
+
+    render(
+      <StopHarness
+        sessionId="sess-1"
+        sdkStop={vi.fn()}
+        setMessages={vi.fn()}
+        setIsUserStopping={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Could not stop the task",
+          variant: "destructive",
+        }),
+      );
+    });
+  });
+
+  it("does not toast when the cancel succeeds with a normal reason", async () => {
+    const { toast } = await import("@/components/molecules/Toast/use-toast");
+    mockCancel.mockResolvedValue({ status: 200, data: { reason: "ok" } });
+
+    render(
+      <StopHarness
+        sessionId="sess-1"
+        sdkStop={vi.fn()}
+        setMessages={vi.fn()}
+        setIsUserStopping={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("stop"));
+
+    await waitFor(() => {
+      expect(mockCancel).toHaveBeenCalled();
+    });
+    expect(toast).not.toHaveBeenCalled();
   });
 });

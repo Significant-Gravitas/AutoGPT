@@ -803,8 +803,8 @@ describe("AutopilotUsageCard", () => {
 
     expect(await screen.findByText("Today")).toBeDefined();
     expect(screen.getByText("This Week")).toBeDefined();
-    expect(screen.getByText("12%")).toBeDefined();
-    expect(screen.getByText("35%")).toBeDefined();
+    expect(screen.getByText("12% used")).toBeDefined();
+    expect(screen.getByText("35% used")).toBeDefined();
   });
 });
 
