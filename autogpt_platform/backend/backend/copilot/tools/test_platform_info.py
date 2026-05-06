@@ -67,7 +67,7 @@ class TestPlatformInfoTool:
 
         assert result.type == ResponseType.PLATFORM_INFO
         assert result.tier == "NO_TIER"
-        assert "Free" in result.message
+        assert "No active subscription" in result.message
 
     @pytest.mark.asyncio
     async def test_subscription_topic_max(self, tool, mock_session):
@@ -138,7 +138,13 @@ class TestPlatformInfoTool:
         assert schema["type"] == "function"
         assert schema["function"]["name"] == "get_platform_info"
 
-    def test_description_mentions_autogpt_platform(self, tool):
-        desc = tool.description
-        assert "AutoGPT" in desc
-        assert "AutoPilot" in desc
+    @pytest.mark.asyncio
+    async def test_response_mentions_autogpt_platform(self, tool, mock_session):
+        """Platform identity context is in the response, not the description."""
+        with patch(
+            "backend.copilot.tools.platform_info.get_user_tier",
+            return_value=SubscriptionTier.PRO,
+        ):
+            result = await tool._execute(user_id="u1", session=mock_session, topic="subscription")
+        assert "AutoGPT" in result.message
+        assert "AutoPilot" in result.message

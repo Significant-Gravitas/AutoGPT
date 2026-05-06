@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Human-friendly tier names shown to the user.
 _TIER_DISPLAY_NAMES: dict[str, str] = {
-    "NO_TIER": "Free (no active subscription)",
+    "NO_TIER": "No active subscription",
     "BASIC": "Basic",
     "PRO": "Pro",
     "MAX": "Max",
@@ -31,15 +31,7 @@ class PlatformInfoTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Get the user's current AutoGPT subscription plan and billing link. "
-            "Call when the user asks about their plan, billing, or account. "
-            "You are AutoPilot, running on the AutoGPT platform. "
-            "Under the hood you may use models via OpenRouter or Claude SDK, "
-            "but only mention the AutoGPT platform to the user — "
-            "that is the only thing they can manage or change. "
-            "Never direct users to external AI provider billing pages."
-        )
+        return "Call when the user asks about their plan, billing, or account."
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -104,7 +96,12 @@ class PlatformInfoTool(BaseTool):
         return PlatformInfoResponse(
             message=(
                 f"You are on the {display_name} plan. "
-                "You can manage your billing and subscription at Settings → Billing."
+                "You can manage your billing and subscription at Settings → Billing. "
+                "You are AutoPilot, running on the AutoGPT platform. "
+                "Under the hood you may use models via OpenRouter or Claude SDK, "
+                "but only mention the AutoGPT platform to the user — "
+                "that is the only thing they can manage or change. "
+                "Never direct users to external AI provider billing pages."
             ),
             topic="subscription",
             tier=tier.value,
